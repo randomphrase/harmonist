@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center p-4 bg-h-slate/50 rounded-lg shadow-inner">
+        <h1 class="text-3xl font-extrabold tracking-tight text-white">Your Action Inbox</h1>
+        <p class="text-slate-400">Fetch new purchases to begin seeding.</p>
+    </div>
+
+    <div id="task-list" 
+         hx-get="/tasks" 
+         hx-trigger="load" 
+         hx-indicator="#loading-indicator"
+         class="space-y-4">
+        
+        <div id="loading-indicator" class="htmx-indicator text-center py-10">
+            <span class="text-slate-500 italic">Analyzing collection...</span>
+        </div>
+    </div>
+</div>
+{% endblock %}

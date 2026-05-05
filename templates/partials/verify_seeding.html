@@ -1,0 +1,66 @@
+<div id="task-{{ album.id }}" class="p-6 rounded-lg bg-h-slate border-2 border-mb-purple shadow-xl animate-pulse-once">
+    <div class="flex justify-between items-start mb-4">
+        <div>
+            <h3 class="text-2xl font-black text-white leading-tight">{{ metadata.title }}</h3>
+            <p class="text-mb-purple font-bold">{{ metadata.artist }}</p>
+        </div>
+        <span class="px-3 py-1 bg-mb-purple/20 text-mb-purple border border-mb-purple/50 rounded-full text-xs font-black uppercase tracking-widest">
+            Verify Seeding
+        </span>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 mb-6">
+        <div class="space-y-1">
+            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Release Year</label>
+            <input type="text" value="{{ metadata.year }}" class="w-full bg-h-charcoal border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-mb-purple outline-none">
+        </div>
+        <div class="space-y-1">
+            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Label</label>
+            <input type="text" value="{{ metadata.label or 'Self-Released' }}" class="w-full bg-h-charcoal border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-mb-purple outline-none">
+        </div>
+    </div>
+
+    <div class="mb-6">
+        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Tracklist Preview</label>
+        <div class="max-h-48 overflow-y-auto space-y-1 bg-h-charcoal/50 rounded p-2 border border-slate-800">
+            {% for track in metadata.tracklist %}
+            <div class="flex justify-between text-xs py-1 px-2 border-b border-slate-800/50 last:border-0">
+                <span class="text-slate-400 font-mono w-6">{{ track.position }}.</span>
+                <span class="text-slate-200 flex-grow">{{ track.title }}</span>
+                <span class="text-slate-500 font-mono">{{ (track.duration // 60) }}:{{ "%02d" | format(track.duration % 60) }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <form action="https://musicbrainz.org/release/add" method="POST" target="_blank" class="flex gap-3">
+        {# Hidden fields for MusicBrainz Seeding #}
+        <input type="hidden" name="name" value="{{ metadata.title }}">
+        <input type="hidden" name="artist_credit.names.0.name" value="{{ metadata.artist }}">
+        <input type="hidden" name="artist_credit.names.0.artist.name" value="{{ metadata.artist }}">
+        <input type="hidden" name="type" value="Album">
+        <input type="hidden" name="status" value="Official">
+        <input type="hidden" name="language" value="eng">
+        <input type="hidden" name="script" value="Latn">
+        <input type="hidden" name="events.0.date.year" value="{{ metadata.year }}">
+        <input type="hidden" name="mediums.0.format" value="Digital Media">
+        
+        {% for track in metadata.tracklist %}
+        <input type="hidden" name="mediums.0.track.{{ loop.index0 }}.name" value="{{ track.title }}">
+        <input type="hidden" name="mediums.0.track.{{ loop.index0 }}.length" value="{{ track.duration * 1000 }}">
+        <input type="hidden" name="mediums.0.track.{{ loop.index0 }}.number" value="{{ track.position }}">
+        {% endfor %}
+
+        <input type="hidden" name="urls.0.url" value="{{ metadata.url }}">
+        <input type="hidden" name="edit_note" value="Seeded from Harmonist (https://github.com/yourusername/harmonist)">
+
+        <button type="submit" 
+                class="flex-grow flex items-center justify-center gap-2 px-6 py-3 bg-mb-purple text-white font-black text-sm rounded hover:bg-mb-purple/90 transition shadow-lg">
+            Confirm & Push to MusicBrainz
+        </button>
+        
+        <button hx-get="/tasks" hx-target="#task-list" class="px-6 py-3 bg-slate-800 text-slate-400 font-bold text-sm rounded hover:bg-slate-700 transition">
+            Cancel
+        </button>
+    </form>
+</div>

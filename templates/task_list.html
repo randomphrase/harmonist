@@ -1,0 +1,29 @@
+{% if needs_seeding %}
+<section class="mb-8">
+    <h2 class="flex items-center gap-2 text-xl font-bold text-white mb-3">
+        🚀 <span class="text-mb-purple">Action Required:</span> Needs Seeding ({{ needs_seeding|length }})
+    </h2>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-4">
+        {% for album in needs_seeding %}
+            {% include 'partials/task_card_seeding.html' %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if ambiguities %}
+<section class="mb-8">
+    <h2 class="flex items-center gap-2 text-xl font-bold text-white mb-3">
+        🔍 <span class="text-amber-400">Action Required:</span> Resolve Ambiguity ({{ ambiguities|length }})
+    </h2>
+    
+    <div class="grid grid-cols-1 gap-4">
+        {% for item in ambiguities %}
+            {% set album = item.album %}
+            {% set matches = item.matches %}
+            {% include 'partials/task_card_ambiguity.html' %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
