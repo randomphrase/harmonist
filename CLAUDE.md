@@ -44,6 +44,19 @@ DEMO_MODE=1 uvicorn harmonist.web.main:app --reload
 
 ```bash
 pytest test/
+# or
+make test
+```
+
+## CSS build
+
+Tailwind v4 standalone via the `pytailwindcss` Python wrapper (no Node).
+The build output `static/harmonist.css` is committed; re-run after editing
+templates so new utility classes are included:
+
+```bash
+make css           # one-shot minified build
+make css-watch     # watch + rebuild on save
 ```
 
 The integration test (`test_workflow.py`) requires a real `.m4a` template file at either `music/Album1/track1.m4a` or `/Users/alastair/Music/Traktor/02 Declino.m4a`. Without it, `create_dummy_m4a` creates an empty file that `mutagen` can't read.
