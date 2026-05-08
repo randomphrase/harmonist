@@ -1,0 +1,23 @@
+{% if not albums %}
+<div class="p-10 text-center bg-h-slate/40 rounded-lg border border-slate-700/50">
+    <p class="text-slate-400 italic">Inbox is empty. Either everything's reconciled or your library hasn't been scanned yet.</p>
+</div>
+{% else %}
+<div class="grid grid-cols-1 gap-3">
+    {% for album in albums %}
+        {% if album.state == AlbumState.ORPHAN %}
+            {% include 'partials/task_card_orphan.html' %}
+        {% elif album.state == AlbumState.HELD_BANDCAMP %}
+            {% include 'partials/task_card_held_bandcamp.html' %}
+        {% elif album.state == AlbumState.HELD_MANUAL %}
+            {% include 'partials/task_card_held_manual.html' %}
+        {% elif album.state == AlbumState.NEEDS_CONFIRMATION %}
+            {% include 'partials/task_card_needs_confirmation.html' %}
+        {% elif album.state == AlbumState.UNCONFIRMED_BANDCAMP %}
+            {% include 'partials/task_card_unconfirmed_bandcamp.html' %}
+        {% elif album.state == AlbumState.TAGGING %}
+            {% include 'partials/task_card_tagging.html' %}
+        {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
