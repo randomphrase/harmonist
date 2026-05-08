@@ -13,12 +13,14 @@ class AlbumState(str, Enum):
     ORPHAN = "orphan"
     HELD_BANDCAMP = "held_bandcamp"
     HELD_MANUAL = "held_manual"
+    NEEDS_CONFIRMATION = "needs_confirmation"
     TAGGING = "tagging"
     DONE = "done"
 
 
 SourceKind = Literal["bandcamp", "manual"]
 LookupResult = Literal["match", "no_match", "error"]
+MatchConfidence = Literal["exact", "approximate", "no_match"]
 
 
 @dataclass
@@ -37,6 +39,33 @@ class MBLookupAttempt:
 
 
 @dataclass
+class TrackComparison:
+    """Per-track diff between a local file and an MB release track."""
+    file_name: str
+    file_duration_ms: int
+    mb_track_title: str
+    mb_track_length_ms: int | None  # None if MB doesn't have a length recorded
+    delta_ms: int | None  # None if mb_track_length_ms is None
+
+
+@dataclass
+class MatchCandidate:
+    """A proposed-but-not-confirmed MBID match for an album.
+
+    Stashed in the sidecar when the MB lookup found a release but the
+    file/track shape doesn't perfectly fit. The user must Confirm or
+    Reject before tagging proceeds.
+    """
+    mb_release_id: str
+    confidence: MatchConfidence
+    file_count: int
+    track_count: int
+    track_comparisons: list[TrackComparison] = field(default_factory=list)
+    proposed_at: datetime | None = None
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Sidecar:
     schema_version: int
     source: SourceKind
@@ -44,6 +73,7 @@ class Sidecar:
     downloaded_at: datetime | None = None
     added_at: datetime | None = None
     mb_release_id: str | None = None
+    mb_match_candidate: MatchCandidate | None = None
     mb_last_checked_at: datetime | None = None
     mb_lookup_history: list[MBLookupAttempt] = field(default_factory=list)
     tagged_at: datetime | None = None

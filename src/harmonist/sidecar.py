@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import BandcampInfo, MBLookupAttempt, Sidecar
+from .models import BandcampInfo, MatchCandidate, MBLookupAttempt, Sidecar, TrackComparison
 
 
 SIDECAR_FILENAME = ".harmonist.json"
@@ -70,6 +70,8 @@ def _to_dict(s: Sidecar) -> dict:
         d["added_at"] = _iso(s.added_at)
     if s.mb_release_id:
         d["mb_release_id"] = s.mb_release_id
+    if s.mb_match_candidate:
+        d["mb_match_candidate"] = _candidate_to_dict(s.mb_match_candidate)
     if s.mb_last_checked_at:
         d["mb_last_checked_at"] = _iso(s.mb_last_checked_at)
     if s.mb_lookup_history:
@@ -92,6 +94,56 @@ def _attempt_to_dict(a: MBLookupAttempt) -> dict:
     return out
 
 
+def _candidate_to_dict(c: MatchCandidate) -> dict:
+    out: dict = {
+        "mb_release_id": c.mb_release_id,
+        "confidence": c.confidence,
+        "file_count": c.file_count,
+        "track_count": c.track_count,
+    }
+    if c.track_comparisons:
+        out["track_comparisons"] = [_comparison_to_dict(tc) for tc in c.track_comparisons]
+    if c.proposed_at:
+        out["proposed_at"] = _iso(c.proposed_at)
+    if c.notes:
+        out["notes"] = list(c.notes)
+    return out
+
+
+def _comparison_to_dict(tc: TrackComparison) -> dict:
+    out: dict = {
+        "file_name": tc.file_name,
+        "file_duration_ms": tc.file_duration_ms,
+        "mb_track_title": tc.mb_track_title,
+    }
+    if tc.mb_track_length_ms is not None:
+        out["mb_track_length_ms"] = tc.mb_track_length_ms
+    if tc.delta_ms is not None:
+        out["delta_ms"] = tc.delta_ms
+    return out
+
+
+def _candidate_from_dict(d: dict) -> MatchCandidate:
+    return MatchCandidate(
+        mb_release_id=d["mb_release_id"],
+        confidence=d["confidence"],
+        file_count=int(d["file_count"]),
+        track_count=int(d["track_count"]),
+        track_comparisons=[
+            TrackComparison(
+                file_name=tc["file_name"],
+                file_duration_ms=int(tc["file_duration_ms"]),
+                mb_track_title=tc["mb_track_title"],
+                mb_track_length_ms=tc.get("mb_track_length_ms"),
+                delta_ms=tc.get("delta_ms"),
+            )
+            for tc in d.get("track_comparisons", [])
+        ],
+        proposed_at=_parse_iso(d.get("proposed_at")),
+        notes=list(d.get("notes", [])),
+    )
+
+
 def _from_dict(d: dict, source_path: Path) -> Sidecar:
     sv = d.get("schema_version")
     if sv != CURRENT_SCHEMA_VERSION:
@@ -110,6 +162,15 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
         except (KeyError, TypeError, ValueError) as e:
             raise InvalidSidecar(f"sidecar at {source_path} has malformed bandcamp block: {e}") from e
 
+    candidate = None
+    if "mb_match_candidate" in d:
+        try:
+            candidate = _candidate_from_dict(d["mb_match_candidate"])
+        except (KeyError, TypeError, ValueError) as e:
+            raise InvalidSidecar(
+                f"sidecar at {source_path} has malformed mb_match_candidate: {e}"
+            ) from e
+
     return Sidecar(
         schema_version=sv,
         source=source,
@@ -117,6 +178,7 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
         downloaded_at=_parse_iso(d.get("downloaded_at")),
         added_at=_parse_iso(d.get("added_at")),
         mb_release_id=d.get("mb_release_id"),
+        mb_match_candidate=candidate,
         mb_last_checked_at=_parse_iso(d.get("mb_last_checked_at")),
         mb_lookup_history=[
             MBLookupAttempt(

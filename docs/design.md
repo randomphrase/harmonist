@@ -60,17 +60,31 @@ The following are explicitly out of scope for this prototype:
 
 Every album in the music dir is in exactly one state, derived from the presence/contents of its `.harmonist.json` sidecar plus the file tags.
 
-| Sidecar | `mb_release_id` | Files tagged | State | Inbox? | UI affordances |
-|---|---|---|---|---|---|
-| absent | — | — | **Orphan** | yes | "Add Manual" / "Recover Bandcamp URL" |
-| present, `source=bandcamp` | null | n/a | **Held (Bandcamp)** | yes | "Open in Harmony", "Recheck" |
-| present, `source=manual` | null | n/a | **Held (Manual)** | yes | MB search helper / paste MBID |
-| present | set | no | **Tagging** (transient) | yes (briefly) | spinner |
-| present | set | yes | **Done** | no | (hidden — visible in "All" tab if we ship one) |
+| Sidecar | `mb_release_id` | `mb_match_candidate` | Files tagged | State | Inbox? | UI affordances |
+|---|---|---|---|---|---|---|
+| absent | — | — | — | **Orphan** | yes | "Add Manual" / "Recover Bandcamp URL" |
+| present, `source=bandcamp` | null | null | n/a | **Held (Bandcamp)** | yes | "Open in Harmony", "Recheck" |
+| present, `source=manual` | null | null | n/a | **Held (Manual)** | yes | MB search helper / paste MBID |
+| present | null | set | n/a | **Needs Confirmation** | yes | side-by-side: files vs MB release with per-track green/yellow length indicators; "Confirm" / "Reject" buttons |
+| present | set | n/a | no | **Tagging** (transient) | yes (briefly) | spinner |
+| present | set | n/a | yes | **Done** | no | (hidden — visible in "All" tab if we ship one) |
 
 **Transitions are idempotent.** Running sync, recheck, or tag twice on the same album is safe and produces the same result.
 
 The "Ambiguous" state from the old readme is gone for Bandcamp sources (URL → MB lookup is exact). It only resurfaces inside the Manual search helper, where it's a UI concern, not a system state.
+
+### Match confidence (when MB has the URL but the files might not match)
+
+A URL → MBID match from MusicBrainz is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
+
+- **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote: write `mb_release_id`, run tagger, transition to Tagging → Done with no user intervention.
+- **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. State becomes Needs Confirmation. UI surfaces a Picard-style side-by-side with green/yellow per-track indicators and Confirm/Reject buttons.
+- **No match:** file count differs from MB track count. Treated like Approximate from the user's perspective (still Needs Confirmation, still requires explicit Confirm) but the side-by-side has to handle uneven rows.
+
+Confirm → promote candidate to `mb_release_id`, clear candidate, run tagger.
+Reject → clear candidate, drop back to Held (Bandcamp).
+
+Tracks where MB has no recorded length are shown as "unknown" (gray) and don't trigger downgrade on their own, but they don't get to vote for "exact" either — an album with all-unknown lengths and matching count is treated as Approximate.
 
 ---
 
@@ -185,6 +199,7 @@ src/harmonist/
   bandcamp_hook.py     NEW   Syncer subclass; intercepts post-download, writes sidecar
   mb_lookup.py         NEW   MB URL-relationship lookup; full-release fetch for tagging
   mb_search.py         NEW   name-based search helper (manual path only)
+  match.py             NEW   compare local files to MB release: confidence + per-track deltas
   cover_art.py         NEW   Cover Art Archive fetch, resize, cache, write to album dir
   tagger.py            NEW   Picard-compatible tag writer (incl. embedded covr atom)
   url_recovery.py      NEW   fallback: reconstruct Bandcamp album URL from ©cmt artist URL

@@ -8,7 +8,15 @@ import pytest
 
 from harmonist import config as config_mod
 from harmonist import sidecar as sc
-from harmonist.models import Album, AlbumState, BandcampInfo, MBLookupAttempt, Sidecar
+from harmonist.models import (
+    Album,
+    AlbumState,
+    BandcampInfo,
+    MatchCandidate,
+    MBLookupAttempt,
+    Sidecar,
+    TrackComparison,
+)
 
 
 # ---------- config ----------
@@ -98,6 +106,7 @@ def test_album_state_values():
     assert AlbumState.ORPHAN.value == "orphan"
     assert AlbumState.HELD_BANDCAMP.value == "held_bandcamp"
     assert AlbumState.HELD_MANUAL.value == "held_manual"
+    assert AlbumState.NEEDS_CONFIRMATION.value == "needs_confirmation"
     assert AlbumState.TAGGING.value == "tagging"
     assert AlbumState.DONE.value == "done"
 
@@ -191,6 +200,57 @@ def test_sidecar_atomic_write_no_tmp_leftover(tmp_path):
     sc.write(album_dir, s)
     assert not list(album_dir.glob("*.tmp"))
     assert sc.has_sidecar(album_dir)
+
+
+def test_sidecar_round_trip_with_match_candidate(tmp_path):
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    candidate = MatchCandidate(
+        mb_release_id="rel-zzz",
+        confidence="approximate",
+        file_count=2,
+        track_count=2,
+        track_comparisons=[
+            TrackComparison(
+                file_name="01.m4a",
+                file_duration_ms=180000,
+                mb_track_title="Song A",
+                mb_track_length_ms=185000,
+                delta_ms=5000,
+            ),
+            TrackComparison(
+                file_name="02.m4a",
+                file_duration_ms=200000,
+                mb_track_title="Song B",
+                mb_track_length_ms=None,
+                delta_ms=None,
+            ),
+        ],
+        proposed_at=datetime(2026, 5, 8, 12, 0, 0, tzinfo=timezone.utc),
+        notes=["some track lengths differ", "some MB tracks have no recorded length"],
+    )
+    s = Sidecar(
+        schema_version=1,
+        source="bandcamp",
+        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+        mb_match_candidate=candidate,
+    )
+    sc.write(album_dir, s)
+
+    loaded = sc.read(album_dir)
+    assert loaded.mb_release_id is None
+    assert loaded.mb_match_candidate is not None
+    c = loaded.mb_match_candidate
+    assert c.mb_release_id == "rel-zzz"
+    assert c.confidence == "approximate"
+    assert c.file_count == 2
+    assert c.track_count == 2
+    assert len(c.track_comparisons) == 2
+    assert c.track_comparisons[0].delta_ms == 5000
+    assert c.track_comparisons[1].mb_track_length_ms is None
+    assert c.track_comparisons[1].delta_ms is None
+    assert c.proposed_at == candidate.proposed_at
+    assert c.notes == candidate.notes
 
 
 def test_sidecar_history_bounded_to_last_10(tmp_path):
