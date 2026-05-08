@@ -12,13 +12,30 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from harmonist import config as config_mod
-from harmonist import cover_art, mb_lookup, reconcile, scanner
+from harmonist import cover_art, mb_lookup, mb_search, reconcile, scanner, url_recovery
 from harmonist import sidecar as sidecar_mod
 from harmonist import tagger
 from harmonist.bandcamp_hook import CapExceededError, HarmonistSyncer
 from harmonist.match import assess_match
 from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar
 from harmonist.web.sync_runner import AlreadyRunningError, SyncRunner
+
+import re
+
+_MB_URL_RE = re.compile(r"/release/([a-f0-9-]{36})", re.IGNORECASE)
+_MBID_RE = re.compile(r"^[a-f0-9-]{36}$", re.IGNORECASE)
+
+
+def _extract_mbid(value: str) -> Optional[str]:
+    """Pull an MBID out of a raw input — accepts either a full MB URL or the bare MBID."""
+    s = (value or "").strip()
+    if not s:
+        return None
+    if m := _MB_URL_RE.search(s):
+        return m.group(1).lower()
+    if _MBID_RE.fullmatch(s):
+        return s.lower()
+    return None
 
 
 log = logging.getLogger(__name__)
@@ -104,7 +121,40 @@ def _run_bandcamp_sync(cfg: config_mod.Config):
     )
 
 
-def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config) -> None:
+def _apply_match(album: Album, mbid: str, cfg: config_mod.Config, *, source: Optional[str] = None) -> tuple[str, str]:
+    """Fetch MB release, run match assessment, then either tag or stash candidate.
+
+    Returns (status, message) where status is 'tagged' | 'needs_confirmation'.
+    `source` overrides the sidecar source when set (used by manual ingest on
+    Orphans, where there's no existing sidecar to inherit from).
+    """
+    release = mb_lookup.fetch_release(mbid)
+    candidate = assess_match(album.path, release)
+
+    if candidate.confidence == "exact":
+        _tag_with_release(album, mbid, cfg, source=source)
+        return "tagged", "Match exact — files tagged."
+
+    existing = sidecar_mod.read(album.path)
+    sc_source = source or (existing.source if existing else "manual")
+    new = Sidecar(
+        schema_version=1,
+        source=sc_source,
+        bandcamp=existing.bandcamp if existing else None,
+        downloaded_at=existing.downloaded_at if existing else None,
+        added_at=(existing.added_at if existing else None) or datetime.now(timezone.utc),
+        mb_release_id=None,
+        mb_match_candidate=candidate,
+        mb_last_checked_at=datetime.now(timezone.utc),
+        mb_lookup_history=existing.mb_lookup_history if existing else [],
+        tagged_at=existing.tagged_at if existing else None,
+        notes=existing.notes if existing else None,
+    )
+    sidecar_mod.write(album.path, new)
+    return "needs_confirmation", f"Match found ({candidate.confidence}) — please review and confirm."
+
+
+def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config, *, source: Optional[str] = None) -> None:
     """Fetch MB release, fetch cover, write tags, update sidecar."""
     release = mb_lookup.fetch_release(mbid)
     rg = release.get("release-group") or {}
@@ -116,23 +166,20 @@ def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config) -> None:
     )
     tagger.tag_album(album.path, release, cover_path=cover_path)
 
-    sc = sidecar_mod.read(album.path) or Sidecar(schema_version=1, source="manual")
-    bandcamp = sc.bandcamp
-    if sc.source == "manual" and bandcamp is None:
-        # leave bandcamp None for purely-manual ingest
-        pass
+    sc = sidecar_mod.read(album.path)
+    sc_source = source or (sc.source if sc else "manual")
     new = Sidecar(
         schema_version=1,
-        source=sc.source,
-        bandcamp=bandcamp,
-        downloaded_at=sc.downloaded_at,
-        added_at=sc.added_at,
+        source=sc_source,
+        bandcamp=sc.bandcamp if sc else None,
+        downloaded_at=sc.downloaded_at if sc else None,
+        added_at=(sc.added_at if sc else None) or datetime.now(timezone.utc),
         mb_release_id=mbid,
         mb_match_candidate=None,  # cleared on tag
         mb_last_checked_at=datetime.now(timezone.utc),
-        mb_lookup_history=sc.mb_lookup_history,
+        mb_lookup_history=sc.mb_lookup_history if sc else [],
         tagged_at=datetime.now(timezone.utc),
-        notes=sc.notes,
+        notes=sc.notes if sc else None,
     )
     sidecar_mod.write(album.path, new)
 
@@ -316,6 +363,74 @@ def _register_routes(app: FastAPI) -> None:
         new_sc = _replace_bandcamp(sc, new_bc)
         sidecar_mod.write(album.path, new_sc)
         return HTMLResponse(_flash("URL updated. Run sync to confirm.", level="info"),
+                            headers={"HX-Trigger": "tasks-changed"})
+
+    @app.post("/manual/{album_id}/search", response_class=HTMLResponse)
+    def manual_search(
+        request: Request,
+        album_id: str,
+        artist: str = Form(""),
+        title: str = Form(""),
+    ):
+        # Validate album exists; we don't need it for the search itself but a 404
+        # here is the right signal for a stale UI.
+        _find_album(request, album_id)
+        try:
+            results = mb_search.search_releases(artist, title)
+        except mb_search.MBSearchError as e:
+            return HTMLResponse(_flash(f"MB search failed: {e}", level="error"))
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "partials/manual_search_results.html",
+            {"request": request, "results": results, "album_id": album_id, "query": {"artist": artist, "title": title}},
+        )
+
+    @app.post("/manual/{album_id}/assign", response_class=HTMLResponse)
+    def manual_assign(request: Request, album_id: str, mbid: str = Form(...)):
+        album = _find_album(request, album_id)
+        extracted = _extract_mbid(mbid)
+        if not extracted:
+            return HTMLResponse(_flash(
+                "Could not parse an MBID from that input. Paste a full MB release URL or the 36-char MBID.",
+                level="error",
+            ))
+        try:
+            status_str, msg = _apply_match(album, extracted, request.app.state.cfg, source="manual")
+        except mb_lookup.MBError as e:
+            return HTMLResponse(_flash(f"MB lookup failed: {e}", level="error"))
+        except Exception as e:
+            log.exception("manual assign failed")
+            return HTMLResponse(_flash(f"Assignment failed: {e}", level="error"))
+        return HTMLResponse(_flash(msg, level="info"),
+                            headers={"HX-Trigger": "tasks-changed"})
+
+    @app.post("/recover/{album_id}", response_class=HTMLResponse)
+    def recover_url(request: Request, album_id: str):
+        album = _find_album(request, album_id)
+        if album.state != AlbumState.ORPHAN:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "URL recovery only applies to orphans")
+        try:
+            url = url_recovery.recover_album_url(album.path)
+        except Exception as e:
+            log.exception("URL recovery failed")
+            return HTMLResponse(_flash(f"URL recovery failed: {e}", level="error"))
+        if not url:
+            return HTMLResponse(_flash(
+                "Could not recover a Bandcamp URL — no usable link found in the file's comment tag.",
+                level="warning",
+            ))
+        # Write a partial bandcamp sidecar so the album moves to Held (Bandcamp)
+        # and the user can run Recheck.
+        sidecar_mod.write(
+            album.path,
+            Sidecar(
+                schema_version=1,
+                source="bandcamp",
+                bandcamp=BandcampInfo(url=url, item_id=None),
+                added_at=datetime.now(timezone.utc),
+            ),
+        )
+        return HTMLResponse(_flash(f"Recovered URL: {url}. Click Recheck to look it up on MusicBrainz.", level="info"),
                             headers={"HX-Trigger": "tasks-changed"})
 
     @app.post("/unconfirmed/{album_id}/manual", response_class=HTMLResponse)

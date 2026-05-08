@@ -2,12 +2,22 @@
 {% set badge_label = 'Orphan' %}
 <div id="task-{{ album.id }}" class="p-4 rounded-lg bg-h-slate border border-slate-700/50">
     {% include 'partials/_album_header.html' %}
-    <p class="text-slate-500 text-xs mb-3">No <code>.harmonist.json</code> sidecar. Reconcile to derive one from existing tags.</p>
-    <div class="flex gap-2">
+    <p class="text-slate-500 text-xs mb-3">No <code>.harmonist.json</code> sidecar yet. Pick one:</p>
+
+    <div class="flex gap-2 flex-wrap mb-3">
         <button hx-post="/reconcile/{{ album.id }}"
                 hx-target="this" hx-swap="afterend"
-                class="px-3 py-1.5 bg-mb-purple/20 hover:bg-mb-purple/30 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
-            Reconcile
+                class="px-3 py-1.5 bg-mb-purple/20 hover:bg-mb-purple/30 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition"
+                title="Derive a sidecar from existing MB tags + ©cmt evidence">
+            Reconcile from tags
+        </button>
+        <button hx-post="/recover/{{ album.id }}"
+                hx-target="this" hx-swap="afterend"
+                class="px-3 py-1.5 bg-bc-teal/10 hover:bg-bc-teal/20 text-bc-teal border border-bc-teal/30 rounded text-xs font-bold uppercase tracking-widest transition"
+                title="Read the file's ©cmt for a Bandcamp URL">
+            Recover Bandcamp URL
         </button>
     </div>
+
+    {% include 'partials/_manual_form.html' %}
 </div>
