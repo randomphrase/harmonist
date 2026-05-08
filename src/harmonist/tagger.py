@@ -3,10 +3,17 @@
 Writes the full MusicBrainz atom set + standard text tags + cover art onto
 every .m4a file in an album directory. Atom names follow Picard's convention
 (spaces, not underscores).
+
+The default implementation (`PicardCompatibleTagger`) conforms to the
+MusicBrainz Picard MP4 mapping spec
+(https://picard.musicbrainz.org/docs/mappings/). The `Tagger` Protocol exists
+so this can be swapped for another implementation later (e.g. headless
+Picard, a different format target) without touching call sites.
 """
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 from mutagen.mp4 import MP4, MP4Cover
 
@@ -42,6 +49,42 @@ COMMENT_ATOM = "\xa9cmt"
 
 class TagMismatchError(Exception):
     """Raised when the file count doesn't match the MB release's track count."""
+
+
+@runtime_checkable
+class Tagger(Protocol):
+    """Contract for a Harmonist tagger.
+
+    Implementations write tags to every audio file in `album_dir` based on
+    the supplied MB release dict, optionally embedding cover art from
+    `cover_path`. Returns the number of files tagged. Raises
+    `TagMismatchError` when the file count and MB track count diverge.
+    """
+
+    def tag_album(
+        self,
+        album_dir: Path,
+        release: dict,
+        cover_path: Path | None = None,
+    ) -> int:
+        ...
+
+
+class PicardCompatibleTagger:
+    """Default tagger — writes the Picard-spec MP4 atom set via mutagen.
+
+    Output intended to be byte-identical to what MusicBrainz Picard would
+    write for the same release. Verified by chunk G's byte-diff fixture
+    test (TBD).
+    """
+
+    def tag_album(
+        self,
+        album_dir: Path,
+        release: dict,
+        cover_path: Path | None = None,
+    ) -> int:
+        return tag_album(album_dir, release, cover_path)
 
 
 def tag_album(

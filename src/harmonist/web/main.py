@@ -14,10 +14,10 @@ from fastapi.templating import Jinja2Templates
 from harmonist import config as config_mod
 from harmonist import cover_art, mb_lookup, mb_search, reconcile, scanner, url_recovery
 from harmonist import sidecar as sidecar_mod
-from harmonist import tagger
 from harmonist.bandcamp_hook import CapExceededError, HarmonistSyncer
 from harmonist.match import assess_match
 from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar
+from harmonist.tagger import PicardCompatibleTagger, Tagger
 from harmonist.web.sync_runner import AlreadyRunningError, SyncRunner
 
 import re
@@ -44,10 +44,18 @@ log = logging.getLogger(__name__)
 HARMONY_BASE = "https://harmony.pulsewidth.org.uk"
 
 
-def create_app(cfg: Optional[config_mod.Config] = None) -> FastAPI:
-    """Application factory. Tests can pass a pre-built config."""
+def create_app(
+    cfg: Optional[config_mod.Config] = None,
+    *,
+    tagger: Optional[Tagger] = None,
+) -> FastAPI:
+    """Application factory. Tests can pass a pre-built config and/or a swap-in
+    tagger implementation.
+    """
     if cfg is None:
         cfg = config_mod.load()
+    if tagger is None:
+        tagger = PicardCompatibleTagger()
 
     mb_lookup.configure(cfg.musicbrainz.user_agent)
 
@@ -64,6 +72,7 @@ def create_app(cfg: Optional[config_mod.Config] = None) -> FastAPI:
     app.state.cfg = cfg
     app.state.templates = templates
     app.state.sync_runner = sync_runner
+    app.state.tagger = tagger
 
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -121,7 +130,7 @@ def _run_bandcamp_sync(cfg: config_mod.Config):
     )
 
 
-def _apply_match(album: Album, mbid: str, cfg: config_mod.Config, *, source: Optional[str] = None) -> tuple[str, str]:
+def _apply_match(album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger, *, source: Optional[str] = None) -> tuple[str, str]:
     """Fetch MB release, run match assessment, then either tag or stash candidate.
 
     Returns (status, message) where status is 'tagged' | 'needs_confirmation'.
@@ -132,7 +141,7 @@ def _apply_match(album: Album, mbid: str, cfg: config_mod.Config, *, source: Opt
     candidate = assess_match(album.path, release)
 
     if candidate.confidence == "exact":
-        _tag_with_release(album, mbid, cfg, source=source)
+        _tag_with_release(album, mbid, cfg, tagger, source=source)
         return "tagged", "Match exact — files tagged."
 
     existing = sidecar_mod.read(album.path)
@@ -154,7 +163,7 @@ def _apply_match(album: Album, mbid: str, cfg: config_mod.Config, *, source: Opt
     return "needs_confirmation", f"Match found ({candidate.confidence}) — please review and confirm."
 
 
-def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config, *, source: Optional[str] = None) -> None:
+def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger, *, source: Optional[str] = None) -> None:
     """Fetch MB release, fetch cover, write tags, update sidecar."""
     release = mb_lookup.fetch_release(mbid)
     rg = release.get("release-group") or {}
@@ -305,7 +314,7 @@ def _register_routes(app: FastAPI) -> None:
 
         if candidate.confidence == "exact":
             try:
-                _tag_with_release(album, mbid, request.app.state.cfg)
+                _tag_with_release(album, mbid, request.app.state.cfg, request.app.state.tagger)
                 return HTMLResponse(_flash("Match found and tagged.", level="info"),
                                     headers={"HX-Trigger": "tasks-changed"})
             except Exception as e:
@@ -323,7 +332,7 @@ def _register_routes(app: FastAPI) -> None:
         if sc is None or sc.mb_match_candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
         try:
-            _tag_with_release(album, sc.mb_match_candidate.mb_release_id, request.app.state.cfg)
+            _tag_with_release(album, sc.mb_match_candidate.mb_release_id, request.app.state.cfg, request.app.state.tagger)
         except Exception as e:
             log.exception("tag failed")
             return HTMLResponse(_flash(f"Tagging failed: {e}", level="error"))
@@ -395,7 +404,7 @@ def _register_routes(app: FastAPI) -> None:
                 level="error",
             ))
         try:
-            status_str, msg = _apply_match(album, extracted, request.app.state.cfg, source="manual")
+            status_str, msg = _apply_match(album, extracted, request.app.state.cfg, request.app.state.tagger, source="manual")
         except mb_lookup.MBError as e:
             return HTMLResponse(_flash(f"MB lookup failed: {e}", level="error"))
         except Exception as e:
