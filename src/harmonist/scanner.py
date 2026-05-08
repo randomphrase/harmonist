@@ -74,6 +74,8 @@ def _derive_state(sidecar: Sidecar | None, m4a_files: list[Path]) -> AlbumState:
     if sidecar is None:
         return AlbumState.ORPHAN
     if sidecar.mb_release_id is None:
+        if sidecar.mb_match_candidate is not None:
+            return AlbumState.NEEDS_CONFIRMATION
         return (
             AlbumState.HELD_BANDCAMP
             if sidecar.source == "bandcamp"

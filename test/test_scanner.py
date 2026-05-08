@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from harmonist import sidecar as sc, tagger
-from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar
+from harmonist.models import (
+    Album,
+    AlbumState,
+    BandcampInfo,
+    MatchCandidate,
+    Sidecar,
+)
 from harmonist.scanner import scan
 
 
@@ -70,6 +76,27 @@ def test_scan_held_manual_when_sidecar_no_mbid(tmp_path):
     )
     a = scan(tmp_path)[0]
     assert a.state == AlbumState.HELD_MANUAL
+
+
+def test_scan_needs_confirmation_when_match_candidate_set(tmp_path):
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album")
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=1,
+            source="bandcamp",
+            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-aaa",
+                confidence="approximate",
+                file_count=1,
+                track_count=2,
+            ),
+        ),
+    )
+    a = scan(tmp_path)[0]
+    assert a.state == AlbumState.NEEDS_CONFIRMATION
+    assert a.sidecar.mb_match_candidate.mb_release_id == "rel-aaa"
 
 
 def test_scan_tagging_when_mbid_set_but_files_not_tagged(tmp_path):
