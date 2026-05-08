@@ -9,6 +9,7 @@ user clicks Confirm or Reject.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from itertools import zip_longest
 from pathlib import Path
 
 from mutagen.mp4 import MP4
@@ -41,55 +42,67 @@ def assess_match(album_dir: Path, release: dict) -> MatchCandidate:
     track_count = len(tracks)
     notes: list[str] = []
 
-    if file_count != track_count:
-        return MatchCandidate(
-            mb_release_id=release["id"],
-            confidence="no_match",
-            file_count=file_count,
-            track_count=track_count,
-            track_comparisons=[],
-            proposed_at=datetime.now(timezone.utc),
-            notes=[
-                f"file count {file_count} does not match MB track count {track_count}"
-            ],
-        )
-
     comparisons: list[TrackComparison] = []
     any_significant_delta = False
     any_unknown_length = False
 
-    for f, (_, _, track) in zip(files, tracks):
-        file_dur_ms = _file_duration_ms(f)
-        mb_len_ms = _mb_track_length_ms(track)
-        delta_ms = abs(file_dur_ms - mb_len_ms) if mb_len_ms is not None else None
+    for f, mb_entry in zip_longest(files, tracks, fillvalue=None):
+        track = mb_entry[2] if mb_entry is not None else None
 
-        if mb_len_ms is None:
-            any_unknown_length = True
-        elif delta_ms is not None and delta_ms > LENGTH_TOLERANCE_MS:
-            any_significant_delta = True
+        if f is not None:
+            file_name = f.name
+            file_dur_ms = _file_duration_ms(f)
+            file_title = _file_title(f) or f.stem
+        else:
+            file_name = None
+            file_dur_ms = None
+            file_title = None
+
+        if track is not None:
+            mb_track_title = _track_title(track)
+            mb_len_ms = _mb_track_length_ms(track)
+        else:
+            mb_track_title = None
+            mb_len_ms = None
+
+        if file_dur_ms is not None and mb_len_ms is not None:
+            delta_ms = abs(file_dur_ms - mb_len_ms)
+            if delta_ms > LENGTH_TOLERANCE_MS:
+                any_significant_delta = True
+        else:
+            delta_ms = None
+            if track is not None and mb_len_ms is None:
+                any_unknown_length = True
 
         comparisons.append(
             TrackComparison(
-                file_name=f.name,
+                file_name=file_name,
                 file_duration_ms=file_dur_ms,
-                mb_track_title=_track_title(track),
+                file_title=file_title,
+                mb_track_title=mb_track_title,
                 mb_track_length_ms=mb_len_ms,
                 delta_ms=delta_ms,
             )
         )
 
-    if any_significant_delta:
+    confidence: MatchConfidence
+    if file_count != track_count:
+        confidence = "no_match"
+        notes.append(
+            f"file count {file_count} does not match MB track count {track_count}"
+        )
+    elif any_significant_delta:
+        confidence = "approximate"
         notes.append(
             f"some track lengths differ by more than {LENGTH_TOLERANCE_MS // 1000}s"
         )
-    if any_unknown_length:
-        notes.append("some MB tracks have no recorded length")
-
-    confidence: MatchConfidence
-    if not any_significant_delta and not any_unknown_length:
-        confidence = "exact"
-    else:
+        if any_unknown_length:
+            notes.append("some MB tracks have no recorded length")
+    elif any_unknown_length:
         confidence = "approximate"
+        notes.append("some MB tracks have no recorded length")
+    else:
+        confidence = "exact"
 
     return MatchCandidate(
         mb_release_id=release["id"],
@@ -109,6 +122,16 @@ def _file_duration_ms(file_path: Path) -> int:
         return int(seconds * 1000)
     except Exception:
         return 0
+
+
+def _file_title(file_path: Path) -> str | None:
+    """Read the ©nam tag from the file, if present."""
+    try:
+        audio = MP4(file_path)
+    except Exception:
+        return None
+    title = (audio.get("\xa9nam") or [None])[0]
+    return title or None
 
 
 def _mb_track_length_ms(track: dict) -> int | None:

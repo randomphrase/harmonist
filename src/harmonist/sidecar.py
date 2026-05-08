@@ -111,11 +111,15 @@ def _candidate_to_dict(c: MatchCandidate) -> dict:
 
 
 def _comparison_to_dict(tc: TrackComparison) -> dict:
-    out: dict = {
-        "file_name": tc.file_name,
-        "file_duration_ms": tc.file_duration_ms,
-        "mb_track_title": tc.mb_track_title,
-    }
+    out: dict = {}
+    if tc.file_name is not None:
+        out["file_name"] = tc.file_name
+    if tc.file_duration_ms is not None:
+        out["file_duration_ms"] = tc.file_duration_ms
+    if tc.file_title is not None:
+        out["file_title"] = tc.file_title
+    if tc.mb_track_title is not None:
+        out["mb_track_title"] = tc.mb_track_title
     if tc.mb_track_length_ms is not None:
         out["mb_track_length_ms"] = tc.mb_track_length_ms
     if tc.delta_ms is not None:
@@ -131,9 +135,10 @@ def _candidate_from_dict(d: dict) -> MatchCandidate:
         track_count=int(d["track_count"]),
         track_comparisons=[
             TrackComparison(
-                file_name=tc["file_name"],
-                file_duration_ms=int(tc["file_duration_ms"]),
-                mb_track_title=tc["mb_track_title"],
+                file_name=tc.get("file_name"),
+                file_duration_ms=tc.get("file_duration_ms"),
+                file_title=tc.get("file_title"),
+                mb_track_title=tc.get("mb_track_title"),
                 mb_track_length_ms=tc.get("mb_track_length_ms"),
                 delta_ms=tc.get("delta_ms"),
             )
