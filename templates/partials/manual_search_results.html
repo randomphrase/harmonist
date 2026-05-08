@@ -1,0 +1,29 @@
+{% if not results %}
+<p class="text-slate-500 text-xs italic px-2 py-1">No matches.</p>
+{% else %}
+<div class="space-y-1">
+    {% for r in results %}
+    <div class="flex items-center justify-between gap-2 p-2 rounded bg-h-charcoal/60 border border-slate-700/60 hover:border-mb-purple/40 transition">
+        <div class="min-w-0 flex-grow">
+            <div class="text-sm text-slate-200 truncate">
+                <span class="font-bold">{{ r.title }}</span>
+                <span class="text-slate-500"> — {{ r.artist }}</span>
+            </div>
+            <div class="text-[10px] text-slate-500">
+                {{ r.date or '?' }} · {{ r.country or '?' }} · {{ r.status or '?' }}
+                {% if r.track_count %} · {{ r.track_count }} tracks{% endif %}
+                {% if r.label %} · {{ r.label }}{% endif %}
+                {% if r.catalog_number %} · {{ r.catalog_number }}{% endif %}
+            </div>
+        </div>
+        <form hx-post="/manual/{{ album_id }}/assign" hx-target="this" hx-swap="afterend">
+            <input type="hidden" name="mbid" value="{{ r.id }}">
+            <button type="submit"
+                    class="px-2 py-1 bg-mb-purple/20 hover:bg-mb-purple/30 text-mb-purple border border-mb-purple/30 rounded text-[10px] font-bold uppercase tracking-widest transition whitespace-nowrap">
+                Use
+            </button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

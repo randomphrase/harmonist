@@ -117,6 +117,17 @@ def test_held_manual_card_rendered(client, cfg):
     sc.write(d, Sidecar(schema_version=1, source="manual"))
     r = client.get("/tasks")
     assert "Held (Manual)" in r.text
+    # Manual MBID form is included
+    assert 'name="mbid"' in r.text
+    assert "/manual/" in r.text
+
+
+def test_orphan_card_offers_three_paths(client, cfg):
+    _make_album(cfg, "Orphan Album")
+    r = client.get("/tasks")
+    assert "Reconcile from tags" in r.text
+    assert "Recover Bandcamp URL" in r.text
+    assert "Assign &amp; Tag" in r.text or "Assign & Tag" in r.text
 
 
 def test_needs_confirmation_card_renders_side_by_side(client, cfg):
@@ -245,6 +256,199 @@ def test_unconfirmed_mark_manual(client, cfg):
 def test_404_for_missing_album(client):
     r = client.post("/recheck/nonexistent")
     assert r.status_code == 404
+
+
+# ---------- manual ingest flow ----------
+
+
+def test_manual_search_returns_results(client, cfg, monkeypatch):
+    d = _make_album(cfg, "Search Album")
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    monkeypatch.setattr(
+        "harmonist.mb_search.search_releases",
+        lambda artist, title, limit=10: [
+            {"id": "rel-1", "title": "Result A", "artist": "X", "date": "2020",
+             "country": "GB", "status": "Official", "track_count": 10,
+             "label": "Label", "catalog_number": "CAT1"},
+            {"id": "rel-2", "title": "Result B", "artist": "X", "date": "2021",
+             "country": "US", "status": "Official", "track_count": 12,
+             "label": None, "catalog_number": None},
+        ],
+    )
+    r = client.post(f"/manual/{aid}/search", data={"artist": "X", "title": "Y"})
+    assert r.status_code == 200
+    assert "Result A" in r.text
+    assert "Result B" in r.text
+    assert "rel-1" in r.text
+    assert 'name="mbid"' in r.text  # hidden mbid input on each "Use" button
+
+
+def test_manual_search_empty_results(client, cfg, monkeypatch):
+    d = _make_album(cfg, "NoResults")
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    monkeypatch.setattr(
+        "harmonist.mb_search.search_releases",
+        lambda artist, title, limit=10: [],
+    )
+    r = client.post(f"/manual/{aid}/search", data={"artist": "X", "title": "Y"})
+    assert r.status_code == 200
+    assert "No matches" in r.text
+
+
+def test_manual_search_handles_mb_error(client, cfg, monkeypatch):
+    d = _make_album(cfg, "Errsearch")
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    from harmonist.mb_search import MBSearchError
+
+    def explode(artist, title, limit=10):
+        raise MBSearchError("MB down")
+
+    monkeypatch.setattr("harmonist.mb_search.search_releases", explode)
+    r = client.post(f"/manual/{aid}/search", data={"artist": "X", "title": "Y"})
+    assert r.status_code == 200
+    assert "MB search failed" in r.text
+
+
+def test_manual_assign_with_full_url(client, cfg, monkeypatch):
+    """Pasting an MB release URL should extract the MBID."""
+    d = _make_album(cfg, "AssignURL")
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    captured = {}
+
+    def fake_fetch(mbid):
+        captured["mbid"] = mbid
+        return _release_for_match(mbid, n_tracks=1)
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fake_fetch)
+    monkeypatch.setattr(
+        "harmonist.cover_art.ensure_cover", lambda *a, **kw: None
+    )
+
+    r = client.post(
+        f"/manual/{aid}/assign",
+        data={"mbid": "https://musicbrainz.org/release/abc12345-1234-1234-1234-1234567890ab"},
+    )
+    assert r.status_code == 200
+    assert captured["mbid"] == "abc12345-1234-1234-1234-1234567890ab"
+    loaded = sc.read(d)
+    assert loaded.source == "manual"
+    assert loaded.mb_release_id == "abc12345-1234-1234-1234-1234567890ab"
+
+
+def test_manual_assign_with_bare_mbid(client, cfg, monkeypatch):
+    d = _make_album(cfg, "AssignMBID")
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: _release_for_match(mbid, n_tracks=1),
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    r = client.post(
+        f"/manual/{aid}/assign",
+        data={"mbid": "abc12345-1234-1234-1234-1234567890ab"},
+    )
+    assert r.status_code == 200
+    loaded = sc.read(d)
+    assert loaded.mb_release_id == "abc12345-1234-1234-1234-1234567890ab"
+
+
+def test_manual_assign_invalid_input(client, cfg):
+    d = _make_album(cfg, "Bad")
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    r = client.post(f"/manual/{aid}/assign", data={"mbid": "not-an-mbid"})
+    assert r.status_code == 200
+    assert "Could not parse" in r.text
+    assert not sc.has_sidecar(d)
+
+
+def test_manual_assign_with_approximate_match_stores_candidate(client, cfg, monkeypatch):
+    d = _make_album(cfg, "Approximate")
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+
+    # Release with one track, but a length way off → "approximate"
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: _release_for_match(mbid, n_tracks=1, length_ms=99999),
+    )
+
+    r = client.post(
+        f"/manual/{aid}/assign",
+        data={"mbid": "abc12345-1234-1234-1234-1234567890ab"},
+    )
+    assert r.status_code == 200
+    assert "review and confirm" in r.text
+    loaded = sc.read(d)
+    assert loaded.mb_release_id is None
+    assert loaded.mb_match_candidate is not None
+    assert loaded.mb_match_candidate.confidence == "approximate"
+
+
+# ---------- URL recovery ----------
+
+
+def test_recover_url_writes_partial_sidecar(client, cfg):
+    d = _make_album(cfg, "RecoverMe", comment="https://artist.bandcamp.com/album/the-album")
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    r = client.post(f"/recover/{aid}")
+    assert r.status_code == 200
+    loaded = sc.read(d)
+    assert loaded is not None
+    assert loaded.source == "bandcamp"
+    assert loaded.bandcamp.url == "https://artist.bandcamp.com/album/the-album"
+    assert loaded.bandcamp.item_id is None
+    assert loaded.mb_release_id is None
+
+
+def test_recover_url_warning_when_no_evidence(client, cfg):
+    d = _make_album(cfg, "NoEvidence")  # no ©cmt
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    r = client.post(f"/recover/{aid}")
+    assert r.status_code == 200
+    assert "Could not recover" in r.text
+    assert not sc.has_sidecar(d)
+
+
+def test_recover_url_400_when_not_orphan(client, cfg):
+    d = _make_album(cfg, "NotOrphan")
+    sc.write(d, Sidecar(schema_version=1, source="manual"))
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    r = client.post(f"/recover/{aid}")
+    assert r.status_code == 400
+
+
+def _release_for_match(mbid: str, *, n_tracks: int, length_ms: int = 1000) -> dict:
+    return {
+        "id": mbid,
+        "title": "Title",
+        "release-group": {"id": "rg-1", "primary-type": "Album"},
+        "artist-credit": [{"artist": {"id": "art-1", "name": "Artist"}, "name": "Artist"}],
+        "medium-list": [
+            {
+                "position": "1",
+                "track-list": [
+                    {
+                        "id": f"rt-{i}",
+                        "position": str(i),
+                        "title": f"Track {i}",
+                        "recording": {"id": f"rec-{i}", "title": f"Track {i}", "length": str(length_ms)},
+                    }
+                    for i in range(1, n_tracks + 1)
+                ],
+            }
+        ],
+    }
 
 
 # ---------- cover route ----------
