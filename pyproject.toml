@@ -1,7 +1,7 @@
 [project]
 name = "harmonist"
 version = "0.1.0"
-dependencies = ["mutagen", "bandcampsync", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs"]
+dependencies = ["mutagen", "bandcampsync", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart"]
 
 [tool.setuptools.packages]
 find = {where = ["src"], include = ["harmonist*"]}

@@ -7,15 +7,17 @@
                 <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Metadata Commander</p>
             </div>
         </div>
-        
+
         <nav class="flex items-center gap-6">
             <a href="/" class="text-sm font-bold text-slate-300 hover:text-white transition">Inbox</a>
-            <a href="/settings" class="text-sm font-bold text-slate-300 hover:text-white transition">Settings</a>
-            <button hx-post="/sync" 
-                    hx-swap="none"
+            <button id="sync-button"
+                    hx-post="/sync"
+                    hx-target="#sync-flash"
+                    hx-swap="innerHTML"
                     class="px-4 py-2 bg-bc-teal/10 hover:bg-bc-teal/20 text-bc-teal border border-bc-teal/30 rounded font-bold text-xs transition uppercase tracking-widest">
-                Force Sync
+                Sync Bandcamp
             </button>
         </nav>
     </div>
+    <div id="sync-flash" class="container mx-auto max-w-7xl px-4 mt-2"></div>
 </header>
