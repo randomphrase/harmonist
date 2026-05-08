@@ -7,7 +7,7 @@ import musicbrainzngs
 import pytest
 
 from harmonist import mb_lookup
-from harmonist.mb_lookup import MBError, fetch_release, lookup_by_bandcamp_url
+from harmonist.mb_lookup import MBError, fetch_release, fetch_release_urls, lookup_by_bandcamp_url
 
 
 # ---------- configure ----------
@@ -155,3 +155,54 @@ def test_fetch_release_raises_on_error(monkeypatch):
     monkeypatch.setattr(musicbrainzngs, "get_release_by_id", raise_err)
     with pytest.raises(MBError):
         fetch_release("rel-aaa")
+
+
+# ---------- fetch_release_urls ----------
+
+def test_fetch_release_urls_extracts_targets(monkeypatch):
+    response = {
+        "release": {
+            "id": "rel-aaa",
+            "url-relation-list": [
+                {"type": "purchase for download", "target": "https://x.bandcamp.com/album/y"},
+                {"type": "discogs", "target": "https://www.discogs.com/release/123"},
+                {"type": "stream for free", "target": "https://soundcloud.com/x/y"},
+            ],
+        }
+    }
+    monkeypatch.setattr(musicbrainzngs, "get_release_by_id", lambda mbid, **kw: response)
+    urls = fetch_release_urls("rel-aaa")
+    assert urls == [
+        "https://x.bandcamp.com/album/y",
+        "https://www.discogs.com/release/123",
+        "https://soundcloud.com/x/y",
+    ]
+
+
+def test_fetch_release_urls_empty_when_no_relations(monkeypatch):
+    monkeypatch.setattr(
+        musicbrainzngs, "get_release_by_id",
+        lambda mbid, **kw: {"release": {"id": mbid}},
+    )
+    assert fetch_release_urls("rel-aaa") == []
+
+
+def test_fetch_release_urls_passes_url_rels_include(monkeypatch):
+    seen = {}
+
+    def fake(mbid, **kw):
+        seen["includes"] = kw.get("includes", [])
+        return {"release": {"id": mbid}}
+
+    monkeypatch.setattr(musicbrainzngs, "get_release_by_id", fake)
+    fetch_release_urls("rel-aaa")
+    assert seen["includes"] == ["url-rels"]
+
+
+def test_fetch_release_urls_raises_on_error(monkeypatch):
+    def explode(mbid, **kw):
+        raise musicbrainzngs.NetworkError(cause=Exception("boom"))
+
+    monkeypatch.setattr(musicbrainzngs, "get_release_by_id", explode)
+    with pytest.raises(MBError):
+        fetch_release_urls("rel-aaa")

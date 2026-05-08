@@ -65,7 +65,11 @@ def check_download_cap(would_download_count: int, cap: int) -> None:
 
 
 def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
-    """Write a .harmonist.json sidecar for a freshly-downloaded Bandcamp item.
+    """Write or update the sidecar for a Bandcamp item at album_dir.
+
+    If a sidecar already exists (typical after reconciliation has run), fills
+    in the missing `bandcamp.item_id` / `band_id` and confirms `source` as
+    "bandcamp". Otherwise creates a fresh sidecar for a brand-new download.
 
     Returns True on success, False if the URL couldn't be reconstructed.
     """
@@ -79,19 +83,56 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
 
     band_id_raw = getattr(item, "_data", {}).get("band_id")
     band_id = int(band_id_raw) if band_id_raw is not None else None
+    item_id = int(item.item_id)
+
+    existing = sidecar_mod.read(album_dir)
+    if existing is not None:
+        # Reconciliation produced a sidecar earlier; fill in what's missing.
+        bandcamp = BandcampInfo(
+            url=existing.bandcamp.url if existing.bandcamp else url,
+            item_id=item_id,
+            band_id=band_id if band_id is not None else (existing.bandcamp.band_id if existing.bandcamp else None),
+        )
+        merged = Sidecar(
+            schema_version=existing.schema_version,
+            source="bandcamp",
+            bandcamp=bandcamp,
+            downloaded_at=existing.downloaded_at or datetime.now(timezone.utc),
+            added_at=existing.added_at,
+            mb_release_id=existing.mb_release_id,
+            mb_match_candidate=existing.mb_match_candidate,
+            mb_last_checked_at=existing.mb_last_checked_at,
+            mb_lookup_history=existing.mb_lookup_history,
+            tagged_at=existing.tagged_at,
+            notes=existing.notes,
+        )
+        sidecar_mod.write(album_dir, merged)
+        return True
 
     sc = Sidecar(
         schema_version=1,
         source="bandcamp",
-        bandcamp=BandcampInfo(
-            url=url,
-            item_id=int(item.item_id),
-            band_id=band_id,
-        ),
+        bandcamp=BandcampInfo(url=url, item_id=item_id, band_id=band_id),
         downloaded_at=datetime.now(timezone.utc),
     )
     sidecar_mod.write(album_dir, sc)
     return True
+
+
+def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
+    """Scan music_dir for a sidecar whose bandcamp.url matches target_url.
+
+    Used at sync time to short-circuit re-downloading albums that already
+    exist on disk (post-reconciliation).
+    """
+    for f in music_dir.rglob(".harmonist.json"):
+        try:
+            sc = sidecar_mod.read(f.parent)
+        except Exception:
+            continue
+        if sc and sc.bandcamp and sc.bandcamp.url == target_url:
+            return f.parent
+    return None
 
 
 class HarmonistSyncer(_BCSyncer):
@@ -120,6 +161,25 @@ class HarmonistSyncer(_BCSyncer):
         await super().sync_items()
 
     def sync_item(self, item):
+        # Short-circuit: if reconciliation has already created a sidecar
+        # for this Bandcamp URL elsewhere on disk, don't re-download. Just
+        # fill in the item_id and append to ignores.txt.
+        url = construct_bandcamp_url(item)
+        media_dir = getattr(self.local_media, "media_dir", None)
+        if url and media_dir:
+            existing_dir = find_existing_album_by_url(Path(media_dir), url)
+            if existing_dir is not None:
+                try:
+                    write_sidecar_for_item(item, existing_dir)
+                    self.ignores.add(item)
+                except Exception as e:
+                    log.warning(
+                        "could not fill in pre-existing sidecar for %s: %s",
+                        getattr(item, "item_id", "?"),
+                        e,
+                    )
+                return False  # didn't download (already on disk)
+
         result = super().sync_item(item)
         if result:
             local_path = self.local_media.get_path_for_purchase(item)

@@ -15,6 +15,7 @@ class AlbumState(str, Enum):
     HELD_MANUAL = "held_manual"
     NEEDS_CONFIRMATION = "needs_confirmation"
     TAGGING = "tagging"
+    UNCONFIRMED_BANDCAMP = "unconfirmed_bandcamp"
     DONE = "done"
 
 
@@ -26,7 +27,10 @@ MatchConfidence = Literal["exact", "approximate", "no_match"]
 @dataclass
 class BandcampInfo:
     url: str
-    item_id: int
+    # item_id may be None when we know the URL (from MB / ©cmt) but haven't yet
+    # cross-referenced with the user's actual Bandcamp purchases. The next Sync
+    # fills it in.
+    item_id: int | None = None
     band_id: int | None = None
 
 

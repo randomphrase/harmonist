@@ -13,8 +13,10 @@ from harmonist.bandcamp_hook import (
     HarmonistSyncer,
     check_download_cap,
     construct_bandcamp_url,
+    find_existing_album_by_url,
     write_sidecar_for_item,
 )
+from harmonist.models import BandcampInfo, Sidecar
 
 
 class _StubItem:
@@ -232,6 +234,7 @@ def test_sync_item_no_sidecar_on_skipped_download(monkeypatch, tmp_path):
     album_dir.mkdir()
     s = _bare_syncer()
     s.local_media.get_path_for_purchase = MagicMock(return_value=album_dir)
+    s.local_media.media_dir = str(tmp_path)
     monkeypatch.setattr(
         "harmonist.bandcamp_hook._BCSyncer.sync_item",
         lambda self, item: False,
@@ -240,3 +243,117 @@ def test_sync_item_no_sidecar_on_skipped_download(monkeypatch, tmp_path):
     item = _StubItem(item_id=1, url_hints={"subdomain": "x", "slug": "y"})
     s.sync_item(item)
     assert not sc.has_sidecar(album_dir)
+
+
+# ---------- merge into pre-existing sidecar (post-reconciliation) ----------
+
+
+def test_write_sidecar_fills_in_item_id_on_existing_sidecar(tmp_path):
+    """Reconciliation produced a sidecar with item_id=None; sync fills it in."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=1,
+            source="bandcamp",
+            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+            mb_release_id="rel-aaa",
+        ),
+    )
+    item = _StubItem(item_id=12345, url_hints={"subdomain": "x", "slug": "y"})
+    write_sidecar_for_item(item, album_dir)
+    loaded = sc.read(album_dir)
+    assert loaded.bandcamp.item_id == 12345
+    # MB release ID and other fields preserved
+    assert loaded.mb_release_id == "rel-aaa"
+    # URL preserved (we don't overwrite the canonical MB URL)
+    assert loaded.bandcamp.url == "https://x.bandcamp.com/album/y"
+
+
+def test_find_existing_album_by_url_returns_match(tmp_path):
+    a = tmp_path / "Artist" / "Album"
+    a.mkdir(parents=True)
+    sc.write(
+        a,
+        Sidecar(
+            schema_version=1, source="bandcamp",
+            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y"),
+        ),
+    )
+    other = tmp_path / "Artist2" / "Other"
+    other.mkdir(parents=True)
+    sc.write(
+        other,
+        Sidecar(
+            schema_version=1, source="bandcamp",
+            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/different"),
+        ),
+    )
+    found = find_existing_album_by_url(tmp_path, "https://x.bandcamp.com/album/y")
+    assert found == a
+
+
+def test_find_existing_album_by_url_returns_none_if_no_match(tmp_path):
+    assert find_existing_album_by_url(tmp_path, "https://x.bandcamp.com/album/y") is None
+
+
+def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
+    """Reconciled album already on disk → sync should NOT call parent download."""
+    existing_dir = tmp_path / "Old" / "Path"
+    existing_dir.mkdir(parents=True)
+    sc.write(
+        existing_dir,
+        Sidecar(
+            schema_version=1, source="bandcamp",
+            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+            mb_release_id="rel-aaa",
+        ),
+    )
+
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    parent_called = []
+
+    def parent_sync_item(self, item):
+        parent_called.append(True)
+        return True
+
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item", parent_sync_item
+    )
+
+    item = _StubItem(item_id=12345, url_hints={"subdomain": "x", "slug": "y"})
+    result = s.sync_item(item)
+
+    assert parent_called == []  # short-circuited
+    assert result is False  # didn't download
+    s.ignores.add.assert_called_once_with(item)
+    # Existing sidecar got item_id filled in
+    loaded = sc.read(existing_dir)
+    assert loaded.bandcamp.item_id == 12345
+
+
+def test_sync_item_does_not_short_circuit_when_no_match(monkeypatch, tmp_path):
+    """Genuine new purchase (no existing sidecar) → falls through to download."""
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    new_dir = tmp_path / "New" / "Album"
+    new_dir.mkdir(parents=True)
+    s.local_media.get_path_for_purchase = MagicMock(return_value=new_dir)
+
+    parent_called = []
+
+    def parent_sync_item(self, item):
+        parent_called.append(True)
+        return True
+
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item", parent_sync_item
+    )
+
+    item = _StubItem(item_id=12345, url_hints={"subdomain": "new", "slug": "alb"})
+    result = s.sync_item(item)
+    assert result is True
+    assert parent_called == [True]
+    assert sc.has_sidecar(new_dir)

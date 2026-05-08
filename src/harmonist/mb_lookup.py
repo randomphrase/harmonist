@@ -81,6 +81,22 @@ def fetch_release(mbid: str) -> dict:
     return result["release"]
 
 
+def fetch_release_urls(mbid: str) -> list[str]:
+    """Return the list of URL relationships attached to an MB release.
+
+    Lighter than fetch_release — only requests url-rels. Used by reconciliation
+    to find Bandcamp URLs linked to an album we already have on disk.
+    """
+    try:
+        result = musicbrainzngs.get_release_by_id(mbid, includes=["url-rels"])
+    except (musicbrainzngs.NetworkError, musicbrainzngs.ResponseError, musicbrainzngs.AuthenticationError) as e:
+        raise MBError(f"MB request failed: {e}") from e
+
+    release = result.get("release") or {}
+    rels = release.get("url-relation-list") or []
+    return [r["target"] for r in rels if isinstance(r, dict) and r.get("target")]
+
+
 def _is_not_found(exc: musicbrainzngs.ResponseError) -> bool:
     """Detect 404 from a musicbrainzngs ResponseError."""
     cause = getattr(exc, "cause", None)

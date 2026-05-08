@@ -54,19 +54,33 @@ The following are explicitly out of scope for this prototype:
 2. User clicks **Re-tag** on a matched album.
 3. Harmonist re-fetches the MB release and rewrites the file tags. (May not ship in the prototype — captured for the next iteration.)
 
-### 2.5 Bootstrap an existing tagged library
+### 2.5 Per-album reconciliation
 
-First-run experience for a user pointing Harmonist at a music dir that's already been Picard-tagged.
+Instead of a "bootstrap" event, reconciliation is **continuous and per-album**. Whenever the scanner encounters an album that has MBID-tagged files but no `.harmonist.json` sidecar, the reconciler runs once for that album to derive the right sidecar.
 
-1. User clicks **Bootstrap** in the UI (chunk E adds the button; the underlying function is in `harmonist.bootstrap`).
-2. **Phase A (always, no creds needed):** Harmonist walks the dir; for each album with a `MusicBrainz Album Id` atom but no `.harmonist.json` sidecar, it writes a `source="manual"` sidecar with the MBID copied from the tag and `tagged_at=now`. The library transitions from "all Orphan" to "all Done" without touching the network.
-3. **Phase B (only when `cookies.txt` is present):** Harmonist loads the user's Bandcamp purchase list (no downloads), looks up each purchase's MBID via MB URL relationships, and for purchases that match an on-disk sidecar:
-   - Upgrades the sidecar to `source="bandcamp"` with the bandcamp block populated.
-   - Appends the `item_id` to bandcampsync's `ignores.txt` (idempotent — skips IDs already there).
+For each such album (`harmonist.reconcile.reconcile_album`):
 
-The result: a subsequent **Sync** safely processes only NEW Bandcamp purchases, never re-downloading anything already on disk.
+1. Read the `MusicBrainz Album Id` atom from the album's tracks.
+2. Read the `©cmt` (comment) tag from the same file.
+3. Fetch the release's URL relationships from MB (`mb_lookup.fetch_release_urls`).
+4. **If `©cmt` mentions any `bandcamp.com` URL AND MB has at least one Bandcamp URL relationship for the release:** write a sidecar with `source="bandcamp"`, `bandcamp.url` set to MB's canonical URL, `bandcamp.item_id=None` (filled in later by sync). The album shows as **Unconfirmed Bandcamp** until the next sync resolves the item_id.
+5. **Otherwise:** write `source="manual"`. Album shows as **Done** (already tagged).
 
-Albums that aren't on Bandcamp (CD rips, vinyl, Beatport, etc.) stay as `source="manual"` — Bootstrap leaves them alone, Sync ignores them. Bandcamp credentials remain optional throughout: the tool is fully usable for a non-Bandcamp library where the user manually assigns MBIDs (per use case 2.2).
+The `©cmt` evidence rule prevents false-positive "purchased on Bandcamp" classifications when a user happens to own an album that's *also* available on Bandcamp but they bought it elsewhere (Beatport, CD rip, etc.).
+
+**Item_id is filled in opportunistically by Sync.** When the user runs Sync (cookies present), `bandcamp_hook.HarmonistSyncer` iterates their Bandcamp purchases. For each purchase URL, it scans existing sidecars for a match. If found:
+- Fills in `bandcamp.item_id` (and `band_id`) on the existing sidecar.
+- Appends the item_id to `bandcampsync`'s `ignores.txt`.
+- **Skips the download** (returns False from `sync_item`) — the album is already on disk.
+
+For purchases with no matching sidecar, sync downloads as normal.
+
+**Edge case — bandcamp `©cmt` but no matching purchase:**
+After sync runs, an album may remain `UNCONFIRMED_BANDCAMP` (still `bandcamp.item_id=None`). This means we have evidence the user got it from Bandcamp (©cmt) but couldn't link it to a current purchase (URL renames, ownership transfer, removed from collection, etc.). The inbox surfaces these albums with two affordances:
+- **Try a different URL** — user supplies the correct/current Bandcamp URL; written into the sidecar; next sync re-attempts the match.
+- **Mark purchased elsewhere** — flips sidecar to `source="manual"`, drops the bandcamp block. Album becomes Done.
+
+Bandcamp credentials remain optional throughout: the tool is fully usable for a non-Bandcamp library (per use case 2.2). Reconciliation works without cookies — it just leaves bandcamp-source albums in `UNCONFIRMED_BANDCAMP` indefinitely (which is fine if the user never plans to add cookies).
 
 ---
 
@@ -81,6 +95,7 @@ Every album in the music dir is in exactly one state, derived from the presence/
 | present, `source=manual` | null | null | n/a | **Held (Manual)** | yes | MB search helper / paste MBID |
 | present | null | set | n/a | **Needs Confirmation** | yes | side-by-side: files vs MB release with per-track green/yellow length indicators; "Confirm" / "Reject" buttons |
 | present | set | n/a | no | **Tagging** (transient) | yes (briefly) | spinner |
+| present, `source=bandcamp`, `bandcamp.item_id=None` | set | n/a | yes | **Unconfirmed Bandcamp** | yes | "Try a different URL" / "Mark purchased elsewhere" |
 | present | set | n/a | yes | **Done** | no | (hidden — visible in "All" tab if we ship one) |
 
 **Transitions are idempotent.** Running sync, recheck, or tag twice on the same album is safe and produces the same result.
@@ -214,7 +229,7 @@ src/harmonist/
   mb_lookup.py         NEW   MB URL-relationship lookup; full-release fetch for tagging
   mb_search.py         NEW   name-based search helper (manual path only)
   match.py             NEW   compare local files to MB release: confidence + per-track deltas
-  bootstrap.py         NEW   first-run library import: derive sidecars from MB tags + reconcile w/ Bandcamp purchases
+  reconcile.py         NEW   per-album reconciliation: derive sidecar from MBID tag + ©cmt + MB url-rels
   cover_art.py         NEW   Cover Art Archive fetch, resize, cache, write to album dir
   tagger.py            NEW   Picard-compatible tag writer (incl. embedded covr atom)
   url_recovery.py      NEW   fallback: reconstruct Bandcamp album URL from ©cmt artist URL

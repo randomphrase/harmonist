@@ -114,6 +114,58 @@ def test_scan_tagging_when_mbid_set_but_files_not_tagged(tmp_path):
     assert a.state == AlbumState.TAGGING
 
 
+def test_scan_unconfirmed_bandcamp_when_item_id_missing(tmp_path):
+    """Tagged album with bandcamp source but no item_id → UNCONFIRMED_BANDCAMP."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album")
+    release = {
+        "id": "rel-aaa",
+        "title": "Album",
+        "release-group": {"id": "rg-aaa"},
+        "medium-list": [
+            {"position": "1", "track-list": [
+                {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
+            ]}
+        ],
+    }
+    tagger.tag_album(album_dir, release)
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=1,
+            source="bandcamp",
+            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
+    a = scan(tmp_path)[0]
+    assert a.state == AlbumState.UNCONFIRMED_BANDCAMP
+
+
+def test_scan_done_when_bandcamp_item_id_present(tmp_path):
+    """Tagged album with bandcamp source + item_id → DONE."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album")
+    release = {
+        "id": "rel-aaa", "title": "Album",
+        "release-group": {"id": "rg-aaa"},
+        "medium-list": [{"position": "1", "track-list": [
+            {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
+        ]}],
+    }
+    tagger.tag_album(album_dir, release)
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=1,
+            source="bandcamp",
+            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=12345),
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
+    assert scan(tmp_path)[0].state == AlbumState.DONE
+
+
 def test_scan_done_when_mbid_set_and_files_tagged(tmp_path):
     """End-to-end: tag a file using tagger, then verify scanner reports DONE."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Album")

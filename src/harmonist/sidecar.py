@@ -60,7 +60,9 @@ def _to_dict(s: Sidecar) -> dict:
         "source": s.source,
     }
     if s.bandcamp:
-        bd: dict = {"url": s.bandcamp.url, "item_id": s.bandcamp.item_id}
+        bd: dict = {"url": s.bandcamp.url}
+        if s.bandcamp.item_id is not None:
+            bd["item_id"] = s.bandcamp.item_id
         if s.bandcamp.band_id is not None:
             bd["band_id"] = s.bandcamp.band_id
         d["bandcamp"] = bd
@@ -163,7 +165,9 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
     if "bandcamp" in d:
         bd = d["bandcamp"]
         try:
-            bandcamp = BandcampInfo(url=bd["url"], item_id=int(bd["item_id"]), band_id=bd.get("band_id"))
+            item_id_raw = bd.get("item_id")
+            item_id = int(item_id_raw) if item_id_raw is not None else None
+            bandcamp = BandcampInfo(url=bd["url"], item_id=item_id, band_id=bd.get("band_id"))
         except (KeyError, TypeError, ValueError) as e:
             raise InvalidSidecar(f"sidecar at {source_path} has malformed bandcamp block: {e}") from e
 
