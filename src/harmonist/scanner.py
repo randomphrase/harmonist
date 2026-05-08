@@ -1,61 +1,121 @@
-from typing import List, Optional, Dict
+"""Walk the music dir, build Album objects from sidecar + filesystem state."""
+from __future__ import annotations
+
+import logging
 from pathlib import Path
-import os
+from typing import Iterator
+
 from mutagen.mp4 import MP4
-from harmonist.metadata import Album
 
-def scan_music_directory(music_directory: Path) -> List[Album]:
-    albums: Dict[Path, Album] = {}
+from .models import Album, AlbumState, Sidecar
+from .sidecar import InvalidSidecar, UnsupportedSchemaVersion, read as read_sidecar
+from .tagger import ATOM_MB_ALBUM_ID
 
-    for root, _, files in os.walk(music_directory):
-        for file in files:
-            if file.endswith(".m4a"):
-                filepath = Path(root) / file
-                try:
-                    audio = MP4(filepath)
 
-                    album_name = audio.get("\xa9alb", [None])[0]
-                    artist_name = audio.get("\xa9ART", [None])[0]
-                    comment = audio.get("\xa9cmt", [None])[0]
-                    musicbrainz_releaseid_bytes = audio.get("----:com.apple.iTunes:MUSICBRAINZ_RELEASEID", [None])[0]
-                    musicbrainz_releaseid = musicbrainz_releaseid_bytes.decode('utf-8') if musicbrainz_releaseid_bytes else None
+log = logging.getLogger(__name__)
 
-                    if album_name and comment:
-                        # Use the album's parent directory as the unique identifier for the album
-                        album_path = filepath.parent
-                        if album_path not in albums:
-                            albums[album_path] = Album(
-                                name=album_name,
-                                artist=artist_name or "Unknown Artist",
-                                bandcamp_url=comment,
-                                path=album_path,
-                                track_count=1,
-                                musicbrainz_releaseid=musicbrainz_releaseid
-                            )
-                        else:
-                            albums[album_path].track_count += 1
-                            # If an album is found to be tagged by any track, mark the album as tagged
-                            if musicbrainz_releaseid and albums[album_path].is_untagged():
-                                albums[album_path].musicbrainz_releaseid = musicbrainz_releaseid
 
-                except Exception as e:
-                    print(f"Error processing {filepath}: {e}")
-                    continue
-    return list(albums.values())
+def scan(music_dir: Path) -> list[Album]:
+    """Return one Album for every album directory under music_dir.
 
-if __name__ == "__main__":
-    # Assuming 'music' directory is at the project root for testing
-    current_dir = Path(__file__).parent.parent.parent
-    music_dir = current_dir / "music"
-    
-    print(f"Scanning music directory: {music_dir}")
-    found_albums = scan_music_directory(music_dir)
-    
-    print("\n--- Found Albums ---")
-    for album in found_albums:
-        print(album)
+    An "album directory" is any directory that contains at least one .m4a file.
+    State is derived from the sidecar (if present) plus a file-tag check for
+    confirming "tagged" status.
+    """
+    return list(_iter_albums(music_dir))
 
-    print("\n--- Untagged Albums ---")
-    for album in found_albums:
-        if album.is_untagged():
-            print(album)
+
+def _iter_albums(root: Path) -> Iterator[Album]:
+    if not root.exists():
+        return
+    for album_dir, m4a_files in _find_album_dirs(root):
+        try:
+            yield _build_album(album_dir, m4a_files)
+        except (InvalidSidecar, UnsupportedSchemaVersion) as e:
+            log.warning("skipping %s: %s", album_dir, e)
+            continue
+        except Exception as e:
+            log.warning("error scanning %s: %s", album_dir, e)
+            continue
+
+
+def _find_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path]]]:
+    """Yield (album_dir, sorted_m4a_files) for every dir containing .m4a files."""
+    by_dir: dict[Path, list[Path]] = {}
+    for f in root.rglob("*.m4a"):
+        if f.is_file():
+            by_dir.setdefault(f.parent, []).append(f)
+    for d, files in by_dir.items():
+        yield d, sorted(files)
+
+
+def _build_album(album_dir: Path, m4a_files: list[Path]) -> Album:
+    sidecar = read_sidecar(album_dir)
+    title, artist = _read_album_artist(m4a_files[0]) if m4a_files else ("", "")
+    if not title:
+        title = album_dir.name
+
+    state = _derive_state(sidecar, m4a_files)
+    cover_path = _find_cover(album_dir)
+
+    return Album(
+        id=Album.make_id(album_dir),
+        path=album_dir,
+        title=title,
+        artist=artist,
+        track_count=len(m4a_files),
+        state=state,
+        sidecar=sidecar,
+        cover_path=cover_path,
+    )
+
+
+def _derive_state(sidecar: Sidecar | None, m4a_files: list[Path]) -> AlbumState:
+    if sidecar is None:
+        return AlbumState.ORPHAN
+    if sidecar.mb_release_id is None:
+        return (
+            AlbumState.HELD_BANDCAMP
+            if sidecar.source == "bandcamp"
+            else AlbumState.HELD_MANUAL
+        )
+    if _files_tagged_with(m4a_files, sidecar.mb_release_id):
+        return AlbumState.DONE
+    return AlbumState.TAGGING
+
+
+def _files_tagged_with(m4a_files: list[Path], mbid: str) -> bool:
+    """True iff at least one file's MB Album Id atom matches mbid."""
+    for f in m4a_files:
+        try:
+            audio = MP4(f)
+        except Exception:
+            continue
+        atom_value = audio.get(ATOM_MB_ALBUM_ID)
+        if not atom_value:
+            continue
+        try:
+            value = atom_value[0].decode("utf-8")
+        except (AttributeError, UnicodeDecodeError):
+            continue
+        if value == mbid:
+            return True
+    return False
+
+
+def _read_album_artist(file_path: Path) -> tuple[str, str]:
+    try:
+        audio = MP4(file_path)
+    except Exception:
+        return "", ""
+    title = (audio.get("\xa9alb") or [""])[0] or ""
+    artist = (audio.get("\xa9ART") or [""])[0] or ""
+    return title, artist
+
+
+def _find_cover(album_dir: Path) -> Path | None:
+    for ext in (".jpg", ".png"):
+        p = album_dir / f"cover{ext}"
+        if p.exists():
+            return p
+    return None
