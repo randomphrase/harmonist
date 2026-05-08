@@ -108,7 +108,27 @@ def test_album_state_values():
     assert AlbumState.HELD_MANUAL.value == "held_manual"
     assert AlbumState.NEEDS_CONFIRMATION.value == "needs_confirmation"
     assert AlbumState.TAGGING.value == "tagging"
+    assert AlbumState.UNCONFIRMED_BANDCAMP.value == "unconfirmed_bandcamp"
     assert AlbumState.DONE.value == "done"
+
+
+def test_sidecar_round_trip_with_optional_item_id(tmp_path):
+    """item_id is None when we know the URL but haven't reconciled with purchases."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    s = Sidecar(
+        schema_version=1,
+        source="bandcamp",
+        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+        mb_release_id="rel-aaa",
+    )
+    sc.write(album_dir, s)
+    loaded = sc.read(album_dir)
+    assert loaded.bandcamp.url == "https://x.bandcamp.com/album/y"
+    assert loaded.bandcamp.item_id is None
+    # JSON should not include item_id when None
+    raw = sc.sidecar_path(album_dir).read_text()
+    assert "item_id" not in raw
 
 
 # ---------- sidecar ----------

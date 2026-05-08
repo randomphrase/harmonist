@@ -82,6 +82,11 @@ def _derive_state(sidecar: Sidecar | None, m4a_files: list[Path]) -> AlbumState:
             else AlbumState.HELD_MANUAL
         )
     if _files_tagged_with(m4a_files, sidecar.mb_release_id):
+        if (
+            sidecar.source == "bandcamp"
+            and (sidecar.bandcamp is None or sidecar.bandcamp.item_id is None)
+        ):
+            return AlbumState.UNCONFIRMED_BANDCAMP
         return AlbumState.DONE
     return AlbumState.TAGGING
 
