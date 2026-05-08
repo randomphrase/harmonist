@@ -111,7 +111,15 @@ def test_no_match_when_more_files_than_tracks(tmp_path):
     assert result.confidence == "no_match"
     assert result.file_count == 3
     assert result.track_count == 1
-    assert result.track_comparisons == []
+    # Side-by-side is padded with the longer side, MB-side null for extras
+    assert len(result.track_comparisons) == 3
+    assert result.track_comparisons[0].file_name == "01 Track 1.m4a"
+    assert result.track_comparisons[0].mb_track_title == "Track 1"
+    assert result.track_comparisons[1].file_name == "02 Track 2.m4a"
+    assert result.track_comparisons[1].mb_track_title is None
+    assert result.track_comparisons[1].mb_track_length_ms is None
+    assert result.track_comparisons[2].file_name == "03 Track 3.m4a"
+    assert result.track_comparisons[2].mb_track_title is None
     assert "does not match" in result.notes[0]
 
 
@@ -122,6 +130,13 @@ def test_no_match_when_fewer_files_than_tracks(tmp_path):
     assert result.confidence == "no_match"
     assert result.file_count == 1
     assert result.track_count == 2
+    # Side-by-side padded; the 2nd row has no file
+    assert len(result.track_comparisons) == 2
+    assert result.track_comparisons[0].file_name == "01 Track 1.m4a"
+    assert result.track_comparisons[0].mb_track_title == "Track 1"
+    assert result.track_comparisons[1].file_name is None
+    assert result.track_comparisons[1].file_duration_ms is None
+    assert result.track_comparisons[1].mb_track_title == "Track 2"
 
 
 # ---------- candidate metadata ----------
@@ -149,6 +164,27 @@ def test_track_comparison_has_file_and_mb_titles(tmp_path):
     assert tc.mb_track_title == "Song A"
     assert tc.file_name == "01 Track 1.m4a"
     assert tc.file_duration_ms == FIXTURE_DURATION_MS
+
+
+def test_track_comparison_reads_file_title_from_tag(tmp_path):
+    """If the file has a ©nam tag, file_title should be the tag value."""
+    from mutagen.mp4 import MP4
+
+    album_dir = _album_with(tmp_path, 1)
+    audio = MP4(album_dir / "01 Track 1.m4a")
+    audio["\xa9nam"] = ["The Real Title"]
+    audio.save()
+
+    result = assess_match(album_dir, _release([FIXTURE_DURATION_MS]))
+    assert result.track_comparisons[0].file_title == "The Real Title"
+
+
+def test_track_comparison_falls_back_to_filename_stem(tmp_path):
+    """When no ©nam tag, file_title falls back to the filename stem."""
+    album_dir = _album_with(tmp_path, 1)
+    # sine.m4a fixture has no ©nam by default
+    result = assess_match(album_dir, _release([FIXTURE_DURATION_MS]))
+    assert result.track_comparisons[0].file_title == "01 Track 1"
 
 
 # ---------- empty album ----------

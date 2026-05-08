@@ -40,12 +40,18 @@ class MBLookupAttempt:
 
 @dataclass
 class TrackComparison:
-    """Per-track diff between a local file and an MB release track."""
-    file_name: str
-    file_duration_ms: int
-    mb_track_title: str
-    mb_track_length_ms: int | None  # None if MB doesn't have a length recorded
-    delta_ms: int | None  # None if mb_track_length_ms is None
+    """One row in a side-by-side files-vs-MB-release comparison.
+
+    All fields are nullable to allow padding rows when the counts don't match:
+    - file_* None → an MB track with no corresponding file on disk
+    - mb_* None  → a file on disk with no corresponding MB track
+    """
+    file_name: str | None
+    file_duration_ms: int | None
+    file_title: str | None  # from the ©nam tag if present, else filename stem
+    mb_track_title: str | None
+    mb_track_length_ms: int | None
+    delta_ms: int | None  # None when either side's length is unknown
 
 
 @dataclass

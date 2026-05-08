@@ -214,6 +214,7 @@ def test_sidecar_round_trip_with_match_candidate(tmp_path):
             TrackComparison(
                 file_name="01.m4a",
                 file_duration_ms=180000,
+                file_title="Song A (file)",
                 mb_track_title="Song A",
                 mb_track_length_ms=185000,
                 delta_ms=5000,
@@ -221,6 +222,7 @@ def test_sidecar_round_trip_with_match_candidate(tmp_path):
             TrackComparison(
                 file_name="02.m4a",
                 file_duration_ms=200000,
+                file_title="Song B (file)",
                 mb_track_title="Song B",
                 mb_track_length_ms=None,
                 delta_ms=None,
@@ -247,6 +249,7 @@ def test_sidecar_round_trip_with_match_candidate(tmp_path):
     assert c.track_count == 2
     assert len(c.track_comparisons) == 2
     assert c.track_comparisons[0].delta_ms == 5000
+    assert c.track_comparisons[0].file_title == "Song A (file)"
     assert c.track_comparisons[1].mb_track_length_ms is None
     assert c.track_comparisons[1].delta_ms is None
     assert c.proposed_at == candidate.proposed_at
