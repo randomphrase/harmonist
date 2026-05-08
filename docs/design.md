@@ -54,6 +54,20 @@ The following are explicitly out of scope for this prototype:
 2. User clicks **Re-tag** on a matched album.
 3. Harmonist re-fetches the MB release and rewrites the file tags. (May not ship in the prototype — captured for the next iteration.)
 
+### 2.5 Bootstrap an existing tagged library
+
+First-run experience for a user pointing Harmonist at a music dir that's already been Picard-tagged.
+
+1. User clicks **Bootstrap** in the UI (chunk E adds the button; the underlying function is in `harmonist.bootstrap`).
+2. **Phase A (always, no creds needed):** Harmonist walks the dir; for each album with a `MusicBrainz Album Id` atom but no `.harmonist.json` sidecar, it writes a `source="manual"` sidecar with the MBID copied from the tag and `tagged_at=now`. The library transitions from "all Orphan" to "all Done" without touching the network.
+3. **Phase B (only when `cookies.txt` is present):** Harmonist loads the user's Bandcamp purchase list (no downloads), looks up each purchase's MBID via MB URL relationships, and for purchases that match an on-disk sidecar:
+   - Upgrades the sidecar to `source="bandcamp"` with the bandcamp block populated.
+   - Appends the `item_id` to bandcampsync's `ignores.txt` (idempotent — skips IDs already there).
+
+The result: a subsequent **Sync** safely processes only NEW Bandcamp purchases, never re-downloading anything already on disk.
+
+Albums that aren't on Bandcamp (CD rips, vinyl, Beatport, etc.) stay as `source="manual"` — Bootstrap leaves them alone, Sync ignores them. Bandcamp credentials remain optional throughout: the tool is fully usable for a non-Bandcamp library where the user manually assigns MBIDs (per use case 2.2).
+
 ---
 
 ## 3. State machine
@@ -200,6 +214,7 @@ src/harmonist/
   mb_lookup.py         NEW   MB URL-relationship lookup; full-release fetch for tagging
   mb_search.py         NEW   name-based search helper (manual path only)
   match.py             NEW   compare local files to MB release: confidence + per-track deltas
+  bootstrap.py         NEW   first-run library import: derive sidecars from MB tags + reconcile w/ Bandcamp purchases
   cover_art.py         NEW   Cover Art Archive fetch, resize, cache, write to album dir
   tagger.py            NEW   Picard-compatible tag writer (incl. embedded covr atom)
   url_recovery.py      NEW   fallback: reconstruct Bandcamp album URL from ©cmt artist URL
