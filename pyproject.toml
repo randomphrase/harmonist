@@ -3,6 +3,9 @@ name = "harmonist"
 version = "0.1.0"
 dependencies = ["mutagen", "bandcampsync", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart"]
 
+[project.optional-dependencies]
+dev = ["pytest", "pytest-mock", "pytailwindcss"]
+
 [tool.setuptools.packages]
 find = {where = ["src"], include = ["harmonist*"]}
 

@@ -1,0 +1,23 @@
+/* Source CSS for Tailwind v4. Build with:
+ *   tailwindcss -i static/input.css -o static/harmonist.css --minify
+ * (See `make css` in the Makefile.)
+ *
+ * `harmonist.css` is the build output served at /static/harmonist.css.
+ */
+
+@import "tailwindcss";
+
+@source "../templates/**/*.html";
+@source "../src/harmonist/web/main.py";
+
+@theme {
+  /* Brand colours — match the original design language */
+  --color-mb-purple: #C621BF;
+  --color-bc-teal: #00A19D;
+  --color-h-slate: #1E293B;
+  --color-h-charcoal: #111827;
+
+  /* Typography — self-host or Google Fonts (linked in base.html) */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, "SFMono-Regular", monospace;
+}

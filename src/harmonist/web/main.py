@@ -8,6 +8,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from harmonist import config as config_mod
@@ -35,6 +36,7 @@ def create_app(cfg: Optional[config_mod.Config] = None) -> FastAPI:
 
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     templates_dir = project_root / "templates"
+    static_dir = project_root / "static"
     templates = Jinja2Templates(directory=str(templates_dir))
     templates.env.globals["harmony_base"] = HARMONY_BASE
     templates.env.globals["AlbumState"] = AlbumState
@@ -45,6 +47,9 @@ def create_app(cfg: Optional[config_mod.Config] = None) -> FastAPI:
     app.state.cfg = cfg
     app.state.templates = templates
     app.state.sync_runner = sync_runner
+
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     _register_routes(app)
     return app
