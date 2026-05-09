@@ -50,31 +50,33 @@ def restore_module_globals():
 def test_seed_writes_marker_and_albums(music_dir):
     demo.seed(music_dir)
     assert demo.is_demo_dir(music_dir)
-    # All 5 LIBRARY entries materialised
+    # All 6 LIBRARY entries materialised
     artists = sorted(p.name for p in music_dir.iterdir() if p.is_dir())
-    assert "Wyld Stallyns" in artists
+    assert "Wyld Stallion" in artists
     assert "Sex Bob-omb" in artists
-    assert "Spinal Tap" in artists
-    assert "The Wonders" in artists
-    assert "Stillwater" in artists
+    assert "Sonic Death Monkey" in artists
+    assert "The Thamesmen" in artists
+    assert "Dingoes Ate My Baby" in artists
+    assert "Various Artists" in artists
 
 
 def test_seed_produces_each_state(music_dir):
     demo.seed(music_dir)
     albums = scanner.scan(music_dir)
     states = {a.title: a.state for a in albums}
-    assert states["Be Excellent"] == AlbumState.ORPHAN
-    assert states["Threshold"] == AlbumState.HELD_BANDCAMP
-    assert states["Smell the Glove"] == AlbumState.NEEDS_CONFIRMATION
-    assert states["One Hit Wonderland"] == AlbumState.UNCONFIRMED_BANDCAMP
-    assert states["Highway Hymns"] == AlbumState.DONE
+    assert states["A Most Excellent Journey"] == AlbumState.ORPHAN
+    assert states["We Are Here To Make You Sad"] == AlbumState.HELD_BANDCAMP
+    assert states["Top 5 Records For A Wednesday"] == AlbumState.HELD_MANUAL
+    assert states["Gimme Some Money"] == AlbumState.NEEDS_CONFIRMATION
+    assert states["Little Bit o' Hoot, Whole Lotta Nanny"] == AlbumState.UNCONFIRMED_BANDCAMP
+    assert states["The Rural Juror (OST)"] == AlbumState.DONE
 
 
 def test_seed_orphan_has_mbid_and_comment_for_reconcile(music_dir):
     """The Orphan should be reconcile-able (MBID atom + Bandcamp ©cmt)."""
     demo.seed(music_dir)
     from mutagen.mp4 import MP4
-    track = next((music_dir / "Wyld Stallyns" / "Be Excellent").glob("*.m4a"))
+    track = next((music_dir / "Wyld Stallion" / "A Most Excellent Journey").glob("*.m4a"))
     audio = MP4(track)
     assert "----:com.apple.iTunes:MusicBrainz Album Id" in audio
     assert "bandcamp.com" in audio["\xa9cmt"][0]
@@ -102,11 +104,11 @@ def test_reset_refuses_when_marker_missing(music_dir):
 def test_reset_wipes_and_reseeds(music_dir):
     demo.seed(music_dir)
     # Drop a stray file the user might have created during play
-    (music_dir / "Wyld Stallyns" / "stray.txt").write_text("user added this")
+    (music_dir / "Wyld Stallion" / "stray.txt").write_text("user added this")
     demo.reset(music_dir)
-    assert not (music_dir / "Wyld Stallyns" / "stray.txt").exists()
+    assert not (music_dir / "Wyld Stallion" / "stray.txt").exists()
     # All seeded albums back
-    assert (music_dir / "Wyld Stallyns" / "Be Excellent").exists()
+    assert (music_dir / "Wyld Stallion" / "A Most Excellent Journey").exists()
 
 
 def test_reset_resets_pending_queue(music_dir):
@@ -139,8 +141,8 @@ def test_run_demo_sync_no_op_when_queue_empty(music_dir):
 
 
 def test_fetch_release_returns_demo_data():
-    rel = demo.fetch_release("demo-rel-spinal-tap")
-    assert rel["title"] == "Smell the Glove"
+    rel = demo.fetch_release("demo-rel-thamesmen")
+    assert rel["title"] == "Gimme Some Money"
 
 
 def test_fetch_release_unknown_mbid_raises():
@@ -150,18 +152,20 @@ def test_fetch_release_unknown_mbid_raises():
 
 
 def test_lookup_by_bandcamp_url():
-    assert demo.lookup_by_bandcamp_url("https://spinaltap.bandcamp.com/album/smell-the-glove") == "demo-rel-spinal-tap"
+    assert demo.lookup_by_bandcamp_url(
+        "https://thamesmen.bandcamp.com/album/gimme-some-money"
+    ) == "demo-rel-thamesmen"
     assert demo.lookup_by_bandcamp_url("https://example.com/whatever") is None
 
 
 def test_fetch_release_urls_returns_bandcamp_url():
-    urls = demo.fetch_release_urls("demo-rel-wyld-stallyns")
-    assert urls == ["https://wyldstallyns.bandcamp.com/album/be-excellent"]
+    urls = demo.fetch_release_urls("demo-rel-wyld")
+    assert urls == ["https://wyldstallion.bandcamp.com/album/a-most-excellent-journey"]
 
 
 def test_search_releases_substring_match():
-    results = demo.search_releases("Spinal", "")
-    assert any(r["artist"] == "Spinal Tap" for r in results)
+    results = demo.search_releases("Thamesmen", "")
+    assert any(r["artist"] == "The Thamesmen" for r in results)
 
 
 def test_search_releases_empty_inputs_returns_all():
@@ -207,8 +211,13 @@ def test_demo_mode_seeds_on_startup(demo_client):
     assert "Demo Mode" in r.text
     # Inbox has the seeded albums
     tasks = demo_client.get("/tasks")
-    assert "Wyld Stallyns" in tasks.text
+    assert "Wyld Stallion" in tasks.text
     assert "Sex Bob-omb" in tasks.text
+    assert "Sonic Death Monkey" in tasks.text
+    assert "The Thamesmen" in tasks.text
+    assert "Dingoes Ate My Baby" in tasks.text
+    # Done album hidden
+    assert "Various Artists" not in tasks.text
 
 
 def test_demo_reset_endpoint(demo_client):
