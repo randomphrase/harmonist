@@ -1,0 +1,13 @@
+<div class="bg-mb-purple/10 border-b border-mb-purple/30 px-4 py-2 text-sm flex items-center justify-between">
+    <div class="text-mb-purple">
+        <span class="font-bold uppercase tracking-widest text-xs mr-2">Demo Mode</span>
+        <span class="text-slate-400">Sandboxed sample library — no real Bandcamp / MusicBrainz traffic.</span>
+    </div>
+    <button hx-post="/demo/reset"
+            hx-target="#sync-flash"
+            hx-swap="innerHTML"
+            hx-confirm="Reset demo to its original state?"
+            class="px-3 py-1 bg-mb-purple/20 hover:bg-mb-purple/30 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
+        Reset Demo
+    </button>
+</div>

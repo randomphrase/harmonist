@@ -20,6 +20,9 @@ from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar
 from harmonist.tagger import PicardCompatibleTagger, Tagger
 from harmonist.web.sync_runner import AlreadyRunningError, SyncRunner
 
+# Demo mode is conditionally imported in create_app() — keeps demo-only code
+# out of the production import path entirely.
+
 import re
 
 _MB_URL_RE = re.compile(r"/release/([a-f0-9-]{36})", re.IGNORECASE)
@@ -59,14 +62,23 @@ def create_app(
 
     mb_lookup.configure(cfg.musicbrainz.user_agent)
 
+    if cfg.demo_mode:
+        from harmonist import demo
+        demo.install()
+        demo.ensure_seeded(cfg.paths.music_dir)
+        runner_fn = lambda: demo.run_demo_sync(cfg.paths.music_dir)
+    else:
+        runner_fn = lambda: _run_bandcamp_sync(cfg)
+
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     templates_dir = project_root / "templates"
     static_dir = project_root / "static"
     templates = Jinja2Templates(directory=str(templates_dir))
     templates.env.globals["harmony_base"] = HARMONY_BASE
     templates.env.globals["AlbumState"] = AlbumState
+    templates.env.globals["demo_mode"] = cfg.demo_mode
 
-    sync_runner = SyncRunner(runner_fn=lambda: _run_bandcamp_sync(cfg))
+    sync_runner = SyncRunner(runner_fn=runner_fn)
 
     app = FastAPI(title="Harmonist")
     app.state.cfg = cfg
@@ -78,7 +90,24 @@ def create_app(
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     _register_routes(app)
+    if cfg.demo_mode:
+        _register_demo_routes(app)
     return app
+
+
+def _register_demo_routes(app: FastAPI) -> None:
+    from harmonist import demo
+
+    @app.post("/demo/reset", response_class=HTMLResponse)
+    def demo_reset(request: Request):
+        try:
+            demo.reset(request.app.state.cfg.paths.music_dir)
+        except RuntimeError as e:
+            return HTMLResponse(_flash(str(e), level="error"), status_code=400)
+        return HTMLResponse(
+            _flash("Demo data reset to original state.", level="info"),
+            headers={"HX-Trigger": "tasks-changed"},
+        )
 
 
 # ---------------------------------------------------------------------------
