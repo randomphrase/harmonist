@@ -54,43 +54,62 @@ SINE = ASSETS_DIR / "sine.m4a"
 LIBRARY: list[dict] = [
     {
         # State: ORPHAN — no sidecar, but has MBID atom + Bandcamp ©cmt.
-        # Reconcile button derives a sidecar (transitions to UNCONFIRMED_BANDCAMP).
-        "artist": "Wyld Stallyns",
-        "album": "Be Excellent",
-        "tracks": ["Catch My Wave", "All Right", "Most Triumphant"],
+        # Reconcile derives a sidecar (transitions to UNCONFIRMED_BANDCAMP).
+        "artist": "Wyld Stallion",
+        "album": "A Most Excellent Journey",
+        "tracks": [
+            "Be Excellent To Each Other",
+            "Party On Dudes",
+            "Strange Things Are Afoot at the Circle K",
+        ],
         "cover": "cover-1.jpg",
-        "file_mbid": "demo-rel-wyld-stallyns",
-        "file_comment": "Visit https://wyldstallyns.bandcamp.com",
+        "file_mbid": "demo-rel-wyld",
+        "file_comment": "Visit https://wyldstallion.bandcamp.com",
         "sidecar": None,
     },
     {
         # State: HELD_BANDCAMP — sidecar with URL but no MB match yet.
-        # Recheck button looks up MB → exact match → tags → DONE.
+        # Recheck looks up MB → exact match → tags → DONE.
         "artist": "Sex Bob-omb",
-        "album": "Threshold",
+        "album": "We Are Here To Make You Sad",
         "tracks": ["Garbage Truck", "Threshold", "Summertime"],
         "cover": "cover-2.jpg",
         "sidecar": {
             "source": "bandcamp",
-            "bandcamp_url": "https://sexbobomb.bandcamp.com/album/threshold",
+            "bandcamp_url": "https://sexbobomb.bandcamp.com/album/we-are-here-to-make-you-sad",
             "bandcamp_item_id": 1001,
+        },
+    },
+    {
+        # State: HELD_MANUAL — non-Bandcamp source, awaiting MBID.
+        # Manual ingest form (paste MBID or search MB by name) tags it.
+        "artist": "Sonic Death Monkey",
+        "album": "Top 5 Records For A Wednesday",
+        "tracks": [
+            "Top 5 Side One Track Ones",
+            "Top 5 Songs About Death",
+            "Top 5 Tracks For Lovers In Trouble",
+        ],
+        "cover": "cover-6.jpg",
+        "sidecar": {
+            "source": "manual",
         },
     },
     {
         # State: NEEDS_CONFIRMATION — files tagged, candidate stashed but
         # confidence is "approximate" (lengths off). Side-by-side renders.
         # Confirm → tags from MB; Reject → back to Held (Bandcamp).
-        "artist": "Spinal Tap",
-        "album": "Smell the Glove",
-        "tracks": ["Hell Hole", "Tonight I'm Gonna Rock You Tonight", "Big Bottom"],
+        "artist": "The Thamesmen",
+        "album": "Gimme Some Money",
+        "tracks": ["Gimme Some Money", "(Listen to the) Flower People", "Cups and Cakes"],
         "cover": "cover-3.jpg",
-        "file_mbid": "demo-rel-spinal-tap",
+        "file_mbid": "demo-rel-thamesmen",
         "sidecar": {
             "source": "bandcamp",
-            "bandcamp_url": "https://spinaltap.bandcamp.com/album/smell-the-glove",
+            "bandcamp_url": "https://thamesmen.bandcamp.com/album/gimme-some-money",
             "bandcamp_item_id": 1002,
             "mb_match_candidate": {
-                "mb_release_id": "demo-rel-spinal-tap",
+                "mb_release_id": "demo-rel-thamesmen",
                 "confidence": "approximate",
                 "deltas_ms": [5000, 6000, 4500],  # all over the 4s tolerance
             },
@@ -99,33 +118,37 @@ LIBRARY: list[dict] = [
     {
         # State: UNCONFIRMED_BANDCAMP — files tagged, source=bandcamp,
         # item_id=None. "Try a different URL" / "Mark purchased elsewhere".
-        "artist": "The Wonders",
-        "album": "One Hit Wonderland",
-        "tracks": ["That Thing", "All My Only Dreams", "Dance With Me Tonight"],
+        "artist": "Dingoes Ate My Baby",
+        "album": "Little Bit o' Hoot, Whole Lotta Nanny",
+        "tracks": ["Pavlov's Bell", "Hellmouth Lullaby", "Cordelia's Theme"],
         "cover": "cover-4.jpg",
-        "file_mbid": "demo-rel-wonders",
-        "file_comment": "Visit https://thewonders.bandcamp.com",
+        "file_mbid": "demo-rel-dingoes",
+        "file_comment": "Visit https://dingoes.bandcamp.com",
         "sidecar": {
             "source": "bandcamp",
-            "bandcamp_url": "https://thewonders.bandcamp.com/album/one-hit-wonderland",
+            "bandcamp_url": "https://dingoes.bandcamp.com/album/little-bit-o-hoot",
             "bandcamp_item_id": None,
-            "mb_release_id": "demo-rel-wonders",
+            "mb_release_id": "demo-rel-dingoes",
             "tagged": True,
         },
     },
     {
         # State: DONE — fully tagged & confirmed. Hidden from inbox; counts
         # in the "X total" stat at the top of the page.
-        "artist": "Stillwater",
-        "album": "Highway Hymns",
-        "tracks": ["Fever Dog", "Love Thing", "Highway Hymn"],
+        "artist": "Various Artists",
+        "album": "The Rural Juror (OST)",
+        "tracks": [
+            "Main Title (The Rural Juror)",
+            "Urban Fervor",
+            "Closing Credits (Urinal Gerber)",
+        ],
         "cover": "cover-5.jpg",
-        "file_mbid": "demo-rel-stillwater",
+        "file_mbid": "demo-rel-rural-juror",
         "sidecar": {
             "source": "bandcamp",
-            "bandcamp_url": "https://stillwater.bandcamp.com/album/highway-hymns",
+            "bandcamp_url": "https://variousartists.bandcamp.com/album/the-rural-juror-ost",
             "bandcamp_item_id": 1003,
-            "mb_release_id": "demo-rel-stillwater",
+            "mb_release_id": "demo-rel-rural-juror",
             "tagged": True,
         },
     },
@@ -135,24 +158,24 @@ LIBRARY: list[dict] = [
 # Pending "Bandcamp purchases" — popped one per Sync click.
 PENDING_PURCHASES: list[dict] = [
     {
-        "artist": "Crucial Taunt",
-        "album": "Ballroom Hero",
-        "tracks": ["Touch Me", "Why You Wanna Break My Heart", "Ballroom Hero"],
-        "cover": "cover-6.jpg",
+        "artist": "CB4",
+        "album": "Straight Outta Lowcash",
+        "tracks": ["Straight Outta Lowcash", "M-O-N-E-Y", "The Real Thing"],
+        "cover": "cover-7.jpg",
         "sidecar": {
             "source": "bandcamp",
-            "bandcamp_url": "https://crucialtaunt.bandcamp.com/album/ballroom-hero",
+            "bandcamp_url": "https://cb4.bandcamp.com/album/straight-outta-lowcash",
             "bandcamp_item_id": 2001,
         },
     },
     {
-        "artist": "CB4",
-        "album": "Cell Block 4",
-        "tracks": ["Straight Outta Locash", "Sweat from My ...", "I'm The NWA"],
-        "cover": "cover-7.jpg",
+        "artist": "Autobahn",
+        "album": "Nagelbett",
+        "tracks": ["Karl Hungus", "Marmot Shall Inherit", "Ve Believe in Nuthing"],
+        "cover": "cover-8.jpg",
         "sidecar": {
             "source": "bandcamp",
-            "bandcamp_url": "https://cb4.bandcamp.com/album/cell-block-4",
+            "bandcamp_url": "https://autobahn.bandcamp.com/album/nagelbett",
             "bandcamp_item_id": 2002,
         },
     },
@@ -205,34 +228,38 @@ def _release(mbid: str, artist: str, title: str, tracks: list[str], lengths_ms: 
 
 
 MB_RELEASES: dict[str, dict] = {
-    "demo-rel-wyld-stallyns": _release(
-        "demo-rel-wyld-stallyns", "Wyld Stallyns", "Be Excellent",
-        ["Catch My Wave", "All Right", "Most Triumphant"],
+    "demo-rel-wyld": _release(
+        "demo-rel-wyld", "Wyld Stallion", "A Most Excellent Journey",
+        ["Be Excellent To Each Other", "Party On Dudes", "Strange Things Are Afoot at the Circle K"],
     ),
     "demo-rel-sex-bob-omb": _release(
-        "demo-rel-sex-bob-omb", "Sex Bob-omb", "Threshold",
+        "demo-rel-sex-bob-omb", "Sex Bob-omb", "We Are Here To Make You Sad",
         ["Garbage Truck", "Threshold", "Summertime"],
     ),
-    "demo-rel-spinal-tap": _release(
-        "demo-rel-spinal-tap", "Spinal Tap", "Smell the Glove",
-        ["Hell Hole", "Tonight I'm Gonna Rock You Tonight", "Big Bottom"],
+    "demo-rel-sonic-death-monkey": _release(
+        "demo-rel-sonic-death-monkey", "Sonic Death Monkey", "Top 5 Records For A Wednesday",
+        ["Top 5 Side One Track Ones", "Top 5 Songs About Death", "Top 5 Tracks For Lovers In Trouble"],
+    ),
+    "demo-rel-thamesmen": _release(
+        "demo-rel-thamesmen", "The Thamesmen", "Gimme Some Money",
+        ["Gimme Some Money", "(Listen to the) Flower People", "Cups and Cakes"],
         lengths_ms=[6000, 7000, 5500],  # off by enough to land "approximate"
     ),
-    "demo-rel-wonders": _release(
-        "demo-rel-wonders", "The Wonders", "One Hit Wonderland",
-        ["That Thing", "All My Only Dreams", "Dance With Me Tonight"],
+    "demo-rel-dingoes": _release(
+        "demo-rel-dingoes", "Dingoes Ate My Baby", "Little Bit o' Hoot, Whole Lotta Nanny",
+        ["Pavlov's Bell", "Hellmouth Lullaby", "Cordelia's Theme"],
     ),
-    "demo-rel-stillwater": _release(
-        "demo-rel-stillwater", "Stillwater", "Highway Hymns",
-        ["Fever Dog", "Love Thing", "Highway Hymn"],
-    ),
-    "demo-rel-crucial-taunt": _release(
-        "demo-rel-crucial-taunt", "Crucial Taunt", "Ballroom Hero",
-        ["Touch Me", "Why You Wanna Break My Heart", "Ballroom Hero"],
+    "demo-rel-rural-juror": _release(
+        "demo-rel-rural-juror", "Various Artists", "The Rural Juror (OST)",
+        ["Main Title (The Rural Juror)", "Urban Fervor", "Closing Credits (Urinal Gerber)"],
     ),
     "demo-rel-cb4": _release(
-        "demo-rel-cb4", "CB4", "Cell Block 4",
-        ["Straight Outta Locash", "Sweat from My ...", "I'm The NWA"],
+        "demo-rel-cb4", "CB4", "Straight Outta Lowcash",
+        ["Straight Outta Lowcash", "M-O-N-E-Y", "The Real Thing"],
+    ),
+    "demo-rel-autobahn": _release(
+        "demo-rel-autobahn", "Autobahn", "Nagelbett",
+        ["Karl Hungus", "Marmot Shall Inherit", "Ve Believe in Nuthing"],
     ),
 }
 
@@ -240,13 +267,13 @@ MB_RELEASES: dict[str, dict] = {
 # Bandcamp URL → MB release MBID. Used by lookup_by_bandcamp_url + by
 # fetch_release_urls (reverse direction).
 URL_RELS: dict[str, str] = {
-    "https://wyldstallyns.bandcamp.com/album/be-excellent": "demo-rel-wyld-stallyns",
-    "https://sexbobomb.bandcamp.com/album/threshold": "demo-rel-sex-bob-omb",
-    "https://spinaltap.bandcamp.com/album/smell-the-glove": "demo-rel-spinal-tap",
-    "https://thewonders.bandcamp.com/album/one-hit-wonderland": "demo-rel-wonders",
-    "https://stillwater.bandcamp.com/album/highway-hymns": "demo-rel-stillwater",
-    "https://crucialtaunt.bandcamp.com/album/ballroom-hero": "demo-rel-crucial-taunt",
-    "https://cb4.bandcamp.com/album/cell-block-4": "demo-rel-cb4",
+    "https://wyldstallion.bandcamp.com/album/a-most-excellent-journey": "demo-rel-wyld",
+    "https://sexbobomb.bandcamp.com/album/we-are-here-to-make-you-sad": "demo-rel-sex-bob-omb",
+    "https://thamesmen.bandcamp.com/album/gimme-some-money": "demo-rel-thamesmen",
+    "https://dingoes.bandcamp.com/album/little-bit-o-hoot": "demo-rel-dingoes",
+    "https://variousartists.bandcamp.com/album/the-rural-juror-ost": "demo-rel-rural-juror",
+    "https://cb4.bandcamp.com/album/straight-outta-lowcash": "demo-rel-cb4",
+    "https://autobahn.bandcamp.com/album/nagelbett": "demo-rel-autobahn",
 }
 
 
