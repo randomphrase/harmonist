@@ -51,6 +51,7 @@ class Config(BaseModel):
     cover_art: CoverArtConfig = Field(default_factory=CoverArtConfig)
     test: TestConfig = Field(default_factory=TestConfig)
     log_level: str = "info"
+    demo_mode: bool = False
 
     @property
     def ignores_file(self) -> Path:
@@ -110,6 +111,8 @@ def _apply_env_overrides(data: dict) -> dict:
         data["log_level"] = v
     if v := env.get("HARMONIST_COVER_ART_SIZE"):
         cover_art["size"] = v
+    if v := env.get("HARMONIST_DEMO_MODE"):
+        data["demo_mode"] = v.strip() not in ("", "0", "false", "False", "no")
     return data
 
 
