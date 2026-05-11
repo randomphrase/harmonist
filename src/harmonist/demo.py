@@ -16,6 +16,8 @@ imported in the non-demo runtime path.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import shutil
 from datetime import datetime, timezone
@@ -293,12 +295,38 @@ def is_demo_dir(music_dir: Path) -> bool:
     return (music_dir / DEMO_MARKER).exists()
 
 
+def data_version() -> str:
+    """Short hash of the current demo dataset. Used to detect stale on-disk
+    demo data after a code update that changed LIBRARY/MB_RELEASES/etc.
+    """
+    payload = json.dumps(
+        [LIBRARY, PENDING_PURCHASES, list(MB_RELEASES.keys()), URL_RELS],
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _marker_version(music_dir: Path) -> Optional[str]:
+    """Parse the data-version line out of the marker file, or None if absent."""
+    marker = music_dir / DEMO_MARKER
+    if not marker.exists():
+        return None
+    text = marker.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        if line.startswith("version:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
 def seed(music_dir: Path) -> None:
     """Populate music_dir with the demo library + mark the dir as demo."""
     music_dir.mkdir(parents=True, exist_ok=True)
     for spec in LIBRARY:
         _materialise(music_dir, spec)
-    (music_dir / DEMO_MARKER).write_text("Harmonist demo data — safe to delete.\n")
+    (music_dir / DEMO_MARKER).write_text(
+        f"Harmonist demo data — safe to delete.\nversion: {data_version()}\n"
+    )
     global _pending_queue
     _pending_queue = list(PENDING_PURCHASES)
 
@@ -319,13 +347,23 @@ def reset(music_dir: Path) -> None:
 
 
 def ensure_seeded(music_dir: Path) -> bool:
-    """Seed once if the dir is empty; refuse to overwrite a non-demo dir.
+    """Seed once if the dir is empty; auto-reset if seeded against an older
+    demo dataset; refuse to overwrite a non-demo dir.
 
-    Returns True if seeding ran (or had previously seeded), False if we
-    refused because the dir holds non-demo content.
+    Returns True if seeding ran or the existing data is current demo data,
+    False if we refused because the dir holds non-demo content.
     """
     if music_dir.exists() and any(music_dir.iterdir()):
-        return is_demo_dir(music_dir)
+        if not is_demo_dir(music_dir):
+            return False
+        existing_version = _marker_version(music_dir)
+        if existing_version != data_version():
+            log.info(
+                "demo: data version mismatch (on disk: %s, code: %s) — resetting",
+                existing_version, data_version(),
+            )
+            reset(music_dir)
+        return True
     seed(music_dir)
     return True
 

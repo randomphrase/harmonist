@@ -226,6 +226,56 @@ def test_demo_reset_endpoint(demo_client):
     assert "reset" in r.text.lower()
 
 
+def test_demo_confirm_tags_album_end_to_end(demo_client):
+    """Click Confirm on Thamesmen — exercises fetch_release + tagger + cover."""
+    tasks = demo_client.get("/tasks").text
+    # Find the Thamesmen card; pull its album id out of the data-attributes
+    import re
+    m = re.search(r'task-([0-9a-f]{32})"[^"]*"[^>]*>[^<]*<[^>]*Gimme Some Money', tasks)
+    if not m:
+        # fallback: pick the album id by scanning
+        from harmonist.scanner import scan
+        from harmonist.models import AlbumState
+        albums = scan(demo_client.app.state.cfg.paths.music_dir)
+        nc = next(a for a in albums if a.state == AlbumState.NEEDS_CONFIRMATION)
+        aid = nc.id
+    else:
+        aid = m.group(1)
+    r = demo_client.post(f"/confirm/{aid}")
+    assert r.status_code == 200, r.text
+    assert "Tagged" in r.text
+    # Album should now be in DONE state (hidden from inbox)
+    tasks_after = demo_client.get("/tasks").text
+    assert "Gimme Some Money" not in tasks_after
+
+
+def test_demo_auto_resets_on_version_change(music_dir, monkeypatch):
+    """A demo dir seeded against an older dataset should auto-reset."""
+    demo.seed(music_dir)
+    assert demo.is_demo_dir(music_dir)
+    # Drop a fake older-version marker
+    (music_dir / demo.DEMO_MARKER).write_text(
+        "Harmonist demo data — safe to delete.\nversion: deadbeefcafe\n"
+    )
+    # Add a stray that should be wiped on reset
+    (music_dir / "stray_artist").mkdir()
+    (music_dir / "stray_artist" / "stale.txt").write_text("from old demo")
+
+    demo.ensure_seeded(music_dir)
+
+    # Stale file gone, marker updated to current version
+    assert not (music_dir / "stray_artist").exists()
+    assert demo._marker_version(music_dir) == demo.data_version()
+
+
+def test_demo_no_reset_when_version_matches(music_dir):
+    demo.seed(music_dir)
+    # Plant a marker that should NOT trigger a reset
+    (music_dir / "Wyld Stallion" / "user_added.txt").write_text("kept")
+    demo.ensure_seeded(music_dir)
+    assert (music_dir / "Wyld Stallion" / "user_added.txt").exists()
+
+
 def test_demo_mode_off_no_demo_routes(tmp_path):
     cfg = Config(
         paths=PathsConfig(config_dir=tmp_path / "cfg", music_dir=tmp_path / "music"),
