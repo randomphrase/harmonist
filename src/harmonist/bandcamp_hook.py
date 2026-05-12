@@ -142,11 +142,21 @@ class HarmonistSyncer(_BCSyncer):
     asyncio.run(self.sync_items()) before returning). Our overrides hook into
     that flow: sync_items() pre-checks the cap, sync_item() post-writes the
     sidecar after each successful download.
+
+    All arguments are keyword-only. `dir_path` is foolproofed: accepts either
+    a `str` or `Path` and coerces to `Path` before handing to bandcampsync,
+    whose `LocalMedia` uses Path-only operations (`.iterdir()`, `/`).
     """
 
-    def __init__(self, *args, max_downloads_per_sync: int, **kwargs):
+    def __init__(
+        self,
+        *,
+        dir_path: "Path | str",
+        max_downloads_per_sync: int,
+        **kwargs: Any,
+    ):
         self._max_downloads_per_sync = max_downloads_per_sync
-        super().__init__(*args, **kwargs)
+        super().__init__(dir_path=Path(dir_path), **kwargs)
 
     async def sync_items(self):
         # Count items that would actually download (i.e. not ignored, not preorder).

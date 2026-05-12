@@ -334,6 +334,92 @@ def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
     assert loaded.bandcamp.item_id == 12345
 
 
+class _StubBandcamp:
+    """Lightweight stand-in for bandcampsync.bandcamp.Bandcamp — no network."""
+
+    def __init__(self, cookies):
+        self.is_authenticated = True
+        self.purchases = []
+
+    def verify_authentication(self):
+        return True
+
+    def load_purchases(self):
+        return True
+
+
+def _patch_bandcamp(monkeypatch):
+    import bandcampsync.sync as bc_sync_mod
+    monkeypatch.setattr(bc_sync_mod, "Bandcamp", _StubBandcamp)
+
+
+@pytest.mark.parametrize("dir_path_type", ["str", "Path"])
+def test_harmonist_syncer_accepts_str_or_path(tmp_path, monkeypatch, dir_path_type):
+    """HarmonistSyncer foolproofs the bandcampsync boundary: dir_path
+    accepted as either str or Path, coerced to Path internally.
+
+    Without the coercion, passing str crashes bandcampsync's LocalMedia.index()
+    with `'str' object has no attribute 'iterdir'`.
+    """
+    from pathlib import Path
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    ignores_file = tmp_path / "ignores.txt"
+    ignores_file.write_text("# empty\n")
+
+    _patch_bandcamp(monkeypatch)
+
+    dir_arg = str(music_dir) if dir_path_type == "str" else music_dir
+    syncer = HarmonistSyncer(
+        cookies="fake",
+        dir_path=dir_arg,
+        media_format="alac",
+        temp_dir_root=None,
+        ign_file_path=str(ignores_file),
+        ign_patterns="",
+        notify_url=None,
+        max_downloads_per_sync=5,
+    )
+    # bandcampsync's LocalMedia.media_dir should now be a Path regardless
+    # of what we passed in.
+    assert isinstance(syncer.local_media.media_dir, Path)
+    assert syncer.local_media.media_dir == music_dir
+
+
+def test_run_bandcamp_sync_end_to_end_with_stub(tmp_path, monkeypatch):
+    """Drives _run_bandcamp_sync through the real HarmonistSyncer init chain
+    with a stubbed Bandcamp, verifying no crashes from the config layer.
+    """
+    from harmonist.config import (
+        BandcampConfig,
+        Config,
+        MusicBrainzConfig,
+        PathsConfig,
+        ServerConfig,
+        TestConfig,
+    )
+    from harmonist.web.main import _run_bandcamp_sync
+
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir()
+    (config_dir / "cookies.txt").write_text("fake-cookies")
+    (config_dir / "ignores.txt").write_text("# empty\n")
+
+    cfg = Config(
+        paths=PathsConfig(config_dir=config_dir, music_dir=music_dir),
+        bandcamp=BandcampConfig(),
+        musicbrainz=MusicBrainzConfig(),
+        server=ServerConfig(),
+        test=TestConfig(mode="fixture"),
+    )
+
+    _patch_bandcamp(monkeypatch)
+    result = _run_bandcamp_sync(cfg)
+    assert result is not None
+
+
 def test_sync_item_does_not_short_circuit_when_no_match(monkeypatch, tmp_path):
     """Genuine new purchase (no existing sidecar) → falls through to download."""
     s = _bare_syncer()
