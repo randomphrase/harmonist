@@ -149,7 +149,9 @@ def _run_bandcamp_sync(cfg: config_mod.Config):
     cfg.ignores_file.parent.mkdir(parents=True, exist_ok=True)
     return HarmonistSyncer(
         cookies=cookies,
-        dir_path=str(cfg.paths.music_dir),
+        # bandcampsync's LocalMedia uses .iterdir() / Path arithmetic on
+        # whatever we hand it — must be a Path, not a string.
+        dir_path=cfg.paths.music_dir,
         media_format=cfg.bandcamp.download_format,
         temp_dir_root=None,
         ign_file_path=str(cfg.ignores_file),
