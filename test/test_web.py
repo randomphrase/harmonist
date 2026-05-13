@@ -92,18 +92,25 @@ def test_sync_status_idle(client):
     assert "current_item" in body  # always present so the JS doesn't NPE
 
 
-def test_tasks_renders_total_count_in_stats(client, cfg):
-    """The header stats live inside the polled /tasks fragment so they
-    update without a full-page reload. Regression: previously the count
-    was rendered once on /, never refreshed after sync/reconcile.
+def test_tasks_renders_inbox_count(client, cfg):
+    """The inbox count lives inside the polled /tasks fragment so it
+    updates without a full-page reload.
     """
     _make_album(cfg, "Orphan Album")
     _make_album(cfg, "Another One")
     r = client.get("/tasks")
     assert r.status_code == 200
-    # Both 'need attention' and 'total in library' counts use 2
     assert "2" in r.text
-    assert "total in library" in r.text
+    assert "need attention" in r.text
+
+
+def test_tasks_does_not_render_library_total(client, cfg):
+    """The Inbox header is for inbox concerns; library-wide totals belong
+    to a separate Library box (TBD). Regression on the user's UX feedback.
+    """
+    _make_album(cfg, "X")
+    r = client.get("/tasks")
+    assert "total in library" not in r.text
 
 
 def test_tasks_empty_state_message_distinguishes_zero_vs_all_done(client, cfg):
