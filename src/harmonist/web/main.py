@@ -297,6 +297,69 @@ def _register_routes(app: FastAPI) -> None:
             )
         return HTMLResponse(_flash("Sync started — watch the inbox.", level="info"))
 
+    @app.get("/library", response_class=HTMLResponse)
+    def library(request: Request, offset: int = 0, limit: int = 30):
+        """Paginated list of Done albums, sorted by tagged_at desc."""
+        from datetime import timezone as _tz, datetime as _dt
+        albums = _albums(request)
+        done = [a for a in albums if a.state == AlbumState.DONE]
+        # Newest tagged first; albums missing tagged_at sink to the bottom.
+        _floor = _dt.min.replace(tzinfo=_tz.utc)
+        done.sort(
+            key=lambda a: (a.sidecar.tagged_at if a.sidecar and a.sidecar.tagged_at else _floor),
+            reverse=True,
+        )
+        limit = max(1, min(limit, 200))  # clamp; defensive
+        offset = max(0, offset)
+        page = done[offset:offset + limit]
+        has_more = offset + limit < len(done)
+        next_offset = offset + limit if has_more else None
+        ctx = _ctx(
+            request,
+            rows=page,
+            has_more=has_more,
+            next_offset=next_offset,
+            limit=limit,
+            total_done=len(done),
+            is_first_page=(offset == 0),
+        )
+        return request.app.state.templates.TemplateResponse(
+            request, "partials/library_page.html", ctx
+        )
+
+    @app.post("/retag/{album_id}", response_class=HTMLResponse)
+    def retag(request: Request, album_id: str):
+        album = _find_album(request, album_id)
+        sc = album.sidecar
+        if not sc or not sc.mb_release_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "no mb_release_id on sidecar to re-tag from"
+            )
+        try:
+            _tag_with_release(
+                album, sc.mb_release_id, request.app.state.cfg, request.app.state.tagger,
+                source=sc.source,
+            )
+        except Exception as e:
+            log.exception("retag failed")
+            return HTMLResponse(_flash(f"Re-tag failed: {e}", level="error"))
+        return HTMLResponse(
+            _flash("Re-tagged from MusicBrainz.", level="info"),
+            headers={"HX-Trigger": "tasks-changed"},
+        )
+
+    @app.post("/forget/{album_id}", response_class=HTMLResponse)
+    def forget(request: Request, album_id: str):
+        """Delete the sidecar — album reverts to Orphan. Files are not touched."""
+        album = _find_album(request, album_id)
+        sc_path = sidecar_mod.sidecar_path(album.path)
+        if sc_path.exists():
+            sc_path.unlink()
+        return HTMLResponse(
+            _flash("Forgotten. Album is now an Orphan.", level="info"),
+            headers={"HX-Trigger": "tasks-changed"},
+        )
+
     @app.get("/healthz")
     def healthz(request: Request):
         cfg: config_mod.Config = request.app.state.cfg

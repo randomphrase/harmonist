@@ -492,6 +492,157 @@ def test_cover_returns_404_when_absent(client, cfg):
     assert r.status_code == 404
 
 
+# ---------- library ----------
+
+
+def _make_tagged_album(cfg, name: str, *, mbid: str, tagged_at, item_id: int | None = None) -> Path:
+    """Create a Done-state album with sidecar + matching MBID tag on the file."""
+    d = _make_album(cfg, name)
+    audio = MP4(d / "01 Track.m4a")
+    audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [mbid.encode("utf-8")]
+    audio.save()
+    from harmonist.models import BandcampInfo, Sidecar
+    sc.write(d, Sidecar(
+        schema_version=1, source="bandcamp" if item_id else "manual",
+        bandcamp=BandcampInfo(url=f"https://x.bandcamp.com/album/{name.lower().replace(' ', '-')}",
+                              item_id=item_id) if item_id else None,
+        mb_release_id=mbid,
+        tagged_at=tagged_at,
+    ))
+    return d
+
+
+def test_library_renders_only_done_albums(client, cfg):
+    from datetime import datetime, timezone
+    _make_album(cfg, "OrphanAlbum")
+    _make_tagged_album(cfg, "DoneOne", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=100)
+    r = client.get("/library")
+    assert r.status_code == 200
+    assert "DoneOne" in r.text
+    assert "OrphanAlbum" not in r.text
+
+
+def test_library_sorted_by_tagged_at_desc(client, cfg):
+    from datetime import datetime, timezone, timedelta
+    base = datetime.now(timezone.utc)
+    _make_tagged_album(cfg, "Old", mbid="rel-old", tagged_at=base - timedelta(days=5), item_id=1)
+    _make_tagged_album(cfg, "Mid", mbid="rel-mid", tagged_at=base - timedelta(days=2), item_id=2)
+    _make_tagged_album(cfg, "Recent", mbid="rel-recent", tagged_at=base, item_id=3)
+    r = client.get("/library")
+    text = r.text
+    # Recent appears before Mid which appears before Old
+    assert text.index("Recent") < text.index("Mid") < text.index("Old")
+
+
+def test_library_pagination_offset_limit(client, cfg):
+    from datetime import datetime, timezone, timedelta
+    base = datetime.now(timezone.utc)
+    for i in range(5):
+        _make_tagged_album(cfg, f"Album{i}", mbid=f"rel-{i}",
+                          tagged_at=base - timedelta(days=i), item_id=i + 1)
+    r = client.get("/library?offset=0&limit=2")
+    assert r.status_code == 200
+    # First page has 2 rows
+    assert r.text.count('id="lib-') == 2
+    # Load more button references offset=2
+    assert "offset=2" in r.text
+
+
+def test_library_load_more_button_absent_on_last_page(client, cfg):
+    from datetime import datetime, timezone
+    _make_tagged_album(cfg, "OnlyOne", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1)
+    r = client.get("/library?offset=0&limit=10")
+    assert "Load more" not in r.text
+
+
+def test_library_first_page_includes_header(client, cfg):
+    from datetime import datetime, timezone
+    _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1)
+    r = client.get("/library?offset=0")
+    assert "<h2" in r.text and "Library" in r.text
+    assert "Refresh" in r.text
+
+
+def test_library_second_page_omits_header(client, cfg):
+    from datetime import datetime, timezone
+    _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1)
+    r = client.get("/library?offset=30&limit=30")
+    # No header on offsets > 0 (the load-more button replaces itself)
+    assert "<h2" not in r.text
+
+
+def test_library_empty_state(client):
+    r = client.get("/library")
+    assert "No fully-tagged albums yet" in r.text
+
+
+def test_library_row_links_to_musicbrainz(client, cfg):
+    from datetime import datetime, timezone
+    _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(timezone.utc), item_id=42)
+    r = client.get("/library")
+    assert "musicbrainz.org/release/abc-123" in r.text
+
+
+def test_library_row_shows_bandcamp_url_and_item_id_in_expanded(client, cfg):
+    from datetime import datetime, timezone
+    _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(timezone.utc), item_id=42)
+    r = client.get("/library")
+    assert "x.bandcamp.com" in r.text
+    assert "42" in r.text  # item_id
+
+
+# ---------- retag / forget ----------
+
+
+def test_retag_re_runs_tagger(client, cfg, monkeypatch):
+    from datetime import datetime, timezone
+    d = _make_tagged_album(cfg, "ToRetag", mbid="rel-1",
+                          tagged_at=datetime(2026, 1, 1, tzinfo=timezone.utc), item_id=1)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: _release_for_match(mbid, n_tracks=1),
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    r = client.post(f"/retag/{aid}")
+    assert r.status_code == 200
+    assert "Re-tagged" in r.text
+    # tagged_at should be refreshed
+    loaded = sc.read(d)
+    assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def test_retag_400_when_no_mbid_on_sidecar(client, cfg):
+    d = _make_album(cfg, "NoMBID")
+    sc.write(d, sc_module_Sidecar_manual())
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    r = client.post(f"/retag/{aid}")
+    assert r.status_code == 400
+
+
+def sc_module_Sidecar_manual():
+    from harmonist.models import Sidecar
+    return Sidecar(schema_version=1, source="manual")
+
+
+def test_forget_deletes_sidecar(client, cfg):
+    from datetime import datetime, timezone
+    d = _make_tagged_album(cfg, "Forgetme", mbid="rel-1",
+                          tagged_at=datetime.now(timezone.utc), item_id=1)
+    assert sc.has_sidecar(d)
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    r = client.post(f"/forget/{aid}")
+    assert r.status_code == 200
+    assert "Forgotten" in r.text
+    # Sidecar gone; album files untouched
+    assert not sc.has_sidecar(d)
+    assert (d / "01 Track.m4a").exists()
+
+
 def test_cover_serves_when_present(client, cfg):
     d = _make_album(cfg, "WithCover")
     (d / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0FAKE")

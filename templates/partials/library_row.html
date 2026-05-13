@@ -1,0 +1,119 @@
+{# Condensed library row with click-to-expand details. Accordion via JS. #}
+{% set sc = album.sidecar %}
+{% set bc = sc.bandcamp if sc else None %}
+<div id="lib-{{ album.id }}" class="border border-slate-800 rounded-md overflow-hidden bg-h-slate/40">
+    <button type="button"
+            class="w-full flex items-center gap-3 p-2 hover:bg-h-slate/70 text-left transition"
+            onclick="harmonistToggleRow('{{ album.id }}')">
+        <img loading="lazy"
+             src="/cover/{{ album.id }}"
+             onerror="this.style.visibility='hidden'"
+             alt=""
+             class="w-10 h-10 rounded shadow object-cover bg-h-charcoal flex-shrink-0">
+        <div class="flex-grow min-w-0">
+            <div class="text-sm text-slate-100 truncate">
+                <span class="font-bold">{{ album.title }}</span>
+                <span class="text-slate-500"> · {{ album.artist }}</span>
+            </div>
+            <div class="text-[10px] text-slate-600">
+                {% if sc and sc.tagged_at %}{{ sc.tagged_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}
+                · {{ album.track_count }} track{{ 's' if album.track_count != 1 else '' }}
+                {% if sc and sc.source %} · {{ sc.source }}{% endif %}
+            </div>
+        </div>
+        <svg id="chev-{{ album.id }}" class="w-4 h-4 text-slate-500 flex-shrink-0 transition-transform"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+    </button>
+
+    {# Expanded view, hidden by default #}
+    <div id="exp-{{ album.id }}" class="hidden border-t border-slate-800 bg-h-charcoal/50 p-4">
+        <div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 text-xs">
+            <div class="space-y-2">
+                <img loading="lazy"
+                     src="/cover/{{ album.id }}"
+                     onerror="this.style.visibility='hidden'"
+                     alt=""
+                     class="w-full max-w-[200px] rounded shadow object-cover bg-h-charcoal">
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Title</div>
+                    <div class="text-slate-100">{{ album.title }}</div>
+                </div>
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Artist</div>
+                    <div class="text-slate-100">{{ album.artist }}</div>
+                </div>
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Source</div>
+                    <div class="text-slate-300">{{ sc.source if sc else '—' }}</div>
+                </div>
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Path</div>
+                    <div class="text-slate-500 break-all font-mono text-[10px]">{{ album.path }}</div>
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                {% if sc and sc.mb_release_id %}
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">MusicBrainz Release</div>
+                    <a href="https://musicbrainz.org/release/{{ sc.mb_release_id }}"
+                       target="_blank" rel="noopener"
+                       class="text-mb-purple hover:underline break-all font-mono">{{ sc.mb_release_id }}</a>
+                </div>
+                {% endif %}
+
+                {% if bc %}
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Bandcamp URL</div>
+                    <a href="{{ bc.url }}" target="_blank" rel="noopener"
+                       class="text-bc-teal hover:underline break-all">{{ bc.url }}</a>
+                </div>
+                {% if bc.item_id is not none %}
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Bandcamp Item ID</div>
+                    <div class="text-slate-500 font-mono">{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}</div>
+                </div>
+                {% endif %}
+                {% endif %}
+
+                <div class="grid grid-cols-3 gap-2">
+                    {% if sc and sc.downloaded_at %}
+                    <div>
+                        <div class="text-[10px] text-slate-500 uppercase tracking-widest">Downloaded</div>
+                        <div class="text-slate-400 font-mono">{{ sc.downloaded_at.strftime('%Y-%m-%d') }}</div>
+                    </div>
+                    {% endif %}
+                    {% if sc and sc.added_at %}
+                    <div>
+                        <div class="text-[10px] text-slate-500 uppercase tracking-widest">Added</div>
+                        <div class="text-slate-400 font-mono">{{ sc.added_at.strftime('%Y-%m-%d') }}</div>
+                    </div>
+                    {% endif %}
+                    {% if sc and sc.tagged_at %}
+                    <div>
+                        <div class="text-[10px] text-slate-500 uppercase tracking-widest">Tagged</div>
+                        <div class="text-slate-400 font-mono">{{ sc.tagged_at.strftime('%Y-%m-%d') }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="flex gap-2 pt-2 border-t border-slate-800">
+                    <button hx-post="/retag/{{ album.id }}"
+                            hx-target="this" hx-swap="afterend"
+                            class="px-3 py-1.5 bg-mb-purple/20 hover:bg-mb-purple/30 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
+                        Re-tag from MB
+                    </button>
+                    <button hx-post="/forget/{{ album.id }}"
+                            hx-target="#lib-{{ album.id }}"
+                            hx-swap="outerHTML"
+                            hx-confirm="Forget this album? The sidecar is deleted and the album becomes an Orphan. Files are not touched."
+                            class="px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition">
+                        Forget
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
