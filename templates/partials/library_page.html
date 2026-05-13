@@ -1,0 +1,38 @@
+{# One page of library rows. Includes a "Load more" button at the end
+   that replaces itself with the next page. The first page also renders
+   the section header. #}
+{% if is_first_page %}
+<div class="flex justify-between items-baseline mb-3">
+    <h2 class="text-2xl font-bold text-white">Library
+        <span class="ml-2 text-sm text-slate-500 font-normal">{{ total_done }} done</span>
+    </h2>
+    <button hx-get="/library?offset=0&limit={{ limit }}"
+            hx-target="#library-rows" hx-swap="innerHTML"
+            class="text-xs text-slate-500 hover:text-slate-300 transition uppercase tracking-widest font-bold">
+        Refresh
+    </button>
+</div>
+{% endif %}
+
+{% if is_first_page and not rows %}
+<div class="p-8 text-center bg-h-slate/30 rounded-lg border border-slate-800">
+    <p class="text-slate-500 italic">No fully-tagged albums yet.</p>
+</div>
+{% else %}
+<div class="space-y-1.5">
+    {% for album in rows %}
+        {% include 'partials/library_row.html' %}
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if has_more %}
+<button id="load-more-{{ next_offset }}"
+        hx-get="/library?offset={{ next_offset }}&limit={{ limit }}"
+        hx-target="this"
+        hx-swap="outerHTML"
+        class="mt-3 w-full px-4 py-2 bg-h-slate/40 hover:bg-h-slate/70 text-slate-400 border border-slate-800 rounded text-sm font-bold transition">
+    Load more
+    <span class="text-slate-600 font-normal text-xs ml-2">{{ next_offset }} / {{ total_done }}</span>
+</button>
+{% endif %}

@@ -26,7 +26,32 @@
             <span class="text-slate-500 italic">Loading…</span>
         </div>
     </div>
+
+    <section id="library" class="mt-10">
+        <div id="library-rows"
+             hx-get="/library?offset=0&limit=30"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="text-center py-6 text-slate-600 italic text-sm">Loading library…</div>
+        </div>
+    </section>
 </div>
+
+<script>
+// Accordion behaviour for library rows — one expanded at a time.
+function harmonistToggleRow(id) {
+    const target = document.getElementById('exp-' + id);
+    if (!target) return;
+    const opening = target.classList.contains('hidden');
+    document.querySelectorAll('[id^="exp-"]').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('[id^="chev-"]').forEach(el => el.classList.remove('rotate-180'));
+    if (opening) {
+        target.classList.remove('hidden');
+        const chev = document.getElementById('chev-' + id);
+        if (chev) chev.classList.add('rotate-180');
+    }
+}
+</script>
 
 <script>
 // Sync + reconcile status UI handling. Two endpoints, two JSON sources;
