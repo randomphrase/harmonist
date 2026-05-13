@@ -20,4 +20,9 @@
   /* Typography — self-host or Google Fonts (linked in base.html) */
   --font-sans: "Inter", system-ui, sans-serif;
   --font-mono: "Fira Code", ui-monospace, "SFMono-Regular", monospace;
+
+  /* Extra-small text — tighter than Tailwind's text-xs (12px). Used for
+     uppercase tracking-widest labels and metadata captions. */
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.875rem;
 }
