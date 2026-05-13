@@ -113,6 +113,56 @@ def test_tasks_does_not_render_library_total(client, cfg):
     assert "total in library" not in r.text
 
 
+def test_tasks_groups_albums_by_state_with_headers_and_instructions(client, cfg):
+    """Each state appears as its own <section> with a heading + instruction line."""
+    # Held (Bandcamp)
+    d1 = _make_album(cfg, "HBC")
+    sc.write(d1, Sidecar(
+        schema_version=1, source="bandcamp",
+        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+    ))
+    # Held (Manual)
+    d2 = _make_album(cfg, "HM")
+    sc.write(d2, Sidecar(schema_version=1, source="manual"))
+
+    r = client.get("/tasks")
+    # Both state headings appear
+    assert "Held (Bandcamp)" in r.text
+    assert "Held (Manual)" in r.text
+    # Their per-section instructions appear
+    assert "Open in Harmony" in r.text  # held-bandcamp instruction
+    assert "Paste an MB release URL" in r.text  # held-manual instruction
+
+
+def test_tasks_state_group_omitted_when_empty(client, cfg):
+    """No section header rendered for states without any albums."""
+    _make_album(cfg, "Orphan only")
+    r = client.get("/tasks")
+    assert "Orphans" in r.text
+    # No Held / NeedsConfirmation / Tagging headers
+    assert "Held (Bandcamp)" not in r.text
+    assert "Needs Confirmation" not in r.text
+
+
+def test_tasks_unconfirmed_bandcamp_section_advises_sync(client, cfg):
+    """The UB group instructions point the user to click Sync."""
+    from datetime import datetime, timezone
+    d = _make_album(cfg, "UB")
+    audio = MP4(d / "01 Track.m4a")
+    audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-a"]
+    audio.save()
+    sc.write(d, Sidecar(
+        schema_version=1, source="bandcamp",
+        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+        mb_release_id="rel-a",
+        tagged_at=datetime.now(timezone.utc),
+    ))
+    r = client.get("/tasks")
+    assert "Unconfirmed Bandcamp" in r.text
+    # Instruction explicitly calls out Sync
+    assert "Click Sync" in r.text
+
+
 def test_tasks_empty_state_message_distinguishes_zero_vs_all_done(client, cfg):
     # Empty library
     r = client.get("/tasks")
