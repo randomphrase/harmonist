@@ -137,6 +137,15 @@ def test_run_demo_sync_no_op_when_queue_empty(music_dir):
     assert result.new_items_downloaded is False
 
 
+def test_run_demo_sync_reports_progress(music_dir):
+    """Demo sync invokes the progress callback with the next album label."""
+    demo.seed(music_dir)
+    seen = []
+    demo.run_demo_sync(music_dir, progress_callback=lambda label: seen.append(label))
+    # First item in PENDING_PURCHASES is CB4
+    assert seen == ["CB4 / Straight Outta Lowcash"]
+
+
 # ---------- mock service implementations ----------
 
 

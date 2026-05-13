@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Optional
 
 from bandcampsync.sync import Syncer as _BCSyncer
 
@@ -153,9 +153,11 @@ class HarmonistSyncer(_BCSyncer):
         *,
         dir_path: "Path | str",
         max_downloads_per_sync: int,
+        progress_callback: "Optional[Callable[[str], None]]" = None,
         **kwargs: Any,
     ):
         self._max_downloads_per_sync = max_downloads_per_sync
+        self._progress_callback = progress_callback
         super().__init__(dir_path=Path(dir_path), **kwargs)
 
     async def sync_items(self):
@@ -171,6 +173,13 @@ class HarmonistSyncer(_BCSyncer):
         await super().sync_items()
 
     def sync_item(self, item):
+        if self._progress_callback:
+            label = f"{getattr(item, 'band_name', '?')} / {getattr(item, 'item_title', '?')}"
+            try:
+                self._progress_callback(label)
+            except Exception:
+                pass  # never let a progress callback failure abort the sync
+
         # Short-circuit: if reconciliation has already created a sidecar
         # for this Bandcamp URL elsewhere on disk, don't re-download. Just
         # fill in the item_id and append to ignores.txt.

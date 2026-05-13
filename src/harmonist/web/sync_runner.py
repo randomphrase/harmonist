@@ -22,6 +22,7 @@ class SyncStatus:
     finished_at: Optional[datetime] = None
     last_error: Optional[str] = None
     new_items: int = 0
+    current_item: str = ""  # what's downloading right now, while running
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +31,7 @@ class SyncStatus:
             "finished_at": _iso(self.finished_at),
             "last_error": self.last_error,
             "new_items": self.new_items,
+            "current_item": self.current_item,
         }
 
 
@@ -64,6 +66,15 @@ class SyncRunner:
         with self._lock:
             return self._status.to_dict()
 
+    def set_current_item(self, label: str) -> None:
+        """Callback for the inner sync impl to report what it's working on now.
+
+        Designed to be passed into HarmonistSyncer / demo.run_demo_sync so the
+        UI can show 'Syncing: Artist / Album' while a download is in flight.
+        """
+        with self._lock:
+            self._status.current_item = label
+
     def start(self) -> SyncStatus:
         """Spawn a background thread that runs the sync. Raises if already running."""
         with self._lock:
@@ -92,3 +103,4 @@ class SyncRunner:
                 self._status.finished_at = datetime.now(timezone.utc)
                 self._status.last_error = error
                 self._status.new_items = new_items
+                self._status.current_item = ""

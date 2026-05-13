@@ -149,6 +149,7 @@ def test_write_sidecar_handles_missing_band_id(tmp_path):
 def _bare_syncer(max_downloads: int = 5) -> HarmonistSyncer:
     s = HarmonistSyncer.__new__(HarmonistSyncer)
     s._max_downloads_per_sync = max_downloads
+    s._progress_callback = None
     s.bandcamp = MagicMock()
     s.ignores = MagicMock()
     s.local_media = MagicMock()
@@ -418,6 +419,50 @@ def test_run_bandcamp_sync_end_to_end_with_stub(tmp_path, monkeypatch):
     _patch_bandcamp(monkeypatch)
     result = _run_bandcamp_sync(cfg)
     assert result is not None
+
+
+def test_sync_item_invokes_progress_callback(monkeypatch, tmp_path):
+    """The runner gets per-item progress so the UI can show 'Syncing: X / Y'."""
+    album_dir = tmp_path / "Artist" / "Album"
+    album_dir.mkdir(parents=True)
+    seen = []
+    s = _bare_syncer()
+    s._progress_callback = lambda label: seen.append(label)
+    s.local_media.media_dir = str(tmp_path)
+    s.local_media.get_path_for_purchase = MagicMock(return_value=album_dir)
+
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item: True,
+    )
+
+    item = _StubItem(item_id=1, band_name="My Band", item_title="My Album",
+                     url_hints={"subdomain": "x", "slug": "y"})
+    s.sync_item(item)
+    assert seen == ["My Band / My Album"]
+
+
+def test_sync_item_callback_failure_does_not_break_sync(monkeypatch, tmp_path):
+    """A buggy progress callback must never abort the actual sync."""
+    album_dir = tmp_path / "Artist" / "Album"
+    album_dir.mkdir(parents=True)
+
+    def explode(_label):
+        raise RuntimeError("callback broken")
+
+    s = _bare_syncer()
+    s._progress_callback = explode
+    s.local_media.media_dir = str(tmp_path)
+    s.local_media.get_path_for_purchase = MagicMock(return_value=album_dir)
+
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item: True,
+    )
+
+    item = _StubItem(item_id=1, url_hints={"subdomain": "x", "slug": "y"})
+    # Should complete without raising
+    s.sync_item(item)
 
 
 def test_sync_item_does_not_short_circuit_when_no_match(monkeypatch, tmp_path):

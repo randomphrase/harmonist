@@ -87,7 +87,29 @@ def test_healthz(client, cfg):
 def test_sync_status_idle(client):
     r = client.get("/sync/status")
     assert r.status_code == 200
-    assert r.json()["state"] == "idle"
+    body = r.json()
+    assert body["state"] == "idle"
+    assert "current_item" in body  # always present so the JS doesn't NPE
+
+
+def test_tasks_renders_total_count_in_stats(client, cfg):
+    """The header stats live inside the polled /tasks fragment so they
+    update without a full-page reload. Regression: previously the count
+    was rendered once on /, never refreshed after sync/reconcile.
+    """
+    _make_album(cfg, "Orphan Album")
+    _make_album(cfg, "Another One")
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    # Both 'need attention' and 'total in library' counts use 2
+    assert "2" in r.text
+    assert "total in library" in r.text
+
+
+def test_tasks_empty_state_message_distinguishes_zero_vs_all_done(client, cfg):
+    # Empty library
+    r = client.get("/tasks")
+    assert "Drop some albums" in r.text or "Inbox is empty" in r.text
 
 
 # ---------- state dispatch — each card type renders ----------
