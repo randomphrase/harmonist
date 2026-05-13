@@ -2,7 +2,9 @@
     <img src="/cover/{{ album.id }}"
          onerror="this.style.visibility='hidden'"
          alt=""
-         class="w-16 h-16 rounded shadow mr-4 object-cover bg-h-charcoal">
+         width="64" height="64"
+         class="w-16 h-16 rounded shadow mr-4 object-cover bg-h-charcoal flex-shrink-0"
+         style="max-width: 64px;">
     <div class="flex-grow min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
             <h3 class="text-lg font-bold text-white truncate">{{ album.title }}</h3>
