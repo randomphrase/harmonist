@@ -11,9 +11,15 @@
              class="text-xs text-slate-500 max-w-md text-right truncate"></div>
     </div>
 
+    <div id="reconcile-status-source"
+         hx-get="/reconcile/status"
+         hx-trigger="load, every 2000ms"
+         hx-swap="innerHTML"
+         class="hidden"></div>
+
     <div id="task-list"
          hx-get="/tasks"
-         hx-trigger="load, every 1500ms[document.querySelector('#sync-status-pill')?.dataset?.state==='running'], tasks-changed from:body"
+         hx-trigger="load, every 1500ms[document.querySelector('#sync-status-pill')?.dataset?.state==='running' || document.querySelector('#reconcile-status-source')?.dataset?.state==='running'], tasks-changed from:body"
          hx-swap="innerHTML"
          class="space-y-3">
         <div class="text-center py-10">
@@ -23,9 +29,9 @@
 </div>
 
 <script>
-// Update the sync-status pill from /sync/status JSON. Also: when state
-// transitions running → idle, clear the #sync-flash banner so the
-// "Sync started" message doesn't linger.
+// Sync + reconcile status UI handling. Two endpoints, two JSON sources;
+// each updates its own pill via htmx:afterSwap. Both signal /tasks
+// polling via dataset.state on their respective elements.
 (function () {
     let lastSyncState = 'idle';
     const esc = (s) => String(s).replace(/[&<>"']/g, c => (
@@ -33,37 +39,68 @@
     ));
 
     document.body.addEventListener('htmx:afterSwap', function (evt) {
-        if (evt.detail.target.id !== 'sync-status-pill') return;
-        let data;
-        try { data = JSON.parse(evt.detail.target.textContent); }
-        catch (e) { return; }
+        const targetId = evt.detail.target.id;
 
-        const pill = evt.detail.target;
-        pill.dataset.state = data.state;
+        // --- Sync status pill ---
+        if (targetId === 'sync-status-pill') {
+            let data;
+            try { data = JSON.parse(evt.detail.target.textContent); }
+            catch (e) { return; }
 
-        // Auto-clear the start-of-sync flash once we transition off "running".
-        if (lastSyncState === 'running' && data.state === 'idle') {
-            const flash = document.getElementById('sync-flash');
-            if (flash) flash.innerHTML = '';
-        }
-        lastSyncState = data.state;
+            const pill = evt.detail.target;
+            pill.dataset.state = data.state;
 
-        const btn = document.getElementById('sync-button');
-        if (data.state === 'running') {
-            const label = data.current_item
-                ? `Syncing: ${esc(data.current_item)}`
-                : 'Syncing…';
-            pill.innerHTML = `<span class="px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-full font-bold uppercase tracking-widest">${label}</span>`;
-            if (btn) { btn.disabled = true; btn.classList.add('opacity-40', 'cursor-not-allowed'); }
-        } else {
-            let badge = '<span class="text-slate-600">Idle</span>';
-            if (data.last_error) {
-                badge = '<span class="px-3 py-1 bg-red-500/10 text-red-300 border border-red-500/30 rounded-full font-bold uppercase tracking-widest">Sync failed</span>';
-            } else if (data.finished_at) {
-                badge = `<span class="text-slate-500">Last sync: ${data.new_items ? data.new_items + ' new' : 'no new items'}</span>`;
+            if (lastSyncState === 'running' && data.state === 'idle') {
+                const flash = document.getElementById('sync-flash');
+                if (flash) flash.innerHTML = '';
             }
-            pill.innerHTML = badge;
-            if (btn) { btn.disabled = false; btn.classList.remove('opacity-40', 'cursor-not-allowed'); }
+            lastSyncState = data.state;
+
+            const btn = document.getElementById('sync-button');
+            if (data.state === 'running') {
+                const label = data.current_item
+                    ? `Syncing: ${esc(data.current_item)}`
+                    : 'Syncing…';
+                pill.innerHTML = `<span class="px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-full font-bold uppercase tracking-widest">${label}</span>`;
+                if (btn) { btn.disabled = true; btn.classList.add('opacity-40', 'cursor-not-allowed'); }
+            } else {
+                let badge = '<span class="text-slate-600">Idle</span>';
+                if (data.last_error) {
+                    badge = '<span class="px-3 py-1 bg-red-500/10 text-red-300 border border-red-500/30 rounded-full font-bold uppercase tracking-widest">Sync failed</span>';
+                } else if (data.finished_at) {
+                    badge = `<span class="text-slate-500">Last sync: ${data.new_items ? data.new_items + ' new' : 'no new items'}</span>`;
+                }
+                pill.innerHTML = badge;
+                if (btn) { btn.disabled = false; btn.classList.remove('opacity-40', 'cursor-not-allowed'); }
+            }
+            return;
+        }
+
+        // --- Reconcile status (hidden source div + visible inline pill) ---
+        if (targetId === 'reconcile-status-source') {
+            let data;
+            try { data = JSON.parse(evt.detail.target.textContent); }
+            catch (e) { return; }
+
+            const src = evt.detail.target;
+            src.dataset.state = data.state;
+            // Hide the JSON from view (htmx puts it in innerHTML)
+            src.style.display = 'none';
+
+            const pill = document.getElementById('reconcile-pill');
+            if (!pill) return;
+            if (data.state === 'running') {
+                const prog = data.total
+                    ? ` (${data.completed}/${data.total})`
+                    : '';
+                const what = data.current_item
+                    ? `: ${esc(data.current_item)}`
+                    : '';
+                pill.innerHTML = `<span class="px-2 py-0.5 bg-mb-purple/10 text-mb-purple border border-mb-purple/30 rounded-full font-bold uppercase tracking-widest">Reconciling${what}${prog}</span>`;
+            } else {
+                pill.innerHTML = '';
+            }
+            return;
         }
     });
 })();
