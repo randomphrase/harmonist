@@ -9,6 +9,7 @@
              src="/cover/{{ album.id }}"
              onerror="this.style.visibility='hidden'"
              alt=""
+             width="40" height="40"
              class="w-10 h-10 rounded shadow object-cover bg-h-charcoal flex-shrink-0">
         <div class="flex-grow min-w-0">
             <div class="text-sm text-slate-100 truncate">
@@ -35,7 +36,9 @@
                      src="/cover/{{ album.id }}"
                      onerror="this.style.visibility='hidden'"
                      alt=""
-                     class="w-full rounded shadow object-cover bg-h-charcoal">
+                     width="208" height="208"
+                     class="w-full rounded shadow object-cover bg-h-charcoal"
+                     style="max-width: 208px; aspect-ratio: 1;">
                 <div>
                     <div class="text-2xs text-slate-500 uppercase tracking-widest">Title</div>
                     <div class="text-slate-100">{{ album.title }}</div>
