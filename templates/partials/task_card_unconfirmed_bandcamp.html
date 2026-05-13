@@ -12,8 +12,9 @@
         <form hx-post="/unconfirmed/{{ album.id }}/url" hx-target="this" hx-swap="afterend"
               class="flex gap-2">
             <input type="url" name="url" required
-                   placeholder="https://artist.bandcamp.com/album/correct-slug"
-                   class="flex-grow bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-bc-teal outline-none">
+                   value="{{ album.sidecar.bandcamp.url if album.sidecar and album.sidecar.bandcamp else '' }}"
+                   placeholder="https://artist.bandcamp.com/album/..."
+                   class="flex-grow bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-bc-teal outline-none font-mono">
             <button type="submit"
                     class="px-3 py-1.5 bg-bc-teal/20 hover:bg-bc-teal/30 text-bc-teal border border-bc-teal/30 rounded text-xs font-bold uppercase tracking-widest transition">
                 Update URL

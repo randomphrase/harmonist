@@ -195,6 +195,8 @@ def test_unconfirmed_bandcamp_card_renders(client, cfg):
     assert "Unconfirmed Bandcamp" in r.text
     assert "Mark purchased elsewhere" in r.text
     assert 'hx-post="/unconfirmed/' in r.text
+    # URL input is pre-filled with the existing URL (not just a placeholder)
+    assert 'value="https://x.bandcamp.com/album/y"' in r.text
 
 
 # ---------- action endpoints ----------
