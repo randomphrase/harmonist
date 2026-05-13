@@ -1,6 +1,19 @@
+<div class="flex justify-between items-baseline mb-3 text-sm">
+    <p class="text-slate-400">
+        <span class="font-bold text-slate-100">{{ albums|length }}</span> need attention
+        · <span class="text-slate-300">{{ total_albums }}</span> total in library
+    </p>
+</div>
+
 {% if not albums %}
 <div class="p-10 text-center bg-h-slate/40 rounded-lg border border-slate-700/50">
-    <p class="text-slate-400 italic">Inbox is empty. Either everything's reconciled or your library hasn't been scanned yet.</p>
+    <p class="text-slate-400 italic">
+        {% if total_albums %}
+        All {{ total_albums }} album{{ 's' if total_albums != 1 else '' }} in your library are fully tagged and reconciled.
+        {% else %}
+        Inbox is empty. Drop some albums into the music dir or click Sync.
+        {% endif %}
+    </p>
 </div>
 {% else %}
 <div class="grid grid-cols-1 gap-3">

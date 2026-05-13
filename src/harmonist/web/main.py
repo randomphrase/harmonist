@@ -62,13 +62,18 @@ def create_app(
 
     mb_lookup.configure(cfg.musicbrainz.user_agent)
 
+    sync_runner = SyncRunner(runner_fn=lambda: None)  # placeholder, replaced below
+
     if cfg.demo_mode:
         from harmonist import demo
         demo.install()
         demo.ensure_seeded(cfg.paths.music_dir)
-        runner_fn = lambda: demo.run_demo_sync(cfg.paths.music_dir)
+        runner_fn = lambda: demo.run_demo_sync(
+            cfg.paths.music_dir, progress_callback=sync_runner.set_current_item
+        )
     else:
-        runner_fn = lambda: _run_bandcamp_sync(cfg)
+        runner_fn = lambda: _run_bandcamp_sync(cfg, progress_callback=sync_runner.set_current_item)
+    sync_runner._runner_fn = runner_fn
 
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     templates_dir = project_root / "templates"
@@ -77,8 +82,6 @@ def create_app(
     templates.env.globals["harmony_base"] = HARMONY_BASE
     templates.env.globals["AlbumState"] = AlbumState
     templates.env.globals["demo_mode"] = cfg.demo_mode
-
-    sync_runner = SyncRunner(runner_fn=runner_fn)
 
     app = FastAPI(title="Harmonist")
     app.state.cfg = cfg
@@ -138,7 +141,7 @@ def _inbox_albums(albums: list[Album]) -> list[Album]:
     return [a for a in albums if a.state != AlbumState.DONE]
 
 
-def _run_bandcamp_sync(cfg: config_mod.Config):
+def _run_bandcamp_sync(cfg: config_mod.Config, *, progress_callback=None):
     """Build a HarmonistSyncer and let it run end-to-end."""
     if not cfg.cookies_file.exists():
         raise FileNotFoundError(
@@ -158,6 +161,7 @@ def _run_bandcamp_sync(cfg: config_mod.Config):
         ign_patterns="",
         notify_url=None,
         max_downloads_per_sync=cfg.bandcamp.max_downloads_per_sync,
+        progress_callback=progress_callback,
     )
 
 

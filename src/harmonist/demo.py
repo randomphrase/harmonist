@@ -368,7 +368,7 @@ def ensure_seeded(music_dir: Path) -> bool:
     return True
 
 
-def run_demo_sync(music_dir: Path) -> Any:
+def run_demo_sync(music_dir: Path, *, progress_callback=None) -> Any:
     """Pop the next pending purchase and materialise it. Returns a stub
     matching the bandcampsync.Syncer attribute the runner introspects.
     """
@@ -378,6 +378,11 @@ def run_demo_sync(music_dir: Path) -> Any:
     if not _pending_queue:
         return _Result()
     spec = _pending_queue.pop(0)
+    if progress_callback:
+        try:
+            progress_callback(f"{spec['artist']} / {spec['album']}")
+        except Exception:
+            pass
     _materialise(music_dir, spec)
     _Result.new_items_downloaded = True
     return _Result()
