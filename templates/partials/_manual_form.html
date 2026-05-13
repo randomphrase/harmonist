@@ -17,13 +17,13 @@
         <form hx-post="/manual/{{ album.id }}/search"
               hx-target="#manual-search-{{ album.id }}"
               hx-swap="innerHTML"
-              class="grid grid-cols-[1fr_1fr_auto] gap-2 mt-2">
+              class="flex gap-2 mt-2">
             <input type="text" name="artist" value="{{ album.artist }}" placeholder="Artist"
-                   class="bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-mb-purple outline-none">
+                   class="flex-1 min-w-0 bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-mb-purple outline-none">
             <input type="text" name="title" value="{{ album.title }}" placeholder="Album"
-                   class="bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-mb-purple outline-none">
+                   class="flex-1 min-w-0 bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-mb-purple outline-none">
             <button type="submit"
-                    class="px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-200 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition">
+                    class="px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-200 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">
                 Search
             </button>
         </form>

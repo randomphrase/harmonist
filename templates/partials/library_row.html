@@ -15,7 +15,7 @@
                 <span class="font-bold">{{ album.title }}</span>
                 <span class="text-slate-500"> · {{ album.artist }}</span>
             </div>
-            <div class="text-[10px] text-slate-600">
+            <div class="text-2xs text-slate-600">
                 {% if sc and sc.tagged_at %}{{ sc.tagged_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}
                 · {{ album.track_count }} track{{ 's' if album.track_count != 1 else '' }}
                 {% if sc and sc.source %} · {{ sc.source }}{% endif %}
@@ -29,35 +29,35 @@
 
     {# Expanded view, hidden by default #}
     <div id="exp-{{ album.id }}" class="hidden border-t border-slate-800 bg-h-charcoal/50 p-4">
-        <div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 text-xs">
-            <div class="space-y-2">
+        <div class="flex flex-col md:flex-row gap-4 text-xs">
+            <div class="space-y-2 w-full md:w-52 md:flex-shrink-0">
                 <img loading="lazy"
                      src="/cover/{{ album.id }}"
                      onerror="this.style.visibility='hidden'"
                      alt=""
-                     class="w-full max-w-[200px] rounded shadow object-cover bg-h-charcoal">
+                     class="w-full rounded shadow object-cover bg-h-charcoal">
                 <div>
-                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Title</div>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Title</div>
                     <div class="text-slate-100">{{ album.title }}</div>
                 </div>
                 <div>
-                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Artist</div>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Artist</div>
                     <div class="text-slate-100">{{ album.artist }}</div>
                 </div>
                 <div>
-                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Source</div>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Source</div>
                     <div class="text-slate-300">{{ sc.source if sc else '—' }}</div>
                 </div>
                 <div>
-                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Path</div>
-                    <div class="text-slate-500 break-all font-mono text-[10px]">{{ album.path }}</div>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Path</div>
+                    <div class="text-slate-500 break-all font-mono text-2xs">{{ album.path }}</div>
                 </div>
             </div>
 
-            <div class="space-y-3">
+            <div class="space-y-3 flex-grow min-w-0">
                 {% if sc and sc.mb_release_id %}
                 <div>
-                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">MusicBrainz Release</div>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">MusicBrainz Release</div>
                     <a href="https://musicbrainz.org/release/{{ sc.mb_release_id }}"
                        target="_blank" rel="noopener"
                        class="text-mb-purple hover:underline break-all font-mono">{{ sc.mb_release_id }}</a>
@@ -66,13 +66,13 @@
 
                 {% if bc %}
                 <div>
-                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Bandcamp URL</div>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Bandcamp URL</div>
                     <a href="{{ bc.url }}" target="_blank" rel="noopener"
                        class="text-bc-teal hover:underline break-all">{{ bc.url }}</a>
                 </div>
                 {% if bc.item_id is not none %}
                 <div>
-                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">Bandcamp Item ID</div>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Bandcamp Item ID</div>
                     <div class="text-slate-500 font-mono">{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}</div>
                 </div>
                 {% endif %}
@@ -81,19 +81,19 @@
                 <div class="grid grid-cols-3 gap-2">
                     {% if sc and sc.downloaded_at %}
                     <div>
-                        <div class="text-[10px] text-slate-500 uppercase tracking-widest">Downloaded</div>
+                        <div class="text-2xs text-slate-500 uppercase tracking-widest">Downloaded</div>
                         <div class="text-slate-400 font-mono">{{ sc.downloaded_at.strftime('%Y-%m-%d') }}</div>
                     </div>
                     {% endif %}
                     {% if sc and sc.added_at %}
                     <div>
-                        <div class="text-[10px] text-slate-500 uppercase tracking-widest">Added</div>
+                        <div class="text-2xs text-slate-500 uppercase tracking-widest">Added</div>
                         <div class="text-slate-400 font-mono">{{ sc.added_at.strftime('%Y-%m-%d') }}</div>
                     </div>
                     {% endif %}
                     {% if sc and sc.tagged_at %}
                     <div>
-                        <div class="text-[10px] text-slate-500 uppercase tracking-widest">Tagged</div>
+                        <div class="text-2xs text-slate-500 uppercase tracking-widest">Tagged</div>
                         <div class="text-slate-400 font-mono">{{ sc.tagged_at.strftime('%Y-%m-%d') }}</div>
                     </div>
                     {% endif %}
