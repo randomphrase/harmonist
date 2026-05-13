@@ -18,6 +18,7 @@ from harmonist.bandcamp_hook import CapExceededError, HarmonistSyncer
 from harmonist.match import assess_match
 from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar
 from harmonist.tagger import PicardCompatibleTagger, Tagger
+from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.sync_runner import AlreadyRunningError, SyncRunner
 
 # Demo mode is conditionally imported in create_app() — keeps demo-only code
@@ -75,6 +76,14 @@ def create_app(
         runner_fn = lambda: _run_bandcamp_sync(cfg, progress_callback=sync_runner.set_current_item)
     sync_runner._runner_fn = runner_fn
 
+    reconcile_runner = ReconcileRunner(
+        runner_fn=lambda status_updater: reconcile_pending_orphans(
+            cfg.paths.music_dir,
+            fetch_urls=mb_lookup.fetch_release_urls,
+            status_updater=status_updater,
+        ),
+    )
+
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     templates_dir = project_root / "templates"
     static_dir = project_root / "static"
@@ -87,6 +96,7 @@ def create_app(
     app.state.cfg = cfg
     app.state.templates = templates
     app.state.sync_runner = sync_runner
+    app.state.reconcile_runner = reconcile_runner
     app.state.tagger = tagger
 
     if static_dir.exists():
@@ -249,12 +259,32 @@ def _register_routes(app: FastAPI) -> None:
     @app.get("/tasks", response_class=HTMLResponse)
     def tasks(request: Request):
         albums = _albums(request)
+        # Auto-kick the reconciler if there are Orphans waiting and the
+        # debounce window has elapsed. The runner internally handles the
+        # "no MBID, skip" case — cost is cheap for non-reconcilable orphans.
+        if any(a.state == AlbumState.ORPHAN for a in albums):
+            request.app.state.reconcile_runner.start()
         ctx = _ctx(request, albums=_inbox_albums(albums), total_albums=len(albums))
         return request.app.state.templates.TemplateResponse(request, "tasks.html", ctx)
 
     @app.get("/sync/status")
     def sync_status(request: Request):
         return JSONResponse(request.app.state.sync_runner.status())
+
+    @app.get("/reconcile/status")
+    def reconcile_status(request: Request):
+        return JSONResponse(request.app.state.reconcile_runner.status())
+
+    @app.post("/reconcile", response_class=HTMLResponse)
+    def reconcile_start(request: Request):
+        """Manual trigger — same handler the inbox auto-kicks. Useful when
+        the user wants to force a re-run after dropping files in."""
+        started = request.app.state.reconcile_runner.start()
+        if started:
+            return HTMLResponse(_flash("Reconcile started — watch the inbox.", level="info"))
+        return HTMLResponse(_flash(
+            "Reconcile is already running (or just finished).", level="warning"
+        ))
 
     @app.post("/sync", response_class=HTMLResponse)
     def start_sync(request: Request):

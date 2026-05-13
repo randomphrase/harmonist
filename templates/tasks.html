@@ -1,8 +1,9 @@
-<div class="flex justify-between items-baseline mb-3 text-sm">
+<div class="flex justify-between items-baseline mb-3 text-sm flex-wrap gap-2">
     <p class="text-slate-400">
         <span class="font-bold text-slate-100">{{ albums|length }}</span> need attention
         · <span class="text-slate-300">{{ total_albums }}</span> total in library
     </p>
+    <p id="reconcile-pill" class="text-xs text-slate-500"></p>
 </div>
 
 {% if not albums %}
