@@ -30,7 +30,7 @@
     <section id="library" class="mt-10">
         <div id="library-rows"
              hx-get="/library?offset=0&limit=30"
-             hx-trigger="load"
+             hx-trigger="load, library-refresh from:body"
              hx-swap="innerHTML">
             <div class="text-center py-6 text-slate-600 italic text-sm">Loading library…</div>
         </div>
@@ -56,12 +56,20 @@ function harmonistToggleRow(id) {
 <script>
 // Sync + reconcile status UI handling. Two endpoints, two JSON sources;
 // each updates its own pill via htmx:afterSwap. Both signal /tasks
-// polling via dataset.state on their respective elements.
+// polling via dataset.state on their respective elements. On the
+// running→idle edge for either runner, fire a `library-refresh` event
+// so the Library section pulls in any newly-Done albums.
 (function () {
     let lastSyncState = 'idle';
+    let lastReconcileState = 'idle';
     const esc = (s) => String(s).replace(/[&<>"']/g, c => (
         {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
     ));
+
+    function refreshLibrary() {
+        // HTMX listens for this on the #library-rows element (from:body).
+        document.body.dispatchEvent(new Event('library-refresh'));
+    }
 
     document.body.addEventListener('htmx:afterSwap', function (evt) {
         const targetId = evt.detail.target.id;
@@ -78,6 +86,7 @@ function harmonistToggleRow(id) {
             if (lastSyncState === 'running' && data.state === 'idle') {
                 const flash = document.getElementById('sync-flash');
                 if (flash) flash.innerHTML = '';
+                refreshLibrary();
             }
             lastSyncState = data.state;
 
@@ -111,6 +120,11 @@ function harmonistToggleRow(id) {
             src.dataset.state = data.state;
             // Hide the JSON from view (htmx puts it in innerHTML)
             src.style.display = 'none';
+
+            if (lastReconcileState === 'running' && data.state === 'idle') {
+                refreshLibrary();
+            }
+            lastReconcileState = data.state;
 
             const pill = document.getElementById('reconcile-pill');
             if (!pill) return;
