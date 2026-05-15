@@ -20,6 +20,8 @@ The following are explicitly out of scope for this prototype:
 - **No C++ bindings.** The earlier readme mentioned them; they don't exist and we're not adding them.
 - **No multi-user / no auth.** Single-user app behind the user's network.
 - **No format conversion.** Files are downloaded in the requested format (default ALAC) and tagged in place.
+- **No fix-it-yourself for inconsistent dirs.** Picard exists for that. See §15.2.
+- **No transcoding, no folder splitting.** See §15.4.
 
 ---
 
@@ -101,6 +103,54 @@ Every album in the music dir is in exactly one state, derived from the presence/
 **Transitions are idempotent.** Running sync, recheck, or tag twice on the same album is safe and produces the same result.
 
 The "Ambiguous" state from the old readme is gone for Bandcamp sources (URL → MB lookup is exact). It only resurfaces inside the Manual search helper, where it's a UI concern, not a system state.
+
+### 3.1 State transition diagram
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> ORPHAN: scanner finds<br/>album dir (no sidecar)
+    [*] --> INCONSISTENT: files disagree<br/>on album/MBID
+    [*] --> DONE: scanner finds<br/>sidecar+tagged files
+
+    ORPHAN --> UNCONFIRMED_BANDCAMP: reconcile<br/>(MBID + bandcamp ©cmt)
+    ORPHAN --> DONE: reconcile<br/>(MBID, non-bandcamp)
+    ORPHAN --> HELD_BANDCAMP: recover URL<br/>from ©cmt
+    ORPHAN --> NEEDS_CONFIRMATION: manual MBID<br/>(approximate)
+    ORPHAN --> DONE: manual MBID<br/>(exact)
+
+    HELD_BANDCAMP --> NEEDS_CONFIRMATION: recheck<br/>(approximate)
+    HELD_BANDCAMP --> DONE: recheck<br/>(exact)
+    HELD_BANDCAMP --> HELD_BANDCAMP: recheck (no match)
+
+    HELD_MANUAL --> NEEDS_CONFIRMATION: paste MBID<br/>(approximate)
+    HELD_MANUAL --> DONE: paste MBID<br/>(exact)
+
+    NEEDS_CONFIRMATION --> DONE: Confirm
+    NEEDS_CONFIRMATION --> DONE: Confirm as Incomplete<br/>(incomplete:true)
+    NEEDS_CONFIRMATION --> HELD_BANDCAMP: Reject (bandcamp src)
+    NEEDS_CONFIRMATION --> HELD_MANUAL: Reject (manual src)
+
+    UNCONFIRMED_BANDCAMP --> DONE: Sync matches<br/>purchase (item_id filled)
+    UNCONFIRMED_BANDCAMP --> DONE: Mark purchased<br/>elsewhere
+    UNCONFIRMED_BANDCAMP --> UNCONFIRMED_BANDCAMP: Update URL<br/>(retry on next sync)
+
+    DONE --> ORPHAN: Forget<br/>(sidecar deleted)
+    DONE --> DONE: Re-tag from MB
+
+    INCONSISTENT --> ORPHAN: user fixes on-disk<br/>tags via Picard
+```
+
+Notes:
+
+- `DONE` has two flavours: normal, and incomplete (`sidecar.incomplete = true`,
+  added via "Confirm as Incomplete" — see §15.3).
+- `TAGGING` is omitted: it's a transient state visible only while the
+  tagger is mid-write (typically <1s).
+- `INCONSISTENT` is purely derived from on-disk file tags; user resolves
+  via Picard (§15.2). No sidecar action needed.
+- Forget adds the path to an in-memory exemption set so auto-reconcile
+  doesn't immediately reverse it (§22 — see commit history).
 
 ### Match confidence (when MB has the URL but the files might not match)
 
@@ -496,7 +546,153 @@ Each step ends with green tests at its level. No agent moves on until QA signs o
 
 ---
 
-## 13. Open questions
+## 14. Audio format support
+
+Harmonist supports common audio container formats. Scanner walks for all
+supported extensions; tagger dispatches by file extension to the right
+per-format implementation.
+
+| Format | Extension | Tag spec | mutagen class | Status |
+|---|---|---|---|---|
+| ALAC / AAC in MP4 | `.m4a`, `.mp4` | iTunes-style MP4 atoms (Picard spec) | `mutagen.mp4.MP4` | Implemented |
+| MP3 | `.mp3` | ID3v2 frames (Picard spec) | `mutagen.id3.ID3` via `mutagen.mp3.MP3` | TBD |
+| FLAC | `.flac` | Vorbis comments + `METADATA_BLOCK_PICTURE` | `mutagen.flac.FLAC` | TBD |
+| Ogg Vorbis | `.ogg`, `.oga` | Vorbis comments | `mutagen.oggvorbis.OggVorbis` | TBD |
+| Opus | `.opus` | Vorbis comments (in Ogg) | `mutagen.oggopus.OggOpus` | TBD |
+
+Out of scope: WAV (no standardised tag scheme), AIFF (rare for libraries),
+WMA, format conversion. Harmonist never transcodes — files stay in their
+original container.
+
+**Architecture:** `Tagger` protocol gains a `supports(file_path) -> bool`
+method and a registry pattern. The default registry contains one Tagger
+per format. Scanner reads tags via the format-appropriate mutagen class
+in a thin shim (e.g. `read_tags(path) -> {album, artist, mbid, comment}`)
+so the rest of the codebase doesn't care about format specifics.
+
+Each per-format tagger conforms to Picard's documented mapping for that
+format (https://picard.musicbrainz.org/docs/mappings/). The byte-diff
+fixture test in §11 extends to one reference album per format.
+
+## 15. Best-effort handling of imperfect libraries
+
+Harmonist heavily biases the **curated user** — Picard-tagged, sane folder
+structure, purchased / legitimately-obtained library. For chaotic
+libraries (mixed dirs, partial tagging, downloaded-from-Napster mess), the
+rule is **best effort, never silent corruption**. When the on-disk state
+is ambiguous, surface it to the user with enough info to decide;
+otherwise do nothing.
+
+**Core principle:** *the user should never need to find, edit, or delete
+a `.harmonist.json` sidecar by hand to escape a state.* If they do, that's
+a UX bug. Every state must have a path out via on-disk file edits, Picard,
+or a button in the UI.
+
+### 15.1 Partial tagging
+
+Some tracks in an album dir have the MB Album Id atom, others don't.
+Common cause: user added a track to an existing album without re-tagging,
+or Picard was interrupted partway through.
+
+**Detection:** scanner reads MB Album Id from every file. If N of M files
+are tagged with the matching MBID (M > N > 0), the album is *partially
+tagged*.
+
+**State:** stays `DONE` (the existing logic treats "any file matches" as
+Done). The scanner's Album object gains a `partial_tag_count` field
+(`"N/M"`-style) — not persisted, just derived at scan time.
+
+**UI:** library expanded view shows a "5/6 tracks tagged" line. The
+existing Re-tag from MB button re-runs the tagger across all files,
+backfilling the untagged ones idempotently.
+
+No new state — partial tagging is a quality issue, not ambiguity. User
+sees the indicator, clicks Re-tag, done.
+
+### 15.2 Inconsistent dirs (multiple albums in one folder)
+
+Tracks in an album dir disagree on album title (`©alb` / `TALB` / `ALBUM`)
+or MB Album Id. Common cause: messy filesystem; user dumped multiple
+albums into one folder.
+
+**Detection:** scanner reads album title + MB Album Id from every file in
+each album dir. If either varies across files, derive state `INCONSISTENT`.
+Compilations (same album title + MBID, varying track artists) are NOT
+flagged — that's legitimate.
+
+**State:** new `INCONSISTENT`. **Purely derived from on-disk file tags;
+no sidecar field involved.** Auto-reconcile skips these (they're not
+Orphans — scanner pre-empts the orphan classification).
+
+**UI:** inbox card shows a per-track summary table with the conflicting
+fields highlighted, and an instruction:
+
+> *Sort these into separate folders with Picard, then refresh. Harmonist
+> won't guess at conflicting tags — Picard exists for exactly this case.*
+
+**No "Ignore" action.** Per the core principle, we don't write a sidecar
+field that requires hand-editing JSON to escape. Once the user fixes the
+on-disk tags via Picard, the next scan re-classifies the dir naturally
+(likely Orphan → auto-reconcile resolves it). Chaotic dirs the user
+genuinely doesn't care about will sit in the inbox indefinitely — that
+is the deliberate cost of the principle.
+
+**Sidecar interaction:** if a sidecar already exists when files become
+inconsistent (e.g. user dropped a stray file into a Done album dir),
+INCONSISTENT trumps the sidecar's state. The sidecar isn't deleted —
+once the user fixes the on-disk reality, the scanner will read the
+consistent state and the sidecar resumes driving the state machine.
+
+**Known limitation:** files internally consistent but **disagreeing
+with the sidecar's `mb_release_id`** (user re-tagged via Picard to a
+different MBID) currently surfaces as `TAGGING` (the existing "files
+not yet tagged with matching MBID" check). This is misleading — the
+files ARE tagged, just with a different MBID than the sidecar
+remembers. Future work: detect this and either auto-update the sidecar
+to match the files ("user's most recent Picard action wins") or
+surface a "Sidecar Stale" state.
+
+**Rationale:** tagging an inconsistent dir is high-risk silent
+corruption. We refuse to guess; Picard exists for this case.
+
+### 15.3 Incomplete albums
+
+On-disk track count is **less than** the MB release's track count, but
+the user has a valid reason (CD rip missing a hidden track, intentional
+selection, vinyl-only edition where the digital MB release has bonus
+tracks, etc.). Without special handling these stall in `NEEDS_CONFIRMATION`
+forever because `TagMismatchError` would block the tagger.
+
+**Handling:** the Needs Confirmation card gains a third button next to
+Confirm / Reject:
+
+- **Confirm as Incomplete** — writes `incomplete: true` to the sidecar
+  AND runs the tagger in incomplete mode.
+
+**Tagger incomplete mode:** doesn't raise `TagMismatchError` on
+`file_count < track_count`. Uses **length-similarity** to match the
+on-disk files to a subset of MB tracks (best-fit assignment, falling
+back to positional matching when lengths are unknown / equal). MB tracks
+without a matched file are skipped.
+
+**State after Confirm as Incomplete:** `DONE`. The library expanded view
+shows a small "incomplete" badge plus a per-track list of which MB
+tracks weren't on disk.
+
+**Out of scope:** file_count > track_count (extra tracks on disk) — same
+class as inconsistent; user resolves externally.
+
+### 15.4 Explicitly out of scope
+
+- **Folder splitting** (separating two albums in one dir into two dirs):
+  filesystem-level operation; user does this with Finder/CLI/Picard.
+- **Tag editing of individual files** outside MB lookups: Picard's job.
+- **Recursive directory disagreement** (nested album dirs): scanner
+  treats every dir with audio files as a single album. Atypical layouts
+  must be flattened first.
+- **Format conversion**: Harmonist never transcodes.
+
+## 16. Open questions
 
 - **Cover art serving:** the inbox UI references covers via `/static/music/...`. Simplest path is a FastAPI mount of the music dir, scoped to image files only. Decision pending.
 - **Cover art library optimisation:** future enhancement, not in scope here. If the library grows big enough to matter, a separate batch tool can downsize covers across all albums. Keep that out of the tagger's hot path.
