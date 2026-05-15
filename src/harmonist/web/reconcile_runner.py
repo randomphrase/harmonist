@@ -148,16 +148,26 @@ def reconcile_pending_orphans(
     fetch_urls: Callable[[str], list],
     status_updater: Optional[Callable[..., None]] = None,
     rate_limit_seconds: float = MB_RATE_LIMIT_SECONDS,
+    exempt_paths: Optional[set] = None,
 ) -> dict:
     """Walk music_dir; reconcile every Orphan with an MBID atom.
+
+    Albums whose path is in `exempt_paths` are skipped. This is the
+    mechanism that respects user intent after a Forget — without it, the
+    auto-reconciliation would immediately re-create the sidecar the user
+    just deleted. Exemption is in-memory only; server restart clears it.
 
     Yielded progress goes through status_updater. Returns final stats.
     """
     from harmonist import reconcile, scanner
     from harmonist.models import AlbumState
 
+    exempt = exempt_paths or set()
     albums = scanner.scan(music_dir)
-    orphans = [a for a in albums if a.state == AlbumState.ORPHAN]
+    orphans = [
+        a for a in albums
+        if a.state == AlbumState.ORPHAN and a.path not in exempt
+    ]
     total = len(orphans)
     if status_updater:
         status_updater(total=total, completed=0)

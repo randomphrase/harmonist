@@ -76,11 +76,17 @@ def create_app(
         runner_fn = lambda: _run_bandcamp_sync(cfg, progress_callback=sync_runner.set_current_item)
     sync_runner._runner_fn = runner_fn
 
+    # Paths the user has explicitly Forgot. Exempted from auto-reconcile so
+    # the runner doesn't immediately undo the user's intent. In-memory only:
+    # restart clears the set (acceptable tradeoff per user feedback).
+    forgotten_paths: set[Path] = set()
+
     reconcile_runner = ReconcileRunner(
         runner_fn=lambda status_updater: reconcile_pending_orphans(
             cfg.paths.music_dir,
             fetch_urls=mb_lookup.fetch_release_urls,
             status_updater=status_updater,
+            exempt_paths=forgotten_paths,
         ),
     )
 
@@ -97,6 +103,7 @@ def create_app(
     app.state.templates = templates
     app.state.sync_runner = sync_runner
     app.state.reconcile_runner = reconcile_runner
+    app.state.forgotten_paths = forgotten_paths
     app.state.tagger = tagger
 
     if static_dir.exists():
@@ -350,11 +357,18 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post("/forget/{album_id}", response_class=HTMLResponse)
     def forget(request: Request, album_id: str):
-        """Delete the sidecar — album reverts to Orphan. Files are not touched."""
+        """Delete the sidecar — album reverts to Orphan. Files are not touched.
+
+        Adds the album's path to the in-memory forgotten_paths set so the
+        auto-reconciliation runner won't immediately undo this. The user's
+        Forget intent is respected until they explicitly Reconcile, or
+        until the server restarts.
+        """
         album = _find_album(request, album_id)
         sc_path = sidecar_mod.sidecar_path(album.path)
         if sc_path.exists():
             sc_path.unlink()
+        request.app.state.forgotten_paths.add(album.path)
         return HTMLResponse(
             _flash("Forgotten. Album is now an Orphan.", level="info"),
             headers={"HX-Trigger": "tasks-changed"},
@@ -384,9 +398,13 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post("/reconcile/{album_id}", response_class=HTMLResponse)
     def reconcile_album_route(request: Request, album_id: str):
+        """Per-album reconcile trigger. Idempotent — safe to click even if
+        the album has already been reconciled by the background runner.
+
+        Also clears any prior Forget exemption: explicit user intent wins.
+        """
         album = _find_album(request, album_id)
-        if album.state != AlbumState.ORPHAN:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "album is not an orphan")
+        request.app.state.forgotten_paths.discard(album.path)
         try:
             sc = reconcile.reconcile_album(
                 album.path, fetch_urls=mb_lookup.fetch_release_urls
@@ -398,6 +416,12 @@ def _register_routes(app: FastAPI) -> None:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         if sc is None:
+            # reconcile_album returns None for two reasons: existing sidecar
+            # (already reconciled, often by the auto-runner) or no MBID atom.
+            if sidecar_mod.has_sidecar(album.path):
+                return HTMLResponse(_flash(
+                    "Already reconciled — sidecar exists.", level="info",
+                ), headers={"HX-Trigger": "tasks-changed"})
             return HTMLResponse(_flash(
                 "Could not reconcile — no MusicBrainz Album Id atom on the files.",
                 level="warning",

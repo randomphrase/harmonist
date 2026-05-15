@@ -130,6 +130,25 @@ def test_runner_status_updater_propagates_to_status():
 
 # ---------- reconcile_pending_orphans ----------
 
+def test_reconcile_pending_skips_exempt_paths(tmp_path):
+    """Albums in exempt_paths must be left alone — respects user Forget intent."""
+    music = tmp_path / "music"
+    exempt_orphan = _make_album(music, "ExemptOrphan", mbid="rel-1")
+    normal_orphan = _make_album(music, "NormalOrphan", mbid="rel-2",
+                                comment="https://x.bandcamp.com")
+
+    stats = reconcile_pending_orphans(
+        music,
+        fetch_urls=lambda mbid: ["https://x.bandcamp.com/album/y"],
+        rate_limit_seconds=0,
+        exempt_paths={exempt_orphan},
+    )
+    # Exempt one untouched, normal one reconciled
+    assert not sc.has_sidecar(exempt_orphan)
+    assert sc.has_sidecar(normal_orphan)
+    assert stats["total"] == 1  # only the non-exempt counted
+
+
 def test_reconcile_pending_walks_only_orphans(tmp_path):
     music = tmp_path / "music"
     orphan_with_mbid = _make_album(

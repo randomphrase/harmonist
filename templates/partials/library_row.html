@@ -47,14 +47,6 @@
                     <div class="text-2xs text-slate-500 uppercase tracking-widest">Artist</div>
                     <div class="text-slate-100">{{ album.artist }}</div>
                 </div>
-                <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Source</div>
-                    <div class="text-slate-300">{{ sc.source if sc else '—' }}</div>
-                </div>
-                <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Path</div>
-                    <div class="text-slate-500 break-all font-mono text-2xs">{{ album.path }}</div>
-                </div>
             </div>
 
             <div class="space-y-3 flex-grow min-w-0">
@@ -100,6 +92,15 @@
                         <div class="text-slate-400 font-mono">{{ sc.tagged_at.strftime('%Y-%m-%d') }}</div>
                     </div>
                     {% endif %}
+                </div>
+
+                <div>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Source</div>
+                    <div class="text-slate-300">{{ sc.source if sc else '—' }}</div>
+                </div>
+                <div>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Path</div>
+                    <div class="text-slate-500 break-all font-mono text-2xs">{{ album.path }}</div>
                 </div>
 
                 <div class="flex gap-2 pt-2 border-t border-slate-800">

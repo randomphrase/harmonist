@@ -678,6 +678,33 @@ def sc_module_Sidecar_manual():
     return Sidecar(schema_version=1, source="manual")
 
 
+def test_reconcile_is_idempotent_on_already_reconciled_album(client, cfg, monkeypatch):
+    """After Forget → auto-reconcile, a stale 'Reconcile from tags' click
+    used to 400. It should now return a calm 'already reconciled' message.
+    """
+    from harmonist.models import Album, BandcampInfo, Sidecar
+    d = _make_album(cfg, "ToReconcile")
+    sc.write(d, Sidecar(
+        schema_version=1, source="bandcamp",
+        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+        mb_release_id="rel-x",
+    ))
+    aid = Album.make_id(d)
+    r = client.post(f"/reconcile/{aid}")
+    assert r.status_code == 200, r.text
+    assert "already reconciled" in r.text.lower() or "reconcile" in r.text.lower()
+
+
+def test_reconcile_returns_warning_when_no_mbid_atom(client, cfg):
+    """Untagged orphan should get a clear no-MBID message, not a 400."""
+    from harmonist.models import Album
+    d = _make_album(cfg, "Untagged")  # no MBID atom on file
+    aid = Album.make_id(d)
+    r = client.post(f"/reconcile/{aid}")
+    assert r.status_code == 200
+    assert "MusicBrainz Album Id" in r.text or "no" in r.text.lower()
+
+
 def test_forget_deletes_sidecar(client, cfg):
     from datetime import datetime, timezone
     d = _make_tagged_album(cfg, "Forgetme", mbid="rel-1",
@@ -691,6 +718,36 @@ def test_forget_deletes_sidecar(client, cfg):
     # Sidecar gone; album files untouched
     assert not sc.has_sidecar(d)
     assert (d / "01 Track.m4a").exists()
+
+
+def test_forget_adds_path_to_exemption_set(client, cfg):
+    """Forget must add the album's path to forgotten_paths so the
+    auto-reconciler won't undo the user's intent on the next /tasks tick.
+    """
+    from datetime import datetime, timezone
+    d = _make_tagged_album(cfg, "Exempt", mbid="rel-1",
+                          tagged_at=datetime.now(timezone.utc), item_id=1)
+    from harmonist.models import Album
+    aid = Album.make_id(d)
+    client.post(f"/forget/{aid}")
+    assert d in client.app.state.forgotten_paths
+
+
+def test_explicit_reconcile_clears_exemption(client, cfg):
+    """Explicit /reconcile/{id} should discard any prior Forget exemption —
+    the user's most-recent intent wins.
+    """
+    from datetime import datetime, timezone
+    from harmonist.models import Album, BandcampInfo, Sidecar
+    d = _make_album(cfg, "Cleared")
+    # Pre-seed the album in the exemption set
+    client.app.state.forgotten_paths.add(d)
+    # The album has no sidecar (orphan) and no MBID atom — reconcile is a
+    # no-op but the route still discards the exemption.
+    aid = Album.make_id(d)
+    r = client.post(f"/reconcile/{aid}")
+    assert r.status_code == 200
+    assert d not in client.app.state.forgotten_paths
 
 
 def test_cover_serves_when_present(client, cfg):
