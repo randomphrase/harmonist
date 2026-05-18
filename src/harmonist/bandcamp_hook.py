@@ -20,6 +20,7 @@ from bandcampsync.sync import Syncer as _BCSyncer
 
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar
+from .sidecar import CURRENT_SCHEMA_VERSION
 
 
 log = logging.getLogger(__name__)
@@ -68,8 +69,8 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
     """Write or update the sidecar for a Bandcamp item at album_dir.
 
     If a sidecar already exists (typical after reconciliation has run), fills
-    in the missing `bandcamp.item_id` / `band_id` and confirms `source` as
-    "bandcamp". Otherwise creates a fresh sidecar for a brand-new download.
+    in the missing `bandcamp.item_id` / `band_id`. Otherwise creates a fresh
+    sidecar for a brand-new download.
 
     Returns True on success, False if the URL couldn't be reconstructed.
     """
@@ -88,21 +89,18 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
     existing = sidecar_mod.read(album_dir)
     if existing is not None:
         # Reconciliation produced a sidecar earlier; fill in what's missing.
-        bandcamp = BandcampInfo(
-            url=existing.bandcamp.url if existing.bandcamp else url,
+        merged_bandcamp = BandcampInfo(
             item_id=item_id,
             band_id=band_id if band_id is not None else (existing.bandcamp.band_id if existing.bandcamp else None),
         )
         merged = Sidecar(
             schema_version=existing.schema_version,
-            source="bandcamp",
-            bandcamp=bandcamp,
+            store_url=existing.store_url or url,  # keep existing canonical URL
+            bandcamp=merged_bandcamp,
             downloaded_at=existing.downloaded_at or datetime.now(timezone.utc),
             added_at=existing.added_at,
             mb_release_id=existing.mb_release_id,
             mb_match_candidate=existing.mb_match_candidate,
-            mb_last_checked_at=existing.mb_last_checked_at,
-            mb_lookup_history=existing.mb_lookup_history,
             tagged_at=existing.tagged_at,
             notes=existing.notes,
         )
@@ -110,9 +108,9 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
         return True
 
     sc = Sidecar(
-        schema_version=1,
-        source="bandcamp",
-        bandcamp=BandcampInfo(url=url, item_id=item_id, band_id=band_id),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url=url,
+        bandcamp=BandcampInfo(item_id=item_id, band_id=band_id),
         downloaded_at=datetime.now(timezone.utc),
     )
     sidecar_mod.write(album_dir, sc)
@@ -120,7 +118,7 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
 
 
 def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
-    """Scan music_dir for a sidecar whose bandcamp.url matches target_url.
+    """Scan music_dir for a sidecar whose store_url matches target_url.
 
     Used at sync time to short-circuit re-downloading albums that already
     exist on disk (post-reconciliation).
@@ -130,7 +128,7 @@ def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
             sc = sidecar_mod.read(f.parent)
         except Exception:
             continue
-        if sc and sc.bandcamp and sc.bandcamp.url == target_url:
+        if sc and sc.store_url == target_url:
             return f.parent
     return None
 

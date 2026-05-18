@@ -7,39 +7,29 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 
 class AlbumState(str, Enum):
-    ORPHAN = "orphan"
-    HELD_BANDCAMP = "held_bandcamp"
-    HELD_MANUAL = "held_manual"
-    NEEDS_CONFIRMATION = "needs_confirmation"
+    NEW = "new"
+    NEEDS_MBID = "needs_mbid"
+    NEEDS_REVIEW = "needs_review"
     TAGGING = "tagging"
-    UNCONFIRMED_BANDCAMP = "unconfirmed_bandcamp"
+    NEEDS_SYNC = "needs_sync"
     DONE = "done"
 
 
-SourceKind = Literal["bandcamp", "manual"]
-LookupResult = Literal["match", "no_match", "error"]
 MatchConfidence = Literal["exact", "approximate", "no_match"]
 
 
 @dataclass
 class BandcampInfo:
-    url: str
-    # item_id may be None when we know the URL (from MB / ©cmt) but haven't yet
-    # cross-referenced with the user's actual Bandcamp purchases. The next Sync
-    # fills it in.
+    """Bandcamp-specific identifiers. Optional — only set when the album
+    came from Bandcamp AND we know the item_id (typically captured during
+    bandcampsync at download time).
+    """
     item_id: int | None = None
     band_id: int | None = None
-
-
-@dataclass
-class MBLookupAttempt:
-    at: datetime
-    result: LookupResult
-    mbid: str | None = None
-    error: str | None = None
 
 
 @dataclass
@@ -77,15 +67,19 @@ class MatchCandidate:
 
 @dataclass
 class Sidecar:
+    """Per-album persisted state — the on-disk `.harmonist.json`.
+
+    `store_url` carries the canonical purchase URL from any store Harmony
+    supports (Bandcamp, Beatport, Discogs, etc.). Store identity is derived
+    from the URL host; absence of store_url means "no store source recorded".
+    """
     schema_version: int
-    source: SourceKind
+    store_url: str | None = None
     bandcamp: BandcampInfo | None = None
     downloaded_at: datetime | None = None
     added_at: datetime | None = None
     mb_release_id: str | None = None
     mb_match_candidate: MatchCandidate | None = None
-    mb_last_checked_at: datetime | None = None
-    mb_lookup_history: list[MBLookupAttempt] = field(default_factory=list)
     tagged_at: datetime | None = None
     notes: str | None = None
 
@@ -106,3 +100,34 @@ class Album:
     @staticmethod
     def make_id(path: Path) -> str:
         return hashlib.md5(str(path).encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Store URL helpers
+# ---------------------------------------------------------------------------
+
+
+def is_bandcamp_url(url: str | None) -> bool:
+    """True if the URL is on a bandcamp.com domain (any subdomain or
+    custom domain mapped to bandcamp.com).
+    """
+    if not url:
+        return False
+    host = (urlparse(url).hostname or "").lower()
+    return host == "bandcamp.com" or host.endswith(".bandcamp.com")
+
+
+def store_name(url: str | None) -> str | None:
+    """Identify the store from a URL's hostname. Returns None when the
+    URL is absent or the store is unrecognised.
+    """
+    if not url:
+        return None
+    host = (urlparse(url).hostname or "").lower()
+    if host == "bandcamp.com" or host.endswith(".bandcamp.com"):
+        return "bandcamp"
+    if host.endswith("beatport.com"):
+        return "beatport"
+    if host.endswith("discogs.com"):
+        return "discogs"
+    return None

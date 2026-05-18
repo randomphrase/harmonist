@@ -150,7 +150,7 @@ def reconcile_pending_orphans(
     rate_limit_seconds: float = MB_RATE_LIMIT_SECONDS,
     exempt_paths: Optional[set] = None,
 ) -> dict:
-    """Walk music_dir; reconcile every Orphan with an MBID atom.
+    """Walk music_dir; reconcile every NEW album with an MBID atom.
 
     Albums whose path is in `exempt_paths` are skipped. This is the
     mechanism that respects user intent after a Forget — without it, the
@@ -164,11 +164,11 @@ def reconcile_pending_orphans(
 
     exempt = exempt_paths or set()
     albums = scanner.scan(music_dir)
-    orphans = [
+    pending = [
         a for a in albums
-        if a.state == AlbumState.ORPHAN and a.path not in exempt
+        if a.state == AlbumState.NEW and a.path not in exempt
     ]
-    total = len(orphans)
+    total = len(pending)
     if status_updater:
         status_updater(total=total, completed=0)
 
@@ -178,7 +178,7 @@ def reconcile_pending_orphans(
     skipped = 0
     errors = 0
 
-    for idx, album in enumerate(orphans, start=1):
+    for idx, album in enumerate(pending, start=1):
         if status_updater:
             status_updater(current_item=f"{album.artist} / {album.title}",
                            completed=completed)
@@ -190,7 +190,7 @@ def reconcile_pending_orphans(
             continue
         if sc is None:
             skipped += 1
-        elif sc.source == "bandcamp":
+        elif sc.store_url:
             reconciled_bandcamp += 1
         else:
             reconciled_manual += 1

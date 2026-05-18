@@ -4,7 +4,7 @@ Uses demo mode to make external services deterministic. Exercises:
 
   1. POST /sync starts the background runner.
   2. Polls /sync/status until state returns to idle.
-  3. New album appears in /tasks at Held (Bandcamp).
+  3. New album appears in /tasks at Needs MBID.
   4. POST /recheck/{id} → lookup_by_bandcamp_url + fetch_release + assess +
      auto-tag (because demo data is configured for exact match).
   5. Album transitions to Done; file tags include the full Picard MBID atom
@@ -104,8 +104,8 @@ def test_flagship_sync_then_recheck_then_done(demo_client, tmp_path):
     after = scanner.scan(music_dir)
     assert len(after) == initial_count + 1
     new_album = _album_by_title(music_dir, "Straight Outta Lowcash")
-    assert new_album.state == AlbumState.HELD_BANDCAMP
-    assert new_album.sidecar.bandcamp.url == "https://cb4.bandcamp.com/album/straight-outta-lowcash"
+    assert new_album.state == AlbumState.NEEDS_MBID
+    assert new_album.sidecar.store_url == "https://cb4.bandcamp.com/album/straight-outta-lowcash"
     assert new_album.sidecar.mb_release_id is None
 
     # --- 2. Click Recheck on the new album ---
@@ -120,7 +120,7 @@ def test_flagship_sync_then_recheck_then_done(demo_client, tmp_path):
     assert final.sidecar.mb_release_id == "demo-rel-cb4"
     assert final.sidecar.tagged_at is not None
     # Bandcamp block preserved through tagging
-    assert final.sidecar.bandcamp.url == "https://cb4.bandcamp.com/album/straight-outta-lowcash"
+    assert final.sidecar.store_url == "https://cb4.bandcamp.com/album/straight-outta-lowcash"
     assert final.sidecar.bandcamp.item_id == 2001
 
     # --- 4. File tags actually written ---
@@ -175,20 +175,20 @@ def test_flagship_409_when_sync_in_flight(demo_client):
         runner._status.state = "idle"
 
 
-def test_flagship_orphan_to_done_via_reconcile_and_confirm(demo_client, tmp_path):
-    """Alt path: Orphan → Reconcile → Held → Recheck → tagged."""
+def test_flagship_new_to_done_via_reconcile_and_confirm(demo_client, tmp_path):
+    """Alt path: New → Reconcile → Needs Sync (already tagged)."""
     music_dir = tmp_path / "music"
-    orphan = _album_by_title(music_dir, "A Most Excellent Journey")
-    assert orphan.state == AlbumState.ORPHAN
+    new_album = _album_by_title(music_dir, "A Most Excellent Journey")
+    assert new_album.state == AlbumState.NEW
 
     # Reconcile: writes a sidecar derived from MBID tag + ©cmt
-    r = demo_client.post(f"/reconcile/{orphan.id}")
+    r = demo_client.post(f"/reconcile/{new_album.id}")
     assert r.status_code == 200, r.text
 
     after_reconcile = _album_by_title(music_dir, "A Most Excellent Journey")
-    # Reconcile writes a source=bandcamp sidecar with mb_release_id set (from
+    # Reconcile writes a sidecar with store_url + mb_release_id set (from
     # the tag). Files are already MBID-tagged, so the matching-MBID check
-    # passes → state goes straight to UNCONFIRMED_BANDCAMP (item_id is None).
-    assert after_reconcile.state == AlbumState.UNCONFIRMED_BANDCAMP
+    # passes → state goes straight to NEEDS_SYNC (item_id is None).
+    assert after_reconcile.state == AlbumState.NEEDS_SYNC
     assert after_reconcile.sidecar.mb_release_id == "demo-rel-wyld"
-    assert after_reconcile.sidecar.bandcamp.url == "https://wyldstallion.bandcamp.com/album/a-most-excellent-journey"
+    assert after_reconcile.sidecar.store_url == "https://wyldstallion.bandcamp.com/album/a-most-excellent-journey"

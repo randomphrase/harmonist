@@ -14,6 +14,7 @@ from harmonist.models import (
     Sidecar,
 )
 from harmonist.scanner import scan
+from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -36,56 +37,55 @@ def test_scan_missing_dir_returns_nothing(tmp_path):
     assert scan(tmp_path / "nope") == []
 
 
-def test_scan_orphan_when_no_sidecar(tmp_path):
+def test_scan_new_when_no_sidecar(tmp_path):
     album_dir = _make_album_dir(tmp_path, "Artist", "Album")
     albums = scan(tmp_path)
     assert len(albums) == 1
     a = albums[0]
-    assert a.state == AlbumState.ORPHAN
+    assert a.state == AlbumState.NEW
     assert a.path == album_dir
     assert a.track_count == 1
     assert a.sidecar is None
     assert a.id == Album.make_id(album_dir)
 
 
-def test_scan_held_bandcamp_when_sidecar_no_mbid(tmp_path):
+def test_scan_needs_mbid_when_sidecar_has_store_url(tmp_path):
     album_dir = _make_album_dir(tmp_path, "Artist", "Album")
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=1,
-            source="bandcamp",
-            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=1),
             downloaded_at=datetime.now(timezone.utc),
         ),
     )
     a = scan(tmp_path)[0]
-    assert a.state == AlbumState.HELD_BANDCAMP
-    assert a.sidecar.bandcamp.url == "https://x.bandcamp.com/album/y"
+    assert a.state == AlbumState.NEEDS_MBID
+    assert a.sidecar.store_url == "https://x.bandcamp.com/album/y"
 
 
-def test_scan_held_manual_when_sidecar_no_mbid(tmp_path):
+def test_scan_needs_mbid_when_sidecar_has_no_store_url(tmp_path):
     album_dir = _make_album_dir(tmp_path, "Artist", "Album")
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=1,
-            source="manual",
+            schema_version=CURRENT_SCHEMA_VERSION,
             added_at=datetime.now(timezone.utc),
         ),
     )
     a = scan(tmp_path)[0]
-    assert a.state == AlbumState.HELD_MANUAL
+    assert a.state == AlbumState.NEEDS_MBID
 
 
-def test_scan_needs_confirmation_when_match_candidate_set(tmp_path):
+def test_scan_needs_review_when_match_candidate_set(tmp_path):
     album_dir = _make_album_dir(tmp_path, "Artist", "Album")
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=1,
-            source="bandcamp",
-            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=1),
             mb_match_candidate=MatchCandidate(
                 mb_release_id="rel-aaa",
                 confidence="approximate",
@@ -95,7 +95,7 @@ def test_scan_needs_confirmation_when_match_candidate_set(tmp_path):
         ),
     )
     a = scan(tmp_path)[0]
-    assert a.state == AlbumState.NEEDS_CONFIRMATION
+    assert a.state == AlbumState.NEEDS_REVIEW
     assert a.sidecar.mb_match_candidate.mb_release_id == "rel-aaa"
 
 
@@ -104,8 +104,7 @@ def test_scan_tagging_when_mbid_set_but_files_not_tagged(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=1,
-            source="manual",
+            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             added_at=datetime.now(timezone.utc),
         ),
@@ -114,8 +113,8 @@ def test_scan_tagging_when_mbid_set_but_files_not_tagged(tmp_path):
     assert a.state == AlbumState.TAGGING
 
 
-def test_scan_unconfirmed_bandcamp_when_item_id_missing(tmp_path):
-    """Tagged album with bandcamp source but no item_id → UNCONFIRMED_BANDCAMP."""
+def test_scan_needs_sync_when_item_id_missing(tmp_path):
+    """Tagged album with bandcamp store_url but no item_id → NEEDS_SYNC."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Album")
     release = {
         "id": "rel-aaa",
@@ -131,19 +130,19 @@ def test_scan_unconfirmed_bandcamp_when_item_id_missing(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=1,
-            source="bandcamp",
-            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=None),
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(timezone.utc),
         ),
     )
     a = scan(tmp_path)[0]
-    assert a.state == AlbumState.UNCONFIRMED_BANDCAMP
+    assert a.state == AlbumState.NEEDS_SYNC
 
 
 def test_scan_done_when_bandcamp_item_id_present(tmp_path):
-    """Tagged album with bandcamp source + item_id → DONE."""
+    """Tagged album with bandcamp store_url + item_id → DONE."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Album")
     release = {
         "id": "rel-aaa", "title": "Album",
@@ -156,9 +155,9 @@ def test_scan_done_when_bandcamp_item_id_present(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=1,
-            source="bandcamp",
-            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=12345),
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=12345),
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(timezone.utc),
         ),
@@ -188,8 +187,7 @@ def test_scan_done_when_mbid_set_and_files_tagged(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=1,
-            source="manual",
+            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(timezone.utc),
         ),
@@ -214,7 +212,7 @@ def test_scan_done_check_only_matches_correct_mbid(tmp_path):
     tagger.tag_album(album_dir, release)
     sc.write(
         album_dir,
-        Sidecar(schema_version=1, source="manual", mb_release_id="rel-aaa"),
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-aaa"),
     )
     assert scan(tmp_path)[0].state == AlbumState.TAGGING
 
@@ -282,7 +280,7 @@ def test_scan_skips_album_with_invalid_sidecar(tmp_path, caplog):
     good_dir = _make_album_dir(tmp_path, "Good", "Album")
     bad_dir = _make_album_dir(tmp_path, "Bad", "Album")
     sc.sidecar_path(bad_dir).write_text(
-        '{"schema_version": 99, "source": "bandcamp"}', encoding="utf-8"
+        '{"schema_version": 99}', encoding="utf-8"
     )
     albums = scan(tmp_path)
     paths = {a.path for a in albums}

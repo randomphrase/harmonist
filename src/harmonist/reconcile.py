@@ -1,16 +1,16 @@
 """Per-album reconciliation: derive a sidecar from existing tags + MB lookup.
 
 For an album that's already tagged (has a `MusicBrainz Album Id` atom) but
-has no `.harmonist.json` sidecar, reconcile_album decides which `source` to
-record:
+has no `.harmonist.json` sidecar, reconcile_album decides what `store_url`
+to record (if any):
 
   * If the file's `©cmt` tag contains any `bandcamp.com` URL **and** MB has
-    a Bandcamp URL relationship for the release → `source="bandcamp"`,
-    `bandcamp.url` set to MB's canonical URL, `bandcamp.item_id=None`.
-    The album shows as UNCONFIRMED_BANDCAMP until the next sync fills in
-    item_id by matching against the user's purchase list.
+    a Bandcamp URL relationship for the release → `store_url` set to MB's
+    canonical URL, `bandcamp.item_id=None`. The album shows as NEEDS_SYNC
+    until the next sync fills in item_id by matching against the user's
+    purchase list.
 
-  * Otherwise → `source="manual"`. Album shows as DONE.
+  * Otherwise → no `store_url`. Album shows as DONE.
 
 Pure: no globals. Caller injects the `fetch_urls` function so tests don't
 need real MB lookups.
@@ -26,7 +26,8 @@ from urllib.parse import urlparse
 from mutagen.mp4 import MP4
 
 from . import sidecar as sidecar_mod
-from .models import BandcampInfo, Sidecar
+from .models import Sidecar
+from .sidecar import CURRENT_SCHEMA_VERSION
 from .tagger import ATOM_MB_ALBUM_ID
 
 
@@ -58,17 +59,16 @@ def reconcile_album(
 
     if bandcamp_url:
         sc = Sidecar(
-            schema_version=1,
-            source="bandcamp",
-            bandcamp=BandcampInfo(url=bandcamp_url, item_id=None),
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url=bandcamp_url,
             mb_release_id=mbid,
             added_at=now,
             tagged_at=now,
         )
     else:
         sc = Sidecar(
-            schema_version=1,
-            source="manual",
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url=None,
             mb_release_id=mbid,
             added_at=now,
             tagged_at=now,
@@ -94,7 +94,7 @@ def reconcile_pending(
             continue
         if sc is None:
             stats["skipped"] += 1
-        elif sc.source == "bandcamp":
+        elif sc.store_url:
             stats["reconciled_bandcamp"] += 1
         else:
             stats["reconciled_manual"] += 1

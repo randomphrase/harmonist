@@ -78,3 +78,24 @@ The integration test (`test_workflow.py`) requires a real `.m4a` template file a
 - `DEMO_MODE=1` env var enables mocks — `MockSearcher` returns results only for "Beatles"; `MockScraper` always returns fake metadata
 - In-memory `SEARCH_CACHE` in `main.py` avoids re-querying MB on every `/tasks` load
 - Templates live at project root `/templates/`, not in the `src` tree
+
+## Sidecar persistence rules
+
+The `.harmonist.json` sidecar holds **load-bearing** state only — fields
+that drive a user-visible affordance, are required to recover from a
+restart, or are read by another module's logic. Speculative or audit
+metadata does NOT go in the sidecar:
+
+- **Rate limiting / debounce timestamps** live in-memory (process-level
+  token bucket or `time.sleep` in the runner). They don't need to
+  survive restarts; MB's 1 req/sec is a process-wide cap, not per-album.
+- **Lookup history / audit trails** belong in server logs, not the
+  sidecar. Sidecar is not a log file.
+- **"Nice to know later"** is not a use case. If a field has no current
+  reader, it doesn't get persisted — add it back when an actual feature
+  needs it.
+
+If you find yourself adding a sidecar field with no reader, stop and
+either justify it with a concrete current use case or leave it out.
+This preference has been raised more than once; respect it without
+needing to be reminded again.

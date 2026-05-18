@@ -1,18 +1,18 @@
 {% set badge_class = 'bg-amber-500/10 text-amber-200 border border-amber-500/30' %}
-{% set badge_label = 'Unconfirmed Bandcamp' %}
+{% set badge_label = 'Needs Sync' %}
 <div id="task-{{ album.id }}" class="p-4 rounded-lg bg-h-slate border border-amber-500/30">
     {% include 'partials/_album_header.html' %}
     <p class="text-slate-500 text-xs mb-3">
-        Tagged from MusicBrainz, marked as Bandcamp source, but not yet linked to a Bandcamp purchase.
-        {% if album.sidecar.bandcamp and album.sidecar.bandcamp.url %}
-        <br><span class="font-mono text-slate-400">URL: {{ album.sidecar.bandcamp.url }}</span>
+        Tagged from MusicBrainz but the Bandcamp purchase isn't linked yet.
+        {% if album.sidecar.store_url %}
+        <br><span class="font-mono text-slate-400">URL: {{ album.sidecar.store_url }}</span>
         {% endif %}
     </p>
     <div class="flex flex-col gap-2">
         <form hx-post="/unconfirmed/{{ album.id }}/url" hx-target="this" hx-swap="afterend"
               class="flex gap-2">
             <input type="url" name="url" required
-                   value="{{ album.sidecar.bandcamp.url if album.sidecar and album.sidecar.bandcamp else '' }}"
+                   value="{{ album.sidecar.store_url if album.sidecar else '' }}"
                    placeholder="https://artist.bandcamp.com/album/..."
                    class="flex-grow bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-bc-teal outline-none font-mono">
             <button type="submit"

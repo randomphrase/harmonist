@@ -1,6 +1,7 @@
 {# Condensed library row with click-to-expand details. Accordion via JS. #}
 {% set sc = album.sidecar %}
 {% set bc = sc.bandcamp if sc else None %}
+{% set store = store_name(sc.store_url if sc else None) %}
 <div id="lib-{{ album.id }}" class="border border-slate-800 rounded-md overflow-hidden bg-h-slate/40">
     <button type="button"
             class="w-full flex items-center gap-3 p-2 hover:bg-h-slate/70 text-left transition"
@@ -19,7 +20,7 @@
             <div class="text-2xs text-slate-600">
                 {% if sc and sc.tagged_at %}{{ sc.tagged_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}
                 · {{ album.track_count }} track{{ 's' if album.track_count != 1 else '' }}
-                {% if sc and sc.source %} · {{ sc.source }}{% endif %}
+                {% if store %} · {{ store }}{% endif %}
             </div>
         </div>
         <svg id="chev-{{ album.id }}" class="w-4 h-4 text-slate-500 flex-shrink-0 transition-transform"
@@ -59,18 +60,18 @@
                 </div>
                 {% endif %}
 
-                {% if bc %}
+                {% if sc and sc.store_url %}
                 <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Bandcamp URL</div>
-                    <a href="{{ bc.url }}" target="_blank" rel="noopener"
-                       class="text-bc-teal hover:underline break-all">{{ bc.url }}</a>
+                    <div class="text-2xs text-slate-500 uppercase tracking-widest">{% if store %}{{ store|title }}{% else %}Store{% endif %} URL</div>
+                    <a href="{{ sc.store_url }}" target="_blank" rel="noopener"
+                       class="text-bc-teal hover:underline break-all">{{ sc.store_url }}</a>
                 </div>
-                {% if bc.item_id is not none %}
+                {% endif %}
+                {% if bc and bc.item_id is not none %}
                 <div>
                     <div class="text-2xs text-slate-500 uppercase tracking-widest">Bandcamp Item ID</div>
                     <div class="text-slate-500 font-mono">{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}</div>
                 </div>
-                {% endif %}
                 {% endif %}
 
                 <div class="grid grid-cols-3 gap-2">
@@ -94,10 +95,6 @@
                     {% endif %}
                 </div>
 
-                <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Source</div>
-                    <div class="text-slate-300">{{ sc.source if sc else '—' }}</div>
-                </div>
                 <div>
                     <div class="text-2xs text-slate-500 uppercase tracking-widest">Path</div>
                     <div class="text-slate-500 break-all font-mono text-2xs">{{ album.path }}</div>

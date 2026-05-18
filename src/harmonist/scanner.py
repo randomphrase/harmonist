@@ -7,7 +7,7 @@ from typing import Iterator
 
 from mutagen.mp4 import MP4
 
-from .models import Album, AlbumState, Sidecar
+from .models import Album, AlbumState, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecar, UnsupportedSchemaVersion, read as read_sidecar
 from .tagger import ATOM_MB_ALBUM_ID
 
@@ -72,21 +72,21 @@ def _build_album(album_dir: Path, m4a_files: list[Path]) -> Album:
 
 def _derive_state(sidecar: Sidecar | None, m4a_files: list[Path]) -> AlbumState:
     if sidecar is None:
-        return AlbumState.ORPHAN
+        return AlbumState.NEW
     if sidecar.mb_release_id is None:
         if sidecar.mb_match_candidate is not None:
-            return AlbumState.NEEDS_CONFIRMATION
-        return (
-            AlbumState.HELD_BANDCAMP
-            if sidecar.source == "bandcamp"
-            else AlbumState.HELD_MANUAL
-        )
+            return AlbumState.NEEDS_REVIEW
+        # Single state for "we don't have an MB release yet" — the card
+        # template branches on whether store_url is present.
+        return AlbumState.NEEDS_MBID
     if _files_tagged_with(m4a_files, sidecar.mb_release_id):
+        # NEEDS_SYNC: Bandcamp-sourced album, MB release known, files tagged,
+        # but Bandcamp item_id not yet linked (a Sync run resolves this).
         if (
-            sidecar.source == "bandcamp"
+            is_bandcamp_url(sidecar.store_url)
             and (sidecar.bandcamp is None or sidecar.bandcamp.item_id is None)
         ):
-            return AlbumState.UNCONFIRMED_BANDCAMP
+            return AlbumState.NEEDS_SYNC
         return AlbumState.DONE
     return AlbumState.TAGGING
 

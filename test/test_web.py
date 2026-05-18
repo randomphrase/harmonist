@@ -18,6 +18,7 @@ from mutagen.mp4 import MP4
 from harmonist import sidecar as sc
 from harmonist.config import Config, PathsConfig, BandcampConfig, ServerConfig, TestConfig
 from harmonist.models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
+from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.web.main import create_app
 
 
@@ -96,7 +97,7 @@ def test_tasks_renders_inbox_count(client, cfg):
     """The inbox count lives inside the polled /tasks fragment so it
     updates without a full-page reload.
     """
-    _make_album(cfg, "Orphan Album")
+    _make_album(cfg, "New Album")
     _make_album(cfg, "Another One")
     r = client.get("/tasks")
     assert r.status_code == 200
@@ -115,50 +116,52 @@ def test_tasks_does_not_render_library_total(client, cfg):
 
 def test_tasks_groups_albums_by_state_with_headers_and_instructions(client, cfg):
     """Each state appears as its own <section> with a heading + instruction line."""
-    # Held (Bandcamp)
-    d1 = _make_album(cfg, "HBC")
+    # NEEDS_MBID with store_url
+    d1 = _make_album(cfg, "WithURL")
     sc.write(d1, Sidecar(
-        schema_version=1, source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=1),
     ))
-    # Held (Manual)
-    d2 = _make_album(cfg, "HM")
-    sc.write(d2, Sidecar(schema_version=1, source="manual"))
+    # NEEDS_MBID without store_url
+    d2 = _make_album(cfg, "Manual")
+    sc.write(d2, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
 
     r = client.get("/tasks")
-    # Both state headings appear
-    assert "Held (Bandcamp)" in r.text
-    assert "Held (Manual)" in r.text
-    # Their per-section instructions appear
-    assert "Open in Harmony" in r.text  # held-bandcamp instruction
-    assert "Paste an MB release URL" in r.text  # held-manual instruction
+    # Both are NEEDS_MBID — single section heading
+    assert "Needs MBID" in r.text
+    # Open-in-Harmony link appears for the store_url card
+    assert "Open in Harmony" in r.text
+    # Manual MBID form appears too
+    assert 'name="mbid"' in r.text
 
 
 def test_tasks_state_group_omitted_when_empty(client, cfg):
     """No section header rendered for states without any albums."""
-    _make_album(cfg, "Orphan only")
+    _make_album(cfg, "Only New")
     r = client.get("/tasks")
-    assert "Orphans" in r.text
-    # No Held / NeedsConfirmation / Tagging headers
-    assert "Held (Bandcamp)" not in r.text
-    assert "Needs Confirmation" not in r.text
+    assert "New" in r.text
+    # No NEEDS_MBID / NEEDS_REVIEW / NEEDS_SYNC headers
+    assert "Needs MBID" not in r.text
+    assert "Needs Review" not in r.text
+    assert "Needs Sync" not in r.text
 
 
-def test_tasks_unconfirmed_bandcamp_section_advises_sync(client, cfg):
-    """The UB group instructions point the user to click Sync."""
-    from datetime import datetime, timezone
+def test_tasks_needs_sync_section_advises_sync(client, cfg):
+    """The Needs Sync group instructions point the user to click Sync."""
     d = _make_album(cfg, "UB")
     audio = MP4(d / "01 Track.m4a")
     audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-a"]
     audio.save()
     sc.write(d, Sidecar(
-        schema_version=1, source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-a",
         tagged_at=datetime.now(timezone.utc),
     ))
     r = client.get("/tasks")
-    assert "Unconfirmed Bandcamp" in r.text
+    assert "Needs Sync" in r.text
     # Instruction explicitly calls out Sync
     assert "Click Sync" in r.text
 
@@ -171,49 +174,51 @@ def test_tasks_empty_state_message_distinguishes_zero_vs_all_done(client, cfg):
 
 # ---------- state dispatch — each card type renders ----------
 
-def test_orphan_card_rendered(client, cfg):
-    _make_album(cfg, "Orphan Album")
+def test_new_card_rendered(client, cfg):
+    _make_album(cfg, "New Album")
     r = client.get("/tasks")
-    assert "Orphan" in r.text
+    assert "New" in r.text
     assert "Reconcile" in r.text
     assert 'hx-post="/reconcile/' in r.text
 
 
-def test_held_bandcamp_card_rendered(client, cfg):
-    d = _make_album(cfg, "Held BC")
+def test_needs_mbid_card_with_store_url_rendered(client, cfg):
+    d = _make_album(cfg, "HasURL")
     sc.write(d, Sidecar(
-        schema_version=1, source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=1),
     ))
     r = client.get("/tasks")
-    assert "Held (Bandcamp)" in r.text
+    assert "Needs MBID" in r.text
     assert "Open in Harmony" in r.text
     assert "harmony.pulsewidth.org.uk" in r.text
 
 
-def test_held_manual_card_rendered(client, cfg):
-    d = _make_album(cfg, "Held Manual")
-    sc.write(d, Sidecar(schema_version=1, source="manual"))
+def test_needs_mbid_card_without_store_url_rendered(client, cfg):
+    d = _make_album(cfg, "NoURL")
+    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
     r = client.get("/tasks")
-    assert "Held (Manual)" in r.text
+    assert "Needs MBID" in r.text
     # Manual MBID form is included
     assert 'name="mbid"' in r.text
     assert "/manual/" in r.text
 
 
-def test_orphan_card_offers_three_paths(client, cfg):
-    _make_album(cfg, "Orphan Album")
+def test_new_card_offers_three_paths(client, cfg):
+    _make_album(cfg, "New Album")
     r = client.get("/tasks")
     assert "Reconcile from tags" in r.text
-    assert "Recover Bandcamp URL" in r.text
+    assert "Recover store URL" in r.text
     assert "Assign &amp; Tag" in r.text or "Assign & Tag" in r.text
 
 
-def test_needs_confirmation_card_renders_side_by_side(client, cfg):
-    d = _make_album(cfg, "NC Album")
+def test_needs_review_card_renders_side_by_side(client, cfg):
+    d = _make_album(cfg, "NR Album")
     sc.write(d, Sidecar(
-        schema_version=1, source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=1),
         mb_match_candidate=MatchCandidate(
             mb_release_id="rel-aaa",
             confidence="approximate",
@@ -229,27 +234,28 @@ def test_needs_confirmation_card_renders_side_by_side(client, cfg):
         ),
     ))
     r = client.get("/tasks")
-    assert "Needs Confirmation" in r.text
+    assert "Needs Review" in r.text
     assert "approximate" in r.text
     assert "Side A" in r.text
     assert "Confirm" in r.text
     assert "Reject" in r.text
 
 
-def test_unconfirmed_bandcamp_card_renders(client, cfg):
+def test_needs_sync_card_renders(client, cfg):
     d = _make_album(cfg, "UB Album")
     # Tag the file so scanner sees it as DONE-style (mb_release_id matches)
     audio = MP4(d / "01 Track.m4a")
     audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-aaa"]
     audio.save()
     sc.write(d, Sidecar(
-        schema_version=1, source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-aaa",
         tagged_at=datetime.now(timezone.utc),
     ))
     r = client.get("/tasks")
-    assert "Unconfirmed Bandcamp" in r.text
+    assert "Needs Sync" in r.text
     assert "Mark purchased elsewhere" in r.text
     assert 'hx-post="/unconfirmed/' in r.text
     # URL input is pre-filled with the existing URL (not just a placeholder)
@@ -279,8 +285,9 @@ def test_post_sync_409_when_already_running(client):
 def test_reject_clears_candidate(client, cfg):
     d = _make_album(cfg, "RC")
     sc.write(d, Sidecar(
-        schema_version=1, source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=1),
         mb_match_candidate=MatchCandidate(
             mb_release_id="rel-zzz", confidence="approximate",
             file_count=1, track_count=1,
@@ -300,8 +307,9 @@ def test_unconfirmed_url_update(client, cfg):
     audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-aaa"]
     audio.save()
     sc.write(d, Sidecar(
-        schema_version=1, source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/old", item_id=None),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/old",
+        bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-aaa", tagged_at=datetime.now(timezone.utc),
     ))
     from harmonist.models import Album
@@ -310,8 +318,8 @@ def test_unconfirmed_url_update(client, cfg):
                     data={"url": "https://x.bandcamp.com/album/new"})
     assert r.status_code == 200
     loaded = sc.read(d)
-    assert loaded.bandcamp.url == "https://x.bandcamp.com/album/new"
-    assert loaded.bandcamp.item_id is None
+    assert loaded.store_url == "https://x.bandcamp.com/album/new"
+    assert loaded.bandcamp is None or loaded.bandcamp.item_id is None
 
 
 def test_unconfirmed_mark_manual(client, cfg):
@@ -320,8 +328,9 @@ def test_unconfirmed_mark_manual(client, cfg):
     audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-aaa"]
     audio.save()
     sc.write(d, Sidecar(
-        schema_version=1, source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-aaa", tagged_at=datetime.now(timezone.utc),
     ))
     from harmonist.models import Album
@@ -329,7 +338,7 @@ def test_unconfirmed_mark_manual(client, cfg):
     r = client.post(f"/unconfirmed/{aid}/manual")
     assert r.status_code == 200
     loaded = sc.read(d)
-    assert loaded.source == "manual"
+    assert loaded.store_url is None
     assert loaded.bandcamp is None
     assert loaded.mb_release_id == "rel-aaa"  # preserved
 
@@ -416,7 +425,7 @@ def test_manual_assign_with_full_url(client, cfg, monkeypatch):
     assert r.status_code == 200
     assert captured["mbid"] == "abc12345-1234-1234-1234-1234567890ab"
     loaded = sc.read(d)
-    assert loaded.source == "manual"
+    assert loaded.store_url is None
     assert loaded.mb_release_id == "abc12345-1234-1234-1234-1234567890ab"
 
 
@@ -484,9 +493,8 @@ def test_recover_url_writes_partial_sidecar(client, cfg):
     assert r.status_code == 200
     loaded = sc.read(d)
     assert loaded is not None
-    assert loaded.source == "bandcamp"
-    assert loaded.bandcamp.url == "https://artist.bandcamp.com/album/the-album"
-    assert loaded.bandcamp.item_id is None
+    assert loaded.store_url == "https://artist.bandcamp.com/album/the-album"
+    assert loaded.bandcamp is None
     assert loaded.mb_release_id is None
 
 
@@ -500,9 +508,9 @@ def test_recover_url_warning_when_no_evidence(client, cfg):
     assert not sc.has_sidecar(d)
 
 
-def test_recover_url_400_when_not_orphan(client, cfg):
-    d = _make_album(cfg, "NotOrphan")
-    sc.write(d, Sidecar(schema_version=1, source="manual"))
+def test_recover_url_400_when_not_new(client, cfg):
+    d = _make_album(cfg, "NotNew")
+    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
     from harmonist.models import Album
     aid = Album.make_id(d)
     r = client.post(f"/recover/{aid}")
@@ -553,9 +561,10 @@ def _make_tagged_album(cfg, name: str, *, mbid: str, tagged_at, item_id: int | N
     audio.save()
     from harmonist.models import BandcampInfo, Sidecar
     sc.write(d, Sidecar(
-        schema_version=1, source="bandcamp" if item_id else "manual",
-        bandcamp=BandcampInfo(url=f"https://x.bandcamp.com/album/{name.lower().replace(' ', '-')}",
-                              item_id=item_id) if item_id else None,
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url=(f"https://x.bandcamp.com/album/{name.lower().replace(' ', '-')}"
+                   if item_id else None),
+        bandcamp=BandcampInfo(item_id=item_id) if item_id else None,
         mb_release_id=mbid,
         tagged_at=tagged_at,
     ))
@@ -564,12 +573,12 @@ def _make_tagged_album(cfg, name: str, *, mbid: str, tagged_at, item_id: int | N
 
 def test_library_renders_only_done_albums(client, cfg):
     from datetime import datetime, timezone
-    _make_album(cfg, "OrphanAlbum")
+    _make_album(cfg, "NewAlbum")
     _make_tagged_album(cfg, "DoneOne", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=100)
     r = client.get("/library")
     assert r.status_code == 200
     assert "DoneOne" in r.text
-    assert "OrphanAlbum" not in r.text
+    assert "NewAlbum" not in r.text
 
 
 def test_library_sorted_by_tagged_at_desc(client, cfg):
@@ -633,7 +642,7 @@ def test_library_row_links_to_musicbrainz(client, cfg):
     assert "musicbrainz.org/release/abc-123" in r.text
 
 
-def test_library_row_shows_bandcamp_url_and_item_id_in_expanded(client, cfg):
+def test_library_row_shows_store_url_and_item_id_in_expanded(client, cfg):
     from datetime import datetime, timezone
     _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(timezone.utc), item_id=42)
     r = client.get("/library")
@@ -666,16 +675,11 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
 
 def test_retag_400_when_no_mbid_on_sidecar(client, cfg):
     d = _make_album(cfg, "NoMBID")
-    sc.write(d, sc_module_Sidecar_manual())
+    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
     from harmonist.models import Album
     aid = Album.make_id(d)
     r = client.post(f"/retag/{aid}")
     assert r.status_code == 400
-
-
-def sc_module_Sidecar_manual():
-    from harmonist.models import Sidecar
-    return Sidecar(schema_version=1, source="manual")
 
 
 def test_reconcile_is_idempotent_on_already_reconciled_album(client, cfg, monkeypatch):
@@ -685,8 +689,9 @@ def test_reconcile_is_idempotent_on_already_reconciled_album(client, cfg, monkey
     from harmonist.models import Album, BandcampInfo, Sidecar
     d = _make_album(cfg, "ToReconcile")
     sc.write(d, Sidecar(
-        schema_version=1, source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-x",
     ))
     aid = Album.make_id(d)
@@ -696,7 +701,7 @@ def test_reconcile_is_idempotent_on_already_reconciled_album(client, cfg, monkey
 
 
 def test_reconcile_returns_warning_when_no_mbid_atom(client, cfg):
-    """Untagged orphan should get a clear no-MBID message, not a 400."""
+    """Untagged new album should get a clear no-MBID message, not a 400."""
     from harmonist.models import Album
     d = _make_album(cfg, "Untagged")  # no MBID atom on file
     aid = Album.make_id(d)
@@ -742,7 +747,7 @@ def test_explicit_reconcile_clears_exemption(client, cfg):
     d = _make_album(cfg, "Cleared")
     # Pre-seed the album in the exemption set
     client.app.state.forgotten_paths.add(d)
-    # The album has no sidecar (orphan) and no MBID atom — reconcile is a
+    # The album has no sidecar (new) and no MBID atom — reconcile is a
     # no-op but the route still discards the exemption.
     aid = Album.make_id(d)
     r = client.post(f"/reconcile/{aid}")

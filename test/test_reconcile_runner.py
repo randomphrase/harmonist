@@ -20,6 +20,7 @@ from harmonist.config import (
     TestConfig,
 )
 from harmonist.models import AlbumState
+from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.web.main import create_app
 from harmonist.web.reconcile_runner import (
     ReconcileRunner,
@@ -168,14 +169,14 @@ def test_reconcile_pending_walks_only_orphans(tmp_path):
         rate_limit_seconds=0,  # fast tests
         status_updater=lambda **kw: seen.append(kw),
     )
-    # The orphan-with-MBID got a bandcamp sidecar
+    # The orphan-with-MBID got a sidecar with bandcamp store_url
     loaded = sc.read(orphan_with_mbid)
     assert loaded is not None
-    assert loaded.source == "bandcamp"
+    assert loaded.store_url == "https://x.bandcamp.com/album/y"
     # The orphan without MBID had no sidecar written (reconcile_album returns None)
     assert not sc.has_sidecar(orphan_without_mbid)
     # Held wasn't touched
-    assert sc.read(held).source == "manual"
+    assert sc.read(held).store_url is None
 
     assert stats["total"] == 2  # two orphans
     assert stats["reconciled_bandcamp"] == 1
@@ -184,7 +185,7 @@ def test_reconcile_pending_walks_only_orphans(tmp_path):
 
 def sc_for_held():
     from harmonist.models import Sidecar
-    return Sidecar(schema_version=1, source="manual", mb_release_id="rel-h")
+    return Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-h")
 
 
 # ---------- web integration ----------
