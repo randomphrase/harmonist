@@ -65,18 +65,19 @@
                 {% if sc and (sc.mb_release_id or sc.store_url) %}
                 <div class="flex gap-2 items-center flex-wrap">
                     {% if sc and sc.mb_release_id %}
-                    {# GitHub-CI-style badge: icon section (darker) + label (lighter) #}
+                    {# GitHub-CI-style badge: solid brand-colour icon section
+                       (white icon) + tinted label section. #}
                     <a href="https://musicbrainz.org/release/{{ sc.mb_release_id }}"
                        target="_blank" rel="noopener"
                        title="View on MusicBrainz · {{ sc.mb_release_id }}"
-                       class="inline-flex items-stretch text-xs font-bold rounded overflow-hidden border border-mb-purple/40 hover:border-mb-purple/70 transition">
-                        <span class="bg-mb-purple/30 px-1.5 flex items-center text-mb-purple">
-                            {# Hexagonal MB mark #}
+                       class="inline-flex items-stretch text-xs font-bold rounded overflow-hidden border border-mb-purple/60 hover:border-mb-purple transition">
+                        <span class="bg-mb-purple px-2 py-1 flex items-center text-white">
+                            {# Hexagonal MB mark, pointy-top #}
                             <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor" aria-hidden="true">
-                                <path d="M12 2 L21 7 L21 17 L12 22 L3 17 L3 7 Z"/>
+                                <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
                             </svg>
                         </span>
-                        <span class="bg-mb-purple/10 px-2 py-1 text-mb-purple">MusicBrainz</span>
+                        <span class="bg-mb-purple/15 px-2 py-1 text-mb-purple">MusicBrainz</span>
                     </a>
                     {% endif %}
                     {% if sc and sc.store_url %}
@@ -91,8 +92,8 @@
                     <a href="{{ sc.store_url }}"
                        target="_blank" rel="noopener"
                        title="{{ store_tip }}"
-                       class="inline-flex items-stretch text-xs font-bold rounded overflow-hidden border border-bc-teal/40 hover:border-bc-teal/70 transition">
-                        <span class="bg-bc-teal/30 px-1.5 flex items-center text-bc-teal">
+                       class="inline-flex items-stretch text-xs font-bold rounded overflow-hidden border border-bc-teal/60 hover:border-bc-teal transition">
+                        <span class="bg-bc-teal px-2 py-1 flex items-center text-white">
                             {% if store == 'bandcamp' %}
                             {# Bandcamp parallelogram mark #}
                             <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor" aria-hidden="true">
@@ -105,7 +106,7 @@
                             </svg>
                             {% endif %}
                         </span>
-                        <span class="bg-bc-teal/10 px-2 py-1 text-bc-teal">
+                        <span class="bg-bc-teal/15 px-2 py-1 text-bc-teal">
                             {% if store == 'bandcamp' %}Bandcamp{% elif store %}{{ store|title }}{% else %}Store{% endif %}
                         </span>
                     </a>
