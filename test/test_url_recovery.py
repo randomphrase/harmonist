@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 from mutagen.mp4 import MP4
 
+from harmonist.tagger import ATOM_ALBUM, ATOM_COMMENT
 from harmonist.url_recovery import recover_album_url
 
 
@@ -28,9 +29,9 @@ def _make_album(tmp_path: Path, *, comment: str = "", album: str = "") -> Path:
     if comment or album:
         audio = MP4(track)
         if comment:
-            audio["\xa9cmt"] = [comment]
+            audio[ATOM_COMMENT] = [comment]
         if album:
-            audio["\xa9alb"] = [album]
+            audio[ATOM_ALBUM] = [album]
         audio.save()
     return album_dir
 
@@ -97,7 +98,7 @@ def test_recover_uses_dir_name_when_album_tag_absent(tmp_path):
     shutil.copy(SINE_M4A, album_dir / "01.m4a")
     # Set comment but no ©alb tag
     audio = MP4(album_dir / "01.m4a")
-    audio["\xa9cmt"] = ["https://myartist.bandcamp.com"]
+    audio[ATOM_COMMENT] = ["https://myartist.bandcamp.com"]
     audio.save()
 
     html = _artist_html([("FallbackName", "/album/fallbackname"), ("Other", "/album/other")])

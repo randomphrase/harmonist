@@ -15,7 +15,7 @@ from pathlib import Path
 from mutagen.mp4 import MP4
 
 from .models import MatchCandidate, MatchConfidence, TrackComparison
-from .tagger import _flatten_tracks, _track_title
+from .tagger import ATOM_TITLE, _flatten_tracks, _track_title
 
 
 # Per-track length tolerance. Anything within this is "close enough" — covers
@@ -130,7 +130,7 @@ def _file_title(file_path: Path) -> str | None:
         audio = MP4(file_path)
     except Exception:
         return None
-    title = (audio.get("\xa9nam") or [None])[0]
+    title = (audio.get(ATOM_TITLE) or [None])[0]
     return title or None
 
 

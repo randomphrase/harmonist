@@ -10,6 +10,7 @@ from harmonist import demo, scanner
 from harmonist import sidecar as sc
 from harmonist.config import Config, PathsConfig, BandcampConfig, ServerConfig, TestConfig
 from harmonist.models import AlbumState
+from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
 from harmonist.web.main import create_app
 
 
@@ -78,8 +79,8 @@ def test_seed_new_has_mbid_and_comment_for_reconcile(music_dir):
     from mutagen.mp4 import MP4
     track = next((music_dir / "Wyld Stallion" / "A Most Excellent Journey").glob("*.m4a"))
     audio = MP4(track)
-    assert "----:com.apple.iTunes:MusicBrainz Album Id" in audio
-    assert "bandcamp.com" in audio["\xa9cmt"][0]
+    assert ATOM_MB_ALBUM_ID in audio
+    assert "bandcamp.com" in audio[ATOM_COMMENT][0]
 
 
 def test_seed_writes_cover_jpgs(music_dir):

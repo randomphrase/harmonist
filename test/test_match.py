@@ -6,6 +6,7 @@ from pathlib import Path
 
 from harmonist import match
 from harmonist.match import LENGTH_TOLERANCE_MS, assess_match
+from harmonist.tagger import ATOM_TITLE
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -172,7 +173,7 @@ def test_track_comparison_reads_file_title_from_tag(tmp_path):
 
     album_dir = _album_with(tmp_path, 1)
     audio = MP4(album_dir / "01 Track 1.m4a")
-    audio["\xa9nam"] = ["The Real Title"]
+    audio[ATOM_TITLE] = ["The Real Title"]
     audio.save()
 
     result = assess_match(album_dir, _release([FIXTURE_DURATION_MS]))

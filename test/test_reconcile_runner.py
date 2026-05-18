@@ -21,6 +21,7 @@ from harmonist.config import (
 )
 from harmonist.models import AlbumState
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
+from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
 from harmonist.web.main import create_app
 from harmonist.web.reconcile_runner import (
     ReconcileRunner,
@@ -41,9 +42,9 @@ def _make_album(root: Path, name: str, *, mbid: str | None = None, comment: str 
     if mbid or comment:
         audio = MP4(f)
         if mbid:
-            audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [mbid.encode("utf-8")]
+            audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
         if comment:
-            audio["\xa9cmt"] = [comment]
+            audio[ATOM_COMMENT] = [comment]
         audio.save()
     return d
 

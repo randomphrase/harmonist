@@ -10,7 +10,7 @@ from mutagen.mp4 import MP4
 from . import id_registry
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecar, UnsupportedSchemaVersion, read as read_sidecar
-from .tagger import ATOM_MB_ALBUM_ID
+from .tagger import ATOM_ALBUM, ATOM_ARTIST, ATOM_MB_ALBUM_ID
 
 
 log = logging.getLogger(__name__)
@@ -131,7 +131,7 @@ def _check_consistency(m4a_files: list[Path]) -> list[InconsistentTrack]:
             audio = MP4(f)
         except Exception:
             continue
-        title_atom = audio.get("\xa9alb") or []
+        title_atom = audio.get(ATOM_ALBUM) or []
         album_title = title_atom[0] if title_atom else None
         atom = audio.get(ATOM_MB_ALBUM_ID)
         mb_album_id: str | None = None
@@ -177,8 +177,8 @@ def _read_album_artist(file_path: Path) -> tuple[str, str]:
         audio = MP4(file_path)
     except Exception:
         return "", ""
-    title = (audio.get("\xa9alb") or [""])[0] or ""
-    artist = (audio.get("\xa9ART") or [""])[0] or ""
+    title = (audio.get(ATOM_ALBUM) or [""])[0] or ""
+    artist = (audio.get(ATOM_ARTIST) or [""])[0] or ""
     return title, artist
 
 

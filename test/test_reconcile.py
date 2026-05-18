@@ -11,6 +11,7 @@ from harmonist import sidecar as sc
 from harmonist.models import BandcampInfo, Sidecar
 from harmonist.reconcile import reconcile_album, reconcile_pending
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
+from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -27,9 +28,9 @@ def _make_album(
     if mbid or comment:
         audio = MP4(f)
         if mbid:
-            audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [mbid.encode("utf-8")]
+            audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
         if comment:
-            audio["\xa9cmt"] = [comment]
+            audio[ATOM_COMMENT] = [comment]
         audio.save()
     return d
 
@@ -194,7 +195,7 @@ def test_reconcile_pending_classifies_each_album(tmp_path):
     b.mkdir(parents=True)
     shutil.copy(SINE_M4A, b / "01.m4a")
     audio = MP4(b / "01.m4a")
-    audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-2"]
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-2"]
     audio.save()
     c = tmp_path / "c" / "Artist" / "Album"
     c.mkdir(parents=True)

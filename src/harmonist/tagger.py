@@ -20,7 +20,7 @@ from mutagen.mp4 import MP4, MP4Cover
 
 ATOM_PREFIX = "----:com.apple.iTunes:"
 
-# Album-level (same on every track in the album)
+# Album-level MB IDs (same on every track in the album)
 ATOM_MB_ALBUM_ID = f"{ATOM_PREFIX}MusicBrainz Album Id"
 ATOM_MB_ALBUM_ARTIST_ID = f"{ATOM_PREFIX}MusicBrainz Album Artist Id"
 ATOM_MB_RELEASE_GROUP_ID = f"{ATOM_PREFIX}MusicBrainz Release Group Id"
@@ -28,12 +28,12 @@ ATOM_MB_ALBUM_TYPE = f"{ATOM_PREFIX}MusicBrainz Album Type"
 ATOM_MB_ALBUM_STATUS = f"{ATOM_PREFIX}MusicBrainz Album Status"
 ATOM_MB_ALBUM_COUNTRY = f"{ATOM_PREFIX}MusicBrainz Album Release Country"
 
-# Per-track
+# Per-track MB IDs
 ATOM_MB_TRACK_ID = f"{ATOM_PREFIX}MusicBrainz Track Id"
 ATOM_MB_RELEASE_TRACK_ID = f"{ATOM_PREFIX}MusicBrainz Release Track Id"
 ATOM_MB_ARTIST_ID = f"{ATOM_PREFIX}MusicBrainz Artist Id"
 
-# Optional album-level metadata
+# Optional album-level metadata (MB-derived, written verbatim)
 ATOM_LABEL = f"{ATOM_PREFIX}LABEL"
 ATOM_CATALOG = f"{ATOM_PREFIX}CATALOGNUMBER"
 ATOM_BARCODE = f"{ATOM_PREFIX}BARCODE"
@@ -43,8 +43,22 @@ ATOM_ASIN = f"{ATOM_PREFIX}ASIN"
 # Legacy (non-Picard) atom written by the previous code; remove on retag.
 LEGACY_RELEASE_ID = f"{ATOM_PREFIX}MUSICBRAINZ_RELEASEID"
 
-# Comment atom — preserved (Bandcamp URL fallback lives here).
-COMMENT_ATOM = "\xa9cmt"
+# Standard MP4 text atoms (note: ©-prefixed; the ©-byte is U+00A9 == 0xa9).
+# These are the iTunes/Picard convention for plain-text metadata.
+ATOM_TITLE = "\xa9nam"          # track title
+ATOM_ALBUM = "\xa9alb"          # album title
+ATOM_ARTIST = "\xa9ART"         # track artist
+ATOM_ALBUM_ARTIST = "aART"      # album artist (no © prefix on this one)
+ATOM_DATE = "\xa9day"           # release date
+ATOM_GENRE = "\xa9gen"          # genre
+ATOM_COMMENT = "\xa9cmt"        # comment (Bandcamp URL fallback lives here)
+
+# Numeric-tuple atoms.
+ATOM_TRACK_NUM = "trkn"         # (track_n, track_total)
+ATOM_DISC_NUM = "disk"          # (disc_n, disc_total)
+
+# Binary atom.
+ATOM_COVER = "covr"             # embedded cover art
 
 
 class TagMismatchError(Exception):
@@ -157,19 +171,19 @@ def _tag_file(
         audio[ATOM_MB_ARTIST_ID] = [a.encode("utf-8") for a in track_artist_ids]
 
     # ---- Standard text tags ----
-    audio["\xa9nam"] = [_track_title(track)]
-    audio["\xa9alb"] = [release.get("title", "")]
-    audio["\xa9ART"] = [_artist_phrase(track_artist_credit)]
-    audio["aART"] = [_artist_phrase(release.get("artist-credit"))]
+    audio[ATOM_TITLE] = [_track_title(track)]
+    audio[ATOM_ALBUM] = [release.get("title", "")]
+    audio[ATOM_ARTIST] = [_artist_phrase(track_artist_credit)]
+    audio[ATOM_ALBUM_ARTIST] = [_artist_phrase(release.get("artist-credit"))]
     if date := release.get("date"):
-        audio["\xa9day"] = [date]
+        audio[ATOM_DATE] = [date]
 
     track_total = len(medium.get("track-list", []))
-    audio["trkn"] = [(track_pos + 1, track_total)]
+    audio[ATOM_TRACK_NUM] = [(track_pos + 1, track_total)]
     if "position" in medium:
         try:
             disc_pos = int(medium["position"])
-            audio["disk"] = [(disc_pos, media_total)]
+            audio[ATOM_DISC_NUM] = [(disc_pos, media_total)]
         except (TypeError, ValueError):
             pass
 
@@ -189,13 +203,13 @@ def _tag_file(
 
     # ---- Cover art ----
     if cover is not None:
-        audio["covr"] = [cover]
+        audio[ATOM_COVER] = [cover]
 
     # ---- Cleanup of the legacy non-Picard atom ----
     if LEGACY_RELEASE_ID in audio:
         del audio[LEGACY_RELEASE_ID]
 
-    # ©cmt is intentionally NOT touched — preserves Bandcamp URL fallback.
+    # ATOM_COMMENT is intentionally NOT touched — preserves Bandcamp URL fallback.
 
     audio.save()
 
