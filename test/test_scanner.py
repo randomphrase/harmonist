@@ -46,7 +46,10 @@ def test_scan_new_when_no_sidecar(tmp_path):
     assert a.path == album_dir
     assert a.track_count == 1
     assert a.sidecar is None
-    assert a.id == Album.make_id(album_dir)
+    # NEW album gets a registry-minted UUID (32 hex chars)
+    assert len(a.id) == 32
+    # Same album → same id on repeat scan (registry preserves)
+    assert scan(tmp_path)[0].id == a.id
 
 
 def test_scan_needs_mbid_when_sidecar_has_store_url(tmp_path):

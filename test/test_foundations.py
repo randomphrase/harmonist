@@ -95,12 +95,6 @@ def test_config_default_ignores_and_cookies(monkeypatch, tmp_path):
 
 # ---------- models ----------
 
-def test_album_id_is_md5_of_path():
-    p = Path("/some/Artist/Album")
-    assert Album.make_id(p) == "70aa67910d50fb00570339d2c9b42c7c"  # deterministic
-    assert Album.make_id(p) == Album.make_id(p)  # stable across calls
-    assert Album.make_id(p) != Album.make_id(Path("/other/Path"))
-
 
 def test_album_state_values():
     assert AlbumState.NEW.value == "new"
@@ -109,6 +103,69 @@ def test_album_state_values():
     assert AlbumState.TAGGING.value == "tagging"
     assert AlbumState.NEEDS_SYNC.value == "needs_sync"
     assert AlbumState.DONE.value == "done"
+
+
+# ---------- temp_uid lifecycle ----------
+
+
+def test_sidecar_write_mints_temp_uid_when_no_mbid(tmp_path):
+    """Writing a sidecar with no mb_release_id auto-mints a temp_uid."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    s = Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url="https://x.bandcamp.com/album/y")
+    sc.write(album_dir, s)
+    loaded = sc.read(album_dir)
+    assert loaded.temp_uid is not None
+    assert len(loaded.temp_uid) == 32  # uuid4().hex
+    assert loaded.mb_release_id is None
+
+
+def test_sidecar_write_drops_stale_temp_uid_when_mbid_set(tmp_path):
+    """Writing with mb_release_id set clears any stale temp_uid."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    s = Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        temp_uid="stale-uid-from-earlier",
+        tagged_at=datetime.now(timezone.utc),
+    )
+    sc.write(album_dir, s)
+    loaded = sc.read(album_dir)
+    assert loaded.mb_release_id == "rel-aaa"
+    assert loaded.temp_uid is None
+    # JSON should not contain temp_uid at all when mbid is set
+    raw = sc.sidecar_path(album_dir).read_text()
+    assert "temp_uid" not in raw
+
+
+def test_sidecar_write_preserves_existing_temp_uid(tmp_path):
+    """A sidecar with a temp_uid and no mbid keeps the same uid on rewrite."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION,
+                                store_url="https://x.bandcamp.com/album/y"))
+    first = sc.read(album_dir)
+    # Rewrite (e.g. user updates store_url) — temp_uid should not regenerate
+    sc.write(album_dir, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/different",
+        temp_uid=first.temp_uid,
+    ))
+    second = sc.read(album_dir)
+    assert second.temp_uid == first.temp_uid
+
+
+def test_sidecar_read_rejects_both_mbid_and_temp_uid(tmp_path):
+    """Hand-crafted sidecar with both identity fields set is invalid."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    sc.sidecar_path(album_dir).write_text(
+        '{"schema_version": 1, "mb_release_id": "rel-x", "temp_uid": "uid-y"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(sc.InvalidSidecar, match="mutually exclusive"):
+        sc.read(album_dir)
 
 
 def test_sidecar_round_trip_with_optional_item_id(tmp_path):

@@ -62,6 +62,17 @@ def _make_album(cfg, name: str, *, mbid: str = None, comment: str = None) -> Pat
     return d
 
 
+def _id_for(cfg, album_dir: Path) -> str:
+    """Return the canonical album id (scanner-assigned). Works for NEW
+    albums (registry-minted UUID) and sidecar'd albums (UUID or MBID).
+    """
+    from harmonist import scanner
+    for a in scanner.scan(cfg.paths.music_dir):
+        if a.path == album_dir:
+            return a.id
+    raise AssertionError(f"no album at {album_dir}")
+
+
 # ---------- basic routes ----------
 
 def test_index_renders(client):
@@ -293,8 +304,7 @@ def test_reject_clears_candidate(client, cfg):
             file_count=1, track_count=1,
         ),
     ))
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/reject/{aid}")
     assert r.status_code == 200
     loaded = sc.read(d)
@@ -312,8 +322,7 @@ def test_unconfirmed_url_update(client, cfg):
         bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-aaa", tagged_at=datetime.now(timezone.utc),
     ))
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/unconfirmed/{aid}/url",
                     data={"url": "https://x.bandcamp.com/album/new"})
     assert r.status_code == 200
@@ -333,8 +342,7 @@ def test_unconfirmed_mark_manual(client, cfg):
         bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-aaa", tagged_at=datetime.now(timezone.utc),
     ))
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/unconfirmed/{aid}/manual")
     assert r.status_code == 200
     loaded = sc.read(d)
@@ -353,8 +361,7 @@ def test_404_for_missing_album(client):
 
 def test_manual_search_returns_results(client, cfg, monkeypatch):
     d = _make_album(cfg, "Search Album")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     monkeypatch.setattr(
         "harmonist.mb_search.search_releases",
         lambda artist, title, limit=10: [
@@ -376,8 +383,7 @@ def test_manual_search_returns_results(client, cfg, monkeypatch):
 
 def test_manual_search_empty_results(client, cfg, monkeypatch):
     d = _make_album(cfg, "NoResults")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     monkeypatch.setattr(
         "harmonist.mb_search.search_releases",
         lambda artist, title, limit=10: [],
@@ -389,8 +395,7 @@ def test_manual_search_empty_results(client, cfg, monkeypatch):
 
 def test_manual_search_handles_mb_error(client, cfg, monkeypatch):
     d = _make_album(cfg, "Errsearch")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     from harmonist.mb_search import MBSearchError
 
     def explode(artist, title, limit=10):
@@ -405,8 +410,7 @@ def test_manual_search_handles_mb_error(client, cfg, monkeypatch):
 def test_manual_assign_with_full_url(client, cfg, monkeypatch):
     """Pasting an MB release URL should extract the MBID."""
     d = _make_album(cfg, "AssignURL")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     captured = {}
 
     def fake_fetch(mbid):
@@ -431,8 +435,7 @@ def test_manual_assign_with_full_url(client, cfg, monkeypatch):
 
 def test_manual_assign_with_bare_mbid(client, cfg, monkeypatch):
     d = _make_album(cfg, "AssignMBID")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
 
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release",
@@ -451,8 +454,7 @@ def test_manual_assign_with_bare_mbid(client, cfg, monkeypatch):
 
 def test_manual_assign_invalid_input(client, cfg):
     d = _make_album(cfg, "Bad")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/manual/{aid}/assign", data={"mbid": "not-an-mbid"})
     assert r.status_code == 200
     assert "Could not parse" in r.text
@@ -461,8 +463,7 @@ def test_manual_assign_invalid_input(client, cfg):
 
 def test_manual_assign_with_approximate_match_stores_candidate(client, cfg, monkeypatch):
     d = _make_album(cfg, "Approximate")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
 
     # Release with one track, but a length way off → "approximate"
     monkeypatch.setattr(
@@ -487,8 +488,7 @@ def test_manual_assign_with_approximate_match_stores_candidate(client, cfg, monk
 
 def test_recover_url_writes_partial_sidecar(client, cfg):
     d = _make_album(cfg, "RecoverMe", comment="https://artist.bandcamp.com/album/the-album")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/recover/{aid}")
     assert r.status_code == 200
     loaded = sc.read(d)
@@ -500,8 +500,7 @@ def test_recover_url_writes_partial_sidecar(client, cfg):
 
 def test_recover_url_warning_when_no_evidence(client, cfg):
     d = _make_album(cfg, "NoEvidence")  # no ©cmt
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/recover/{aid}")
     assert r.status_code == 200
     assert "Could not recover" in r.text
@@ -511,8 +510,7 @@ def test_recover_url_warning_when_no_evidence(client, cfg):
 def test_recover_url_400_when_not_new(client, cfg):
     d = _make_album(cfg, "NotNew")
     sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/recover/{aid}")
     assert r.status_code == 400
 
@@ -544,8 +542,7 @@ def _release_for_match(mbid: str, *, n_tracks: int, length_ms: int = 1000) -> di
 
 def test_cover_returns_404_when_absent(client, cfg):
     d = _make_album(cfg, "NoCover")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.get(f"/cover/{aid}")
     assert r.status_code == 404
 
@@ -663,8 +660,7 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
     )
     monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
 
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/retag/{aid}")
     assert r.status_code == 200
     assert "Re-tagged" in r.text
@@ -676,8 +672,7 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
 def test_retag_400_when_no_mbid_on_sidecar(client, cfg):
     d = _make_album(cfg, "NoMBID")
     sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/retag/{aid}")
     assert r.status_code == 400
 
@@ -686,7 +681,7 @@ def test_reconcile_is_idempotent_on_already_reconciled_album(client, cfg, monkey
     """After Forget → auto-reconcile, a stale 'Reconcile from tags' click
     used to 400. It should now return a calm 'already reconciled' message.
     """
-    from harmonist.models import Album, BandcampInfo, Sidecar
+    from harmonist.models import BandcampInfo, Sidecar
     d = _make_album(cfg, "ToReconcile")
     sc.write(d, Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
@@ -694,7 +689,7 @@ def test_reconcile_is_idempotent_on_already_reconciled_album(client, cfg, monkey
         bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-x",
     ))
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/reconcile/{aid}")
     assert r.status_code == 200, r.text
     assert "already reconciled" in r.text.lower() or "reconcile" in r.text.lower()
@@ -702,9 +697,8 @@ def test_reconcile_is_idempotent_on_already_reconciled_album(client, cfg, monkey
 
 def test_reconcile_returns_warning_when_no_mbid_atom(client, cfg):
     """Untagged new album should get a clear no-MBID message, not a 400."""
-    from harmonist.models import Album
     d = _make_album(cfg, "Untagged")  # no MBID atom on file
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/reconcile/{aid}")
     assert r.status_code == 200
     assert "MusicBrainz Album Id" in r.text or "no" in r.text.lower()
@@ -715,8 +709,7 @@ def test_forget_deletes_sidecar(client, cfg):
     d = _make_tagged_album(cfg, "Forgetme", mbid="rel-1",
                           tagged_at=datetime.now(timezone.utc), item_id=1)
     assert sc.has_sidecar(d)
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/forget/{aid}")
     assert r.status_code == 200
     assert "Forgotten" in r.text
@@ -732,8 +725,7 @@ def test_forget_adds_path_to_exemption_set(client, cfg):
     from datetime import datetime, timezone
     d = _make_tagged_album(cfg, "Exempt", mbid="rel-1",
                           tagged_at=datetime.now(timezone.utc), item_id=1)
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     client.post(f"/forget/{aid}")
     assert d in client.app.state.forgotten_paths
 
@@ -742,14 +734,12 @@ def test_explicit_reconcile_clears_exemption(client, cfg):
     """Explicit /reconcile/{id} should discard any prior Forget exemption —
     the user's most-recent intent wins.
     """
-    from datetime import datetime, timezone
-    from harmonist.models import Album, BandcampInfo, Sidecar
     d = _make_album(cfg, "Cleared")
     # Pre-seed the album in the exemption set
     client.app.state.forgotten_paths.add(d)
     # The album has no sidecar (new) and no MBID atom — reconcile is a
     # no-op but the route still discards the exemption.
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.post(f"/reconcile/{aid}")
     assert r.status_code == 200
     assert d not in client.app.state.forgotten_paths
@@ -758,9 +748,126 @@ def test_explicit_reconcile_clears_exemption(client, cfg):
 def test_cover_serves_when_present(client, cfg):
     d = _make_album(cfg, "WithCover")
     (d / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0FAKE")
-    from harmonist.models import Album
-    aid = Album.make_id(d)
+    aid = _id_for(cfg, d)
     r = client.get(f"/cover/{aid}")
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/jpeg"
     assert r.content.startswith(b"\xff\xd8")
+
+
+# ---------- album id stability ----------
+
+
+def test_new_album_id_is_minted_from_registry(client, cfg):
+    """A NEW album (no sidecar) gets a UUID from the in-process registry;
+    the same path gets the same id on repeat scans.
+    """
+    d = _make_album(cfg, "NewOne")
+    aid1 = _id_for(cfg, d)
+    aid2 = _id_for(cfg, d)
+    assert aid1 == aid2
+    # No sidecar exists, so the id can't have come from one
+    assert not sc.has_sidecar(d)
+    # 32 hex chars = uuid4().hex
+    assert len(aid1) == 32
+
+
+def test_sidecar_album_id_matches_temp_uid(client, cfg):
+    """A sidecar'd album's id is the sidecar's temp_uid."""
+    d = _make_album(cfg, "WithSidecar")
+    sc.write(d, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+    ))
+    aid = _id_for(cfg, d)
+    assert aid == sc.read(d).temp_uid
+
+
+def test_sidecar_album_id_matches_mbid_when_tagged(client, cfg):
+    """A tagged album's id is its MBID."""
+    from datetime import datetime, timezone
+    d = _make_tagged_album(cfg, "Tagged", mbid="abc-mbid-1234",
+                           tagged_at=datetime.now(timezone.utc), item_id=42)
+    aid = _id_for(cfg, d)
+    assert aid == "abc-mbid-1234"
+
+
+def test_new_album_id_survives_first_sidecar_write(client, cfg):
+    """The registry UUID minted for a NEW album is reused when the first
+    sidecar is written — so the inbox URL the user interacted with stays
+    valid across the NEW → sidecar'd transition.
+    """
+    d = _make_album(cfg, "Surviving")
+    registry_uid = _id_for(cfg, d)  # mints into registry as a side effect
+
+    # Now write a sidecar. The temp_uid should be the registry value.
+    sc.write(d, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+    ))
+    assert sc.read(d).temp_uid == registry_uid
+    # And the album.id from a fresh scan still matches
+    assert _id_for(cfg, d) == registry_uid
+
+
+def test_sidecar_album_id_survives_rename(client, cfg):
+    """The UUID lives in the sidecar JSON, which moves with the directory
+    on rename. So album.id is stable across renames for sidecar'd albums.
+    """
+    d = _make_album(cfg, "RenameMe")
+    sc.write(d, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+    ))
+    aid_before = _id_for(cfg, d)
+
+    new_d = d.parent / "Renamed"
+    d.rename(new_d)
+    aid_after = _id_for(cfg, new_d)
+    assert aid_before == aid_after
+
+
+def test_route_404_when_id_is_unknown(client):
+    r = client.post("/recheck/this-id-doesnt-exist")
+    assert r.status_code == 404
+
+
+def test_canonical_id_change_mid_transaction(client, cfg, monkeypatch):
+    """A handler that mutates an album to assign an MBID changes the
+    canonical id as a side effect. The action response itself is 200 (the
+    handler ran at the URL that was canonical at request time); the new
+    canonical id takes effect on the *next* request via the inbox refresh.
+
+    Design: we do NOT redirect mid-transaction. The HX-Trigger='tasks-changed'
+    header propagates the new id to the UI.
+    """
+    d = _make_album(cfg, "ToAssign")
+    sc.write(d, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+    ))
+    temp_uid = sc.read(d).temp_uid
+    mbid = "abc12345-1234-1234-1234-1234567890ab"
+
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: _release_for_match(mbid, n_tracks=1),
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    # POST at the temp_uid URL — runs the handler, returns 200
+    r = client.post(f"/manual/{temp_uid}/assign", data={"mbid": mbid})
+    assert r.status_code == 200
+    assert "tasks-changed" in r.headers.get("hx-trigger", "")
+
+    # Sidecar identity flipped: MBID set, temp_uid dropped
+    loaded = sc.read(d)
+    assert loaded.mb_release_id == mbid
+    assert loaded.temp_uid is None
+
+    # Album's canonical id is now the MBID
+    assert _id_for(cfg, d) == mbid
+
+    # The old temp_uid URL no longer resolves
+    r_stale = client.post(f"/recheck/{temp_uid}")
+    assert r_stale.status_code == 404

@@ -7,6 +7,7 @@ from typing import Iterator
 
 from mutagen.mp4 import MP4
 
+from . import id_registry
 from .models import Album, AlbumState, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecar, UnsupportedSchemaVersion, read as read_sidecar
 from .tagger import ATOM_MB_ALBUM_ID
@@ -59,7 +60,7 @@ def _build_album(album_dir: Path, m4a_files: list[Path]) -> Album:
     cover_path = _find_cover(album_dir)
 
     return Album(
-        id=Album.make_id(album_dir),
+        id=_album_id(album_dir, sidecar),
         path=album_dir,
         title=title,
         artist=artist,
@@ -68,6 +69,18 @@ def _build_album(album_dir: Path, m4a_files: list[Path]) -> Album:
         sidecar=sidecar,
         cover_path=cover_path,
     )
+
+
+def _album_id(album_dir: Path, sidecar: Sidecar | None) -> str:
+    """Canonical id: sidecar.mb_release_id (preferred), else sidecar.temp_uid,
+    else a registry-minted UUID for NEW albums.
+    """
+    if sidecar:
+        if sidecar.mb_release_id:
+            return sidecar.mb_release_id
+        if sidecar.temp_uid:
+            return sidecar.temp_uid
+    return id_registry.get_or_mint(album_dir)
 
 
 def _derive_state(sidecar: Sidecar | None, m4a_files: list[Path]) -> AlbumState:
