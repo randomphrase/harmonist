@@ -1,7 +1,6 @@
 """Core data types: Album, AlbumState, Sidecar."""
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -72,6 +71,11 @@ class Sidecar:
     `store_url` carries the canonical purchase URL from any store Harmony
     supports (Bandcamp, Beatport, Discogs, etc.). Store identity is derived
     from the URL host; absence of store_url means "no store source recorded".
+
+    Identity: exactly one of `(mb_release_id, temp_uid)` is non-null on
+    any persisted sidecar. `temp_uid` holds the album's stable URL id
+    until an MBID lands, at which point sidecar.write() drops it. The
+    scanner reads whichever is set and assigns it to `Album.id`.
     """
     schema_version: int
     store_url: str | None = None
@@ -79,6 +83,7 @@ class Sidecar:
     downloaded_at: datetime | None = None
     added_at: datetime | None = None
     mb_release_id: str | None = None
+    temp_uid: str | None = None
     mb_match_candidate: MatchCandidate | None = None
     tagged_at: datetime | None = None
     notes: str | None = None
@@ -86,7 +91,13 @@ class Sidecar:
 
 @dataclass
 class Album:
-    """An album as observed on disk, derived from sidecar + filesystem."""
+    """An album as observed on disk, derived from sidecar + filesystem.
+
+    `id` is the album's stable URL id. The scanner assigns it from the
+    sidecar's `mb_release_id` (preferred) or `temp_uid` (fallback). For
+    NEW albums with no sidecar, the scanner mints a per-process UUID via
+    `id_registry`. No path-derived ids exist anywhere — that's the point.
+    """
 
     id: str
     path: Path
@@ -96,10 +107,6 @@ class Album:
     state: AlbumState
     sidecar: Sidecar | None = None
     cover_path: Path | None = None
-
-    @staticmethod
-    def make_id(path: Path) -> str:
-        return hashlib.md5(str(path).encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------

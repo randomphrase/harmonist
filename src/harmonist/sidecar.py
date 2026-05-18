@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from datetime import datetime, timezone
+from dataclasses import replace
 from pathlib import Path
 
+from . import id_registry
 from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 
 
@@ -42,7 +45,20 @@ def read(album_dir: Path) -> Sidecar | None:
 
 
 def write(album_dir: Path, sidecar: Sidecar) -> None:
-    """Atomic: write to temp, fsync, rename."""
+    """Atomic: write to temp, fsync, rename.
+
+    Normalises identity at the persistence boundary so callers don't have
+    to remember: if `mb_release_id` is set, drop any stale `temp_uid`;
+    otherwise reuse the registry UUID for this path (if any) or mint a
+    fresh one. Result: exactly one of `(mb_release_id, temp_uid)` is
+    non-null on disk, and the URL stays the same across the NEW →
+    sidecar'd transition.
+    """
+    sidecar = _normalise_identity(sidecar, album_dir)
+    assert bool(sidecar.mb_release_id) ^ bool(sidecar.temp_uid), (
+        f"sidecar identity invariant violated: mb_release_id="
+        f"{sidecar.mb_release_id!r}, temp_uid={sidecar.temp_uid!r}"
+    )
     target = sidecar_path(album_dir)
     tmp = target.with_suffix(target.suffix + ".tmp")
     payload = _to_dict(sidecar)
@@ -51,6 +67,23 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, target)
+
+
+def _normalise_identity(s: Sidecar, album_dir: Path) -> Sidecar:
+    """Enforce identity invariant: exactly one of (mb_release_id, temp_uid)
+    is non-null. MBID always wins; temp_uid is minted iff there's no MBID.
+
+    When minting, prefer the registry's UUID for this path (set by the
+    scanner when it first saw a NEW album) so the inbox URL the user
+    interacted with stays valid across the first sidecar write.
+    """
+    if s.mb_release_id:
+        if s.temp_uid is None:
+            return s
+        return replace(s, temp_uid=None)
+    if s.temp_uid is None:
+        return replace(s, temp_uid=id_registry.peek(album_dir) or uuid.uuid4().hex)
+    return s
 
 
 def _to_dict(s: Sidecar) -> dict:
@@ -71,6 +104,8 @@ def _to_dict(s: Sidecar) -> dict:
         d["added_at"] = _iso(s.added_at)
     if s.mb_release_id:
         d["mb_release_id"] = s.mb_release_id
+    if s.temp_uid:
+        d["temp_uid"] = s.temp_uid
     if s.mb_match_candidate:
         d["mb_match_candidate"] = _candidate_to_dict(s.mb_match_candidate)
     if s.tagged_at:
@@ -162,13 +197,22 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
                 f"sidecar at {source_path} has malformed mb_match_candidate: {e}"
             ) from e
 
+    mb_release_id = d.get("mb_release_id")
+    temp_uid = d.get("temp_uid")
+    if mb_release_id and temp_uid:
+        raise InvalidSidecar(
+            f"sidecar at {source_path} has both mb_release_id and temp_uid "
+            f"set; these are mutually exclusive."
+        )
+
     return Sidecar(
         schema_version=sv,
         store_url=d.get("store_url"),
         bandcamp=bandcamp,
         downloaded_at=_parse_iso(d.get("downloaded_at")),
         added_at=_parse_iso(d.get("added_at")),
-        mb_release_id=d.get("mb_release_id"),
+        mb_release_id=mb_release_id,
+        temp_uid=temp_uid,
         mb_match_candidate=candidate,
         tagged_at=_parse_iso(d.get("tagged_at")),
         notes=d.get("notes"),

@@ -149,6 +149,16 @@ def _albums(request: Request) -> list[Album]:
 
 
 def _find_album(request: Request, album_id: str) -> Album:
+    """Look up an album by its canonical id (mb_release_id, temp_uid, or
+    registry UUID for NEW albums). 404 if no album matches.
+
+    There is no other id form — every album has exactly one canonical id
+    assigned by the scanner, and URLs always use it directly. Path renames
+    of sidecar'd albums preserve the URL (the UUID lives in the sidecar
+    JSON which moves with the directory); NEW album URLs are fragile
+    across renames done before auto-reconcile fires (acceptable: NEW is
+    transient).
+    """
     for a in _albums(request):
         if a.id == album_id:
             return a
@@ -528,9 +538,8 @@ def _register_routes(app: FastAPI) -> None:
         artist: str = Form(""),
         title: str = Form(""),
     ):
-        # Validate album exists; we don't need it for the search itself but a 404
-        # here is the right signal for a stale UI.
-        _find_album(request, album_id)
+        # Validate album exists; a 404 is the right signal for a stale UI.
+        album = _find_album(request, album_id)
         try:
             results = mb_search.search_releases(artist, title)
         except mb_search.MBSearchError as e:
@@ -538,7 +547,7 @@ def _register_routes(app: FastAPI) -> None:
         return request.app.state.templates.TemplateResponse(
             request,
             "partials/manual_search_results.html",
-            {"request": request, "results": results, "album_id": album_id, "query": {"artist": artist, "title": title}},
+            {"request": request, "results": results, "album_id": album.id, "query": {"artist": artist, "title": title}},
         )
 
     @app.post("/manual/{album_id}/assign", response_class=HTMLResponse)
