@@ -1,5 +1,5 @@
 {% set badge_class = 'bg-slate-500/10 text-slate-400 border border-slate-500/30' %}
-{% set badge_label = 'Orphan' %}
+{% set badge_label = 'New' %}
 <div id="task-{{ album.id }}" class="p-4 rounded-lg bg-h-slate border border-slate-700/50">
     {% include 'partials/_album_header.html' %}
     <p class="text-slate-500 text-xs mb-3">No <code>.harmonist.json</code> sidecar yet. Pick one:</p>
@@ -14,8 +14,8 @@
         <button hx-post="/recover/{{ album.id }}"
                 hx-target="this" hx-swap="afterend"
                 class="px-3 py-1.5 bg-bc-teal/10 hover:bg-bc-teal/20 text-bc-teal border border-bc-teal/30 rounded text-xs font-bold uppercase tracking-widest transition"
-                title="Read the file's ©cmt for a Bandcamp URL">
-            Recover Bandcamp URL
+                title="Read the file's ©cmt for a store URL">
+            Recover store URL
         </button>
     </div>
 

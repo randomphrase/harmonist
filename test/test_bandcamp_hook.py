@@ -17,6 +17,7 @@ from harmonist.bandcamp_hook import (
     write_sidecar_for_item,
 )
 from harmonist.models import BandcampInfo, Sidecar
+from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 
 
 class _StubItem:
@@ -115,8 +116,7 @@ def test_write_sidecar_creates_file_with_correct_data(tmp_path):
 
     sidecar = sc.read(album_dir)
     assert sidecar is not None
-    assert sidecar.source == "bandcamp"
-    assert sidecar.bandcamp.url == "https://myartist.bandcamp.com/album/my-album"
+    assert sidecar.store_url == "https://myartist.bandcamp.com/album/my-album"
     assert sidecar.bandcamp.item_id == 12345
     assert sidecar.bandcamp.band_id == 678
     assert sidecar.downloaded_at is not None
@@ -256,9 +256,8 @@ def test_write_sidecar_fills_in_item_id_on_existing_sidecar(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=1,
-            source="bandcamp",
-            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
             mb_release_id="rel-aaa",
         ),
     )
@@ -269,7 +268,7 @@ def test_write_sidecar_fills_in_item_id_on_existing_sidecar(tmp_path):
     # MB release ID and other fields preserved
     assert loaded.mb_release_id == "rel-aaa"
     # URL preserved (we don't overwrite the canonical MB URL)
-    assert loaded.bandcamp.url == "https://x.bandcamp.com/album/y"
+    assert loaded.store_url == "https://x.bandcamp.com/album/y"
 
 
 def test_find_existing_album_by_url_returns_match(tmp_path):
@@ -278,8 +277,8 @@ def test_find_existing_album_by_url_returns_match(tmp_path):
     sc.write(
         a,
         Sidecar(
-            schema_version=1, source="bandcamp",
-            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y"),
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
         ),
     )
     other = tmp_path / "Artist2" / "Other"
@@ -287,8 +286,8 @@ def test_find_existing_album_by_url_returns_match(tmp_path):
     sc.write(
         other,
         Sidecar(
-            schema_version=1, source="bandcamp",
-            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/different"),
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/different",
         ),
     )
     found = find_existing_album_by_url(tmp_path, "https://x.bandcamp.com/album/y")
@@ -306,8 +305,8 @@ def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
     sc.write(
         existing_dir,
         Sidecar(
-            schema_version=1, source="bandcamp",
-            bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
             mb_release_id="rel-aaa",
         ),
     )

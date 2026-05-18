@@ -20,11 +20,10 @@
 {# Render albums grouped by state with a header + instruction per group.
    Order is deliberate: by urgency / common-flow direction. #}
 {% set state_order = [
-    AlbumState.ORPHAN,
-    AlbumState.HELD_BANDCAMP,
-    AlbumState.HELD_MANUAL,
-    AlbumState.NEEDS_CONFIRMATION,
-    AlbumState.UNCONFIRMED_BANDCAMP,
+    AlbumState.NEW,
+    AlbumState.NEEDS_MBID,
+    AlbumState.NEEDS_REVIEW,
+    AlbumState.NEEDS_SYNC,
     AlbumState.TAGGING,
 ] %}
 
@@ -34,40 +33,36 @@
     {% if group %}
     <section class="space-y-3">
         <div class="pl-3 border-l-2
-            {% if state == AlbumState.ORPHAN %}border-slate-600
-            {% elif state == AlbumState.HELD_BANDCAMP %}border-bc-teal/40
-            {% elif state == AlbumState.HELD_MANUAL %}border-slate-500
-            {% elif state == AlbumState.NEEDS_CONFIRMATION %}border-amber-500/40
-            {% elif state == AlbumState.UNCONFIRMED_BANDCAMP %}border-amber-500/40
+            {% if state == AlbumState.NEW %}border-slate-600
+            {% elif state == AlbumState.NEEDS_MBID %}border-bc-teal/40
+            {% elif state == AlbumState.NEEDS_REVIEW %}border-amber-500/40
+            {% elif state == AlbumState.NEEDS_SYNC %}border-amber-500/40
             {% elif state == AlbumState.TAGGING %}border-mb-purple/40
             {% endif %}">
             <h3 class="text-sm font-bold text-slate-200">
-                {% if state == AlbumState.ORPHAN %}Orphans
-                {% elif state == AlbumState.HELD_BANDCAMP %}Held (Bandcamp)
-                {% elif state == AlbumState.HELD_MANUAL %}Held (Manual)
-                {% elif state == AlbumState.NEEDS_CONFIRMATION %}Needs Confirmation
-                {% elif state == AlbumState.UNCONFIRMED_BANDCAMP %}Unconfirmed Bandcamp
+                {% if state == AlbumState.NEW %}New
+                {% elif state == AlbumState.NEEDS_MBID %}Needs MBID
+                {% elif state == AlbumState.NEEDS_REVIEW %}Needs Review
+                {% elif state == AlbumState.NEEDS_SYNC %}Needs Sync
                 {% elif state == AlbumState.TAGGING %}Tagging
                 {% endif %}
                 <span class="text-slate-500 font-normal ml-1">· {{ group|length }}</span>
             </h3>
             <p class="text-xs text-slate-500 mt-0.5">
-                {% if state == AlbumState.ORPHAN %}No <code class="text-slate-400">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.
-                {% elif state == AlbumState.HELD_BANDCAMP %}Downloaded from Bandcamp, no MusicBrainz match yet. Open in Harmony, seed the release, then click <span class="font-bold text-slate-300">Recheck</span>.
-                {% elif state == AlbumState.HELD_MANUAL %}Non-Bandcamp source. Paste an MB release URL or search by artist + title.
-                {% elif state == AlbumState.NEEDS_CONFIRMATION %}MusicBrainz has a candidate but file/track shape isn't exact. Review the side-by-side and confirm or reject.
-                {% elif state == AlbumState.UNCONFIRMED_BANDCAMP %}Tagged from MusicBrainz but Bandcamp purchase isn't linked yet. <span class="font-bold text-bc-teal">Click Sync</span> to confirm — that's the common case.
+                {% if state == AlbumState.NEW %}No <code class="text-slate-400">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.
+                {% elif state == AlbumState.NEEDS_MBID %}MusicBrainz hasn't matched yet. If a store URL is known, seed via Harmony and recheck — otherwise paste an MBID or search by artist + title.
+                {% elif state == AlbumState.NEEDS_REVIEW %}MusicBrainz has a candidate but file/track shape isn't exact. Review the side-by-side and confirm or reject.
+                {% elif state == AlbumState.NEEDS_SYNC %}Tagged from MusicBrainz but Bandcamp purchase isn't linked yet. <span class="font-bold text-bc-teal">Click Sync</span> to confirm — that's the common case.
                 {% elif state == AlbumState.TAGGING %}Files being written…
                 {% endif %}
             </p>
         </div>
         <div class="grid grid-cols-1 gap-3">
             {% for album in group %}
-                {% if state == AlbumState.ORPHAN %}{% include 'partials/task_card_orphan.html' %}{% endif %}
-                {% if state == AlbumState.HELD_BANDCAMP %}{% include 'partials/task_card_held_bandcamp.html' %}{% endif %}
-                {% if state == AlbumState.HELD_MANUAL %}{% include 'partials/task_card_held_manual.html' %}{% endif %}
-                {% if state == AlbumState.NEEDS_CONFIRMATION %}{% include 'partials/task_card_needs_confirmation.html' %}{% endif %}
-                {% if state == AlbumState.UNCONFIRMED_BANDCAMP %}{% include 'partials/task_card_unconfirmed_bandcamp.html' %}{% endif %}
+                {% if state == AlbumState.NEW %}{% include 'partials/task_card_new.html' %}{% endif %}
+                {% if state == AlbumState.NEEDS_MBID %}{% include 'partials/task_card_needs_mbid.html' %}{% endif %}
+                {% if state == AlbumState.NEEDS_REVIEW %}{% include 'partials/task_card_needs_review.html' %}{% endif %}
+                {% if state == AlbumState.NEEDS_SYNC %}{% include 'partials/task_card_needs_sync.html' %}{% endif %}
                 {% if state == AlbumState.TAGGING %}{% include 'partials/task_card_tagging.html' %}{% endif %}
             {% endfor %}
         </div>

@@ -28,6 +28,7 @@ from mutagen.mp4 import MP4
 
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
+from .sidecar import CURRENT_SCHEMA_VERSION
 
 
 log = logging.getLogger(__name__)
@@ -55,8 +56,8 @@ SINE = ASSETS_DIR / "sine.m4a"
 
 LIBRARY: list[dict] = [
     {
-        # State: ORPHAN — no sidecar, but has MBID atom + Bandcamp ©cmt.
-        # Reconcile derives a sidecar (transitions to UNCONFIRMED_BANDCAMP).
+        # State: NEW — no sidecar, but has MBID atom + Bandcamp ©cmt.
+        # Reconcile derives a sidecar (transitions to NEEDS_SYNC).
         "artist": "Wyld Stallion",
         "album": "A Most Excellent Journey",
         "tracks": [
@@ -70,20 +71,19 @@ LIBRARY: list[dict] = [
         "sidecar": None,
     },
     {
-        # State: HELD_BANDCAMP — sidecar with URL but no MB match yet.
+        # State: NEEDS_MBID — sidecar with store URL but no MB match yet.
         # Recheck looks up MB → exact match → tags → DONE.
         "artist": "Sex Bob-omb",
         "album": "We Are Here To Make You Sad",
         "tracks": ["Garbage Truck", "Threshold", "Summertime"],
         "cover": "cover-2.jpg",
         "sidecar": {
-            "source": "bandcamp",
-            "bandcamp_url": "https://sexbobomb.bandcamp.com/album/we-are-here-to-make-you-sad",
+            "store_url": "https://sexbobomb.bandcamp.com/album/we-are-here-to-make-you-sad",
             "bandcamp_item_id": 1001,
         },
     },
     {
-        # State: HELD_MANUAL — non-Bandcamp source, awaiting MBID.
+        # State: NEEDS_MBID — no store URL, awaiting manual MBID assignment.
         # Manual ingest form (paste MBID or search MB by name) tags it.
         "artist": "Sonic Death Monkey",
         "album": "Top 5 Records For A Wednesday",
@@ -93,22 +93,19 @@ LIBRARY: list[dict] = [
             "Top 5 Tracks For Lovers In Trouble",
         ],
         "cover": "cover-6.jpg",
-        "sidecar": {
-            "source": "manual",
-        },
+        "sidecar": {},
     },
     {
-        # State: NEEDS_CONFIRMATION — files tagged, candidate stashed but
+        # State: NEEDS_REVIEW — files tagged, candidate stashed but
         # confidence is "approximate" (lengths off). Side-by-side renders.
-        # Confirm → tags from MB; Reject → back to Held (Bandcamp).
+        # Confirm → tags from MB; Reject → back to NEEDS_MBID.
         "artist": "The Thamesmen",
         "album": "Gimme Some Money",
         "tracks": ["Gimme Some Money", "(Listen to the) Flower People", "Cups and Cakes"],
         "cover": "cover-3.jpg",
         "file_mbid": "demo-rel-thamesmen",
         "sidecar": {
-            "source": "bandcamp",
-            "bandcamp_url": "https://thamesmen.bandcamp.com/album/gimme-some-money",
+            "store_url": "https://thamesmen.bandcamp.com/album/gimme-some-money",
             "bandcamp_item_id": 1002,
             "mb_match_candidate": {
                 "mb_release_id": "demo-rel-thamesmen",
@@ -118,7 +115,7 @@ LIBRARY: list[dict] = [
         },
     },
     {
-        # State: UNCONFIRMED_BANDCAMP — files tagged, source=bandcamp,
+        # State: NEEDS_SYNC — files tagged, Bandcamp store_url known,
         # item_id=None. "Try a different URL" / "Mark purchased elsewhere".
         "artist": "Dingoes Ate My Baby",
         "album": "Little Bit o' Hoot, Whole Lotta Nanny",
@@ -127,8 +124,7 @@ LIBRARY: list[dict] = [
         "file_mbid": "demo-rel-dingoes",
         "file_comment": "Visit https://dingoes.bandcamp.com",
         "sidecar": {
-            "source": "bandcamp",
-            "bandcamp_url": "https://dingoes.bandcamp.com/album/little-bit-o-hoot",
+            "store_url": "https://dingoes.bandcamp.com/album/little-bit-o-hoot",
             "bandcamp_item_id": None,
             "mb_release_id": "demo-rel-dingoes",
             "tagged": True,
@@ -147,8 +143,7 @@ LIBRARY: list[dict] = [
         "cover": "cover-5.jpg",
         "file_mbid": "demo-rel-rural-juror",
         "sidecar": {
-            "source": "bandcamp",
-            "bandcamp_url": "https://variousartists.bandcamp.com/album/the-rural-juror-ost",
+            "store_url": "https://variousartists.bandcamp.com/album/the-rural-juror-ost",
             "bandcamp_item_id": 1003,
             "mb_release_id": "demo-rel-rural-juror",
             "tagged": True,
@@ -165,8 +160,7 @@ PENDING_PURCHASES: list[dict] = [
         "tracks": ["Straight Outta Lowcash", "M-O-N-E-Y", "The Real Thing"],
         "cover": "cover-7.jpg",
         "sidecar": {
-            "source": "bandcamp",
-            "bandcamp_url": "https://cb4.bandcamp.com/album/straight-outta-lowcash",
+            "store_url": "https://cb4.bandcamp.com/album/straight-outta-lowcash",
             "bandcamp_item_id": 2001,
         },
     },
@@ -176,8 +170,7 @@ PENDING_PURCHASES: list[dict] = [
         "tracks": ["Karl Hungus", "Marmot Shall Inherit", "Ve Believe in Nuthing"],
         "cover": "cover-8.jpg",
         "sidecar": {
-            "source": "bandcamp",
-            "bandcamp_url": "https://autobahn.bandcamp.com/album/nagelbett",
+            "store_url": "https://autobahn.bandcamp.com/album/nagelbett",
             "bandcamp_item_id": 2002,
         },
     },
@@ -503,7 +496,9 @@ def _materialise(music_dir: Path, spec: dict) -> None:
     if cover_asset.exists():
         shutil.copy(cover_asset, album_dir / "cover.jpg")
 
-    if sc_spec := spec.get("sidecar"):
+    # Distinguish "no sidecar" (sentinel None) from "empty sidecar" ({}).
+    sc_spec = spec.get("sidecar")
+    if sc_spec is not None:
         sidecar_mod.write(album_dir, _build_sidecar(sc_spec, spec))
 
 
@@ -511,16 +506,14 @@ def _build_sidecar(sc_spec: dict, album_spec: dict) -> Sidecar:
     """Build a Sidecar dataclass from a spec-dict.
 
     Keys recognised:
-      source, bandcamp_url, bandcamp_item_id, mb_release_id, tagged,
+      store_url, bandcamp_item_id, mb_release_id, tagged,
       mb_match_candidate (nested dict with deltas_ms list).
     """
     now = datetime.now(timezone.utc)
+    store_url = sc_spec.get("store_url")
     bandcamp = None
-    if "bandcamp_url" in sc_spec:
-        bandcamp = BandcampInfo(
-            url=sc_spec["bandcamp_url"],
-            item_id=sc_spec.get("bandcamp_item_id"),
-        )
+    if "bandcamp_item_id" in sc_spec:
+        bandcamp = BandcampInfo(item_id=sc_spec.get("bandcamp_item_id"))
 
     candidate = None
     if cand_spec := sc_spec.get("mb_match_candidate"):
@@ -549,11 +542,11 @@ def _build_sidecar(sc_spec: dict, album_spec: dict) -> Sidecar:
     tagged_at = now if sc_spec.get("tagged") else None
 
     return Sidecar(
-        schema_version=1,
-        source=sc_spec["source"],
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url=store_url,
         bandcamp=bandcamp,
-        downloaded_at=(now if sc_spec["source"] == "bandcamp" else None),
-        added_at=(now if sc_spec["source"] == "manual" else None),
+        downloaded_at=(now if store_url else None),
+        added_at=(None if store_url else now),
         mb_release_id=sc_spec.get("mb_release_id"),
         mb_match_candidate=candidate,
         tagged_at=tagged_at,

@@ -16,7 +16,8 @@ from harmonist import cover_art, mb_lookup, mb_search, reconcile, scanner, url_r
 from harmonist import sidecar as sidecar_mod
 from harmonist.bandcamp_hook import CapExceededError, HarmonistSyncer
 from harmonist.match import assess_match
-from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar
+from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar, store_name
+from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.sync_runner import AlreadyRunningError, SyncRunner
@@ -96,6 +97,7 @@ def create_app(
     templates = Jinja2Templates(directory=str(templates_dir))
     templates.env.globals["harmony_base"] = HARMONY_BASE
     templates.env.globals["AlbumState"] = AlbumState
+    templates.env.globals["store_name"] = store_name
     templates.env.globals["demo_mode"] = cfg.demo_mode
 
     app = FastAPI(title="Harmonist")
@@ -182,32 +184,27 @@ def _run_bandcamp_sync(cfg: config_mod.Config, *, progress_callback=None):
     )
 
 
-def _apply_match(album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger, *, source: Optional[str] = None) -> tuple[str, str]:
+def _apply_match(album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger) -> tuple[str, str]:
     """Fetch MB release, run match assessment, then either tag or stash candidate.
 
     Returns (status, message) where status is 'tagged' | 'needs_confirmation'.
-    `source` overrides the sidecar source when set (used by manual ingest on
-    Orphans, where there's no existing sidecar to inherit from).
     """
     release = mb_lookup.fetch_release(mbid)
     candidate = assess_match(album.path, release)
 
     if candidate.confidence == "exact":
-        _tag_with_release(album, mbid, cfg, tagger, source=source)
+        _tag_with_release(album, mbid, cfg, tagger)
         return "tagged", "Match exact — files tagged."
 
     existing = sidecar_mod.read(album.path)
-    sc_source = source or (existing.source if existing else "manual")
     new = Sidecar(
-        schema_version=1,
-        source=sc_source,
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url=existing.store_url if existing else None,
         bandcamp=existing.bandcamp if existing else None,
         downloaded_at=existing.downloaded_at if existing else None,
         added_at=(existing.added_at if existing else None) or datetime.now(timezone.utc),
         mb_release_id=None,
         mb_match_candidate=candidate,
-        mb_last_checked_at=datetime.now(timezone.utc),
-        mb_lookup_history=existing.mb_lookup_history if existing else [],
         tagged_at=existing.tagged_at if existing else None,
         notes=existing.notes if existing else None,
     )
@@ -215,7 +212,7 @@ def _apply_match(album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger
     return "needs_confirmation", f"Match found ({candidate.confidence}) — please review and confirm."
 
 
-def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger, *, source: Optional[str] = None) -> None:
+def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger) -> None:
     """Fetch MB release, fetch cover, write tags, update sidecar."""
     release = mb_lookup.fetch_release(mbid)
     rg = release.get("release-group") or {}
@@ -228,17 +225,14 @@ def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config, tagger: T
     tagger.tag_album(album.path, release, cover_path=cover_path)
 
     sc = sidecar_mod.read(album.path)
-    sc_source = source or (sc.source if sc else "manual")
     new = Sidecar(
-        schema_version=1,
-        source=sc_source,
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url=sc.store_url if sc else None,
         bandcamp=sc.bandcamp if sc else None,
         downloaded_at=sc.downloaded_at if sc else None,
         added_at=(sc.added_at if sc else None) or datetime.now(timezone.utc),
         mb_release_id=mbid,
         mb_match_candidate=None,  # cleared on tag
-        mb_last_checked_at=datetime.now(timezone.utc),
-        mb_lookup_history=sc.mb_lookup_history if sc else [],
         tagged_at=datetime.now(timezone.utc),
         notes=sc.notes if sc else None,
     )
@@ -269,7 +263,7 @@ def _register_routes(app: FastAPI) -> None:
         # Auto-kick the reconciler if there are Orphans waiting and the
         # debounce window has elapsed. The runner internally handles the
         # "no MBID, skip" case — cost is cheap for non-reconcilable orphans.
-        if any(a.state == AlbumState.ORPHAN for a in albums):
+        if any(a.state == AlbumState.NEW for a in albums):
             request.app.state.reconcile_runner.start()
         ctx = _ctx(request, albums=_inbox_albums(albums), total_albums=len(albums))
         return request.app.state.templates.TemplateResponse(request, "tasks.html", ctx)
@@ -345,7 +339,6 @@ def _register_routes(app: FastAPI) -> None:
         try:
             _tag_with_release(
                 album, sc.mb_release_id, request.app.state.cfg, request.app.state.tagger,
-                source=sc.source,
             )
         except Exception as e:
             log.exception("retag failed")
@@ -426,18 +419,19 @@ def _register_routes(app: FastAPI) -> None:
                 "Could not reconcile — no MusicBrainz Album Id atom on the files.",
                 level="warning",
             ))
+        label = "Bandcamp source" if sc.store_url else "manual source"
         return HTMLResponse(_flash(
-            f"Reconciled as {sc.source}.", level="info",
+            f"Reconciled ({label}).", level="info",
         ), headers={"HX-Trigger": "tasks-changed"})
 
     @app.post("/recheck/{album_id}", response_class=HTMLResponse)
     def recheck(request: Request, album_id: str):
         album = _find_album(request, album_id)
         sc = album.sidecar
-        if sc is None or sc.bandcamp is None or not sc.bandcamp.url:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no Bandcamp URL on sidecar")
+        if sc is None or not sc.store_url:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no store URL on sidecar")
         try:
-            mbid = mb_lookup.lookup_by_bandcamp_url(sc.bandcamp.url)
+            mbid = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
         except mb_lookup.MBError as e:
             return HTMLResponse(_flash(f"MB lookup failed: {e}", level="error"))
         if not mbid:
@@ -451,14 +445,12 @@ def _register_routes(app: FastAPI) -> None:
 
         new_sc = Sidecar(
             schema_version=sc.schema_version,
-            source=sc.source,
+            store_url=sc.store_url,
             bandcamp=sc.bandcamp,
             downloaded_at=sc.downloaded_at,
             added_at=sc.added_at,
             mb_release_id=mbid if candidate.confidence == "exact" else None,
             mb_match_candidate=None if candidate.confidence == "exact" else candidate,
-            mb_last_checked_at=datetime.now(timezone.utc),
-            mb_lookup_history=sc.mb_lookup_history,
             tagged_at=sc.tagged_at,
             notes=sc.notes,
         )
@@ -499,14 +491,12 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to reject")
         new_sc = Sidecar(
             schema_version=sc.schema_version,
-            source=sc.source,
+            store_url=sc.store_url,
             bandcamp=sc.bandcamp,
             downloaded_at=sc.downloaded_at,
             added_at=sc.added_at,
             mb_release_id=None,
             mb_match_candidate=None,
-            mb_last_checked_at=sc.mb_last_checked_at,
-            mb_lookup_history=sc.mb_lookup_history,
             tagged_at=sc.tagged_at,
             notes=sc.notes,
         )
@@ -518,10 +508,15 @@ def _register_routes(app: FastAPI) -> None:
     def update_unconfirmed_url(request: Request, album_id: str, url: str = Form(...)):
         album = _find_album(request, album_id)
         sc = album.sidecar
-        if sc is None or sc.bandcamp is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no bandcamp sidecar")
-        new_bc = BandcampInfo(url=url.strip(), item_id=None, band_id=sc.bandcamp.band_id)
-        new_sc = _replace_bandcamp(sc, new_bc)
+        if sc is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no sidecar")
+        # Update the store URL; clear bandcamp.item_id since the URL changed
+        # and the old item_id (if any) is no longer authoritative.
+        new_bandcamp = None
+        if sc.bandcamp and sc.bandcamp.band_id is not None:
+            from harmonist.models import BandcampInfo
+            new_bandcamp = BandcampInfo(item_id=None, band_id=sc.bandcamp.band_id)
+        new_sc = _replace_url(sc, url.strip(), new_bandcamp)
         sidecar_mod.write(album.path, new_sc)
         return HTMLResponse(_flash("URL updated. Run sync to confirm.", level="info"),
                             headers={"HX-Trigger": "tasks-changed"})
@@ -556,7 +551,7 @@ def _register_routes(app: FastAPI) -> None:
                 level="error",
             ))
         try:
-            status_str, msg = _apply_match(album, extracted, request.app.state.cfg, request.app.state.tagger, source="manual")
+            status_str, msg = _apply_match(album, extracted, request.app.state.cfg, request.app.state.tagger)
         except mb_lookup.MBError as e:
             return HTMLResponse(_flash(f"MB lookup failed: {e}", level="error"))
         except Exception as e:
@@ -568,8 +563,8 @@ def _register_routes(app: FastAPI) -> None:
     @app.post("/recover/{album_id}", response_class=HTMLResponse)
     def recover_url(request: Request, album_id: str):
         album = _find_album(request, album_id)
-        if album.state != AlbumState.ORPHAN:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "URL recovery only applies to orphans")
+        if album.state != AlbumState.NEW:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "URL recovery only applies to new albums")
         try:
             url = url_recovery.recover_album_url(album.path)
         except Exception as e:
@@ -577,17 +572,15 @@ def _register_routes(app: FastAPI) -> None:
             return HTMLResponse(_flash(f"URL recovery failed: {e}", level="error"))
         if not url:
             return HTMLResponse(_flash(
-                "Could not recover a Bandcamp URL — no usable link found in the file's comment tag.",
+                "Could not recover a store URL — no usable link found in the file's comment tag.",
                 level="warning",
             ))
-        # Write a partial bandcamp sidecar so the album moves to Held (Bandcamp)
-        # and the user can run Recheck.
+        # Write a partial sidecar with just the URL; user can run Recheck.
         sidecar_mod.write(
             album.path,
             Sidecar(
-                schema_version=1,
-                source="bandcamp",
-                bandcamp=BandcampInfo(url=url, item_id=None),
+                schema_version=CURRENT_SCHEMA_VERSION,
+                store_url=url,
                 added_at=datetime.now(timezone.utc),
             ),
         )
@@ -596,20 +589,20 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post("/unconfirmed/{album_id}/manual", response_class=HTMLResponse)
     def mark_unconfirmed_manual(request: Request, album_id: str):
+        """Drop the store URL + Bandcamp block. Album becomes "manually
+        sourced" (store_url is None, store_name() returns None)."""
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no sidecar")
         new_sc = Sidecar(
             schema_version=sc.schema_version,
-            source="manual",
+            store_url=None,
             bandcamp=None,
             downloaded_at=sc.downloaded_at,
             added_at=sc.added_at,
             mb_release_id=sc.mb_release_id,
             mb_match_candidate=sc.mb_match_candidate,
-            mb_last_checked_at=sc.mb_last_checked_at,
-            mb_lookup_history=sc.mb_lookup_history,
             tagged_at=sc.tagged_at,
             notes="marked as purchased elsewhere",
         )
@@ -618,17 +611,16 @@ def _register_routes(app: FastAPI) -> None:
                             headers={"HX-Trigger": "tasks-changed"})
 
 
-def _replace_bandcamp(sc: Sidecar, bandcamp: BandcampInfo) -> Sidecar:
+def _replace_url(sc: Sidecar, new_url: str, new_bandcamp: BandcampInfo | None) -> Sidecar:
+    """Build a new Sidecar with store_url and bandcamp block replaced."""
     return Sidecar(
         schema_version=sc.schema_version,
-        source=sc.source,
-        bandcamp=bandcamp,
+        store_url=new_url,
+        bandcamp=new_bandcamp,
         downloaded_at=sc.downloaded_at,
         added_at=sc.added_at,
         mb_release_id=sc.mb_release_id,
         mb_match_candidate=sc.mb_match_candidate,
-        mb_last_checked_at=sc.mb_last_checked_at,
-        mb_lookup_history=sc.mb_lookup_history,
         tagged_at=sc.tagged_at,
         notes=sc.notes,
     )

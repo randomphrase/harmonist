@@ -6,12 +6,11 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import BandcampInfo, MatchCandidate, MBLookupAttempt, Sidecar, TrackComparison
+from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 
 
 SIDECAR_FILENAME = ".harmonist.json"
 CURRENT_SCHEMA_VERSION = 1
-MB_HISTORY_LIMIT = 10
 
 
 class UnsupportedSchemaVersion(Exception):
@@ -55,17 +54,17 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
 
 
 def _to_dict(s: Sidecar) -> dict:
-    d: dict = {
-        "schema_version": s.schema_version,
-        "source": s.source,
-    }
+    d: dict = {"schema_version": s.schema_version}
+    if s.store_url:
+        d["store_url"] = s.store_url
     if s.bandcamp:
-        bd: dict = {"url": s.bandcamp.url}
+        bd: dict = {}
         if s.bandcamp.item_id is not None:
             bd["item_id"] = s.bandcamp.item_id
         if s.bandcamp.band_id is not None:
             bd["band_id"] = s.bandcamp.band_id
-        d["bandcamp"] = bd
+        if bd:  # only include the block when it has content
+            d["bandcamp"] = bd
     if s.downloaded_at:
         d["downloaded_at"] = _iso(s.downloaded_at)
     if s.added_at:
@@ -74,26 +73,11 @@ def _to_dict(s: Sidecar) -> dict:
         d["mb_release_id"] = s.mb_release_id
     if s.mb_match_candidate:
         d["mb_match_candidate"] = _candidate_to_dict(s.mb_match_candidate)
-    if s.mb_last_checked_at:
-        d["mb_last_checked_at"] = _iso(s.mb_last_checked_at)
-    if s.mb_lookup_history:
-        d["mb_lookup_history"] = [
-            _attempt_to_dict(a) for a in s.mb_lookup_history[-MB_HISTORY_LIMIT:]
-        ]
     if s.tagged_at:
         d["tagged_at"] = _iso(s.tagged_at)
     if s.notes is not None:
         d["notes"] = s.notes
     return d
-
-
-def _attempt_to_dict(a: MBLookupAttempt) -> dict:
-    out: dict = {"at": _iso(a.at), "result": a.result}
-    if a.mbid:
-        out["mbid"] = a.mbid
-    if a.error:
-        out["error"] = a.error
-    return out
 
 
 def _candidate_to_dict(c: MatchCandidate) -> dict:
@@ -155,11 +139,9 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
     sv = d.get("schema_version")
     if sv != CURRENT_SCHEMA_VERSION:
         raise UnsupportedSchemaVersion(
-            f"sidecar at {source_path} has schema_version={sv}, expected {CURRENT_SCHEMA_VERSION}"
+            f"sidecar at {source_path} has schema_version={sv}, expected "
+            f"{CURRENT_SCHEMA_VERSION}. Delete the sidecar and re-reconcile."
         )
-    source = d.get("source")
-    if source not in ("bandcamp", "manual"):
-        raise InvalidSidecar(f"sidecar at {source_path} has invalid source: {source!r}")
 
     bandcamp = None
     if "bandcamp" in d:
@@ -167,7 +149,7 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
         try:
             item_id_raw = bd.get("item_id")
             item_id = int(item_id_raw) if item_id_raw is not None else None
-            bandcamp = BandcampInfo(url=bd["url"], item_id=item_id, band_id=bd.get("band_id"))
+            bandcamp = BandcampInfo(item_id=item_id, band_id=bd.get("band_id"))
         except (KeyError, TypeError, ValueError) as e:
             raise InvalidSidecar(f"sidecar at {source_path} has malformed bandcamp block: {e}") from e
 
@@ -182,22 +164,12 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
 
     return Sidecar(
         schema_version=sv,
-        source=source,
+        store_url=d.get("store_url"),
         bandcamp=bandcamp,
         downloaded_at=_parse_iso(d.get("downloaded_at")),
         added_at=_parse_iso(d.get("added_at")),
         mb_release_id=d.get("mb_release_id"),
         mb_match_candidate=candidate,
-        mb_last_checked_at=_parse_iso(d.get("mb_last_checked_at")),
-        mb_lookup_history=[
-            MBLookupAttempt(
-                at=_parse_iso(a["at"]),
-                result=a["result"],
-                mbid=a.get("mbid"),
-                error=a.get("error"),
-            )
-            for a in d.get("mb_lookup_history", [])
-        ],
         tagged_at=_parse_iso(d.get("tagged_at")),
         notes=d.get("notes"),
     )

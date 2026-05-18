@@ -64,16 +64,16 @@ def test_seed_produces_each_state(music_dir):
     demo.seed(music_dir)
     albums = scanner.scan(music_dir)
     states = {a.title: a.state for a in albums}
-    assert states["A Most Excellent Journey"] == AlbumState.ORPHAN
-    assert states["We Are Here To Make You Sad"] == AlbumState.HELD_BANDCAMP
-    assert states["Top 5 Records For A Wednesday"] == AlbumState.HELD_MANUAL
-    assert states["Gimme Some Money"] == AlbumState.NEEDS_CONFIRMATION
-    assert states["Little Bit o' Hoot, Whole Lotta Nanny"] == AlbumState.UNCONFIRMED_BANDCAMP
+    assert states["A Most Excellent Journey"] == AlbumState.NEW
+    assert states["We Are Here To Make You Sad"] == AlbumState.NEEDS_MBID
+    assert states["Top 5 Records For A Wednesday"] == AlbumState.NEEDS_MBID
+    assert states["Gimme Some Money"] == AlbumState.NEEDS_REVIEW
+    assert states["Little Bit o' Hoot, Whole Lotta Nanny"] == AlbumState.NEEDS_SYNC
     assert states["The Rural Juror (OST)"] == AlbumState.DONE
 
 
-def test_seed_orphan_has_mbid_and_comment_for_reconcile(music_dir):
-    """The Orphan should be reconcile-able (MBID atom + Bandcamp ©cmt)."""
+def test_seed_new_has_mbid_and_comment_for_reconcile(music_dir):
+    """The new album should be reconcile-able (MBID atom + Bandcamp ©cmt)."""
     demo.seed(music_dir)
     from mutagen.mp4 import MP4
     track = next((music_dir / "Wyld Stallion" / "A Most Excellent Journey").glob("*.m4a"))
@@ -246,7 +246,7 @@ def test_demo_confirm_tags_album_end_to_end(demo_client):
         from harmonist.scanner import scan
         from harmonist.models import AlbumState
         albums = scan(demo_client.app.state.cfg.paths.music_dir)
-        nc = next(a for a in albums if a.state == AlbumState.NEEDS_CONFIRMATION)
+        nc = next(a for a in albums if a.state == AlbumState.NEEDS_REVIEW)
         aid = nc.id
     else:
         aid = m.group(1)

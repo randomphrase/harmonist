@@ -35,14 +35,14 @@ The following are explicitly out of scope for this prototype:
 4. Inbox updates live as albums land (HTMX poll while sync is in-flight).
 5. For each new album, MB lookup runs by Bandcamp URL.
 6. If MB has a release linked to that URL → Harmonist tags the files Picard-compatibly. The album disappears from the inbox.
-7. If MB has no match → the album sits in the inbox as **Held (Bandcamp)** with an "Open in Harmony" button and a "Recheck" button.
+7. If MB has no match → the album sits in the inbox as **Needs MBID** with an "Open in Harmony" button and a "Recheck" button.
 
 ### 2.2 Manual ingest (non-Bandcamp music)
 
 1. User drops an album directory into the music dir.
 2. User clicks **Add Manual** in the inbox (or Harmonist offers it for a directory it sees with no sidecar).
 3. User pastes an MB release URL/MBID, or uses a name-based MB search helper.
-4. Harmonist writes a sidecar with `source: "manual"` and the resolved `mb_release_id`, then tags the files.
+4. Harmonist writes a sidecar with no `store_url` (the manual case) and the resolved `mb_release_id`, then tags the files.
 
 ### 2.3 Held-album recheck
 
@@ -50,11 +50,16 @@ The following are explicitly out of scope for this prototype:
 2. User clicks **Recheck** on a Held album (or **Recheck All**).
 3. Harmonist re-runs the MB URL lookup. If now matched, it tags. If still unmatched, the album stays Held.
 
-### 2.4 Re-tag from MB
+### 2.4 Re-tag from MB *(planned — post-v1)*
 
 1. User edits a release in MB (track titles, dates, etc.).
 2. User clicks **Re-tag** on a matched album.
-3. Harmonist re-fetches the MB release and rewrites the file tags. (May not ship in the prototype — captured for the next iteration.)
+3. Harmonist re-fetches the MB release and rewrites the file tags.
+
+**Not in the initial release.** Captured here so the state model and UI
+don't preclude it later. No `COMPLETE → COMPLETE` or
+`INCOMPLETE → INCOMPLETE` "Re-tag" self-loop appears in the §3.1
+diagram until this use case is in scope.
 
 ### 2.5 Per-album reconciliation
 
@@ -65,8 +70,8 @@ For each such album (`harmonist.reconcile.reconcile_album`):
 1. Read the `MusicBrainz Album Id` atom from the album's tracks.
 2. Read the `©cmt` (comment) tag from the same file.
 3. Fetch the release's URL relationships from MB (`mb_lookup.fetch_release_urls`).
-4. **If `©cmt` mentions any `bandcamp.com` URL AND MB has at least one Bandcamp URL relationship for the release:** write a sidecar with `source="bandcamp"`, `bandcamp.url` set to MB's canonical URL, `bandcamp.item_id=None` (filled in later by sync). The album shows as **Unconfirmed Bandcamp** until the next sync resolves the item_id.
-5. **Otherwise:** write `source="manual"`. Album shows as **Done** (already tagged).
+4. **If `©cmt` mentions any `bandcamp.com` URL AND MB has at least one Bandcamp URL relationship for the release:** write a sidecar with `store_url` set to MB's canonical Bandcamp URL, `bandcamp.item_id=None` (filled in later by sync). The album shows as **Needs Sync** until the next sync resolves the item_id.
+5. **Otherwise:** write a sidecar with no `store_url`. Album shows as **Complete** (already tagged).
 
 The `©cmt` evidence rule prevents false-positive "purchased on Bandcamp" classifications when a user happens to own an album that's *also* available on Bandcamp but they bought it elsewhere (Beatport, CD rip, etc.).
 
@@ -78,11 +83,57 @@ The `©cmt` evidence rule prevents false-positive "purchased on Bandcamp" classi
 For purchases with no matching sidecar, sync downloads as normal.
 
 **Edge case — bandcamp `©cmt` but no matching purchase:**
-After sync runs, an album may remain `UNCONFIRMED_BANDCAMP` (still `bandcamp.item_id=None`). This means we have evidence the user got it from Bandcamp (©cmt) but couldn't link it to a current purchase (URL renames, ownership transfer, removed from collection, etc.). The inbox surfaces these albums with two affordances:
+After sync runs, an album may remain `NEEDS_SYNC` (still `bandcamp.item_id=None`). This means we have evidence the user got it from Bandcamp (©cmt) but couldn't link it to a current purchase (URL renames, ownership transfer, removed from collection, etc.). The inbox surfaces these albums with two affordances:
 - **Try a different URL** — user supplies the correct/current Bandcamp URL; written into the sidecar; next sync re-attempts the match.
-- **Mark purchased elsewhere** — flips sidecar to `source="manual"`, drops the bandcamp block. Album becomes Done.
+- **Mark purchased elsewhere** — clears the `store_url` and drops the bandcamp block. Album becomes Complete.
 
-Bandcamp credentials remain optional throughout: the tool is fully usable for a non-Bandcamp library (per use case 2.2). Reconciliation works without cookies — it just leaves bandcamp-source albums in `UNCONFIRMED_BANDCAMP` indefinitely (which is fine if the user never plans to add cookies).
+Bandcamp credentials remain optional throughout: the tool is fully usable for a non-Bandcamp library (per use case 2.2). Reconciliation works without cookies — it just leaves bandcamp-sourced albums in `NEEDS_SYNC` indefinitely (which is fine if the user never plans to add cookies).
+
+### 2.6 Bulk import of an existing library
+
+A user with a pre-existing library (hundreds to tens of thousands of
+albums, typically already Picard-tagged) points Harmonist at their music
+dir for the first time.
+
+**Mechanically identical to the other use cases.** The scanner walks the
+tree; every album dir becomes `NEW`; auto-reconciliation iterates them
+via the existing `ReconcileRunner`. Already-MBID-tagged albums (the
+common case for a Picard-managed library) flow straight to `COMPLETE`
+(or `NEEDS_SYNC` if `©cmt` evidence + MB URL relationship point to
+Bandcamp). Albums without an MBID atom stay in `NEW` and surface in the
+inbox for user attention.
+
+**No new states, transitions, or schema fields.** The only thing that
+differs from the canonical Bandcamp-sync flow is volume.
+
+**What volume implies, in practice:**
+
+- **Pacing**: `ReconcileRunner` already rate-limits MB queries at
+  1 req/sec (`MB_RATE_LIMIT_SECONDS`) per the MB ToS. A 5,000-album
+  bulk reconcile takes ~80 minutes of wall time, dominated by network.
+  Acceptable for a one-time onboarding; the user closes the tab and
+  comes back later.
+- **Progress UI**: the existing `reconcile/status` JSON
+  (`current_item`, `completed`, `total`) is the right primitive.
+  The inbox already polls it during a run.
+- **Inbox triage**: a bulk import surfaces the user's actual
+  problem albums (untagged, partial-tag, inconsistent) as a working
+  set. The state grouping (§3) is what makes a thousand-row inbox
+  navigable — the user works one state at a time.
+- **No "import" button**: the user just drops files in the music dir
+  (or mounts an existing dir). `/tasks` auto-kicks reconcile when it
+  sees any `NEW` album. No special bulk-import mode.
+
+**Assumptions / out of scope:**
+
+- Library is **internally consistent** per §15.2. Bulk-import does not
+  attempt to untangle mixed-album dirs; those land in `INCONSISTENT`
+  and the user resolves with Picard.
+- Library is not actively being written to by another tool during the
+  import. Concurrent Picard runs against the same dir could race the
+  scanner; user is expected to do one or the other.
+- No deduplication, no MD5/fingerprint matching across the library —
+  Harmonist treats each album dir independently.
 
 ---
 
@@ -90,78 +141,84 @@ Bandcamp credentials remain optional throughout: the tool is fully usable for a 
 
 Every album in the music dir is in exactly one state, derived from the presence/contents of its `.harmonist.json` sidecar plus the file tags.
 
-| Sidecar | `mb_release_id` | `mb_match_candidate` | Files tagged | State | Inbox? | UI affordances |
-|---|---|---|---|---|---|---|
-| absent | — | — | — | **Orphan** | yes | "Add Manual" / "Recover Bandcamp URL" |
-| present, `source=bandcamp` | null | null | n/a | **Held (Bandcamp)** | yes | "Open in Harmony", "Recheck" |
-| present, `source=manual` | null | null | n/a | **Held (Manual)** | yes | MB search helper / paste MBID |
-| present | null | set | n/a | **Needs Confirmation** | yes | side-by-side: files vs MB release with per-track green/yellow length indicators; "Confirm" / "Reject" buttons |
-| present | set | n/a | no | **Tagging** (transient) | yes (briefly) | spinner |
-| present, `source=bandcamp`, `bandcamp.item_id=None` | set | n/a | yes | **Unconfirmed Bandcamp** | yes | "Try a different URL" / "Mark purchased elsewhere" |
-| present | set | n/a | yes | **Done** | no | (hidden — visible in "All" tab if we ship one) |
+| Sidecar | `mb_release_id` | `mb_match_candidate` | Files tagged | File count vs MB tracks | State | Inbox? | UI affordances |
+|---|---|---|---|---|---|---|---|
+| absent | — | — | — | — | **New** | yes | "Reconcile from tags" / "Recover store URL" / manual MBID form |
+| present | null | null | n/a | — | **Needs MBID** | yes | If `store_url`: "Open in Harmony" + "Recheck"; always: manual MBID form |
+| present | null | set | n/a | — | **Needs Review** | yes | side-by-side: files vs MB release with per-track green/yellow length indicators; "Confirm" / "Confirm as Incomplete" / "Reject" |
+| present | set | n/a | no | — | **Tagging** (transient) | yes (briefly) | spinner |
+| present, `store_url` is bandcamp, `bandcamp.item_id=None` | set | n/a | yes | — | **Needs Sync** | yes | "Try a different URL" / "Mark purchased elsewhere" |
+| present | set | n/a | yes | equal | **Complete** | no | (hidden — visible in library) |
+| present | set | n/a | yes | less | **Incomplete** | no | library badge "N of M tracks"; "Recheck — maybe more tracks now" |
+
+`Complete` vs `Incomplete` is derived at scan time by comparing the
+album's file count against `sidecar.track_count_expected` (the MB
+release's track count recorded at tagging time — see §4). Equal →
+Complete; fewer → Incomplete. There is no `incomplete` flag in the
+sidecar — state is sufficient.
 
 **Transitions are idempotent.** Running sync, recheck, or tag twice on the same album is safe and produces the same result.
-
-The "Ambiguous" state from the old readme is gone for Bandcamp sources (URL → MB lookup is exact). It only resurfaces inside the Manual search helper, where it's a UI concern, not a system state.
 
 ### 3.1 State transition diagram
 
 ```mermaid
 stateDiagram-v2
-    direction LR
-    [*] --> ORPHAN: scanner finds<br/>album dir (no sidecar)
+    direction TB
+    [*] --> NEW: scanner finds<br/>album dir (no sidecar)
     [*] --> INCONSISTENT: files disagree<br/>on album/MBID
-    [*] --> DONE: scanner finds<br/>sidecar+tagged files
+    [*] --> COMPLETE: scanner finds<br/>sidecar+tagged files<br/>(file_count == expected)
+    [*] --> INCOMPLETE: scanner finds<br/>sidecar+tagged files<br/>(file_count < expected)
 
-    ORPHAN --> UNCONFIRMED_BANDCAMP: reconcile<br/>(MBID + bandcamp ©cmt)
-    ORPHAN --> DONE: reconcile<br/>(MBID, non-bandcamp)
-    ORPHAN --> HELD_BANDCAMP: recover URL<br/>from ©cmt
-    ORPHAN --> NEEDS_CONFIRMATION: manual MBID<br/>(approximate)
-    ORPHAN --> DONE: manual MBID<br/>(exact)
+    NEW --> NEEDS_SYNC: reconcile<br/>(MBID + bandcamp ©cmt)
+    NEW --> COMPLETE: reconcile<br/>(MBID, non-bandcamp)
+    NEW --> NEEDS_MBID: recover store URL<br/>from ©cmt
+    NEW --> NEEDS_REVIEW: manual MBID<br/>(approximate)
+    NEW --> COMPLETE: manual MBID<br/>(exact)
 
-    HELD_BANDCAMP --> NEEDS_CONFIRMATION: recheck<br/>(approximate)
-    HELD_BANDCAMP --> DONE: recheck<br/>(exact)
-    HELD_BANDCAMP --> HELD_BANDCAMP: recheck (no match)
+    NEEDS_MBID --> NEEDS_REVIEW: recheck / paste MBID<br/>(approximate)
+    NEEDS_MBID --> COMPLETE: recheck / paste MBID<br/>(exact)
+    NEEDS_MBID --> NEEDS_MBID: recheck (no match)
 
-    HELD_MANUAL --> NEEDS_CONFIRMATION: paste MBID<br/>(approximate)
-    HELD_MANUAL --> DONE: paste MBID<br/>(exact)
+    NEEDS_REVIEW --> COMPLETE: Confirm
+    NEEDS_REVIEW --> INCOMPLETE: Confirm as Incomplete
+    NEEDS_REVIEW --> NEEDS_MBID: Reject
 
-    NEEDS_CONFIRMATION --> DONE: Confirm
-    NEEDS_CONFIRMATION --> DONE: Confirm as Incomplete<br/>(incomplete:true)
-    NEEDS_CONFIRMATION --> HELD_BANDCAMP: Reject (bandcamp src)
-    NEEDS_CONFIRMATION --> HELD_MANUAL: Reject (manual src)
+    NEEDS_SYNC --> COMPLETE: Sync matches<br/>purchase (item_id filled)
+    NEEDS_SYNC --> COMPLETE: Mark purchased<br/>elsewhere
+    NEEDS_SYNC --> NEEDS_SYNC: Update URL<br/>(retry on next sync)
 
-    UNCONFIRMED_BANDCAMP --> DONE: Sync matches<br/>purchase (item_id filled)
-    UNCONFIRMED_BANDCAMP --> DONE: Mark purchased<br/>elsewhere
-    UNCONFIRMED_BANDCAMP --> UNCONFIRMED_BANDCAMP: Update URL<br/>(retry on next sync)
+    COMPLETE --> NEW: Forget<br/>(sidecar deleted)
 
-    DONE --> ORPHAN: Forget<br/>(sidecar deleted)
-    DONE --> DONE: Re-tag from MB
+    INCOMPLETE --> NEW: Forget
+    INCOMPLETE --> NEEDS_REVIEW: Recheck<br/>(MB tracklist changed)
+    INCOMPLETE --> COMPLETE: Recheck<br/>(missing tracks now on disk)
 
-    INCONSISTENT --> ORPHAN: user fixes on-disk<br/>tags via Picard
+    INCONSISTENT --> NEW: user fixes on-disk<br/>tags via Picard
 ```
 
 Notes:
 
-- `DONE` has two flavours: normal, and incomplete (`sidecar.incomplete = true`,
-  added via "Confirm as Incomplete" — see §15.3).
+- `COMPLETE` and `INCOMPLETE` are both terminals, distinguished by
+  whether the on-disk file count matches `sidecar.track_count_expected`
+  (the MB track count recorded at tagging time — see §4). No `incomplete`
+  flag in the sidecar; state is sufficient.
 - `TAGGING` is omitted: it's a transient state visible only while the
   tagger is mid-write (typically <1s).
 - `INCONSISTENT` is purely derived from on-disk file tags; user resolves
   via Picard (§15.2). No sidecar action needed.
 - Forget adds the path to an in-memory exemption set so auto-reconcile
-  doesn't immediately reverse it (§22 — see commit history).
+  doesn't immediately reverse it.
 
 ### Match confidence (when MB has the URL but the files might not match)
 
-A URL → MBID match from MusicBrainz is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
+A URL → MBID match from [MusicBrainz](https:://musicbrainz.org) is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
 
-- **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote: write `mb_release_id`, run tagger, transition to Tagging → Done with no user intervention.
-- **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. State becomes Needs Confirmation. UI surfaces a Picard-style side-by-side with green/yellow per-track indicators and Confirm/Reject buttons.
-- **No match:** file count differs from MB track count. Treated like Approximate from the user's perspective (still Needs Confirmation, still requires explicit Confirm) but the side-by-side has to handle uneven rows.
+- **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote: write `mb_release_id`, run tagger, transition to Tagging → Complete with no user intervention.
+- **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. State becomes Needs Review. UI surfaces a Picard-style side-by-side with green/yellow per-track indicators and Confirm / Confirm as Incomplete / Reject buttons.
+- **No match:** file count differs from MB track count. Treated like Approximate from the user's perspective (still Needs Review, still requires explicit Confirm) but the side-by-side has to handle uneven rows.
 
 Confirm → promote candidate to `mb_release_id`, clear candidate, run tagger.
-Reject → clear candidate, drop back to Held (Bandcamp).
+Reject → clear candidate, drop back to Needs MBID.
 
 Tracks where MB has no recorded length are shown as "unknown" (gray) and don't trigger downgrade on their own, but they don't get to vote for "exact" either — an album with all-unknown lengths and matching count is treated as Approximate.
 
@@ -174,19 +231,15 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
 ```json
 {
   "schema_version": 1,
-  "source": "bandcamp",
+  "store_url": "https://myartist.bandcamp.com/album/my-album",
   "bandcamp": {
-    "url": "https://myartist.bandcamp.com/album/my-album",
     "item_id": 67890,
     "band_id": 12345
   },
   "downloaded_at": "2026-05-05T12:34:56Z",
-  "mb_release_id": null,
-  "mb_last_checked_at": null,
-  "mb_lookup_history": [
-    { "at": "2026-05-05T12:35:01Z", "result": "no_match" }
-  ],
-  "tagged_at": null,
+  "mb_release_id": "abc-123-...",
+  "tagged_at": "2026-05-05T13:00:02Z",
+  "track_count_expected": 12,
   "notes": null
 }
 ```
@@ -194,25 +247,31 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
 **Field rules:**
 
 - `schema_version` is mandatory; the loader rejects unknown versions for now.
-- `source` is one of `"bandcamp"` | `"manual"`.
-- `bandcamp` block is required when `source == "bandcamp"`, omitted otherwise.
-- `mb_release_id` is the MBID string when matched; `null` when held.
-- `mb_lookup_history` is bounded to the last 10 entries; rotates.
+- `store_url` (optional) is the canonical purchase URL from any store
+  Harmony accepts (Bandcamp, Beatport, Discogs, etc.). Absence means
+  "no store source recorded" (the manual case). Store identity is
+  derived from the URL host (see `harmonist.models.store_name`).
+- `bandcamp` block (optional) holds Bandcamp-specific identifiers
+  (`item_id`, `band_id`) and only appears when at least one is set.
+  When `store_url` is on a bandcamp.com host but `bandcamp.item_id` is
+  null, the album is in **Needs Sync** until the next sync resolves it.
+- `mb_release_id` is the MBID string when matched; `null` when not yet
+  matched (state derives from sidecar shape, not from this field alone).
+- `track_count_expected` (optional) is the MB release's track count
+  recorded at tagging time. The scanner uses it to distinguish
+  **Complete** (`file_count == track_count_expected`) from **Incomplete**
+  (`file_count < track_count_expected`). There is no `incomplete` flag;
+  state is the marker, and `track_count_expected` is what persists user
+  intent across MB upstream changes.
 - All timestamps are ISO 8601 UTC with `Z` suffix.
 
-**Manual variant:**
-
-```json
-{
-  "schema_version": 1,
-  "source": "manual",
-  "added_at": "2026-05-05T13:00:00Z",
-  "mb_release_id": "abc-123-...",
-  "mb_last_checked_at": "2026-05-05T13:00:01Z",
-  "tagged_at": "2026-05-05T13:00:02Z",
-  "notes": null
-}
-```
+**Persistence philosophy:** The sidecar holds load-bearing state only —
+fields driving a user-visible affordance, recovery from restart, or
+read by another module's logic. MB rate-limiting and lookup audit
+data are deliberately NOT persisted: rate limiting is process-wide
+(see `MB_RATE_LIMIT_SECONDS` in `web/reconcile_runner.py`), and audit
+history belongs in server logs. Speculative "might be useful later"
+fields don't go here.
 
 ---
 
@@ -359,7 +418,7 @@ All routes return HTML fragments unless noted. JSON only for `/healthz`, `/sync/
 | POST | `/recheck` | Recheck all held | HTML fragment |
 | POST | `/manual/{album_id}` | Open manual MBID entry/search | HTML fragment |
 | POST | `/manual/{album_id}/search` | Run name-based MB search helper | HTML fragment |
-| POST | `/recover/{album_id}` | Try to recover Bandcamp URL for an Orphan | HTML fragment |
+| POST | `/recover/{album_id}` | Try to recover store URL for a New album | HTML fragment |
 | GET  | `/healthz` | Health for Docker | JSON |
 | GET  | `/static/...` | Static assets (cover art via symlink to music dir is one option) | binary |
 
@@ -377,16 +436,16 @@ Album IDs remain MD5-of-path (matches existing convention; survives across runs 
 - When `/sync/status` returns `state == "idle"` post-run, the polling stops and the button re-enables.
 - Cap: `max_downloads_per_sync` aborts the sync with a visible error if the would-download set exceeds it.
 
-### 9.2 Held → Recheck
+### 9.2 Needs MBID → Recheck
 
-- Card has an "Open in Harmony" link (`https://harmony.pulsewidth.org.uk/release?url=<bandcamp_url>`) and a "Recheck" button.
-- Recheck POSTs to `/recheck/{id}`. On success, the card swaps into the Tagging spinner, then disappears (album moves to Done).
+- Card has an "Open in Harmony" link (`https://harmony.pulsewidth.org.uk/release?url=<store_url>`) and a "Recheck" button.
+- Recheck POSTs to `/recheck/{id}`. On success, the card swaps into the Tagging spinner, then disappears (album moves to Complete).
 
 ### 9.3 Manual ingest
 
-- Orphan card has "Add Manual" → opens an inline form.
+- New card includes a manual MBID form alongside "Reconcile from tags" and "Recover store URL".
 - Form takes either a full MB release URL/MBID *or* runs the search helper (`/manual/{id}/search?artist=...&title=...`) and presents matches to pick.
-- On selection, POST to `/tag/{id}/{mbid}`.
+- On selection, POST to `/manual/{id}/assign`.
 
 ---
 
@@ -506,9 +565,9 @@ test_live_sync_flow_end_to_end (cassette mode):
   given: empty music dir, ignores with 359/360 entries, 1 unignored
   when:  POST /sync, poll until /sync/status is idle
   then:  exactly 1 album appears in /tasks
-         sidecar exists with bandcamp.url populated
+         sidecar exists with store_url populated (bandcamp.com host)
          MB lookup ran (assert via cassette interaction)
-         either tagged (Done, not in /tasks) or Held with Harmony URL
+         either tagged (Complete, not in /tasks) or Needs MBID with Harmony URL
   cleanup: scrub temp dirs
 ```
 
@@ -539,7 +598,7 @@ Each step ends with green tests at its level. No agent moves on until QA signs o
 6. **Web layer** — FastAPI routes, `sync_runner.py`, templates. Integration tests via `TestClient` covering each route × each state.
 7. **UX live updates** — HTMX polling, status indicator, sync button states. Browser-tested manually.
 8. **Manual + recheck flows** — `mb_search.py`, manual-entry templates, recheck routes.
-9. **URL recovery fallback** — `url_recovery.py` for Orphans with only a `©cmt` artist URL. Lower priority.
+9. **URL recovery fallback** — `url_recovery.py` for New albums with only a `©cmt` artist URL. Lower priority.
 10. **Containerise** — Dockerfile, multi-arch buildx, healthcheck, PUID/PGID entrypoint, compose recipes.
 11. **Flagship E2E test** — cassette-mode test of the full sync flow. Becomes the gate for "prototype done".
 12. **Manual test pass** — QA runs through `docs/manual-tests.md` on macOS and Pi.
@@ -598,16 +657,17 @@ or Picard was interrupted partway through.
 are tagged with the matching MBID (M > N > 0), the album is *partially
 tagged*.
 
-**State:** stays `DONE` (the existing logic treats "any file matches" as
-Done). The scanner's Album object gains a `partial_tag_count` field
+**State:** stays `COMPLETE` (the existing logic treats "any file matches"
+as tagged). The scanner's Album object gains a `partial_tag_count` field
 (`"N/M"`-style) — not persisted, just derived at scan time.
 
-**UI:** library expanded view shows a "5/6 tracks tagged" line. The
-existing Re-tag from MB button re-runs the tagger across all files,
-backfilling the untagged ones idempotently.
+**UI:** library expanded view shows a "5/6 tracks tagged" badge. In v1
+this is informational only; the in-app resolution (a Re-tag button that
+re-runs the tagger across all files, backfilling untagged ones
+idempotently) ships with the §2.4 Re-tag use case post-v1. In the
+meantime the user can re-tag externally with Picard.
 
-No new state — partial tagging is a quality issue, not ambiguity. User
-sees the indicator, clicks Re-tag, done.
+No new state — partial tagging is a quality issue, not ambiguity.
 
 ### 15.2 Inconsistent dirs (multiple albums in one folder)
 
@@ -622,7 +682,7 @@ flagged — that's legitimate.
 
 **State:** new `INCONSISTENT`. **Purely derived from on-disk file tags;
 no sidecar field involved.** Auto-reconcile skips these (they're not
-Orphans — scanner pre-empts the orphan classification).
+New — scanner pre-empts the new classification).
 
 **UI:** inbox card shows a per-track summary table with the conflicting
 fields highlighted, and an instruction:
@@ -633,12 +693,12 @@ fields highlighted, and an instruction:
 **No "Ignore" action.** Per the core principle, we don't write a sidecar
 field that requires hand-editing JSON to escape. Once the user fixes the
 on-disk tags via Picard, the next scan re-classifies the dir naturally
-(likely Orphan → auto-reconcile resolves it). Chaotic dirs the user
+(likely New → auto-reconcile resolves it). Chaotic dirs the user
 genuinely doesn't care about will sit in the inbox indefinitely — that
 is the deliberate cost of the principle.
 
 **Sidecar interaction:** if a sidecar already exists when files become
-inconsistent (e.g. user dropped a stray file into a Done album dir),
+inconsistent (e.g. user dropped a stray file into a Complete album dir),
 INCONSISTENT trumps the sidecar's state. The sidecar isn't deleted —
 once the user fixes the on-disk reality, the scanner will read the
 consistent state and the sidecar resumes driving the state machine.
@@ -660,14 +720,16 @@ corruption. We refuse to guess; Picard exists for this case.
 On-disk track count is **less than** the MB release's track count, but
 the user has a valid reason (CD rip missing a hidden track, intentional
 selection, vinyl-only edition where the digital MB release has bonus
-tracks, etc.). Without special handling these stall in `NEEDS_CONFIRMATION`
+tracks, etc.). Without special handling these stall in `NEEDS_REVIEW`
 forever because `TagMismatchError` would block the tagger.
 
-**Handling:** the Needs Confirmation card gains a third button next to
+**Handling:** the Needs Review card gains a third button next to
 Confirm / Reject:
 
-- **Confirm as Incomplete** — writes `incomplete: true` to the sidecar
-  AND runs the tagger in incomplete mode.
+- **Confirm as Incomplete** — runs the tagger in incomplete mode and
+  records `track_count_expected` (the MB release's track count) on the
+  sidecar. The album's state becomes `INCOMPLETE`, derived at scan time
+  from `file_count < track_count_expected`.
 
 **Tagger incomplete mode:** doesn't raise `TagMismatchError` on
 `file_count < track_count`. Uses **length-similarity** to match the
@@ -675,9 +737,19 @@ on-disk files to a subset of MB tracks (best-fit assignment, falling
 back to positional matching when lengths are unknown / equal). MB tracks
 without a matched file are skipped.
 
-**State after Confirm as Incomplete:** `DONE`. The library expanded view
-shows a small "incomplete" badge plus a per-track list of which MB
-tracks weren't on disk.
+**State after Confirm as Incomplete:** `INCOMPLETE`. This is a distinct
+terminal state, not a flagged variant of `COMPLETE` — the state enum
+alone tells the UI what to render, no sidecar metadata peek required.
+The library expanded view shows a small "incomplete" badge plus a
+per-track list of which MB tracks weren't on disk.
+
+**Promotion to Complete:** if the user later adds the missing tracks
+on disk and clicks Recheck, the scanner sees `file_count ==
+track_count_expected` and the state naturally promotes to `COMPLETE`.
+Conversely, if MB upstream gains new tracks, Recheck refreshes
+`track_count_expected` and the album either stays `INCOMPLETE` (if
+the new MB count still exceeds file count) or routes back through
+`NEEDS_REVIEW` for re-confirmation.
 
 **Out of scope:** file_count > track_count (extra tracks on disk) — same
 class as inconsistent; user resolves externally.
@@ -692,13 +764,55 @@ class as inconsistent; user resolves externally.
   must be flattened first.
 - **Format conversion**: Harmonist never transcodes.
 
-## 16. Open questions
+## 16. Store support
+
+Sidecars carry a single `store_url` field — any storefront URL Harmony
+recognises. The first-class store is Bandcamp (full sync + match flow);
+others are accepted as URL inputs into the manual / reconcile paths and
+handed to Harmony for MB seeding.
+
+### 16.1 Bandcamp (first-class)
+
+- **Purchase listing + download**: `bandcampsync` (subclassed as
+  `HarmonistSyncer`).
+- **URL → MB MBID**: MusicBrainz URL-relationship lookup
+  (`mb_lookup.lookup_by_bandcamp_url`).
+- **Tag-time evidence**: `©cmt` comment on downloaded `.m4a` files
+  contains the Bandcamp album URL (used by `url_recovery` to seed a
+  store_url on New albums).
+
+### 16.2 Other stores (URL-only)
+
+For any other store (Beatport, Discogs, Deezer, etc.) the sidecar can
+hold a `store_url`. The reconcile/recheck flow then asks Harmony to seed
+the MB release from that URL, and tagging proceeds via the existing
+MB-by-MBID path. This adds no store-specific code.
+
+### 16.3 Beatport — why no first-class support
+
+Beatport has a v4 OAuth API (`api.beatport.com/v4/`) but it is gated.
+New API keys are not issued through normal channels. Community plugins
+(e.g. `beets-beatport4`) work around this by scraping the `client_id`
+out of Beatport's Swagger UI and using `authorization_code` with the
+user's Beatport credentials. This is technically functional but:
+
+- ToS gray area — API is "non-commercial only" and the gating bypass
+  arguably contravenes the spirit of their access model.
+- Fragile — a `client_id` rotation or Swagger page change breaks it.
+- No equivalent of `bandcampsync` for downloading purchases via API.
+  Beatport's "My Beatport" downloads are a web-session flow, not API.
+
+Decision: accept Beatport **URLs** in `store_url` (free, via §16.2), but
+do not build a Beatport-specific scraper, syncer, or metadata enricher.
+Users with Beatport purchases manage downloads out-of-band and paste
+the release URL when reconciling.
+
+## 17. Open questions
 
 - **Cover art serving:** the inbox UI references covers via `/static/music/...`. Simplest path is a FastAPI mount of the music dir, scoped to image files only. Decision pending.
 - **Cover art library optimisation:** future enhancement, not in scope here. If the library grows big enough to matter, a separate batch tool can downsize covers across all albums. Keep that out of the tagger's hot path.
 - **Multiple cover art types:** CAA has front, back, booklet, etc. Prototype embeds front only and stops there. Other types deferred.
 - **Re-tag cover behaviour:** if user has manually replaced `cover.jpg`, do we re-fetch from CAA on retag (overwriting their choice) or trust the local file? Current design trusts local; flag in the manual-test plan.
 - **MB rate limiting:** musicbrainzngs imposes 1 req/sec by default. For batch tagging across many tracks during a single match, we may need to sequence carefully. Probably fine for the prototype's scale.
-- **"Re-tag from MB" use case** — defer to v2?
 - **Single-writer assumption on the ignores file** — if the user runs bandcampsync standalone outside the container, are concurrent writes possible? In practice almost certainly no, but worth flagging.
 - **Backup before tag write?** Optionally write `<file>.bak` before mutagen.save() during the prototype phase, removable by config later. QA's call.

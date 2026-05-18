@@ -13,10 +13,10 @@ from harmonist.models import (
     AlbumState,
     BandcampInfo,
     MatchCandidate,
-    MBLookupAttempt,
     Sidecar,
     TrackComparison,
 )
+from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 
 
 # ---------- config ----------
@@ -103,12 +103,11 @@ def test_album_id_is_md5_of_path():
 
 
 def test_album_state_values():
-    assert AlbumState.ORPHAN.value == "orphan"
-    assert AlbumState.HELD_BANDCAMP.value == "held_bandcamp"
-    assert AlbumState.HELD_MANUAL.value == "held_manual"
-    assert AlbumState.NEEDS_CONFIRMATION.value == "needs_confirmation"
+    assert AlbumState.NEW.value == "new"
+    assert AlbumState.NEEDS_MBID.value == "needs_mbid"
+    assert AlbumState.NEEDS_REVIEW.value == "needs_review"
     assert AlbumState.TAGGING.value == "tagging"
-    assert AlbumState.UNCONFIRMED_BANDCAMP.value == "unconfirmed_bandcamp"
+    assert AlbumState.NEEDS_SYNC.value == "needs_sync"
     assert AlbumState.DONE.value == "done"
 
 
@@ -117,15 +116,15 @@ def test_sidecar_round_trip_with_optional_item_id(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     s = Sidecar(
-        schema_version=1,
-        source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=None),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-aaa",
     )
     sc.write(album_dir, s)
     loaded = sc.read(album_dir)
-    assert loaded.bandcamp.url == "https://x.bandcamp.com/album/y"
-    assert loaded.bandcamp.item_id is None
+    assert loaded.store_url == "https://x.bandcamp.com/album/y"
+    assert loaded.bandcamp is None or loaded.bandcamp.item_id is None
     # JSON should not include item_id when None
     raw = sc.sidecar_path(album_dir).read_text()
     assert "item_id" not in raw
@@ -137,45 +136,33 @@ def test_sidecar_round_trip_bandcamp(tmp_path):
     album_dir = tmp_path / "Artist" / "Album"
     album_dir.mkdir(parents=True)
     s = Sidecar(
-        schema_version=1,
-        source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=42, band_id=99),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=42, band_id=99),
         downloaded_at=datetime(2026, 5, 7, 12, 0, 0, tzinfo=timezone.utc),
     )
     sc.write(album_dir, s)
     loaded = sc.read(album_dir)
     assert loaded is not None
-    assert loaded.source == "bandcamp"
-    assert loaded.bandcamp.url == s.bandcamp.url
+    assert loaded.store_url == s.store_url
     assert loaded.bandcamp.item_id == 42
     assert loaded.bandcamp.band_id == 99
     assert loaded.downloaded_at == s.downloaded_at
 
 
-def test_sidecar_round_trip_manual_with_history(tmp_path):
+def test_sidecar_round_trip_manual(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     s = Sidecar(
-        schema_version=1,
-        source="manual",
+        schema_version=CURRENT_SCHEMA_VERSION,
         added_at=datetime(2026, 5, 7, 13, 0, 0, tzinfo=timezone.utc),
         mb_release_id="abc-123",
-        mb_last_checked_at=datetime(2026, 5, 7, 13, 0, 1, tzinfo=timezone.utc),
-        mb_lookup_history=[
-            MBLookupAttempt(
-                at=datetime(2026, 5, 7, 13, 0, 1, tzinfo=timezone.utc),
-                result="match",
-                mbid="abc-123",
-            )
-        ],
         notes="seeded by hand",
     )
     sc.write(album_dir, s)
     loaded = sc.read(album_dir)
     assert loaded.mb_release_id == "abc-123"
     assert loaded.notes == "seeded by hand"
-    assert len(loaded.mb_lookup_history) == 1
-    assert loaded.mb_lookup_history[0].result == "match"
 
 
 def test_sidecar_returns_none_when_absent(tmp_path):
@@ -189,7 +176,7 @@ def test_sidecar_rejects_unknown_schema(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     sc.sidecar_path(album_dir).write_text(
-        '{"schema_version": 99, "source": "bandcamp"}', encoding="utf-8"
+        '{"schema_version": 99}', encoding="utf-8"
     )
     with pytest.raises(sc.UnsupportedSchemaVersion):
         sc.read(album_dir)
@@ -203,20 +190,10 @@ def test_sidecar_rejects_invalid_json(tmp_path):
         sc.read(album_dir)
 
 
-def test_sidecar_rejects_invalid_source(tmp_path):
-    album_dir = tmp_path / "Album"
-    album_dir.mkdir()
-    sc.sidecar_path(album_dir).write_text(
-        '{"schema_version": 1, "source": "spotify"}', encoding="utf-8"
-    )
-    with pytest.raises(sc.InvalidSidecar):
-        sc.read(album_dir)
-
-
 def test_sidecar_atomic_write_no_tmp_leftover(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
-    s = Sidecar(schema_version=1, source="manual", added_at=datetime.now(timezone.utc))
+    s = Sidecar(schema_version=CURRENT_SCHEMA_VERSION, added_at=datetime.now(timezone.utc))
     sc.write(album_dir, s)
     assert not list(album_dir.glob("*.tmp"))
     assert sc.has_sidecar(album_dir)
@@ -252,9 +229,9 @@ def test_sidecar_round_trip_with_match_candidate(tmp_path):
         notes=["some track lengths differ", "some MB tracks have no recorded length"],
     )
     s = Sidecar(
-        schema_version=1,
-        source="bandcamp",
-        bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=1),
         mb_match_candidate=candidate,
     )
     sc.write(album_dir, s)
@@ -276,22 +253,3 @@ def test_sidecar_round_trip_with_match_candidate(tmp_path):
     assert c.notes == candidate.notes
 
 
-def test_sidecar_history_bounded_to_last_10(tmp_path):
-    album_dir = tmp_path / "Album"
-    album_dir.mkdir()
-    history = [
-        MBLookupAttempt(
-            at=datetime(2026, 5, i + 1, 0, 0, 0, tzinfo=timezone.utc),
-            result="no_match",
-        )
-        for i in range(15)
-    ]
-    s = Sidecar(schema_version=1, source="bandcamp",
-                bandcamp=BandcampInfo(url="https://x.bandcamp.com/album/y", item_id=1),
-                mb_lookup_history=history)
-    sc.write(album_dir, s)
-    loaded = sc.read(album_dir)
-    assert len(loaded.mb_lookup_history) == 10
-    # Most recent 10 are kept (last 10 of 15)
-    assert loaded.mb_lookup_history[0].at.day == 6
-    assert loaded.mb_lookup_history[-1].at.day == 15

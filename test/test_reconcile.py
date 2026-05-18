@@ -10,6 +10,7 @@ from mutagen.mp4 import MP4
 from harmonist import sidecar as sc
 from harmonist.models import BandcampInfo, Sidecar
 from harmonist.reconcile import reconcile_album, reconcile_pending
+from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -45,7 +46,7 @@ def _bandcamp_urls(*urls):
 
 def test_skips_album_with_existing_sidecar(tmp_path):
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="Visit https://x.bandcamp.com")
-    sc.write(album_dir, Sidecar(schema_version=1, source="manual", mb_release_id="pre-existing"))
+    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="pre-existing"))
 
     def boom(_mbid):
         raise AssertionError("should not query MB when sidecar already exists")
@@ -69,7 +70,7 @@ def test_skips_album_without_mbid_tag(tmp_path):
     assert not sc.has_sidecar(album_dir)
 
 
-# ---------- bandcamp source ----------
+# ---------- bandcamp store_url ----------
 
 def test_writes_bandcamp_sidecar_when_comment_and_mb_match(tmp_path):
     album_dir = _make_album(
@@ -80,14 +81,13 @@ def test_writes_bandcamp_sidecar_when_comment_and_mb_match(tmp_path):
     fetch = _bandcamp_urls("https://myartist.bandcamp.com/album/my-album")
     result = reconcile_album(album_dir, fetch_urls=fetch)
     assert result is not None
-    assert result.source == "bandcamp"
-    assert result.bandcamp.url == "https://myartist.bandcamp.com/album/my-album"
-    assert result.bandcamp.item_id is None  # unconfirmed until sync
+    assert result.store_url == "https://myartist.bandcamp.com/album/my-album"
+    assert result.bandcamp is None or result.bandcamp.item_id is None  # unconfirmed until sync
     assert result.mb_release_id == "rel-aaa"
     assert result.tagged_at is not None
 
     loaded = sc.read(album_dir)
-    assert loaded.source == "bandcamp"
+    assert loaded.store_url == "https://myartist.bandcamp.com/album/my-album"
 
 
 def test_uses_canonical_mb_url_not_comment_url(tmp_path):
@@ -99,7 +99,7 @@ def test_uses_canonical_mb_url_not_comment_url(tmp_path):
     )
     fetch = _bandcamp_urls("https://myartist.bandcamp.com/album/canonical-album")
     result = reconcile_album(album_dir, fetch_urls=fetch)
-    assert result.bandcamp.url == "https://myartist.bandcamp.com/album/canonical-album"
+    assert result.store_url == "https://myartist.bandcamp.com/album/canonical-album"
 
 
 def test_picks_first_bandcamp_url_when_mb_has_multiple(tmp_path):
@@ -112,48 +112,48 @@ def test_picks_first_bandcamp_url_when_mb_has_multiple(tmp_path):
         "https://other.bandcamp.com/album/z",
     )
     result = reconcile_album(album_dir, fetch_urls=fetch)
-    assert result.bandcamp.url == "https://primary.bandcamp.com/album/y"
+    assert result.store_url == "https://primary.bandcamp.com/album/y"
 
 
-# ---------- manual source ----------
+# ---------- no store_url (manual) ----------
 
-def test_writes_manual_when_no_bandcamp_comment(tmp_path):
+def test_writes_no_store_url_when_no_bandcamp_comment(tmp_path):
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="ripped from CD")
     fetch = _bandcamp_urls("https://x.bandcamp.com/album/y")  # MB knows of bandcamp
     result = reconcile_album(album_dir, fetch_urls=fetch)
     assert result is not None
-    assert result.source == "manual"
+    assert result.store_url is None
     assert result.bandcamp is None
     assert result.mb_release_id == "rel-aaa"
 
 
-def test_writes_manual_when_no_comment(tmp_path):
+def test_writes_no_store_url_when_no_comment(tmp_path):
     album_dir = _make_album(tmp_path, mbid="rel-aaa")  # default sine.m4a, no ©cmt
     fetch = _bandcamp_urls("https://x.bandcamp.com/album/y")
     result = reconcile_album(album_dir, fetch_urls=fetch)
-    assert result.source == "manual"
+    assert result.store_url is None
 
 
-def test_writes_manual_when_mb_has_no_bandcamp_url(tmp_path):
+def test_writes_no_store_url_when_mb_has_no_bandcamp_url(tmp_path):
     """User has Bandcamp ©cmt but MB doesn't actually link this release to Bandcamp."""
     album_dir = _make_album(
         tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com"
     )
     fetch = _bandcamp_urls("https://example.com/somewhere-else")  # no bandcamp URL
     result = reconcile_album(album_dir, fetch_urls=fetch)
-    assert result.source == "manual"
+    assert result.store_url is None
 
 
-def test_writes_manual_when_mb_has_no_url_relationships(tmp_path):
+def test_writes_no_store_url_when_mb_has_no_url_relationships(tmp_path):
     album_dir = _make_album(
         tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com"
     )
     result = reconcile_album(album_dir, fetch_urls=_no_urls)
-    assert result.source == "manual"
+    assert result.store_url is None
 
 
-def test_writes_manual_when_mb_lookup_fails(tmp_path):
-    """If MB lookup throws, fall back to manual rather than abort the whole scan."""
+def test_writes_no_store_url_when_mb_lookup_fails(tmp_path):
+    """If MB lookup throws, fall back to no store_url rather than abort the whole scan."""
     album_dir = _make_album(
         tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com"
     )
@@ -162,7 +162,7 @@ def test_writes_manual_when_mb_lookup_fails(tmp_path):
         raise RuntimeError("MB down")
 
     result = reconcile_album(album_dir, fetch_urls=explode)
-    assert result.source == "manual"
+    assert result.store_url is None
 
 
 # ---------- comment matching ----------
@@ -176,14 +176,14 @@ def test_matches_any_bandcamp_url_in_comment(tmp_path):
     )
     fetch = _bandcamp_urls("https://artist.bandcamp.com/album/y")
     result = reconcile_album(album_dir, fetch_urls=fetch)
-    assert result.source == "bandcamp"
+    assert result.store_url == "https://artist.bandcamp.com/album/y"
 
 
 def test_case_insensitive_bandcamp_match(tmp_path):
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://X.BANDCAMP.COM")
     fetch = _bandcamp_urls("https://x.bandcamp.com/album/y")
     result = reconcile_album(album_dir, fetch_urls=fetch)
-    assert result.source == "bandcamp"
+    assert result.store_url == "https://x.bandcamp.com/album/y"
 
 
 # ---------- batch ----------
