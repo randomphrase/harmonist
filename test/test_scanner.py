@@ -220,6 +220,101 @@ def test_scan_done_check_only_matches_correct_mbid(tmp_path):
     assert scan(tmp_path)[0].state == AlbumState.TAGGING
 
 
+# ---------- INCONSISTENT detection (§15.2) ----------
+
+
+def _tag_file(path: Path, *, album: str | None = None, mbid: str | None = None,
+              artist: str | None = None) -> None:
+    from mutagen.mp4 import MP4
+    audio = MP4(path)
+    if album is not None:
+        audio["\xa9alb"] = [album]
+    if mbid is not None:
+        audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [mbid.encode("utf-8")]
+    if artist is not None:
+        audio["\xa9ART"] = [artist]
+    audio.save()
+
+
+def test_scan_inconsistent_when_album_titles_disagree(tmp_path):
+    album_dir = _make_album_dir(tmp_path, "Artist", "Mess", n_tracks=3)
+    files = sorted(album_dir.glob("*.m4a"))
+    _tag_file(files[0], album="Album A")
+    _tag_file(files[1], album="Album A")
+    _tag_file(files[2], album="Album B")  # the outlier
+    a = scan(tmp_path)[0]
+    assert a.state == AlbumState.INCONSISTENT
+    assert len(a.inconsistent_tracks) == 3
+    titles = {t.album_title for t in a.inconsistent_tracks}
+    assert titles == {"Album A", "Album B"}
+
+
+def test_scan_inconsistent_when_mbids_disagree(tmp_path):
+    album_dir = _make_album_dir(tmp_path, "Artist", "Mess", n_tracks=2)
+    files = sorted(album_dir.glob("*.m4a"))
+    _tag_file(files[0], album="Shared Title", mbid="rel-aaa")
+    _tag_file(files[1], album="Shared Title", mbid="rel-bbb")
+    a = scan(tmp_path)[0]
+    assert a.state == AlbumState.INCONSISTENT
+
+
+def test_scan_compilation_is_not_inconsistent(tmp_path):
+    """Same album title + MBID, varying track artists = legit compilation."""
+    album_dir = _make_album_dir(tmp_path, "VA", "Mixtape", n_tracks=3)
+    files = sorted(album_dir.glob("*.m4a"))
+    _tag_file(files[0], album="Mixtape", mbid="rel-aaa", artist="Artist 1")
+    _tag_file(files[1], album="Mixtape", mbid="rel-aaa", artist="Artist 2")
+    _tag_file(files[2], album="Mixtape", mbid="rel-aaa", artist="Artist 3")
+    a = scan(tmp_path)[0]
+    assert a.state != AlbumState.INCONSISTENT
+    assert a.inconsistent_tracks == []
+
+
+def test_scan_missing_tags_do_not_vote(tmp_path):
+    """A file without ©alb or MBID atom doesn't count as a distinct value
+    — partial tagging is a separate concern (§15.1).
+    """
+    album_dir = _make_album_dir(tmp_path, "Artist", "PartTagged", n_tracks=3)
+    files = sorted(album_dir.glob("*.m4a"))
+    _tag_file(files[0], album="Album X", mbid="rel-aaa")
+    _tag_file(files[1], album="Album X", mbid="rel-aaa")
+    # files[2] has no ©alb or MBID — should be treated as missing, not "different"
+    a = scan(tmp_path)[0]
+    assert a.state != AlbumState.INCONSISTENT
+
+
+def test_scan_inconsistent_trumps_existing_sidecar(tmp_path):
+    """A sidecar pointing at COMPLETE is overridden when files become
+    inconsistent (e.g. user dropped a stray file into a Done album dir).
+    The sidecar isn't deleted — once the user fixes the on-disk reality,
+    state derivation resumes from the sidecar.
+    """
+    album_dir = _make_album_dir(tmp_path, "Artist", "Was Done", n_tracks=2)
+    files = sorted(album_dir.glob("*.m4a"))
+    _tag_file(files[0], album="Original", mbid="rel-original")
+    _tag_file(files[1], album="Stray", mbid="rel-stray")
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-original",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
+    a = scan(tmp_path)[0]
+    assert a.state == AlbumState.INCONSISTENT
+    # Sidecar still present — to be re-used after user resolves on-disk
+    assert sc.has_sidecar(album_dir)
+
+
+def test_scan_single_file_album_cannot_be_inconsistent(tmp_path):
+    album_dir = _make_album_dir(tmp_path, "Artist", "Single", n_tracks=1)
+    files = sorted(album_dir.glob("*.m4a"))
+    _tag_file(files[0], album="Some Album", mbid="rel-x")
+    a = scan(tmp_path)[0]
+    assert a.state != AlbumState.INCONSISTENT
+
+
 def test_scan_finds_multiple_albums(tmp_path):
     _make_album_dir(tmp_path, "A1", "Album 1", n_tracks=2)
     _make_album_dir(tmp_path, "A2", "Album 2", n_tracks=3)

@@ -8,7 +8,7 @@ from typing import Iterator
 from mutagen.mp4 import MP4
 
 from . import id_registry
-from .models import Album, AlbumState, Sidecar, is_bandcamp_url
+from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecar, UnsupportedSchemaVersion, read as read_sidecar
 from .tagger import ATOM_MB_ALBUM_ID
 
@@ -56,7 +56,15 @@ def _build_album(album_dir: Path, m4a_files: list[Path]) -> Album:
     if not title:
         title = album_dir.name
 
-    state = _derive_state(sidecar, m4a_files)
+    # Inconsistency trumps sidecar-driven state — see design §15.2.
+    # The sidecar is kept on disk; once the user fixes the on-disk tags
+    # via Picard, the next scan re-derives state from the sidecar.
+    inconsistent_tracks = _check_consistency(m4a_files)
+    if inconsistent_tracks:
+        state = AlbumState.INCONSISTENT
+    else:
+        state = _derive_state(sidecar, m4a_files)
+
     cover_path = _find_cover(album_dir)
 
     return Album(
@@ -68,6 +76,7 @@ def _build_album(album_dir: Path, m4a_files: list[Path]) -> Album:
         state=state,
         sidecar=sidecar,
         cover_path=cover_path,
+        inconsistent_tracks=inconsistent_tracks,
     )
 
 
@@ -102,6 +111,46 @@ def _derive_state(sidecar: Sidecar | None, m4a_files: list[Path]) -> AlbumState:
             return AlbumState.NEEDS_SYNC
         return AlbumState.DONE
     return AlbumState.TAGGING
+
+
+def _check_consistency(m4a_files: list[Path]) -> list[InconsistentTrack]:
+    """Detect mixed-album dirs: files disagreeing on album title (`©alb`)
+    or MB Album Id. Compilations (varying artist, consistent album+MBID)
+    are NOT inconsistent and produce an empty list.
+
+    Files missing a `©alb` or MBID atom don't vote — partial tagging is
+    handled separately (§15.1). Returns one row per file when inconsistent,
+    empty list when consistent.
+    """
+    if len(m4a_files) < 2:
+        return []  # single-file album can't be inconsistent
+
+    rows: list[InconsistentTrack] = []
+    for f in m4a_files:
+        try:
+            audio = MP4(f)
+        except Exception:
+            continue
+        title_atom = audio.get("\xa9alb") or []
+        album_title = title_atom[0] if title_atom else None
+        atom = audio.get(ATOM_MB_ALBUM_ID)
+        mb_album_id: str | None = None
+        if atom:
+            try:
+                mb_album_id = atom[0].decode("utf-8")
+            except (AttributeError, UnicodeDecodeError):
+                pass
+        rows.append(InconsistentTrack(
+            file_name=f.name,
+            album_title=album_title,
+            mb_album_id=mb_album_id,
+        ))
+
+    titles = {r.album_title for r in rows if r.album_title is not None}
+    mbids = {r.mb_album_id for r in rows if r.mb_album_id is not None}
+    if len(titles) > 1 or len(mbids) > 1:
+        return rows
+    return []
 
 
 def _files_tagged_with(m4a_files: list[Path], mbid: str) -> bool:
