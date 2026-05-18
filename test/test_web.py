@@ -19,6 +19,7 @@ from harmonist import sidecar as sc
 from harmonist.config import Config, PathsConfig, BandcampConfig, ServerConfig, TestConfig
 from harmonist.models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
+from harmonist.tagger import ATOM_ALBUM, ATOM_COMMENT, ATOM_MB_ALBUM_ID
 from harmonist.web.main import create_app
 
 
@@ -55,9 +56,9 @@ def _make_album(cfg, name: str, *, mbid: str = None, comment: str = None) -> Pat
     if mbid or comment:
         audio = MP4(f)
         if mbid:
-            audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [mbid.encode("utf-8")]
+            audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
         if comment:
-            audio["\xa9cmt"] = [comment]
+            audio[ATOM_COMMENT] = [comment]
         audio.save()
     return d
 
@@ -162,7 +163,7 @@ def test_tasks_needs_sync_section_advises_sync(client, cfg):
     """The Needs Sync group instructions point the user to click Sync."""
     d = _make_album(cfg, "UB")
     audio = MP4(d / "01 Track.m4a")
-    audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-a"]
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-a"]
     audio.save()
     sc.write(d, Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
@@ -260,10 +261,10 @@ def test_inconsistent_card_renders(client, cfg):
     second = d / "02 Another.m4a"
     shutil.copy(SINE_M4A, second)
     a1 = MP4(d / "01 Track.m4a")
-    a1["\xa9alb"] = ["Album A"]
+    a1[ATOM_ALBUM] = ["Album A"]
     a1.save()
     a2 = MP4(second)
-    a2["\xa9alb"] = ["Album B"]
+    a2[ATOM_ALBUM] = ["Album B"]
     a2.save()
 
     r = client.get("/tasks")
@@ -279,7 +280,7 @@ def test_needs_sync_card_renders(client, cfg):
     d = _make_album(cfg, "UB Album")
     # Tag the file so scanner sees it as DONE-style (mb_release_id matches)
     audio = MP4(d / "01 Track.m4a")
-    audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-aaa"]
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
     sc.write(d, Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
@@ -337,7 +338,7 @@ def test_reject_clears_candidate(client, cfg):
 def test_unconfirmed_url_update(client, cfg):
     d = _make_album(cfg, "UB")
     audio = MP4(d / "01 Track.m4a")
-    audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-aaa"]
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
     sc.write(d, Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
@@ -357,7 +358,7 @@ def test_unconfirmed_url_update(client, cfg):
 def test_unconfirmed_mark_manual(client, cfg):
     d = _make_album(cfg, "UB2")
     audio = MP4(d / "01 Track.m4a")
-    audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [b"rel-aaa"]
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
     sc.write(d, Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
@@ -577,7 +578,7 @@ def _make_tagged_album(cfg, name: str, *, mbid: str, tagged_at, item_id: int | N
     """Create a Done-state album with sidecar + matching MBID tag on the file."""
     d = _make_album(cfg, name)
     audio = MP4(d / "01 Track.m4a")
-    audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [mbid.encode("utf-8")]
+    audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
     audio.save()
     from harmonist.models import BandcampInfo, Sidecar
     sc.write(d, Sidecar(

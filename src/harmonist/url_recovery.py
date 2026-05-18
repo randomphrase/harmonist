@@ -16,6 +16,8 @@ import httpx
 from bs4 import BeautifulSoup
 from mutagen.mp4 import MP4
 
+from .tagger import ATOM_ALBUM, ATOM_COMMENT
+
 
 log = logging.getLogger(__name__)
 
@@ -49,8 +51,8 @@ def _read_comment_and_album(file_path: Path) -> tuple[str, str]:
         audio = MP4(file_path)
     except Exception:
         return "", ""
-    cmt = (audio.get("\xa9cmt") or [""])[0] or ""
-    album = (audio.get("\xa9alb") or [""])[0] or ""
+    cmt = (audio.get(ATOM_COMMENT) or [""])[0] or ""
+    album = (audio.get(ATOM_ALBUM) or [""])[0] or ""
     return cmt, album
 
 

@@ -8,11 +8,17 @@ from mutagen.mp4 import MP4
 
 from harmonist import tagger
 from harmonist.tagger import (
-    ATOM_LABEL,
-    ATOM_CATALOG,
-    ATOM_BARCODE,
+    ATOM_ALBUM,
+    ATOM_ALBUM_ARTIST,
+    ATOM_ARTIST,
     ATOM_ASIN,
-    ATOM_MEDIA,
+    ATOM_BARCODE,
+    ATOM_CATALOG,
+    ATOM_COMMENT,
+    ATOM_COVER,
+    ATOM_DATE,
+    ATOM_DISC_NUM,
+    ATOM_LABEL,
     ATOM_MB_ALBUM_ARTIST_ID,
     ATOM_MB_ALBUM_COUNTRY,
     ATOM_MB_ALBUM_ID,
@@ -22,6 +28,9 @@ from harmonist.tagger import (
     ATOM_MB_RELEASE_GROUP_ID,
     ATOM_MB_RELEASE_TRACK_ID,
     ATOM_MB_TRACK_ID,
+    ATOM_MEDIA,
+    ATOM_TITLE,
+    ATOM_TRACK_NUM,
     LEGACY_RELEASE_ID,
     TagMismatchError,
 )
@@ -117,13 +126,13 @@ def test_tag_album_writes_standard_text_tags(album_with_tracks):
     tagger.tag_album(album_dir, _release_2_tracks())
 
     track1 = MP4(album_dir / "01 Track 1.m4a")
-    assert track1["\xa9nam"] == ["Track 1"]
-    assert track1["\xa9alb"] == ["Test Album"]
-    assert track1["\xa9ART"] == ["Test Artist"]
-    assert track1["aART"] == ["Test Artist"]
-    assert track1["\xa9day"] == ["2021-06-15"]
-    assert track1["trkn"] == [(1, 2)]
-    assert track1["disk"] == [(1, 1)]
+    assert track1[ATOM_TITLE] == ["Track 1"]
+    assert track1[ATOM_ALBUM] == ["Test Album"]
+    assert track1[ATOM_ARTIST] == ["Test Artist"]
+    assert track1[ATOM_ALBUM_ARTIST] == ["Test Artist"]
+    assert track1[ATOM_DATE] == ["2021-06-15"]
+    assert track1[ATOM_TRACK_NUM] == [(1, 2)]
+    assert track1[ATOM_DISC_NUM] == [(1, 1)]
 
 
 def test_tag_album_track_artist_credit_overrides_release(album_with_tracks):
@@ -132,10 +141,10 @@ def test_tag_album_track_artist_credit_overrides_release(album_with_tracks):
     tagger.tag_album(album_dir, _release_2_tracks())
 
     track2 = MP4(album_dir / "02 Track 2.m4a")
-    assert track2["\xa9ART"] == ["Featured Artist feat. Other"]
+    assert track2[ATOM_ARTIST] == ["Featured Artist feat. Other"]
     assert _atom_strs(track2, ATOM_MB_ARTIST_ID) == ["art-bbb", "art-ccc"]
     # Album-artist remains the release's primary
-    assert track2["aART"] == ["Test Artist"]
+    assert track2[ATOM_ALBUM_ARTIST] == ["Test Artist"]
 
 
 def test_tag_album_removes_legacy_release_id(album_with_tracks):
@@ -154,12 +163,12 @@ def test_tag_album_preserves_comment_atom(album_with_tracks):
     album_dir = album_with_tracks(1)
     f = album_dir / "01 Track 1.m4a"
     audio = MP4(f)
-    audio["\xa9cmt"] = ["https://myartist.bandcamp.com/album/y"]
+    audio[ATOM_COMMENT] = ["https://myartist.bandcamp.com/album/y"]
     audio.save()
 
     tagger.tag_album(album_dir, _single_track_release())
     audio2 = MP4(f)
-    assert audio2["\xa9cmt"] == ["https://myartist.bandcamp.com/album/y"]
+    assert audio2[ATOM_COMMENT] == ["https://myartist.bandcamp.com/album/y"]
 
 
 def test_tag_album_idempotent(album_with_tracks):
@@ -188,16 +197,16 @@ def test_tag_album_embeds_cover_art(album_with_tracks, tmp_path):
 
     tagger.tag_album(album_dir, _single_track_release(), cover_path=cover)
     audio = MP4(album_dir / "01 Track 1.m4a")
-    assert "covr" in audio
-    assert len(audio["covr"]) == 1
-    assert bytes(audio["covr"][0]) == _minimal_jpeg()
+    assert ATOM_COVER in audio
+    assert len(audio[ATOM_COVER]) == 1
+    assert bytes(audio[ATOM_COVER][0]) == _minimal_jpeg()
 
 
 def test_tag_album_no_cover_when_path_none(album_with_tracks):
     album_dir = album_with_tracks(1)
     tagger.tag_album(album_dir, _single_track_release(), cover_path=None)
     audio = MP4(album_dir / "01 Track 1.m4a")
-    assert "covr" not in audio
+    assert ATOM_COVER not in audio
 
 
 def test_tag_album_returns_count(album_with_tracks):

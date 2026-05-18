@@ -28,7 +28,7 @@ from mutagen.mp4 import MP4
 from . import sidecar as sidecar_mod
 from .models import Sidecar
 from .sidecar import CURRENT_SCHEMA_VERSION
-from .tagger import ATOM_MB_ALBUM_ID
+from .tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
 
 
 log = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ def _read_album_id_and_comment(m4a_files: list[Path]) -> tuple[str | None, str]:
                 mbid = atom[0].decode("utf-8")
             except (AttributeError, UnicodeDecodeError):
                 pass
-        comment = (audio.get("\xa9cmt") or [""])[0] or ""
+        comment = (audio.get(ATOM_COMMENT) or [""])[0] or ""
         if mbid is not None:
             return mbid, comment
     return None, ""

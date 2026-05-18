@@ -29,6 +29,14 @@ from mutagen.mp4 import MP4
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 from .sidecar import CURRENT_SCHEMA_VERSION
+from .tagger import (
+    ATOM_ALBUM,
+    ATOM_ARTIST,
+    ATOM_COMMENT,
+    ATOM_MB_ALBUM_ID,
+    ATOM_TITLE,
+    ATOM_TRACK_NUM,
+)
 
 
 log = logging.getLogger(__name__)
@@ -482,14 +490,14 @@ def _materialise(music_dir: Path, spec: dict) -> None:
         target = album_dir / f"{i:02d} {_safe(title)}.m4a"
         shutil.copy(SINE, target)
         audio = MP4(target)
-        audio["\xa9nam"] = [title]
-        audio["\xa9alb"] = [spec["album"]]
-        audio["\xa9ART"] = [spec["artist"]]
-        audio["trkn"] = [(i, n_tracks)]
+        audio[ATOM_TITLE] = [title]
+        audio[ATOM_ALBUM] = [spec["album"]]
+        audio[ATOM_ARTIST] = [spec["artist"]]
+        audio[ATOM_TRACK_NUM] = [(i, n_tracks)]
         if mbid := spec.get("file_mbid"):
-            audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [mbid.encode("utf-8")]
+            audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
         if cmt := spec.get("file_comment"):
-            audio["\xa9cmt"] = [cmt]
+            audio[ATOM_COMMENT] = [cmt]
         audio.save()
 
     cover_asset = ASSETS_DIR / spec.get("cover", "cover-7.jpg")

@@ -15,6 +15,11 @@ from harmonist.models import (
 )
 from harmonist.scanner import scan
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
+from harmonist.tagger import (
+    ATOM_ALBUM,
+    ATOM_ARTIST,
+    ATOM_MB_ALBUM_ID,
+)
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -228,11 +233,11 @@ def _tag_file(path: Path, *, album: str | None = None, mbid: str | None = None,
     from mutagen.mp4 import MP4
     audio = MP4(path)
     if album is not None:
-        audio["\xa9alb"] = [album]
+        audio[ATOM_ALBUM] = [album]
     if mbid is not None:
-        audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [mbid.encode("utf-8")]
+        audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
     if artist is not None:
-        audio["\xa9ART"] = [artist]
+        audio[ATOM_ARTIST] = [artist]
     audio.save()
 
 
@@ -357,8 +362,8 @@ def test_scan_reads_album_and_artist_from_tags(tmp_path):
     from mutagen.mp4 import MP4
 
     audio = MP4(album_dir / "01 Track 1.m4a")
-    audio["\xa9alb"] = ["Tag Album Title"]
-    audio["\xa9ART"] = ["Tag Artist"]
+    audio[ATOM_ALBUM] = ["Tag Album Title"]
+    audio[ATOM_ARTIST] = ["Tag Artist"]
     audio.save()
 
     a = scan(tmp_path)[0]
