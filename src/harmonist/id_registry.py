@@ -43,6 +43,20 @@ def peek(path: Path) -> str | None:
     return _uids.get(path)
 
 
+def path_for(uid: str) -> Path | None:
+    """Reverse lookup: given a UUID, return the path it was minted for.
+
+    Used by _find_album as a fallback when an inbox-rendered URL holds a
+    registry UUID for an album whose canonical id has since changed
+    (e.g. auto-reconcile wrote a sidecar between page render and the
+    user's click).
+    """
+    for path, registered in _uids.items():
+        if registered == uid:
+            return path
+    return None
+
+
 def clear() -> None:
     """Drop all registrations. Test helper."""
     _uids.clear()

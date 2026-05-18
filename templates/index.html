@@ -4,13 +4,15 @@
 <div class="space-y-6">
     <div class="flex justify-between items-center p-4 bg-h-slate/50 rounded-lg shadow-inner">
         <h1 class="text-3xl font-extrabold tracking-tight text-white">Inbox</h1>
-        <div id="sync-status-pill"
-             hx-get="/sync/status"
-             hx-trigger="load, every 1500ms"
-             hx-swap="innerHTML"
-             class="text-xs text-slate-500 max-w-md text-right truncate"></div>
     </div>
 
+    {# Hidden JSON data sources — JS polls these and writes display content
+       to #harmonist-status (in header.html). #}
+    <div id="sync-status-pill"
+         hx-get="/sync/status"
+         hx-trigger="load, every 1500ms"
+         hx-swap="innerHTML"
+         class="hidden"></div>
     <div id="reconcile-status-source"
          hx-get="/reconcile/status"
          hx-trigger="load, every 2000ms"
@@ -30,7 +32,7 @@
     <section id="library" class="mt-10">
         <div id="library-rows"
              hx-get="/library?offset=0&limit=30"
-             hx-trigger="load, library-refresh from:body"
+             hx-trigger="load, library-refresh from:body, tasks-changed from:body"
              hx-swap="innerHTML">
             <div class="text-center py-6 text-slate-600 italic text-sm">Loading library…</div>
         </div>
@@ -54,38 +56,53 @@ function harmonistToggleRow(id) {
 </script>
 
 <script>
-// Sync + reconcile status UI handling. Two endpoints, two JSON sources;
-// each updates its own pill via htmx:afterSwap. Both signal /tasks
-// polling via dataset.state on their respective elements. On the
-// running→idle edge for either runner, fire a `library-refresh` event
-// so the Library section pulls in any newly-Done albums.
+// Single consolidated status bar (#harmonist-status). Three input sources:
+//   1. /sync/status   — polled into #sync-status-pill (hidden)
+//   2. /reconcile/status — polled into #reconcile-status-source (hidden)
+//   3. action endpoints  — fire `harmonist-status` HX-Trigger events
+//
+// Display priority (highest wins):
+//   sync running  >  reconcile running  >  most recent action flash  >  idle
+//
+// On the running→idle edge of either runner, also fires `library-refresh`
+// so the Library section pulls in any newly-Complete/Incomplete albums.
 (function () {
+    const STATUS_EL_ID = 'harmonist-status';
     let lastSyncState = 'idle';
     let lastReconcileState = 'idle';
+    let syncDisplay = null;       // current running-sync HTML, or null
+    let reconcileDisplay = null;  // current running-reconcile HTML, or null
+    let latestActionMessage = null;  // last flash text from an action, or null
+
     const esc = (s) => String(s).replace(/[&<>"']/g, c => (
         {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
     ));
 
     function refreshLibrary() {
-        // HTMX listens for this on the #library-rows element (from:body).
         document.body.dispatchEvent(new Event('library-refresh'));
+    }
+
+    function renderStatus() {
+        const el = document.getElementById(STATUS_EL_ID);
+        if (!el) return;
+        if (syncDisplay) { el.innerHTML = syncDisplay; return; }
+        if (reconcileDisplay) { el.innerHTML = reconcileDisplay; return; }
+        if (latestActionMessage) { el.innerHTML = latestActionMessage; return; }
+        el.innerHTML = '';
     }
 
     document.body.addEventListener('htmx:afterSwap', function (evt) {
         const targetId = evt.detail.target.id;
 
-        // --- Sync status pill ---
+        // ----- Sync polling source -----
         if (targetId === 'sync-status-pill') {
             let data;
             try { data = JSON.parse(evt.detail.target.textContent); }
             catch (e) { return; }
-
             const pill = evt.detail.target;
             pill.dataset.state = data.state;
 
             if (lastSyncState === 'running' && data.state === 'idle') {
-                const flash = document.getElementById('sync-flash');
-                if (flash) flash.innerHTML = '';
                 refreshLibrary();
             }
             lastSyncState = data.state;
@@ -95,52 +112,60 @@ function harmonistToggleRow(id) {
                 const label = data.current_item
                     ? `Syncing: ${esc(data.current_item)}`
                     : 'Syncing…';
-                pill.innerHTML = `<span class="px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-full font-bold uppercase tracking-widest">${label}</span>`;
+                syncDisplay = `<span class="px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-full font-bold uppercase tracking-widest text-xs">${label}</span>`;
                 if (btn) { btn.disabled = true; btn.classList.add('opacity-40', 'cursor-not-allowed'); }
             } else {
-                let badge = '<span class="text-slate-600">Idle</span>';
+                syncDisplay = null;
+                // On sync completion, surface the summary as the latest message
+                // unless another action has overwritten it more recently.
                 if (data.last_error) {
-                    badge = '<span class="px-3 py-1 bg-red-500/10 text-red-300 border border-red-500/30 rounded-full font-bold uppercase tracking-widest">Sync failed</span>';
+                    latestActionMessage = `<span class="text-red-300">Sync failed: ${esc(data.last_error)}</span>`;
                 } else if (data.finished_at) {
-                    badge = `<span class="text-slate-500">Last sync: ${data.new_items ? data.new_items + ' new' : 'no new items'}</span>`;
+                    latestActionMessage = `<span class="text-slate-500">Last sync: ${data.new_items ? data.new_items + ' new' : 'no new items'}</span>`;
                 }
-                pill.innerHTML = badge;
                 if (btn) { btn.disabled = false; btn.classList.remove('opacity-40', 'cursor-not-allowed'); }
             }
+            renderStatus();
             return;
         }
 
-        // --- Reconcile status (hidden source div + visible inline pill) ---
+        // ----- Reconcile polling source -----
         if (targetId === 'reconcile-status-source') {
             let data;
             try { data = JSON.parse(evt.detail.target.textContent); }
             catch (e) { return; }
-
             const src = evt.detail.target;
             src.dataset.state = data.state;
-            // Hide the JSON from view (htmx puts it in innerHTML)
-            src.style.display = 'none';
 
             if (lastReconcileState === 'running' && data.state === 'idle') {
                 refreshLibrary();
             }
             lastReconcileState = data.state;
 
-            const pill = document.getElementById('reconcile-pill');
-            if (!pill) return;
             if (data.state === 'running') {
-                const prog = data.total
-                    ? ` (${data.completed}/${data.total})`
-                    : '';
-                const what = data.current_item
-                    ? `: ${esc(data.current_item)}`
-                    : '';
-                pill.innerHTML = `<span class="px-2 py-0.5 bg-mb-purple/10 text-mb-purple border border-mb-purple/30 rounded-full font-bold uppercase tracking-widest">Reconciling${what}${prog}</span>`;
+                const prog = data.total ? ` (${data.completed}/${data.total})` : '';
+                const what = data.current_item ? `: ${esc(data.current_item)}` : '';
+                reconcileDisplay = `<span class="px-2 py-0.5 bg-mb-purple/10 text-mb-purple border border-mb-purple/30 rounded-full font-bold uppercase tracking-widest text-xs">Reconciling${what}${prog}</span>`;
             } else {
-                pill.innerHTML = '';
+                reconcileDisplay = null;
             }
+            renderStatus();
             return;
         }
+    });
+
+    // ----- Action flash messages -----
+    // Routes emit `HX-Trigger: {"harmonist-status": {"value": "...", "level": "..."}}`
+    // We mirror the message into the status bar.
+    document.body.addEventListener('harmonist-status', function (evt) {
+        const d = evt.detail || {};
+        const value = (d.value !== undefined) ? d.value : d;
+        const level = d.level || 'info';
+        const colour = level === 'error' ? 'text-red-300'
+                     : level === 'warning' ? 'text-amber-300'
+                     : 'text-slate-300';
+        latestActionMessage = `<span class="${colour}">${esc(value)}</span>`;
+        renderStatus();
     });
 })();
 </script>

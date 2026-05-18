@@ -477,9 +477,11 @@ def test_manual_assign_with_bare_mbid(client, cfg, monkeypatch):
 
 
 def test_manual_assign_invalid_input(client, cfg):
+    """Input that's neither an MBID-shaped token nor an MB URL is rejected."""
     d = _make_album(cfg, "Bad")
     aid = _id_for(cfg, d)
-    r = client.post(f"/manual/{aid}/assign", data={"mbid": "not-an-mbid"})
+    # Whitespace + punctuation that can't be an MBID
+    r = client.post(f"/manual/{aid}/assign", data={"mbid": "this has spaces!"})
     assert r.status_code == 200
     assert "Could not parse" in r.text
     assert not sc.has_sidecar(d)
@@ -527,7 +529,7 @@ def test_recover_url_warning_when_no_evidence(client, cfg):
     aid = _id_for(cfg, d)
     r = client.post(f"/recover/{aid}")
     assert r.status_code == 200
-    assert "Could not recover" in r.text
+    assert "no usable store URL" in r.text
     assert not sc.has_sidecar(d)
 
 
