@@ -16,9 +16,24 @@ class AlbumState(str, Enum):
     TAGGING = "tagging"
     NEEDS_SYNC = "needs_sync"
     DONE = "done"
+    INCONSISTENT = "inconsistent"
 
 
 MatchConfidence = Literal["exact", "approximate", "no_match"]
+
+
+@dataclass
+class InconsistentTrack:
+    """One row in the INCONSISTENT card's per-file summary table.
+
+    Surfaced when files in a single album dir disagree on album title
+    (`©alb`) or MB Album Id (`----:com.apple.iTunes:MusicBrainz Album Id`).
+    Compilations (varying artist, consistent album+MBID) don't appear here
+    — they're legitimate, not inconsistent.
+    """
+    file_name: str
+    album_title: str | None
+    mb_album_id: str | None
 
 
 @dataclass
@@ -107,6 +122,9 @@ class Album:
     state: AlbumState
     sidecar: Sidecar | None = None
     cover_path: Path | None = None
+    # Populated only when state == INCONSISTENT — per-file summary of the
+    # conflicting fields for the UI table. Empty list otherwise.
+    inconsistent_tracks: list[InconsistentTrack] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

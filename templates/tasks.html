@@ -20,6 +20,7 @@
 {# Render albums grouped by state with a header + instruction per group.
    Order is deliberate: by urgency / common-flow direction. #}
 {% set state_order = [
+    AlbumState.INCONSISTENT,
     AlbumState.NEW,
     AlbumState.NEEDS_MBID,
     AlbumState.NEEDS_REVIEW,
@@ -33,14 +34,16 @@
     {% if group %}
     <section class="space-y-3">
         <div class="pl-3 border-l-2
-            {% if state == AlbumState.NEW %}border-slate-600
+            {% if state == AlbumState.INCONSISTENT %}border-red-500/40
+            {% elif state == AlbumState.NEW %}border-slate-600
             {% elif state == AlbumState.NEEDS_MBID %}border-bc-teal/40
             {% elif state == AlbumState.NEEDS_REVIEW %}border-amber-500/40
             {% elif state == AlbumState.NEEDS_SYNC %}border-amber-500/40
             {% elif state == AlbumState.TAGGING %}border-mb-purple/40
             {% endif %}">
             <h3 class="text-sm font-bold text-slate-200">
-                {% if state == AlbumState.NEW %}New
+                {% if state == AlbumState.INCONSISTENT %}Inconsistent
+                {% elif state == AlbumState.NEW %}New
                 {% elif state == AlbumState.NEEDS_MBID %}Needs MBID
                 {% elif state == AlbumState.NEEDS_REVIEW %}Needs Review
                 {% elif state == AlbumState.NEEDS_SYNC %}Needs Sync
@@ -49,7 +52,8 @@
                 <span class="text-slate-500 font-normal ml-1">· {{ group|length }}</span>
             </h3>
             <p class="text-xs text-slate-500 mt-0.5">
-                {% if state == AlbumState.NEW %}No <code class="text-slate-400">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.
+                {% if state == AlbumState.INCONSISTENT %}Files in one directory disagree on album title or MBID. Harmonist won't guess — use <a href="https://picard.musicbrainz.org/" target="_blank" rel="noopener" class="text-mb-purple hover:underline">Picard</a> to sort into separate folders, then refresh.
+                {% elif state == AlbumState.NEW %}No <code class="text-slate-400">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.
                 {% elif state == AlbumState.NEEDS_MBID %}MusicBrainz hasn't matched yet. If a store URL is known, seed via Harmony and recheck — otherwise paste an MBID or search by artist + title.
                 {% elif state == AlbumState.NEEDS_REVIEW %}MusicBrainz has a candidate but file/track shape isn't exact. Review the side-by-side and confirm or reject.
                 {% elif state == AlbumState.NEEDS_SYNC %}Tagged from MusicBrainz but Bandcamp purchase isn't linked yet. <span class="font-bold text-bc-teal">Click Sync</span> to confirm — that's the common case.
@@ -59,6 +63,7 @@
         </div>
         <div class="grid grid-cols-1 gap-3">
             {% for album in group %}
+                {% if state == AlbumState.INCONSISTENT %}{% include 'partials/task_card_inconsistent.html' %}{% endif %}
                 {% if state == AlbumState.NEW %}{% include 'partials/task_card_new.html' %}{% endif %}
                 {% if state == AlbumState.NEEDS_MBID %}{% include 'partials/task_card_needs_mbid.html' %}{% endif %}
                 {% if state == AlbumState.NEEDS_REVIEW %}{% include 'partials/task_card_needs_review.html' %}{% endif %}

@@ -252,6 +252,29 @@ def test_needs_review_card_renders_side_by_side(client, cfg):
     assert "Reject" in r.text
 
 
+def test_inconsistent_card_renders(client, cfg):
+    """A dir with conflicting album tags surfaces an INCONSISTENT card,
+    showing the per-file table and the Picard nudge."""
+    d = _make_album(cfg, "Mixed")
+    # _make_album wrote one track; add a second with a conflicting album tag.
+    second = d / "02 Another.m4a"
+    shutil.copy(SINE_M4A, second)
+    a1 = MP4(d / "01 Track.m4a")
+    a1["\xa9alb"] = ["Album A"]
+    a1.save()
+    a2 = MP4(second)
+    a2["\xa9alb"] = ["Album B"]
+    a2.save()
+
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    assert "Inconsistent" in r.text
+    assert "Picard" in r.text
+    # The per-file table should list both conflicting titles
+    assert "Album A" in r.text
+    assert "Album B" in r.text
+
+
 def test_needs_sync_card_renders(client, cfg):
     d = _make_album(cfg, "UB Album")
     # Tag the file so scanner sees it as DONE-style (mb_release_id matches)
