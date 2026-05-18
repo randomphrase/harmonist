@@ -77,7 +77,46 @@ def _build_album(album_dir: Path, m4a_files: list[Path]) -> Album:
         sidecar=sidecar,
         cover_path=cover_path,
         inconsistent_tracks=inconsistent_tracks,
+        partial_tag_count=_partial_tag_count(sidecar, m4a_files),
     )
+
+
+def _partial_tag_count(
+    sidecar: Sidecar | None, m4a_files: list[Path],
+) -> tuple[int, int] | None:
+    """Return `(tagged, total)` when only some files carry the matching
+    MB Album Id atom (0 < tagged < total). None when fully tagged, none
+    tagged, or when there's no MBID to compare against. Quality indicator
+    only — does not affect state (§15.1).
+    """
+    if not sidecar or not sidecar.mb_release_id or not m4a_files:
+        return None
+    tagged = _count_files_tagged_with(m4a_files, sidecar.mb_release_id)
+    total = len(m4a_files)
+    if 0 < tagged < total:
+        return (tagged, total)
+    return None
+
+
+def _count_files_tagged_with(m4a_files: list[Path], mbid: str) -> int:
+    """Return how many of the given files carry an MB Album Id atom
+    matching `mbid`."""
+    count = 0
+    for f in m4a_files:
+        try:
+            audio = MP4(f)
+        except Exception:
+            continue
+        atom_value = audio.get(ATOM_MB_ALBUM_ID)
+        if not atom_value:
+            continue
+        try:
+            value = atom_value[0].decode("utf-8")
+        except (AttributeError, UnicodeDecodeError):
+            continue
+        if value == mbid:
+            count += 1
+    return count
 
 
 def _album_id(album_dir: Path, sidecar: Sidecar | None) -> str:
@@ -164,21 +203,7 @@ def _check_consistency(m4a_files: list[Path]) -> list[InconsistentTrack]:
 
 def _files_tagged_with(m4a_files: list[Path], mbid: str) -> bool:
     """True iff at least one file's MB Album Id atom matches mbid."""
-    for f in m4a_files:
-        try:
-            audio = MP4(f)
-        except Exception:
-            continue
-        atom_value = audio.get(ATOM_MB_ALBUM_ID)
-        if not atom_value:
-            continue
-        try:
-            value = atom_value[0].decode("utf-8")
-        except (AttributeError, UnicodeDecodeError):
-            continue
-        if value == mbid:
-            return True
-    return False
+    return _count_files_tagged_with(m4a_files, mbid) > 0
 
 
 def _read_album_artist(file_path: Path) -> tuple[str, str]:

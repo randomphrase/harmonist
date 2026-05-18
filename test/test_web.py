@@ -948,6 +948,30 @@ def test_needs_review_card_offers_incomplete_when_file_count_short(client, cfg):
     assert r.text.count("Confirm as Incomplete") == 1
 
 
+def test_library_shows_partial_tag_badge(client, cfg):
+    """An album with some files missing the MBID atom surfaces a
+    '{N}/{M} tagged' badge alongside the title in the library row.
+    """
+    from datetime import datetime, timezone
+    d = _make_album(cfg, "PartiallyTagged")
+    # Add a second file
+    second = d / "02 Other.m4a"
+    shutil.copy(SINE_M4A, second)
+    # Tag only the first
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+    audio.save()
+    sc.write(d, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        tagged_at=datetime.now(timezone.utc),
+    ))
+    r = client.get("/library")
+    assert r.status_code == 200
+    assert "PartiallyTagged" in r.text
+    assert "1/2 tagged" in r.text
+
+
 def test_library_includes_incomplete_albums(client, cfg):
     """Library shows both COMPLETE and INCOMPLETE — both are terminal."""
     from datetime import datetime, timezone

@@ -22,6 +22,12 @@
                     {{ album.track_count }} of {{ sc.track_count_expected }}
                 </span>
                 {% endif %}
+                {% if album.partial_tag_count %}
+                <span class="px-1.5 py-0.5 text-2xs font-bold rounded bg-slate-500/10 text-slate-300 border border-slate-500/30 whitespace-nowrap"
+                      title="Only {{ album.partial_tag_count[0] }} of {{ album.partial_tag_count[1] }} files carry the MusicBrainz Album Id atom. Use Picard to re-tag the rest.">
+                    {{ album.partial_tag_count[0] }}/{{ album.partial_tag_count[1] }} tagged
+                </span>
+                {% endif %}
             </div>
             <div class="text-2xs text-slate-600">
                 {% if sc and sc.tagged_at %}{{ sc.tagged_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}
