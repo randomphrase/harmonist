@@ -13,9 +13,15 @@
              width="40" height="40"
              class="w-10 h-10 rounded shadow object-cover bg-h-charcoal flex-shrink-0">
         <div class="flex-grow min-w-0">
-            <div class="text-sm text-slate-100 truncate">
-                <span class="font-bold">{{ album.title }}</span>
-                <span class="text-slate-500"> · {{ album.artist }}</span>
+            <div class="text-sm text-slate-100 truncate flex items-center gap-2">
+                <span class="font-bold truncate">{{ album.title }}</span>
+                <span class="text-slate-500 truncate"> · {{ album.artist }}</span>
+                {% if album.state == AlbumState.INCOMPLETE %}
+                <span class="px-1.5 py-0.5 text-2xs font-bold rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 whitespace-nowrap"
+                      title="{{ album.track_count }} of {{ sc.track_count_expected }} tracks on disk">
+                    {{ album.track_count }} of {{ sc.track_count_expected }}
+                </span>
+                {% endif %}
             </div>
             <div class="text-2xs text-slate-600">
                 {% if sc and sc.tagged_at %}{{ sc.tagged_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}

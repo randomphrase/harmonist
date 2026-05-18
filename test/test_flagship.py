@@ -116,7 +116,7 @@ def test_flagship_sync_then_recheck_then_done(demo_client, tmp_path):
 
     # --- 3. Verify final state ---
     final = _album_by_title(music_dir, "Straight Outta Lowcash")
-    assert final.state == AlbumState.DONE
+    assert final.state == AlbumState.COMPLETE
     assert final.sidecar.mb_release_id == "demo-rel-cb4"
     assert final.sidecar.tagged_at is not None
     # Bandcamp block preserved through tagging

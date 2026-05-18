@@ -110,6 +110,8 @@ def _to_dict(s: Sidecar) -> dict:
         d["mb_match_candidate"] = _candidate_to_dict(s.mb_match_candidate)
     if s.tagged_at:
         d["tagged_at"] = _iso(s.tagged_at)
+    if s.track_count_expected is not None:
+        d["track_count_expected"] = s.track_count_expected
     if s.notes is not None:
         d["notes"] = s.notes
     return d
@@ -215,6 +217,7 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
         temp_uid=temp_uid,
         mb_match_candidate=candidate,
         tagged_at=_parse_iso(d.get("tagged_at")),
+        track_count_expected=d.get("track_count_expected"),
         notes=d.get("notes"),
     )
 

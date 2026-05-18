@@ -170,7 +170,7 @@ def test_scan_done_when_bandcamp_item_id_present(tmp_path):
             tagged_at=datetime.now(timezone.utc),
         ),
     )
-    assert scan(tmp_path)[0].state == AlbumState.DONE
+    assert scan(tmp_path)[0].state == AlbumState.COMPLETE
 
 
 def test_scan_done_when_mbid_set_and_files_tagged(tmp_path):
@@ -201,7 +201,104 @@ def test_scan_done_when_mbid_set_and_files_tagged(tmp_path):
         ),
     )
     a = scan(tmp_path)[0]
-    assert a.state == AlbumState.DONE
+    assert a.state == AlbumState.COMPLETE
+
+
+def test_scan_complete_when_file_count_matches_expected(tmp_path):
+    """track_count_expected == file_count → COMPLETE."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    release = {
+        "id": "rel-aaa", "title": "Album",
+        "release-group": {"id": "rg-aaa"},
+        "medium-list": [{"position": "1", "track-list": [
+            {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}},
+            {"id": "rt-2", "title": "T2", "recording": {"id": "rec-2", "title": "T2"}},
+        ]}],
+    }
+    tagger.tag_album(album_dir, release)
+    sc.write(album_dir, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        tagged_at=datetime.now(timezone.utc),
+        track_count_expected=2,
+    ))
+    assert scan(tmp_path)[0].state == AlbumState.COMPLETE
+
+
+def test_scan_incomplete_when_file_count_less_than_expected(tmp_path):
+    """track_count_expected > file_count → INCOMPLETE."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    release = {
+        "id": "rel-aaa", "title": "Album",
+        "release-group": {"id": "rg-aaa"},
+        "medium-list": [{"position": "1", "track-list": [
+            {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}},
+            {"id": "rt-2", "title": "T2", "recording": {"id": "rec-2", "title": "T2"}},
+        ]}],
+    }
+    # Tag in incomplete mode (so we don't crash on the count mismatch)
+    tagger.tag_album(album_dir, release, incomplete=True) if False else None
+    # Actually just write the tags manually for the test
+    from mutagen.mp4 import MP4
+    for f in sorted(album_dir.glob("*.m4a")):
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+        audio.save()
+    sc.write(album_dir, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        tagged_at=datetime.now(timezone.utc),
+        track_count_expected=5,  # MB says 5 tracks; only 2 on disk
+    ))
+    assert scan(tmp_path)[0].state == AlbumState.INCOMPLETE
+
+
+def test_scan_complete_without_expected_count_legacy(tmp_path):
+    """A sidecar without track_count_expected (legacy / no incomplete-aware
+    tag yet) still resolves to COMPLETE — we don't penalise unknown.
+    """
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    from mutagen.mp4 import MP4
+    for f in sorted(album_dir.glob("*.m4a")):
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+        audio.save()
+    sc.write(album_dir, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        tagged_at=datetime.now(timezone.utc),
+        track_count_expected=None,
+    ))
+    assert scan(tmp_path)[0].state == AlbumState.COMPLETE
+
+
+def test_scan_incomplete_promotes_to_complete_on_file_addition(tmp_path):
+    """If the user later drops the missing track into the dir, the next
+    scan sees file_count == track_count_expected and promotes to COMPLETE.
+    No sidecar mutation required — pure scanner derivation.
+    """
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    from mutagen.mp4 import MP4
+    for f in sorted(album_dir.glob("*.m4a")):
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+        audio.save()
+    sc.write(album_dir, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        tagged_at=datetime.now(timezone.utc),
+        track_count_expected=3,
+    ))
+    assert scan(tmp_path)[0].state == AlbumState.INCOMPLETE
+
+    # User drops in the third file, tagged with the same MBID
+    third = album_dir / "03 Track 3.m4a"
+    shutil.copy(SINE_M4A, third)
+    audio = MP4(third)
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+    audio.save()
+
+    assert scan(tmp_path)[0].state == AlbumState.COMPLETE
 
 
 def test_scan_done_check_only_matches_correct_mbid(tmp_path):

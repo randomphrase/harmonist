@@ -102,6 +102,15 @@ def _derive_state(sidecar: Sidecar | None, m4a_files: list[Path]) -> AlbumState:
         # template branches on whether store_url is present.
         return AlbumState.NEEDS_MBID
     if _files_tagged_with(m4a_files, sidecar.mb_release_id):
+        # INCOMPLETE wins over NEEDS_SYNC when set: the user has explicitly
+        # confirmed-as-incomplete (track_count_expected only gets set at
+        # tag time), and that intent should be visible even on bandcamp
+        # albums missing an item_id.
+        if (
+            sidecar.track_count_expected is not None
+            and len(m4a_files) < sidecar.track_count_expected
+        ):
+            return AlbumState.INCOMPLETE
         # NEEDS_SYNC: Bandcamp-sourced album, MB release known, files tagged,
         # but Bandcamp item_id not yet linked (a Sync run resolves this).
         if (
@@ -109,7 +118,7 @@ def _derive_state(sidecar: Sidecar | None, m4a_files: list[Path]) -> AlbumState:
             and (sidecar.bandcamp is None or sidecar.bandcamp.item_id is None)
         ):
             return AlbumState.NEEDS_SYNC
-        return AlbumState.DONE
+        return AlbumState.COMPLETE
     return AlbumState.TAGGING
 
 

@@ -46,12 +46,24 @@
         </table>
     </div>
 
-    <div class="flex gap-2">
+    {# "Confirm as Incomplete" only makes sense when on-disk file count is
+       short of MB's track count — file_count < candidate.track_count. #}
+    {% set incomplete_offered = candidate.file_count < candidate.track_count %}
+
+    <div class="flex gap-2 flex-wrap">
         <button hx-post="/confirm/{{ album.id }}"
                 hx-target="this" hx-swap="afterend"
                 class="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded text-xs font-bold uppercase tracking-widest transition">
             Confirm &amp; Tag
         </button>
+        {% if incomplete_offered %}
+        <button hx-post="/confirm/{{ album.id }}/incomplete"
+                hx-target="this" hx-swap="afterend"
+                title="On-disk file count is less than MB's track count. Tag what's here and accept this as an intentionally incomplete album."
+                class="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded text-xs font-bold uppercase tracking-widest transition">
+            Confirm as Incomplete
+        </button>
+        {% endif %}
         <button hx-post="/reject/{{ album.id }}"
                 hx-target="this" hx-swap="afterend"
                 class="px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition">

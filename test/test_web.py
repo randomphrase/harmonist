@@ -856,6 +856,122 @@ def test_route_404_when_id_is_unknown(client):
     assert r.status_code == 404
 
 
+# ---------- Confirm as Incomplete (§15.3) ----------
+
+
+def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkeypatch):
+    """POST /confirm/{id}/incomplete tags via the incomplete-mode tagger,
+    sets mb_release_id and track_count_expected, and leaves the album in
+    INCOMPLETE on next scan.
+    """
+    d = _make_album(cfg, "ShortAlbum")  # 1 file from the fixture
+    # Seed a candidate with file_count=1, track_count=3 (MB says 3, disk has 1)
+    sc.write(d, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        mb_match_candidate=MatchCandidate(
+            mb_release_id="rel-mbid",
+            confidence="approximate",
+            file_count=1, track_count=3,
+        ),
+    ))
+
+    def fake_release(mbid):
+        return {
+            "id": mbid, "title": "Three-track Album",
+            "release-group": {"id": "rg-1"},
+            "medium-list": [{"position": "1", "track-list": [
+                {"id": "rt-1", "position": "1", "title": "T1",
+                 "recording": {"id": "rec-1", "title": "T1"}},
+                {"id": "rt-2", "position": "2", "title": "T2",
+                 "recording": {"id": "rec-2", "title": "T2"}},
+                {"id": "rt-3", "position": "3", "title": "T3",
+                 "recording": {"id": "rec-3", "title": "T3"}},
+            ]}],
+        }
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fake_release)
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    aid = _id_for(cfg, d)
+    r = client.post(f"/confirm/{aid}/incomplete")
+    assert r.status_code == 200
+    assert "incomplete" in r.text.lower()
+
+    loaded = sc.read(d)
+    assert loaded.mb_release_id == "rel-mbid"
+    assert loaded.track_count_expected == 3
+    assert loaded.mb_match_candidate is None
+    assert loaded.tagged_at is not None
+
+    # Scanner now reports INCOMPLETE
+    from harmonist import scanner
+    a = [a for a in scanner.scan(cfg.paths.music_dir) if a.path == d][0]
+    from harmonist.models import AlbumState as AS
+    assert a.state == AS.INCOMPLETE
+
+
+def test_confirm_incomplete_400_without_candidate(client, cfg):
+    d = _make_album(cfg, "NoCandidate")
+    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
+    aid = _id_for(cfg, d)
+    r = client.post(f"/confirm/{aid}/incomplete")
+    assert r.status_code == 400
+
+
+def test_needs_review_card_offers_incomplete_when_file_count_short(client, cfg):
+    """The Confirm as Incomplete button appears on Needs Review cards
+    where file_count < track_count — and not when they're equal.
+    """
+    d_short = _make_album(cfg, "ShortMatch")
+    sc.write(d_short, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/short",
+        mb_match_candidate=MatchCandidate(
+            mb_release_id="rel-short", confidence="approximate",
+            file_count=1, track_count=3,
+        ),
+    ))
+    d_exact = _make_album(cfg, "ExactMatch")
+    sc.write(d_exact, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/exact",
+        mb_match_candidate=MatchCandidate(
+            mb_release_id="rel-exact", confidence="approximate",
+            file_count=1, track_count=1,
+        ),
+    ))
+    r = client.get("/tasks")
+    # Button text appears only when there's at least one short album
+    assert "Confirm as Incomplete" in r.text
+    # Count occurrences — exactly one (only on the short card, not the exact one)
+    assert r.text.count("Confirm as Incomplete") == 1
+
+
+def test_library_includes_incomplete_albums(client, cfg):
+    """Library shows both COMPLETE and INCOMPLETE — both are terminal."""
+    from datetime import datetime, timezone
+    d_complete = _make_tagged_album(
+        cfg, "Whole", mbid="rel-c", tagged_at=datetime.now(timezone.utc), item_id=1,
+    )
+    d_partial = _make_album(cfg, "Partial")
+    audio = MP4(d_partial / "01 Track.m4a")
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-i"]
+    audio.save()
+    sc.write(d_partial, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-i",
+        tagged_at=datetime.now(timezone.utc),
+        track_count_expected=5,
+    ))
+    r = client.get("/library")
+    assert r.status_code == 200
+    assert "Whole" in r.text
+    assert "Partial" in r.text
+    # INCOMPLETE row shows the "N of M" badge
+    assert "1 of 5" in r.text
+
+
 def test_canonical_id_change_mid_transaction(client, cfg, monkeypatch):
     """A handler that mutates an album to assign an MBID changes the
     canonical id as a side effect. The action response itself is 200 (the

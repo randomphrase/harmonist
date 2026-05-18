@@ -102,7 +102,8 @@ def test_album_state_values():
     assert AlbumState.NEEDS_REVIEW.value == "needs_review"
     assert AlbumState.TAGGING.value == "tagging"
     assert AlbumState.NEEDS_SYNC.value == "needs_sync"
-    assert AlbumState.DONE.value == "done"
+    assert AlbumState.COMPLETE.value == "complete"
+    assert AlbumState.INCOMPLETE.value == "incomplete"
 
 
 # ---------- temp_uid lifecycle ----------
@@ -154,6 +155,21 @@ def test_sidecar_write_preserves_existing_temp_uid(tmp_path):
     ))
     second = sc.read(album_dir)
     assert second.temp_uid == first.temp_uid
+
+
+def test_sidecar_round_trip_with_track_count_expected(tmp_path):
+    """track_count_expected drives COMPLETE vs INCOMPLETE at scan time."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    s = Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        tagged_at=datetime(2026, 5, 7, tzinfo=timezone.utc),
+        track_count_expected=12,
+    )
+    sc.write(album_dir, s)
+    loaded = sc.read(album_dir)
+    assert loaded.track_count_expected == 12
 
 
 def test_sidecar_read_rejects_both_mbid_and_temp_uid(tmp_path):
