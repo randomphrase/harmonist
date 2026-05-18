@@ -112,16 +112,17 @@ function harmonistToggleRow(id) {
                 const label = data.current_item
                     ? `Syncing: ${esc(data.current_item)}`
                     : 'Syncing…';
-                syncDisplay = `<span class="px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-full font-bold uppercase tracking-widest text-xs">${label}</span>`;
+                syncDisplay = `<span class="px-3 py-0.5 bg-amber-500/15 text-amber-300 border border-amber-500/40 rounded-full font-bold text-xs">${label}</span>`;
                 if (btn) { btn.disabled = true; btn.classList.add('opacity-40', 'cursor-not-allowed'); }
             } else {
                 syncDisplay = null;
                 // On sync completion, surface the summary as the latest message
                 // unless another action has overwritten it more recently.
                 if (data.last_error) {
-                    latestActionMessage = `<span class="text-red-300">Sync failed: ${esc(data.last_error)}</span>`;
+                    latestActionMessage = `<span class="px-3 py-0.5 bg-red-500/15 text-red-300 border border-red-500/40 rounded-full font-bold text-xs">Sync failed: ${esc(data.last_error)}</span>`;
                 } else if (data.finished_at) {
-                    latestActionMessage = `<span class="text-slate-500">Last sync: ${data.new_items ? data.new_items + ' new' : 'no new items'}</span>`;
+                    const summary = data.new_items ? `${data.new_items} new` : 'no new items';
+                    latestActionMessage = `<span class="px-3 py-0.5 bg-bc-teal/15 text-bc-teal border border-bc-teal/40 rounded-full font-bold text-xs">Last sync: ${summary}</span>`;
                 }
                 if (btn) { btn.disabled = false; btn.classList.remove('opacity-40', 'cursor-not-allowed'); }
             }
@@ -145,7 +146,7 @@ function harmonistToggleRow(id) {
             if (data.state === 'running') {
                 const prog = data.total ? ` (${data.completed}/${data.total})` : '';
                 const what = data.current_item ? `: ${esc(data.current_item)}` : '';
-                reconcileDisplay = `<span class="px-2 py-0.5 bg-mb-purple/10 text-mb-purple border border-mb-purple/30 rounded-full font-bold uppercase tracking-widest text-xs">Reconciling${what}${prog}</span>`;
+                reconcileDisplay = `<span class="px-3 py-0.5 bg-mb-purple/15 text-mb-purple border border-mb-purple/40 rounded-full font-bold text-xs">Reconciling${what}${prog}</span>`;
             } else {
                 reconcileDisplay = null;
             }
@@ -156,15 +157,17 @@ function harmonistToggleRow(id) {
 
     // ----- Action flash messages -----
     // Routes emit `HX-Trigger: {"harmonist-status": {"value": "...", "level": "..."}}`
-    // We mirror the message into the status bar.
+    // We mirror the message into the status bar with a level-appropriate pill.
+    function pillClasses(level) {
+        if (level === 'error')   return 'bg-red-500/15 text-red-300 border border-red-500/40';
+        if (level === 'warning') return 'bg-amber-500/15 text-amber-300 border border-amber-500/40';
+        return 'bg-bc-teal/15 text-bc-teal border border-bc-teal/40';
+    }
     document.body.addEventListener('harmonist-status', function (evt) {
         const d = evt.detail || {};
         const value = (d.value !== undefined) ? d.value : d;
         const level = d.level || 'info';
-        const colour = level === 'error' ? 'text-red-300'
-                     : level === 'warning' ? 'text-amber-300'
-                     : 'text-slate-300';
-        latestActionMessage = `<span class="${colour}">${esc(value)}</span>`;
+        latestActionMessage = `<span class="px-3 py-0.5 rounded-full font-bold text-xs ${pillClasses(level)}">${esc(value)}</span>`;
         renderStatus();
     });
 })();
