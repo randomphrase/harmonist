@@ -80,6 +80,8 @@ class Tagger(Protocol):
         album_dir: Path,
         release: dict,
         cover_path: Path | None = None,
+        *,
+        incomplete: bool = False,
     ) -> int:
         ...
 
@@ -97,37 +99,106 @@ class PicardCompatibleTagger:
         album_dir: Path,
         release: dict,
         cover_path: Path | None = None,
+        *,
+        incomplete: bool = False,
     ) -> int:
-        return tag_album(album_dir, release, cover_path)
+        return tag_album(album_dir, release, cover_path, incomplete=incomplete)
 
 
 def tag_album(
     album_dir: Path,
     release: dict,
     cover_path: Path | None = None,
+    *,
+    incomplete: bool = False,
 ) -> int:
     """Tag every .m4a file in `album_dir` with Picard-compatible atoms.
 
     `release` is the unwrapped MusicBrainz release dict, i.e. what
     musicbrainzngs.get_release_by_id() returns under the "release" key.
     Returns the number of files tagged.
+
+    `incomplete=True` allows file_count < track_count and assigns files to
+    a subset of MB tracks via length-similarity (positional fallback).
+    file_count > track_count is still an error in both modes (per design
+    §15.3 — "extra files on disk" is out of scope).
     """
     files = sorted(p for p in album_dir.glob("*.m4a") if p.is_file())
     flat_tracks = list(_flatten_tracks(release))
 
-    if len(files) != len(flat_tracks):
+    if not incomplete and len(files) != len(flat_tracks):
         raise TagMismatchError(
             f"album {album_dir.name!r}: {len(files)} .m4a files but MB release "
             f"has {len(flat_tracks)} tracks"
         )
+    if len(files) > len(flat_tracks):
+        raise TagMismatchError(
+            f"album {album_dir.name!r}: {len(files)} files exceeds MB release "
+            f"track count {len(flat_tracks)} — extra files on disk are out of "
+            f"scope (see design §15.3)"
+        )
+
+    if incomplete and len(files) < len(flat_tracks):
+        pairs = _assign_files_to_tracks(files, flat_tracks)
+    else:
+        pairs = list(zip(files, flat_tracks))
 
     cover = _load_cover(cover_path) if cover_path else None
     media_total = len(release.get("medium-list", [])) or 1
 
-    for file_path, (medium, track_pos_in_medium, track) in zip(files, flat_tracks):
+    for file_path, (medium, track_pos_in_medium, track) in pairs:
         _tag_file(file_path, release, medium, track_pos_in_medium, track, cover, media_total)
 
     return len(files)
+
+
+def _assign_files_to_tracks(
+    files: list[Path], flat_tracks: list[tuple[dict, int, dict]],
+) -> list[tuple[Path, tuple[dict, int, dict]]]:
+    """Best-fit assignment of files to a subset of MB tracks via length
+    similarity, preserving input file order.
+
+    Falls back to positional matching (files[i] → tracks[i]) when any
+    file or track length is unknown — the simpler choice is more
+    predictable when there's not enough data to make a length-based call.
+    """
+    file_durations: list[int | None] = []
+    for f in files:
+        try:
+            length = MP4(f).info.length
+            file_durations.append(int(round(length * 1000)) if length else None)
+        except Exception:
+            file_durations.append(None)
+
+    track_lengths: list[int | None] = []
+    for _medium, _pos, track in flat_tracks:
+        raw = (track.get("recording") or {}).get("length") or track.get("length")
+        try:
+            track_lengths.append(int(raw))
+        except (TypeError, ValueError):
+            track_lengths.append(None)
+
+    if any(t is None for t in track_lengths) or any(d is None for d in file_durations):
+        # Positional fallback — first N tracks; the remaining tracks are
+        # the "missing" ones and get no file assigned.
+        return [(files[i], flat_tracks[i]) for i in range(len(files))]
+
+    used: set[int] = set()
+    pairs: list[tuple[Path, tuple[dict, int, dict]]] = []
+    for f, dur in zip(files, file_durations):
+        best_idx = None
+        best_delta: int | None = None
+        for i, tlen in enumerate(track_lengths):
+            if i in used:
+                continue
+            delta = abs(dur - tlen)
+            if best_delta is None or delta < best_delta:
+                best_idx = i
+                best_delta = delta
+        assert best_idx is not None
+        used.add(best_idx)
+        pairs.append((f, flat_tracks[best_idx]))
+    return pairs
 
 
 def _tag_file(

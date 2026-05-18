@@ -215,6 +215,58 @@ def test_tag_album_returns_count(album_with_tracks):
     assert n == 2
 
 
+# ---------- incomplete-mode tagging (§15.3) ----------
+
+
+def test_tag_album_incomplete_allows_fewer_files_than_tracks(album_with_tracks):
+    """incomplete=True bypasses the count-mismatch raise."""
+    album_dir = album_with_tracks(1)  # 1 file
+    n = tagger.tag_album(album_dir, _release_2_tracks(), incomplete=True)
+    assert n == 1
+    audio = MP4(album_dir / "01 Track 1.m4a")
+    # The single on-disk file should be tagged with the album MBID
+    assert _atom_str(audio, ATOM_MB_ALBUM_ID) == "rel-aaa"
+
+
+def test_tag_album_incomplete_still_raises_when_too_many_files(album_with_tracks):
+    """file_count > track_count is out of scope (per §15.3) — still raises
+    even in incomplete mode.
+    """
+    album_dir = album_with_tracks(3)  # 3 files, release has 1 track
+    with pytest.raises(TagMismatchError, match="exceeds"):
+        tagger.tag_album(album_dir, _single_track_release(), incomplete=True)
+
+
+def test_tag_album_incomplete_uses_positional_fallback_without_lengths(
+    album_with_tracks,
+):
+    """With no track lengths in the MB release, incomplete-mode assigns
+    files positionally — file 0 → MB track 0.
+    """
+    album_dir = album_with_tracks(1)  # one file
+    tagger.tag_album(album_dir, _release_2_tracks(), incomplete=True)
+    audio = MP4(album_dir / "01 Track 1.m4a")
+    # MB track 0 ("Track 1") should be the assignment
+    assert _atom_str(audio, ATOM_MB_TRACK_ID) == "rec-001"
+
+
+def test_tag_album_incomplete_uses_length_similarity_when_available(
+    album_with_tracks,
+):
+    """The sine.m4a fixture is ~1000ms long. If MB track lengths differ
+    sharply, the assignment should pick the closest match — not positional.
+    """
+    album_dir = album_with_tracks(1)
+    release = _release_2_tracks()
+    # Track 0 wildly mismatched (10s); track 1 matches (1s) — incomplete-mode
+    # should pick track 1 even though positional would have picked track 0.
+    release["medium-list"][0]["track-list"][0]["recording"]["length"] = "10000"
+    release["medium-list"][0]["track-list"][1]["recording"]["length"] = "1000"
+    tagger.tag_album(album_dir, release, incomplete=True)
+    audio = MP4(album_dir / "01 Track 1.m4a")
+    assert _atom_str(audio, ATOM_MB_TRACK_ID) == "rec-002"
+
+
 # -- helpers used in multiple tests --
 
 def _single_track_release() -> dict:

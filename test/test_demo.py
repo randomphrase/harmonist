@@ -70,7 +70,7 @@ def test_seed_produces_each_state(music_dir):
     assert states["Top 5 Records For A Wednesday"] == AlbumState.NEEDS_MBID
     assert states["Gimme Some Money"] == AlbumState.NEEDS_REVIEW
     assert states["Little Bit o' Hoot, Whole Lotta Nanny"] == AlbumState.NEEDS_SYNC
-    assert states["The Rural Juror (OST)"] == AlbumState.DONE
+    assert states["The Rural Juror (OST)"] == AlbumState.COMPLETE
 
 
 def test_seed_new_has_mbid_and_comment_for_reconcile(music_dir):

@@ -15,7 +15,8 @@ class AlbumState(str, Enum):
     NEEDS_REVIEW = "needs_review"
     TAGGING = "tagging"
     NEEDS_SYNC = "needs_sync"
-    DONE = "done"
+    COMPLETE = "complete"
+    INCOMPLETE = "incomplete"
     INCONSISTENT = "inconsistent"
 
 
@@ -101,6 +102,11 @@ class Sidecar:
     temp_uid: str | None = None
     mb_match_candidate: MatchCandidate | None = None
     tagged_at: datetime | None = None
+    # MB release's track count at the time the album was tagged. Set on
+    # any tag (including incomplete-mode); the scanner uses it to distinguish
+    # COMPLETE (file_count == this) from INCOMPLETE (file_count < this).
+    # See design §3, §15.3.
+    track_count_expected: int | None = None
     notes: str | None = None
 
 

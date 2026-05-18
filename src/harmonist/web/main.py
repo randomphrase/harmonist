@@ -166,8 +166,9 @@ def _find_album(request: Request, album_id: str) -> Album:
 
 
 def _inbox_albums(albums: list[Album]) -> list[Album]:
-    """Albums that warrant attention in the inbox (everything except DONE)."""
-    return [a for a in albums if a.state != AlbumState.DONE]
+    """Albums that warrant attention in the inbox (terminal states excluded)."""
+    TERMINAL = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
+    return [a for a in albums if a.state not in TERMINAL]
 
 
 def _run_bandcamp_sync(cfg: config_mod.Config, *, progress_callback=None):
@@ -222,8 +223,20 @@ def _apply_match(album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger
     return "needs_confirmation", f"Match found ({candidate.confidence}) — please review and confirm."
 
 
-def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger) -> None:
-    """Fetch MB release, fetch cover, write tags, update sidecar."""
+def _tag_with_release(
+    album: Album,
+    mbid: str,
+    cfg: config_mod.Config,
+    tagger: Tagger,
+    *,
+    incomplete: bool = False,
+) -> None:
+    """Fetch MB release, fetch cover, write tags, update sidecar.
+
+    `incomplete=True` runs the tagger in incomplete mode (file_count <
+    MB track count allowed) and persists track_count_expected on the
+    sidecar so the scanner can derive INCOMPLETE on future scans.
+    """
     release = mb_lookup.fetch_release(mbid)
     rg = release.get("release-group") or {}
     cover_path = cover_art.ensure_cover(
@@ -232,7 +245,11 @@ def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config, tagger: T
         release_group_mbid=rg.get("id"),
         size=cfg.cover_art.size,
     )
-    tagger.tag_album(album.path, release, cover_path=cover_path)
+    tagger.tag_album(album.path, release, cover_path=cover_path, incomplete=incomplete)
+
+    track_count_expected = sum(
+        len(m.get("track-list", [])) for m in release.get("medium-list", [])
+    )
 
     sc = sidecar_mod.read(album.path)
     new = Sidecar(
@@ -244,6 +261,7 @@ def _tag_with_release(album: Album, mbid: str, cfg: config_mod.Config, tagger: T
         mb_release_id=mbid,
         mb_match_candidate=None,  # cleared on tag
         tagged_at=datetime.now(timezone.utc),
+        track_count_expected=track_count_expected,
         notes=sc.notes if sc else None,
     )
     sidecar_mod.write(album.path, new)
@@ -310,10 +328,12 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/library", response_class=HTMLResponse)
     def library(request: Request, offset: int = 0, limit: int = 30):
-        """Paginated list of Done albums, sorted by tagged_at desc."""
+        """Paginated list of terminal albums (Complete + Incomplete),
+        sorted by tagged_at desc."""
         from datetime import timezone as _tz, datetime as _dt
         albums = _albums(request)
-        done = [a for a in albums if a.state == AlbumState.DONE]
+        TERMINAL = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
+        done = [a for a in albums if a.state in TERMINAL]
         # Newest tagged first; albums missing tagged_at sink to the bottom.
         _floor = _dt.min.replace(tzinfo=_tz.utc)
         done.sort(
@@ -492,6 +512,31 @@ def _register_routes(app: FastAPI) -> None:
             return HTMLResponse(_flash(f"Tagging failed: {e}", level="error"))
         return HTMLResponse(_flash("Tagged.", level="info"),
                             headers={"HX-Trigger": "tasks-changed"})
+
+    @app.post("/confirm/{album_id}/incomplete", response_class=HTMLResponse)
+    def confirm_match_incomplete(request: Request, album_id: str):
+        """Confirm-as-Incomplete: tag the album knowing on-disk file count
+        is less than the MB release's track count. Persists the expected
+        track count on the sidecar so the scanner can derive INCOMPLETE
+        (and auto-promote to COMPLETE if the user adds files later).
+        """
+        album = _find_album(request, album_id)
+        sc = album.sidecar
+        if sc is None or sc.mb_match_candidate is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
+        try:
+            _tag_with_release(
+                album, sc.mb_match_candidate.mb_release_id,
+                request.app.state.cfg, request.app.state.tagger,
+                incomplete=True,
+            )
+        except Exception as e:
+            log.exception("incomplete tag failed")
+            return HTMLResponse(_flash(f"Tagging failed: {e}", level="error"))
+        return HTMLResponse(
+            _flash("Tagged as incomplete.", level="info"),
+            headers={"HX-Trigger": "tasks-changed"},
+        )
 
     @app.post("/reject/{album_id}", response_class=HTMLResponse)
     def reject_match(request: Request, album_id: str):
