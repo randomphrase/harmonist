@@ -131,6 +131,12 @@ class Album:
     # Populated only when state == INCONSISTENT — per-file summary of the
     # conflicting fields for the UI table. Empty list otherwise.
     inconsistent_tracks: list[InconsistentTrack] = field(default_factory=list)
+    # `(tagged_count, total_count)` when only some files in the dir have
+    # the matching MB Album Id atom (0 < tagged < total). None otherwise.
+    # Not persisted — purely scanner-derived. Independent of INCOMPLETE:
+    # partial tagging is about MBID atoms on present files, INCOMPLETE
+    # is about how many files are present vs MB's tracklist.
+    partial_tag_count: tuple[int, int] | None = None
 
 
 # ---------------------------------------------------------------------------

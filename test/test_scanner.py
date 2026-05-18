@@ -417,6 +417,78 @@ def test_scan_single_file_album_cannot_be_inconsistent(tmp_path):
     assert a.state != AlbumState.INCONSISTENT
 
 
+# ---------- partial tagging detection (§15.1) ----------
+
+
+def test_partial_tag_count_when_some_files_missing_mbid(tmp_path):
+    """N of M files have the MBID atom (0 < N < M) → partial_tag_count
+    populated. State remains COMPLETE (any-match logic).
+    """
+    album_dir = _make_album_dir(tmp_path, "Artist", "Partial", n_tracks=3)
+    from mutagen.mp4 import MP4
+    files = sorted(album_dir.glob("*.m4a"))
+    # Tag two of three files
+    for f in files[:2]:
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+        audio.save()
+    sc.write(album_dir, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        tagged_at=datetime.now(timezone.utc),
+    ))
+    a = scan(tmp_path)[0]
+    assert a.state == AlbumState.COMPLETE
+    assert a.partial_tag_count == (2, 3)
+
+
+def test_partial_tag_count_none_when_all_tagged(tmp_path):
+    """All files tagged → partial_tag_count is None."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Whole", n_tracks=2)
+    from mutagen.mp4 import MP4
+    for f in sorted(album_dir.glob("*.m4a")):
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+        audio.save()
+    sc.write(album_dir, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        tagged_at=datetime.now(timezone.utc),
+    ))
+    a = scan(tmp_path)[0]
+    assert a.partial_tag_count is None
+
+
+def test_partial_tag_count_none_without_mbid(tmp_path):
+    """No mb_release_id on sidecar → can't compute partial tagging."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "NoMBID", n_tracks=2)
+    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
+    a = scan(tmp_path)[0]
+    assert a.partial_tag_count is None
+
+
+def test_partial_tag_count_independent_of_incomplete_state(tmp_path):
+    """Both INCOMPLETE and partial-tagged at once: 2 files in dir, 1 tagged,
+    MB says 5 expected. Both indicators populated independently.
+    """
+    album_dir = _make_album_dir(tmp_path, "Artist", "Both", n_tracks=2)
+    from mutagen.mp4 import MP4
+    files = sorted(album_dir.glob("*.m4a"))
+    # Tag only the first file
+    audio = MP4(files[0])
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+    audio.save()
+    sc.write(album_dir, Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        mb_release_id="rel-aaa",
+        tagged_at=datetime.now(timezone.utc),
+        track_count_expected=5,
+    ))
+    a = scan(tmp_path)[0]
+    assert a.state == AlbumState.INCOMPLETE
+    assert a.partial_tag_count == (1, 2)
+
+
 def test_scan_finds_multiple_albums(tmp_path):
     _make_album_dir(tmp_path, "A1", "Album 1", n_tracks=2)
     _make_album_dir(tmp_path, "A2", "Album 2", n_tracks=3)
