@@ -27,6 +27,12 @@ def reset_pending_queue():
 
 
 @pytest.fixture(autouse=True)
+def disable_sync_delays(monkeypatch):
+    """Don't wait between demo sync steps in tests."""
+    monkeypatch.setattr(demo, "STEP_DELAY_SECONDS", 0)
+
+
+@pytest.fixture(autouse=True)
 def restore_module_globals():
     """`demo.install()` monkey-patches mb_lookup / mb_search / cover_art at
     module level. Capture originals before each test and restore after, so
@@ -139,12 +145,40 @@ def test_run_demo_sync_no_op_when_queue_empty(music_dir):
 
 
 def test_run_demo_sync_reports_progress(music_dir):
-    """Demo sync invokes the progress callback with the next album label."""
+    """Demo sync invokes the progress callback for each step:
+    first any item_id link-ins for existing albums, then the new download.
+    """
     demo.seed(music_dir)
     seen = []
     demo.run_demo_sync(music_dir, progress_callback=lambda label: seen.append(label))
-    # First item in PENDING_PURCHASES is CB4
-    assert seen == ["CB4 / Straight Outta Lowcash"]
+    # The seeded library has 4 existing Bandcamp albums that get item_id
+    # filled in by sync (Sex Bob-omb, Thamesmen, Dingoes, Various Artists);
+    # only Dingoes actually needs it (others already have item_id) — sync
+    # skips no-op patches. Then CB4 (first pending) downloads.
+    assert "CB4 / Straight Outta Lowcash" in seen
+    # Dingoes started in NEEDS_SYNC (item_id=None); sync should link it
+    assert any("Dingoes" in lbl for lbl in seen)
+
+
+def test_run_demo_sync_links_existing_needs_sync_album(music_dir):
+    """An album seeded as NEEDS_SYNC (matching Bandcamp URL, no item_id)
+    should have its item_id filled in by sync, transitioning it to
+    COMPLETE without downloading anything new.
+    """
+    demo.seed(music_dir)
+    # Drain the pending queue first so this test isolates the link path
+    demo._pending_queue.clear()
+    dingoes_dir = next(
+        d for d in (music_dir / "Dingoes Ate My Baby").iterdir() if d.is_dir()
+    )
+    before = sc.read(dingoes_dir)
+    assert before.bandcamp is None or before.bandcamp.item_id is None
+
+    demo.run_demo_sync(music_dir)
+
+    after = sc.read(dingoes_dir)
+    assert after.bandcamp is not None
+    assert after.bandcamp.item_id == 1004
 
 
 # ---------- mock service implementations ----------

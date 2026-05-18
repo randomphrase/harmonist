@@ -4,9 +4,7 @@
     {% include 'partials/_album_header.html' %}
     <p class="text-slate-500 text-xs mb-3">
         Tagged from MusicBrainz but the Bandcamp purchase isn't linked yet.
-        {% if album.sidecar.store_url %}
-        <br><span class="font-mono text-slate-400">URL: {{ album.sidecar.store_url }}</span>
-        {% endif %}
+        Edit the URL below if needed, then run Sync.
     </p>
     <div class="flex flex-col gap-2">
         <form hx-post="/unconfirmed/{{ album.id }}/url" hx-target="this" hx-swap="afterend"

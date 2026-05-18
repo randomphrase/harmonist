@@ -44,7 +44,8 @@
     {# Expanded view, hidden by default #}
     <div id="exp-{{ album.id }}" class="hidden border-t border-slate-800 bg-h-charcoal/50 p-4">
         <div class="flex flex-col md:flex-row gap-4 text-xs">
-            <div class="space-y-2 w-full md:w-52 md:flex-shrink-0">
+            {# LEFT: cover only #}
+            <div class="w-full md:w-52 md:flex-shrink-0">
                 <img loading="lazy"
                      src="/cover/{{ album.id }}"
                      onerror="this.style.visibility='hidden'"
@@ -52,37 +53,63 @@
                      width="208" height="208"
                      class="w-full rounded shadow object-cover bg-h-charcoal"
                      style="max-width: 208px; aspect-ratio: 1;">
-                <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Title</div>
-                    <div class="text-slate-100">{{ album.title }}</div>
-                </div>
-                <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Artist</div>
-                    <div class="text-slate-100">{{ album.artist }}</div>
-                </div>
             </div>
 
+            {# RIGHT: title + artist on top, then external links, then meta #}
             <div class="space-y-3 flex-grow min-w-0">
-                {% if sc and sc.mb_release_id %}
                 <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">MusicBrainz Release</div>
+                    <div class="text-lg font-bold text-slate-100 break-words">{{ album.title }}</div>
+                    <div class="text-sm text-slate-400 break-words">{{ album.artist }}</div>
+                </div>
+
+                {% if sc and (sc.mb_release_id or sc.store_url) %}
+                <div class="flex gap-2 items-center flex-wrap">
+                    {% if sc and sc.mb_release_id %}
+                    {# GitHub-CI-style badge: icon section (darker) + label (lighter) #}
                     <a href="https://musicbrainz.org/release/{{ sc.mb_release_id }}"
                        target="_blank" rel="noopener"
-                       class="text-mb-purple hover:underline break-all font-mono">{{ sc.mb_release_id }}</a>
-                </div>
-                {% endif %}
-
-                {% if sc and sc.store_url %}
-                <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">{% if store %}{{ store|title }}{% else %}Store{% endif %} URL</div>
-                    <a href="{{ sc.store_url }}" target="_blank" rel="noopener"
-                       class="text-bc-teal hover:underline break-all">{{ sc.store_url }}</a>
-                </div>
-                {% endif %}
-                {% if bc and bc.item_id is not none %}
-                <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Bandcamp Item ID</div>
-                    <div class="text-slate-500 font-mono">{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}</div>
+                       title="View on MusicBrainz · {{ sc.mb_release_id }}"
+                       class="inline-flex items-stretch text-xs font-bold rounded overflow-hidden border border-mb-purple/40 hover:border-mb-purple/70 transition">
+                        <span class="bg-mb-purple/30 px-1.5 flex items-center text-mb-purple">
+                            {# Hexagonal MB mark #}
+                            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor" aria-hidden="true">
+                                <path d="M12 2 L21 7 L21 17 L12 22 L3 17 L3 7 Z"/>
+                            </svg>
+                        </span>
+                        <span class="bg-mb-purple/10 px-2 py-1 text-mb-purple">MusicBrainz</span>
+                    </a>
+                    {% endif %}
+                    {% if sc and sc.store_url %}
+                    {% set store_tip %}
+                        {%- if store == 'bandcamp' -%}
+                            View on Bandcamp · {{ sc.store_url }}
+                            {%- if bc and bc.item_id is not none %} · item #{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}{% endif -%}
+                        {%- else -%}
+                            View on {{ store|title if store else 'store' }} · {{ sc.store_url }}
+                        {%- endif -%}
+                    {% endset %}
+                    <a href="{{ sc.store_url }}"
+                       target="_blank" rel="noopener"
+                       title="{{ store_tip }}"
+                       class="inline-flex items-stretch text-xs font-bold rounded overflow-hidden border border-bc-teal/40 hover:border-bc-teal/70 transition">
+                        <span class="bg-bc-teal/30 px-1.5 flex items-center text-bc-teal">
+                            {% if store == 'bandcamp' %}
+                            {# Bandcamp parallelogram mark #}
+                            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor" aria-hidden="true">
+                                <path d="M0 18.75L7.437 5.25h16.563L16.563 18.75z"/>
+                            </svg>
+                            {% else %}
+                            {# Generic external-link arrow for non-Bandcamp stores #}
+                            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                            </svg>
+                            {% endif %}
+                        </span>
+                        <span class="bg-bc-teal/10 px-2 py-1 text-bc-teal">
+                            {% if store == 'bandcamp' %}Bandcamp{% elif store %}{{ store|title }}{% else %}Store{% endif %}
+                        </span>
+                    </a>
+                    {% endif %}
                 </div>
                 {% endif %}
 
@@ -121,7 +148,7 @@
                     <button hx-post="/forget/{{ album.id }}"
                             hx-target="#lib-{{ album.id }}"
                             hx-swap="outerHTML"
-                            hx-confirm="Forget this album? The sidecar is deleted and the album becomes an Orphan. Files are not touched."
+                            hx-confirm="Forget this album? The sidecar is deleted and the album reverts to NEW. Files are not touched."
                             class="px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition">
                         Forget
                     </button>

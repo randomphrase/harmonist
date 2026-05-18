@@ -20,6 +20,7 @@ import hashlib
 import json
 import logging
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -46,6 +47,11 @@ DEMO_MARKER = ".harmonist-demo"
 ASSETS_DIR = Path(__file__).parent / "_demo_assets"
 SINE = ASSETS_DIR / "sine.m4a"
 
+# Wall-clock delay between sync steps in demo mode. Lets the UI render
+# the "running" state and intermediate progress messages so the user
+# can see what sync is doing. Tests monkeypatch to 0.
+STEP_DELAY_SECONDS = 0.6
+
 
 # ---------------------------------------------------------------------------
 # Demo dataset
@@ -57,7 +63,7 @@ SINE = ASSETS_DIR / "sine.m4a"
 #   cover: filename in _demo_assets/
 #   file_mbid: optional MB Album Id atom on each .m4a (so reconcile works)
 #   file_comment: optional ©cmt value on each .m4a (Bandcamp evidence)
-#   sidecar: optional sidecar spec (None → Orphan state)
+#   sidecar: optional sidecar spec (None → NEW state, {} → empty sidecar)
 #
 # Sidecar spec keys mirror the Sidecar dataclass; `mb_match_candidate` if
 # present is filled in with a synthetic side-by-side.
@@ -80,7 +86,7 @@ LIBRARY: list[dict] = [
     },
     {
         # State: NEEDS_MBID — sidecar with store URL but no MB match yet.
-        # Recheck looks up MB → exact match → tags → DONE.
+        # Recheck looks up MB → exact match → tags → COMPLETE.
         "artist": "Sex Bob-omb",
         "album": "We Are Here To Make You Sad",
         "tracks": ["Garbage Truck", "Threshold", "Summertime"],
@@ -139,8 +145,8 @@ LIBRARY: list[dict] = [
         },
     },
     {
-        # State: DONE — fully tagged & confirmed. Hidden from inbox; counts
-        # in the "X total" stat at the top of the page.
+        # State: COMPLETE — fully tagged & confirmed. Hidden from inbox;
+        # appears in the Library section.
         "artist": "Various Artists",
         "album": "The Rural Juror (OST)",
         "tracks": [
@@ -280,6 +286,19 @@ URL_RELS: dict[str, str] = {
 }
 
 
+# Demo "Bandcamp purchases" by URL — the item_id that would come back from
+# the real Bandcamp purchase listing. Sync iterates this map and fills in
+# missing `bandcamp.item_id` for any already-on-disk album whose store_url
+# matches (mirrors HarmonistSyncer.sync_item's existing-on-disk path).
+PURCHASE_ITEM_IDS: dict[str, int] = {
+    "https://wyldstallion.bandcamp.com/album/a-most-excellent-journey": 1000,
+    "https://sexbobomb.bandcamp.com/album/we-are-here-to-make-you-sad": 1001,
+    "https://thamesmen.bandcamp.com/album/gimme-some-money": 1002,
+    "https://dingoes.bandcamp.com/album/little-bit-o-hoot": 1004,
+    "https://variousartists.bandcamp.com/album/the-rural-juror-ost": 1003,
+}
+
+
 # ---------------------------------------------------------------------------
 # Pending queue (in-memory, resets on restart or /demo/reset)
 # ---------------------------------------------------------------------------
@@ -370,23 +389,79 @@ def ensure_seeded(music_dir: Path) -> bool:
 
 
 def run_demo_sync(music_dir: Path, *, progress_callback=None) -> Any:
-    """Pop the next pending purchase and materialise it. Returns a stub
-    matching the bandcampsync.Syncer attribute the runner introspects.
+    """Mirror the real syncer's two behaviours:
+      1. For every already-on-disk album with a Bandcamp store_url and
+         `bandcamp.item_id is None`, fill in the item_id (when the URL
+         matches a known demo purchase). Mirrors
+         HarmonistSyncer.sync_item's existing-on-disk path.
+      2. Pop the next item from the pending queue (if any) and materialise
+         it as a freshly-downloaded album.
+    Returns a stub matching the attributes the sync runner introspects.
     """
     class _Result:
         new_items_downloaded = False
 
-    if not _pending_queue:
-        return _Result()
-    spec = _pending_queue.pop(0)
-    if progress_callback:
-        try:
-            progress_callback(f"{spec['artist']} / {spec['album']}")
-        except Exception:
-            pass
-    _materialise(music_dir, spec)
-    _Result.new_items_downloaded = True
+    _fill_in_existing_item_ids(music_dir, progress_callback=progress_callback)
+
+    if _pending_queue:
+        spec = _pending_queue.pop(0)
+        if progress_callback:
+            try:
+                progress_callback(f"{spec['artist']} / {spec['album']}")
+            except Exception:
+                pass
+        time.sleep(STEP_DELAY_SECONDS)
+        _materialise(music_dir, spec)
+        _Result.new_items_downloaded = True
     return _Result()
+
+
+def _fill_in_existing_item_ids(music_dir: Path, *, progress_callback=None) -> int:
+    """For each existing album whose store_url is a known demo purchase
+    and whose bandcamp.item_id is None, patch the sidecar with the
+    item_id from PURCHASE_ITEM_IDS. Returns the number patched.
+    """
+    if not music_dir.exists():
+        return 0
+    patched = 0
+    for harmonist_json in music_dir.rglob(sidecar_mod.SIDECAR_FILENAME):
+        album_dir = harmonist_json.parent
+        try:
+            sc = sidecar_mod.read(album_dir)
+        except Exception:
+            continue
+        if sc is None or not sc.store_url:
+            continue
+        item_id = PURCHASE_ITEM_IDS.get(sc.store_url)
+        if item_id is None:
+            continue
+        if sc.bandcamp is not None and sc.bandcamp.item_id is not None:
+            continue
+        existing_band_id = sc.bandcamp.band_id if sc.bandcamp else None
+        new_sc = Sidecar(
+            schema_version=sc.schema_version,
+            store_url=sc.store_url,
+            bandcamp=BandcampInfo(item_id=item_id, band_id=existing_band_id),
+            downloaded_at=sc.downloaded_at,
+            added_at=sc.added_at,
+            mb_release_id=sc.mb_release_id,
+            temp_uid=sc.temp_uid,
+            mb_match_candidate=sc.mb_match_candidate,
+            tagged_at=sc.tagged_at,
+            track_count_expected=sc.track_count_expected,
+            notes=sc.notes,
+        )
+        sidecar_mod.write(album_dir, new_sc)
+        patched += 1
+        if progress_callback:
+            try:
+                progress_callback(
+                    f"Linked: {album_dir.parent.name} / {album_dir.name}"
+                )
+            except Exception:
+                pass
+        time.sleep(STEP_DELAY_SECONDS)
+    return patched
 
 
 # ---------------------------------------------------------------------------
