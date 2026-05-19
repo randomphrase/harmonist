@@ -23,12 +23,10 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlparse
 
-from mutagen.mp4 import MP4
-
+from . import formats
 from . import sidecar as sidecar_mod
 from .models import Sidecar
 from .sidecar import CURRENT_SCHEMA_VERSION
-from .tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
 
 
 log = logging.getLogger(__name__)
@@ -46,7 +44,7 @@ def reconcile_album(
     if sidecar_mod.has_sidecar(album_dir):
         return None
 
-    files = sorted(p for p in album_dir.glob("*.m4a") if p.is_file())
+    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
     if not files:
         return None
 
@@ -101,23 +99,12 @@ def reconcile_pending(
     return stats
 
 
-def _read_album_id_and_comment(m4a_files: list[Path]) -> tuple[str | None, str]:
-    """Return (mbid, comment) read from the first usable m4a file."""
-    for f in m4a_files:
-        try:
-            audio = MP4(f)
-        except Exception:
-            continue
-        atom = audio.get(ATOM_MB_ALBUM_ID)
-        mbid = None
-        if atom:
-            try:
-                mbid = atom[0].decode("utf-8")
-            except (AttributeError, UnicodeDecodeError):
-                pass
-        comment = (audio.get(ATOM_COMMENT) or [""])[0] or ""
-        if mbid is not None:
-            return mbid, comment
+def _read_album_id_and_comment(files: list[Path]) -> tuple[str | None, str]:
+    """Return (mbid, comment) from the first file that has an MBID atom."""
+    for f in files:
+        mbid = formats.read_album_id(f)
+        if mbid:
+            return mbid, formats.read_comment(f) or ""
     return None, ""
 
 

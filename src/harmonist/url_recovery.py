@@ -14,9 +14,8 @@ from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
-from mutagen.mp4 import MP4
 
-from .tagger import ATOM_ALBUM, ATOM_COMMENT
+from . import formats
 
 
 log = logging.getLogger(__name__)
@@ -27,7 +26,7 @@ def recover_album_url(album_dir: Path, *, client: httpx.Client | None = None) ->
 
     Returns the URL on success, None if recovery isn't possible.
     """
-    files = sorted(album_dir.glob("*.m4a"))
+    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
     if not files:
         return None
 
@@ -47,13 +46,7 @@ def recover_album_url(album_dir: Path, *, client: httpx.Client | None = None) ->
 
 
 def _read_comment_and_album(file_path: Path) -> tuple[str, str]:
-    try:
-        audio = MP4(file_path)
-    except Exception:
-        return "", ""
-    cmt = (audio.get(ATOM_COMMENT) or [""])[0] or ""
-    album = (audio.get(ATOM_ALBUM) or [""])[0] or ""
-    return cmt, album
+    return formats.read_comment(file_path) or "", formats.read_album_title(file_path) or ""
 
 
 def _scrape_artist_for_album(

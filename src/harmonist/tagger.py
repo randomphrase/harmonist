@@ -1,64 +1,47 @@
-"""Picard-compatible MP4 tag writer.
+"""Picard-compatible tagger — orchestration layer.
 
-Writes the full MusicBrainz atom set + standard text tags + cover art onto
-every .m4a file in an album directory. Atom names follow Picard's convention
-(spaces, not underscores).
+Builds a format-agnostic `TagSet` per track from an MB release dict and
+delegates the actual atom/frame/comment serialisation to the matching
+`harmonist.formats.<format>` submodule.
 
-The default implementation (`PicardCompatibleTagger`) conforms to the
-MusicBrainz Picard MP4 mapping spec
-(https://picard.musicbrainz.org/docs/mappings/). The `Tagger` Protocol exists
-so this can be swapped for another implementation later (e.g. headless
-Picard, a different format target) without touching call sites.
+For backward compatibility with existing tests, the MP4 atom-name
+constants are re-exported here.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from mutagen.mp4 import MP4, MP4Cover
-
-
-ATOM_PREFIX = "----:com.apple.iTunes:"
-
-# Album-level MB IDs (same on every track in the album)
-ATOM_MB_ALBUM_ID = f"{ATOM_PREFIX}MusicBrainz Album Id"
-ATOM_MB_ALBUM_ARTIST_ID = f"{ATOM_PREFIX}MusicBrainz Album Artist Id"
-ATOM_MB_RELEASE_GROUP_ID = f"{ATOM_PREFIX}MusicBrainz Release Group Id"
-ATOM_MB_ALBUM_TYPE = f"{ATOM_PREFIX}MusicBrainz Album Type"
-ATOM_MB_ALBUM_STATUS = f"{ATOM_PREFIX}MusicBrainz Album Status"
-ATOM_MB_ALBUM_COUNTRY = f"{ATOM_PREFIX}MusicBrainz Album Release Country"
-
-# Per-track MB IDs
-ATOM_MB_TRACK_ID = f"{ATOM_PREFIX}MusicBrainz Track Id"
-ATOM_MB_RELEASE_TRACK_ID = f"{ATOM_PREFIX}MusicBrainz Release Track Id"
-ATOM_MB_ARTIST_ID = f"{ATOM_PREFIX}MusicBrainz Artist Id"
-
-# Optional album-level metadata (MB-derived, written verbatim)
-ATOM_LABEL = f"{ATOM_PREFIX}LABEL"
-ATOM_CATALOG = f"{ATOM_PREFIX}CATALOGNUMBER"
-ATOM_BARCODE = f"{ATOM_PREFIX}BARCODE"
-ATOM_MEDIA = f"{ATOM_PREFIX}MEDIA"
-ATOM_ASIN = f"{ATOM_PREFIX}ASIN"
-
-# Legacy (non-Picard) atom written by the previous code; remove on retag.
-LEGACY_RELEASE_ID = f"{ATOM_PREFIX}MUSICBRAINZ_RELEASEID"
-
-# Standard MP4 text atoms (note: ©-prefixed; the ©-byte is U+00A9 == 0xa9).
-# These are the iTunes/Picard convention for plain-text metadata.
-ATOM_TITLE = "\xa9nam"          # track title
-ATOM_ALBUM = "\xa9alb"          # album title
-ATOM_ARTIST = "\xa9ART"         # track artist
-ATOM_ALBUM_ARTIST = "aART"      # album artist (no © prefix on this one)
-ATOM_DATE = "\xa9day"           # release date
-ATOM_GENRE = "\xa9gen"          # genre
-ATOM_COMMENT = "\xa9cmt"        # comment (Bandcamp URL fallback lives here)
-
-# Numeric-tuple atoms.
-ATOM_TRACK_NUM = "trkn"         # (track_n, track_total)
-ATOM_DISC_NUM = "disk"          # (disc_n, disc_total)
-
-# Binary atom.
-ATOM_COVER = "covr"             # embedded cover art
+from . import formats
+from .formats import TagSet
+from .formats.m4a import (  # noqa: F401 — back-compat re-exports
+    ATOM_ALBUM,
+    ATOM_ALBUM_ARTIST,
+    ATOM_ARTIST,
+    ATOM_ASIN,
+    ATOM_BARCODE,
+    ATOM_CATALOG,
+    ATOM_COMMENT,
+    ATOM_COVER,
+    ATOM_DATE,
+    ATOM_DISC_NUM,
+    ATOM_GENRE,
+    ATOM_LABEL,
+    ATOM_MB_ALBUM_ARTIST_ID,
+    ATOM_MB_ALBUM_COUNTRY,
+    ATOM_MB_ALBUM_ID,
+    ATOM_MB_ALBUM_STATUS,
+    ATOM_MB_ALBUM_TYPE,
+    ATOM_MB_ARTIST_ID,
+    ATOM_MB_RELEASE_GROUP_ID,
+    ATOM_MB_RELEASE_TRACK_ID,
+    ATOM_MB_TRACK_ID,
+    ATOM_MEDIA,
+    ATOM_PREFIX,
+    ATOM_TITLE,
+    ATOM_TRACK_NUM,
+    LEGACY_RELEASE_ID,
+)
 
 
 class TagMismatchError(Exception):
@@ -72,7 +55,8 @@ class Tagger(Protocol):
     Implementations write tags to every audio file in `album_dir` based on
     the supplied MB release dict, optionally embedding cover art from
     `cover_path`. Returns the number of files tagged. Raises
-    `TagMismatchError` when the file count and MB track count diverge.
+    `TagMismatchError` when the file count and MB track count diverge
+    (unless `incomplete=True`).
     """
 
     def tag_album(
@@ -87,12 +71,8 @@ class Tagger(Protocol):
 
 
 class PicardCompatibleTagger:
-    """Default tagger — writes the Picard-spec MP4 atom set via mutagen.
-
-    Output intended to be byte-identical to what MusicBrainz Picard would
-    write for the same release. Verified by chunk G's byte-diff fixture
-    test (TBD).
-    """
+    """Default tagger — builds Picard-compatible tags and writes them to
+    every supported audio file in the album dir."""
 
     def tag_album(
         self,
@@ -112,23 +92,23 @@ def tag_album(
     *,
     incomplete: bool = False,
 ) -> int:
-    """Tag every .m4a file in `album_dir` with Picard-compatible atoms.
+    """Tag every supported audio file in `album_dir`.
 
     `release` is the unwrapped MusicBrainz release dict, i.e. what
-    musicbrainzngs.get_release_by_id() returns under the "release" key.
+    `musicbrainzngs.get_release_by_id()` returns under the "release" key.
     Returns the number of files tagged.
 
-    `incomplete=True` allows file_count < track_count and assigns files to
-    a subset of MB tracks via length-similarity (positional fallback).
+    `incomplete=True` allows file_count < track_count and assigns files
+    to a subset of MB tracks via length-similarity (positional fallback).
     file_count > track_count is still an error in both modes (per design
     §15.3 — "extra files on disk" is out of scope).
     """
-    files = sorted(p for p in album_dir.glob("*.m4a") if p.is_file())
+    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
     flat_tracks = list(_flatten_tracks(release))
 
     if not incomplete and len(files) != len(flat_tracks):
         raise TagMismatchError(
-            f"album {album_dir.name!r}: {len(files)} .m4a files but MB release "
+            f"album {album_dir.name!r}: {len(files)} audio files but MB release "
             f"has {len(flat_tracks)} tracks"
         )
     if len(files) > len(flat_tracks):
@@ -143,13 +123,63 @@ def tag_album(
     else:
         pairs = list(zip(files, flat_tracks))
 
-    cover = _load_cover(cover_path) if cover_path else None
+    cover = cover_path.read_bytes() if cover_path else None
     media_total = len(release.get("medium-list", [])) or 1
 
     for file_path, (medium, track_pos_in_medium, track) in pairs:
-        _tag_file(file_path, release, medium, track_pos_in_medium, track, cover, media_total)
+        tagset = _build_tagset(release, medium, track_pos_in_medium, track, media_total)
+        formats.write_tags(file_path, tagset, cover)
 
     return len(files)
+
+
+def _build_tagset(
+    release: dict,
+    medium: dict,
+    track_pos: int,
+    track: dict,
+    media_total: int,
+) -> TagSet:
+    """Translate one MB track within a release to a TagSet."""
+    track_artist_credit = track.get("artist-credit") or release.get("artist-credit")
+    label_info = (release.get("label-info-list") or [])
+    first_label = label_info[0] if label_info else {}
+    rg = release.get("release-group") or {}
+
+    track_total = len(medium.get("track-list", []))
+
+    disc_num = 1
+    if "position" in medium:
+        try:
+            disc_num = int(medium["position"])
+        except (TypeError, ValueError):
+            disc_num = 1
+
+    return TagSet(
+        mb_album_id=release["id"],
+        album=release.get("title", ""),
+        album_artist=_artist_phrase(release.get("artist-credit")),
+        title=_track_title(track),
+        artist=_artist_phrase(track_artist_credit),
+        track_num=track_pos + 1,
+        track_total=track_total,
+        mb_album_artist_ids=_artist_ids(release.get("artist-credit")),
+        mb_release_group_id=rg.get("id"),
+        mb_album_type=rg.get("primary-type"),
+        mb_album_status=release.get("status"),
+        mb_album_country=release.get("country"),
+        mb_track_id=(track.get("recording") or {}).get("id"),
+        mb_release_track_id=track.get("id"),
+        mb_artist_ids=_artist_ids(track_artist_credit),
+        date=release.get("date") or None,
+        disc_num=disc_num,
+        disc_total=media_total,
+        label=first_label.get("label", {}).get("name") if first_label else None,
+        catalog_number=first_label.get("catalog-number") if first_label else None,
+        barcode=release.get("barcode") or None,
+        asin=release.get("asin") or None,
+        media=medium.get("format") or None,
+    )
 
 
 def _assign_files_to_tracks(
@@ -158,17 +188,10 @@ def _assign_files_to_tracks(
     """Best-fit assignment of files to a subset of MB tracks via length
     similarity, preserving input file order.
 
-    Falls back to positional matching (files[i] → tracks[i]) when any
-    file or track length is unknown — the simpler choice is more
-    predictable when there's not enough data to make a length-based call.
+    Falls back to positional matching when any file or track length is
+    unknown — the simpler choice is more predictable without enough data.
     """
-    file_durations: list[int | None] = []
-    for f in files:
-        try:
-            length = MP4(f).info.length
-            file_durations.append(int(round(length * 1000)) if length else None)
-        except Exception:
-            file_durations.append(None)
+    file_durations: list[int | None] = [formats.read_duration_ms(f) for f in files]
 
     track_lengths: list[int | None] = []
     for _medium, _pos, track in flat_tracks:
@@ -179,8 +202,8 @@ def _assign_files_to_tracks(
             track_lengths.append(None)
 
     if any(t is None for t in track_lengths) or any(d is None for d in file_durations):
-        # Positional fallback — first N tracks; the remaining tracks are
-        # the "missing" ones and get no file assigned.
+        # Positional fallback — first N tracks; the rest are "missing"
+        # and get no file assigned.
         return [(files[i], flat_tracks[i]) for i in range(len(files))]
 
     used: set[int] = set()
@@ -201,90 +224,6 @@ def _assign_files_to_tracks(
     return pairs
 
 
-def _tag_file(
-    file_path: Path,
-    release: dict,
-    medium: dict,
-    track_pos: int,
-    track: dict,
-    cover: MP4Cover | None,
-    media_total: int,
-) -> None:
-    audio = MP4(file_path)
-
-    # ---- Album-level MBID atoms ----
-    audio[ATOM_MB_ALBUM_ID] = [release["id"].encode("utf-8")]
-
-    if album_artist_ids := _artist_ids(release.get("artist-credit")):
-        audio[ATOM_MB_ALBUM_ARTIST_ID] = [a.encode("utf-8") for a in album_artist_ids]
-
-    if rg := release.get("release-group"):
-        if rg_id := rg.get("id"):
-            audio[ATOM_MB_RELEASE_GROUP_ID] = [rg_id.encode("utf-8")]
-        if pt := rg.get("primary-type"):
-            audio[ATOM_MB_ALBUM_TYPE] = [pt.encode("utf-8")]
-
-    if status := release.get("status"):
-        audio[ATOM_MB_ALBUM_STATUS] = [status.encode("utf-8")]
-    if country := release.get("country"):
-        audio[ATOM_MB_ALBUM_COUNTRY] = [country.encode("utf-8")]
-
-    # ---- Per-track MBID atoms ----
-    if recording := track.get("recording"):
-        if rec_id := recording.get("id"):
-            audio[ATOM_MB_TRACK_ID] = [rec_id.encode("utf-8")]
-
-    if track_id := track.get("id"):
-        audio[ATOM_MB_RELEASE_TRACK_ID] = [track_id.encode("utf-8")]
-
-    track_artist_credit = track.get("artist-credit") or release.get("artist-credit")
-    if track_artist_ids := _artist_ids(track_artist_credit):
-        audio[ATOM_MB_ARTIST_ID] = [a.encode("utf-8") for a in track_artist_ids]
-
-    # ---- Standard text tags ----
-    audio[ATOM_TITLE] = [_track_title(track)]
-    audio[ATOM_ALBUM] = [release.get("title", "")]
-    audio[ATOM_ARTIST] = [_artist_phrase(track_artist_credit)]
-    audio[ATOM_ALBUM_ARTIST] = [_artist_phrase(release.get("artist-credit"))]
-    if date := release.get("date"):
-        audio[ATOM_DATE] = [date]
-
-    track_total = len(medium.get("track-list", []))
-    audio[ATOM_TRACK_NUM] = [(track_pos + 1, track_total)]
-    if "position" in medium:
-        try:
-            disc_pos = int(medium["position"])
-            audio[ATOM_DISC_NUM] = [(disc_pos, media_total)]
-        except (TypeError, ValueError):
-            pass
-
-    # ---- Optional album-level metadata ----
-    if label_info := (release.get("label-info-list") or []):
-        first = label_info[0]
-        if label := first.get("label", {}).get("name"):
-            audio[ATOM_LABEL] = [label.encode("utf-8")]
-        if catnum := first.get("catalog-number"):
-            audio[ATOM_CATALOG] = [catnum.encode("utf-8")]
-    if barcode := release.get("barcode"):
-        audio[ATOM_BARCODE] = [barcode.encode("utf-8")]
-    if asin := release.get("asin"):
-        audio[ATOM_ASIN] = [asin.encode("utf-8")]
-    if fmt := medium.get("format"):
-        audio[ATOM_MEDIA] = [fmt.encode("utf-8")]
-
-    # ---- Cover art ----
-    if cover is not None:
-        audio[ATOM_COVER] = [cover]
-
-    # ---- Cleanup of the legacy non-Picard atom ----
-    if LEGACY_RELEASE_ID in audio:
-        del audio[LEGACY_RELEASE_ID]
-
-    # ATOM_COMMENT is intentionally NOT touched — preserves Bandcamp URL fallback.
-
-    audio.save()
-
-
 def _flatten_tracks(release: dict):
     """Yield (medium, track_pos_in_medium, track) for every track in every medium."""
     for medium in release.get("medium-list", []):
@@ -300,11 +239,7 @@ def _track_title(track: dict) -> str:
 
 
 def _artist_ids(artist_credit) -> list[str]:
-    """Pull MBIDs out of an MB artist-credit list.
-
-    artist-credit is a heterogeneous list — dicts (with `artist`) or strings
-    (joinphrases). We extract just the MBIDs.
-    """
+    """Pull MBIDs out of an MB artist-credit list."""
     if not artist_credit:
         return []
     ids = []
@@ -330,9 +265,3 @@ def _artist_phrase(artist_credit) -> str:
             if jp := ac.get("joinphrase"):
                 parts.append(jp)
     return "".join(parts).strip()
-
-
-def _load_cover(cover_path: Path) -> MP4Cover:
-    data = cover_path.read_bytes()
-    fmt = MP4Cover.FORMAT_PNG if cover_path.suffix.lower() == ".png" else MP4Cover.FORMAT_JPEG
-    return MP4Cover(data, imageformat=fmt)
