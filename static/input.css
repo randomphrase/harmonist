@@ -12,7 +12,8 @@
 
 @theme {
   /* Brand colours — match the original design language */
-  --color-mb-purple: #C621BF;
+  --color-mb-purple: #BA478F;
+  --color-mb-orange: #EB743B;
   --color-bc-teal: #00A19D;
   --color-h-slate: #1E293B;
   --color-h-charcoal: #111827;
