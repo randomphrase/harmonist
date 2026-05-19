@@ -12,10 +12,9 @@ from datetime import datetime, timezone
 from itertools import zip_longest
 from pathlib import Path
 
-from mutagen.mp4 import MP4
-
+from . import formats
 from .models import MatchCandidate, MatchConfidence, TrackComparison
-from .tagger import ATOM_TITLE, _flatten_tracks, _track_title
+from .tagger import _flatten_tracks, _track_title
 
 
 # Per-track length tolerance. Anything within this is "close enough" — covers
@@ -35,7 +34,7 @@ def assess_match(album_dir: Path, release: dict) -> MatchCandidate:
         or out of tolerance.
       - "no_match": file count differs from MB track count.
     """
-    files = sorted(p for p in album_dir.glob("*.m4a") if p.is_file())
+    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
     tracks = list(_flatten_tracks(release))
 
     file_count = len(files)
@@ -116,22 +115,12 @@ def assess_match(album_dir: Path, release: dict) -> MatchCandidate:
 
 
 def _file_duration_ms(file_path: Path) -> int:
-    try:
-        audio = MP4(file_path)
-        seconds = audio.info.length
-        return int(seconds * 1000)
-    except Exception:
-        return 0
+    return formats.read_duration_ms(file_path) or 0
 
 
 def _file_title(file_path: Path) -> str | None:
-    """Read the ©nam tag from the file, if present."""
-    try:
-        audio = MP4(file_path)
-    except Exception:
-        return None
-    title = (audio.get(ATOM_TITLE) or [None])[0]
-    return title or None
+    """Read the track title tag from the file, if present."""
+    return formats.read_track_title(file_path)
 
 
 def _mb_track_length_ms(track: dict) -> int | None:
