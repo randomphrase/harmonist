@@ -131,8 +131,9 @@ def _register_demo_routes(app: FastAPI) -> None:
         try:
             demo.reset(request.app.state.cfg.paths.music_dir)
         except RuntimeError as e:
-            return _flash_response(str(e), level="error", tasks_changed=False, status_code=400)
-        return _flash_response("Demo data reset to original state.", level="info")
+            return _flash_response("Demo reset failed", str(e), level="error",
+                                   tasks_changed=False, status_code=400)
+        return _flash_response("Demo data reset", "back to original state")
 
 
 # ---------------------------------------------------------------------------
@@ -323,9 +324,9 @@ def _register_routes(app: FastAPI) -> None:
         the user wants to force a re-run after dropping files in."""
         started = request.app.state.reconcile_runner.start()
         if started:
-            return _flash_response("Reconcile started — watch the inbox.", tasks_changed=False)
+            return _flash_response("Reconcile started", "watch the inbox", tasks_changed=False)
         return _flash_response(
-            "Reconcile is already running (or just finished).",
+            "Reconcile busy", "already running or just finished",
             level="warning", tasks_changed=False,
         )
 
@@ -335,11 +336,11 @@ def _register_routes(app: FastAPI) -> None:
             request.app.state.sync_runner.start()
         except AlreadyRunningError:
             return _flash_response(
-                "Sync is already running.",
+                "Sync busy", "already running",
                 level="warning", tasks_changed=False,
                 status_code=status.HTTP_409_CONFLICT,
             )
-        return _flash_response("Sync started — watch the inbox.", tasks_changed=False)
+        return _flash_response("Sync started", "watch the inbox", tasks_changed=False)
 
     @app.get("/library", response_class=HTMLResponse)
     def library(request: Request, offset: int = 0, limit: int = 30):
@@ -387,8 +388,8 @@ def _register_routes(app: FastAPI) -> None:
             )
         except Exception as e:
             log.exception("retag failed")
-            return _flash_response(f"Re-tag failed: {e}", level="error", tasks_changed=False)
-        return _flash_response("Re-tagged from MusicBrainz.")
+            return _flash_response("Re-tag failed", str(e), level="error", tasks_changed=False)
+        return _flash_response("Re-tagged", album.title)
 
     @app.post("/forget/{album_id}", response_class=HTMLResponse)
     def forget(request: Request, album_id: str):
@@ -404,7 +405,7 @@ def _register_routes(app: FastAPI) -> None:
         if sc_path.exists():
             sc_path.unlink()
         request.app.state.forgotten_paths.add(album.path)
-        return _flash_response(f"Forgotten — {album.title} reverted to NEW.")
+        return _flash_response("Forgotten", f"{album.title} reverted to NEW")
 
     @app.get("/healthz")
     def healthz(request: Request):
@@ -444,20 +445,20 @@ def _register_routes(app: FastAPI) -> None:
         except Exception as e:
             log.exception("reconcile failed")
             return _flash_response(
-                f"Reconcile failed: {e}", level="error", tasks_changed=False,
+                "Reconcile failed", str(e), level="error", tasks_changed=False,
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         if sc is None:
             # reconcile_album returns None for two reasons: existing sidecar
             # (already reconciled, often by the auto-runner) or no MBID atom.
             if sidecar_mod.has_sidecar(album.path):
-                return _flash_response(f"{album.title}: already reconciled.")
+                return _flash_response("Already reconciled", album.title)
             return _flash_response(
-                f"{album.title}: no MusicBrainz Album Id atom on the files.",
+                "No MBID atom", f"{album.title} has no MusicBrainz Album Id",
                 level="warning", tasks_changed=False,
             )
         label = "Bandcamp source" if sc.store_url else "manual source"
-        return _flash_response(f"Reconciled — {album.title} ({label}).")
+        return _flash_response("Reconciled", f"{album.title} ({label})")
 
     @app.post("/recheck/{album_id}", response_class=HTMLResponse)
     def recheck(request: Request, album_id: str):
@@ -468,17 +469,17 @@ def _register_routes(app: FastAPI) -> None:
         try:
             mbid = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
         except mb_lookup.MBError as e:
-            return _flash_response(f"MB lookup failed: {e}", level="error", tasks_changed=False)
+            return _flash_response("MB lookup failed", str(e), level="error", tasks_changed=False)
         if not mbid:
             return _flash_response(
-                f"{album.title}: still no MusicBrainz match for this URL.",
+                "Still no match", f"{album.title}: no MusicBrainz release for this URL yet",
                 level="warning", tasks_changed=False,
             )
 
         try:
             release = mb_lookup.fetch_release(mbid)
         except mb_lookup.MBError as e:
-            return _flash_response(f"MB fetch failed: {e}", level="error", tasks_changed=False)
+            return _flash_response("MB fetch failed", str(e), level="error", tasks_changed=False)
         candidate = assess_match(album.path, release)
 
         new_sc = Sidecar(
@@ -497,15 +498,16 @@ def _register_routes(app: FastAPI) -> None:
         if candidate.confidence == "exact":
             try:
                 _tag_with_release(album, mbid, request.app.state.cfg, request.app.state.tagger)
-                return _flash_response(f"Match found and tagged — {album.title}.")
+                return _flash_response("Tagged", f"{album.title} (match found via Recheck)")
             except Exception as e:
                 log.exception("tag after recheck failed")
                 return _flash_response(
-                    f"Match found but tagging failed: {e}",
+                    "Tagging failed", str(e),
                     level="error", tasks_changed=False,
                 )
         return _flash_response(
-            f"{album.title}: match found ({candidate.confidence}) — please review and confirm.",
+            "Needs review",
+            f"{album.title}: {candidate.confidence} match — please review and confirm",
         )
 
     @app.post("/confirm/{album_id}", response_class=HTMLResponse)
@@ -518,8 +520,8 @@ def _register_routes(app: FastAPI) -> None:
             _tag_with_release(album, sc.mb_match_candidate.mb_release_id, request.app.state.cfg, request.app.state.tagger)
         except Exception as e:
             log.exception("tag failed")
-            return _flash_response(f"Tagging failed: {e}", level="error", tasks_changed=False)
-        return _flash_response(f"Tagged — {album.title}.")
+            return _flash_response("Tagging failed", str(e), level="error", tasks_changed=False)
+        return _flash_response("Tagged", album.title)
 
     @app.post("/confirm/{album_id}/incomplete", response_class=HTMLResponse)
     def confirm_match_incomplete(request: Request, album_id: str):
@@ -540,8 +542,8 @@ def _register_routes(app: FastAPI) -> None:
             )
         except Exception as e:
             log.exception("incomplete tag failed")
-            return _flash_response(f"Tagging failed: {e}", level="error", tasks_changed=False)
-        return _flash_response(f"Tagged as incomplete — {album.title}.")
+            return _flash_response("Tagging failed", str(e), level="error", tasks_changed=False)
+        return _flash_response("Tagged as incomplete", album.title)
 
     @app.post("/reject/{album_id}", response_class=HTMLResponse)
     def reject_match(request: Request, album_id: str):
@@ -561,7 +563,7 @@ def _register_routes(app: FastAPI) -> None:
             notes=sc.notes,
         )
         sidecar_mod.write(album.path, new_sc)
-        return _flash_response(f"Match rejected — {album.title}.")
+        return _flash_response("Match rejected", album.title)
 
     @app.post("/unconfirmed/{album_id}/url", response_class=HTMLResponse)
     def update_unconfirmed_url(request: Request, album_id: str, url: str = Form(...)):
@@ -577,7 +579,7 @@ def _register_routes(app: FastAPI) -> None:
             new_bandcamp = BandcampInfo(item_id=None, band_id=sc.bandcamp.band_id)
         new_sc = _replace_url(sc, url.strip(), new_bandcamp)
         sidecar_mod.write(album.path, new_sc)
-        return _flash_response(f"URL updated — {album.title}. Run Sync to confirm.")
+        return _flash_response("URL updated", f"{album.title} — run Sync to confirm")
 
     @app.post("/manual/{album_id}/search", response_class=HTMLResponse)
     def manual_search(
@@ -591,7 +593,7 @@ def _register_routes(app: FastAPI) -> None:
         try:
             results = mb_search.search_releases(artist, title)
         except mb_search.MBSearchError as e:
-            return _flash_response(f"MB search failed: {e}", level="error", tasks_changed=False)
+            return _flash_response("MB search failed", str(e), level="error", tasks_changed=False)
         return request.app.state.templates.TemplateResponse(
             request,
             "partials/manual_search_results.html",
@@ -604,17 +606,21 @@ def _register_routes(app: FastAPI) -> None:
         extracted = _extract_mbid(mbid)
         if not extracted:
             return _flash_response(
-                "Could not parse an MBID from that input. Paste a full MB release URL or the 36-char MBID.",
+                "Could not parse",
+                "Paste a full MB release URL or the 36-char MBID",
                 level="error", tasks_changed=False,
             )
         try:
             status_str, msg = _apply_match(album, extracted, request.app.state.cfg, request.app.state.tagger)
         except mb_lookup.MBError as e:
-            return _flash_response(f"MB lookup failed: {e}", level="error", tasks_changed=False)
+            return _flash_response("MB lookup failed", str(e), level="error", tasks_changed=False)
         except Exception as e:
             log.exception("manual assign failed")
-            return _flash_response(f"Assignment failed: {e}", level="error", tasks_changed=False)
-        return _flash_response(f"{album.title}: {msg}")
+            return _flash_response("Assignment failed", str(e), level="error", tasks_changed=False)
+        # status_str is 'tagged' or 'needs_confirmation' — use the friendlier
+        # verb from msg's first clause.
+        verb = "Tagged" if status_str == "tagged" else "Needs review"
+        return _flash_response(verb, f"{album.title}: {msg}")
 
     @app.post("/recover/{album_id}", response_class=HTMLResponse)
     def recover_url(request: Request, album_id: str):
@@ -625,10 +631,11 @@ def _register_routes(app: FastAPI) -> None:
             url = url_recovery.recover_album_url(album.path)
         except Exception as e:
             log.exception("URL recovery failed")
-            return _flash_response(f"URL recovery failed: {e}", level="error", tasks_changed=False)
+            return _flash_response("URL recovery failed", str(e), level="error", tasks_changed=False)
         if not url:
             return _flash_response(
-                f"{album.title}: no usable store URL in the file's comment tag.",
+                "No URL recovered",
+                f"{album.title}: no usable store URL in the file's comment tag",
                 level="warning", tasks_changed=False,
             )
         # Write a partial sidecar with just the URL; user can run Recheck.
@@ -641,7 +648,8 @@ def _register_routes(app: FastAPI) -> None:
             ),
         )
         return _flash_response(
-            f"Recovered URL for {album.title}: {url}. Click Recheck to look it up on MusicBrainz.",
+            "URL recovered",
+            f"{album.title}: {url} — click Recheck for MB lookup",
         )
 
     @app.post("/unconfirmed/{album_id}/manual", response_class=HTMLResponse)
@@ -664,7 +672,7 @@ def _register_routes(app: FastAPI) -> None:
             notes="marked as purchased elsewhere",
         )
         sidecar_mod.write(album.path, new_sc)
-        return _flash_response(f"Marked as purchased elsewhere — {album.title}.")
+        return _flash_response("Marked manual", f"{album.title} (purchased elsewhere)")
 
 
 def _replace_url(sc: Sidecar, new_url: str, new_bandcamp: BandcampInfo | None) -> Sidecar:
@@ -700,13 +708,18 @@ def _flash(message: str, *, level: str) -> str:
 
 
 def _flash_response(
-    message: str,
+    verb: str,
+    details: str | None = None,
     *,
     level: str = "info",
     tasks_changed: bool = True,
     status_code: int = 200,
 ) -> HTMLResponse:
     """Standard action response: flash HTML body + HX-Trigger events.
+
+    The status bar renders the message as a level-coloured pill around
+    `verb` followed by `details` in plain text. Splitting the two keeps
+    the status bar visually light when the details run long.
 
     Emits:
       - `harmonist-status` — picked up by the status-bar JS in index.html.
@@ -716,7 +729,14 @@ def _flash_response(
     failures (e.g. MB lookup error with no state change), pass
     `tasks_changed=False` to avoid spurious refreshes.
     """
-    triggers: dict = {"harmonist-status": {"value": message, "level": level}}
+    message = verb if not details else f"{verb} — {details}"
+    triggers: dict = {
+        "harmonist-status": {
+            "verb": verb,
+            "details": details,
+            "level": level,
+        }
+    }
     if tasks_changed:
         triggers["tasks-changed"] = True
     return HTMLResponse(
