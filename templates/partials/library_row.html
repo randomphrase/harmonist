@@ -65,19 +65,16 @@
                 {% if sc and (sc.mb_release_id or sc.store_url) %}
                 <div class="flex gap-2 items-center flex-wrap">
                     {% if sc and sc.mb_release_id %}
-                    {# GitHub-CI-style badge: solid brand-colour icon section
-                       (white icon) + tinted label section. #}
+                    {# Simple pill: subtle tinted background, brand-colour icon + label inline. #}
                     <a href="https://musicbrainz.org/release/{{ sc.mb_release_id }}"
                        target="_blank" rel="noopener"
                        title="View on MusicBrainz · {{ sc.mb_release_id }}"
-                       class="inline-flex items-stretch text-xs font-bold rounded overflow-hidden border border-mb-purple/60 hover:border-mb-purple transition">
-                        <span class="bg-mb-purple px-2 py-1 flex items-center text-white">
-                            {# Hexagonal MB mark, pointy-top #}
-                            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor" aria-hidden="true">
-                                <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
-                            </svg>
-                        </span>
-                        <span class="bg-mb-purple/15 px-2 py-1 text-mb-purple">MusicBrainz</span>
+                       class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-mb-purple/15 text-mb-purple border border-mb-purple/40 hover:bg-mb-purple/25 hover:border-mb-purple transition">
+                        {# Hexagonal MB mark, pointy-top #}
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                            <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
+                        </svg>
+                        MusicBrainz
                     </a>
                     {% endif %}
                     {% if sc and sc.store_url %}
@@ -92,23 +89,19 @@
                     <a href="{{ sc.store_url }}"
                        target="_blank" rel="noopener"
                        title="{{ store_tip }}"
-                       class="inline-flex items-stretch text-xs font-bold rounded overflow-hidden border border-bc-teal/60 hover:border-bc-teal transition">
-                        <span class="bg-bc-teal px-2 py-1 flex items-center text-white">
-                            {% if store == 'bandcamp' %}
-                            {# Bandcamp parallelogram mark #}
-                            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor" aria-hidden="true">
-                                <path d="M0 18.75L7.437 5.25h16.563L16.563 18.75z"/>
-                            </svg>
-                            {% else %}
-                            {# Generic external-link arrow for non-Bandcamp stores #}
-                            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                            </svg>
-                            {% endif %}
-                        </span>
-                        <span class="bg-bc-teal/15 px-2 py-1 text-bc-teal">
-                            {% if store == 'bandcamp' %}Bandcamp{% elif store %}{{ store|title }}{% else %}Store{% endif %}
-                        </span>
+                       class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-bc-teal/15 text-bc-teal border border-bc-teal/40 hover:bg-bc-teal/25 hover:border-bc-teal transition">
+                        {% if store == 'bandcamp' %}
+                        {# Bandcamp parallelogram mark #}
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                            <path d="M0 18.75L7.437 5.25h16.563L16.563 18.75z"/>
+                        </svg>
+                        {% else %}
+                        {# Generic external-link arrow for non-Bandcamp stores #}
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                        </svg>
+                        {% endif %}
+                        {% if store == 'bandcamp' %}Bandcamp{% elif store %}{{ store|title }}{% else %}Store{% endif %}
                     </a>
                     {% endif %}
                 </div>

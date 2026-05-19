@@ -109,20 +109,19 @@ function harmonistToggleRow(id) {
 
             const btn = document.getElementById('sync-button');
             if (data.state === 'running') {
-                const label = data.current_item
-                    ? `Syncing: ${esc(data.current_item)}`
-                    : 'Syncing…';
-                syncDisplay = `<span class="px-3 py-0.5 bg-amber-500/15 text-amber-300 border border-amber-500/40 rounded-full font-bold text-xs">${label}</span>`;
+                const details = data.current_item ? esc(data.current_item) : null;
+                const pill = `<span class="px-3 py-0.5 bg-amber-500/15 text-amber-300 border border-amber-500/40 rounded-full font-bold text-xs">Syncing</span>`;
+                syncDisplay = pill + (details ? `<span class="ml-2 text-slate-300">${details}</span>` : '');
                 if (btn) { btn.disabled = true; btn.classList.add('opacity-40', 'cursor-not-allowed'); }
             } else {
                 syncDisplay = null;
                 // On sync completion, surface the summary as the latest message
                 // unless another action has overwritten it more recently.
                 if (data.last_error) {
-                    latestActionMessage = `<span class="px-3 py-0.5 bg-red-500/15 text-red-300 border border-red-500/40 rounded-full font-bold text-xs">Sync failed: ${esc(data.last_error)}</span>`;
+                    latestActionMessage = renderActionMessage('Sync failed', data.last_error, 'error');
                 } else if (data.finished_at) {
                     const summary = data.new_items ? `${data.new_items} new` : 'no new items';
-                    latestActionMessage = `<span class="px-3 py-0.5 bg-bc-teal/15 text-bc-teal border border-bc-teal/40 rounded-full font-bold text-xs">Last sync: ${summary}</span>`;
+                    latestActionMessage = renderActionMessage('Last sync', summary, 'info');
                 }
                 if (btn) { btn.disabled = false; btn.classList.remove('opacity-40', 'cursor-not-allowed'); }
             }
@@ -144,9 +143,11 @@ function harmonistToggleRow(id) {
             lastReconcileState = data.state;
 
             if (data.state === 'running') {
-                const prog = data.total ? ` (${data.completed}/${data.total})` : '';
-                const what = data.current_item ? `: ${esc(data.current_item)}` : '';
-                reconcileDisplay = `<span class="px-3 py-0.5 bg-mb-purple/15 text-mb-purple border border-mb-purple/40 rounded-full font-bold text-xs">Reconciling${what}${prog}</span>`;
+                const prog = data.total ? `${data.completed}/${data.total}` : '';
+                const item = data.current_item ? esc(data.current_item) : '';
+                const details = [item, prog].filter(Boolean).join(' · ');
+                const pill = `<span class="px-3 py-0.5 bg-mb-purple/15 text-mb-purple border border-mb-purple/40 rounded-full font-bold text-xs">Reconciling</span>`;
+                reconcileDisplay = pill + (details ? `<span class="ml-2 text-slate-300">${details}</span>` : '');
             } else {
                 reconcileDisplay = null;
             }
@@ -156,18 +157,28 @@ function harmonistToggleRow(id) {
     });
 
     // ----- Action flash messages -----
-    // Routes emit `HX-Trigger: {"harmonist-status": {"value": "...", "level": "..."}}`
-    // We mirror the message into the status bar with a level-appropriate pill.
+    // Routes emit
+    //   HX-Trigger: {"harmonist-status": {"verb": "...", "details": "...", "level": "..."}}
+    // We render the verb as a level-coloured pill, then the details in plain
+    // text — keeps the bar visually light when details run long.
     function pillClasses(level) {
         if (level === 'error')   return 'bg-red-500/15 text-red-300 border border-red-500/40';
         if (level === 'warning') return 'bg-amber-500/15 text-amber-300 border border-amber-500/40';
         return 'bg-bc-teal/15 text-bc-teal border border-bc-teal/40';
     }
+    function renderActionMessage(verb, details, level) {
+        const pill = `<span class="px-3 py-0.5 rounded-full font-bold text-xs ${pillClasses(level)}">${esc(verb)}</span>`;
+        if (!details) return pill;
+        return pill + `<span class="ml-2 text-slate-300">${esc(details)}</span>`;
+    }
     document.body.addEventListener('harmonist-status', function (evt) {
         const d = evt.detail || {};
-        const value = (d.value !== undefined) ? d.value : d;
+        // New payload shape: {verb, details, level}. Tolerate old shape
+        // {value, level} so existing inline calls keep working.
+        const verb = d.verb !== undefined ? d.verb : (d.value !== undefined ? d.value : '');
+        const details = d.details !== undefined ? d.details : null;
         const level = d.level || 'info';
-        latestActionMessage = `<span class="px-3 py-0.5 rounded-full font-bold text-xs ${pillClasses(level)}">${esc(value)}</span>`;
+        latestActionMessage = renderActionMessage(verb, details, level);
         renderStatus();
     });
 })();
