@@ -65,13 +65,16 @@
                 {% if sc and (sc.mb_release_id or sc.store_url) %}
                 <div class="flex gap-2 items-center flex-wrap">
                     {% if sc and sc.mb_release_id %}
-                    {# Simple pill: subtle tinted background, brand-colour icon + label inline. #}
+                    {# Simple pill: subtle purple tint background, orange hex
+                       icon + purple text. Conveys both MB brand colours. #}
                     <a href="https://musicbrainz.org/release/{{ sc.mb_release_id }}"
                        target="_blank" rel="noopener"
                        title="View on MusicBrainz · {{ sc.mb_release_id }}"
                        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-mb-purple/15 text-mb-purple border border-mb-purple/40 hover:bg-mb-purple/25 hover:border-mb-purple transition">
-                        {# Hexagonal MB mark, pointy-top #}
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                        {# Pointy-top hex in MB's orange — recognisable as the
+                           MB mark while leaving the text in purple. #}
+                        <svg viewBox="0 0 24 24" width="14" height="14"
+                             fill="var(--color-mb-orange)" aria-hidden="true">
                             <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
                         </svg>
                         MusicBrainz
