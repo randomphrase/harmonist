@@ -12,11 +12,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import ModuleType
 
-from . import m4a, mp3
+from . import flac, m4a, mp3, ogg, opus
 from .types import TagSet, UnsupportedFormat
 
 
-_MODULES: tuple[ModuleType, ...] = (m4a, mp3)
+_MODULES: tuple[ModuleType, ...] = (m4a, mp3, flac, ogg, opus)
 
 
 def supported_extensions() -> tuple[str, ...]:
