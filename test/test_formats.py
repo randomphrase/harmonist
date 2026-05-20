@@ -18,9 +18,15 @@ from harmonist.tagger import tag_album
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 # (extension, fixture filename). Each fixture is a ~1s sine tone.
+# Ogg Vorbis (.ogg) is omitted: the local ffmpeg build can't encode it
+# and oggenc isn't installed. Its code path is identical to Opus (both
+# Ogg containers, both Vorbis comments via the shared _vorbis tagger),
+# so Opus coverage is representative.
 FIXTURES = [
     (".m4a", "sine.m4a"),
     (".mp3", "sine.mp3"),
+    (".flac", "sine.flac"),
+    (".opus", "sine.opus"),
 ]
 
 
@@ -62,8 +68,8 @@ def _make_album(tmp_path: Path, fixture: str, name: str = "track") -> Path:
 
 def test_supported_extensions_includes_known_formats():
     exts = formats.supported_extensions()
-    assert ".m4a" in exts
-    assert ".mp3" in exts
+    for e in (".m4a", ".mp3", ".flac", ".ogg", ".opus"):
+        assert e in exts
 
 
 @pytest.mark.parametrize("ext,fixture", FIXTURES)
@@ -129,6 +135,16 @@ def _seed_comment(path: Path, value: str) -> None:
         if audio.tags is None:
             audio.add_tags()
         audio.tags.add(COMM(encoding=Encoding.UTF8, lang="eng", desc="", text=[value]))
+        audio.save()
+    elif ext == ".flac":
+        from mutagen.flac import FLAC
+        audio = FLAC(path)
+        audio["COMMENT"] = [value]
+        audio.save()
+    elif ext == ".opus":
+        from mutagen.oggopus import OggOpus
+        audio = OggOpus(path)
+        audio["COMMENT"] = [value]
         audio.save()
     else:
         raise AssertionError(f"no comment-seeder for {ext}")
