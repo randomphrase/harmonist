@@ -607,31 +607,52 @@ Each step ends with green tests at its level. No agent moves on until QA signs o
 
 ## 14. Audio format support
 
-Harmonist supports common audio container formats. Scanner walks for all
-supported extensions; tagger dispatches by file extension to the right
-per-format implementation.
+Harmonist supports common audio container formats. The scanner walks for
+all supported extensions; the tagger dispatches by file extension to the
+right per-format implementation.
 
 | Format | Extension | Tag spec | mutagen class | Status |
 |---|---|---|---|---|
 | ALAC / AAC in MP4 | `.m4a`, `.mp4` | iTunes-style MP4 atoms (Picard spec) | `mutagen.mp4.MP4` | Implemented |
-| MP3 | `.mp3` | ID3v2 frames (Picard spec) | `mutagen.id3.ID3` via `mutagen.mp3.MP3` | TBD |
-| FLAC | `.flac` | Vorbis comments + `METADATA_BLOCK_PICTURE` | `mutagen.flac.FLAC` | TBD |
-| Ogg Vorbis | `.ogg`, `.oga` | Vorbis comments | `mutagen.oggvorbis.OggVorbis` | TBD |
-| Opus | `.opus` | Vorbis comments (in Ogg) | `mutagen.oggopus.OggOpus` | TBD |
+| MP3 | `.mp3` | ID3v2 frames (Picard spec) | `mutagen.mp3.MP3` | Implemented |
+| FLAC | `.flac` | Vorbis comments + native picture | `mutagen.flac.FLAC` | Implemented |
+| Ogg Vorbis | `.ogg`, `.oga` | Vorbis comments + `METADATA_BLOCK_PICTURE` | `mutagen.oggvorbis.OggVorbis` | Implemented |
+| Opus | `.opus` | Vorbis comments (in Ogg) | `mutagen.oggopus.OggOpus` | Implemented |
 
 Out of scope: WAV (no standardised tag scheme), AIFF (rare for libraries),
 WMA, format conversion. Harmonist never transcodes — files stay in their
 original container.
 
-**Architecture:** `Tagger` protocol gains a `supports(file_path) -> bool`
-method and a registry pattern. The default registry contains one Tagger
-per format. Scanner reads tags via the format-appropriate mutagen class
-in a thin shim (e.g. `read_tags(path) -> {album, artist, mbid, comment}`)
-so the rest of the codebase doesn't care about format specifics.
+**Architecture:** the `harmonist.formats` package owns all audio-tag I/O.
+`formats/__init__.py` is a dispatcher that selects a per-format submodule
+by file extension and exposes a format-agnostic surface:
 
-Each per-format tagger conforms to Picard's documented mapping for that
-format (https://picard.musicbrainz.org/docs/mappings/). The byte-diff
-fixture test in §11 extends to one reference album per format.
+```
+formats.is_supported(path)            -> bool
+formats.supported_extensions()        -> (".m4a", ".mp3", ".flac", ...)
+formats.read_album_id(path)           -> str | None   # MB Album Id
+formats.read_album_title(path)        -> str | None
+formats.read_artist(path)             -> str | None
+formats.read_track_title(path)        -> str | None
+formats.read_comment(path)            -> str | None   # Bandcamp-URL fallback
+formats.read_duration_ms(path)        -> int | None
+formats.write_tags(path, tagset, cover)
+```
+
+The orchestrating `tagger.py` builds a format-agnostic `TagSet` per track
+from an MB release and calls `formats.write_tags`. The scanner, reconcile,
+url_recovery, and match modules read tags only through this surface —
+mutagen stays inside `formats/`. Adding a format = a new submodule
+(`EXTENSIONS` + the read/write functions) registered in `_MODULES`.
+
+FLAC, Ogg Vorbis, and Opus share `formats/_vorbis.py` (the `VorbisTagger`)
+since they use the same Vorbis-comment scheme; the per-format wrappers
+only inject the mutagen class and the cover-embedding strategy.
+
+Each per-format module conforms to Picard's documented mapping for that
+format (https://picard.musicbrainz.org/docs/mappings/). The comment field
+(`©cmt` / `COMM` / `COMMENT`) is never overwritten on tagging so a
+recovered store URL survives a retag.
 
 ## 15. Best-effort handling of imperfect libraries
 
