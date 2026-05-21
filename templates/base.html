@@ -20,5 +20,18 @@
         {% block content %} {% endblock %}
     </main>
 
+    {# Mount point for modal dialogs (Bandcamp setup, etc). HTMX swaps a
+       fragment in here; harmonistCloseModal() clears it. #}
+    <div id="modal"></div>
+    <script>
+        function harmonistCloseModal() {
+            const m = document.getElementById('modal');
+            if (m) m.innerHTML = '';
+        }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') harmonistCloseModal();
+        });
+    </script>
+
 </body>
 </html>

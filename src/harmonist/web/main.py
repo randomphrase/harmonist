@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Form, HTTPException, Request, status
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -105,6 +105,9 @@ def create_app(
     templates.env.globals["AlbumState"] = AlbumState
     templates.env.globals["store_name"] = store_name
     templates.env.globals["demo_mode"] = cfg.demo_mode
+    # Evaluated per-render (callable, not a constant) so the header's
+    # Sync/Set-up button flips the moment cookies are saved.
+    templates.env.globals["bandcamp_configured"] = lambda: _bandcamp_configured(cfg)
 
     app = FastAPI(title="Harmonist")
     app.state.cfg = cfg
@@ -183,6 +186,22 @@ def _inbox_albums(albums: list[Album]) -> list[Album]:
     """Albums that warrant attention in the inbox (terminal states excluded)."""
     TERMINAL = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
     return [a for a in albums if a.state not in TERMINAL]
+
+
+def _bandcamp_configured(cfg: config_mod.Config) -> bool:
+    """True when a non-empty cookies file is present, i.e. Bandcamp sync
+    has been set up. Drives the header's Sync vs Set-up button.
+
+    Always True in demo mode — demo sync is mocked and needs no real
+    cookies, so the Sync button should be available out of the box.
+    """
+    if cfg.demo_mode:
+        return True
+    try:
+        f = cfg.cookies_file
+        return f.exists() and f.stat().st_size > 0
+    except OSError:
+        return False
 
 
 def _run_bandcamp_sync(cfg: config_mod.Config, *, progress_callback=None):
@@ -341,6 +360,40 @@ def _register_routes(app: FastAPI) -> None:
                 status_code=status.HTTP_409_CONFLICT,
             )
         return _flash_response("Sync started", "watch the inbox", tasks_changed=False)
+
+    @app.get("/bandcamp/setup", response_class=HTMLResponse)
+    def bandcamp_setup(request: Request):
+        """Return the cookie-setup modal fragment."""
+        return request.app.state.templates.TemplateResponse(
+            request, "partials/bandcamp_setup_modal.html", {"request": request},
+        )
+
+    @app.post("/bandcamp/cookies", response_class=HTMLResponse)
+    async def bandcamp_cookies(
+        request: Request,
+        cookies_text: str = Form(""),
+        cookies_file: UploadFile | None = File(None),
+    ):
+        """Persist a pasted/uploaded cookies.txt, then reload so the header
+        flips from 'Set up Bandcamp sync' to 'Sync Bandcamp'.
+        """
+        content = ""
+        if cookies_file is not None and cookies_file.filename:
+            content = (await cookies_file.read()).decode("utf-8", errors="replace")
+        elif cookies_text.strip():
+            content = cookies_text
+        if not content.strip():
+            # Re-render the modal with an error rather than refreshing.
+            return request.app.state.templates.TemplateResponse(
+                request,
+                "partials/bandcamp_setup_modal.html",
+                {"request": request, "error": "Paste your cookies.txt contents or choose a file."},
+            )
+        cfg: config_mod.Config = request.app.state.cfg
+        cfg.cookies_file.parent.mkdir(parents=True, exist_ok=True)
+        cfg.cookies_file.write_text(content, encoding="utf-8")
+        # Full reload: the header re-renders with the Sync button enabled.
+        return HTMLResponse("", headers={"HX-Refresh": "true"})
 
     @app.get("/library", response_class=HTMLResponse)
     def library(request: Request, offset: int = 0, limit: int = 30):

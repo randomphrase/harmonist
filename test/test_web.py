@@ -74,6 +74,59 @@ def _id_for(cfg, album_dir: Path) -> str:
     raise AssertionError(f"no album at {album_dir}")
 
 
+# ---------- Bandcamp setup / deferred sync ----------
+
+def test_header_shows_setup_when_no_cookies(client):
+    """Fresh install (no cookies) → header offers setup, not sync."""
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Set up Bandcamp sync" in r.text
+    assert "Sync Bandcamp" not in r.text
+
+
+def test_bandcamp_setup_modal_renders(client):
+    r = client.get("/bandcamp/setup")
+    assert r.status_code == 200
+    assert "cookies.txt" in r.text
+    assert "bandcampsync" in r.text  # instructions link
+    assert 'hx-post="/bandcamp/cookies"' in r.text
+
+
+def test_bandcamp_cookies_saved_from_text_flips_header(client, cfg):
+    body = "# Netscape HTTP Cookie File\n.bandcamp.com\tTRUE\t/\tFALSE\t0\tident\tabc\n"
+    r = client.post("/bandcamp/cookies", data={"cookies_text": body})
+    assert r.status_code == 200
+    assert r.headers.get("hx-refresh") == "true"
+    # Cookies written to the configured path
+    assert cfg.cookies_file.exists()
+    assert cfg.cookies_file.read_text() == body
+    # Header now offers Sync, not setup
+    home = client.get("/")
+    assert "Sync Bandcamp" in home.text
+    assert "Set up Bandcamp sync" not in home.text
+
+
+def test_bandcamp_cookies_saved_from_upload(client, cfg):
+    import io
+    body = b"# Netscape HTTP Cookie File\n.bandcamp.com\tTRUE\t/\tFALSE\t0\tident\txyz\n"
+    r = client.post(
+        "/bandcamp/cookies",
+        files={"cookies_file": ("cookies.txt", io.BytesIO(body), "text/plain")},
+    )
+    assert r.status_code == 200
+    assert r.headers.get("hx-refresh") == "true"
+    assert cfg.cookies_file.read_bytes() == body
+
+
+def test_bandcamp_cookies_empty_returns_error_modal(client, cfg):
+    r = client.post("/bandcamp/cookies", data={"cookies_text": "   "})
+    assert r.status_code == 200
+    # No refresh — modal re-rendered with an error, cookies not written
+    assert "hx-refresh" not in {k.lower() for k in r.headers}
+    assert "Paste your cookies.txt" in r.text
+    assert not cfg.cookies_file.exists()
+
+
 # ---------- basic routes ----------
 
 def test_index_renders(client):
