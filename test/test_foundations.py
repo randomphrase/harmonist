@@ -39,7 +39,7 @@ def test_config_defaults(monkeypatch, tmp_path):
     monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(tmp_path / "cfg"))
     monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
     cfg = config_mod.load()
-    assert cfg.bandcamp.download_format == "alac"
+    assert cfg.bandcamp.download_format == "flac"
     assert cfg.bandcamp.max_downloads_per_sync == 5
     assert cfg.musicbrainz.user_agent == "Harmonist/0.1 ( harmonist@girtby.net )"
     assert cfg.cover_art.size == "original"

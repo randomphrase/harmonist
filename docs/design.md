@@ -19,7 +19,7 @@ The following are explicitly out of scope for this prototype:
 - **No database.** State lives in `.harmonist.json` sidecars next to each album. bandcampsync's `ignores.txt` is the source of truth for "what's downloaded".
 - **No C++ bindings.** The earlier readme mentioned them; they don't exist and we're not adding them.
 - **No multi-user / no auth.** Single-user app behind the user's network.
-- **No format conversion.** Files are downloaded in the requested format (default ALAC) and tagged in place.
+- **No format conversion.** Files are downloaded in the requested format (default FLAC) and tagged in place.
 - **No fix-it-yourself for inconsistent dirs.** Picard exists for that. See §15.2.
 - **No transcoding, no folder splitting.** See §15.4.
 
@@ -29,8 +29,17 @@ The following are explicitly out of scope for this prototype:
 
 ### 2.1 Bandcamp sync (the canonical flow)
 
+Bandcamp setup is **deferred, not up-front**. On a fresh install with no
+cookies configured, the header shows **Set up Bandcamp sync** instead of
+**Sync Bandcamp** — a standing reminder that onboarding is incomplete.
+Clicking it opens a modal to paste or upload a `cookies.txt` (with a link
+to the bandcampsync instructions); saving it writes the cookies file and
+flips the button to **Sync Bandcamp**. Until then the rest of the app
+(manual ingest, reconcile, tagging) is fully usable — this deferral is
+the whole reason the `NEEDS_SYNC` state exists.
+
 1. User buys an album on Bandcamp out-of-band.
-2. User opens Harmonist, clicks **Sync**.
+2. User opens Harmonist, clicks **Sync** (after one-time cookie setup, above).
 3. Harmonist downloads new items via bandcampsync. For each item, it captures the public Bandcamp album URL and writes a `.harmonist.json` sidecar.
 4. Inbox updates live as albums land (HTMX poll while sync is in-flight).
 5. For each new album, MB lookup runs by Bandcamp URL.
@@ -367,7 +376,7 @@ DELETE:
 |---|---|---|
 | `HARMONIST_CONFIG_DIR` | `/config` | `~/.config/harmonist` |
 | `HARMONIST_MUSIC_DIR` | `/music` | `./music` |
-| `HARMONIST_DOWNLOAD_FORMAT` | `alac` | `alac` |
+| `HARMONIST_DOWNLOAD_FORMAT` | `flac` | `flac` |
 | `HARMONIST_HOST` | `0.0.0.0` | `127.0.0.1` |
 | `HARMONIST_PORT` | `8000` | `8000` |
 | `HARMONIST_MAX_DOWNLOADS_PER_SYNC` | `5` | `5` |
@@ -382,7 +391,7 @@ DELETE:
 music_dir = "/music"
 
 [bandcamp]
-download_format = "alac"
+download_format = "flac"
 max_downloads_per_sync = 5
 ignores_file = "/config/ignores.txt"
 cookies_file = "/config/cookies.txt"

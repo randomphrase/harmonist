@@ -19,7 +19,9 @@ class PathsConfig(BaseModel):
 
 
 class BandcampConfig(BaseModel):
-    download_format: str = "alac"
+    # FLAC by default: lossless, broadly compatible, and the safest choice
+    # for an archive. Users can override (e.g. to alac) via config/env.
+    download_format: str = "flac"
     max_downloads_per_sync: int = 5
     ignores_file: Path | None = None
     cookies_file: Path | None = None

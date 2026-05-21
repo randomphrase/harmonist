@@ -10,6 +10,7 @@
 
         <nav class="flex items-center gap-6">
             <a href="/" class="text-sm font-bold text-slate-300 hover:text-white transition">Inbox</a>
+            {% if bandcamp_configured() %}
             <button id="sync-button"
                     hx-post="/sync"
                     hx-target="#sync-flash"
@@ -17,6 +18,17 @@
                     class="px-4 py-2 bg-bc-teal/10 hover:bg-bc-teal/20 text-bc-teal border border-bc-teal/30 rounded font-bold text-xs transition uppercase tracking-widest">
                 Sync Bandcamp
             </button>
+            {% else %}
+            {# Cookies not configured yet — prompt setup instead of syncing.
+               Doubles as a visible reminder that onboarding is incomplete. #}
+            <button id="bandcamp-setup-button"
+                    hx-get="/bandcamp/setup"
+                    hx-target="#modal"
+                    hx-swap="innerHTML"
+                    class="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded font-bold text-xs transition uppercase tracking-widest">
+                Set up Bandcamp sync
+            </button>
+            {% endif %}
         </nav>
     </div>
     {# Single consolidated status bar — sync state, reconcile state, and
