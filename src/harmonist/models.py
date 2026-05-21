@@ -137,6 +137,10 @@ class Album:
     # partial tagging is about MBID atoms on present files, INCOMPLETE
     # is about how many files are present vs MB's tracklist.
     partial_tag_count: tuple[int, int] | None = None
+    # Human label for the album's audio format(s), e.g. "ALAC", "FLAC", or
+    # "Mixed" when files disagree. Scanner-derived; not persisted. Confirms
+    # the download format the user chose actually landed.
+    audio_format: str | None = None
 
 
 # ---------------------------------------------------------------------------

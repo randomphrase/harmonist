@@ -150,6 +150,24 @@ def _seed_comment(path: Path, value: str) -> None:
         raise AssertionError(f"no comment-seeder for {ext}")
 
 
+# ---------- describe / format label ----------
+
+@pytest.mark.parametrize("ext,fixture,expected", [
+    (".m4a", "sine.m4a", "ALAC"),   # the fixture is ALAC-encoded
+    (".mp3", "sine.mp3", "MP3"),
+    (".flac", "sine.flac", "FLAC"),
+    (".opus", "sine.opus", "Opus"),
+])
+def test_describe_label(tmp_path, ext, fixture, expected):
+    d = _make_album(tmp_path, fixture)
+    f = next(d.glob(f"*{ext}"))
+    assert formats.describe(f) == expected
+
+
+def test_describe_none_for_unknown(tmp_path):
+    assert formats.describe(tmp_path / "cover.jpg") is None
+
+
 # ---------- scanner integration ----------
 
 def test_scanner_picks_up_mp3_album(tmp_path):
@@ -161,3 +179,18 @@ def test_scanner_picks_up_mp3_album(tmp_path):
     assert albums[0].path == d
     assert albums[0].track_count == 1
     assert albums[0].state == AlbumState.NEW  # no sidecar yet
+    assert albums[0].audio_format == "MP3"
+
+
+def test_scanner_audio_format_single(tmp_path):
+    from harmonist.scanner import scan
+    d = _make_album(tmp_path, "sine.flac")
+    assert scan(tmp_path)[0].audio_format == "FLAC"
+
+
+def test_scanner_audio_format_mixed(tmp_path):
+    """A dir with files of differing formats reports 'Mixed'."""
+    from harmonist.scanner import scan
+    d = _make_album(tmp_path, "sine.flac", name="a")
+    shutil.copy(FIXTURES_DIR / "sine.mp3", d / "02 b.mp3")
+    assert scan(tmp_path)[0].audio_format == "Mixed"
