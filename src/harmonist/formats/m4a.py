@@ -118,6 +118,18 @@ def read_duration_ms(path: Path) -> int | None:
     return int(round(audio.info.length * 1000))
 
 
+def describe(path: Path) -> str:
+    """Short codec label. MP4 is a container — distinguish lossless ALAC
+    from lossy AAC so it confirms the user's download-format choice."""
+    audio = _open(path)
+    codec = getattr(audio.info, "codec", "") if audio else ""
+    if codec == "alac":
+        return "ALAC"
+    if codec == "mp4a":
+        return "AAC"
+    return "MP4"
+
+
 # ---------------------------------------------------------------------------
 # Write
 # ---------------------------------------------------------------------------

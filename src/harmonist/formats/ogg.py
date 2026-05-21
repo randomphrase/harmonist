@@ -23,6 +23,10 @@ def _open(path: Path) -> OggVorbis | None:
         return None
 
 
+def describe(path: Path) -> str:
+    return "Vorbis"
+
+
 _impl = _vorbis.VorbisTagger(_open, _vorbis.ogg_set_cover)
 
 read_album_id = _impl.read_album_id

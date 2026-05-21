@@ -124,6 +124,10 @@ def read_duration_ms(path: Path) -> int | None:
     return int(round(audio.info.length * 1000))
 
 
+def describe(path: Path) -> str:
+    return "MP3"
+
+
 # ---------------------------------------------------------------------------
 # Write
 # ---------------------------------------------------------------------------

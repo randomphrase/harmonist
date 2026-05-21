@@ -82,7 +82,20 @@ def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
         cover_path=cover_path,
         inconsistent_tracks=inconsistent_tracks,
         partial_tag_count=_partial_tag_count(sidecar, audio_files),
+        audio_format=_audio_format(audio_files),
     )
+
+
+def _audio_format(audio_files: list[Path]) -> str | None:
+    """Distinct codec label across the album's files. A single value when
+    consistent (the norm), "Mixed" when files differ."""
+    labels = {formats.describe(f) for f in audio_files}
+    labels.discard(None)
+    if not labels:
+        return None
+    if len(labels) == 1:
+        return next(iter(labels))
+    return "Mixed"
 
 
 def _partial_tag_count(

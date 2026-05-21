@@ -69,6 +69,13 @@ def read_duration_ms(path: Path) -> int | None:
     return mod.read_duration_ms(path) if mod else None
 
 
+def describe(path: Path) -> str | None:
+    """Short human label for the file's codec/format (e.g. "ALAC", "MP3",
+    "FLAC"). None if no module handles the extension."""
+    mod = _module_for(path)
+    return mod.describe(path) if mod else None
+
+
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     """Write `tagset` to `path` in its native format. `cover` is raw image
     bytes (jpeg/png) or None to leave existing cover untouched.

@@ -32,6 +32,7 @@
             <div class="text-2xs text-slate-600">
                 {% if sc and sc.tagged_at %}{{ sc.tagged_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}
                 · {{ album.track_count }} track{{ 's' if album.track_count != 1 else '' }}
+                {% if album.audio_format %} · {{ album.audio_format }}{% endif %}
                 {% if store %} · {{ store }}{% endif %}
             </div>
         </div>

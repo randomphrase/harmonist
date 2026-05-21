@@ -28,6 +28,10 @@ def _set_cover(audio: FLAC, cover: bytes) -> None:
     audio.add_picture(_vorbis.make_picture(cover))
 
 
+def describe(path: Path) -> str:
+    return "FLAC"
+
+
 _impl = _vorbis.VorbisTagger(_open, _set_cover)
 
 read_album_id = _impl.read_album_id

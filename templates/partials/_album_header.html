@@ -10,7 +10,7 @@
             <h3 class="text-lg font-bold text-white truncate">{{ album.title }}</h3>
             <span class="px-2 py-0.5 text-xs font-semibold rounded-full {{ badge_class }} whitespace-nowrap">{{ badge_label }}</span>
         </div>
-        <p class="text-slate-400 text-sm truncate">{{ album.artist }} · {{ album.track_count }} track{{ 's' if album.track_count != 1 else '' }}</p>
+        <p class="text-slate-400 text-sm truncate">{{ album.artist }} · {{ album.track_count }} track{{ 's' if album.track_count != 1 else '' }}{% if album.audio_format %} · {{ album.audio_format }}{% endif %}</p>
         <p class="text-slate-600 text-2xs truncate">{{ album.path }}</p>
     </div>
 </div>
