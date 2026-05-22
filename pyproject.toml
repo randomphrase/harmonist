@@ -1,10 +1,11 @@
 [project]
 name = "harmonist"
 version = "0.1.0"
+requires-python = ">=3.12"
 dependencies = ["mutagen", "bandcampsync", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart"]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-mock", "pytailwindcss"]
+dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff", "mypy"]
 
 [tool.setuptools.packages]
 find = {where = ["src"], include = ["harmonist*"]}
@@ -12,3 +13,55 @@ find = {where = ["src"], include = ["harmonist*"]}
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format + idiom enforcement
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "test"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort (import ordering)
+    "UP",       # pyupgrade (modern-idiom enforcement)
+    "B",        # flake8-bugbear (real-bug patterns)
+    "SIM",      # flake8-simplify
+    "C4",       # flake8-comprehensions
+    "N",        # pep8-naming
+    "PT",       # flake8-pytest-style
+    "PIE",      # flake8-pie
+    "RUF",      # ruff-specific
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests favour readability over some lint niceties.
+"test/*" = [
+    "N802",  # test helper / fixture names may not be snake_case-pure
+]
+
+# ---------------------------------------------------------------------------
+# mypy — strict static type checking
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "test"]
+
+# Third-party libraries that ship no type information.
+[[tool.mypy.overrides]]
+module = ["mutagen.*", "bandcampsync.*", "musicbrainzngs.*", "bs4.*"]
+ignore_missing_imports = true
+
+# Tests: keep type checking, but don't force annotations on every test
+# function / fixture — strictness is most valuable on the package itself.
+[[tool.mypy.overrides]]
+module = ["test.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
