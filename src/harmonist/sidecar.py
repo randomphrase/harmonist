@@ -16,11 +16,11 @@ SIDECAR_FILENAME = ".harmonist.json"
 CURRENT_SCHEMA_VERSION = 1
 
 
-class UnsupportedSchemaVersion(Exception):
+class UnsupportedSchemaVersionError(Exception):
     pass
 
 
-class InvalidSidecar(Exception):
+class InvalidSidecarError(Exception):
     pass
 
 
@@ -40,7 +40,7 @@ def read(album_dir: Path) -> Sidecar | None:
         try:
             data = json.load(f)
         except json.JSONDecodeError as e:
-            raise InvalidSidecar(f"sidecar at {p} is not valid JSON: {e}") from e
+            raise InvalidSidecarError(f"sidecar at {p} is not valid JSON: {e}") from e
     return _from_dict(data, source_path=p)
 
 
@@ -175,7 +175,7 @@ def _candidate_from_dict(d: dict) -> MatchCandidate:
 def _from_dict(d: dict, source_path: Path) -> Sidecar:
     sv = d.get("schema_version")
     if sv != CURRENT_SCHEMA_VERSION:
-        raise UnsupportedSchemaVersion(
+        raise UnsupportedSchemaVersionError(
             f"sidecar at {source_path} has schema_version={sv}, expected "
             f"{CURRENT_SCHEMA_VERSION}. Delete the sidecar and re-reconcile."
         )
@@ -188,7 +188,7 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
             item_id = int(item_id_raw) if item_id_raw is not None else None
             bandcamp = BandcampInfo(item_id=item_id, band_id=bd.get("band_id"))
         except (KeyError, TypeError, ValueError) as e:
-            raise InvalidSidecar(
+            raise InvalidSidecarError(
                 f"sidecar at {source_path} has malformed bandcamp block: {e}"
             ) from e
 
@@ -197,14 +197,14 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
         try:
             candidate = _candidate_from_dict(d["mb_match_candidate"])
         except (KeyError, TypeError, ValueError) as e:
-            raise InvalidSidecar(
+            raise InvalidSidecarError(
                 f"sidecar at {source_path} has malformed mb_match_candidate: {e}"
             ) from e
 
     mb_release_id = d.get("mb_release_id")
     temp_uid = d.get("temp_uid")
     if mb_release_id and temp_uid:
-        raise InvalidSidecar(
+        raise InvalidSidecarError(
             f"sidecar at {source_path} has both mb_release_id and temp_uid "
             f"set; these are mutually exclusive."
         )

@@ -43,6 +43,14 @@ select = [
     "N802",  # test helper / fixture names may not be snake_case-pure
 ]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom puts these calls in argument
+# defaults by design (e.g. `f: UploadFile = File(...)`); not a B008 bug.
+extend-immutable-calls = [
+    "fastapi.File", "fastapi.Form", "fastapi.Query", "fastapi.Path",
+    "fastapi.Header", "fastapi.Depends", "fastapi.Body",
+]
+
 # ---------------------------------------------------------------------------
 # mypy — strict static type checking
 # ---------------------------------------------------------------------------

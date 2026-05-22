@@ -47,7 +47,7 @@ def client(cfg):
     return TestClient(app)
 
 
-def _make_album(cfg, name: str, *, mbid: str = None, comment: str = None) -> Path:
+def _make_album(cfg, name: str, *, mbid: str | None = None, comment: str | None = None) -> Path:
     d = cfg.paths.music_dir / "Artist" / name
     d.mkdir(parents=True)
     f = d / "01 Track.m4a"
@@ -769,7 +769,8 @@ def test_library_first_page_includes_header(client, cfg):
 
     _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
     r = client.get("/library?offset=0")
-    assert "<h2" in r.text and "Library" in r.text
+    assert "<h2" in r.text
+    assert "Library" in r.text
     assert "Refresh" in r.text
 
 
@@ -1079,10 +1080,10 @@ def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkey
     # Scanner now reports INCOMPLETE
     from harmonist import scanner
 
-    a = [a for a in scanner.scan(cfg.paths.music_dir) if a.path == d][0]
-    from harmonist.models import AlbumState as AS
+    a = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    from harmonist.models import AlbumState
 
-    assert a.state == AS.INCOMPLETE
+    assert a.state == AlbumState.INCOMPLETE
 
 
 def test_confirm_incomplete_400_without_candidate(client, cfg):
@@ -1164,7 +1165,7 @@ def test_library_includes_incomplete_albums(client, cfg):
     """Library shows both COMPLETE and INCOMPLETE — both are terminal."""
     from datetime import datetime
 
-    d_complete = _make_tagged_album(
+    _make_tagged_album(
         cfg,
         "Whole",
         mbid="rel-c",

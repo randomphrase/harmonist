@@ -598,7 +598,7 @@ def test_scan_reads_album_and_artist_from_tags(tmp_path):
 
 
 def test_scan_falls_back_to_dir_name_when_no_album_tag(tmp_path):
-    album_dir = _make_album_dir(tmp_path, "Artist", "FallbackName")
+    _make_album_dir(tmp_path, "Artist", "FallbackName")
     # Default sine.m4a has no ©alb tag
     a = scan(tmp_path)[0]
     assert a.title == "FallbackName"

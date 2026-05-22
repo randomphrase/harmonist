@@ -132,7 +132,7 @@ class VorbisTagger:
         audio = self._open(path)
         if audio is None or not audio.info.length:
             return None
-        return int(round(audio.info.length * 1000))
+        return round(audio.info.length * 1000)
 
     # ---- write ----
 

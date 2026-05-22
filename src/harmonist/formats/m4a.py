@@ -115,7 +115,7 @@ def read_duration_ms(path: Path) -> int | None:
     audio = _open(path)
     if audio is None or not audio.info.length:
         return None
-    return int(round(audio.info.length * 1000))
+    return round(audio.info.length * 1000)
 
 
 def describe(path: Path) -> str:

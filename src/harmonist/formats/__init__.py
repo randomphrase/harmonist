@@ -14,7 +14,7 @@ from pathlib import Path
 from types import ModuleType
 
 from . import flac, m4a, mp3, ogg, opus
-from .types import TagSet, UnsupportedFormat
+from .types import TagSet, UnsupportedFormatError
 
 _MODULES: tuple[ModuleType, ...] = (m4a, mp3, flac, ogg, opus)
 
@@ -82,13 +82,13 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     """
     mod = _module_for(path)
     if mod is None:
-        raise UnsupportedFormat(f"no audio module handles {path.suffix}")
+        raise UnsupportedFormatError(f"no audio module handles {path.suffix}")
     mod.write_tags(path, tagset, cover)
 
 
 __all__ = [
     "TagSet",
-    "UnsupportedFormat",
+    "UnsupportedFormatError",
     "is_supported",
     "read_album_id",
     "read_album_title",

@@ -121,7 +121,8 @@ def tag_album(
     if incomplete and len(files) < len(flat_tracks):
         pairs = _assign_files_to_tracks(files, flat_tracks)
     else:
-        pairs = list(zip(files, flat_tracks))
+        # Counts are guaranteed equal here by the checks above.
+        pairs = list(zip(files, flat_tracks, strict=True))
 
     cover = cover_path.read_bytes() if cover_path else None
     media_total = len(release.get("medium-list", [])) or 1
@@ -209,7 +210,7 @@ def _assign_files_to_tracks(
 
     used: set[int] = set()
     pairs: list[tuple[Path, tuple[dict, int, dict]]] = []
-    for f, dur in zip(files, file_durations):
+    for f, dur in zip(files, file_durations, strict=True):
         best_idx = None
         best_delta: int | None = None
         for i, tlen in enumerate(track_lengths):
@@ -233,9 +234,8 @@ def _flatten_tracks(release: dict):
 
 
 def _track_title(track: dict) -> str:
-    if recording := track.get("recording"):
-        if title := recording.get("title"):
-            return title
+    if (recording := track.get("recording")) and (title := recording.get("title")):
+        return title
     return track.get("title", "")
 
 

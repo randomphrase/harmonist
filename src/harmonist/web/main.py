@@ -53,6 +53,9 @@ log = logging.getLogger(__name__)
 
 HARMONY_BASE = "https://harmony.pulsewidth.org.uk"
 
+# Terminal states — hidden from the inbox, shown in the library.
+_TERMINAL_STATES = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
+
 
 def create_app(
     cfg: config_mod.Config | None = None,
@@ -76,11 +79,16 @@ def create_app(
 
         demo.install()
         demo.ensure_seeded(cfg.paths.music_dir)
-        runner_fn = lambda: demo.run_demo_sync(
-            cfg.paths.music_dir, progress_callback=sync_runner.set_current_item
-        )
+
+        def runner_fn():
+            return demo.run_demo_sync(
+                cfg.paths.music_dir, progress_callback=sync_runner.set_current_item
+            )
     else:
-        runner_fn = lambda: _run_bandcamp_sync(cfg, progress_callback=sync_runner.set_current_item)
+
+        def runner_fn():
+            return _run_bandcamp_sync(cfg, progress_callback=sync_runner.set_current_item)
+
     sync_runner._runner_fn = runner_fn
 
     # Paths the user has explicitly Forgot. Exempted from auto-reconcile so
@@ -186,8 +194,7 @@ def _find_album(request: Request, album_id: str) -> Album:
 
 def _inbox_albums(albums: list[Album]) -> list[Album]:
     """Albums that warrant attention in the inbox (terminal states excluded)."""
-    TERMINAL = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
-    return [a for a in albums if a.state not in TERMINAL]
+    return [a for a in albums if a.state not in _TERMINAL_STATES]
 
 
 def _bandcamp_configured(cfg: config_mod.Config) -> bool:
@@ -413,8 +420,7 @@ def _register_routes(app: FastAPI) -> None:
         from datetime import datetime as _dt
 
         albums = _albums(request)
-        TERMINAL = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
-        done = [a for a in albums if a.state in TERMINAL]
+        done = [a for a in albums if a.state in _TERMINAL_STATES]
         # Newest tagged first; albums missing tagged_at sink to the bottom.
         _floor = _dt.min.replace(tzinfo=UTC)
         done.sort(
@@ -479,7 +485,6 @@ def _register_routes(app: FastAPI) -> None:
     def healthz(request: Request):
         cfg: config_mod.Config = request.app.state.cfg
         music = cfg.paths.music_dir
-        config_ok = cfg.paths.config_dir.exists() or True  # config dir auto-created on first write
         return JSONResponse(
             {
                 "status": "ok",

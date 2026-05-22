@@ -17,6 +17,7 @@ imported in the non-demo runtime path.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -232,7 +233,9 @@ def _release(
                             "length": str(length),
                         },
                     }
-                    for i, (title, length) in enumerate(zip(tracks, lengths_ms), start=1)
+                    for i, (title, length) in enumerate(
+                        zip(tracks, lengths_ms, strict=True), start=1
+                    )
                 ],
             }
         ],
@@ -435,10 +438,8 @@ def run_demo_sync(music_dir: Path, *, progress_callback=None) -> Any:
     if _pending_queue:
         spec = _pending_queue.pop(0)
         if progress_callback:
-            try:
+            with contextlib.suppress(Exception):
                 progress_callback(f"{spec['artist']} / {spec['album']}")
-            except Exception:
-                pass
         time.sleep(STEP_DELAY_SECONDS)
         _materialise(music_dir, spec)
         _Result.new_items_downloaded = True
@@ -483,10 +484,8 @@ def _fill_in_existing_item_ids(music_dir: Path, *, progress_callback=None) -> in
         sidecar_mod.write(album_dir, new_sc)
         patched += 1
         if progress_callback:
-            try:
+            with contextlib.suppress(Exception):
                 progress_callback(f"Linked: {album_dir.parent.name} / {album_dir.name}")
-            except Exception:
-                pass
         time.sleep(STEP_DELAY_SECONDS)
     return patched
 
@@ -517,7 +516,7 @@ def search_releases(artist: str, title: str, limit: int = 10) -> list[dict]:
     a = (artist or "").strip().lower()
     t = (title or "").strip().lower()
     results: list[dict] = []
-    for mbid, rel in MB_RELEASES.items():
+    for rel in MB_RELEASES.values():
         rel_artist = ""
         for ac in rel.get("artist-credit") or []:
             if isinstance(ac, dict):
@@ -638,7 +637,9 @@ def _build_sidecar(sc_spec: dict, album_spec: dict) -> Sidecar:
     if cand_spec := sc_spec.get("mb_match_candidate"):
         deltas = cand_spec.get("deltas_ms", [])
         comparisons = []
-        for i, (track_title, delta_ms) in enumerate(zip(album_spec["tracks"], deltas), start=1):
+        for i, (track_title, delta_ms) in enumerate(
+            zip(album_spec["tracks"], deltas, strict=False), start=1
+        ):
             mb_len = 1000 + delta_ms  # file is 1000ms; mb is 1000+delta
             comparisons.append(
                 TrackComparison(

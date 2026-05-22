@@ -80,7 +80,7 @@ def test_supported_extensions_includes_known_formats():
         assert e in exts
 
 
-@pytest.mark.parametrize("ext,fixture", FIXTURES)
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
 def test_is_supported(ext, fixture):
     assert formats.is_supported(Path(f"x{ext}"))
 
@@ -93,7 +93,7 @@ def test_is_not_supported_for_unknown_ext(tmp_path):
 # ---------- round-trip per format ----------
 
 
-@pytest.mark.parametrize("ext,fixture", FIXTURES)
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
 def test_tag_and_read_back(tmp_path, ext, fixture):
     d = _make_album(tmp_path, fixture)
     n = tag_album(d, _release_one_track())
@@ -106,10 +106,11 @@ def test_tag_and_read_back(tmp_path, ext, fixture):
     assert formats.read_track_title(f) == "The Track"
     # ~1s fixtures, within a wide tolerance for encoder padding
     dur = formats.read_duration_ms(f)
-    assert dur is not None and 900 <= dur <= 1200
+    assert dur is not None
+    assert 900 <= dur <= 1200
 
 
-@pytest.mark.parametrize("ext,fixture", FIXTURES)
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
 def test_untagged_reads_return_none(tmp_path, ext, fixture):
     d = _make_album(tmp_path, fixture)
     f = next(d.glob(f"*{ext}"))
@@ -117,7 +118,7 @@ def test_untagged_reads_return_none(tmp_path, ext, fixture):
     assert formats.read_album_id(f) is None
 
 
-@pytest.mark.parametrize("ext,fixture", FIXTURES)
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
 def test_comment_preserved_through_tagging(tmp_path, ext, fixture):
     """The comment field carries the Bandcamp-URL fallback and must
     survive a tag write."""
@@ -167,7 +168,7 @@ def _seed_comment(path: Path, value: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "ext,fixture,expected",
+    ("ext", "fixture", "expected"),
     [
         (".m4a", "sine.m4a", "ALAC"),  # the fixture is ALAC-encoded
         (".mp3", "sine.mp3", "MP3"),
@@ -204,7 +205,7 @@ def test_scanner_picks_up_mp3_album(tmp_path):
 def test_scanner_audio_format_single(tmp_path):
     from harmonist.scanner import scan
 
-    d = _make_album(tmp_path, "sine.flac")
+    _make_album(tmp_path, "sine.flac")
     assert scan(tmp_path)[0].audio_format == "FLAC"
 
 
