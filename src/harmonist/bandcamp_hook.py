@@ -13,16 +13,16 @@ collection.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from bandcampsync.sync import Syncer as _BCSyncer
 
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar
 from .sidecar import CURRENT_SCHEMA_VERSION
-
 
 log = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
             schema_version=existing.schema_version,
             store_url=existing.store_url or url,  # keep existing canonical URL
             bandcamp=merged_bandcamp,
-            downloaded_at=existing.downloaded_at or datetime.now(timezone.utc),
+            downloaded_at=existing.downloaded_at or datetime.now(UTC),
             added_at=existing.added_at,
             mb_release_id=existing.mb_release_id,
             mb_match_candidate=existing.mb_match_candidate,
@@ -114,7 +114,7 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
         schema_version=CURRENT_SCHEMA_VERSION,
         store_url=url,
         bandcamp=BandcampInfo(item_id=item_id, band_id=band_id),
-        downloaded_at=datetime.now(timezone.utc),
+        downloaded_at=datetime.now(UTC),
     )
     sidecar_mod.write(album_dir, sc)
     return True
@@ -152,9 +152,9 @@ class HarmonistSyncer(_BCSyncer):
     def __init__(
         self,
         *,
-        dir_path: "Path | str",
+        dir_path: Path | str,
         max_downloads_per_sync: int,
-        progress_callback: "Optional[Callable[[str], None]]" = None,
+        progress_callback: Callable[[str], None] | None = None,
         **kwargs: Any,
     ):
         self._max_downloads_per_sync = max_downloads_per_sync

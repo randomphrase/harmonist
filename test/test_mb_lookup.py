@@ -10,7 +10,6 @@ import pytest
 from harmonist import mb_lookup
 from harmonist.mb_lookup import MBError, fetch_release, fetch_release_urls, lookup_by_bandcamp_url
 
-
 # ---------- configure ----------
 
 

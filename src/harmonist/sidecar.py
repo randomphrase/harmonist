@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import datetime, timezone
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import id_registry
 from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
-
 
 SIDECAR_FILENAME = ".harmonist.json"
 CURRENT_SCHEMA_VERSION = 1
@@ -37,7 +36,7 @@ def read(album_dir: Path) -> Sidecar | None:
     p = sidecar_path(album_dir)
     if not p.exists():
         return None
-    with open(p, "r", encoding="utf-8") as f:
+    with open(p, encoding="utf-8") as f:
         try:
             data = json.load(f)
         except json.JSONDecodeError as e:
@@ -227,8 +226,8 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
 
 def _iso(dt: datetime) -> str:
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _parse_iso(s: str | None) -> datetime | None:

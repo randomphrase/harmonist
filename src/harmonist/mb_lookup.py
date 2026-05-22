@@ -12,7 +12,6 @@ import re
 
 import musicbrainzngs
 
-
 log = logging.getLogger(__name__)
 
 

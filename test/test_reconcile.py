@@ -5,15 +5,13 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-import pytest
 from mutagen.mp4 import MP4
 
 from harmonist import sidecar as sc
-from harmonist.models import BandcampInfo, Sidecar
+from harmonist.models import Sidecar
 from harmonist.reconcile import reconcile_album, reconcile_pending
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
-
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"

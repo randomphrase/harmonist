@@ -9,14 +9,13 @@ user clicks Confirm or Reject.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from itertools import zip_longest
 from pathlib import Path
 
 from . import formats
 from .models import MatchCandidate, MatchConfidence, TrackComparison
 from .tagger import _flatten_tracks, _track_title
-
 
 # Per-track length tolerance. Anything within this is "close enough" — covers
 # small encoder differences, gapless playback edits, etc. Anything beyond
@@ -106,7 +105,7 @@ def assess_match(album_dir: Path, release: dict) -> MatchCandidate:
         file_count=file_count,
         track_count=track_count,
         track_comparisons=comparisons,
-        proposed_at=datetime.now(timezone.utc),
+        proposed_at=datetime.now(UTC),
         notes=notes,
     )
 

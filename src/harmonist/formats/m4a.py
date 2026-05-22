@@ -13,7 +13,6 @@ from mutagen.mp4 import MP4, MP4Cover
 
 from .types import TagSet
 
-
 EXTENSIONS = (".m4a", ".mp4")
 
 

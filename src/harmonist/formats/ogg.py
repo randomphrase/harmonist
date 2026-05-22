@@ -13,7 +13,6 @@ from mutagen.oggvorbis import OggVorbis
 
 from . import _vorbis
 
-
 EXTENSIONS = (".ogg", ".oga")
 
 

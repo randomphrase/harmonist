@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from harmonist import sidecar as sc, tagger
+from harmonist import sidecar as sc
+from harmonist import tagger
 from harmonist.models import (
-    Album,
     AlbumState,
     BandcampInfo,
     MatchCandidate,
@@ -21,7 +21,6 @@ from harmonist.tagger import (
     ATOM_ARTIST,
     ATOM_MB_ALBUM_ID,
 )
-
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -66,7 +65,7 @@ def test_scan_needs_mbid_when_sidecar_has_store_url(tmp_path):
             schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=1),
-            downloaded_at=datetime.now(timezone.utc),
+            downloaded_at=datetime.now(UTC),
         ),
     )
     a = scan(tmp_path)[0]
@@ -80,7 +79,7 @@ def test_scan_needs_mbid_when_sidecar_has_no_store_url(tmp_path):
         album_dir,
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
-            added_at=datetime.now(timezone.utc),
+            added_at=datetime.now(UTC),
         ),
     )
     a = scan(tmp_path)[0]
@@ -115,7 +114,7 @@ def test_scan_tagging_when_mbid_set_but_files_not_tagged(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            added_at=datetime.now(timezone.utc),
+            added_at=datetime.now(UTC),
         ),
     )
     a = scan(tmp_path)[0]
@@ -146,7 +145,7 @@ def test_scan_needs_sync_when_item_id_missing(tmp_path):
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=None),
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     a = scan(tmp_path)[0]
@@ -177,7 +176,7 @@ def test_scan_done_when_bandcamp_item_id_present(tmp_path):
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=12345),
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     assert scan(tmp_path)[0].state == AlbumState.COMPLETE
@@ -211,7 +210,7 @@ def test_scan_done_when_mbid_set_and_files_tagged(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     a = scan(tmp_path)[0]
@@ -241,7 +240,7 @@ def test_scan_complete_when_file_count_matches_expected(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
             track_count_expected=2,
         ),
     )
@@ -279,7 +278,7 @@ def test_scan_incomplete_when_file_count_less_than_expected(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
             track_count_expected=5,  # MB says 5 tracks; only 2 on disk
         ),
     )
@@ -302,7 +301,7 @@ def test_scan_complete_without_expected_count_legacy(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
             track_count_expected=None,
         ),
     )
@@ -326,7 +325,7 @@ def test_scan_incomplete_promotes_to_complete_on_file_addition(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
             track_count_expected=3,
         ),
     )
@@ -446,7 +445,7 @@ def test_scan_inconsistent_trumps_existing_sidecar(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-original",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     a = scan(tmp_path)[0]
@@ -484,7 +483,7 @@ def test_partial_tag_count_when_some_files_missing_mbid(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     a = scan(tmp_path)[0]
@@ -506,7 +505,7 @@ def test_partial_tag_count_none_when_all_tagged(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     a = scan(tmp_path)[0]
@@ -538,7 +537,7 @@ def test_partial_tag_count_independent_of_incomplete_state(tmp_path):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
             track_count_expected=5,
         ),
     )

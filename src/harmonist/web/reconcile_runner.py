@@ -14,11 +14,10 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, Optional
-
 
 log = logging.getLogger(__name__)
 
@@ -36,12 +35,12 @@ RERUN_DEBOUNCE_SECONDS = 5.0
 @dataclass
 class ReconcileStatus:
     state: str = "idle"  # "idle" | "running"
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     current_item: str = ""
     completed: int = 0
     total: int = 0
-    last_error: Optional[str] = None
+    last_error: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -55,10 +54,10 @@ class ReconcileStatus:
         }
 
 
-def _iso(dt: Optional[datetime]) -> Optional[str]:
+def _iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class ReconcileRunner:
@@ -71,7 +70,7 @@ class ReconcileRunner:
         """
         self._runner_fn = runner_fn
         self._lock = threading.Lock()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._status = ReconcileStatus()
 
     @property
@@ -91,7 +90,7 @@ class ReconcileRunner:
                 return False
             if self._status.finished_at is None:
                 return True
-            since = datetime.now(timezone.utc) - self._status.finished_at
+            since = datetime.now(UTC) - self._status.finished_at
             return since.total_seconds() >= RERUN_DEBOUNCE_SECONDS
 
     def start(self) -> bool:
@@ -103,7 +102,7 @@ class ReconcileRunner:
                 return False
             self._status = ReconcileStatus(
                 state="running",
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
             )
         self._thread = threading.Thread(target=self._run, daemon=True, name="harmonist-reconcile")
         self._thread.start()
@@ -114,11 +113,11 @@ class ReconcileRunner:
             return False
         if self._status.finished_at is None:
             return True
-        since = datetime.now(timezone.utc) - self._status.finished_at
+        since = datetime.now(UTC) - self._status.finished_at
         return since.total_seconds() >= RERUN_DEBOUNCE_SECONDS
 
     def _run(self) -> None:
-        error: Optional[str] = None
+        error: str | None = None
         try:
             self._runner_fn(self._update_status)
         except Exception as e:
@@ -127,7 +126,7 @@ class ReconcileRunner:
         finally:
             with self._lock:
                 self._status.state = "idle"
-                self._status.finished_at = datetime.now(timezone.utc)
+                self._status.finished_at = datetime.now(UTC)
                 self._status.current_item = ""
                 self._status.last_error = error
 
@@ -135,8 +134,8 @@ class ReconcileRunner:
         self,
         *,
         current_item: str = "",
-        completed: Optional[int] = None,
-        total: Optional[int] = None,
+        completed: int | None = None,
+        total: int | None = None,
     ) -> None:
         """Callback handed to the runner_fn so it can report progress."""
         with self._lock:
@@ -152,9 +151,9 @@ def reconcile_pending_orphans(
     music_dir: Path,
     *,
     fetch_urls: Callable[[str], list],
-    status_updater: Optional[Callable[..., None]] = None,
+    status_updater: Callable[..., None] | None = None,
     rate_limit_seconds: float = MB_RATE_LIMIT_SECONDS,
-    exempt_paths: Optional[set] = None,
+    exempt_paths: set | None = None,
 ) -> dict:
     """Walk music_dir; reconcile every NEW album with an MBID atom.
 

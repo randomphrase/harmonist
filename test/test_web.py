@@ -8,21 +8,19 @@ templates render without crashing for each AlbumState.
 from __future__ import annotations
 
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
 from harmonist import sidecar as sc
-from harmonist.config import Config, PathsConfig, BandcampConfig, ServerConfig, TestConfig
+from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
 from harmonist.models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import ATOM_ALBUM, ATOM_COMMENT, ATOM_MB_ALBUM_ID
 from harmonist.web.main import create_app
-
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -233,7 +231,7 @@ def test_tasks_needs_sync_section_advises_sync(client, cfg):
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=None),
             mb_release_id="rel-a",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     r = client.get("/tasks")
@@ -371,7 +369,7 @@ def test_needs_sync_card_renders(client, cfg):
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=None),
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     r = client.get("/tasks")
@@ -438,7 +436,7 @@ def test_unconfirmed_url_update(client, cfg):
             store_url="https://x.bandcamp.com/album/old",
             bandcamp=BandcampInfo(item_id=None),
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     aid = _id_for(cfg, d)
@@ -461,7 +459,7 @@ def test_unconfirmed_mark_manual(client, cfg):
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=None),
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     aid = _id_for(cfg, d)
@@ -719,12 +717,10 @@ def _make_tagged_album(cfg, name: str, *, mbid: str, tagged_at, item_id: int | N
 
 
 def test_library_renders_only_done_albums(client, cfg):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     _make_album(cfg, "NewAlbum")
-    _make_tagged_album(
-        cfg, "DoneOne", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=100
-    )
+    _make_tagged_album(cfg, "DoneOne", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=100)
     r = client.get("/library")
     assert r.status_code == 200
     assert "DoneOne" in r.text
@@ -732,9 +728,9 @@ def test_library_renders_only_done_albums(client, cfg):
 
 
 def test_library_sorted_by_tagged_at_desc(client, cfg):
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
 
-    base = datetime.now(timezone.utc)
+    base = datetime.now(UTC)
     _make_tagged_album(cfg, "Old", mbid="rel-old", tagged_at=base - timedelta(days=5), item_id=1)
     _make_tagged_album(cfg, "Mid", mbid="rel-mid", tagged_at=base - timedelta(days=2), item_id=2)
     _make_tagged_album(cfg, "Recent", mbid="rel-recent", tagged_at=base, item_id=3)
@@ -745,9 +741,9 @@ def test_library_sorted_by_tagged_at_desc(client, cfg):
 
 
 def test_library_pagination_offset_limit(client, cfg):
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
 
-    base = datetime.now(timezone.utc)
+    base = datetime.now(UTC)
     for i in range(5):
         _make_tagged_album(
             cfg, f"Album{i}", mbid=f"rel-{i}", tagged_at=base - timedelta(days=i), item_id=i + 1
@@ -761,28 +757,26 @@ def test_library_pagination_offset_limit(client, cfg):
 
 
 def test_library_load_more_button_absent_on_last_page(client, cfg):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    _make_tagged_album(
-        cfg, "OnlyOne", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1
-    )
+    _make_tagged_album(cfg, "OnlyOne", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
     r = client.get("/library?offset=0&limit=10")
     assert "Load more" not in r.text
 
 
 def test_library_first_page_includes_header(client, cfg):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1)
+    _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
     r = client.get("/library?offset=0")
     assert "<h2" in r.text and "Library" in r.text
     assert "Refresh" in r.text
 
 
 def test_library_second_page_omits_header(client, cfg):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1)
+    _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
     r = client.get("/library?offset=30&limit=30")
     # No header on offsets > 0 (the load-more button replaces itself)
     assert "<h2" not in r.text
@@ -794,21 +788,17 @@ def test_library_empty_state(client):
 
 
 def test_library_row_links_to_musicbrainz(client, cfg):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    _make_tagged_album(
-        cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(timezone.utc), item_id=42
-    )
+    _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
     r = client.get("/library")
     assert "musicbrainz.org/release/abc-123" in r.text
 
 
 def test_library_row_shows_store_url_and_item_id_in_expanded(client, cfg):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    _make_tagged_album(
-        cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(timezone.utc), item_id=42
-    )
+    _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
     r = client.get("/library")
     assert "x.bandcamp.com" in r.text
     assert "42" in r.text  # item_id
@@ -818,10 +808,10 @@ def test_library_row_shows_store_url_and_item_id_in_expanded(client, cfg):
 
 
 def test_retag_re_runs_tagger(client, cfg, monkeypatch):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     d = _make_tagged_album(
-        cfg, "ToRetag", mbid="rel-1", tagged_at=datetime(2026, 1, 1, tzinfo=timezone.utc), item_id=1
+        cfg, "ToRetag", mbid="rel-1", tagged_at=datetime(2026, 1, 1, tzinfo=UTC), item_id=1
     )
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release",
@@ -835,7 +825,7 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
     assert "Re-tagged" in r.text
     # tagged_at should be refreshed
     loaded = sc.read(d)
-    assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def test_retag_400_when_no_mbid_on_sidecar(client, cfg):
@@ -878,11 +868,9 @@ def test_reconcile_returns_warning_when_no_mbid_atom(client, cfg):
 
 
 def test_forget_deletes_sidecar(client, cfg):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    d = _make_tagged_album(
-        cfg, "Forgetme", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1
-    )
+    d = _make_tagged_album(cfg, "Forgetme", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
     assert sc.has_sidecar(d)
     aid = _id_for(cfg, d)
     r = client.post(f"/forget/{aid}")
@@ -897,11 +885,9 @@ def test_forget_adds_path_to_exemption_set(client, cfg):
     """Forget must add the album's path to forgotten_paths so the
     auto-reconciler won't undo the user's intent on the next /tasks tick.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    d = _make_tagged_album(
-        cfg, "Exempt", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1
-    )
+    d = _make_tagged_album(cfg, "Exempt", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
     aid = _id_for(cfg, d)
     client.post(f"/forget/{aid}")
     assert d in client.app.state.forgotten_paths
@@ -965,10 +951,10 @@ def test_sidecar_album_id_matches_temp_uid(client, cfg):
 
 def test_sidecar_album_id_matches_mbid_when_tagged(client, cfg):
     """A tagged album's id is its MBID."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     d = _make_tagged_album(
-        cfg, "Tagged", mbid="abc-mbid-1234", tagged_at=datetime.now(timezone.utc), item_id=42
+        cfg, "Tagged", mbid="abc-mbid-1234", tagged_at=datetime.now(UTC), item_id=42
     )
     aid = _id_for(cfg, d)
     assert aid == "abc-mbid-1234"
@@ -1150,7 +1136,7 @@ def test_library_shows_partial_tag_badge(client, cfg):
     """An album with some files missing the MBID atom surfaces a
     '{N}/{M} tagged' badge alongside the title in the library row.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     d = _make_album(cfg, "PartiallyTagged")
     # Add a second file
@@ -1165,7 +1151,7 @@ def test_library_shows_partial_tag_badge(client, cfg):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
         ),
     )
     r = client.get("/library")
@@ -1176,13 +1162,13 @@ def test_library_shows_partial_tag_badge(client, cfg):
 
 def test_library_includes_incomplete_albums(client, cfg):
     """Library shows both COMPLETE and INCOMPLETE — both are terminal."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     d_complete = _make_tagged_album(
         cfg,
         "Whole",
         mbid="rel-c",
-        tagged_at=datetime.now(timezone.utc),
+        tagged_at=datetime.now(UTC),
         item_id=1,
     )
     d_partial = _make_album(cfg, "Partial")
@@ -1194,7 +1180,7 @@ def test_library_includes_incomplete_albums(client, cfg):
         Sidecar(
             schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-i",
-            tagged_at=datetime.now(timezone.utc),
+            tagged_at=datetime.now(UTC),
             track_count_expected=5,
         ),
     )

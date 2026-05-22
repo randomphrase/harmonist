@@ -13,7 +13,6 @@ from mutagen.oggopus import OggOpus
 
 from . import _vorbis
 
-
 EXTENSIONS = (".opus",)
 
 

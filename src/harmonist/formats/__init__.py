@@ -16,7 +16,6 @@ from types import ModuleType
 from . import flac, m4a, mp3, ogg, opus
 from .types import TagSet, UnsupportedFormat
 
-
 _MODULES: tuple[ModuleType, ...] = (m4a, mp3, flac, ogg, opus)
 
 

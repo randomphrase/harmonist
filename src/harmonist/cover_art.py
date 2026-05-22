@@ -12,7 +12,6 @@ from pathlib import Path
 
 import httpx
 
-
 CAA_BASE = "https://coverartarchive.org"
 DEFAULT_TIMEOUT = 30.0
 log = logging.getLogger(__name__)

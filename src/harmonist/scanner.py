@@ -8,13 +8,13 @@ new submodule in `formats/__init__.py`.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from . import formats, id_registry
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
-from .sidecar import InvalidSidecar, UnsupportedSchemaVersion, read as read_sidecar
-
+from .sidecar import InvalidSidecar, UnsupportedSchemaVersion
+from .sidecar import read as read_sidecar
 
 log = logging.getLogger(__name__)
 

@@ -19,16 +19,15 @@ need real MB lookups.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 from urllib.parse import urlparse
 
 from . import formats
 from . import sidecar as sidecar_mod
 from .models import Sidecar
 from .sidecar import CURRENT_SCHEMA_VERSION
-
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +53,7 @@ def reconcile_album(
         return None  # untagged → leave as Orphan
 
     bandcamp_url = _matching_bandcamp_url(mbid, comment, fetch_urls)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if bandcamp_url:
         sc = Sidecar(
