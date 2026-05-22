@@ -4,30 +4,28 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+
+# Demo mode is conditionally imported in create_app() — keeps demo-only code
+# out of the production import path entirely.
+import re
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from harmonist import config as config_mod
 from harmonist import cover_art, mb_lookup, mb_search, reconcile, scanner, url_recovery
 from harmonist import sidecar as sidecar_mod
-from harmonist.bandcamp_hook import CapExceededError, HarmonistSyncer
+from harmonist.bandcamp_hook import HarmonistSyncer
 from harmonist.match import assess_match
 from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar, store_name
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.sync_runner import AlreadyRunningError, SyncRunner
-
-# Demo mode is conditionally imported in create_app() — keeps demo-only code
-# out of the production import path entirely.
-
-import re
 
 _MB_URL_RE = re.compile(r"/release/([a-f0-9-]{36})", re.IGNORECASE)
 # A bare MBID can be a real UUID (36 hex+dashes) OR a demo-mode pseudo-MBID
@@ -36,7 +34,7 @@ _MB_URL_RE = re.compile(r"/release/([a-f0-9-]{36})", re.IGNORECASE)
 _MBID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 
 
-def _extract_mbid(value: str) -> Optional[str]:
+def _extract_mbid(value: str) -> str | None:
     """Pull an MBID out of a raw input — accepts either a full MB release
     URL (extracts the UUID) or any bare MBID-shaped token.
     """
@@ -57,9 +55,9 @@ HARMONY_BASE = "https://harmony.pulsewidth.org.uk"
 
 
 def create_app(
-    cfg: Optional[config_mod.Config] = None,
+    cfg: config_mod.Config | None = None,
     *,
-    tagger: Optional[Tagger] = None,
+    tagger: Tagger | None = None,
 ) -> FastAPI:
     """Application factory. Tests can pass a pre-built config and/or a swap-in
     tagger implementation.
@@ -148,7 +146,7 @@ def _register_demo_routes(app: FastAPI) -> None:
 
 
 def _ctx(request: Request, **extra) -> dict:
-    base = {"request": request, "cfg": request.app.state.cfg, "now": datetime.now(timezone.utc)}
+    base = {"request": request, "cfg": request.app.state.cfg, "now": datetime.now(UTC)}
     base.update(extra)
     return base
 
@@ -252,7 +250,7 @@ def _apply_match(
         store_url=existing.store_url if existing else None,
         bandcamp=existing.bandcamp if existing else None,
         downloaded_at=existing.downloaded_at if existing else None,
-        added_at=(existing.added_at if existing else None) or datetime.now(timezone.utc),
+        added_at=(existing.added_at if existing else None) or datetime.now(UTC),
         mb_release_id=None,
         mb_match_candidate=candidate,
         tagged_at=existing.tagged_at if existing else None,
@@ -297,10 +295,10 @@ def _tag_with_release(
         store_url=sc.store_url if sc else None,
         bandcamp=sc.bandcamp if sc else None,
         downloaded_at=sc.downloaded_at if sc else None,
-        added_at=(sc.added_at if sc else None) or datetime.now(timezone.utc),
+        added_at=(sc.added_at if sc else None) or datetime.now(UTC),
         mb_release_id=mbid,
         mb_match_candidate=None,  # cleared on tag
-        tagged_at=datetime.now(timezone.utc),
+        tagged_at=datetime.now(UTC),
         track_count_expected=track_count_expected,
         notes=sc.notes if sc else None,
     )
@@ -412,13 +410,13 @@ def _register_routes(app: FastAPI) -> None:
     def library(request: Request, offset: int = 0, limit: int = 30):
         """Paginated list of terminal albums (Complete + Incomplete),
         sorted by tagged_at desc."""
-        from datetime import timezone as _tz, datetime as _dt
+        from datetime import datetime as _dt
 
         albums = _albums(request)
         TERMINAL = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
         done = [a for a in albums if a.state in TERMINAL]
         # Newest tagged first; albums missing tagged_at sink to the bottom.
-        _floor = _dt.min.replace(tzinfo=_tz.utc)
+        _floor = _dt.min.replace(tzinfo=UTC)
         done.sort(
             key=lambda a: a.sidecar.tagged_at if a.sidecar and a.sidecar.tagged_at else _floor,
             reverse=True,
@@ -744,7 +742,7 @@ def _register_routes(app: FastAPI) -> None:
             Sidecar(
                 schema_version=CURRENT_SCHEMA_VERSION,
                 store_url=url,
-                added_at=datetime.now(timezone.utc),
+                added_at=datetime.now(UTC),
             ),
         )
         return _flash_response(

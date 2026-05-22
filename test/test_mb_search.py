@@ -5,7 +5,6 @@ from __future__ import annotations
 import musicbrainzngs
 import pytest
 
-from harmonist import mb_search
 from harmonist.mb_search import MBSearchError, search_releases
 
 

@@ -14,13 +14,12 @@ Mapping follows the MusicBrainz Picard Vorbis spec.
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from mutagen.flac import Picture
 
 from .types import TagSet
-
 
 # Vorbis comment keys (uppercase by convention; lookups are case-insensitive).
 KEY_ALBUM_ID = "MUSICBRAINZ_ALBUMID"

@@ -9,7 +9,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-
 TestMode = Literal["fixture", "cassette", "live"]
 CoverArtSize = Literal["250", "500", "1200", "original"]
 

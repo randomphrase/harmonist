@@ -11,7 +11,6 @@ from mutagen.mp4 import MP4
 from harmonist.tagger import ATOM_ALBUM, ATOM_COMMENT
 from harmonist.url_recovery import recover_album_url
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
 

@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import pytest
 
 from harmonist import config as config_mod
 from harmonist import sidecar as sc
 from harmonist.models import (
-    Album,
     AlbumState,
     BandcampInfo,
     MatchCandidate,
@@ -18,7 +16,6 @@ from harmonist.models import (
     TrackComparison,
 )
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
-
 
 # ---------- config ----------
 
@@ -131,7 +128,7 @@ def test_sidecar_write_drops_stale_temp_uid_when_mbid_set(tmp_path):
         schema_version=CURRENT_SCHEMA_VERSION,
         mb_release_id="rel-aaa",
         temp_uid="stale-uid-from-earlier",
-        tagged_at=datetime.now(timezone.utc),
+        tagged_at=datetime.now(UTC),
     )
     sc.write(album_dir, s)
     loaded = sc.read(album_dir)
@@ -171,7 +168,7 @@ def test_sidecar_round_trip_with_track_count_expected(tmp_path):
     s = Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
         mb_release_id="rel-aaa",
-        tagged_at=datetime(2026, 5, 7, tzinfo=timezone.utc),
+        tagged_at=datetime(2026, 5, 7, tzinfo=UTC),
         track_count_expected=12,
     )
     sc.write(album_dir, s)
@@ -220,7 +217,7 @@ def test_sidecar_round_trip_bandcamp(tmp_path):
         schema_version=CURRENT_SCHEMA_VERSION,
         store_url="https://x.bandcamp.com/album/y",
         bandcamp=BandcampInfo(item_id=42, band_id=99),
-        downloaded_at=datetime(2026, 5, 7, 12, 0, 0, tzinfo=timezone.utc),
+        downloaded_at=datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC),
     )
     sc.write(album_dir, s)
     loaded = sc.read(album_dir)
@@ -236,7 +233,7 @@ def test_sidecar_round_trip_manual(tmp_path):
     album_dir.mkdir()
     s = Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
-        added_at=datetime(2026, 5, 7, 13, 0, 0, tzinfo=timezone.utc),
+        added_at=datetime(2026, 5, 7, 13, 0, 0, tzinfo=UTC),
         mb_release_id="abc-123",
         notes="seeded by hand",
     )
@@ -272,7 +269,7 @@ def test_sidecar_rejects_invalid_json(tmp_path):
 def test_sidecar_atomic_write_no_tmp_leftover(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
-    s = Sidecar(schema_version=CURRENT_SCHEMA_VERSION, added_at=datetime.now(timezone.utc))
+    s = Sidecar(schema_version=CURRENT_SCHEMA_VERSION, added_at=datetime.now(UTC))
     sc.write(album_dir, s)
     assert not list(album_dir.glob("*.tmp"))
     assert sc.has_sidecar(album_dir)
@@ -304,7 +301,7 @@ def test_sidecar_round_trip_with_match_candidate(tmp_path):
                 delta_ms=None,
             ),
         ],
-        proposed_at=datetime(2026, 5, 8, 12, 0, 0, tzinfo=timezone.utc),
+        proposed_at=datetime(2026, 5, 8, 12, 0, 0, tzinfo=UTC),
         notes=["some track lengths differ", "some MB tracks have no recorded length"],
     )
     s = Sidecar(

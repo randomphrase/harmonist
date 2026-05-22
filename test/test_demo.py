@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 
 from harmonist import demo, scanner
 from harmonist import sidecar as sc
-from harmonist.config import Config, PathsConfig, BandcampConfig, ServerConfig, TestConfig
+from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
 from harmonist.models import AlbumState
 from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
 from harmonist.web.main import create_app
@@ -24,7 +22,7 @@ def music_dir(tmp_path):
 def reset_pending_queue():
     """Each test starts with a fresh pending queue."""
     demo._pending_queue = list(demo.PENDING_PURCHASES)
-    yield
+    return
 
 
 @pytest.fixture(autouse=True)
@@ -282,8 +280,8 @@ def test_demo_confirm_tags_album_end_to_end(demo_client):
     m = re.search(r'task-([0-9a-f]{32})"[^"]*"[^>]*>[^<]*<[^>]*Gimme Some Money', tasks)
     if not m:
         # fallback: pick the album id by scanning
-        from harmonist.scanner import scan
         from harmonist.models import AlbumState
+        from harmonist.scanner import scan
 
         albums = scan(demo_client.app.state.cfg.paths.music_dir)
         nc = next(a for a in albums if a.state == AlbumState.NEEDS_REVIEW)

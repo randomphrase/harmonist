@@ -5,10 +5,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from harmonist import match
-from harmonist.match import LENGTH_TOLERANCE_MS, assess_match
+from harmonist.match import assess_match
 from harmonist.tagger import ATOM_TITLE
-
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"

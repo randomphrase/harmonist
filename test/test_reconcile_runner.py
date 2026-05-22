@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -20,16 +20,13 @@ from harmonist.config import (
     ServerConfig,
     TestConfig,
 )
-from harmonist.models import AlbumState
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
 from harmonist.web.main import create_app
 from harmonist.web.reconcile_runner import (
     ReconcileRunner,
-    ReconcileStatus,
     reconcile_pending_orphans,
 )
-
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -104,7 +101,7 @@ def test_runner_debounces_back_to_back_starts():
     # Within the debounce window, can't restart
     assert runner.start() is False
     # Force the finished_at back so debounce window passes
-    runner._status.finished_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+    runner._status.finished_at = datetime.now(UTC) - timedelta(seconds=10)
     assert runner.start() is True
 
 

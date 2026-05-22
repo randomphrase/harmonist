@@ -36,7 +36,6 @@ from harmonist.tagger import (
     PicardCompatibleTagger,
 )
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
 

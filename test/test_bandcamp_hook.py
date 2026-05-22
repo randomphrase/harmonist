@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -17,7 +17,7 @@ from harmonist.bandcamp_hook import (
     find_existing_album_by_url,
     write_sidecar_for_item,
 )
-from harmonist.models import BandcampInfo, Sidecar
+from harmonist.models import Sidecar
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 
 
@@ -366,7 +366,6 @@ def test_harmonist_syncer_accepts_str_or_path(tmp_path, monkeypatch, dir_path_ty
     Without the coercion, passing str crashes bandcampsync's LocalMedia.index()
     with `'str' object has no attribute 'iterdir'`.
     """
-    from pathlib import Path
 
     music_dir = tmp_path / "music"
     music_dir.mkdir()

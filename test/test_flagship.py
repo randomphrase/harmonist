@@ -24,7 +24,6 @@ from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
 from harmonist import demo, scanner
-from harmonist import sidecar as sc
 from harmonist.config import (
     BandcampConfig,
     Config,

@@ -38,7 +38,6 @@ from mutagen.mp3 import MP3
 
 from .types import TagSet
 
-
 EXTENSIONS = (".mp3",)
 
 UFID_OWNER = "http://musicbrainz.org"

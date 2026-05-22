@@ -18,7 +18,6 @@ from bs4 import BeautifulSoup
 
 from . import formats
 
-
 log = logging.getLogger(__name__)
 
 

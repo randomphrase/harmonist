@@ -12,9 +12,7 @@ from pathlib import Path
 import pytest
 
 from harmonist import formats
-from harmonist.formats import TagSet
 from harmonist.tagger import tag_album
-
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -141,8 +139,8 @@ def _seed_comment(path: Path, value: str) -> None:
         audio["\xa9cmt"] = [value]
         audio.save()
     elif ext == ".mp3":
-        from mutagen.mp3 import MP3
         from mutagen.id3 import COMM, Encoding
+        from mutagen.mp3 import MP3
 
         audio = MP3(path)
         if audio.tags is None:
@@ -191,8 +189,8 @@ def test_describe_none_for_unknown(tmp_path):
 
 
 def test_scanner_picks_up_mp3_album(tmp_path):
-    from harmonist.scanner import scan
     from harmonist.models import AlbumState
+    from harmonist.scanner import scan
 
     d = _make_album(tmp_path, "sine.mp3")
     albums = scan(tmp_path)

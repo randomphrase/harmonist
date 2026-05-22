@@ -22,9 +22,9 @@ import json
 import logging
 import shutil
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from mutagen.mp4 import MP4
 
@@ -39,7 +39,6 @@ from .tagger import (
     ATOM_TITLE,
     ATOM_TRACK_NUM,
 )
-
 
 log = logging.getLogger(__name__)
 
@@ -197,7 +196,7 @@ PENDING_PURCHASES: list[dict] = [
 
 
 def _release(
-    mbid: str, artist: str, title: str, tracks: list[str], lengths_ms: Optional[list[int]] = None
+    mbid: str, artist: str, title: str, tracks: list[str], lengths_ms: list[int] | None = None
 ) -> dict:
     if lengths_ms is None:
         lengths_ms = [1000] * len(tracks)
@@ -355,7 +354,7 @@ def data_version() -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
 
 
-def _marker_version(music_dir: Path) -> Optional[str]:
+def _marker_version(music_dir: Path) -> str | None:
     """Parse the data-version line out of the marker file, or None if absent."""
     marker = music_dir / DEMO_MARKER
     if not marker.exists():
@@ -510,7 +509,7 @@ def fetch_release_urls(mbid: str) -> list[str]:
     return [url for url, m in URL_RELS.items() if m == mbid]
 
 
-def lookup_by_bandcamp_url(url: str) -> Optional[str]:
+def lookup_by_bandcamp_url(url: str) -> str | None:
     return URL_RELS.get(url)
 
 
@@ -550,10 +549,10 @@ def ensure_cover(
     album_dir: Path,
     *,
     release_mbid: str = "",
-    release_group_mbid: Optional[str] = None,
+    release_group_mbid: str | None = None,
     size: str = "original",
     **_kwargs,
-) -> Optional[Path]:
+) -> Path | None:
     """Demo cover fetcher — returns existing cover.jpg if present, else copies a placeholder."""
     for name in ("cover.jpg", "cover.png"):
         p = album_dir / name
@@ -629,7 +628,7 @@ def _build_sidecar(sc_spec: dict, album_spec: dict) -> Sidecar:
       store_url, bandcamp_item_id, mb_release_id, tagged,
       mb_match_candidate (nested dict with deltas_ms list).
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     store_url = sc_spec.get("store_url")
     bandcamp = None
     if "bandcamp_item_id" in sc_spec:

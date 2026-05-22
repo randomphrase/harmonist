@@ -11,8 +11,6 @@ from pathlib import Path
 from mutagen.flac import FLAC
 
 from . import _vorbis
-from .types import TagSet
-
 
 EXTENSIONS = (".flac",)
 

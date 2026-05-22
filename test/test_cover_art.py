@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import httpx
 import pytest
 
-from harmonist import cover_art
 from harmonist.cover_art import CoverArtError, cached_cover, ensure_cover
 
 

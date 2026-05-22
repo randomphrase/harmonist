@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
-
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -19,9 +19,9 @@ log = logging.getLogger(__name__)
 @dataclass
 class SyncStatus:
     state: str = "idle"  # "idle" | "running"
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    last_error: Optional[str] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    last_error: str | None = None
     new_items: int = 0
     current_item: str = ""  # what's downloading right now, while running
 
@@ -36,10 +36,10 @@ class SyncStatus:
         }
 
 
-def _iso(dt: Optional[datetime]) -> Optional[str]:
+def _iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class AlreadyRunningError(Exception):
@@ -55,7 +55,7 @@ class SyncRunner:
         """
         self._runner_fn = runner_fn
         self._lock = threading.Lock()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._status = SyncStatus()
 
     @property
@@ -83,7 +83,7 @@ class SyncRunner:
                 raise AlreadyRunningError("sync is already running")
             self._status = SyncStatus(
                 state="running",
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
             )
         self._thread = threading.Thread(target=self._run, daemon=True, name="harmonist-sync")
         self._thread.start()
@@ -91,7 +91,7 @@ class SyncRunner:
 
     def _run(self) -> None:
         new_items = 0
-        error: Optional[str] = None
+        error: str | None = None
         try:
             result = self._runner_fn()
             new_items = int(getattr(result, "new_items_downloaded", False))
@@ -101,7 +101,7 @@ class SyncRunner:
         finally:
             with self._lock:
                 self._status.state = "idle"
-                self._status.finished_at = datetime.now(timezone.utc)
+                self._status.finished_at = datetime.now(UTC)
                 self._status.last_error = error
                 self._status.new_items = new_items
                 self._status.current_item = ""
