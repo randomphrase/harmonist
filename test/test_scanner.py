@@ -1,4 +1,5 @@
 """Tests for the sidecar-driven scanner."""
+
 from __future__ import annotations
 
 import shutil
@@ -129,9 +130,12 @@ def test_scan_needs_sync_when_item_id_missing(tmp_path):
         "title": "Album",
         "release-group": {"id": "rg-aaa"},
         "medium-list": [
-            {"position": "1", "track-list": [
-                {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
-            ]}
+            {
+                "position": "1",
+                "track-list": [
+                    {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
+                ],
+            }
         ],
     }
     tagger.tag_album(album_dir, release)
@@ -153,11 +157,17 @@ def test_scan_done_when_bandcamp_item_id_present(tmp_path):
     """Tagged album with bandcamp store_url + item_id → DONE."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Album")
     release = {
-        "id": "rel-aaa", "title": "Album",
+        "id": "rel-aaa",
+        "title": "Album",
         "release-group": {"id": "rg-aaa"},
-        "medium-list": [{"position": "1", "track-list": [
-            {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
-        ]}],
+        "medium-list": [
+            {
+                "position": "1",
+                "track-list": [
+                    {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
+                ],
+            }
+        ],
     }
     tagger.tag_album(album_dir, release)
     sc.write(
@@ -185,8 +195,12 @@ def test_scan_done_when_mbid_set_and_files_tagged(tmp_path):
             {
                 "position": "1",
                 "track-list": [
-                    {"id": "rt-1", "position": "1", "title": "Track 1",
-                     "recording": {"id": "rec-1", "title": "Track 1"}},
+                    {
+                        "id": "rt-1",
+                        "position": "1",
+                        "title": "Track 1",
+                        "recording": {"id": "rec-1", "title": "Track 1"},
+                    },
                 ],
             }
         ],
@@ -208,20 +222,29 @@ def test_scan_complete_when_file_count_matches_expected(tmp_path):
     """track_count_expected == file_count → COMPLETE."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
     release = {
-        "id": "rel-aaa", "title": "Album",
+        "id": "rel-aaa",
+        "title": "Album",
         "release-group": {"id": "rg-aaa"},
-        "medium-list": [{"position": "1", "track-list": [
-            {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}},
-            {"id": "rt-2", "title": "T2", "recording": {"id": "rec-2", "title": "T2"}},
-        ]}],
+        "medium-list": [
+            {
+                "position": "1",
+                "track-list": [
+                    {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}},
+                    {"id": "rt-2", "title": "T2", "recording": {"id": "rec-2", "title": "T2"}},
+                ],
+            }
+        ],
     }
     tagger.tag_album(album_dir, release)
-    sc.write(album_dir, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        mb_release_id="rel-aaa",
-        tagged_at=datetime.now(timezone.utc),
-        track_count_expected=2,
-    ))
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+            track_count_expected=2,
+        ),
+    )
     assert scan(tmp_path)[0].state == AlbumState.COMPLETE
 
 
@@ -229,27 +252,37 @@ def test_scan_incomplete_when_file_count_less_than_expected(tmp_path):
     """track_count_expected > file_count → INCOMPLETE."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
     release = {
-        "id": "rel-aaa", "title": "Album",
+        "id": "rel-aaa",
+        "title": "Album",
         "release-group": {"id": "rg-aaa"},
-        "medium-list": [{"position": "1", "track-list": [
-            {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}},
-            {"id": "rt-2", "title": "T2", "recording": {"id": "rec-2", "title": "T2"}},
-        ]}],
+        "medium-list": [
+            {
+                "position": "1",
+                "track-list": [
+                    {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}},
+                    {"id": "rt-2", "title": "T2", "recording": {"id": "rec-2", "title": "T2"}},
+                ],
+            }
+        ],
     }
     # Tag in incomplete mode (so we don't crash on the count mismatch)
     tagger.tag_album(album_dir, release, incomplete=True) if False else None
     # Actually just write the tags manually for the test
     from mutagen.mp4 import MP4
+
     for f in sorted(album_dir.glob("*.m4a")):
         audio = MP4(f)
         audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
         audio.save()
-    sc.write(album_dir, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        mb_release_id="rel-aaa",
-        tagged_at=datetime.now(timezone.utc),
-        track_count_expected=5,  # MB says 5 tracks; only 2 on disk
-    ))
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+            track_count_expected=5,  # MB says 5 tracks; only 2 on disk
+        ),
+    )
     assert scan(tmp_path)[0].state == AlbumState.INCOMPLETE
 
 
@@ -259,16 +292,20 @@ def test_scan_complete_without_expected_count_legacy(tmp_path):
     """
     album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
     from mutagen.mp4 import MP4
+
     for f in sorted(album_dir.glob("*.m4a")):
         audio = MP4(f)
         audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
         audio.save()
-    sc.write(album_dir, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        mb_release_id="rel-aaa",
-        tagged_at=datetime.now(timezone.utc),
-        track_count_expected=None,
-    ))
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+            track_count_expected=None,
+        ),
+    )
     assert scan(tmp_path)[0].state == AlbumState.COMPLETE
 
 
@@ -279,16 +316,20 @@ def test_scan_incomplete_promotes_to_complete_on_file_addition(tmp_path):
     """
     album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
     from mutagen.mp4 import MP4
+
     for f in sorted(album_dir.glob("*.m4a")):
         audio = MP4(f)
         audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
         audio.save()
-    sc.write(album_dir, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        mb_release_id="rel-aaa",
-        tagged_at=datetime.now(timezone.utc),
-        track_count_expected=3,
-    ))
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+            track_count_expected=3,
+        ),
+    )
     assert scan(tmp_path)[0].state == AlbumState.INCOMPLETE
 
     # User drops in the third file, tagged with the same MBID
@@ -309,9 +350,12 @@ def test_scan_done_check_only_matches_correct_mbid(tmp_path):
         "title": "Album",
         "release-group": {"id": "rg-bbb"},
         "medium-list": [
-            {"position": "1", "track-list": [
-                {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
-            ]}
+            {
+                "position": "1",
+                "track-list": [
+                    {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
+                ],
+            }
         ],
     }
     tagger.tag_album(album_dir, release)
@@ -325,9 +369,11 @@ def test_scan_done_check_only_matches_correct_mbid(tmp_path):
 # ---------- INCONSISTENT detection (§15.2) ----------
 
 
-def _tag_file(path: Path, *, album: str | None = None, mbid: str | None = None,
-              artist: str | None = None) -> None:
+def _tag_file(
+    path: Path, *, album: str | None = None, mbid: str | None = None, artist: str | None = None
+) -> None:
     from mutagen.mp4 import MP4
+
     audio = MP4(path)
     if album is not None:
         audio[ATOM_ALBUM] = [album]
@@ -426,17 +472,21 @@ def test_partial_tag_count_when_some_files_missing_mbid(tmp_path):
     """
     album_dir = _make_album_dir(tmp_path, "Artist", "Partial", n_tracks=3)
     from mutagen.mp4 import MP4
+
     files = sorted(album_dir.glob("*.m4a"))
     # Tag two of three files
     for f in files[:2]:
         audio = MP4(f)
         audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
         audio.save()
-    sc.write(album_dir, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        mb_release_id="rel-aaa",
-        tagged_at=datetime.now(timezone.utc),
-    ))
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
     a = scan(tmp_path)[0]
     assert a.state == AlbumState.COMPLETE
     assert a.partial_tag_count == (2, 3)
@@ -446,15 +496,19 @@ def test_partial_tag_count_none_when_all_tagged(tmp_path):
     """All files tagged → partial_tag_count is None."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Whole", n_tracks=2)
     from mutagen.mp4 import MP4
+
     for f in sorted(album_dir.glob("*.m4a")):
         audio = MP4(f)
         audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
         audio.save()
-    sc.write(album_dir, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        mb_release_id="rel-aaa",
-        tagged_at=datetime.now(timezone.utc),
-    ))
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
     a = scan(tmp_path)[0]
     assert a.partial_tag_count is None
 
@@ -473,17 +527,21 @@ def test_partial_tag_count_independent_of_incomplete_state(tmp_path):
     """
     album_dir = _make_album_dir(tmp_path, "Artist", "Both", n_tracks=2)
     from mutagen.mp4 import MP4
+
     files = sorted(album_dir.glob("*.m4a"))
     # Tag only the first file
     audio = MP4(files[0])
     audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
-    sc.write(album_dir, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        mb_release_id="rel-aaa",
-        tagged_at=datetime.now(timezone.utc),
-        track_count_expected=5,
-    ))
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+            track_count_expected=5,
+        ),
+    )
     a = scan(tmp_path)[0]
     assert a.state == AlbumState.INCOMPLETE
     assert a.partial_tag_count == (1, 2)
@@ -551,9 +609,7 @@ def test_scan_skips_album_with_invalid_sidecar(tmp_path, caplog):
     """A malformed sidecar should be logged and skipped, not crash the scan."""
     good_dir = _make_album_dir(tmp_path, "Good", "Album")
     bad_dir = _make_album_dir(tmp_path, "Bad", "Album")
-    sc.sidecar_path(bad_dir).write_text(
-        '{"schema_version": 99}', encoding="utf-8"
-    )
+    sc.sidecar_path(bad_dir).write_text('{"schema_version": 99}', encoding="utf-8")
     albums = scan(tmp_path)
     paths = {a.path for a in albums}
     assert good_dir in paths

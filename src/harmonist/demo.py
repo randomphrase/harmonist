@@ -14,6 +14,7 @@ mode at a real music library.
 All demo-only code lives in this single module. Nothing in `demo.py` is
 imported in the non-demo runtime path.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -194,7 +195,10 @@ PENDING_PURCHASES: list[dict] = [
 # Synthetic MB releases for everything that has an MBID. Shape mirrors what
 # musicbrainzngs returns under release[...]: enough for tagger + assess_match.
 
-def _release(mbid: str, artist: str, title: str, tracks: list[str], lengths_ms: Optional[list[int]] = None) -> dict:
+
+def _release(
+    mbid: str, artist: str, title: str, tracks: list[str], lengths_ms: Optional[list[int]] = None
+) -> dict:
     if lengths_ms is None:
         lengths_ms = [1000] * len(tracks)
     return {
@@ -238,36 +242,60 @@ def _release(mbid: str, artist: str, title: str, tracks: list[str], lengths_ms: 
 
 MB_RELEASES: dict[str, dict] = {
     "demo-rel-wyld": _release(
-        "demo-rel-wyld", "Wyld Stallion", "A Most Excellent Journey",
-        ["Be Excellent To Each Other", "Party On Dudes", "Strange Things Are Afoot at the Circle K"],
+        "demo-rel-wyld",
+        "Wyld Stallion",
+        "A Most Excellent Journey",
+        [
+            "Be Excellent To Each Other",
+            "Party On Dudes",
+            "Strange Things Are Afoot at the Circle K",
+        ],
     ),
     "demo-rel-sex-bob-omb": _release(
-        "demo-rel-sex-bob-omb", "Sex Bob-omb", "We Are Here To Make You Sad",
+        "demo-rel-sex-bob-omb",
+        "Sex Bob-omb",
+        "We Are Here To Make You Sad",
         ["Garbage Truck", "Threshold", "Summertime"],
     ),
     "demo-rel-sonic-death-monkey": _release(
-        "demo-rel-sonic-death-monkey", "Sonic Death Monkey", "Top 5 Records For A Wednesday",
-        ["Top 5 Side One Track Ones", "Top 5 Songs About Death", "Top 5 Tracks For Lovers In Trouble"],
+        "demo-rel-sonic-death-monkey",
+        "Sonic Death Monkey",
+        "Top 5 Records For A Wednesday",
+        [
+            "Top 5 Side One Track Ones",
+            "Top 5 Songs About Death",
+            "Top 5 Tracks For Lovers In Trouble",
+        ],
     ),
     "demo-rel-thamesmen": _release(
-        "demo-rel-thamesmen", "The Thamesmen", "Gimme Some Money",
+        "demo-rel-thamesmen",
+        "The Thamesmen",
+        "Gimme Some Money",
         ["Gimme Some Money", "(Listen to the) Flower People", "Cups and Cakes"],
         lengths_ms=[6000, 7000, 5500],  # off by enough to land "approximate"
     ),
     "demo-rel-dingoes": _release(
-        "demo-rel-dingoes", "Dingoes Ate My Baby", "Little Bit o' Hoot, Whole Lotta Nanny",
+        "demo-rel-dingoes",
+        "Dingoes Ate My Baby",
+        "Little Bit o' Hoot, Whole Lotta Nanny",
         ["Pavlov's Bell", "Hellmouth Lullaby", "Cordelia's Theme"],
     ),
     "demo-rel-rural-juror": _release(
-        "demo-rel-rural-juror", "Various Artists", "The Rural Juror (OST)",
+        "demo-rel-rural-juror",
+        "Various Artists",
+        "The Rural Juror (OST)",
         ["Main Title (The Rural Juror)", "Urban Fervor", "Closing Credits (Urinal Gerber)"],
     ),
     "demo-rel-cb4": _release(
-        "demo-rel-cb4", "CB4", "Straight Outta Lowcash",
+        "demo-rel-cb4",
+        "CB4",
+        "Straight Outta Lowcash",
         ["Straight Outta Lowcash", "M-O-N-E-Y", "The Real Thing"],
     ),
     "demo-rel-autobahn": _release(
-        "demo-rel-autobahn", "Autobahn", "Nagelbett",
+        "demo-rel-autobahn",
+        "Autobahn",
+        "Nagelbett",
         ["Karl Hungus", "Marmot Shall Inherit", "Ve Believe in Nuthing"],
     ),
 }
@@ -380,7 +408,8 @@ def ensure_seeded(music_dir: Path) -> bool:
         if existing_version != data_version():
             log.info(
                 "demo: data version mismatch (on disk: %s, code: %s) — resetting",
-                existing_version, data_version(),
+                existing_version,
+                data_version(),
             )
             reset(music_dir)
         return True
@@ -398,6 +427,7 @@ def run_demo_sync(music_dir: Path, *, progress_callback=None) -> Any:
          it as a freshly-downloaded album.
     Returns a stub matching the attributes the sync runner introspects.
     """
+
     class _Result:
         new_items_downloaded = False
 
@@ -455,9 +485,7 @@ def _fill_in_existing_item_ids(music_dir: Path, *, progress_callback=None) -> in
         patched += 1
         if progress_callback:
             try:
-                progress_callback(
-                    f"Linked: {album_dir.parent.name} / {album_dir.name}"
-                )
+                progress_callback(f"Linked: {album_dir.parent.name} / {album_dir.name}")
             except Exception:
                 pass
         time.sleep(STEP_DELAY_SECONDS)
@@ -473,6 +501,7 @@ def _fill_in_existing_item_ids(music_dir: Path, *, progress_callback=None) -> in
 def fetch_release(mbid: str) -> dict:
     if mbid not in MB_RELEASES:
         from .mb_lookup import MBError
+
         raise MBError(f"demo: no MB release for {mbid}")
     return MB_RELEASES[mbid]
 
@@ -499,24 +528,32 @@ def search_releases(artist: str, title: str, limit: int = 10) -> list[dict]:
         a_match = (not a) or (a in rel_artist.lower())
         t_match = (not t) or (t in rel_title.lower())
         if a_match and t_match:
-            results.append({
-                "id": rel["id"],
-                "title": rel_title,
-                "artist": rel_artist,
-                "date": rel.get("date"),
-                "country": rel.get("country"),
-                "status": rel.get("status"),
-                "track_count": len(rel["medium-list"][0]["track-list"]),
-                "label": "Demo Records",
-                "catalog_number": "DEMO-001",
-            })
+            results.append(
+                {
+                    "id": rel["id"],
+                    "title": rel_title,
+                    "artist": rel_artist,
+                    "date": rel.get("date"),
+                    "country": rel.get("country"),
+                    "status": rel.get("status"),
+                    "track_count": len(rel["medium-list"][0]["track-list"]),
+                    "label": "Demo Records",
+                    "catalog_number": "DEMO-001",
+                }
+            )
         if len(results) >= limit:
             break
     return results
 
 
-def ensure_cover(album_dir: Path, *, release_mbid: str = "", release_group_mbid: Optional[str] = None,
-                 size: str = "original", **_kwargs) -> Optional[Path]:
+def ensure_cover(
+    album_dir: Path,
+    *,
+    release_mbid: str = "",
+    release_group_mbid: Optional[str] = None,
+    size: str = "original",
+    **_kwargs,
+) -> Optional[Path]:
     """Demo cover fetcher — returns existing cover.jpg if present, else copies a placeholder."""
     for name in ("cover.jpg", "cover.png"):
         p = album_dir / name
@@ -604,14 +641,16 @@ def _build_sidecar(sc_spec: dict, album_spec: dict) -> Sidecar:
         comparisons = []
         for i, (track_title, delta_ms) in enumerate(zip(album_spec["tracks"], deltas), start=1):
             mb_len = 1000 + delta_ms  # file is 1000ms; mb is 1000+delta
-            comparisons.append(TrackComparison(
-                file_name=f"{i:02d} {_safe(track_title)}.m4a",
-                file_duration_ms=1000,
-                file_title=track_title,
-                mb_track_title=track_title,
-                mb_track_length_ms=mb_len,
-                delta_ms=abs(delta_ms),
-            ))
+            comparisons.append(
+                TrackComparison(
+                    file_name=f"{i:02d} {_safe(track_title)}.m4a",
+                    file_duration_ms=1000,
+                    file_title=track_title,
+                    mb_track_title=track_title,
+                    mb_track_length_ms=mb_len,
+                    delta_ms=abs(delta_ms),
+                )
+            )
         candidate = MatchCandidate(
             mb_release_id=cand_spec["mb_release_id"],
             confidence=cand_spec.get("confidence", "approximate"),

@@ -4,6 +4,7 @@ Audio-file I/O goes through `harmonist.formats` so this module is
 format-agnostic — adding MP3/FLAC/Ogg/Opus only requires registering a
 new submodule in `formats/__init__.py`.
 """
+
 from __future__ import annotations
 
 import logging
@@ -99,7 +100,8 @@ def _audio_format(audio_files: list[Path]) -> str | None:
 
 
 def _partial_tag_count(
-    sidecar: Sidecar | None, audio_files: list[Path],
+    sidecar: Sidecar | None,
+    audio_files: list[Path],
 ) -> tuple[int, int] | None:
     """Return `(tagged, total)` when only some files carry the matching
     MB Album Id atom (0 < tagged < total). None when fully tagged, none
@@ -154,9 +156,8 @@ def _derive_state(sidecar: Sidecar | None, audio_files: list[Path]) -> AlbumStat
             return AlbumState.INCOMPLETE
         # NEEDS_SYNC: Bandcamp-sourced album, MB release known, files tagged,
         # but Bandcamp item_id not yet linked (a Sync run resolves this).
-        if (
-            is_bandcamp_url(sidecar.store_url)
-            and (sidecar.bandcamp is None or sidecar.bandcamp.item_id is None)
+        if is_bandcamp_url(sidecar.store_url) and (
+            sidecar.bandcamp is None or sidecar.bandcamp.item_id is None
         ):
             return AlbumState.NEEDS_SYNC
         return AlbumState.COMPLETE
@@ -197,8 +198,7 @@ def _files_tagged_with(audio_files: list[Path], mbid: str) -> bool:
 
 
 def _read_album_artist(file_path: Path) -> tuple[str, str]:
-    return (formats.read_album_title(file_path) or "",
-            formats.read_artist(file_path) or "")
+    return (formats.read_album_title(file_path) or "", formats.read_artist(file_path) or "")
 
 
 def _find_cover(album_dir: Path) -> Path | None:

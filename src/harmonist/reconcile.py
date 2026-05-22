@@ -15,6 +15,7 @@ to record (if any):
 Pure: no globals. Caller injects the `fetch_urls` function so tests don't
 need real MB lookups.
 """
+
 from __future__ import annotations
 
 import logging

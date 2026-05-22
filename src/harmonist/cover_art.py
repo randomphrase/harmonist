@@ -4,6 +4,7 @@ Tries the release endpoint first, falls back to the release-group endpoint
 if no front cover is linked at the release level. Caches the result as
 `cover.jpg` (or `.png`) inside the album directory.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,9 +49,7 @@ def ensure_cover(
     if cached := cached_cover(album_dir):
         return cached
 
-    return _fetch_to_disk(
-        album_dir, release_mbid, release_group_mbid, size, client=client
-    )
+    return _fetch_to_disk(album_dir, release_mbid, release_group_mbid, size, client=client)
 
 
 def _fetch_to_disk(
@@ -86,9 +85,7 @@ def _fetch_to_disk(
                 target.write_bytes(resp.content)
                 log.info("CAA: wrote %s (%d bytes)", target, len(resp.content))
                 return target
-            raise CoverArtError(
-                f"CAA returned status {resp.status_code} for {url}"
-            )
+            raise CoverArtError(f"CAA returned status {resp.status_code} for {url}")
         return None
     finally:
         if owns_client:

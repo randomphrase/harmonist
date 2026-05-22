@@ -9,6 +9,7 @@ The cap is the safety mechanism per design §11.3 — it protects the user from
 a misconfigured ignores file accidentally re-downloading their whole
 collection.
 """
+
 from __future__ import annotations
 
 import logging
@@ -91,7 +92,9 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
         # Reconciliation produced a sidecar earlier; fill in what's missing.
         merged_bandcamp = BandcampInfo(
             item_id=item_id,
-            band_id=band_id if band_id is not None else (existing.bandcamp.band_id if existing.bandcamp else None),
+            band_id=band_id
+            if band_id is not None
+            else (existing.bandcamp.band_id if existing.bandcamp else None),
         )
         merged = Sidecar(
             schema_version=existing.schema_version,

@@ -4,6 +4,7 @@ Vorbis comments (shared logic in `_vorbis`); cover art is a base64 FLAC
 picture block in the METADATA_BLOCK_PICTURE comment (Ogg has no native
 picture API).
 """
+
 from __future__ import annotations
 
 from pathlib import Path

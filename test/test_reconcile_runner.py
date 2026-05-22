@@ -1,4 +1,5 @@
 """Tests for the background reconciliation runner + auto-trigger on /tasks."""
+
 from __future__ import annotations
 
 import shutil
@@ -34,7 +35,9 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
 
 
-def _make_album(root: Path, name: str, *, mbid: str | None = None, comment: str | None = None) -> Path:
+def _make_album(
+    root: Path, name: str, *, mbid: str | None = None, comment: str | None = None
+) -> Path:
     d = root / "Artist" / name
     d.mkdir(parents=True)
     f = d / "01 Track.m4a"
@@ -51,6 +54,7 @@ def _make_album(root: Path, name: str, *, mbid: str | None = None, comment: str 
 
 # ---------- ReconcileRunner unit ----------
 
+
 def test_runner_starts_idle():
     runner = ReconcileRunner(runner_fn=lambda updater: None)
     assert runner.is_running is False
@@ -59,8 +63,10 @@ def test_runner_starts_idle():
 
 def test_runner_runs_runner_fn():
     called = []
+
     def fn(updater):
         called.append(True)
+
     runner = ReconcileRunner(runner_fn=fn)
     assert runner.start() is True
     # Wait for the thread
@@ -75,6 +81,7 @@ def test_runner_runs_runner_fn():
 def test_runner_refuses_concurrent_start():
     def slow_fn(updater):
         time.sleep(0.1)
+
     runner = ReconcileRunner(runner_fn=slow_fn)
     assert runner.start() is True
     # Second start should refuse while first is running
@@ -104,6 +111,7 @@ def test_runner_debounces_back_to_back_starts():
 def test_runner_captures_exception_in_status():
     def boom(updater):
         raise RuntimeError("kaboom")
+
     runner = ReconcileRunner(runner_fn=boom)
     runner.start()
     for _ in range(50):
@@ -118,6 +126,7 @@ def test_runner_status_updater_propagates_to_status():
         updater(total=3)
         updater(current_item="Album A", completed=1)
         updater(current_item="Album B", completed=2)
+
     runner = ReconcileRunner(runner_fn=fn)
     runner.start()
     for _ in range(50):
@@ -132,12 +141,14 @@ def test_runner_status_updater_propagates_to_status():
 
 # ---------- reconcile_pending_orphans ----------
 
+
 def test_reconcile_pending_skips_exempt_paths(tmp_path):
     """Albums in exempt_paths must be left alone — respects user Forget intent."""
     music = tmp_path / "music"
     exempt_orphan = _make_album(music, "ExemptOrphan", mbid="rel-1")
-    normal_orphan = _make_album(music, "NormalOrphan", mbid="rel-2",
-                                comment="https://x.bandcamp.com")
+    normal_orphan = _make_album(
+        music, "NormalOrphan", mbid="rel-2", comment="https://x.bandcamp.com"
+    )
 
     stats = reconcile_pending_orphans(
         music,
@@ -154,7 +165,9 @@ def test_reconcile_pending_skips_exempt_paths(tmp_path):
 def test_reconcile_pending_walks_only_orphans(tmp_path):
     music = tmp_path / "music"
     orphan_with_mbid = _make_album(
-        music, "OrphanWithMBID", mbid="rel-1",
+        music,
+        "OrphanWithMBID",
+        mbid="rel-1",
         comment="Visit https://x.bandcamp.com",
     )
     orphan_without_mbid = _make_album(music, "OrphanNoMBID")
@@ -164,9 +177,7 @@ def test_reconcile_pending_walks_only_orphans(tmp_path):
     seen = []
     stats = reconcile_pending_orphans(
         music,
-        fetch_urls=lambda mbid: (
-            ["https://x.bandcamp.com/album/y"] if mbid == "rel-1" else []
-        ),
+        fetch_urls=lambda mbid: ["https://x.bandcamp.com/album/y"] if mbid == "rel-1" else [],
         rate_limit_seconds=0,  # fast tests
         status_updater=lambda **kw: seen.append(kw),
     )
@@ -186,10 +197,12 @@ def test_reconcile_pending_walks_only_orphans(tmp_path):
 
 def sc_for_held():
     from harmonist.models import Sidecar
+
     return Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-h")
 
 
 # ---------- web integration ----------
+
 
 @pytest.fixture
 def client(tmp_path):
@@ -253,9 +266,7 @@ def test_manual_post_reconcile_starts_runner(client, tmp_path):
 
 def test_post_reconcile_returns_warning_when_in_debounce(client, monkeypatch):
     # Force the runner to refuse start
-    monkeypatch.setattr(
-        client.app.state.reconcile_runner, "start", lambda: False
-    )
+    monkeypatch.setattr(client.app.state.reconcile_runner, "start", lambda: False)
     r = client.post("/reconcile")
     assert r.status_code == 200
     assert "already running" in r.text.lower() or "just finished" in r.text.lower()

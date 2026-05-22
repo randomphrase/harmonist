@@ -1,4 +1,5 @@
 """Tests for match.assess_match — confidence + per-track deltas."""
+
 from __future__ import annotations
 
 import shutil
@@ -46,6 +47,7 @@ def _release(track_lengths_ms: list[int | None]) -> dict:
 
 # ---------- exact ----------
 
+
 def test_exact_when_count_and_lengths_match(tmp_path):
     album_dir = _album_with(tmp_path, 2)
     rel = _release([FIXTURE_DURATION_MS, FIXTURE_DURATION_MS])
@@ -69,6 +71,7 @@ def test_exact_within_tolerance(tmp_path):
 
 
 # ---------- approximate ----------
+
 
 def test_approximate_when_one_track_outside_tolerance(tmp_path):
     album_dir = _album_with(tmp_path, 2)
@@ -104,6 +107,7 @@ def test_approximate_with_mixed_known_and_unknown(tmp_path):
 
 
 # ---------- no match ----------
+
 
 def test_no_match_when_more_files_than_tracks(tmp_path):
     album_dir = _album_with(tmp_path, 3)
@@ -141,6 +145,7 @@ def test_no_match_when_fewer_files_than_tracks(tmp_path):
 
 
 # ---------- candidate metadata ----------
+
 
 def test_candidate_carries_release_mbid(tmp_path):
     album_dir = _album_with(tmp_path, 1)
@@ -189,6 +194,7 @@ def test_track_comparison_falls_back_to_filename_stem(tmp_path):
 
 
 # ---------- empty album ----------
+
 
 def test_no_match_when_no_files(tmp_path):
     album_dir = tmp_path / "Empty"

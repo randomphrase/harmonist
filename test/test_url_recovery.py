@@ -1,4 +1,5 @@
 """Tests for url_recovery — uses MockTransport for httpx, no real network."""
+
 from __future__ import annotations
 
 import shutil
@@ -16,9 +17,7 @@ SINE_M4A = FIXTURES_DIR / "sine.m4a"
 
 
 def _client(handler) -> httpx.Client:
-    return httpx.Client(
-        transport=httpx.MockTransport(handler), follow_redirects=True, timeout=10
-    )
+    return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True, timeout=10)
 
 
 def _make_album(tmp_path: Path, *, comment: str = "", album: str = "") -> Path:
@@ -46,6 +45,7 @@ def _artist_html(artist_links: list[tuple[str, str]]) -> str:
 
 # ---------- happy path ----------
 
+
 def test_recover_returns_album_url_directly_if_comment_is_album_url(tmp_path):
     album_dir = _make_album(tmp_path, comment="https://x.bandcamp.com/album/exact-album")
 
@@ -67,8 +67,9 @@ def test_recover_scrapes_artist_page_for_exact_match(tmp_path):
 
     def handler(req):
         if str(req.url) == "https://myartist.bandcamp.com":
-            return httpx.Response(200, content=html.encode("utf-8"),
-                                  headers={"content-type": "text/html"})
+            return httpx.Response(
+                200, content=html.encode("utf-8"), headers={"content-type": "text/html"}
+            )
         return httpx.Response(404)
 
     url = recover_album_url(album_dir, client=_client(handler))
@@ -85,8 +86,9 @@ def test_recover_falls_back_to_substring_match(tmp_path):
     html = _artist_html([("Other", "/album/other"), ("Part Two", "/album/part-two")])
 
     def handler(req):
-        return httpx.Response(200, content=html.encode("utf-8"),
-                              headers={"content-type": "text/html"})
+        return httpx.Response(
+            200, content=html.encode("utf-8"), headers={"content-type": "text/html"}
+        )
 
     url = recover_album_url(album_dir, client=_client(handler))
     assert url == "https://myartist.bandcamp.com/album/part-two"
@@ -111,6 +113,7 @@ def test_recover_uses_dir_name_when_album_tag_absent(tmp_path):
 
 
 # ---------- short-circuit cases ----------
+
 
 def test_recover_returns_none_when_no_m4a_files(tmp_path):
     album_dir = tmp_path / "Empty"
@@ -138,10 +141,9 @@ def test_recover_returns_none_when_comment_isnt_bandcamp(tmp_path):
 
 # ---------- failure paths ----------
 
+
 def test_recover_returns_none_when_artist_page_404(tmp_path):
-    album_dir = _make_album(
-        tmp_path, comment="https://myartist.bandcamp.com", album="Album"
-    )
+    album_dir = _make_album(tmp_path, comment="https://myartist.bandcamp.com", album="Album")
 
     def handler(req):
         return httpx.Response(404)
@@ -162,9 +164,7 @@ def test_recover_returns_none_when_no_matching_link(tmp_path):
 
 
 def test_recover_returns_none_on_network_error(tmp_path):
-    album_dir = _make_album(
-        tmp_path, comment="https://myartist.bandcamp.com", album="Album"
-    )
+    album_dir = _make_album(tmp_path, comment="https://myartist.bandcamp.com", album="Album")
 
     def handler(req):
         raise httpx.ConnectError("refused")

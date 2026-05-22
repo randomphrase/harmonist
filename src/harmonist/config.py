@@ -1,4 +1,5 @@
 """Configuration loading: env vars > TOML file > defaults."""
+
 from __future__ import annotations
 
 import os

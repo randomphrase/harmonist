@@ -13,6 +13,7 @@ Uses demo mode to make external services deterministic. Exercises:
 This is the test that asserts "the headline workflow works end-to-end". A
 regression here means a user clicking Sync would land in a broken state.
 """
+
 from __future__ import annotations
 
 import time
@@ -191,4 +192,7 @@ def test_flagship_new_to_done_via_reconcile_and_confirm(demo_client, tmp_path):
     # passes → state goes straight to NEEDS_SYNC (item_id is None).
     assert after_reconcile.state == AlbumState.NEEDS_SYNC
     assert after_reconcile.sidecar.mb_release_id == "demo-rel-wyld"
-    assert after_reconcile.sidecar.store_url == "https://wyldstallion.bandcamp.com/album/a-most-excellent-journey"
+    assert (
+        after_reconcile.sidecar.store_url
+        == "https://wyldstallion.bandcamp.com/album/a-most-excellent-journey"
+    )

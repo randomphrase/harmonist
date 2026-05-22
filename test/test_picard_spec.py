@@ -10,6 +10,7 @@ output — that would require running real Picard against a reference
 release and committing its output. (Roadmap: see KNOWN_GAPS at the
 bottom of this file.)
 """
+
 from __future__ import annotations
 
 import shutil
@@ -140,6 +141,7 @@ def _atom_strs(audio: MP4, atom: str) -> list[str]:
 
 # ---------- album-level atoms ----------
 
+
 def test_album_level_mbid_atoms_match_picard_names(tmp_path):
     """Album-level MB MBIDs use Picard's exact ----:com.apple.iTunes:<Spaced> form."""
     album_dir = _setup_album(tmp_path, 2)
@@ -180,6 +182,7 @@ def test_album_level_standard_text_tags(tmp_path):
 
 
 # ---------- per-track atoms ----------
+
 
 def test_per_track_mbid_atoms_use_picard_convention(tmp_path):
     """
@@ -253,8 +256,13 @@ EXPECTED_PICARD_ATOMS_WE_WRITE = {
     ATOM_ASIN,
     ATOM_MEDIA,
     # Standard text tags
-    "\xa9alb", "\xa9nam", "\xa9ART", "aART", "\xa9day",
-    "trkn", "disk",
+    "\xa9alb",
+    "\xa9nam",
+    "\xa9ART",
+    "aART",
+    "\xa9day",
+    "trkn",
+    "disk",
 }
 
 

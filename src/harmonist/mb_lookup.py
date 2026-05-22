@@ -4,6 +4,7 @@ The primary lookup path is by URL relationship — given a Bandcamp album URL,
 return the linked MB release MBID. This is exact, unlike the legacy
 artist+title fuzzy search.
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,9 +44,7 @@ def lookup_by_bandcamp_url(bandcamp_url: str) -> str | None:
     we get a 404, which we translate to None (a "no match", not an error).
     """
     try:
-        result = musicbrainzngs.browse_urls(
-            resource=bandcamp_url, includes=["release-rels"]
-        )
+        result = musicbrainzngs.browse_urls(resource=bandcamp_url, includes=["release-rels"])
     except musicbrainzngs.ResponseError as e:
         if _is_not_found(e):
             return None
@@ -75,7 +74,11 @@ def fetch_release(mbid: str) -> dict:
                 "media",
             ],
         )
-    except (musicbrainzngs.NetworkError, musicbrainzngs.ResponseError, musicbrainzngs.AuthenticationError) as e:
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.ResponseError,
+        musicbrainzngs.AuthenticationError,
+    ) as e:
         raise MBError(f"MB request failed: {e}") from e
 
     return result["release"]
@@ -89,7 +92,11 @@ def fetch_release_urls(mbid: str) -> list[str]:
     """
     try:
         result = musicbrainzngs.get_release_by_id(mbid, includes=["url-rels"])
-    except (musicbrainzngs.NetworkError, musicbrainzngs.ResponseError, musicbrainzngs.AuthenticationError) as e:
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.ResponseError,
+        musicbrainzngs.AuthenticationError,
+    ) as e:
         raise MBError(f"MB request failed: {e}") from e
 
     release = result.get("release") or {}

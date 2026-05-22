@@ -3,6 +3,7 @@
 Single-flight: only one sync runs at a time (the second POST /sync is a 409).
 Status is exposed via a simple dict for HTMX polling at /sync/status.
 """
+
 from __future__ import annotations
 
 import logging

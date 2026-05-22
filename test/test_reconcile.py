@@ -1,4 +1,5 @@
 """Tests for reconcile.reconcile_album."""
+
 from __future__ import annotations
 
 import shutil
@@ -18,9 +19,7 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
 
 
-def _make_album(
-    root: Path, *, mbid: str | None = None, comment: str | None = None
-) -> Path:
+def _make_album(root: Path, *, mbid: str | None = None, comment: str | None = None) -> Path:
     d = root / "Artist" / "Album"
     d.mkdir(parents=True)
     f = d / "01 Track.m4a"
@@ -45,9 +44,12 @@ def _bandcamp_urls(*urls):
 
 # ---------- skip cases ----------
 
+
 def test_skips_album_with_existing_sidecar(tmp_path):
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="Visit https://x.bandcamp.com")
-    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="pre-existing"))
+    sc.write(
+        album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="pre-existing")
+    )
 
     def boom(_mbid):
         raise AssertionError("should not query MB when sidecar already exists")
@@ -72,6 +74,7 @@ def test_skips_album_without_mbid_tag(tmp_path):
 
 
 # ---------- bandcamp store_url ----------
+
 
 def test_writes_bandcamp_sidecar_when_comment_and_mb_match(tmp_path):
     album_dir = _make_album(
@@ -104,9 +107,7 @@ def test_uses_canonical_mb_url_not_comment_url(tmp_path):
 
 
 def test_picks_first_bandcamp_url_when_mb_has_multiple(tmp_path):
-    album_dir = _make_album(
-        tmp_path, mbid="rel-aaa", comment="https://myartist.bandcamp.com"
-    )
+    album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://myartist.bandcamp.com")
     fetch = _bandcamp_urls(
         "https://artist.notbandcamp.com/x",
         "https://primary.bandcamp.com/album/y",
@@ -117,6 +118,7 @@ def test_picks_first_bandcamp_url_when_mb_has_multiple(tmp_path):
 
 
 # ---------- no store_url (manual) ----------
+
 
 def test_writes_no_store_url_when_no_bandcamp_comment(tmp_path):
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="ripped from CD")
@@ -137,27 +139,21 @@ def test_writes_no_store_url_when_no_comment(tmp_path):
 
 def test_writes_no_store_url_when_mb_has_no_bandcamp_url(tmp_path):
     """User has Bandcamp ©cmt but MB doesn't actually link this release to Bandcamp."""
-    album_dir = _make_album(
-        tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com"
-    )
+    album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com")
     fetch = _bandcamp_urls("https://example.com/somewhere-else")  # no bandcamp URL
     result = reconcile_album(album_dir, fetch_urls=fetch)
     assert result.store_url is None
 
 
 def test_writes_no_store_url_when_mb_has_no_url_relationships(tmp_path):
-    album_dir = _make_album(
-        tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com"
-    )
+    album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com")
     result = reconcile_album(album_dir, fetch_urls=_no_urls)
     assert result.store_url is None
 
 
 def test_writes_no_store_url_when_mb_lookup_fails(tmp_path):
     """If MB lookup throws, fall back to no store_url rather than abort the whole scan."""
-    album_dir = _make_album(
-        tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com"
-    )
+    album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com")
 
     def explode(_mbid):
         raise RuntimeError("MB down")
@@ -167,6 +163,7 @@ def test_writes_no_store_url_when_mb_lookup_fails(tmp_path):
 
 
 # ---------- comment matching ----------
+
 
 def test_matches_any_bandcamp_url_in_comment(tmp_path):
     """The comment doesn't have to be a clean URL — 'Visit X' counts."""
@@ -188,6 +185,7 @@ def test_case_insensitive_bandcamp_match(tmp_path):
 
 
 # ---------- batch ----------
+
 
 def test_reconcile_pending_classifies_each_album(tmp_path):
     a = _make_album(tmp_path / "a", mbid="rel-1", comment="https://artist.bandcamp.com")

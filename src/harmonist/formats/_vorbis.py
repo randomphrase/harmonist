@@ -10,6 +10,7 @@ a case-insensitive dict-like `.tags` for each). They differ only in:
 provides the format-agnostic read/write surface the dispatcher expects.
 Mapping follows the MusicBrainz Picard Vorbis spec.
 """
+
 from __future__ import annotations
 
 import base64
@@ -25,7 +26,7 @@ from .types import TagSet
 KEY_ALBUM_ID = "MUSICBRAINZ_ALBUMID"
 KEY_ALBUM_ARTIST_ID = "MUSICBRAINZ_ALBUMARTISTID"
 KEY_RELEASE_GROUP_ID = "MUSICBRAINZ_RELEASEGROUPID"
-KEY_TRACK_ID = "MUSICBRAINZ_TRACKID"            # the recording MBID
+KEY_TRACK_ID = "MUSICBRAINZ_TRACKID"  # the recording MBID
 KEY_RELEASE_TRACK_ID = "MUSICBRAINZ_RELEASETRACKID"
 KEY_ARTIST_ID = "MUSICBRAINZ_ARTISTID"
 KEY_RELEASE_TYPE = "RELEASETYPE"
@@ -51,11 +52,29 @@ KEY_DESCRIPTION = "DESCRIPTION"
 # Keys this tagger manages on write (cleared then rewritten). COMMENT /
 # DESCRIPTION are deliberately excluded so a recovered Bandcamp URL survives.
 _MANAGED_KEYS = (
-    KEY_ALBUM_ID, KEY_ALBUM_ARTIST_ID, KEY_RELEASE_GROUP_ID, KEY_TRACK_ID,
-    KEY_RELEASE_TRACK_ID, KEY_ARTIST_ID, KEY_RELEASE_TYPE, KEY_RELEASE_STATUS,
-    KEY_RELEASE_COUNTRY, KEY_TITLE, KEY_ALBUM, KEY_ARTIST, KEY_ALBUM_ARTIST,
-    KEY_DATE, KEY_TRACK_NUMBER, KEY_TRACK_TOTAL, KEY_DISC_NUMBER, KEY_DISC_TOTAL,
-    KEY_LABEL, KEY_CATALOG, KEY_BARCODE, KEY_ASIN, KEY_MEDIA,
+    KEY_ALBUM_ID,
+    KEY_ALBUM_ARTIST_ID,
+    KEY_RELEASE_GROUP_ID,
+    KEY_TRACK_ID,
+    KEY_RELEASE_TRACK_ID,
+    KEY_ARTIST_ID,
+    KEY_RELEASE_TYPE,
+    KEY_RELEASE_STATUS,
+    KEY_RELEASE_COUNTRY,
+    KEY_TITLE,
+    KEY_ALBUM,
+    KEY_ARTIST,
+    KEY_ALBUM_ARTIST,
+    KEY_DATE,
+    KEY_TRACK_NUMBER,
+    KEY_TRACK_TOTAL,
+    KEY_DISC_NUMBER,
+    KEY_DISC_TOTAL,
+    KEY_LABEL,
+    KEY_CATALOG,
+    KEY_BARCODE,
+    KEY_ASIN,
+    KEY_MEDIA,
 )
 
 

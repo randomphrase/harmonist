@@ -7,6 +7,7 @@ delegates the actual atom/frame/comment serialisation to the matching
 For backward compatibility with existing tests, the MP4 atom-name
 constants are re-exported here.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -66,8 +67,7 @@ class Tagger(Protocol):
         cover_path: Path | None = None,
         *,
         incomplete: bool = False,
-    ) -> int:
-        ...
+    ) -> int: ...
 
 
 class PicardCompatibleTagger:
@@ -142,7 +142,7 @@ def _build_tagset(
 ) -> TagSet:
     """Translate one MB track within a release to a TagSet."""
     track_artist_credit = track.get("artist-credit") or release.get("artist-credit")
-    label_info = (release.get("label-info-list") or [])
+    label_info = release.get("label-info-list") or []
     first_label = label_info[0] if label_info else {}
     rg = release.get("release-group") or {}
 
@@ -183,7 +183,8 @@ def _build_tagset(
 
 
 def _assign_files_to_tracks(
-    files: list[Path], flat_tracks: list[tuple[dict, int, dict]],
+    files: list[Path],
+    flat_tracks: list[tuple[dict, int, dict]],
 ) -> list[tuple[Path, tuple[dict, int, dict]]]:
     """Best-fit assignment of files to a subset of MB tracks via length
     similarity, preserving input file order.
