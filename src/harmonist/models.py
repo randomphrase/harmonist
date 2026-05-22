@@ -1,4 +1,5 @@
 """Core data types: Album, AlbumState, Sidecar."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -32,6 +33,7 @@ class InconsistentTrack:
     Compilations (varying artist, consistent album+MBID) don't appear here
     — they're legitimate, not inconsistent.
     """
+
     file_name: str
     album_title: str | None
     mb_album_id: str | None
@@ -43,6 +45,7 @@ class BandcampInfo:
     came from Bandcamp AND we know the item_id (typically captured during
     bandcampsync at download time).
     """
+
     item_id: int | None = None
     band_id: int | None = None
 
@@ -55,6 +58,7 @@ class TrackComparison:
     - file_* None → an MB track with no corresponding file on disk
     - mb_* None  → a file on disk with no corresponding MB track
     """
+
     file_name: str | None
     file_duration_ms: int | None
     file_title: str | None  # from the ©nam tag if present, else filename stem
@@ -71,6 +75,7 @@ class MatchCandidate:
     file/track shape doesn't perfectly fit. The user must Confirm or
     Reject before tagging proceeds.
     """
+
     mb_release_id: str
     confidence: MatchConfidence
     file_count: int
@@ -93,6 +98,7 @@ class Sidecar:
     until an MBID lands, at which point sidecar.write() drops it. The
     scanner reads whichever is set and assigns it to `Album.id`.
     """
+
     schema_version: int
     store_url: str | None = None
     bandcamp: BandcampInfo | None = None

@@ -1,4 +1,5 @@
 """Read/write .harmonist.json sidecars atomically."""
+
 from __future__ import annotations
 
 import json
@@ -188,7 +189,9 @@ def _from_dict(d: dict, source_path: Path) -> Sidecar:
             item_id = int(item_id_raw) if item_id_raw is not None else None
             bandcamp = BandcampInfo(item_id=item_id, band_id=bd.get("band_id"))
         except (KeyError, TypeError, ValueError) as e:
-            raise InvalidSidecar(f"sidecar at {source_path} has malformed bandcamp block: {e}") from e
+            raise InvalidSidecar(
+                f"sidecar at {source_path} has malformed bandcamp block: {e}"
+            ) from e
 
     candidate = None
     if "mb_match_candidate" in d:

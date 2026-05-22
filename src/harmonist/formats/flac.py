@@ -3,6 +3,7 @@
 FLAC uses Vorbis comments (shared logic in `_vorbis`) plus a native
 embedded-picture API for cover art.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

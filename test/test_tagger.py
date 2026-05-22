@@ -1,4 +1,5 @@
 """Tests for the Picard-compatible tagger."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -70,10 +71,12 @@ def _release_2_tracks() -> dict:
                         "title": "Track 2",
                         "recording": {"id": "rec-002", "title": "Track 2"},
                         "artist-credit": [
-                            {"artist": {"id": "art-bbb", "name": "Featured Artist"},
-                             "name": "Featured Artist", "joinphrase": " feat. "},
-                            {"artist": {"id": "art-ccc", "name": "Other"},
-                             "name": "Other"},
+                            {
+                                "artist": {"id": "art-bbb", "name": "Featured Artist"},
+                                "name": "Featured Artist",
+                                "joinphrase": " feat. ",
+                            },
+                            {"artist": {"id": "art-ccc", "name": "Other"}, "name": "Other"},
                         ],
                     },
                 ],
@@ -268,6 +271,7 @@ def test_tag_album_incomplete_uses_length_similarity_when_available(
 
 
 # -- helpers used in multiple tests --
+
 
 def _single_track_release() -> dict:
     return {

@@ -7,6 +7,7 @@ Bandcamp page to find the album link by name match.
 Tertiary fallback per design §2.1 — primary path is the bandcampsync hook
 that captures URLs at download time; secondary is manual entry via the UI.
 """
+
 from __future__ import annotations
 
 import logging

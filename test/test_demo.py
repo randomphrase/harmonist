@@ -1,4 +1,5 @@
 """Basic tests for demo mode."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -39,6 +40,7 @@ def restore_module_globals():
     demo tests can't leak patches into the rest of the suite.
     """
     from harmonist import cover_art, mb_lookup, mb_search
+
     saved = {
         "mb_lookup.fetch_release": mb_lookup.fetch_release,
         "mb_lookup.fetch_release_urls": mb_lookup.fetch_release_urls,
@@ -83,6 +85,7 @@ def test_seed_new_has_mbid_and_comment_for_reconcile(music_dir):
     """The new album should be reconcile-able (MBID atom + Bandcamp ©cmt)."""
     demo.seed(music_dir)
     from mutagen.mp4 import MP4
+
     track = next((music_dir / "Wyld Stallion" / "A Most Excellent Journey").glob("*.m4a"))
     audio = MP4(track)
     assert ATOM_MB_ALBUM_ID in audio
@@ -168,9 +171,7 @@ def test_run_demo_sync_links_existing_needs_sync_album(music_dir):
     demo.seed(music_dir)
     # Drain the pending queue first so this test isolates the link path
     demo._pending_queue.clear()
-    dingoes_dir = next(
-        d for d in (music_dir / "Dingoes Ate My Baby").iterdir() if d.is_dir()
-    )
+    dingoes_dir = next(d for d in (music_dir / "Dingoes Ate My Baby").iterdir() if d.is_dir())
     before = sc.read(dingoes_dir)
     assert before.bandcamp is None or before.bandcamp.item_id is None
 
@@ -191,14 +192,16 @@ def test_fetch_release_returns_demo_data():
 
 def test_fetch_release_unknown_mbid_raises():
     from harmonist.mb_lookup import MBError
+
     with pytest.raises(MBError):
         demo.fetch_release("not-a-real-demo-mbid")
 
 
 def test_lookup_by_bandcamp_url():
-    assert demo.lookup_by_bandcamp_url(
-        "https://thamesmen.bandcamp.com/album/gimme-some-money"
-    ) == "demo-rel-thamesmen"
+    assert (
+        demo.lookup_by_bandcamp_url("https://thamesmen.bandcamp.com/album/gimme-some-money")
+        == "demo-rel-thamesmen"
+    )
     assert demo.lookup_by_bandcamp_url("https://example.com/whatever") is None
 
 
@@ -275,11 +278,13 @@ def test_demo_confirm_tags_album_end_to_end(demo_client):
     tasks = demo_client.get("/tasks").text
     # Find the Thamesmen card; pull its album id out of the data-attributes
     import re
+
     m = re.search(r'task-([0-9a-f]{32})"[^"]*"[^>]*>[^<]*<[^>]*Gimme Some Money', tasks)
     if not m:
         # fallback: pick the album id by scanning
         from harmonist.scanner import scan
         from harmonist.models import AlbumState
+
         albums = scan(demo_client.app.state.cfg.paths.music_dir)
         nc = next(a for a in albums if a.state == AlbumState.NEEDS_REVIEW)
         aid = nc.id

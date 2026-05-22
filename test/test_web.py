@@ -4,6 +4,7 @@ Not exhaustive — task 13 owns the comprehensive integration test matrix.
 These verify wiring: routes load, scanner integration works, state-dispatched
 templates render without crashing for each AlbumState.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -68,6 +69,7 @@ def _id_for(cfg, album_dir: Path) -> str:
     albums (registry-minted UUID) and sidecar'd albums (UUID or MBID).
     """
     from harmonist import scanner
+
     for a in scanner.scan(cfg.paths.music_dir):
         if a.path == album_dir:
             return a.id
@@ -75,6 +77,7 @@ def _id_for(cfg, album_dir: Path) -> str:
 
 
 # ---------- Bandcamp setup / deferred sync ----------
+
 
 def test_header_shows_setup_when_no_cookies(client):
     """Fresh install (no cookies) → header offers setup, not sync."""
@@ -108,6 +111,7 @@ def test_bandcamp_cookies_saved_from_text_flips_header(client, cfg):
 
 def test_bandcamp_cookies_saved_from_upload(client, cfg):
     import io
+
     body = b"# Netscape HTTP Cookie File\n.bandcamp.com\tTRUE\t/\tFALSE\t0\tident\txyz\n"
     r = client.post(
         "/bandcamp/cookies",
@@ -128,6 +132,7 @@ def test_bandcamp_cookies_empty_returns_error_modal(client, cfg):
 
 
 # ---------- basic routes ----------
+
 
 def test_index_renders(client):
     r = client.get("/")
@@ -183,11 +188,14 @@ def test_tasks_groups_albums_by_state_with_headers_and_instructions(client, cfg)
     """Each state appears as its own <section> with a heading + instruction line."""
     # NEEDS_MBID with store_url
     d1 = _make_album(cfg, "WithURL")
-    sc.write(d1, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-        bandcamp=BandcampInfo(item_id=1),
-    ))
+    sc.write(
+        d1,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=1),
+        ),
+    )
     # NEEDS_MBID without store_url
     d2 = _make_album(cfg, "Manual")
     sc.write(d2, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
@@ -218,13 +226,16 @@ def test_tasks_needs_sync_section_advises_sync(client, cfg):
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-a"]
     audio.save()
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-        bandcamp=BandcampInfo(item_id=None),
-        mb_release_id="rel-a",
-        tagged_at=datetime.now(timezone.utc),
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-a",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
     r = client.get("/tasks")
     assert "Needs Sync" in r.text
     # Instruction explicitly calls out Sync
@@ -239,6 +250,7 @@ def test_tasks_empty_state_message_distinguishes_zero_vs_all_done(client, cfg):
 
 # ---------- state dispatch — each card type renders ----------
 
+
 def test_new_card_rendered(client, cfg):
     _make_album(cfg, "New Album")
     r = client.get("/tasks")
@@ -249,11 +261,14 @@ def test_new_card_rendered(client, cfg):
 
 def test_needs_mbid_card_with_store_url_rendered(client, cfg):
     d = _make_album(cfg, "HasURL")
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-        bandcamp=BandcampInfo(item_id=1),
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=1),
+        ),
+    )
     r = client.get("/tasks")
     assert "Needs MBID" in r.text
     assert "Open in Harmony" in r.text
@@ -280,24 +295,38 @@ def test_new_card_offers_three_paths(client, cfg):
 
 def test_needs_review_card_renders_side_by_side(client, cfg):
     d = _make_album(cfg, "NR Album")
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-        bandcamp=BandcampInfo(item_id=1),
-        mb_match_candidate=MatchCandidate(
-            mb_release_id="rel-aaa",
-            confidence="approximate",
-            file_count=2, track_count=2,
-            track_comparisons=[
-                TrackComparison(file_name="01.m4a", file_duration_ms=180000,
-                                file_title="Side A", mb_track_title="Side A",
-                                mb_track_length_ms=185000, delta_ms=5000),
-                TrackComparison(file_name="02.m4a", file_duration_ms=200000,
-                                file_title="Side B", mb_track_title="Side B",
-                                mb_track_length_ms=200500, delta_ms=500),
-            ],
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=1),
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-aaa",
+                confidence="approximate",
+                file_count=2,
+                track_count=2,
+                track_comparisons=[
+                    TrackComparison(
+                        file_name="01.m4a",
+                        file_duration_ms=180000,
+                        file_title="Side A",
+                        mb_track_title="Side A",
+                        mb_track_length_ms=185000,
+                        delta_ms=5000,
+                    ),
+                    TrackComparison(
+                        file_name="02.m4a",
+                        file_duration_ms=200000,
+                        file_title="Side B",
+                        mb_track_title="Side B",
+                        mb_track_length_ms=200500,
+                        delta_ms=500,
+                    ),
+                ],
+            ),
         ),
-    ))
+    )
     r = client.get("/tasks")
     assert "Needs Review" in r.text
     assert "approximate" in r.text
@@ -335,13 +364,16 @@ def test_needs_sync_card_renders(client, cfg):
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-        bandcamp=BandcampInfo(item_id=None),
-        mb_release_id="rel-aaa",
-        tagged_at=datetime.now(timezone.utc),
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
     r = client.get("/tasks")
     assert "Needs Sync" in r.text
     assert "Mark purchased elsewhere" in r.text
@@ -351,6 +383,7 @@ def test_needs_sync_card_renders(client, cfg):
 
 
 # ---------- action endpoints ----------
+
 
 def test_post_sync_starts_runner(client):
     # Replace the runner_fn to a no-op so we don't try to hit Bandcamp
@@ -372,15 +405,20 @@ def test_post_sync_409_when_already_running(client):
 
 def test_reject_clears_candidate(client, cfg):
     d = _make_album(cfg, "RC")
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-        bandcamp=BandcampInfo(item_id=1),
-        mb_match_candidate=MatchCandidate(
-            mb_release_id="rel-zzz", confidence="approximate",
-            file_count=1, track_count=1,
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=1),
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-zzz",
+                confidence="approximate",
+                file_count=1,
+                track_count=1,
+            ),
         ),
-    ))
+    )
     aid = _id_for(cfg, d)
     r = client.post(f"/reject/{aid}")
     assert r.status_code == 200
@@ -393,15 +431,18 @@ def test_unconfirmed_url_update(client, cfg):
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/old",
-        bandcamp=BandcampInfo(item_id=None),
-        mb_release_id="rel-aaa", tagged_at=datetime.now(timezone.utc),
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/old",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
     aid = _id_for(cfg, d)
-    r = client.post(f"/unconfirmed/{aid}/url",
-                    data={"url": "https://x.bandcamp.com/album/new"})
+    r = client.post(f"/unconfirmed/{aid}/url", data={"url": "https://x.bandcamp.com/album/new"})
     assert r.status_code == 200
     loaded = sc.read(d)
     assert loaded.store_url == "https://x.bandcamp.com/album/new"
@@ -413,12 +454,16 @@ def test_unconfirmed_mark_manual(client, cfg):
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-        bandcamp=BandcampInfo(item_id=None),
-        mb_release_id="rel-aaa", tagged_at=datetime.now(timezone.utc),
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
     aid = _id_for(cfg, d)
     r = client.post(f"/unconfirmed/{aid}/manual")
     assert r.status_code == 200
@@ -442,12 +487,28 @@ def test_manual_search_returns_results(client, cfg, monkeypatch):
     monkeypatch.setattr(
         "harmonist.mb_search.search_releases",
         lambda artist, title, limit=10: [
-            {"id": "rel-1", "title": "Result A", "artist": "X", "date": "2020",
-             "country": "GB", "status": "Official", "track_count": 10,
-             "label": "Label", "catalog_number": "CAT1"},
-            {"id": "rel-2", "title": "Result B", "artist": "X", "date": "2021",
-             "country": "US", "status": "Official", "track_count": 12,
-             "label": None, "catalog_number": None},
+            {
+                "id": "rel-1",
+                "title": "Result A",
+                "artist": "X",
+                "date": "2020",
+                "country": "GB",
+                "status": "Official",
+                "track_count": 10,
+                "label": "Label",
+                "catalog_number": "CAT1",
+            },
+            {
+                "id": "rel-2",
+                "title": "Result B",
+                "artist": "X",
+                "date": "2021",
+                "country": "US",
+                "status": "Official",
+                "track_count": 12,
+                "label": None,
+                "catalog_number": None,
+            },
         ],
     )
     r = client.post(f"/manual/{aid}/search", data={"artist": "X", "title": "Y"})
@@ -495,9 +556,7 @@ def test_manual_assign_with_full_url(client, cfg, monkeypatch):
         return _release_for_match(mbid, n_tracks=1)
 
     monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fake_fetch)
-    monkeypatch.setattr(
-        "harmonist.cover_art.ensure_cover", lambda *a, **kw: None
-    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
 
     r = client.post(
         f"/manual/{aid}/assign",
@@ -608,7 +667,11 @@ def _release_for_match(mbid: str, *, n_tracks: int, length_ms: int = 1000) -> di
                         "id": f"rt-{i}",
                         "position": str(i),
                         "title": f"Track {i}",
-                        "recording": {"id": f"rec-{i}", "title": f"Track {i}", "length": str(length_ms)},
+                        "recording": {
+                            "id": f"rec-{i}",
+                            "title": f"Track {i}",
+                            "length": str(length_ms),
+                        },
                     }
                     for i in range(1, n_tracks + 1)
                 ],
@@ -618,6 +681,7 @@ def _release_for_match(mbid: str, *, n_tracks: int, length_ms: int = 1000) -> di
 
 
 # ---------- cover route ----------
+
 
 def test_cover_returns_404_when_absent(client, cfg):
     d = _make_album(cfg, "NoCover")
@@ -636,21 +700,31 @@ def _make_tagged_album(cfg, name: str, *, mbid: str, tagged_at, item_id: int | N
     audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
     audio.save()
     from harmonist.models import BandcampInfo, Sidecar
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url=(f"https://x.bandcamp.com/album/{name.lower().replace(' ', '-')}"
-                   if item_id else None),
-        bandcamp=BandcampInfo(item_id=item_id) if item_id else None,
-        mb_release_id=mbid,
-        tagged_at=tagged_at,
-    ))
+
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url=(
+                f"https://x.bandcamp.com/album/{name.lower().replace(' ', '-')}"
+                if item_id
+                else None
+            ),
+            bandcamp=BandcampInfo(item_id=item_id) if item_id else None,
+            mb_release_id=mbid,
+            tagged_at=tagged_at,
+        ),
+    )
     return d
 
 
 def test_library_renders_only_done_albums(client, cfg):
     from datetime import datetime, timezone
+
     _make_album(cfg, "NewAlbum")
-    _make_tagged_album(cfg, "DoneOne", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=100)
+    _make_tagged_album(
+        cfg, "DoneOne", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=100
+    )
     r = client.get("/library")
     assert r.status_code == 200
     assert "DoneOne" in r.text
@@ -659,6 +733,7 @@ def test_library_renders_only_done_albums(client, cfg):
 
 def test_library_sorted_by_tagged_at_desc(client, cfg):
     from datetime import datetime, timezone, timedelta
+
     base = datetime.now(timezone.utc)
     _make_tagged_album(cfg, "Old", mbid="rel-old", tagged_at=base - timedelta(days=5), item_id=1)
     _make_tagged_album(cfg, "Mid", mbid="rel-mid", tagged_at=base - timedelta(days=2), item_id=2)
@@ -671,10 +746,12 @@ def test_library_sorted_by_tagged_at_desc(client, cfg):
 
 def test_library_pagination_offset_limit(client, cfg):
     from datetime import datetime, timezone, timedelta
+
     base = datetime.now(timezone.utc)
     for i in range(5):
-        _make_tagged_album(cfg, f"Album{i}", mbid=f"rel-{i}",
-                          tagged_at=base - timedelta(days=i), item_id=i + 1)
+        _make_tagged_album(
+            cfg, f"Album{i}", mbid=f"rel-{i}", tagged_at=base - timedelta(days=i), item_id=i + 1
+        )
     r = client.get("/library?offset=0&limit=2")
     assert r.status_code == 200
     # First page has 2 rows
@@ -685,13 +762,17 @@ def test_library_pagination_offset_limit(client, cfg):
 
 def test_library_load_more_button_absent_on_last_page(client, cfg):
     from datetime import datetime, timezone
-    _make_tagged_album(cfg, "OnlyOne", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1)
+
+    _make_tagged_album(
+        cfg, "OnlyOne", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1
+    )
     r = client.get("/library?offset=0&limit=10")
     assert "Load more" not in r.text
 
 
 def test_library_first_page_includes_header(client, cfg):
     from datetime import datetime, timezone
+
     _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1)
     r = client.get("/library?offset=0")
     assert "<h2" in r.text and "Library" in r.text
@@ -700,6 +781,7 @@ def test_library_first_page_includes_header(client, cfg):
 
 def test_library_second_page_omits_header(client, cfg):
     from datetime import datetime, timezone
+
     _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1)
     r = client.get("/library?offset=30&limit=30")
     # No header on offsets > 0 (the load-more button replaces itself)
@@ -713,14 +795,20 @@ def test_library_empty_state(client):
 
 def test_library_row_links_to_musicbrainz(client, cfg):
     from datetime import datetime, timezone
-    _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(timezone.utc), item_id=42)
+
+    _make_tagged_album(
+        cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(timezone.utc), item_id=42
+    )
     r = client.get("/library")
     assert "musicbrainz.org/release/abc-123" in r.text
 
 
 def test_library_row_shows_store_url_and_item_id_in_expanded(client, cfg):
     from datetime import datetime, timezone
-    _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(timezone.utc), item_id=42)
+
+    _make_tagged_album(
+        cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(timezone.utc), item_id=42
+    )
     r = client.get("/library")
     assert "x.bandcamp.com" in r.text
     assert "42" in r.text  # item_id
@@ -731,8 +819,10 @@ def test_library_row_shows_store_url_and_item_id_in_expanded(client, cfg):
 
 def test_retag_re_runs_tagger(client, cfg, monkeypatch):
     from datetime import datetime, timezone
-    d = _make_tagged_album(cfg, "ToRetag", mbid="rel-1",
-                          tagged_at=datetime(2026, 1, 1, tzinfo=timezone.utc), item_id=1)
+
+    d = _make_tagged_album(
+        cfg, "ToRetag", mbid="rel-1", tagged_at=datetime(2026, 1, 1, tzinfo=timezone.utc), item_id=1
+    )
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release",
         lambda mbid: _release_for_match(mbid, n_tracks=1),
@@ -761,13 +851,17 @@ def test_reconcile_is_idempotent_on_already_reconciled_album(client, cfg, monkey
     used to 400. It should now return a calm 'already reconciled' message.
     """
     from harmonist.models import BandcampInfo, Sidecar
+
     d = _make_album(cfg, "ToReconcile")
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-        bandcamp=BandcampInfo(item_id=None),
-        mb_release_id="rel-x",
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-x",
+        ),
+    )
     aid = _id_for(cfg, d)
     r = client.post(f"/reconcile/{aid}")
     assert r.status_code == 200, r.text
@@ -785,8 +879,10 @@ def test_reconcile_returns_warning_when_no_mbid_atom(client, cfg):
 
 def test_forget_deletes_sidecar(client, cfg):
     from datetime import datetime, timezone
-    d = _make_tagged_album(cfg, "Forgetme", mbid="rel-1",
-                          tagged_at=datetime.now(timezone.utc), item_id=1)
+
+    d = _make_tagged_album(
+        cfg, "Forgetme", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1
+    )
     assert sc.has_sidecar(d)
     aid = _id_for(cfg, d)
     r = client.post(f"/forget/{aid}")
@@ -802,8 +898,10 @@ def test_forget_adds_path_to_exemption_set(client, cfg):
     auto-reconciler won't undo the user's intent on the next /tasks tick.
     """
     from datetime import datetime, timezone
-    d = _make_tagged_album(cfg, "Exempt", mbid="rel-1",
-                          tagged_at=datetime.now(timezone.utc), item_id=1)
+
+    d = _make_tagged_album(
+        cfg, "Exempt", mbid="rel-1", tagged_at=datetime.now(timezone.utc), item_id=1
+    )
     aid = _id_for(cfg, d)
     client.post(f"/forget/{aid}")
     assert d in client.app.state.forgotten_paths
@@ -854,10 +952,13 @@ def test_new_album_id_is_minted_from_registry(client, cfg):
 def test_sidecar_album_id_matches_temp_uid(client, cfg):
     """A sidecar'd album's id is the sidecar's temp_uid."""
     d = _make_album(cfg, "WithSidecar")
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+        ),
+    )
     aid = _id_for(cfg, d)
     assert aid == sc.read(d).temp_uid
 
@@ -865,8 +966,10 @@ def test_sidecar_album_id_matches_temp_uid(client, cfg):
 def test_sidecar_album_id_matches_mbid_when_tagged(client, cfg):
     """A tagged album's id is its MBID."""
     from datetime import datetime, timezone
-    d = _make_tagged_album(cfg, "Tagged", mbid="abc-mbid-1234",
-                           tagged_at=datetime.now(timezone.utc), item_id=42)
+
+    d = _make_tagged_album(
+        cfg, "Tagged", mbid="abc-mbid-1234", tagged_at=datetime.now(timezone.utc), item_id=42
+    )
     aid = _id_for(cfg, d)
     assert aid == "abc-mbid-1234"
 
@@ -880,10 +983,13 @@ def test_new_album_id_survives_first_sidecar_write(client, cfg):
     registry_uid = _id_for(cfg, d)  # mints into registry as a side effect
 
     # Now write a sidecar. The temp_uid should be the registry value.
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+        ),
+    )
     assert sc.read(d).temp_uid == registry_uid
     # And the album.id from a fresh scan still matches
     assert _id_for(cfg, d) == registry_uid
@@ -894,10 +1000,13 @@ def test_sidecar_album_id_survives_rename(client, cfg):
     on rename. So album.id is stable across renames for sidecar'd albums.
     """
     d = _make_album(cfg, "RenameMe")
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+        ),
+    )
     aid_before = _id_for(cfg, d)
 
     new_d = d.parent / "Renamed"
@@ -921,28 +1030,50 @@ def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkey
     """
     d = _make_album(cfg, "ShortAlbum")  # 1 file from the fixture
     # Seed a candidate with file_count=1, track_count=3 (MB says 3, disk has 1)
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-        mb_match_candidate=MatchCandidate(
-            mb_release_id="rel-mbid",
-            confidence="approximate",
-            file_count=1, track_count=3,
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-mbid",
+                confidence="approximate",
+                file_count=1,
+                track_count=3,
+            ),
         ),
-    ))
+    )
 
     def fake_release(mbid):
         return {
-            "id": mbid, "title": "Three-track Album",
+            "id": mbid,
+            "title": "Three-track Album",
             "release-group": {"id": "rg-1"},
-            "medium-list": [{"position": "1", "track-list": [
-                {"id": "rt-1", "position": "1", "title": "T1",
-                 "recording": {"id": "rec-1", "title": "T1"}},
-                {"id": "rt-2", "position": "2", "title": "T2",
-                 "recording": {"id": "rec-2", "title": "T2"}},
-                {"id": "rt-3", "position": "3", "title": "T3",
-                 "recording": {"id": "rec-3", "title": "T3"}},
-            ]}],
+            "medium-list": [
+                {
+                    "position": "1",
+                    "track-list": [
+                        {
+                            "id": "rt-1",
+                            "position": "1",
+                            "title": "T1",
+                            "recording": {"id": "rec-1", "title": "T1"},
+                        },
+                        {
+                            "id": "rt-2",
+                            "position": "2",
+                            "title": "T2",
+                            "recording": {"id": "rec-2", "title": "T2"},
+                        },
+                        {
+                            "id": "rt-3",
+                            "position": "3",
+                            "title": "T3",
+                            "recording": {"id": "rec-3", "title": "T3"},
+                        },
+                    ],
+                }
+            ],
         }
 
     monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fake_release)
@@ -961,8 +1092,10 @@ def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkey
 
     # Scanner now reports INCOMPLETE
     from harmonist import scanner
+
     a = [a for a in scanner.scan(cfg.paths.music_dir) if a.path == d][0]
     from harmonist.models import AlbumState as AS
+
     assert a.state == AS.INCOMPLETE
 
 
@@ -979,23 +1112,33 @@ def test_needs_review_card_offers_incomplete_when_file_count_short(client, cfg):
     where file_count < track_count — and not when they're equal.
     """
     d_short = _make_album(cfg, "ShortMatch")
-    sc.write(d_short, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/short",
-        mb_match_candidate=MatchCandidate(
-            mb_release_id="rel-short", confidence="approximate",
-            file_count=1, track_count=3,
+    sc.write(
+        d_short,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/short",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-short",
+                confidence="approximate",
+                file_count=1,
+                track_count=3,
+            ),
         ),
-    ))
+    )
     d_exact = _make_album(cfg, "ExactMatch")
-    sc.write(d_exact, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/exact",
-        mb_match_candidate=MatchCandidate(
-            mb_release_id="rel-exact", confidence="approximate",
-            file_count=1, track_count=1,
+    sc.write(
+        d_exact,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/exact",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-exact",
+                confidence="approximate",
+                file_count=1,
+                track_count=1,
+            ),
         ),
-    ))
+    )
     r = client.get("/tasks")
     # Button text appears only when there's at least one short album
     assert "Confirm as Incomplete" in r.text
@@ -1008,6 +1151,7 @@ def test_library_shows_partial_tag_badge(client, cfg):
     '{N}/{M} tagged' badge alongside the title in the library row.
     """
     from datetime import datetime, timezone
+
     d = _make_album(cfg, "PartiallyTagged")
     # Add a second file
     second = d / "02 Other.m4a"
@@ -1016,11 +1160,14 @@ def test_library_shows_partial_tag_badge(client, cfg):
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        mb_release_id="rel-aaa",
-        tagged_at=datetime.now(timezone.utc),
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(timezone.utc),
+        ),
+    )
     r = client.get("/library")
     assert r.status_code == 200
     assert "PartiallyTagged" in r.text
@@ -1030,19 +1177,27 @@ def test_library_shows_partial_tag_badge(client, cfg):
 def test_library_includes_incomplete_albums(client, cfg):
     """Library shows both COMPLETE and INCOMPLETE — both are terminal."""
     from datetime import datetime, timezone
+
     d_complete = _make_tagged_album(
-        cfg, "Whole", mbid="rel-c", tagged_at=datetime.now(timezone.utc), item_id=1,
+        cfg,
+        "Whole",
+        mbid="rel-c",
+        tagged_at=datetime.now(timezone.utc),
+        item_id=1,
     )
     d_partial = _make_album(cfg, "Partial")
     audio = MP4(d_partial / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-i"]
     audio.save()
-    sc.write(d_partial, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        mb_release_id="rel-i",
-        tagged_at=datetime.now(timezone.utc),
-        track_count_expected=5,
-    ))
+    sc.write(
+        d_partial,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-i",
+            tagged_at=datetime.now(timezone.utc),
+            track_count_expected=5,
+        ),
+    )
     r = client.get("/library")
     assert r.status_code == 200
     assert "Whole" in r.text
@@ -1061,10 +1216,13 @@ def test_canonical_id_change_mid_transaction(client, cfg, monkeypatch):
     header propagates the new id to the UI.
     """
     d = _make_album(cfg, "ToAssign")
-    sc.write(d, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/y",
-    ))
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+        ),
+    )
     temp_uid = sc.read(d).temp_uid
     mbid = "abc12345-1234-1234-1234-1234567890ab"
 

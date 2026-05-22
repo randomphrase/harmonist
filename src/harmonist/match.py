@@ -6,6 +6,7 @@ and runs the tagger. Otherwise the candidate is stashed in
 `mb_match_candidate` and the album waits in NEEDS_REVIEW until the
 user clicks Confirm or Reject.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -87,14 +88,10 @@ def assess_match(album_dir: Path, release: dict) -> MatchCandidate:
     confidence: MatchConfidence
     if file_count != track_count:
         confidence = "no_match"
-        notes.append(
-            f"file count {file_count} does not match MB track count {track_count}"
-        )
+        notes.append(f"file count {file_count} does not match MB track count {track_count}")
     elif any_significant_delta:
         confidence = "approximate"
-        notes.append(
-            f"some track lengths differ by more than {LENGTH_TOLERANCE_MS // 1000}s"
-        )
+        notes.append(f"some track lengths differ by more than {LENGTH_TOLERANCE_MS // 1000}s")
         if any_unknown_length:
             notes.append("some MB tracks have no recorded length")
     elif any_unknown_length:

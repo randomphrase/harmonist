@@ -1,4 +1,5 @@
 """Smoke tests for chunk A foundations: config, models, sidecar."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 
 
 # ---------- config ----------
+
 
 def test_config_loads_with_env_overrides(monkeypatch, tmp_path):
     monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(tmp_path / "cfg"))
@@ -144,15 +146,20 @@ def test_sidecar_write_preserves_existing_temp_uid(tmp_path):
     """A sidecar with a temp_uid and no mbid keeps the same uid on rewrite."""
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
-    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION,
-                                store_url="https://x.bandcamp.com/album/y"))
+    sc.write(
+        album_dir,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url="https://x.bandcamp.com/album/y"),
+    )
     first = sc.read(album_dir)
     # Rewrite (e.g. user updates store_url) — temp_uid should not regenerate
-    sc.write(album_dir, Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
-        store_url="https://x.bandcamp.com/album/different",
-        temp_uid=first.temp_uid,
-    ))
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/different",
+            temp_uid=first.temp_uid,
+        ),
+    )
     second = sc.read(album_dir)
     assert second.temp_uid == first.temp_uid
 
@@ -205,6 +212,7 @@ def test_sidecar_round_trip_with_optional_item_id(tmp_path):
 
 # ---------- sidecar ----------
 
+
 def test_sidecar_round_trip_bandcamp(tmp_path):
     album_dir = tmp_path / "Artist" / "Album"
     album_dir.mkdir(parents=True)
@@ -248,9 +256,7 @@ def test_sidecar_returns_none_when_absent(tmp_path):
 def test_sidecar_rejects_unknown_schema(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
-    sc.sidecar_path(album_dir).write_text(
-        '{"schema_version": 99}', encoding="utf-8"
-    )
+    sc.sidecar_path(album_dir).write_text('{"schema_version": 99}', encoding="utf-8")
     with pytest.raises(sc.UnsupportedSchemaVersion):
         sc.read(album_dir)
 
@@ -324,5 +330,3 @@ def test_sidecar_round_trip_with_match_candidate(tmp_path):
     assert c.track_comparisons[1].delta_ms is None
     assert c.proposed_at == candidate.proposed_at
     assert c.notes == candidate.notes
-
-

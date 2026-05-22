@@ -1,4 +1,5 @@
 """Tests for mb_search.search_releases."""
+
 from __future__ import annotations
 
 import musicbrainzngs
@@ -129,7 +130,8 @@ def test_handles_missing_optional_fields(monkeypatch):
 def test_passes_limit(monkeypatch):
     seen = {}
     monkeypatch.setattr(
-        musicbrainzngs, "search_releases",
+        musicbrainzngs,
+        "search_releases",
         lambda **kw: (seen.update(kw), {"release-list": []})[1],
     )
     search_releases("a", "t", limit=5)

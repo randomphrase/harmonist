@@ -4,6 +4,7 @@ Picard-compatible atom naming throughout. Custom atoms use the
 `----:com.apple.iTunes:<Name>` form; standard text uses ©-prefixed
 4-byte atoms (©nam, ©alb, etc., where © is U+00A9 == 0xa9).
 """
+
 from __future__ import annotations
 
 from pathlib import Path

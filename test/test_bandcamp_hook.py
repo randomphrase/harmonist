@@ -1,4 +1,5 @@
 """Tests for bandcamp_hook — URL construction, cap, sidecar capture."""
+
 from __future__ import annotations
 
 import asyncio
@@ -34,13 +35,16 @@ class _StubItem:
 
 # ---------- construct_bandcamp_url ----------
 
+
 def test_url_from_subdomain_hints():
     item = _StubItem(url_hints={"subdomain": "myartist", "slug": "my-album", "item_type": "album"})
     assert construct_bandcamp_url(item) == "https://myartist.bandcamp.com/album/my-album"
 
 
 def test_url_from_custom_domain_hints():
-    item = _StubItem(url_hints={"custom_domain": "music.example.com", "slug": "my-album", "item_type": "album"})
+    item = _StubItem(
+        url_hints={"custom_domain": "music.example.com", "slug": "my-album", "item_type": "album"}
+    )
     assert construct_bandcamp_url(item) == "https://music.example.com/album/my-album"
 
 
@@ -80,6 +84,7 @@ def test_url_returns_none_with_garbage_hints():
 
 # ---------- check_download_cap ----------
 
+
 def test_cap_under():
     check_download_cap(3, 5)  # no raise
 
@@ -101,6 +106,7 @@ def test_cap_zero():
 
 
 # ---------- write_sidecar_for_item ----------
+
 
 def test_write_sidecar_creates_file_with_correct_data(tmp_path):
     album_dir = tmp_path / "Artist" / "Album"
@@ -166,9 +172,7 @@ def test_sync_items_raises_when_over_cap(monkeypatch):
     async def parent_sync_items(self):
         parent_called.append(True)
 
-    monkeypatch.setattr(
-        "harmonist.bandcamp_hook._BCSyncer.sync_items", parent_sync_items
-    )
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_items", parent_sync_items)
 
     with pytest.raises(CapExceededError):
         asyncio.run(s.sync_items())
@@ -186,9 +190,7 @@ def test_sync_items_excludes_ignored_from_cap_count(monkeypatch):
     async def parent_sync_items(self):
         parent_called.append(True)
 
-    monkeypatch.setattr(
-        "harmonist.bandcamp_hook._BCSyncer.sync_items", parent_sync_items
-    )
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_items", parent_sync_items)
 
     asyncio.run(s.sync_items())  # should NOT raise
     assert parent_called == [True]
@@ -196,7 +198,11 @@ def test_sync_items_excludes_ignored_from_cap_count(monkeypatch):
 
 def test_sync_items_excludes_preorders_from_cap_count(monkeypatch):
     s = _bare_syncer(max_downloads=1)
-    items = [_StubItem(item_id=0), _StubItem(item_id=1, is_preorder=True), _StubItem(item_id=2, is_preorder=True)]
+    items = [
+        _StubItem(item_id=0),
+        _StubItem(item_id=1, is_preorder=True),
+        _StubItem(item_id=2, is_preorder=True),
+    ]
     s.bandcamp.purchases = items
     s.ignores.is_ignored = lambda item: False
 
@@ -319,9 +325,7 @@ def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
         parent_called.append(True)
         return True
 
-    monkeypatch.setattr(
-        "harmonist.bandcamp_hook._BCSyncer.sync_item", parent_sync_item
-    )
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_item", parent_sync_item)
 
     item = _StubItem(item_id=12345, url_hints={"subdomain": "x", "slug": "y"})
     result = s.sync_item(item)
@@ -350,6 +354,7 @@ class _StubBandcamp:
 
 def _patch_bandcamp(monkeypatch):
     import bandcampsync.sync as bc_sync_mod
+
     monkeypatch.setattr(bc_sync_mod, "Bandcamp", _StubBandcamp)
 
 
@@ -362,6 +367,7 @@ def test_harmonist_syncer_accepts_str_or_path(tmp_path, monkeypatch, dir_path_ty
     with `'str' object has no attribute 'iterdir'`.
     """
     from pathlib import Path
+
     music_dir = tmp_path / "music"
     music_dir.mkdir()
     ignores_file = tmp_path / "ignores.txt"
@@ -435,8 +441,12 @@ def test_sync_item_invokes_progress_callback(monkeypatch, tmp_path):
         lambda self, item: True,
     )
 
-    item = _StubItem(item_id=1, band_name="My Band", item_title="My Album",
-                     url_hints={"subdomain": "x", "slug": "y"})
+    item = _StubItem(
+        item_id=1,
+        band_name="My Band",
+        item_title="My Album",
+        url_hints={"subdomain": "x", "slug": "y"},
+    )
     s.sync_item(item)
     assert seen == ["My Band / My Album"]
 
@@ -478,9 +488,7 @@ def test_sync_item_does_not_short_circuit_when_no_match(monkeypatch, tmp_path):
         parent_called.append(True)
         return True
 
-    monkeypatch.setattr(
-        "harmonist.bandcamp_hook._BCSyncer.sync_item", parent_sync_item
-    )
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_item", parent_sync_item)
 
     item = _StubItem(item_id=12345, url_hints={"subdomain": "new", "slug": "alb"})
     result = s.sync_item(item)

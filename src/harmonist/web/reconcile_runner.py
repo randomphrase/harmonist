@@ -8,6 +8,7 @@ The runner iterates orphans, calls `reconcile.reconcile_album()` for each,
 rate-limits MB queries at ~1/sec to stay within MusicBrainz's published
 limits.
 """
+
 from __future__ import annotations
 
 import logging
@@ -130,8 +131,13 @@ class ReconcileRunner:
                 self._status.current_item = ""
                 self._status.last_error = error
 
-    def _update_status(self, *, current_item: str = "", completed: Optional[int] = None,
-                       total: Optional[int] = None) -> None:
+    def _update_status(
+        self,
+        *,
+        current_item: str = "",
+        completed: Optional[int] = None,
+        total: Optional[int] = None,
+    ) -> None:
         """Callback handed to the runner_fn so it can report progress."""
         with self._lock:
             if current_item is not None:
@@ -164,10 +170,7 @@ def reconcile_pending_orphans(
 
     exempt = exempt_paths or set()
     albums = scanner.scan(music_dir)
-    pending = [
-        a for a in albums
-        if a.state == AlbumState.NEW and a.path not in exempt
-    ]
+    pending = [a for a in albums if a.state == AlbumState.NEW and a.path not in exempt]
     total = len(pending)
     if status_updater:
         status_updater(total=total, completed=0)
@@ -180,8 +183,7 @@ def reconcile_pending_orphans(
 
     for idx, album in enumerate(pending, start=1):
         if status_updater:
-            status_updater(current_item=f"{album.artist} / {album.title}",
-                           completed=completed)
+            status_updater(current_item=f"{album.artist} / {album.title}", completed=completed)
         try:
             sc = reconcile.reconcile_album(album.path, fetch_urls=fetch_urls)
         except Exception as e:

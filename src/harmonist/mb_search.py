@@ -5,6 +5,7 @@ The primary lookup path for Bandcamp albums is `mb_lookup.lookup_by_bandcamp_url
 ingests, where the user has artist + title text and we surface candidate
 releases for them to pick from.
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,7 +41,11 @@ def search_releases(artist: str, title: str, limit: int = 10) -> list[dict]:
 
     try:
         result = musicbrainzngs.search_releases(query=query, limit=limit)
-    except (musicbrainzngs.NetworkError, musicbrainzngs.ResponseError, musicbrainzngs.AuthenticationError) as e:
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.ResponseError,
+        musicbrainzngs.AuthenticationError,
+    ) as e:
         raise MBSearchError(f"MB search failed: {e}") from e
 
     out: list[dict] = []

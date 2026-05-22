@@ -12,6 +12,7 @@ Follows the MusicBrainz Picard ID3v2 mapping
 The comment (`COMM`) frame is left untouched on write so a Bandcamp URL
 recovered into it survives a retag — mirrors the M4A behaviour.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -175,10 +176,12 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
         tags.setall("TDRC", [TDRC(encoding=Encoding.UTF8, text=[tagset.date])])
 
     # ---- Numeric position ("n/total") ----
-    tags.setall("TRCK", [TRCK(encoding=Encoding.UTF8,
-                              text=[f"{tagset.track_num}/{tagset.track_total}"])])
-    tags.setall("TPOS", [TPOS(encoding=Encoding.UTF8,
-                              text=[f"{tagset.disc_num}/{tagset.disc_total}"])])
+    tags.setall(
+        "TRCK", [TRCK(encoding=Encoding.UTF8, text=[f"{tagset.track_num}/{tagset.track_total}"])]
+    )
+    tags.setall(
+        "TPOS", [TPOS(encoding=Encoding.UTF8, text=[f"{tagset.disc_num}/{tagset.disc_total}"])]
+    )
 
     # ---- Optional album-level metadata ----
     if tagset.label:
@@ -196,8 +199,11 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     if cover is not None:
         mime = "image/png" if cover[:4] == b"\x89PNG" else "image/jpeg"
         tags.delall("APIC")
-        tags.add(APIC(encoding=Encoding.UTF8, mime=mime,
-                      type=PictureType.COVER_FRONT, desc="", data=cover))
+        tags.add(
+            APIC(
+                encoding=Encoding.UTF8, mime=mime, type=PictureType.COVER_FRONT, desc="", data=cover
+            )
+        )
 
     # COMM intentionally NOT touched — preserves a recovered Bandcamp URL.
 

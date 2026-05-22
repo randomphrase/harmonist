@@ -7,6 +7,7 @@ submodules (`m4a`, eventually `mp3`, `flac`, `vorbis`).
 Adding a new format: implement a submodule exposing `EXTENSIONS` and the
 read/write functions used here, then register it in `_MODULES`.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

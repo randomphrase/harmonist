@@ -5,6 +5,7 @@
 serialise it to its native tag representation (MP4 atoms, ID3v2 frames,
 Vorbis comments, etc.).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ class TagSet:
     are the same across every track of an album. Per-track fields
     (title, mb_track_id, artist, track_num) vary.
     """
+
     # Album-level identity
     mb_album_id: str
     album: str

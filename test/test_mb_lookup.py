@@ -1,4 +1,5 @@
 """Tests for mb_lookup — uses monkeypatch to stub musicbrainzngs."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -11,6 +12,7 @@ from harmonist.mb_lookup import MBError, fetch_release, fetch_release_urls, look
 
 
 # ---------- configure ----------
+
 
 def test_configure_parses_user_agent(monkeypatch):
     seen = {}
@@ -35,6 +37,7 @@ def test_configure_rejects_malformed_user_agent():
 
 
 # ---------- lookup_by_bandcamp_url ----------
+
 
 def test_lookup_returns_mbid_when_url_linked(monkeypatch):
     response = {
@@ -119,6 +122,7 @@ def test_lookup_passes_correct_args(monkeypatch):
 
 # ---------- fetch_release ----------
 
+
 def test_fetch_release_unwraps_response(monkeypatch):
     response = {
         "release": {
@@ -159,6 +163,7 @@ def test_fetch_release_raises_on_error(monkeypatch):
 
 # ---------- fetch_release_urls ----------
 
+
 def test_fetch_release_urls_extracts_targets(monkeypatch):
     response = {
         "release": {
@@ -181,7 +186,8 @@ def test_fetch_release_urls_extracts_targets(monkeypatch):
 
 def test_fetch_release_urls_empty_when_no_relations(monkeypatch):
     monkeypatch.setattr(
-        musicbrainzngs, "get_release_by_id",
+        musicbrainzngs,
+        "get_release_by_id",
         lambda mbid, **kw: {"release": {"id": mbid}},
     )
     assert fetch_release_urls("rel-aaa") == []

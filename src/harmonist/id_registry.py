@@ -18,6 +18,7 @@ directory rename of a NEW album (before any sidecar exists) drops the old
 mapping and mints a new UUID for the new path — acceptable since NEW is a
 transient state, usually resolved by auto-reconcile within seconds.
 """
+
 from __future__ import annotations
 
 import uuid
