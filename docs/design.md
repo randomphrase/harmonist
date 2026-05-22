@@ -846,3 +846,25 @@ the release URL when reconciling.
 - **MB rate limiting:** musicbrainzngs imposes 1 req/sec by default. For batch tagging across many tracks during a single match, we may need to sequence carefully. Probably fine for the prototype's scale.
 - **Single-writer assumption on the ignores file** — if the user runs bandcampsync standalone outside the container, are concurrent writes possible? In practice almost certainly no, but worth flagging.
 - **Backup before tag write?** Optionally write `<file>.bak` before mutagen.save() during the prototype phase, removable by config later. QA's call.
+
+## 18. Future enhancements
+
+Decided-but-deferred features. Not in the initial release; captured so
+the state model and UI don't preclude them.
+
+- **Re-tag from MB** — see §2.4.
+- **Re-download from Bandcamp** — a per-album action for a fully-synced
+  (`COMPLETE`, bandcamp-sourced, `item_id` known) album that forces
+  bandcampsync to fetch it again. Use cases: the user changed their
+  default download format and wants existing albums re-fetched in the
+  new format, or deleted the local files expecting Bandcamp to
+  re-supply them. Tricky because it must deliberately override the two
+  dedup mechanisms that normally prevent re-downloads — the sidecar
+  `store_url` short-circuit in `bandcamp_hook.sync_item` *and* the
+  item's entry in `ignores.txt` — for that one album only, while still
+  respecting the per-sync download cap. Surfaces in the library
+  expanded view alongside Re-tag / Forget. Deferred for that
+  complexity.
+- **Recent-messages popup** — a panel showing the last ~20 status
+  messages (sync/reconcile transitions, action results); the status
+  bar only shows the most recent.
