@@ -74,7 +74,7 @@ def _scrape_artist_for_album(
                 continue
             text = (a.get_text() or "").strip().lower()
             title = (a.get("title") or "").strip().lower()
-            if target and (target == text or target == title):
+            if target and target in (text, title):
                 return str(base.join(href))
 
         # Fallback: substring match

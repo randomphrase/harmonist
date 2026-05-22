@@ -12,6 +12,7 @@ collection.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -176,10 +177,9 @@ class HarmonistSyncer(_BCSyncer):
     def sync_item(self, item):
         if self._progress_callback:
             label = f"{getattr(item, 'band_name', '?')} / {getattr(item, 'item_title', '?')}"
-            try:
+            # Never let a progress callback failure abort the sync.
+            with contextlib.suppress(Exception):
                 self._progress_callback(label)
-            except Exception:
-                pass  # never let a progress callback failure abort the sync
 
         # Short-circuit: if reconciliation has already created a sidecar
         # for this Bandcamp URL elsewhere on disk, don't re-download. Just

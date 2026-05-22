@@ -184,7 +184,7 @@ def test_sidecar_read_rejects_both_mbid_and_temp_uid(tmp_path):
         '{"schema_version": 1, "mb_release_id": "rel-x", "temp_uid": "uid-y"}',
         encoding="utf-8",
     )
-    with pytest.raises(sc.InvalidSidecar, match="mutually exclusive"):
+    with pytest.raises(sc.InvalidSidecarError, match="mutually exclusive"):
         sc.read(album_dir)
 
 
@@ -254,7 +254,7 @@ def test_sidecar_rejects_unknown_schema(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     sc.sidecar_path(album_dir).write_text('{"schema_version": 99}', encoding="utf-8")
-    with pytest.raises(sc.UnsupportedSchemaVersion):
+    with pytest.raises(sc.UnsupportedSchemaVersionError):
         sc.read(album_dir)
 
 
@@ -262,7 +262,7 @@ def test_sidecar_rejects_invalid_json(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     sc.sidecar_path(album_dir).write_text("not json {{{", encoding="utf-8")
-    with pytest.raises(sc.InvalidSidecar):
+    with pytest.raises(sc.InvalidSidecarError):
         sc.read(album_dir)
 
 

@@ -52,5 +52,5 @@ class TagSet:
     media: str | None = None
 
 
-class UnsupportedFormat(Exception):
+class UnsupportedFormatError(Exception):
     """Raised when no audio module handles a given file extension."""

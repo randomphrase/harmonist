@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import formats, id_registry
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
-from .sidecar import InvalidSidecar, UnsupportedSchemaVersion
+from .sidecar import InvalidSidecarError, UnsupportedSchemaVersionError
 from .sidecar import read as read_sidecar
 
 log = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def _iter_albums(root: Path) -> Iterator[Album]:
     for album_dir, audio_files in _find_album_dirs(root):
         try:
             yield _build_album(album_dir, audio_files)
-        except (InvalidSidecar, UnsupportedSchemaVersion) as e:
+        except (InvalidSidecarError, UnsupportedSchemaVersionError) as e:
             log.warning("skipping %s: %s", album_dir, e)
             continue
         except Exception as e:
@@ -65,10 +65,7 @@ def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
     # The sidecar is kept on disk; once the user fixes the on-disk tags
     # via Picard, the next scan re-derives state from the sidecar.
     inconsistent_tracks = _check_consistency(audio_files)
-    if inconsistent_tracks:
-        state = AlbumState.INCONSISTENT
-    else:
-        state = _derive_state(sidecar, audio_files)
+    state = AlbumState.INCONSISTENT if inconsistent_tracks else _derive_state(sidecar, audio_files)
 
     cover_path = _find_cover(album_dir)
 

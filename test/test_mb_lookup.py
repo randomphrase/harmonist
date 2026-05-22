@@ -31,7 +31,7 @@ def test_configure_parses_user_agent(monkeypatch):
 
 
 def test_configure_rejects_malformed_user_agent():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="user_agent must look like"):
         mb_lookup.configure("not a valid user agent")
 
 

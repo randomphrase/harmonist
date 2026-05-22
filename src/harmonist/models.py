@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
 
-class AlbumState(str, Enum):
+class AlbumState(StrEnum):
     NEW = "new"
     NEEDS_MBID = "needs_mbid"
     NEEDS_REVIEW = "needs_review"
