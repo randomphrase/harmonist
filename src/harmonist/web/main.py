@@ -88,8 +88,18 @@ def create_app(
             )
     else:
 
+        def resolve_after_download(album_dir: Path) -> None:
+            # Each freshly-downloaded album: look up its store URL on MB and
+            # tag immediately, so an in-MB release lands straight in the
+            # Library rather than waiting in NEEDS_MBID for a manual Recheck.
+            _resolve_by_store_url(album_dir, cfg, tagger)
+
         def runner_fn() -> Any:
-            return _run_bandcamp_sync(cfg, progress_callback=sync_runner.set_current_item)
+            return _run_bandcamp_sync(
+                cfg,
+                progress_callback=sync_runner.set_current_item,
+                post_download_callback=resolve_after_download,
+            )
 
     sync_runner._runner_fn = runner_fn
 
@@ -228,7 +238,10 @@ def _bandcamp_configured(cfg: config_mod.Config) -> bool:
 
 
 def _run_bandcamp_sync(
-    cfg: config_mod.Config, *, progress_callback: Callable[[str], None] | None = None
+    cfg: config_mod.Config,
+    *,
+    progress_callback: Callable[[str], None] | None = None,
+    post_download_callback: Callable[[Path], None] | None = None,
 ) -> HarmonistSyncer:
     """Build a HarmonistSyncer and let it run end-to-end."""
     if not cfg.cookies_file.exists():
@@ -250,24 +263,25 @@ def _run_bandcamp_sync(
         notify_url=None,
         max_downloads_per_sync=cfg.bandcamp.max_downloads_per_sync,
         progress_callback=progress_callback,
+        post_download_callback=post_download_callback,
     )
 
 
 def _apply_match(
-    album: Album, mbid: str, cfg: config_mod.Config, tagger: Tagger
+    album_path: Path, mbid: str, cfg: config_mod.Config, tagger: Tagger
 ) -> tuple[str, str]:
     """Fetch MB release, run match assessment, then either tag or stash candidate.
 
     Returns (status, message) where status is 'tagged' | 'needs_confirmation'.
     """
     release = mb_lookup.fetch_release(mbid)
-    candidate = assess_match(album.path, release)
+    candidate = assess_match(album_path, release)
 
     if candidate.confidence == "exact":
-        _tag_with_release(album, mbid, cfg, tagger)
+        _tag_with_release(album_path, mbid, cfg, tagger)
         return "tagged", "Match exact — files tagged."
 
-    existing = sidecar_mod.read(album.path)
+    existing = sidecar_mod.read(album_path)
     new = Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
         store_url=existing.store_url if existing else None,
@@ -279,7 +293,7 @@ def _apply_match(
         tagged_at=existing.tagged_at if existing else None,
         notes=existing.notes if existing else None,
     )
-    sidecar_mod.write(album.path, new)
+    sidecar_mod.write(album_path, new)
     return (
         "needs_confirmation",
         f"Match found ({candidate.confidence}) — please review and confirm.",
@@ -287,7 +301,7 @@ def _apply_match(
 
 
 def _tag_with_release(
-    album: Album,
+    album_path: Path,
     mbid: str,
     cfg: config_mod.Config,
     tagger: Tagger,
@@ -303,16 +317,16 @@ def _tag_with_release(
     release = mb_lookup.fetch_release(mbid)
     rg = release.get("release-group") or {}
     cover_path = cover_art.ensure_cover(
-        album.path,
+        album_path,
         release_mbid=release["id"],
         release_group_mbid=rg.get("id"),
         size=cfg.cover_art.size,
     )
-    tagger.tag_album(album.path, release, cover_path=cover_path, incomplete=incomplete)
+    tagger.tag_album(album_path, release, cover_path=cover_path, incomplete=incomplete)
 
     track_count_expected = sum(len(m.get("track-list", [])) for m in release.get("medium-list", []))
 
-    sc = sidecar_mod.read(album.path)
+    sc = sidecar_mod.read(album_path)
     new = Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
         store_url=sc.store_url if sc else None,
@@ -325,7 +339,31 @@ def _tag_with_release(
         track_count_expected=track_count_expected,
         notes=sc.notes if sc else None,
     )
-    sidecar_mod.write(album.path, new)
+    sidecar_mod.write(album_path, new)
+
+
+def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagger) -> str:
+    """Auto-resolve a sidecar's store_url against MusicBrainz.
+
+    Used right after a Bandcamp download so a release that IS in MB goes
+    straight to COMPLETE (Library) instead of waiting in NEEDS_MBID for a
+    manual Recheck. Looks up the store URL, and on a match runs the normal
+    match assessment: exact → tag (COMPLETE), approximate → stash candidate
+    (NEEDS_REVIEW), no match → leave as NEEDS_MBID. Never raises — returns a
+    short status string for logging.
+    """
+    sc = sidecar_mod.read(album_path)
+    if sc is None or not sc.store_url or sc.mb_release_id:
+        return "skipped"  # nothing to resolve, or already resolved
+    try:
+        mbid = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
+        if not mbid:
+            return "no_match"
+        status_str, _ = _apply_match(album_path, mbid, cfg, tagger)
+        return status_str
+    except Exception as e:
+        log.warning("auto-resolve failed for %s: %s", album_path, e)
+        return "error"
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +507,7 @@ def _register_routes(app: FastAPI) -> None:
             )
         try:
             _tag_with_release(
-                album,
+                album.path,
                 sc.mb_release_id,
                 request.app.state.cfg,
                 request.app.state.tagger,
@@ -591,7 +629,7 @@ def _register_routes(app: FastAPI) -> None:
 
         if candidate.confidence == "exact":
             try:
-                _tag_with_release(album, mbid, request.app.state.cfg, request.app.state.tagger)
+                _tag_with_release(album.path, mbid, request.app.state.cfg, request.app.state.tagger)
                 return _flash_response("Tagged", f"{album.title} (match found via Recheck)")
             except Exception as e:
                 log.exception("tag after recheck failed")
@@ -614,7 +652,7 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
         try:
             _tag_with_release(
-                album,
+                album.path,
                 sc.mb_match_candidate.mb_release_id,
                 request.app.state.cfg,
                 request.app.state.tagger,
@@ -637,7 +675,7 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
         try:
             _tag_with_release(
-                album,
+                album.path,
                 sc.mb_match_candidate.mb_release_id,
                 request.app.state.cfg,
                 request.app.state.tagger,
@@ -722,7 +760,7 @@ def _register_routes(app: FastAPI) -> None:
             )
         try:
             status_str, msg = _apply_match(
-                album, extracted, request.app.state.cfg, request.app.state.tagger
+                album.path, extracted, request.app.state.cfg, request.app.state.tagger
             )
         except mb_lookup.MBError as e:
             return _flash_response("MB lookup failed", str(e), level="error", tasks_changed=False)

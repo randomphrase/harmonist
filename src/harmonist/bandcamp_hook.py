@@ -158,10 +158,15 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         dir_path: Path | str,
         max_downloads_per_sync: int,
         progress_callback: Callable[[str], None] | None = None,
+        post_download_callback: Callable[[Path], None] | None = None,
         **kwargs: Any,
     ):
         self._max_downloads_per_sync = max_downloads_per_sync
         self._progress_callback = progress_callback
+        # Called with the album dir after each successful download + sidecar
+        # write. Used to auto-resolve the store URL against MusicBrainz so an
+        # in-MB release skips NEEDS_MBID. Must never abort the sync.
+        self._post_download_callback = post_download_callback
         super().__init__(dir_path=Path(dir_path), **kwargs)
 
     async def sync_items(self) -> None:
@@ -213,4 +218,13 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                     getattr(item, "item_id", "?"),
                     e,
                 )
+            else:
+                self._run_post_download(local_path)
         return result
+
+    def _run_post_download(self, album_dir: Path) -> None:
+        """Invoke the post-download hook (MB auto-resolve). Never aborts sync."""
+        if self._post_download_callback is None:
+            return
+        with contextlib.suppress(Exception):
+            self._post_download_callback(album_dir)
