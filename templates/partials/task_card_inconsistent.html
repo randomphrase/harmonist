@@ -1,9 +1,9 @@
-{% set badge_class = 'bg-red-500/10 text-red-300 border border-red-500/30' %}
+{% set badge_class = 'bg-red-50 text-red-600 border border-red-300' %}
 {% set badge_label = 'Inconsistent' %}
-<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-h-slate border border-red-500/40">
+<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border border-red-300">
     {% include 'partials/_album_header.html' %}
 
-    <p class="text-slate-400 text-xs mb-3">
+    <p class="text-muted text-xs mb-3">
         Tracks in this directory disagree on <span class="font-bold">album title</span> or
         <span class="font-bold">MusicBrainz Album Id</span> — likely multiple albums dumped into
         one folder. Harmonist won't guess at conflicting tags.
@@ -12,7 +12,7 @@
     <div class="overflow-x-auto mb-3">
         <table class="w-full text-xs">
             <thead>
-                <tr class="text-slate-500 uppercase tracking-widest text-2xs border-b border-slate-700">
+                <tr class="text-muted uppercase tracking-widest text-2xs border-b border-line">
                     <th class="text-left py-1 px-2 font-bold">File</th>
                     <th class="text-left py-1 px-2 font-bold">Album title (©alb)</th>
                     <th class="text-left py-1 px-2 font-bold">MB Album Id</th>
@@ -20,13 +20,13 @@
             </thead>
             <tbody>
                 {% for tr in album.inconsistent_tracks %}
-                <tr class="border-b border-slate-800/50 last:border-0">
-                    <td class="py-1 px-2 font-mono text-slate-400 truncate max-w-xs">{{ tr.file_name }}</td>
-                    <td class="py-1 px-2 text-slate-200">
-                        {% if tr.album_title %}{{ tr.album_title }}{% else %}<span class="text-slate-600 italic">— missing —</span>{% endif %}
+                <tr class="border-b border-line last:border-0">
+                    <td class="py-1 px-2 font-mono text-muted truncate max-w-xs">{{ tr.file_name }}</td>
+                    <td class="py-1 px-2 text-ink">
+                        {% if tr.album_title %}{{ tr.album_title }}{% else %}<span class="text-muted italic">— missing —</span>{% endif %}
                     </td>
-                    <td class="py-1 px-2 font-mono text-slate-400">
-                        {% if tr.mb_album_id %}{{ tr.mb_album_id }}{% else %}<span class="text-slate-600 italic">— missing —</span>{% endif %}
+                    <td class="py-1 px-2 font-mono text-muted">
+                        {% if tr.mb_album_id %}{{ tr.mb_album_id }}{% else %}<span class="text-muted italic">— missing —</span>{% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -34,7 +34,7 @@
         </table>
     </div>
 
-    <p class="text-slate-500 text-xs italic">
+    <p class="text-muted text-xs italic">
         Sort these into separate folders with
         <a href="https://picard.musicbrainz.org/" target="_blank" rel="noopener"
            class="text-mb-purple hover:underline">Picard</a>,

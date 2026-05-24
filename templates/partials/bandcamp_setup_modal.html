@@ -1,26 +1,26 @@
 {# Bandcamp sync setup dialog. Loaded into #modal via HTMX.
    `error` is set on re-render after a failed submit. #}
-<div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+<div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
      onclick="if (event.target === this) harmonistCloseModal()">
-    <div class="bg-h-slate border border-slate-700 rounded-lg max-w-lg w-full p-6 shadow-2xl space-y-4">
+    <div class="bg-white border border-line rounded-lg max-w-lg w-full p-6 shadow-2xl space-y-4">
         <div class="flex items-start justify-between gap-4">
-            <h2 class="text-xl font-bold text-white">Set up Bandcamp sync</h2>
+            <h2 class="text-xl font-bold text-ink">Set up Bandcamp sync</h2>
             <button type="button" onclick="harmonistCloseModal()"
-                    class="text-slate-500 hover:text-slate-200 text-2xl leading-none">&times;</button>
+                    class="text-muted hover:text-ink text-2xl leading-none">&times;</button>
         </div>
 
-        <p class="text-sm text-slate-400">
+        <p class="text-sm text-muted">
             Harmonist downloads your Bandcamp purchases using your account's
-            login cookies. Export a <code class="text-slate-300">cookies.txt</code>
+            login cookies. Export a <code class="text-ink">cookies.txt</code>
             from a browser where you're signed in to Bandcamp, then paste or
             upload it below. See the
             <a href="https://pypi.org/project/bandcampsync/" target="_blank" rel="noopener"
-               class="text-bc-teal hover:underline">bandcampsync instructions</a>
+               class="text-grass font-semibold hover:underline">bandcampsync instructions</a>
             for how to obtain it.
         </p>
 
         {% if error %}
-        <div class="px-3 py-2 rounded bg-red-500/15 text-red-300 border border-red-500/40 text-sm">
+        <div class="px-3 py-2 rounded bg-red-50 text-red-600 border border-red-300 text-sm">
             {{ error }}
         </div>
         {% endif %}
@@ -31,31 +31,31 @@
               hx-swap="innerHTML"
               class="space-y-3">
             <div>
-                <label class="block text-2xs uppercase tracking-widest text-slate-500 mb-1">
+                <label class="block text-2xs uppercase tracking-widest text-muted mb-1">
                     Paste cookies.txt contents
                 </label>
                 <textarea name="cookies_text" rows="6"
                           placeholder="# Netscape HTTP Cookie File&#10;.bandcamp.com	TRUE	/	..."
-                          class="w-full bg-h-charcoal border border-slate-700 rounded px-3 py-2 text-xs text-white font-mono focus:border-bc-teal outline-none"></textarea>
+                          class="w-full bg-white border border-line rounded px-3 py-2 text-xs text-ink font-mono focus:border-grass outline-none"></textarea>
             </div>
 
-            <div class="text-center text-2xs uppercase tracking-widest text-slate-600">— or —</div>
+            <div class="text-center text-2xs uppercase tracking-widest text-muted">— or —</div>
 
             <div>
-                <label class="block text-2xs uppercase tracking-widest text-slate-500 mb-1">
+                <label class="block text-2xs uppercase tracking-widest text-muted mb-1">
                     Upload cookies.txt
                 </label>
                 <input type="file" name="cookies_file" accept=".txt,text/plain"
-                       class="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border file:border-slate-600 file:bg-slate-700/40 file:text-slate-200 file:text-xs file:font-bold file:cursor-pointer">
+                       class="block w-full text-xs text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded file:border file:border-line file:bg-surface file:text-ink file:text-xs file:font-bold file:cursor-pointer">
             </div>
 
-            <div class="flex gap-2 justify-end pt-2 border-t border-slate-800">
+            <div class="flex gap-2 justify-end pt-2 border-t border-line">
                 <button type="button" onclick="harmonistCloseModal()"
-                        class="px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition">
+                        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Cancel
                 </button>
                 <button type="submit"
-                        class="px-3 py-1.5 bg-bc-teal/20 hover:bg-bc-teal/30 text-bc-teal border border-bc-teal/30 rounded text-xs font-bold uppercase tracking-widest transition">
+                        class="px-3 py-1.5 bg-grass hover:bg-grass-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
                     Save &amp; enable sync
                 </button>
             </div>

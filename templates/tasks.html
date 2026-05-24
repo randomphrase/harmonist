@@ -1,12 +1,12 @@
 <div class="flex justify-between items-baseline mb-3 text-sm flex-wrap gap-2">
-    <p class="text-slate-400">
-        <span class="font-bold text-slate-100">{{ albums|length }}</span> need attention
+    <p class="text-muted">
+        <span class="font-bold text-ink">{{ albums|length }}</span> need attention
     </p>
 </div>
 
 {% if not albums %}
-<div class="p-10 text-center bg-h-slate/40 rounded-lg border border-slate-700/50">
-    <p class="text-slate-400 italic">
+<div class="p-10 text-center border border-line rounded-lg">
+    <p class="text-muted italic">
         {% if total_albums %}
         Inbox empty — every album in your library is fully tagged and reconciled.
         {% else %}
@@ -33,14 +33,14 @@
     {% if group %}
     <section class="space-y-3">
         <div class="pl-3 border-l-2
-            {% if state == AlbumState.INCONSISTENT %}border-red-500/40
-            {% elif state == AlbumState.NEW %}border-slate-600
-            {% elif state == AlbumState.NEEDS_MBID %}border-bc-teal/40
-            {% elif state == AlbumState.NEEDS_REVIEW %}border-amber-500/40
-            {% elif state == AlbumState.NEEDS_SYNC %}border-amber-500/40
-            {% elif state == AlbumState.TAGGING %}border-mb-purple/40
+            {% if state == AlbumState.INCONSISTENT %}border-red-400
+            {% elif state == AlbumState.NEW %}border-line
+            {% elif state == AlbumState.NEEDS_MBID %}border-bc-teal/50
+            {% elif state == AlbumState.NEEDS_REVIEW %}border-amber-400
+            {% elif state == AlbumState.NEEDS_SYNC %}border-mb-orange/50
+            {% elif state == AlbumState.TAGGING %}border-mb-purple/50
             {% endif %}">
-            <h3 class="text-sm font-bold text-slate-200">
+            <h3 class="text-sm font-bold text-ink">
                 {% if state == AlbumState.INCONSISTENT %}Inconsistent
                 {% elif state == AlbumState.NEW %}New
                 {% elif state == AlbumState.NEEDS_MBID %}Needs MBID
@@ -48,14 +48,14 @@
                 {% elif state == AlbumState.NEEDS_SYNC %}Needs Sync
                 {% elif state == AlbumState.TAGGING %}Tagging
                 {% endif %}
-                <span class="text-slate-500 font-normal ml-1">· {{ group|length }}</span>
+                <span class="text-muted font-normal ml-1">· {{ group|length }}</span>
             </h3>
-            <p class="text-xs text-slate-500 mt-0.5">
+            <p class="text-xs text-muted mt-0.5">
                 {% if state == AlbumState.INCONSISTENT %}Files in one directory disagree on album title or MBID. Harmonist won't guess — use <a href="https://picard.musicbrainz.org/" target="_blank" rel="noopener" class="text-mb-purple hover:underline">Picard</a> to sort into separate folders, then refresh.
-                {% elif state == AlbumState.NEW %}No <code class="text-slate-400">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.
+                {% elif state == AlbumState.NEW %}No <code class="text-ink">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.
                 {% elif state == AlbumState.NEEDS_MBID %}MusicBrainz hasn't matched yet. If a store URL is known, seed via Harmony and recheck — otherwise paste an MBID or search by artist + title.
                 {% elif state == AlbumState.NEEDS_REVIEW %}MusicBrainz has a candidate but file/track shape isn't exact. Review the side-by-side and confirm or reject.
-                {% elif state == AlbumState.NEEDS_SYNC %}Tagged from MusicBrainz but Bandcamp purchase isn't linked yet. <span class="font-bold text-bc-teal">Click Sync</span> to confirm — that's the common case.
+                {% elif state == AlbumState.NEEDS_SYNC %}Tagged from MusicBrainz but Bandcamp purchase isn't linked yet. <span class="font-bold text-grass">Click Sync</span> to confirm — that's the common case.
                 {% elif state == AlbumState.TAGGING %}Files being written…
                 {% endif %}
             </p>

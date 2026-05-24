@@ -11,12 +11,29 @@
 @source "../src/harmonist/web/main.py";
 
 @theme {
-  /* Brand colours — match the original design language */
+  /* Badge colours — RESERVED for MB / Bandcamp / status badges so they pop
+     against the otherwise green-accented UI. Do NOT use these for general
+     chrome (links, buttons, tabs) — that's what --color-grass is for. */
   --color-mb-purple: #BA478F;
   --color-mb-orange: #EB743B;
   --color-bc-teal: #00A19D;
-  --color-h-slate: #1E293B;
-  --color-h-charcoal: #111827;
+
+  /* Primary accent — a balanced mid-green (chosen over teal so the teal
+     badge keeps its distinctness). Used for links, the active tab, and
+     primary buttons. */
+  --color-grass: #2E9E5B;
+  --color-grass-dark: #26864A;   /* hover / pressed */
+  --color-grass-soft: #E7F4EC;   /* tints, selected backgrounds */
+
+  /* Light theme: Bandcamp-style flat surfaces. Hierarchy comes from weight
+     + whitespace + hairline borders, not drop-shadows. `ink` = primary text,
+     `muted` = secondary, `line` = hairline borders, `bar` = the dark utility
+     strip (status bar / banners). */
+  --color-ink: #1A1A1A;
+  --color-muted: #6B7280;
+  --color-line: #E5E7EB;
+  --color-surface: #F4F5F6;   /* subtle panels on white */
+  --color-bar: #1F2430;       /* dark utility bar (status / terms-style) */
 
   /* Typography — self-host or Google Fonts (linked in base.html) */
   --font-sans: "Inter", system-ui, sans-serif;
