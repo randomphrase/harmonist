@@ -1,8 +1,8 @@
-{% set badge_class = 'bg-amber-500/10 text-amber-200 border border-amber-500/30' %}
+{% set badge_class = 'bg-mb-orange/10 text-mb-orange border border-mb-orange/40' %}
 {% set badge_label = 'Needs Sync' %}
-<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-h-slate border border-amber-500/30">
+<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border border-mb-orange/40">
     {% include 'partials/_album_header.html' %}
-    <p class="text-slate-500 text-xs mb-3">
+    <p class="text-muted text-xs mb-3">
         Tagged from MusicBrainz but the Bandcamp purchase isn't linked yet.
         Edit the URL below if needed, then run Sync.
     </p>
@@ -12,15 +12,15 @@
             <input type="url" name="url" required
                    value="{{ album.sidecar.store_url if album.sidecar else '' }}"
                    placeholder="https://artist.bandcamp.com/album/..."
-                   class="flex-grow bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-bc-teal outline-none font-mono">
+                   class="flex-grow bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-grass outline-none font-mono">
             <button type="submit"
-                    class="px-3 py-1.5 bg-bc-teal/20 hover:bg-bc-teal/30 text-bc-teal border border-bc-teal/30 rounded text-xs font-bold uppercase tracking-widest transition">
+                    class="px-3 py-1.5 bg-grass hover:bg-grass-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
                 Update URL
             </button>
         </form>
         <button hx-post="/unconfirmed/{{ album.id }}/manual"
                 hx-target="this" hx-swap="afterend"
-                class="self-start px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition">
+                class="self-start px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
             Mark purchased elsewhere
         </button>
     </div>

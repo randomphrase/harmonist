@@ -2,48 +2,48 @@
 {% set sc = album.sidecar %}
 {% set bc = sc.bandcamp if sc else None %}
 {% set store = store_name(sc.store_url if sc else None) %}
-<div id="lib-{{ album.id }}" class="border border-slate-800 rounded-md overflow-hidden bg-h-slate/40">
+<div id="lib-{{ album.id }}" class="border border-line rounded-md overflow-hidden bg-white">
     <button type="button"
-            class="w-full flex items-center gap-3 p-2 hover:bg-h-slate/70 text-left transition"
+            class="w-full flex items-center gap-3 p-2 hover:bg-surface text-left transition"
             onclick="harmonistToggleRow('{{ album.id }}')">
         <img loading="lazy"
              src="/cover/{{ album.id }}"
              onerror="this.style.visibility='hidden'"
              alt=""
              width="40" height="40"
-             class="w-10 h-10 rounded shadow object-cover bg-h-charcoal flex-shrink-0">
+             class="w-10 h-10 rounded object-cover bg-surface flex-shrink-0">
         <div class="flex-grow min-w-0">
-            <div class="text-sm text-slate-100 truncate flex items-center gap-2">
+            <div class="text-sm text-ink truncate flex items-center gap-2">
                 <span class="font-bold truncate">{{ album.title }}</span>
-                <span class="text-slate-500 truncate"> · {{ album.artist }}</span>
+                <span class="text-muted truncate"> · {{ album.artist }}</span>
                 {% if album.state == AlbumState.INCOMPLETE %}
-                <span class="px-1.5 py-0.5 text-2xs font-bold rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 whitespace-nowrap"
+                <span class="px-1.5 py-0.5 text-2xs font-bold rounded bg-amber-50 text-amber-700 border border-amber-300 whitespace-nowrap"
                       title="{{ album.track_count }} of {{ sc.track_count_expected }} tracks on disk">
                     {{ album.track_count }} of {{ sc.track_count_expected }}
                 </span>
                 {% endif %}
                 {% if album.partial_tag_count %}
-                <span class="px-1.5 py-0.5 text-2xs font-bold rounded bg-slate-500/10 text-slate-300 border border-slate-500/30 whitespace-nowrap"
+                <span class="px-1.5 py-0.5 text-2xs font-bold rounded bg-surface text-muted border border-line whitespace-nowrap"
                       title="Only {{ album.partial_tag_count[0] }} of {{ album.partial_tag_count[1] }} files carry the MusicBrainz Album Id atom. Use Picard to re-tag the rest.">
                     {{ album.partial_tag_count[0] }}/{{ album.partial_tag_count[1] }} tagged
                 </span>
                 {% endif %}
             </div>
-            <div class="text-2xs text-slate-600">
+            <div class="text-2xs text-muted">
                 {% if sc and sc.tagged_at %}{{ sc.tagged_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}
                 · {{ album.track_count }} track{{ 's' if album.track_count != 1 else '' }}
                 {% if album.audio_format %} · {{ album.audio_format }}{% endif %}
                 {% if store %} · {{ store }}{% endif %}
             </div>
         </div>
-        <svg id="chev-{{ album.id }}" class="w-4 h-4 text-slate-500 flex-shrink-0 transition-transform"
+        <svg id="chev-{{ album.id }}" class="w-4 h-4 text-muted flex-shrink-0 transition-transform"
              fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
         </svg>
     </button>
 
     {# Expanded view, hidden by default #}
-    <div id="exp-{{ album.id }}" class="hidden border-t border-slate-800 bg-h-charcoal/50 p-4">
+    <div id="exp-{{ album.id }}" class="hidden border-t border-line bg-surface p-4">
         <div class="flex flex-col md:flex-row gap-4 text-xs">
             {# LEFT: cover only #}
             <div class="w-full md:w-52 md:flex-shrink-0">
@@ -52,15 +52,15 @@
                      onerror="this.style.visibility='hidden'"
                      alt=""
                      width="208" height="208"
-                     class="w-full rounded shadow object-cover bg-h-charcoal"
+                     class="w-full rounded object-cover bg-white border border-line"
                      style="max-width: 208px; aspect-ratio: 1;">
             </div>
 
             {# RIGHT: title + artist on top, then external links, then meta #}
             <div class="space-y-3 flex-grow min-w-0">
                 <div>
-                    <div class="text-lg font-bold text-slate-100 break-words">{{ album.title }}</div>
-                    <div class="text-sm text-slate-400 break-words">{{ album.artist }}</div>
+                    <div class="text-lg font-bold text-ink break-words">{{ album.title }}</div>
+                    <div class="text-sm text-muted break-words">{{ album.artist }}</div>
                 </div>
 
                 {% if sc and (sc.mb_release_id or sc.store_url) %}
@@ -71,7 +71,7 @@
                     <a href="https://musicbrainz.org/release/{{ sc.mb_release_id }}"
                        target="_blank" rel="noopener"
                        title="View on MusicBrainz · {{ sc.mb_release_id }}"
-                       class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-mb-purple/15 text-mb-purple border border-mb-purple/40 hover:bg-mb-purple/25 hover:border-mb-purple transition">
+                       class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-mb-purple/10 text-mb-purple border border-mb-purple/40 hover:bg-mb-purple/20 hover:border-mb-purple transition">
                         {# Pointy-top hex in MB's orange — recognisable as the
                            MB mark while leaving the text in purple. #}
                         <svg viewBox="0 0 24 24" width="14" height="14"
@@ -93,7 +93,7 @@
                     <a href="{{ sc.store_url }}"
                        target="_blank" rel="noopener"
                        title="{{ store_tip }}"
-                       class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-bc-teal/15 text-bc-teal border border-bc-teal/40 hover:bg-bc-teal/25 hover:border-bc-teal transition">
+                       class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-bc-teal/10 text-bc-teal border border-bc-teal/40 hover:bg-bc-teal/20 hover:border-bc-teal transition">
                         {% if store == 'bandcamp' %}
                         {# Bandcamp parallelogram mark #}
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
@@ -114,40 +114,40 @@
                 <div class="grid grid-cols-3 gap-2">
                     {% if sc and sc.downloaded_at %}
                     <div>
-                        <div class="text-2xs text-slate-500 uppercase tracking-widest">Downloaded</div>
-                        <div class="text-slate-400 font-mono">{{ sc.downloaded_at.strftime('%Y-%m-%d') }}</div>
+                        <div class="text-2xs text-muted uppercase tracking-widest">Downloaded</div>
+                        <div class="text-ink font-mono">{{ sc.downloaded_at.strftime('%Y-%m-%d') }}</div>
                     </div>
                     {% endif %}
                     {% if sc and sc.added_at %}
                     <div>
-                        <div class="text-2xs text-slate-500 uppercase tracking-widest">Added</div>
-                        <div class="text-slate-400 font-mono">{{ sc.added_at.strftime('%Y-%m-%d') }}</div>
+                        <div class="text-2xs text-muted uppercase tracking-widest">Added</div>
+                        <div class="text-ink font-mono">{{ sc.added_at.strftime('%Y-%m-%d') }}</div>
                     </div>
                     {% endif %}
                     {% if sc and sc.tagged_at %}
                     <div>
-                        <div class="text-2xs text-slate-500 uppercase tracking-widest">Tagged</div>
-                        <div class="text-slate-400 font-mono">{{ sc.tagged_at.strftime('%Y-%m-%d') }}</div>
+                        <div class="text-2xs text-muted uppercase tracking-widest">Tagged</div>
+                        <div class="text-ink font-mono">{{ sc.tagged_at.strftime('%Y-%m-%d') }}</div>
                     </div>
                     {% endif %}
                 </div>
 
                 <div>
-                    <div class="text-2xs text-slate-500 uppercase tracking-widest">Path</div>
-                    <div class="text-slate-500 break-all font-mono text-2xs">{{ album.path }}</div>
+                    <div class="text-2xs text-muted uppercase tracking-widest">Path</div>
+                    <div class="text-muted break-all font-mono text-2xs">{{ album.path }}</div>
                 </div>
 
-                <div class="flex gap-2 pt-2 border-t border-slate-800">
+                <div class="flex gap-2 pt-2 border-t border-line">
                     <button hx-post="/retag/{{ album.id }}"
                             hx-target="this" hx-swap="afterend"
-                            class="px-3 py-1.5 bg-mb-purple/20 hover:bg-mb-purple/30 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
+                            class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
                         Re-tag from MB
                     </button>
                     <button hx-post="/forget/{{ album.id }}"
                             hx-target="#lib-{{ album.id }}"
                             hx-swap="outerHTML"
                             hx-confirm="Forget this album? The sidecar is deleted and the album reverts to NEW. Files are not touched."
-                            class="px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition">
+                            class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                         Forget
                     </button>
                 </div>

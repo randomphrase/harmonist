@@ -6,24 +6,24 @@
           class="flex gap-2">
         <input type="text" name="mbid" required
                placeholder="MB release URL or 36-char MBID"
-               class="flex-grow bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-mb-purple outline-none font-mono">
+               class="flex-grow bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-mb-purple outline-none font-mono">
         <button type="submit"
-                class="px-3 py-1.5 bg-mb-purple/20 hover:bg-mb-purple/30 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
+                class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
             Assign &amp; Tag
         </button>
     </form>
     <details class="text-xs">
-        <summary class="cursor-pointer text-slate-500 hover:text-slate-300 select-none">Or search MusicBrainz by name</summary>
+        <summary class="cursor-pointer text-muted hover:text-ink select-none">Or search MusicBrainz by name</summary>
         <form hx-post="/manual/{{ album.id }}/search"
               hx-target="#manual-search-{{ album.id }}"
               hx-swap="innerHTML"
               class="flex gap-2 mt-2">
             <input type="text" name="artist" value="{{ album.artist }}" placeholder="Artist"
-                   class="flex-1 min-w-0 bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-mb-purple outline-none">
+                   class="flex-1 min-w-0 bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-mb-purple outline-none">
             <input type="text" name="title" value="{{ album.title }}" placeholder="Album"
-                   class="flex-1 min-w-0 bg-h-charcoal border border-slate-700 rounded px-3 py-1.5 text-xs text-white focus:border-mb-purple outline-none">
+                   class="flex-1 min-w-0 bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-mb-purple outline-none">
             <button type="submit"
-                    class="px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-200 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">
+                    class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">
                 Search
             </button>
         </form>

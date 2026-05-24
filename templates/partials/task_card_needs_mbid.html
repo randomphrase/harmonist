@@ -1,27 +1,27 @@
-{% set badge_class = 'bg-bc-teal/10 text-bc-teal border border-bc-teal/30' %}
+{% set badge_class = 'bg-bc-teal/10 text-bc-teal border border-bc-teal/40' %}
 {% set badge_label = 'Needs MBID' %}
 {% set has_store_url = album.sidecar and album.sidecar.store_url %}
-<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-h-slate border {% if has_store_url %}border-bc-teal/30{% else %}border-slate-600{% endif %}">
+<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border {% if has_store_url %}border-bc-teal/40{% else %}border-line{% endif %}">
     {% include 'partials/_album_header.html' %}
     {% if has_store_url %}
-    <p class="text-slate-500 text-xs mb-3">
+    <p class="text-muted text-xs mb-3">
         Store URL on file but no MusicBrainz match yet. Seed it on Harmony, then recheck —
         or paste an MBID below.
     </p>
     <div class="flex gap-2 flex-wrap mb-3">
         <a href="{{ harmony_base }}/release?url={{ album.sidecar.store_url|urlencode }}"
            target="_blank" rel="noopener"
-           class="px-3 py-1.5 bg-mb-purple/20 hover:bg-mb-purple/30 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
+           class="px-3 py-1.5 bg-grass hover:bg-grass-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
             Open in Harmony ↗
         </a>
         <button hx-post="/recheck/{{ album.id }}"
                 hx-target="this" hx-swap="afterend"
-                class="px-3 py-1.5 bg-slate-700/40 hover:bg-slate-700/60 text-slate-200 border border-slate-600 rounded text-xs font-bold uppercase tracking-widest transition">
+                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
             Recheck
         </button>
     </div>
     {% else %}
-    <p class="text-slate-500 text-xs mb-3">No store URL — provide an MBID or search MusicBrainz.</p>
+    <p class="text-muted text-xs mb-3">No store URL — provide an MBID or search MusicBrainz.</p>
     {% endif %}
 
     {% include 'partials/_manual_form.html' %}
