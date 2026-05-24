@@ -36,8 +36,9 @@ music_demo/            # Demo music files (gitignored)
 # Dev server (real mode)
 uvicorn harmonist.web.main:app --reload
 
-# Demo mode (uses MockSearcher + MockScraper, music_demo/ dir)
-DEMO_MODE=1 uvicorn harmonist.web.main:app --reload
+# Demo mode (demo.py monkey-patches MB/Bandcamp/cover-art with canned data
+# and seeds a sample library into the configured music_dir)
+HARMONIST_DEMO_MODE=1 uvicorn harmonist.web.main:app --reload
 ```
 
 ## Tests
@@ -75,7 +76,7 @@ The integration test (`test_workflow.py`) requires a real `.m4a` template file a
 - Albums are identified by an MD5 hash of their directory path (`album.id`)
 - `.m4a` tag for MBID: `----:com.apple.iTunes:MUSICBRAINZ_RELEASEID`
 - Bandcamp URL is stored in the `©cmt` comment tag and used as the Bandcamp album link
-- `DEMO_MODE=1` env var enables mocks — `MockSearcher` returns results only for "Beatles"; `MockScraper` always returns fake metadata
+- `HARMONIST_DEMO_MODE=1` env var (or `demo_mode = true` in `harmonist.toml`) enables demo mode: `demo.py` monkey-patches `mb_lookup`/`mb_search`/`cover_art` to return canned demo releases and seeds a sample library covering every album state into the configured music dir. No real network calls.
 - In-memory `SEARCH_CACHE` in `main.py` avoids re-querying MB on every `/tasks` load
 - Templates live at project root `/templates/`, not in the `src` tree
 
