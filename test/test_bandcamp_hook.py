@@ -156,6 +156,7 @@ def _bare_syncer(max_downloads: int = 5) -> HarmonistSyncer:
     s = HarmonistSyncer.__new__(HarmonistSyncer)
     s._max_downloads_per_sync = max_downloads
     s._progress_callback = None
+    s._post_download_callback = None
     s.bandcamp = MagicMock()
     s.ignores = MagicMock()
     s.local_media = MagicMock()
@@ -233,6 +234,48 @@ def test_sync_item_writes_sidecar_on_successful_download(monkeypatch, tmp_path):
     assert sc.has_sidecar(album_dir)
     sidecar = sc.read(album_dir)
     assert sidecar.bandcamp.item_id == 99
+
+
+def test_sync_item_invokes_post_download_callback_after_sidecar(monkeypatch, tmp_path):
+    """After a successful download + sidecar write, the post-download hook
+    fires with the album dir (this is how MB auto-resolve gets triggered)."""
+    album_dir = tmp_path / "Artist" / "Album"
+    album_dir.mkdir(parents=True)
+
+    s = _bare_syncer()
+    s.local_media.get_path_for_purchase = MagicMock(return_value=album_dir)
+    seen = []
+    s._post_download_callback = lambda d: seen.append(d)
+
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item: True,
+    )
+
+    item = _StubItem(item_id=99, url_hints={"subdomain": "x", "slug": "y"})
+    s.sync_item(item)
+    assert seen == [album_dir]
+
+
+def test_sync_item_post_download_callback_failure_does_not_break_sync(monkeypatch, tmp_path):
+    """A throwing post-download hook must not abort the sync."""
+    album_dir = tmp_path / "Artist" / "Album"
+    album_dir.mkdir(parents=True)
+
+    s = _bare_syncer()
+    s.local_media.get_path_for_purchase = MagicMock(return_value=album_dir)
+
+    def boom(_d):
+        raise RuntimeError("resolve blew up")
+
+    s._post_download_callback = boom
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item: True,
+    )
+
+    item = _StubItem(item_id=99, url_hints={"subdomain": "x", "slug": "y"})
+    assert s.sync_item(item) is True  # download still reported as success
 
 
 def test_sync_item_no_sidecar_on_skipped_download(monkeypatch, tmp_path):
