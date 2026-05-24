@@ -8,6 +8,7 @@ import uuid
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from . import id_registry
 from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
@@ -86,12 +87,12 @@ def _normalise_identity(s: Sidecar, album_dir: Path) -> Sidecar:
     return s
 
 
-def _to_dict(s: Sidecar) -> dict:
-    d: dict = {"schema_version": s.schema_version}
+def _to_dict(s: Sidecar) -> dict[str, Any]:
+    d: dict[str, Any] = {"schema_version": s.schema_version}
     if s.store_url:
         d["store_url"] = s.store_url
     if s.bandcamp:
-        bd: dict = {}
+        bd: dict[str, Any] = {}
         if s.bandcamp.item_id is not None:
             bd["item_id"] = s.bandcamp.item_id
         if s.bandcamp.band_id is not None:
@@ -117,8 +118,8 @@ def _to_dict(s: Sidecar) -> dict:
     return d
 
 
-def _candidate_to_dict(c: MatchCandidate) -> dict:
-    out: dict = {
+def _candidate_to_dict(c: MatchCandidate) -> dict[str, Any]:
+    out: dict[str, Any] = {
         "mb_release_id": c.mb_release_id,
         "confidence": c.confidence,
         "file_count": c.file_count,
@@ -133,8 +134,8 @@ def _candidate_to_dict(c: MatchCandidate) -> dict:
     return out
 
 
-def _comparison_to_dict(tc: TrackComparison) -> dict:
-    out: dict = {}
+def _comparison_to_dict(tc: TrackComparison) -> dict[str, Any]:
+    out: dict[str, Any] = {}
     if tc.file_name is not None:
         out["file_name"] = tc.file_name
     if tc.file_duration_ms is not None:
@@ -150,7 +151,7 @@ def _comparison_to_dict(tc: TrackComparison) -> dict:
     return out
 
 
-def _candidate_from_dict(d: dict) -> MatchCandidate:
+def _candidate_from_dict(d: dict[str, Any]) -> MatchCandidate:
     return MatchCandidate(
         mb_release_id=d["mb_release_id"],
         confidence=d["confidence"],
@@ -172,7 +173,7 @@ def _candidate_from_dict(d: dict) -> MatchCandidate:
     )
 
 
-def _from_dict(d: dict, source_path: Path) -> Sidecar:
+def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
     sv = d.get("schema_version")
     if sv != CURRENT_SCHEMA_VERSION:
         raise UnsupportedSchemaVersionError(

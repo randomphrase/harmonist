@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from mutagen.flac import Picture
 
@@ -86,7 +87,7 @@ def make_picture(cover: bytes) -> Picture:
     return pic
 
 
-def ogg_set_cover(audio, cover: bytes) -> None:
+def ogg_set_cover(audio: Any, cover: bytes) -> None:
     """Cover-setter for Ogg containers (Vorbis/Opus): a base64 FLAC
     picture block in the METADATA_BLOCK_PICTURE comment."""
     pic = make_picture(cover)
@@ -96,8 +97,8 @@ def ogg_set_cover(audio, cover: bytes) -> None:
 class VorbisTagger:
     def __init__(
         self,
-        open_fn: Callable[[Path], object | None],
-        set_cover: Callable[[object, bytes], None],
+        open_fn: Callable[[Path], Any | None],
+        set_cover: Callable[[Any, bytes], None],
     ):
         self._open = open_fn
         self._set_cover = set_cover
@@ -132,7 +133,8 @@ class VorbisTagger:
         audio = self._open(path)
         if audio is None or not audio.info.length:
             return None
-        return round(audio.info.length * 1000)
+        ms: int = round(audio.info.length * 1000)
+        return ms
 
     # ---- write ----
 

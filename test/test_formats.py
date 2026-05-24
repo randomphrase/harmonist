@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -133,6 +134,7 @@ def test_comment_preserved_through_tagging(tmp_path, ext, fixture):
 
 def _seed_comment(path: Path, value: str) -> None:
     ext = path.suffix.lower()
+    audio: Any
     if ext in (".m4a", ".mp4"):
         from mutagen.mp4 import MP4
 

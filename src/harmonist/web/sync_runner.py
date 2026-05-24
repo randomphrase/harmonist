@@ -25,7 +25,7 @@ class SyncStatus:
     new_items: int = 0
     current_item: str = ""  # what's downloading right now, while running
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "state": self.state,
             "started_at": _iso(self.started_at),
@@ -63,7 +63,7 @@ class SyncRunner:
         with self._lock:
             return self._status.state == "running"
 
-    def status(self) -> dict:
+    def status(self) -> dict[str, Any]:
         with self._lock:
             return self._status.to_dict()
 

@@ -23,6 +23,7 @@ import json
 import logging
 import shutil
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -30,9 +31,7 @@ from typing import Any
 from mutagen.mp4 import MP4
 
 from . import sidecar as sidecar_mod
-from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
-from .sidecar import CURRENT_SCHEMA_VERSION
-from .tagger import (
+from .formats.m4a import (
     ATOM_ALBUM,
     ATOM_ARTIST,
     ATOM_COMMENT,
@@ -40,6 +39,8 @@ from .tagger import (
     ATOM_TITLE,
     ATOM_TRACK_NUM,
 )
+from .models import BandcampInfo, MatchCandidate, Release, Sidecar, TrackComparison
+from .sidecar import CURRENT_SCHEMA_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ STEP_DELAY_SECONDS = 0.6
 # Sidecar spec keys mirror the Sidecar dataclass; `mb_match_candidate` if
 # present is filled in with a synthetic side-by-side.
 
-LIBRARY: list[dict] = [
+LIBRARY: list[dict[str, Any]] = [
     {
         # State: NEW — no sidecar, but has MBID atom + Bandcamp ©cmt.
         # Reconcile derives a sidecar (transitions to NEEDS_SYNC).
@@ -168,7 +169,7 @@ LIBRARY: list[dict] = [
 
 
 # Pending "Bandcamp purchases" — popped one per Sync click.
-PENDING_PURCHASES: list[dict] = [
+PENDING_PURCHASES: list[dict[str, Any]] = [
     {
         "artist": "CB4",
         "album": "Straight Outta Lowcash",
@@ -198,7 +199,7 @@ PENDING_PURCHASES: list[dict] = [
 
 def _release(
     mbid: str, artist: str, title: str, tracks: list[str], lengths_ms: list[int] | None = None
-) -> dict:
+) -> Release:
     if lengths_ms is None:
         lengths_ms = [1000] * len(tracks)
     return {
@@ -242,7 +243,7 @@ def _release(
     }
 
 
-MB_RELEASES: dict[str, dict] = {
+MB_RELEASES: dict[str, Release] = {
     "demo-rel-wyld": _release(
         "demo-rel-wyld",
         "Wyld Stallion",
@@ -333,7 +334,7 @@ PURCHASE_ITEM_IDS: dict[str, int] = {
 # Pending queue (in-memory, resets on restart or /demo/reset)
 # ---------------------------------------------------------------------------
 
-_pending_queue: list[dict] = []
+_pending_queue: list[dict[str, Any]] = []
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +420,9 @@ def ensure_seeded(music_dir: Path) -> bool:
     return True
 
 
-def run_demo_sync(music_dir: Path, *, progress_callback=None) -> Any:
+def run_demo_sync(
+    music_dir: Path, *, progress_callback: Callable[[str], None] | None = None
+) -> Any:
     """Mirror the real syncer's two behaviours:
       1. For every already-on-disk album with a Bandcamp store_url and
          `bandcamp.item_id is None`, fill in the item_id (when the URL
@@ -446,7 +449,9 @@ def run_demo_sync(music_dir: Path, *, progress_callback=None) -> Any:
     return _Result()
 
 
-def _fill_in_existing_item_ids(music_dir: Path, *, progress_callback=None) -> int:
+def _fill_in_existing_item_ids(
+    music_dir: Path, *, progress_callback: Callable[[str], None] | None = None
+) -> int:
     """For each existing album whose store_url is a known demo purchase
     and whose bandcamp.item_id is None, patch the sidecar with the
     item_id from PURCHASE_ITEM_IDS. Returns the number patched.
@@ -496,7 +501,7 @@ def _fill_in_existing_item_ids(music_dir: Path, *, progress_callback=None) -> in
 # ---------------------------------------------------------------------------
 
 
-def fetch_release(mbid: str) -> dict:
+def fetch_release(mbid: str) -> Release:
     if mbid not in MB_RELEASES:
         from .mb_lookup import MBError
 
@@ -508,14 +513,14 @@ def fetch_release_urls(mbid: str) -> list[str]:
     return [url for url, m in URL_RELS.items() if m == mbid]
 
 
-def lookup_by_bandcamp_url(url: str) -> str | None:
-    return URL_RELS.get(url)
+def lookup_by_bandcamp_url(bandcamp_url: str) -> str | None:
+    return URL_RELS.get(bandcamp_url)
 
 
-def search_releases(artist: str, title: str, limit: int = 10) -> list[dict]:
+def search_releases(artist: str, title: str, limit: int = 10) -> list[dict[str, Any]]:
     a = (artist or "").strip().lower()
     t = (title or "").strip().lower()
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     for rel in MB_RELEASES.values():
         rel_artist = ""
         for ac in rel.get("artist-credit") or []:
@@ -546,11 +551,11 @@ def search_releases(artist: str, title: str, limit: int = 10) -> list[dict]:
 
 def ensure_cover(
     album_dir: Path,
-    *,
     release_mbid: str = "",
     release_group_mbid: str | None = None,
     size: str = "original",
-    **_kwargs,
+    *,
+    client: Any = None,
 ) -> Path | None:
     """Demo cover fetcher — returns existing cover.jpg if present, else copies a placeholder."""
     for name in ("cover.jpg", "cover.png"):
@@ -590,7 +595,7 @@ def _safe(name: str) -> str:
     return name.replace("/", "_").replace(":", "_").strip()
 
 
-def _materialise(music_dir: Path, spec: dict) -> None:
+def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
     """Lay out one demo album: dirs + .m4a files (with tags) + cover + sidecar."""
     album_dir = music_dir / _safe(spec["artist"]) / _safe(spec["album"])
     album_dir.mkdir(parents=True, exist_ok=True)
@@ -620,7 +625,7 @@ def _materialise(music_dir: Path, spec: dict) -> None:
         sidecar_mod.write(album_dir, _build_sidecar(sc_spec, spec))
 
 
-def _build_sidecar(sc_spec: dict, album_spec: dict) -> Sidecar:
+def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidecar:
     """Build a Sidecar dataclass from a spec-dict.
 
     Keys recognised:

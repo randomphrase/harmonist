@@ -6,8 +6,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlparse
+
+# MusicBrainz JSON shapes. `musicbrainzngs` returns plain untyped dicts whose
+# schema varies with the `includes=` we request and is riddled with optional,
+# nested keys we read defensively. The value type is genuinely Any, so a
+# TypedDict would only assert a shape we never validate at the boundary. These
+# aliases document *which* MB shape a dict represents at each call site.
+type Release = dict[str, Any]
+type Track = dict[str, Any]
 
 
 class AlbumState(StrEnum):

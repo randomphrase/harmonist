@@ -14,7 +14,7 @@ from itertools import zip_longest
 from pathlib import Path
 
 from . import formats
-from .models import MatchCandidate, MatchConfidence, TrackComparison
+from .models import MatchCandidate, MatchConfidence, Release, Track, TrackComparison
 from .tagger import _flatten_tracks, _track_title
 
 # Per-track length tolerance. Anything within this is "close enough" — covers
@@ -23,7 +23,7 @@ from .tagger import _flatten_tracks, _track_title
 LENGTH_TOLERANCE_MS = 4000
 
 
-def assess_match(album_dir: Path, release: dict) -> MatchCandidate:
+def assess_match(album_dir: Path, release: Release) -> MatchCandidate:
     """Compare files in album_dir to the MB release; return a MatchCandidate.
 
     Confidence levels:
@@ -119,7 +119,7 @@ def _file_title(file_path: Path) -> str | None:
     return formats.read_track_title(file_path)
 
 
-def _mb_track_length_ms(track: dict) -> int | None:
+def _mb_track_length_ms(track: Track) -> int | None:
     """Pull the track length in milliseconds out of an MB track dict."""
     raw = (track.get("recording") or {}).get("length") or track.get("length")
     if raw is None:

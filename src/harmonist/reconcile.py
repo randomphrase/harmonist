@@ -80,7 +80,7 @@ def reconcile_pending(
     album_dirs: list[Path],
     *,
     fetch_urls: Callable[[str], list[str]],
-) -> dict:
+) -> dict[str, int]:
     """Reconcile a batch of album dirs. Returns a stats summary."""
     stats = {"reconciled_bandcamp": 0, "reconciled_manual": 0, "skipped": 0, "errors": 0}
     for d in album_dirs:

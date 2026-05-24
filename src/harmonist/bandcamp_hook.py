@@ -40,7 +40,7 @@ def construct_bandcamp_url(item: Any) -> str | None:
     we can't determine the URL.
     """
     if direct := getattr(item, "_data", {}).get("item_url"):
-        return direct
+        return str(direct)
 
     hints = getattr(item, "_data", {}).get("url_hints")
     if not isinstance(hints, dict):
@@ -137,7 +137,9 @@ def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
     return None
 
 
-class HarmonistSyncer(_BCSyncer):
+# bandcampsync ships no types, so _BCSyncer is Any; subclassing it is the
+# whole point of this module.
+class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
     """bandcampsync.Syncer subclass with download cap + sidecar capture.
 
     NOTE: bandcampsync's parent __init__ runs the sync eagerly (calls
@@ -162,7 +164,7 @@ class HarmonistSyncer(_BCSyncer):
         self._progress_callback = progress_callback
         super().__init__(dir_path=Path(dir_path), **kwargs)
 
-    async def sync_items(self):
+    async def sync_items(self) -> None:
         # Count items that would actually download (i.e. not ignored, not preorder).
         candidates = []
         for item in self.bandcamp.purchases:
@@ -174,7 +176,7 @@ class HarmonistSyncer(_BCSyncer):
         check_download_cap(len(candidates), self._max_downloads_per_sync)
         await super().sync_items()
 
-    def sync_item(self, item):
+    def sync_item(self, item: Any) -> bool:
         if self._progress_callback:
             label = f"{getattr(item, 'band_name', '?')} / {getattr(item, 'item_title', '?')}"
             # Never let a progress callback failure abort the sync.
@@ -200,7 +202,7 @@ class HarmonistSyncer(_BCSyncer):
                     )
                 return False  # didn't download (already on disk)
 
-        result = super().sync_item(item)
+        result = bool(super().sync_item(item))
         if result:
             local_path = self.local_media.get_path_for_purchase(item)
             try:

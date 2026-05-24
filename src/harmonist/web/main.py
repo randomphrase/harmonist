@@ -8,10 +8,12 @@ import logging
 # Demo mode is conditionally imported in create_app() — keeps demo-only code
 # out of the production import path entirely.
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -80,13 +82,13 @@ def create_app(
         demo.install()
         demo.ensure_seeded(cfg.paths.music_dir)
 
-        def runner_fn():
+        def runner_fn() -> Any:
             return demo.run_demo_sync(
                 cfg.paths.music_dir, progress_callback=sync_runner.set_current_item
             )
     else:
 
-        def runner_fn():
+        def runner_fn() -> Any:
             return _run_bandcamp_sync(cfg, progress_callback=sync_runner.set_current_item)
 
     sync_runner._runner_fn = runner_fn
@@ -96,14 +98,15 @@ def create_app(
     # restart clears the set (acceptable tradeoff per user feedback).
     forgotten_paths: set[Path] = set()
 
-    reconcile_runner = ReconcileRunner(
-        runner_fn=lambda status_updater: reconcile_pending_orphans(
+    def reconcile_runner_fn(status_updater: Callable[..., None]) -> None:
+        reconcile_pending_orphans(
             cfg.paths.music_dir,
             fetch_urls=mb_lookup.fetch_release_urls,
             status_updater=status_updater,
             exempt_paths=forgotten_paths,
-        ),
-    )
+        )
+
+    reconcile_runner = ReconcileRunner(runner_fn=reconcile_runner_fn)
 
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     templates_dir = project_root / "templates"
@@ -138,7 +141,7 @@ def _register_demo_routes(app: FastAPI) -> None:
     from harmonist import demo
 
     @app.post("/demo/reset", response_class=HTMLResponse)
-    def demo_reset(request: Request):
+    def demo_reset(request: Request) -> Response:
         try:
             demo.reset(request.app.state.cfg.paths.music_dir)
         except RuntimeError as e:
@@ -153,8 +156,19 @@ def _register_demo_routes(app: FastAPI) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _ctx(request: Request, **extra) -> dict:
-    base = {"request": request, "cfg": request.app.state.cfg, "now": datetime.now(UTC)}
+def _templates(request: Request) -> Jinja2Templates:
+    """Typed accessor for the app's Jinja2Templates. `app.state` is dynamically
+    typed (Any), so going through here keeps route return types as Response."""
+    templates: Jinja2Templates = request.app.state.templates
+    return templates
+
+
+def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "request": request,
+        "cfg": request.app.state.cfg,
+        "now": datetime.now(UTC),
+    }
     base.update(extra)
     return base
 
@@ -213,7 +227,9 @@ def _bandcamp_configured(cfg: config_mod.Config) -> bool:
         return False
 
 
-def _run_bandcamp_sync(cfg: config_mod.Config, *, progress_callback=None):
+def _run_bandcamp_sync(
+    cfg: config_mod.Config, *, progress_callback: Callable[[str], None] | None = None
+) -> HarmonistSyncer:
     """Build a HarmonistSyncer and let it run end-to-end."""
     if not cfg.cookies_file.exists():
         raise FileNotFoundError(
@@ -320,7 +336,7 @@ def _tag_with_release(
 def _register_routes(app: FastAPI) -> None:
 
     @app.get("/", response_class=HTMLResponse)
-    def index(request: Request):
+    def index(request: Request) -> Response:
         albums = _albums(request)
         ctx = _ctx(
             request,
@@ -328,10 +344,10 @@ def _register_routes(app: FastAPI) -> None:
             total_albums=len(albums),
             sync_status=request.app.state.sync_runner.status(),
         )
-        return request.app.state.templates.TemplateResponse(request, "index.html", ctx)
+        return _templates(request).TemplateResponse(request, "index.html", ctx)
 
     @app.get("/tasks", response_class=HTMLResponse)
-    def tasks(request: Request):
+    def tasks(request: Request) -> Response:
         albums = _albums(request)
         # Auto-kick the reconciler if there are Orphans waiting and the
         # debounce window has elapsed. The runner internally handles the
@@ -339,18 +355,18 @@ def _register_routes(app: FastAPI) -> None:
         if any(a.state == AlbumState.NEW for a in albums):
             request.app.state.reconcile_runner.start()
         ctx = _ctx(request, albums=_inbox_albums(albums), total_albums=len(albums))
-        return request.app.state.templates.TemplateResponse(request, "tasks.html", ctx)
+        return _templates(request).TemplateResponse(request, "tasks.html", ctx)
 
     @app.get("/sync/status")
-    def sync_status(request: Request):
+    def sync_status(request: Request) -> Response:
         return JSONResponse(request.app.state.sync_runner.status())
 
     @app.get("/reconcile/status")
-    def reconcile_status(request: Request):
+    def reconcile_status(request: Request) -> Response:
         return JSONResponse(request.app.state.reconcile_runner.status())
 
     @app.post("/reconcile", response_class=HTMLResponse)
-    def reconcile_start(request: Request):
+    def reconcile_start(request: Request) -> Response:
         """Manual trigger — same handler the inbox auto-kicks. Useful when
         the user wants to force a re-run after dropping files in."""
         started = request.app.state.reconcile_runner.start()
@@ -364,7 +380,7 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/sync", response_class=HTMLResponse)
-    def start_sync(request: Request):
+    def start_sync(request: Request) -> Response:
         try:
             request.app.state.sync_runner.start()
         except AlreadyRunningError:
@@ -378,9 +394,9 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response("Sync started", "watch the inbox", tasks_changed=False)
 
     @app.get("/bandcamp/setup", response_class=HTMLResponse)
-    def bandcamp_setup(request: Request):
+    def bandcamp_setup(request: Request) -> Response:
         """Return the cookie-setup modal fragment."""
-        return request.app.state.templates.TemplateResponse(
+        return _templates(request).TemplateResponse(
             request,
             "partials/bandcamp_setup_modal.html",
             {"request": request},
@@ -391,7 +407,7 @@ def _register_routes(app: FastAPI) -> None:
         request: Request,
         cookies_text: str = Form(""),
         cookies_file: UploadFile | None = File(None),
-    ):
+    ) -> Response:
         """Persist a pasted/uploaded cookies.txt, then reload so the header
         flips from 'Set up Bandcamp sync' to 'Sync Bandcamp'.
         """
@@ -402,7 +418,7 @@ def _register_routes(app: FastAPI) -> None:
             content = cookies_text
         if not content.strip():
             # Re-render the modal with an error rather than refreshing.
-            return request.app.state.templates.TemplateResponse(
+            return _templates(request).TemplateResponse(
                 request,
                 "partials/bandcamp_setup_modal.html",
                 {"request": request, "error": "Paste your cookies.txt contents or choose a file."},
@@ -414,7 +430,7 @@ def _register_routes(app: FastAPI) -> None:
         return HTMLResponse("", headers={"HX-Refresh": "true"})
 
     @app.get("/library", response_class=HTMLResponse)
-    def library(request: Request, offset: int = 0, limit: int = 30):
+    def library(request: Request, offset: int = 0, limit: int = 30) -> Response:
         """Paginated list of terminal albums (Complete + Incomplete),
         sorted by tagged_at desc."""
         from datetime import datetime as _dt
@@ -441,12 +457,10 @@ def _register_routes(app: FastAPI) -> None:
             total_done=len(done),
             is_first_page=(offset == 0),
         )
-        return request.app.state.templates.TemplateResponse(
-            request, "partials/library_page.html", ctx
-        )
+        return _templates(request).TemplateResponse(request, "partials/library_page.html", ctx)
 
     @app.post("/retag/{album_id}", response_class=HTMLResponse)
-    def retag(request: Request, album_id: str):
+    def retag(request: Request, album_id: str) -> Response:
         album = _find_album(request, album_id)
         sc = album.sidecar
         if not sc or not sc.mb_release_id:
@@ -466,7 +480,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response("Re-tagged", album.title)
 
     @app.post("/forget/{album_id}", response_class=HTMLResponse)
-    def forget(request: Request, album_id: str):
+    def forget(request: Request, album_id: str) -> Response:
         """Delete the sidecar — album reverts to NEW. Files are not touched.
 
         Adds the album's path to the in-memory forgotten_paths set so the
@@ -482,7 +496,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response("Forgotten", f"{album.title} reverted to NEW")
 
     @app.get("/healthz")
-    def healthz(request: Request):
+    def healthz(request: Request) -> Response:
         cfg: config_mod.Config = request.app.state.cfg
         music = cfg.paths.music_dir
         return JSONResponse(
@@ -497,7 +511,7 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.get("/cover/{album_id}")
-    def cover(request: Request, album_id: str):
+    def cover(request: Request, album_id: str) -> Response:
         album = _find_album(request, album_id)
         if not album.cover_path or not album.cover_path.exists():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no cover")
@@ -505,7 +519,7 @@ def _register_routes(app: FastAPI) -> None:
         return FileResponse(album.cover_path, media_type=media_type)
 
     @app.post("/reconcile/{album_id}", response_class=HTMLResponse)
-    def reconcile_album_route(request: Request, album_id: str):
+    def reconcile_album_route(request: Request, album_id: str) -> Response:
         """Per-album reconcile trigger. Idempotent — safe to click even if
         the album has already been reconciled by the background runner.
 
@@ -539,7 +553,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response("Reconciled", f"{album.title} ({label})")
 
     @app.post("/recheck/{album_id}", response_class=HTMLResponse)
-    def recheck(request: Request, album_id: str):
+    def recheck(request: Request, album_id: str) -> Response:
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None or not sc.store_url:
@@ -593,7 +607,7 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/confirm/{album_id}", response_class=HTMLResponse)
-    def confirm_match(request: Request, album_id: str):
+    def confirm_match(request: Request, album_id: str) -> Response:
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None or sc.mb_match_candidate is None:
@@ -611,7 +625,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response("Tagged", album.title)
 
     @app.post("/confirm/{album_id}/incomplete", response_class=HTMLResponse)
-    def confirm_match_incomplete(request: Request, album_id: str):
+    def confirm_match_incomplete(request: Request, album_id: str) -> Response:
         """Confirm-as-Incomplete: tag the album knowing on-disk file count
         is less than the MB release's track count. Persists the expected
         track count on the sidecar so the scanner can derive INCOMPLETE
@@ -635,7 +649,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response("Tagged as incomplete", album.title)
 
     @app.post("/reject/{album_id}", response_class=HTMLResponse)
-    def reject_match(request: Request, album_id: str):
+    def reject_match(request: Request, album_id: str) -> Response:
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None or sc.mb_match_candidate is None:
@@ -655,7 +669,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response("Match rejected", album.title)
 
     @app.post("/unconfirmed/{album_id}/url", response_class=HTMLResponse)
-    def update_unconfirmed_url(request: Request, album_id: str, url: str = Form(...)):
+    def update_unconfirmed_url(request: Request, album_id: str, url: str = Form(...)) -> Response:
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None:
@@ -677,14 +691,14 @@ def _register_routes(app: FastAPI) -> None:
         album_id: str,
         artist: str = Form(""),
         title: str = Form(""),
-    ):
+    ) -> Response:
         # Validate album exists; a 404 is the right signal for a stale UI.
         album = _find_album(request, album_id)
         try:
             results = mb_search.search_releases(artist, title)
         except mb_search.MBSearchError as e:
             return _flash_response("MB search failed", str(e), level="error", tasks_changed=False)
-        return request.app.state.templates.TemplateResponse(
+        return _templates(request).TemplateResponse(
             request,
             "partials/manual_search_results.html",
             {
@@ -696,7 +710,7 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/manual/{album_id}/assign", response_class=HTMLResponse)
-    def manual_assign(request: Request, album_id: str, mbid: str = Form(...)):
+    def manual_assign(request: Request, album_id: str, mbid: str = Form(...)) -> Response:
         album = _find_album(request, album_id)
         extracted = _extract_mbid(mbid)
         if not extracted:
@@ -721,7 +735,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response(verb, f"{album.title}: {msg}")
 
     @app.post("/recover/{album_id}", response_class=HTMLResponse)
-    def recover_url(request: Request, album_id: str):
+    def recover_url(request: Request, album_id: str) -> Response:
         album = _find_album(request, album_id)
         if album.state != AlbumState.NEW:
             raise HTTPException(
@@ -756,7 +770,7 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/unconfirmed/{album_id}/manual", response_class=HTMLResponse)
-    def mark_unconfirmed_manual(request: Request, album_id: str):
+    def mark_unconfirmed_manual(request: Request, album_id: str) -> Response:
         """Drop the store URL + Bandcamp block. Album becomes "manually
         sourced" (store_url is None, store_name() returns None)."""
         album = _find_album(request, album_id)
@@ -833,7 +847,7 @@ def _flash_response(
     `tasks_changed=False` to avoid spurious refreshes.
     """
     message = verb if not details else f"{verb} — {details}"
-    triggers: dict = {
+    triggers: dict[str, Any] = {
         "harmonist-status": {
             "verb": verb,
             "details": details,
