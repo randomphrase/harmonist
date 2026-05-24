@@ -53,12 +53,11 @@ def _scrape_artist_for_album(
     artist_url: str, album_name: str, *, client: httpx.Client | None
 ) -> str | None:
     owns_client = client is None
-    if owns_client:
-        client = httpx.Client(follow_redirects=True, timeout=30.0)
+    http = client or httpx.Client(follow_redirects=True, timeout=30.0)
 
     try:
         try:
-            resp = client.get(artist_url)
+            resp = http.get(artist_url)
             resp.raise_for_status()
         except httpx.HTTPError as e:
             log.warning("URL recovery: failed to fetch %s: %s", artist_url, e)
@@ -90,4 +89,4 @@ def _scrape_artist_for_album(
         return None
     finally:
         if owns_client:
-            client.close()
+            http.close()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -39,7 +41,9 @@ def restore_module_globals():
     """
     from harmonist import cover_art, mb_lookup, mb_search
 
-    saved = {
+    # Values are functions of differing signatures; Any keeps the
+    # save/restore round-trip honest without over-narrowing.
+    saved: dict[str, Any] = {
         "mb_lookup.fetch_release": mb_lookup.fetch_release,
         "mb_lookup.fetch_release_urls": mb_lookup.fetch_release_urls,
         "mb_lookup.lookup_by_bandcamp_url": mb_lookup.lookup_by_bandcamp_url,

@@ -12,6 +12,8 @@ import re
 
 import musicbrainzngs
 
+from .models import Release
+
 log = logging.getLogger(__name__)
 
 
@@ -56,11 +58,11 @@ def lookup_by_bandcamp_url(bandcamp_url: str) -> str | None:
     for rel in rels:
         release = rel.get("release") or {}
         if mbid := release.get("id"):
-            return mbid
+            return str(mbid)
     return None
 
 
-def fetch_release(mbid: str) -> dict:
+def fetch_release(mbid: str) -> Release:
     """Fetch a full MB release with everything the tagger needs."""
     try:
         result = musicbrainzngs.get_release_by_id(
@@ -80,7 +82,8 @@ def fetch_release(mbid: str) -> dict:
     ) as e:
         raise MBError(f"MB request failed: {e}") from e
 
-    return result["release"]
+    release: Release = result["release"]
+    return release
 
 
 def fetch_release_urls(mbid: str) -> list[str]:

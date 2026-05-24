@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 
 import musicbrainzngs
+
+from .models import Release
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +23,7 @@ class MBSearchError(Exception):
     pass
 
 
-def search_releases(artist: str, title: str, limit: int = 10) -> list[dict]:
+def search_releases(artist: str, title: str, limit: int = 10) -> list[dict[str, Any]]:
     """Search MB for releases matching `artist` + `title`.
 
     Returns a list of dicts with the fields the manual-ingest UI needs:
@@ -47,7 +50,7 @@ def search_releases(artist: str, title: str, limit: int = 10) -> list[dict]:
     ) as e:
         raise MBSearchError(f"MB search failed: {e}") from e
 
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     for rel in result.get("release-list", []):
         out.append(
             {
@@ -73,7 +76,7 @@ def _escape(s: str) -> str:
     return _LUCENE_RESERVED.sub(r"\\\1", s)
 
 
-def _extract_artist(release: dict) -> str:
+def _extract_artist(release: Release) -> str:
     parts = []
     for ac in release.get("artist-credit") or []:
         if isinstance(ac, str):
@@ -83,15 +86,15 @@ def _extract_artist(release: dict) -> str:
     return "".join(parts).strip()
 
 
-def _first_label(release: dict) -> str | None:
+def _first_label(release: Release) -> str | None:
     for li in release.get("label-info-list") or []:
         if name := li.get("label", {}).get("name"):
-            return name
+            return str(name)
     return None
 
 
-def _first_catalog(release: dict) -> str | None:
+def _first_catalog(release: Release) -> str | None:
     for li in release.get("label-info-list") or []:
         if catnum := li.get("catalog-number"):
-            return catnum
+            return str(catnum)
     return None

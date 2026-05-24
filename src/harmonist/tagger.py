@@ -10,8 +10,9 @@ constants are re-exported here.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from . import formats
 from .formats import TagSet
@@ -43,6 +44,10 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_TRACK_NUM,
     LEGACY_RELEASE_ID,
 )
+from .models import Release, Track
+
+# One flattened MB track: (medium, track_pos_in_medium, track).
+_FlatTrack = tuple[dict[str, Any], int, Track]
 
 
 class TagMismatchError(Exception):
@@ -63,7 +68,7 @@ class Tagger(Protocol):
     def tag_album(
         self,
         album_dir: Path,
-        release: dict,
+        release: Release,
         cover_path: Path | None = None,
         *,
         incomplete: bool = False,
@@ -77,7 +82,7 @@ class PicardCompatibleTagger:
     def tag_album(
         self,
         album_dir: Path,
-        release: dict,
+        release: Release,
         cover_path: Path | None = None,
         *,
         incomplete: bool = False,
@@ -87,7 +92,7 @@ class PicardCompatibleTagger:
 
 def tag_album(
     album_dir: Path,
-    release: dict,
+    release: Release,
     cover_path: Path | None = None,
     *,
     incomplete: bool = False,
@@ -135,10 +140,10 @@ def tag_album(
 
 
 def _build_tagset(
-    release: dict,
-    medium: dict,
+    release: Release,
+    medium: dict[str, Any],
     track_pos: int,
-    track: dict,
+    track: Track,
     media_total: int,
 ) -> TagSet:
     """Translate one MB track within a release to a TagSet."""
@@ -185,8 +190,8 @@ def _build_tagset(
 
 def _assign_files_to_tracks(
     files: list[Path],
-    flat_tracks: list[tuple[dict, int, dict]],
-) -> list[tuple[Path, tuple[dict, int, dict]]]:
+    flat_tracks: list[_FlatTrack],
+) -> list[tuple[Path, _FlatTrack]]:
     """Best-fit assignment of files to a subset of MB tracks via length
     similarity, preserving input file order.
 
@@ -199,7 +204,7 @@ def _assign_files_to_tracks(
     for _medium, _pos, track in flat_tracks:
         raw = (track.get("recording") or {}).get("length") or track.get("length")
         try:
-            track_lengths.append(int(raw))
+            track_lengths.append(None if raw is None else int(raw))
         except (TypeError, ValueError):
             track_lengths.append(None)
 
@@ -209,12 +214,14 @@ def _assign_files_to_tracks(
         return [(files[i], flat_tracks[i]) for i in range(len(files))]
 
     used: set[int] = set()
-    pairs: list[tuple[Path, tuple[dict, int, dict]]] = []
+    pairs: list[tuple[Path, _FlatTrack]] = []
     for f, dur in zip(files, file_durations, strict=True):
+        # The guard above guarantees every duration/length is set here.
+        assert dur is not None
         best_idx = None
         best_delta: int | None = None
         for i, tlen in enumerate(track_lengths):
-            if i in used:
+            if i in used or tlen is None:
                 continue
             delta = abs(dur - tlen)
             if best_delta is None or delta < best_delta:
@@ -226,24 +233,24 @@ def _assign_files_to_tracks(
     return pairs
 
 
-def _flatten_tracks(release: dict):
+def _flatten_tracks(release: Release) -> Iterator[_FlatTrack]:
     """Yield (medium, track_pos_in_medium, track) for every track in every medium."""
     for medium in release.get("medium-list", []):
         for i, track in enumerate(medium.get("track-list", [])):
             yield medium, i, track
 
 
-def _track_title(track: dict) -> str:
+def _track_title(track: Track) -> str:
     if (recording := track.get("recording")) and (title := recording.get("title")):
-        return title
-    return track.get("title", "")
+        return str(title)
+    return str(track.get("title", ""))
 
 
-def _artist_ids(artist_credit) -> list[str]:
+def _artist_ids(artist_credit: list[Any] | None) -> list[str]:
     """Pull MBIDs out of an MB artist-credit list."""
     if not artist_credit:
         return []
-    ids = []
+    ids: list[str] = []
     for ac in artist_credit:
         if isinstance(ac, dict):
             artist = ac.get("artist") or {}
@@ -252,7 +259,7 @@ def _artist_ids(artist_credit) -> list[str]:
     return ids
 
 
-def _artist_phrase(artist_credit) -> str:
+def _artist_phrase(artist_credit: list[Any] | None) -> str:
     """Build a display string from an MB artist-credit list."""
     if not artist_credit:
         return ""

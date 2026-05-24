@@ -826,6 +826,8 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
     assert "Re-tagged" in r.text
     # tagged_at should be refreshed
     loaded = sc.read(d)
+    assert loaded is not None
+    assert loaded.tagged_at is not None
     assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=UTC)
 
 

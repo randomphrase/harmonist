@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class ReconcileStatus:
     total: int = 0
     last_error: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "state": self.state,
             "started_at": _iso(self.started_at),
@@ -78,7 +79,7 @@ class ReconcileRunner:
         with self._lock:
             return self._status.state == "running"
 
-    def status(self) -> dict:
+    def status(self) -> dict[str, Any]:
         with self._lock:
             return self._status.to_dict()
 
@@ -150,11 +151,11 @@ class ReconcileRunner:
 def reconcile_pending_orphans(
     music_dir: Path,
     *,
-    fetch_urls: Callable[[str], list],
+    fetch_urls: Callable[[str], list[str]],
     status_updater: Callable[..., None] | None = None,
     rate_limit_seconds: float = MB_RATE_LIMIT_SECONDS,
-    exempt_paths: set | None = None,
-) -> dict:
+    exempt_paths: set[Path] | None = None,
+) -> dict[str, int]:
     """Walk music_dir; reconcile every NEW album with an MBID atom.
 
     Albums whose path is in `exempt_paths` are skipped. This is the

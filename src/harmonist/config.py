@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import tomllib
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -81,7 +81,7 @@ def _default_music_dir() -> Path:
     return Path("./music").resolve()
 
 
-def _load_toml(config_dir: Path) -> dict:
+def _load_toml(config_dir: Path) -> dict[str, Any]:
     toml_path = config_dir / "harmonist.toml"
     if not toml_path.exists():
         return {}
@@ -89,7 +89,7 @@ def _load_toml(config_dir: Path) -> dict:
         return tomllib.load(f)
 
 
-def _apply_env_overrides(data: dict) -> dict:
+def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     env = os.environ
     paths = data.setdefault("paths", {})
     bandcamp = data.setdefault("bandcamp", {})

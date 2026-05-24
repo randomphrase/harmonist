@@ -81,7 +81,8 @@ def _binary_atom_str(audio: MP4, atom: str) -> str | None:
     if not value:
         return None
     try:
-        return value[0].decode("utf-8")
+        decoded: str = value[0].decode("utf-8")
+        return decoded
     except (AttributeError, UnicodeDecodeError):
         return None
 
@@ -115,7 +116,8 @@ def read_duration_ms(path: Path) -> int | None:
     audio = _open(path)
     if audio is None or not audio.info.length:
         return None
-    return round(audio.info.length * 1000)
+    ms: int = round(audio.info.length * 1000)
+    return ms
 
 
 def describe(path: Path) -> str:

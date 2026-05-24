@@ -65,14 +65,13 @@ def _fetch_to_disk(
         targets.append(("release-group", release_group_mbid))
 
     owns_client = client is None
-    if owns_client:
-        client = httpx.Client(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
+    http = client or httpx.Client(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
 
     try:
         for kind, mbid in targets:
             url = f"{CAA_BASE}/{kind}/{mbid}/front{suffix}"
             try:
-                resp = client.get(url)
+                resp = http.get(url)
             except httpx.HTTPError as e:
                 raise CoverArtError(f"CAA request failed for {url}: {e}") from e
 
@@ -88,7 +87,7 @@ def _fetch_to_disk(
         return None
     finally:
         if owns_client:
-            client.close()
+            http.close()
 
 
 def _filename_for(resp: httpx.Response) -> str:

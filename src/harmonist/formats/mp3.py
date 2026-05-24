@@ -16,6 +16,7 @@ recovered into it survives a retag — mirrors the M4A behaviour.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from mutagen.id3 import (
     APIC,
@@ -68,7 +69,7 @@ def _open(path: Path) -> MP3 | None:
         return None
 
 
-def _txxx(tags, desc: str) -> str | None:
+def _txxx(tags: Any, desc: str) -> str | None:
     if tags is None:
         return None
     frame = tags.get(f"TXXX:{desc}")
@@ -77,7 +78,7 @@ def _txxx(tags, desc: str) -> str | None:
     return str(frame.text[0]) or None
 
 
-def _text(tags, frame_id: str) -> str | None:
+def _text(tags: Any, frame_id: str) -> str | None:
     if tags is None:
         return None
     frame = tags.get(frame_id)
@@ -121,7 +122,8 @@ def read_duration_ms(path: Path) -> int | None:
     audio = _open(path)
     if audio is None or not audio.info.length:
         return None
-    return round(audio.info.length * 1000)
+    ms: int = round(audio.info.length * 1000)
+    return ms
 
 
 def describe(path: Path) -> str:

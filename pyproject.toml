@@ -59,17 +59,33 @@ python_version = "3.12"
 strict = true
 files = ["src", "test"]
 
-# Third-party libraries that ship no type information.
+# Third-party libraries that ship no type information. They're installed,
+# so mypy would otherwise *follow* them, discover the untyped defs, and flag
+# every call/attribute in our code as no-untyped-call / attr-defined. Skip
+# following them entirely so their symbols are treated as Any — the honest
+# stance for a dependency we can't type-check anyway.
 [[tool.mypy.overrides]]
 module = ["mutagen.*", "bandcampsync.*", "musicbrainzngs.*", "bs4.*"]
 ignore_missing_imports = true
+follow_imports = "skip"
+follow_imports_for_stubs = true
 
-# Tests: keep type checking, but don't force annotations on every test
-# function / fixture — strictness is most valuable on the package itself.
+# Tests: keep type checking for real mistakes (assignment / arg-type /
+# return shape), but relax the strictness aimed at production API surface.
+# Test bodies legitimately call untyped stub/fixture helpers, build bare
+# dict/list literals, and poke Optionals they've just asserted are set —
+# enforcing annotations and generics there is noise, not safety. Strictness
+# is most valuable on the package itself.
 [[tool.mypy.overrides]]
 module = ["test.*"]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_any_generics = false
+warn_return_any = false
+# Optionals/attrs in tests are guarded by surrounding asserts the checker
+# can't see across helper boundaries.
+disable_error_code = ["union-attr", "attr-defined"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

@@ -245,11 +245,12 @@ def test_tasks_kicks_reconcile_runner_when_orphans_present(client, tmp_path, mon
 def test_tasks_does_not_kick_when_no_orphans(client, tmp_path, monkeypatch):
     """No orphans = no need to reconcile."""
     started = []
-    monkeypatch.setattr(
-        client.app.state.reconcile_runner,
-        "start",
-        lambda: started.append(True) or False,
-    )
+
+    def fake_start():
+        started.append(True)
+        return False
+
+    monkeypatch.setattr(client.app.state.reconcile_runner, "start", fake_start)
     client.get("/tasks")
     assert started == []
 
