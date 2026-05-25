@@ -1,4 +1,4 @@
-<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border border-mb-orange/40">
+<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border border-amber-300">
     {% include 'partials/_album_header.html' %}
     <p class="text-muted text-xs mb-3">
         Tagged from MusicBrainz but the Bandcamp purchase isn't linked yet.
@@ -10,9 +10,9 @@
             <input type="url" name="url" required
                    value="{{ album.sidecar.store_url if album.sidecar else '' }}"
                    placeholder="https://artist.bandcamp.com/album/..."
-                   class="flex-grow bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-grass outline-none font-mono">
+                   class="flex-grow bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-accent outline-none font-mono">
             <button type="submit"
-                    class="px-3 py-1.5 bg-grass hover:bg-grass-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+                    class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
                 Update URL
             </button>
         </form>

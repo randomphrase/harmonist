@@ -11,7 +11,7 @@
                     hx-post="/sync"
                     hx-target="#sync-flash"
                     hx-swap="innerHTML"
-                    class="px-4 py-1.5 bg-grass hover:bg-grass-dark text-white rounded font-semibold transition">
+                    class="px-4 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-semibold transition">
                 Sync Bandcamp
             </button>
             {% else %}
@@ -21,7 +21,7 @@
                     hx-get="/bandcamp/setup"
                     hx-target="#modal"
                     hx-swap="innerHTML"
-                    class="px-4 py-1.5 border border-grass text-grass hover:bg-grass-soft rounded font-semibold transition">
+                    class="px-4 py-1.5 border border-accent text-accent hover:bg-accent-soft rounded font-semibold transition">
                 Set up Bandcamp sync
             </button>
             {% endif %}

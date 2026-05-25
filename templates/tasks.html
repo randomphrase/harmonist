@@ -40,14 +40,14 @@
         <div class="rounded-md border-l-4 px-3 py-2
             {% if state == AlbumState.INCONSISTENT %}border-red-400 bg-red-50
             {% elif state == AlbumState.NEW %}border-zinc-300 bg-surface
-            {% elif state == AlbumState.NEEDS_MBID %}border-grass bg-grass-soft
-            {% elif state == AlbumState.NEEDS_SYNC %}border-mb-orange bg-mb-orange/10
+            {% elif state == AlbumState.NEEDS_MBID %}border-accent bg-accent-soft
+            {% elif state == AlbumState.NEEDS_SYNC %}border-amber-400 bg-amber-50
             {% elif state == AlbumState.TAGGING %}border-mb-purple bg-mb-purple/10
             {% endif %}">
             <h3 class="text-sm font-bold
                 {% if state == AlbumState.INCONSISTENT %}text-red-700
-                {% elif state == AlbumState.NEEDS_MBID %}text-grass-dark
-                {% elif state == AlbumState.NEEDS_SYNC %}text-mb-orange
+                {% elif state == AlbumState.NEEDS_MBID %}text-accent-dark
+                {% elif state == AlbumState.NEEDS_SYNC %}text-amber-700
                 {% elif state == AlbumState.TAGGING %}text-mb-purple
                 {% else %}text-ink{% endif %}">
                 {% if state == AlbumState.INCONSISTENT %}Inconsistent
@@ -62,7 +62,7 @@
                 {% if state == AlbumState.INCONSISTENT %}Files in one directory disagree on album title or MBID. Harmonist won't guess — use <a href="https://picard.musicbrainz.org/" target="_blank" rel="noopener" class="text-mb-purple hover:underline">Picard</a> to sort into separate folders, then refresh.
                 {% elif state == AlbumState.NEW %}No <code class="text-ink">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.
                 {% elif state == AlbumState.NEEDS_MBID %}No confirmed MusicBrainz release yet. Where a suggestion was found, review the side-by-side and confirm; otherwise seed via Harmony and recheck, paste an MBID, or search by artist + title.
-                {% elif state == AlbumState.NEEDS_SYNC %}Tagged from MusicBrainz but Bandcamp purchase isn't linked yet. <span class="font-bold text-grass">Click Sync</span> to confirm — that's the common case.
+                {% elif state == AlbumState.NEEDS_SYNC %}Tagged from MusicBrainz but Bandcamp purchase isn't linked yet. <span class="font-bold text-accent">Click Sync</span> to confirm — that's the common case.
                 {% elif state == AlbumState.TAGGING %}Files being written…
                 {% endif %}
             </p>
