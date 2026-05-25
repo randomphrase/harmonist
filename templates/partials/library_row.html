@@ -56,13 +56,9 @@
                      style="max-width: 208px; aspect-ratio: 1;">
             </div>
 
-            {# RIGHT: title + artist on top, then external links, then meta #}
+            {# RIGHT: external links, then meta. Title + artist are already in
+               the (always-visible) collapsed row header above — not repeated. #}
             <div class="space-y-3 flex-grow min-w-0">
-                <div>
-                    <div class="text-lg font-bold text-ink break-words">{{ album.title }}</div>
-                    <div class="text-sm text-muted break-words">{{ album.artist }}</div>
-                </div>
-
                 {% if sc and (sc.mb_release_id or sc.store_url) %}
                 <div class="flex gap-2 items-center flex-wrap">
                     {% if sc and sc.mb_release_id %}
