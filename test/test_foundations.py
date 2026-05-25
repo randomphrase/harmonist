@@ -98,7 +98,6 @@ def test_config_default_ignores_and_cookies(monkeypatch, tmp_path):
 def test_album_state_values():
     assert AlbumState.NEW.value == "new"
     assert AlbumState.NEEDS_MBID.value == "needs_mbid"
-    assert AlbumState.NEEDS_REVIEW.value == "needs_review"
     assert AlbumState.TAGGING.value == "tagging"
     assert AlbumState.NEEDS_SYNC.value == "needs_sync"
     assert AlbumState.COMPLETE.value == "complete"

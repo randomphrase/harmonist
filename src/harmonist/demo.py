@@ -112,7 +112,7 @@ LIBRARY: list[dict[str, Any]] = [
         "sidecar": {},
     },
     {
-        # State: NEEDS_REVIEW — files tagged, candidate stashed but
+        # State: NEEDS_MBID (with suggestion) — files tagged, candidate stashed but
         # confidence is "approximate" (lengths off). Side-by-side renders.
         # Confirm → tags from MB; Reject → back to NEEDS_MBID.
         "artist": "The Thamesmen",

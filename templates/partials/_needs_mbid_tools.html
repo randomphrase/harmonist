@@ -1,0 +1,20 @@
+{# Find/assign tools for the Needs MBID card: Harmony seed + recheck (when a
+   store URL is known) plus the manual MBID paste / MB search form. Used both
+   as the primary affordance (no suggestion) and inside the "wrong release?"
+   disclosure (suggestion present). #}
+{% set sc = album.sidecar %}
+{% if sc and sc.store_url %}
+<div class="flex gap-2 flex-wrap mb-3">
+    <a href="{{ harmony_base }}/release?url={{ sc.store_url|urlencode }}"
+       target="_blank" rel="noopener"
+       class="px-3 py-1.5 bg-grass hover:bg-grass-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+        Open in Harmony ↗
+    </a>
+    <button hx-post="/recheck/{{ album.id }}"
+            hx-target="this" hx-swap="afterend"
+            class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+        Recheck
+    </button>
+</div>
+{% endif %}
+{% include 'partials/_manual_form.html' %}

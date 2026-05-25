@@ -3,8 +3,8 @@
 Used by the sync orchestrator before tagging. If `assess_match` returns
 "exact", the orchestrator promotes the candidate MBID to `mb_release_id`
 and runs the tagger. Otherwise the candidate is stashed in
-`mb_match_candidate` and the album waits in NEEDS_REVIEW until the
-user clicks Confirm or Reject.
+`mb_match_candidate` and the album stays in NEEDS_MBID — its card shows
+the suggestion inline until the user Confirms or Dismisses it.
 """
 
 from __future__ import annotations

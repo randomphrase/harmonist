@@ -20,8 +20,11 @@ type Track = dict[str, Any]
 
 class AlbumState(StrEnum):
     NEW = "new"
+    # NEEDS_MBID covers "no confirmed MB release yet" — whether or not a
+    # suggestion (mb_match_candidate) is attached. The card adapts: with a
+    # candidate it shows the side-by-side + Confirm; without, the assign/find
+    # tools. (Formerly split into NEEDS_MBID + NEEDS_REVIEW.)
     NEEDS_MBID = "needs_mbid"
-    NEEDS_REVIEW = "needs_review"
     TAGGING = "tagging"
     NEEDS_SYNC = "needs_sync"
     COMPLETE = "complete"

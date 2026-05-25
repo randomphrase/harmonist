@@ -326,11 +326,13 @@ def test_needs_review_card_renders_side_by_side(client, cfg):
         ),
     )
     r = client.get("/tasks")
-    assert "Needs Review" in r.text
+    # Merged into NEEDS_MBID: the card shows the suggestion side-by-side inline.
+    assert "Needs MBID" in r.text
+    assert "MusicBrainz suggests" in r.text
     assert "approximate" in r.text
     assert "Side A" in r.text
     assert "Confirm" in r.text
-    assert "Reject" in r.text
+    assert "Dismiss suggestion" in r.text
 
 
 def test_inconsistent_card_renders(client, cfg):
@@ -1097,7 +1099,7 @@ def test_confirm_incomplete_400_without_candidate(client, cfg):
 
 
 def test_needs_review_card_offers_incomplete_when_file_count_short(client, cfg):
-    """The Confirm as Incomplete button appears on Needs Review cards
+    """The Confirm as Incomplete button appears on a suggestion card
     where file_count < track_count — and not when they're equal.
     """
     d_short = _make_album(cfg, "ShortMatch")

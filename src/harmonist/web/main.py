@@ -349,7 +349,7 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
     straight to COMPLETE (Library) instead of waiting in NEEDS_MBID for a
     manual Recheck. Looks up the store URL, and on a match runs the normal
     match assessment: exact → tag (COMPLETE), approximate → stash candidate
-    (NEEDS_REVIEW), no match → leave as NEEDS_MBID. Never raises — returns a
+    (NEEDS_MBID with a suggestion shown), no match → NEEDS_MBID. Never raises — returns a
     short status string for logging.
     """
     sc = sidecar_mod.read(album_path)
