@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -31,31 +29,6 @@ def reset_pending_queue():
 def disable_sync_delays(monkeypatch):
     """Don't wait between demo sync steps in tests."""
     monkeypatch.setattr(demo, "STEP_DELAY_SECONDS", 0)
-
-
-@pytest.fixture(autouse=True)
-def restore_module_globals():
-    """`demo.install()` monkey-patches mb_lookup / mb_search / cover_art at
-    module level. Capture originals before each test and restore after, so
-    demo tests can't leak patches into the rest of the suite.
-    """
-    from harmonist import cover_art, mb_lookup, mb_search
-
-    # Values are functions of differing signatures; Any keeps the
-    # save/restore round-trip honest without over-narrowing.
-    saved: dict[str, Any] = {
-        "mb_lookup.fetch_release": mb_lookup.fetch_release,
-        "mb_lookup.fetch_release_urls": mb_lookup.fetch_release_urls,
-        "mb_lookup.lookup_by_bandcamp_url": mb_lookup.lookup_by_bandcamp_url,
-        "mb_search.search_releases": mb_search.search_releases,
-        "cover_art.ensure_cover": cover_art.ensure_cover,
-    }
-    yield
-    mb_lookup.fetch_release = saved["mb_lookup.fetch_release"]
-    mb_lookup.fetch_release_urls = saved["mb_lookup.fetch_release_urls"]
-    mb_lookup.lookup_by_bandcamp_url = saved["mb_lookup.lookup_by_bandcamp_url"]
-    mb_search.search_releases = saved["mb_search.search_releases"]
-    cover_art.ensure_cover = saved["cover_art.ensure_cover"]
 
 
 def test_seed_writes_marker_and_albums(music_dir):
