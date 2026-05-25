@@ -37,14 +37,19 @@
     {% endif %}
     {% if group %}
     <section class="space-y-3">
-        <div class="pl-3 border-l-2
-            {% if state == AlbumState.INCONSISTENT %}border-red-400
-            {% elif state == AlbumState.NEW %}border-line
-            {% elif state == AlbumState.NEEDS_MBID %}border-bc-teal/50
-            {% elif state == AlbumState.NEEDS_SYNC %}border-mb-orange/50
-            {% elif state == AlbumState.TAGGING %}border-mb-purple/50
+        <div class="rounded-md border-l-4 px-3 py-2
+            {% if state == AlbumState.INCONSISTENT %}border-red-400 bg-red-50
+            {% elif state == AlbumState.NEW %}border-zinc-300 bg-surface
+            {% elif state == AlbumState.NEEDS_MBID %}border-grass bg-grass-soft
+            {% elif state == AlbumState.NEEDS_SYNC %}border-mb-orange bg-mb-orange/10
+            {% elif state == AlbumState.TAGGING %}border-mb-purple bg-mb-purple/10
             {% endif %}">
-            <h3 class="text-sm font-bold text-ink">
+            <h3 class="text-sm font-bold
+                {% if state == AlbumState.INCONSISTENT %}text-red-700
+                {% elif state == AlbumState.NEEDS_MBID %}text-grass-dark
+                {% elif state == AlbumState.NEEDS_SYNC %}text-mb-orange
+                {% elif state == AlbumState.TAGGING %}text-mb-purple
+                {% else %}text-ink{% endif %}">
                 {% if state == AlbumState.INCONSISTENT %}Inconsistent
                 {% elif state == AlbumState.NEW %}New
                 {% elif state == AlbumState.NEEDS_MBID %}Needs MBID

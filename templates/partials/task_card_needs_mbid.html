@@ -1,8 +1,6 @@
 {% set sc = album.sidecar %}
 {% set candidate = sc.mb_match_candidate if sc else None %}
 {% set has_store_url = sc and sc.store_url %}
-{% set badge_class = 'bg-bc-teal/10 text-bc-teal border border-bc-teal/40' %}
-{% set badge_label = 'Needs MBID' %}
 <div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border {% if candidate %}border-amber-300{% elif has_store_url %}border-bc-teal/40{% else %}border-line{% endif %}">
     {% include 'partials/_album_header.html' %}
 
