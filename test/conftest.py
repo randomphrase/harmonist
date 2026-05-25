@@ -37,6 +37,15 @@ def restore_module_globals():
         setattr(module, attr, original)
 
 
+@pytest.fixture(autouse=True)
+def clear_activity():
+    """The activity log is a process-level ring buffer; start each test with an
+    empty feed so events don't leak between tests."""
+    from harmonist import activity
+
+    activity.clear()
+
+
 @pytest.fixture
 def album_with_tracks(tmp_path):
     """Factory: build an album dir with N copies of the sine fixture, named NN Title.m4a."""

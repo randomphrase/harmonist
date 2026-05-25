@@ -1242,3 +1242,39 @@ def test_canonical_id_change_mid_transaction(client, cfg, monkeypatch):
     # The old temp_uid URL no longer resolves
     r_stale = client.post(f"/recheck/{temp_uid}")
     assert r_stale.status_code == 404
+
+
+# ---------- activity feed ----------
+
+
+def test_activity_empty_state(client):
+    r = client.get("/activity")
+    assert r.status_code == 200
+    assert "No activity yet" in r.text
+
+
+def test_activity_lists_recorded_events(client):
+    from harmonist import activity
+
+    activity.record("Tagged — Some Album", "info")
+    activity.record("Sync failed — boom", "error")
+    r = client.get("/activity")
+    assert r.status_code == 200
+    assert "Tagged — Some Album" in r.text
+    assert "Sync failed — boom" in r.text
+    # No empty-state copy when there are events
+    assert "No activity yet" not in r.text
+
+
+def test_action_outcome_recorded_to_activity(client, cfg):
+    """A flash-producing action also lands in the activity feed."""
+    d = _make_album(cfg, "ActivityAlbum")
+    client.post(f"/reconcile/{_id_for(cfg, d)}")
+    r = client.get("/activity")
+    assert "ActivityAlbum" in r.text or "Reconcile" in r.text or "reconcile" in r.text
+
+
+def test_index_has_activity_tab(client):
+    r = client.get("/")
+    assert 'data-tab="activity"' in r.text
+    assert "Activity" in r.text

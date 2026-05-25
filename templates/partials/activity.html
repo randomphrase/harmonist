@@ -1,0 +1,27 @@
+{# Activity feed — most-recent-first list of events. Loaded into the Activity
+   tab; polled/refreshed via HTMX. #}
+{% if not events %}
+<div class="p-10 text-center border border-line rounded-lg">
+    <p class="text-muted italic">No activity yet. Sync, tag, or reconcile something and it'll show up here.</p>
+</div>
+{% else %}
+<ul class="divide-y divide-line border border-line rounded-lg overflow-hidden">
+    {% for e in events %}
+    <li class="flex items-baseline gap-3 px-3 py-2 text-sm">
+        <time class="flex-shrink-0 font-mono text-2xs text-muted tabular-nums"
+              title="{{ e.ts.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
+            {{ e.ts.strftime('%H:%M:%S') }}
+        </time>
+        <span class="flex-shrink-0 w-1.5 h-1.5 rounded-full translate-y-1.5
+            {% if e.level == 'error' %}bg-red-500
+            {% elif e.level == 'warning' %}bg-amber-500
+            {% else %}bg-accent{% endif %}"
+            aria-hidden="true"></span>
+        <span class="min-w-0 break-words
+            {% if e.level == 'error' %}text-red-700
+            {% elif e.level == 'warning' %}text-amber-700
+            {% else %}text-ink{% endif %}">{{ e.message }}</span>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
