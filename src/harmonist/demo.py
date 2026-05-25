@@ -30,6 +30,7 @@ from typing import Any
 
 from mutagen.mp4 import MP4
 
+from . import activity
 from . import sidecar as sidecar_mod
 from .formats.m4a import (
     ATOM_ALBUM,
@@ -469,6 +470,7 @@ def run_demo_sync(
                 progress_callback(f"{spec['artist']} / {spec['album']}")
         time.sleep(STEP_DELAY_SECONDS)
         _materialise(music_dir, spec)
+        activity.record(f"Downloaded {spec['artist']} / {spec['album']}", "info")
         _Result.new_items_downloaded = True
     return _Result()
 
@@ -512,6 +514,9 @@ def _fill_in_existing_item_ids(
         )
         sidecar_mod.write(album_dir, new_sc)
         patched += 1
+        activity.record(
+            f"Linked {album_dir.parent.name} / {album_dir.name} to its Bandcamp purchase", "info"
+        )
         if progress_callback:
             with contextlib.suppress(Exception):
                 progress_callback(f"Linked: {album_dir.parent.name} / {album_dir.name}")
