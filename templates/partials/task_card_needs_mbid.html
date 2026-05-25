@@ -73,6 +73,19 @@
                 Confirm as Incomplete
             </button>
             {% endif %}
+            {# Re-fetch this same release from MB and re-compare. Use after
+               correcting the release on MusicBrainz — a now-fixed track
+               length may turn an approximate match into an exact one. Works
+               whether or not there's a store URL (re-assigns the candidate
+               MBID rather than re-looking-up the URL). #}
+            <form hx-post="/manual/{{ album.id }}/assign" hx-target="this" hx-swap="afterend">
+                <input type="hidden" name="mbid" value="{{ candidate.mb_release_id }}">
+                <button type="submit"
+                        title="Re-fetch this release from MusicBrainz and re-compare — use after fixing the release on MB."
+                        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+                    Refresh from MB
+                </button>
+            </form>
             <button hx-post="/reject/{{ album.id }}"
                     hx-target="this" hx-swap="afterend"
                     title="Clear this suggestion. The album stays here so you can assign a different release or recheck."

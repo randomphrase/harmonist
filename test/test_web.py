@@ -333,6 +333,8 @@ def test_needs_review_card_renders_side_by_side(client, cfg):
     assert "Side A" in r.text
     assert "Confirm" in r.text
     assert "Dismiss suggestion" in r.text
+    # Re-query MB for the same release (after fixing it upstream)
+    assert "Refresh from MB" in r.text
 
 
 def test_inconsistent_card_renders(client, cfg):
