@@ -165,6 +165,23 @@ LIBRARY: list[dict[str, Any]] = [
             "tagged": True,
         },
     },
+    {
+        # State: INCOMPLETE — tagged & synced, but only 2 of the MB release's
+        # 4 tracks are on disk (track_count_expected=4). Shows in the Library
+        # with the "2 of 4" incomplete badge.
+        "artist": "Dr. Teeth and the Electric Mayhem",
+        "album": "Can You Picture That?",
+        "tracks": ["Can You Picture That?", "Mahna Mahna"],
+        "cover": "cover-7.jpg",
+        "file_mbid": "demo-rel-electric-mayhem",
+        "sidecar": {
+            "store_url": "https://electricmayhem.bandcamp.com/album/can-you-picture-that",
+            "bandcamp_item_id": 1005,
+            "mb_release_id": "demo-rel-electric-mayhem",
+            "tagged": True,
+            "track_count_expected": 4,
+        },
+    },
 ]
 
 
@@ -300,6 +317,13 @@ MB_RELEASES: dict[str, Release] = {
         "Autobahn",
         "Nagelbett",
         ["Karl Hungus", "Marmot Shall Inherit", "Ve Believe in Nuthing"],
+    ),
+    "demo-rel-electric-mayhem": _release(
+        "demo-rel-electric-mayhem",
+        "Dr. Teeth and the Electric Mayhem",
+        "Can You Picture That?",
+        # 4 tracks on MB; the seeded album only has the first 2 on disk.
+        ["Can You Picture That?", "Mahna Mahna", "Movin' Right Along", "Rainbow Connection"],
     ),
 }
 
@@ -629,7 +653,7 @@ def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidec
     """Build a Sidecar dataclass from a spec-dict.
 
     Keys recognised:
-      store_url, bandcamp_item_id, mb_release_id, tagged,
+      store_url, bandcamp_item_id, mb_release_id, tagged, track_count_expected,
       mb_match_candidate (nested dict with deltas_ms list).
     """
     now = datetime.now(UTC)
@@ -677,4 +701,5 @@ def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidec
         mb_release_id=sc_spec.get("mb_release_id"),
         mb_match_candidate=candidate,
         tagged_at=tagged_at,
+        track_count_expected=sc_spec.get("track_count_expected"),
     )
