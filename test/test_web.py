@@ -200,7 +200,7 @@ def test_tasks_groups_albums_by_state_with_headers_and_instructions(client, cfg)
 
     r = client.get("/tasks")
     # Both are NEEDS_MBID — single section heading
-    assert "Needs MBID" in r.text
+    assert ">MBID</abbr>" in r.text  # the "Needs MBID" header (MBID is an <abbr>)
     # Open-in-Harmony link appears for the store_url card
     assert "Open in Harmony" in r.text
     # Manual MBID form appears too
@@ -212,8 +212,9 @@ def test_tasks_state_group_omitted_when_empty(client, cfg):
     _make_album(cfg, "Only New")
     r = client.get("/tasks")
     assert "New" in r.text
-    # No NEEDS_MBID / NEEDS_REVIEW / NEEDS_SYNC headers
-    assert "Needs MBID" not in r.text
+    # No NEEDS_MBID / NEEDS_REVIEW / NEEDS_SYNC headers ("MBID" alone also
+    # appears in the manual form, so match the header's <abbr> fragment).
+    assert ">MBID</abbr>" not in r.text
     assert "Needs Review" not in r.text
     assert "Needs Sync" not in r.text
 
@@ -268,7 +269,7 @@ def test_needs_mbid_card_with_store_url_rendered(client, cfg):
         ),
     )
     r = client.get("/tasks")
-    assert "Needs MBID" in r.text
+    assert ">MBID</abbr>" in r.text  # the "Needs MBID" header (MBID is an <abbr>)
     assert "Open in Harmony" in r.text
     assert "harmony.pulsewidth.org.uk" in r.text
 
@@ -277,7 +278,7 @@ def test_needs_mbid_card_without_store_url_rendered(client, cfg):
     d = _make_album(cfg, "NoURL")
     sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
     r = client.get("/tasks")
-    assert "Needs MBID" in r.text
+    assert ">MBID</abbr>" in r.text  # the "Needs MBID" header (MBID is an <abbr>)
     # Manual MBID form is included
     assert 'name="mbid"' in r.text
     assert "/manual/" in r.text
@@ -327,7 +328,7 @@ def test_needs_review_card_renders_side_by_side(client, cfg):
     )
     r = client.get("/tasks")
     # Merged into NEEDS_MBID: the card shows the suggestion side-by-side inline.
-    assert "Needs MBID" in r.text
+    assert ">MBID</abbr>" in r.text  # the "Needs MBID" header (MBID is an <abbr>)
     assert "MusicBrainz suggests" in r.text
     assert "approximate" in r.text
     assert "Side A" in r.text
