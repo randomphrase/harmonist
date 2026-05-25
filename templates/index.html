@@ -53,12 +53,12 @@
 
 <script>
 // Inbox / Library tabs. Both panels stay in the DOM; we only toggle which is
-// shown and restyle the active tab (ink text + grass underline).
+// shown and restyle the active tab (ink text + accent underline).
 function harmonistTab(name) {
     document.querySelectorAll('.hmt-tab').forEach(t => {
         const active = t.dataset.tab === name;
         t.classList.toggle('text-ink', active);
-        t.classList.toggle('border-grass', active);
+        t.classList.toggle('border-accent', active);
         t.classList.toggle('text-muted', !active);
         t.classList.toggle('border-transparent', !active);
     });
@@ -217,7 +217,7 @@ function harmonistToggleRow(id) {
     function pillClasses(level) {
         if (level === 'error')   return 'bg-red-500/15 text-red-300 border border-red-500/40';
         if (level === 'warning') return 'bg-amber-500/15 text-amber-300 border border-amber-500/40';
-        return 'bg-grass/20 text-grass-soft border border-grass/50';
+        return 'bg-accent/20 text-accent-soft border border-accent/50';
     }
     function renderActionMessage(verb, details, level) {
         const pill = `<span class="px-3 py-0.5 rounded-full font-bold text-xs ${pillClasses(level)}">${esc(verb)}</span>`;

@@ -38,7 +38,7 @@
                     {% if tc.delta_ms is not none and tc.delta_ms > 4000 %}
                         {% set delta_class = 'text-amber-700 font-bold' %}
                     {% elif tc.delta_ms is not none %}
-                        {% set delta_class = 'text-grass font-semibold' %}
+                        {% set delta_class = 'text-accent font-semibold' %}
                     {% endif %}
                     <tr class="border-b border-line last:border-0">
                         <td class="py-1 px-2 font-mono text-muted">{{ loop.index }}</td>
@@ -60,7 +60,7 @@
         <div class="flex gap-2 flex-wrap">
             <button hx-post="/confirm/{{ album.id }}"
                     hx-target="this" hx-swap="afterend"
-                    class="px-3 py-1.5 bg-grass hover:bg-grass-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+                    class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
                 Confirm &amp; Tag
             </button>
             {% if incomplete_offered %}

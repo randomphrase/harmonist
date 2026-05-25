@@ -11,19 +11,21 @@
 @source "../src/harmonist/web/main.py";
 
 @theme {
-  /* Badge colours — RESERVED for MB / Bandcamp / status badges so they pop
-     against the otherwise green-accented UI. Do NOT use these for general
-     chrome (links, buttons, tabs) — that's what --color-grass is for. */
+  /* Badge colours — RESERVED for MB / Bandcamp branding so they pop against
+     the accent-coloured chrome. Do NOT use these for general chrome (links,
+     buttons, tabs) — that's what --color-accent is for. mb-orange is the
+     MusicBrainz mark's hex; the Needs Sync state uses Tailwind amber so it
+     doesn't collide with the orange accent. */
   --color-mb-purple: #BA478F;
   --color-mb-orange: #EB743B;
   --color-bc-teal: #00A19D;
 
-  /* Primary accent — a balanced mid-green (chosen over teal so the teal
-     badge keeps its distinctness). Used for links, the active tab, and
-     primary buttons. */
-  --color-grass: #2E9E5B;
-  --color-grass-dark: #26864A;   /* hover / pressed */
-  --color-grass-soft: #E7F4EC;   /* tints, selected backgrounds */
+  /* Primary accent — orange. Contrasts with the purple/teal badges. Hue-
+     neutral token name so the colour can change without touching templates.
+     Used for links, the active tab, and primary buttons. */
+  --color-accent: #E8722C;
+  --color-accent-dark: #CC5F1E;   /* hover / pressed */
+  --color-accent-soft: #FBEDDF;   /* tints, selected backgrounds */
 
   /* Light theme: Bandcamp-style flat surfaces. Hierarchy comes from weight
      + whitespace + hairline borders, not drop-shadows. `ink` = primary text,
