@@ -54,6 +54,7 @@ def test_seed_produces_each_state(music_dir):
     assert states["Gimme Some Money"] == AlbumState.NEEDS_MBID
     assert states["Little Bit o' Hoot, Whole Lotta Nanny"] == AlbumState.NEEDS_SYNC
     assert states["The Rural Juror (OST)"] == AlbumState.COMPLETE
+    assert states["Can You Picture That?"] == AlbumState.INCOMPLETE
 
 
 def test_seed_new_has_mbid_and_comment_for_reconcile(music_dir):
