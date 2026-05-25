@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from harmonist import activity
+
 log = logging.getLogger(__name__)
 
 
@@ -90,6 +92,7 @@ class SyncRunner:
         return self._status
 
     def _run(self) -> None:
+        activity.record("Bandcamp sync started", "info")
         new_items = 0
         error: str | None = None
         try:
@@ -105,3 +108,8 @@ class SyncRunner:
                 self._status.last_error = error
                 self._status.new_items = new_items
                 self._status.current_item = ""
+        if error:
+            activity.record(f"Bandcamp sync failed — {error}", "error")
+        else:
+            plural = "" if new_items == 1 else "s"
+            activity.record(f"Bandcamp sync finished — {new_items} new item{plural}", "info")
