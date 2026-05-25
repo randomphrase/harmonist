@@ -136,10 +136,10 @@ def _derive_state(sidecar: Sidecar | None, audio_files: list[Path]) -> AlbumStat
     if sidecar is None:
         return AlbumState.NEW
     if sidecar.mb_release_id is None:
-        if sidecar.mb_match_candidate is not None:
-            return AlbumState.NEEDS_REVIEW
-        # Single state for "we don't have an MB release yet" — the card
-        # template branches on whether store_url is present.
+        # Single "no confirmed MB release yet" state. The card adapts on
+        # whether a suggestion (mb_match_candidate) and/or store_url is
+        # present — but it's all one state, so the user never round-trips
+        # between "review" and "assign".
         return AlbumState.NEEDS_MBID
     if _files_tagged_with(audio_files, sidecar.mb_release_id):
         # INCOMPLETE wins over NEEDS_SYNC when set: the user has explicitly

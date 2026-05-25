@@ -86,7 +86,9 @@ def test_scan_needs_mbid_when_sidecar_has_no_store_url(tmp_path):
     assert a.state == AlbumState.NEEDS_MBID
 
 
-def test_scan_needs_review_when_match_candidate_set(tmp_path):
+def test_scan_needs_mbid_when_match_candidate_set(tmp_path):
+    # A pending suggestion (mb_match_candidate) no longer has its own state;
+    # it's NEEDS_MBID with the candidate attached — the card adapts.
     album_dir = _make_album_dir(tmp_path, "Artist", "Album")
     sc.write(
         album_dir,
@@ -103,7 +105,7 @@ def test_scan_needs_review_when_match_candidate_set(tmp_path):
         ),
     )
     a = scan(tmp_path)[0]
-    assert a.state == AlbumState.NEEDS_REVIEW
+    assert a.state == AlbumState.NEEDS_MBID
     assert a.sidecar.mb_match_candidate.mb_release_id == "rel-aaa"
 
 

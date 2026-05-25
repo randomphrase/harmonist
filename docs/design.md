@@ -154,11 +154,18 @@ Every album in the music dir is in exactly one state, derived from the presence/
 |---|---|---|---|---|---|---|---|
 | absent | — | — | — | — | **New** | yes | "Reconcile from tags" / "Recover store URL" / manual MBID form |
 | present | null | null | n/a | — | **Needs MBID** | yes | If `store_url`: "Open in Harmony" + "Recheck"; always: manual MBID form |
-| present | null | set | n/a | — | **Needs Review** | yes | side-by-side: files vs MB release with per-track green/yellow length indicators; "Confirm" / "Confirm as Incomplete" / "Reject" |
+| present | null | set | n/a | — | **Needs MBID** (with suggestion) | yes | Adaptive card: side-by-side files vs MB release (per-track green/amber length deltas) + "Confirm" / "Confirm as Incomplete" / "Dismiss suggestion", with the find/assign tools available under a disclosure. Sorted first in the group. |
 | present | set | n/a | no | — | **Tagging** (transient) | yes (briefly) | spinner |
 | present, `store_url` is bandcamp, `bandcamp.item_id=None` | set | n/a | yes | — | **Needs Sync** | yes | "Try a different URL" / "Mark purchased elsewhere" |
 | present | set | n/a | yes | equal | **Complete** | no | (hidden — visible in library) |
 | present | set | n/a | yes | less | **Incomplete** | no | library badge "N of M tracks"; "Recheck — maybe more tracks now" |
+
+**Needs MBID is a single state** whether or not a `mb_match_candidate`
+suggestion is attached — there is no separate "Needs Review" state. The
+card adapts: with a suggestion it leads with the side-by-side + Confirm;
+without, it leads with the find/assign tools. This avoids a confusing
+round-trip (reject → re-assign) when the user just wants to swap a wrong
+MBID — they can do that inline, and dismissing a suggestion stays put.
 
 `Complete` vs `Incomplete` is derived at scan time by comparing the
 album's file count against `sidecar.track_count_expected` (the MB
@@ -181,16 +188,13 @@ stateDiagram-v2
     NEW --> NEEDS_SYNC: reconcile<br/>(MBID + bandcamp ©cmt)
     NEW --> COMPLETE: reconcile<br/>(MBID, non-bandcamp)
     NEW --> NEEDS_MBID: recover store URL<br/>from ©cmt
-    NEW --> NEEDS_REVIEW: manual MBID<br/>(approximate)
+    NEW --> NEEDS_MBID: manual MBID<br/>(approximate → suggestion)
     NEW --> COMPLETE: manual MBID<br/>(exact)
 
-    NEEDS_MBID --> NEEDS_REVIEW: recheck / paste MBID<br/>(approximate)
-    NEEDS_MBID --> COMPLETE: recheck / paste MBID<br/>(exact)
-    NEEDS_MBID --> NEEDS_MBID: recheck (no match)
-
-    NEEDS_REVIEW --> COMPLETE: Confirm
-    NEEDS_REVIEW --> INCOMPLETE: Confirm as Incomplete
-    NEEDS_REVIEW --> NEEDS_MBID: Reject
+    NEEDS_MBID --> NEEDS_MBID: recheck / paste MBID<br/>(approximate → suggestion)
+    NEEDS_MBID --> NEEDS_MBID: dismiss suggestion / recheck (no match)
+    NEEDS_MBID --> COMPLETE: Confirm suggestion<br/>or exact recheck / paste MBID
+    NEEDS_MBID --> INCOMPLETE: Confirm as Incomplete
 
     NEEDS_SYNC --> COMPLETE: Sync matches<br/>purchase (item_id filled)
     NEEDS_SYNC --> COMPLETE: Mark purchased<br/>elsewhere
@@ -199,7 +203,7 @@ stateDiagram-v2
     COMPLETE --> NEW: Forget<br/>(sidecar deleted)
 
     INCOMPLETE --> NEW: Forget
-    INCOMPLETE --> NEEDS_REVIEW: Recheck<br/>(MB tracklist changed)
+    INCOMPLETE --> NEEDS_MBID: Recheck<br/>(MB tracklist changed → suggestion)
     INCOMPLETE --> COMPLETE: Recheck<br/>(missing tracks now on disk)
 
     INCONSISTENT --> NEW: user fixes on-disk<br/>tags via Picard
@@ -223,11 +227,13 @@ Notes:
 A URL → MBID match from [MusicBrainz](https:://musicbrainz.org) is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
 
 - **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote: write `mb_release_id`, run tagger, transition to Tagging → Complete with no user intervention.
-- **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. State becomes Needs Review. UI surfaces a Picard-style side-by-side with green/yellow per-track indicators and Confirm / Confirm as Incomplete / Reject buttons.
-- **No match:** file count differs from MB track count. Treated like Approximate from the user's perspective (still Needs Review, still requires explicit Confirm) but the side-by-side has to handle uneven rows.
+- **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. The album stays in Needs MBID with the suggestion attached; its card surfaces a Picard-style side-by-side with green/amber per-track indicators and Confirm / Confirm as Incomplete / Dismiss suggestion buttons (find/assign tools remain available under a disclosure).
+- **No match:** file count differs from MB track count. Treated like Approximate from the user's perspective (suggestion shown, explicit Confirm required) but the side-by-side has to handle uneven rows.
+
+Track lengths compared are the per-release **track** lengths, not the recording lengths (which can differ by seconds across releases).
 
 Confirm → promote candidate to `mb_release_id`, clear candidate, run tagger.
-Reject → clear candidate, drop back to Needs MBID.
+Dismiss suggestion → clear candidate; the album stays in Needs MBID so a different release can be assigned.
 
 Tracks where MB has no recorded length are shown as "unknown" (gray) and don't trigger downgrade on their own, but they don't get to vote for "exact" either — an album with all-unknown lengths and matching count is treated as Approximate.
 
@@ -750,11 +756,11 @@ corruption. We refuse to guess; Picard exists for this case.
 On-disk track count is **less than** the MB release's track count, but
 the user has a valid reason (CD rip missing a hidden track, intentional
 selection, vinyl-only edition where the digital MB release has bonus
-tracks, etc.). Without special handling these stall in `NEEDS_REVIEW`
+tracks, etc.). Without special handling these stall in `NEEDS_MBID`
 forever because `TagMismatchError` would block the tagger.
 
-**Handling:** the Needs Review card gains a third button next to
-Confirm / Reject:
+**Handling:** the suggestion card (Needs MBID with a candidate) gains a
+button next to Confirm / Dismiss suggestion:
 
 - **Confirm as Incomplete** — runs the tagger in incomplete mode and
   records `track_count_expected` (the MB release's track count) on the
@@ -779,7 +785,7 @@ track_count_expected` and the state naturally promotes to `COMPLETE`.
 Conversely, if MB upstream gains new tracks, Recheck refreshes
 `track_count_expected` and the album either stays `INCOMPLETE` (if
 the new MB count still exceeds file count) or routes back through
-`NEEDS_REVIEW` for re-confirmation.
+`NEEDS_MBID` (with a fresh suggestion) for re-confirmation.
 
 **Out of scope:** file_count > track_count (extra tracks on disk) — same
 class as inconsistent; user resolves externally.

@@ -78,7 +78,7 @@ def test_seed_produces_each_state(music_dir):
     assert states["A Most Excellent Journey"] == AlbumState.NEW
     assert states["We Are Here To Make You Sad"] == AlbumState.NEEDS_MBID
     assert states["Top 5 Records For A Wednesday"] == AlbumState.NEEDS_MBID
-    assert states["Gimme Some Money"] == AlbumState.NEEDS_REVIEW
+    assert states["Gimme Some Money"] == AlbumState.NEEDS_MBID
     assert states["Little Bit o' Hoot, Whole Lotta Nanny"] == AlbumState.NEEDS_SYNC
     assert states["The Rural Juror (OST)"] == AlbumState.COMPLETE
 
@@ -288,7 +288,13 @@ def test_demo_confirm_tags_album_end_to_end(demo_client):
         from harmonist.scanner import scan
 
         albums = scan(demo_client.app.state.cfg.paths.music_dir)
-        nc = next(a for a in albums if a.state == AlbumState.NEEDS_REVIEW)
+        nc = next(
+            a
+            for a in albums
+            if a.state == AlbumState.NEEDS_MBID
+            and a.sidecar
+            and a.sidecar.mb_match_candidate
+        )
         aid = nc.id
     else:
         aid = m.group(1)
