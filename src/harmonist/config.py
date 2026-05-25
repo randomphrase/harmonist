@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any, Literal
@@ -130,4 +131,14 @@ def load() -> Config:
     paths.setdefault("music_dir", str(music_dir))
 
     data = _apply_env_overrides(data)
-    return Config(**data)
+    cfg = Config(**data)
+
+    if cfg.demo_mode:
+        # Demo mode is a sandbox: NEVER operate on the configured/real library.
+        # Force the music dir to a stable temp location, ignoring music_dir from
+        # toml/env. (Tests build Config directly and don't go through load(), so
+        # they keep their own isolated dirs.)
+        sandbox = Path(tempfile.gettempdir()) / "harmonist-demo"
+        cfg = cfg.model_copy(update={"paths": cfg.paths.model_copy(update={"music_dir": sandbox})})
+
+    return cfg

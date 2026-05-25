@@ -80,6 +80,11 @@ def create_app(
     if cfg.demo_mode:
         from harmonist import demo
 
+        log.warning(
+            "DEMO MODE ACTIVE — mocked MusicBrainz/Bandcamp, sandboxed music dir at %s "
+            "(the configured music_dir is NOT touched)",
+            cfg.paths.music_dir,
+        )
         demo.install()
         demo.ensure_seeded(cfg.paths.music_dir)
 
