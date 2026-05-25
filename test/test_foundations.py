@@ -32,6 +32,19 @@ def test_config_loads_with_env_overrides(monkeypatch, tmp_path):
     assert cfg.bandcamp.download_format == "flac"
 
 
+def test_demo_mode_sandboxes_music_dir(monkeypatch, tmp_path):
+    """In demo mode, load() ignores the configured music_dir and uses a temp
+    sandbox so the real library is never touched."""
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "real-music"))
+    monkeypatch.setenv("HARMONIST_DEMO_MODE", "1")
+    cfg = config_mod.load()
+    assert cfg.demo_mode is True
+    # NOT the configured music dir
+    assert cfg.paths.music_dir != tmp_path / "real-music"
+    assert cfg.paths.music_dir.name == "harmonist-demo"
+
+
 def test_config_defaults(monkeypatch, tmp_path):
     for var in ("HARMONIST_PORT", "HARMONIST_DOWNLOAD_FORMAT", "HARMONIST_TEST_MODE"):
         monkeypatch.delenv(var, raising=False)
