@@ -901,6 +901,13 @@ def _flash_response(
     )
 
 
-# Lazy app — most users go through `uvicorn harmonist.web.main:app --factory`
-# but for compatibility, also support `uvicorn harmonist.web.main:app --reload`.
-app = create_app()
+# The ASGI app is created lazily on attribute access (PEP 562) rather than at
+# import. Merely importing this module — which the test suite does — must NOT
+# run create_app() with ambient config: in demo mode that would monkeypatch the
+# global MB/Bandcamp services at import time and leak into unrelated tests.
+# `uvicorn harmonist.web.main:app` triggers creation on first access; the
+# `--factory` form (`...:create_app --factory`) works too.
+def __getattr__(name: str) -> Any:
+    if name == "app":
+        return create_app()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
