@@ -52,7 +52,7 @@
                 {% else %}text-ink{% endif %}">
                 {% if state == AlbumState.INCONSISTENT %}Inconsistent
                 {% elif state == AlbumState.NEW %}New
-                {% elif state == AlbumState.NEEDS_MBID %}Needs MBID
+                {% elif state == AlbumState.NEEDS_MBID %}Needs <abbr title="MusicBrainz Identifier — the unique ID of a specific release in the MusicBrainz database" class="cursor-help underline decoration-dotted underline-offset-2">MBID</abbr>
                 {% elif state == AlbumState.NEEDS_SYNC %}Needs Sync
                 {% elif state == AlbumState.TAGGING %}Tagging
                 {% endif %}
@@ -61,7 +61,7 @@
             <p class="text-xs text-muted mt-0.5">
                 {% if state == AlbumState.INCONSISTENT %}Files in one directory disagree on album title or MBID. Harmonist won't guess — use <a href="https://picard.musicbrainz.org/" target="_blank" rel="noopener" class="text-mb-purple hover:underline">Picard</a> to sort into separate folders, then refresh.
                 {% elif state == AlbumState.NEW %}No <code class="text-ink">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.
-                {% elif state == AlbumState.NEEDS_MBID %}No confirmed MusicBrainz release yet. Where a suggestion was found, review the side-by-side and confirm; otherwise seed via Harmony and recheck, paste an MBID, or search by artist + title.
+                {% elif state == AlbumState.NEEDS_MBID %}No confirmed MusicBrainz release yet. Where a suggestion was found, review the side-by-side and confirm; otherwise seed via Harmony and recheck, paste an <abbr title="MusicBrainz Identifier — the unique ID of a specific release in the MusicBrainz database" class="cursor-help underline decoration-dotted underline-offset-2">MBID</abbr>, or search by artist + title.
                 {% elif state == AlbumState.NEEDS_SYNC %}Tagged from MusicBrainz but Bandcamp purchase isn't linked yet. <span class="font-bold text-accent">Click Sync</span> to confirm — that's the common case.
                 {% elif state == AlbumState.TAGGING %}Files being written…
                 {% endif %}
