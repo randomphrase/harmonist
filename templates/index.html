@@ -27,6 +27,10 @@
                 class="hmt-tab pb-2 -mb-px font-semibold border-b-2 transition">
             Library <span id="library-count" class="font-normal text-muted"></span>
         </button>
+        <button type="button" data-tab="activity" onclick="harmonistTab('activity')"
+                class="hmt-tab pb-2 -mb-px font-semibold border-b-2 transition">
+            Activity
+        </button>
     </nav>
 
     <div id="panel-inbox">
@@ -49,6 +53,15 @@
             <div class="text-center py-6 text-muted italic text-sm">Loading library…</div>
         </div>
     </div>
+
+    <div id="panel-activity" class="hidden">
+        <div id="activity-feed"
+             hx-get="/activity"
+             hx-trigger="load, every 5s, tasks-changed from:body"
+             hx-swap="innerHTML">
+            <div class="text-center py-6 text-muted italic text-sm">Loading activity…</div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -62,10 +75,9 @@ function harmonistTab(name) {
         t.classList.toggle('text-muted', !active);
         t.classList.toggle('border-transparent', !active);
     });
-    const inbox = document.getElementById('panel-inbox');
-    const library = document.getElementById('panel-library');
-    if (inbox) inbox.classList.toggle('hidden', name !== 'inbox');
-    if (library) library.classList.toggle('hidden', name !== 'library');
+    document.querySelectorAll('[id^="panel-"]').forEach(p => {
+        p.classList.toggle('hidden', p.id !== 'panel-' + name);
+    });
     try { localStorage.setItem('harmonist-tab', name); } catch (e) {}
 }
 

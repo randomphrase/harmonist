@@ -18,8 +18,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from harmonist import activity, cover_art, mb_lookup, mb_search, reconcile, scanner, url_recovery
 from harmonist import config as config_mod
-from harmonist import cover_art, mb_lookup, mb_search, reconcile, scanner, url_recovery
 from harmonist import sidecar as sidecar_mod
 from harmonist.bandcamp_hook import HarmonistSyncer
 from harmonist.match import assess_match
@@ -73,6 +73,7 @@ def create_app(
         tagger = PicardCompatibleTagger()
 
     mb_lookup.configure(cfg.musicbrainz.user_agent)
+    activity.install_log_handler()
 
     sync_runner = SyncRunner(runner_fn=lambda: None)  # placeholder, replaced below
 
@@ -358,8 +359,13 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
     try:
         mbid = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
         if not mbid:
+            activity.record(f"Synced {album_path.name} — no MusicBrainz match yet", "info")
             return "no_match"
         status_str, _ = _apply_match(album_path, mbid, cfg, tagger)
+        if status_str == "tagged":
+            activity.record(f"Auto-tagged {album_path.name} from MusicBrainz after sync", "info")
+        else:
+            activity.record(f"Synced {album_path.name} — MusicBrainz suggestion to review", "info")
         return status_str
     except Exception as e:
         log.warning("auto-resolve failed for %s: %s", album_path, e)
@@ -394,6 +400,11 @@ def _register_routes(app: FastAPI) -> None:
             request.app.state.reconcile_runner.start()
         ctx = _ctx(request, albums=_inbox_albums(albums), total_albums=len(albums))
         return _templates(request).TemplateResponse(request, "tasks.html", ctx)
+
+    @app.get("/activity", response_class=HTMLResponse)
+    def activity_feed(request: Request) -> Response:
+        ctx = _ctx(request, events=activity.recent(100))
+        return _templates(request).TemplateResponse(request, "partials/activity.html", ctx)
 
     @app.get("/sync/status")
     def sync_status(request: Request) -> Response:
@@ -885,6 +896,8 @@ def _flash_response(
     `tasks_changed=False` to avoid spurious refreshes.
     """
     message = verb if not details else f"{verb} — {details}"
+    # Every action outcome is also an activity-log entry (the Activity tab).
+    activity.record(message, level if level in ("info", "warning", "error") else "info")
     triggers: dict[str, Any] = {
         "harmonist-status": {
             "verb": verb,
