@@ -2,12 +2,11 @@
 {% set candidate = sc.mb_match_candidate if sc else None %}
 {% set has_store_url = sc and sc.store_url %}
 <div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border {% if candidate %}border-amber-300{% elif has_store_url %}border-bc-teal/40{% else %}border-line{% endif %}">
-    {% include 'partials/_album_header.html' %}
-
-    {# Links to the (proposed) MB release + the store page, so the user can
-       sanity-check the match / spot a wrong MBID before confirming. #}
-    {% with mb_release_id=(candidate.mb_release_id if candidate else None), store_url=(sc.store_url if sc else None) %}
-        {% include 'partials/_links.html' %}
+    {# Header shows the MB + store badges top-right. Before confirmation the MB
+       badge should point at the *candidate* release, so override mb_release_id
+       (store_url defaults from the sidecar inside the header). #}
+    {% with mb_release_id=(candidate.mb_release_id if candidate else None) %}
+        {% include 'partials/_album_header.html' %}
     {% endwith %}
 
     {% if candidate %}

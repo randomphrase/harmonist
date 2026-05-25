@@ -6,7 +6,7 @@
    Renders nothing when neither is present. #}
 {% set _store = store_name(store_url) if store_url else None %}
 {% if mb_release_id or store_url %}
-<div class="flex gap-2 items-center flex-wrap mb-3">
+<div class="flex gap-2 items-center flex-wrap justify-end">
     {% if mb_release_id %}
     <a href="https://musicbrainz.org/release/{{ mb_release_id }}"
        target="_blank" rel="noopener"
