@@ -202,7 +202,9 @@ def _assign_files_to_tracks(
 
     track_lengths: list[int | None] = []
     for _medium, _pos, track in flat_tracks:
-        raw = (track.get("recording") or {}).get("length") or track.get("length")
+        # Per-release track length is authoritative; recording length can
+        # differ by seconds across releases (see match._mb_track_length_ms).
+        raw = track.get("length") or (track.get("recording") or {}).get("length")
         try:
             track_lengths.append(None if raw is None else int(raw))
         except (TypeError, ValueError):

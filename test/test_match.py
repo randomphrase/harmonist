@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from harmonist.match import assess_match
+from harmonist.match import _mb_track_length_ms, assess_match
 from harmonist.tagger import ATOM_TITLE
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -41,6 +41,23 @@ def _release(track_lengths_ms: list[int | None]) -> dict:
         "title": "Test Album",
         "medium-list": [{"position": "1", "track-list": tracks}],
     }
+
+
+def test_track_length_prefers_track_over_recording():
+    """Per-release track length wins over the recording's own length — they
+    can differ by seconds (real example: MB release 02ba70f3, track 6 is
+    6:32 as a track but 6:26 as a recording). Reading the recording value
+    caused a phantom delta that tripped NEEDS_REVIEW."""
+    track = {
+        "length": "392581",  # 6:32 — the per-release track time
+        "recording": {"id": "rec", "length": "386000"},  # 6:26 — recording time
+    }
+    assert _mb_track_length_ms(track) == 392581
+
+
+def test_track_length_falls_back_to_recording():
+    track = {"recording": {"id": "rec", "length": "386000"}}
+    assert _mb_track_length_ms(track) == 386000
 
 
 # ---------- exact ----------

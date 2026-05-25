@@ -120,8 +120,14 @@ def _file_title(file_path: Path) -> str | None:
 
 
 def _mb_track_length_ms(track: Track) -> int | None:
-    """Pull the track length in milliseconds out of an MB track dict."""
-    raw = (track.get("recording") or {}).get("length") or track.get("length")
+    """Pull the track length in milliseconds out of an MB track dict.
+
+    Prefer the per-release *track* length (what the release page shows and
+    what the audio actually is) over the *recording* length, which is a
+    property of the shared recording entity and can differ by several
+    seconds across releases.
+    """
+    raw = track.get("length") or (track.get("recording") or {}).get("length")
     if raw is None:
         return None
     try:
