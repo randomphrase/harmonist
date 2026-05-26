@@ -1334,3 +1334,30 @@ def test_settings_save_rejects_invalid_cover_size(client, cfg):
     assert "Couldn't save" in r.text
     # nothing persisted
     assert not (cfg.paths.config_dir / "harmonist.toml").exists()
+
+
+def test_erase_sidecars_removes_only_sidecars(client, cfg):
+    from harmonist import sidecar as scmod
+
+    d = _make_album(cfg, "Erasable")
+    scmod.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-x"))
+    assert scmod.has_sidecar(d)
+    audio = d / "01 Track.m4a"
+    assert audio.exists()
+
+    r = client.post("/settings/erase-sidecars")
+    assert r.status_code == 200
+    assert "erased" in r.text.lower()
+    # sidecar gone, audio untouched
+    assert not scmod.has_sidecar(d)
+    assert audio.exists()
+
+
+def test_settings_shows_sidecar_count(client, cfg):
+    from harmonist import sidecar as scmod
+
+    d = _make_album(cfg, "Counted")
+    scmod.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-y"))
+    r = client.get("/settings")
+    assert "Erase sidecars" in r.text
+    assert "Maintenance" in r.text
