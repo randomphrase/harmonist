@@ -1278,3 +1278,59 @@ def test_index_has_activity_tab(client):
     r = client.get("/")
     assert 'data-tab="activity"' in r.text
     assert "Activity" in r.text
+
+
+# ---------- settings ----------
+
+
+def test_settings_page_renders(client, cfg):
+    r = client.get("/settings")
+    assert r.status_code == 200
+    assert "Settings" in r.text
+    # read-only paths + editable fields present
+    assert "Music library" in r.text
+    assert 'name="download_format"' in r.text
+    assert 'name="max_downloads_per_sync"' in r.text
+    assert 'name="user_agent"' in r.text
+
+
+def test_settings_save_persists_and_applies_live(client, cfg):
+    r = client.post(
+        "/settings",
+        data={
+            "download_format": "alac",
+            "max_downloads_per_sync": "12",
+            "user_agent": "Harmonist/9.9 ( me@example.com )",
+            "cover_art_size": "500",
+            "log_level": "warning",
+        },
+    )
+    assert r.status_code == 200
+    assert "Settings saved" in r.text
+    # Applied live on the running app
+    live = client.app.state.cfg
+    assert live.bandcamp.download_format == "alac"
+    assert live.bandcamp.max_downloads_per_sync == 12
+    assert live.cover_art.size == "500"
+    assert live.log_level == "warning"
+    # Persisted to harmonist.toml (round-trips on next load)
+    toml = (cfg.paths.config_dir / "harmonist.toml").read_text()
+    assert "alac" in toml
+    assert "max_downloads_per_sync = 12" in toml
+
+
+def test_settings_save_rejects_invalid_cover_size(client, cfg):
+    r = client.post(
+        "/settings",
+        data={
+            "download_format": "flac",
+            "max_downloads_per_sync": "5",
+            "user_agent": "Harmonist/0.1 ( x@y.z )",
+            "cover_art_size": "999",  # not a valid Literal
+            "log_level": "info",
+        },
+    )
+    assert r.status_code == 200
+    assert "Couldn't save" in r.text
+    # nothing persisted
+    assert not (cfg.paths.config_dir / "harmonist.toml").exists()

@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+    <div class="flex items-baseline justify-between">
+        <h1 class="text-2xl font-extrabold text-ink">Settings</h1>
+        <a href="/" class="text-sm font-semibold text-accent hover:underline">← Back to inbox</a>
+    </div>
+
+    {% if saved %}
+    <div class="px-4 py-2 rounded-md bg-accent-soft border border-accent/40 text-accent-dark text-sm font-bold">
+        Settings saved — applied without a restart.
+    </div>
+    {% endif %}
+    {% if error %}
+    <div class="px-4 py-2 rounded-md bg-red-50 border border-red-300 text-red-700 text-sm">
+        Couldn't save: {{ error }}
+    </div>
+    {% endif %}
+
+    {# ---- Read-only: needs a restart / config-file edit to change ---- #}
+    <section class="border border-line rounded-lg p-4 space-y-3">
+        <div>
+            <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Paths &amp; server</h2>
+            <p class="text-2xs text-muted">Read at startup — change these in <code>harmonist.toml</code> (or env) and restart.</p>
+        </div>
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            <div>
+                <dt class="text-2xs uppercase tracking-widest text-muted">Music library</dt>
+                <dd class="font-mono text-ink break-all" title="{{ cfg.paths.music_dir }}">{{ display_path(cfg.paths.music_dir) }}</dd>
+            </div>
+            <div>
+                <dt class="text-2xs uppercase tracking-widest text-muted">Config dir</dt>
+                <dd class="font-mono text-ink break-all" title="{{ cfg.paths.config_dir }}">{{ display_path(cfg.paths.config_dir) }}</dd>
+            </div>
+            <div>
+                <dt class="text-2xs uppercase tracking-widest text-muted">Server</dt>
+                <dd class="font-mono text-ink">{{ cfg.server.host }}:{{ cfg.server.port }}</dd>
+            </div>
+        </dl>
+    </section>
+
+    {# ---- Bandcamp sync (cookies) ---- #}
+    <section class="border border-line rounded-lg p-4 space-y-3">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Bandcamp sync</h2>
+        <div class="flex items-center justify-between gap-3">
+            <p class="text-sm">
+                {% if bandcamp_ok %}
+                <span class="font-bold text-accent">●</span> Login cookies are set up.
+                {% else %}
+                <span class="font-bold text-amber-700">●</span> No login cookies yet — sync is disabled.
+                {% endif %}
+            </p>
+            <button hx-get="/bandcamp/setup" hx-target="#modal" hx-swap="innerHTML"
+                    class="px-3 py-1.5 border border-accent text-accent hover:bg-accent-soft rounded text-xs font-bold uppercase tracking-widest transition">
+                {% if bandcamp_ok %}Re-configure{% else %}Set up{% endif %}
+            </button>
+        </div>
+    </section>
+
+    {# ---- Editable settings (take effect immediately, persisted to toml) ---- #}
+    <form method="post" action="/settings" class="border border-line rounded-lg p-4 space-y-4">
+        <div>
+            <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Preferences</h2>
+            <p class="text-2xs text-muted">Saved to <code>harmonist.toml</code> and applied right away.</p>
+        </div>
+
+        <label class="block">
+            <span class="block text-xs font-bold text-ink mb-1">Download format</span>
+            <select name="download_format"
+                    class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+                {% set fmts = ['flac', 'alac', 'mp3-320', 'mp3-v0', 'aac-hi', 'vorbis', 'wav', 'aiff'] %}
+                {% if cfg.bandcamp.download_format not in fmts %}<option selected>{{ cfg.bandcamp.download_format }}</option>{% endif %}
+                {% for f in fmts %}
+                <option value="{{ f }}" {{ 'selected' if f == cfg.bandcamp.download_format }}>{{ f }}</option>
+                {% endfor %}
+            </select>
+            <span class="block text-2xs text-muted mt-1">The audio format requested from Bandcamp at download time.</span>
+        </label>
+
+        <label class="block">
+            <span class="block text-xs font-bold text-ink mb-1">Max downloads per sync</span>
+            <input type="number" name="max_downloads_per_sync" min="1" required
+                   value="{{ cfg.bandcamp.max_downloads_per_sync }}"
+                   class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+            <span class="block text-2xs text-muted mt-1">Safety cap — a sync refuses to run if it would download more than this.</span>
+        </label>
+
+        <label class="block">
+            <span class="block text-xs font-bold text-ink mb-1">Cover art size</span>
+            <select name="cover_art_size"
+                    class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+                {% for s in ['250', '500', '1200', 'original'] %}
+                <option value="{{ s }}" {{ 'selected' if s == cfg.cover_art.size }}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <label class="block">
+            <span class="block text-xs font-bold text-ink mb-1">MusicBrainz user agent</span>
+            <input type="text" name="user_agent" required
+                   value="{{ cfg.musicbrainz.user_agent }}"
+                   class="w-full bg-white border border-line rounded px-3 py-1.5 text-xs font-mono text-ink focus:border-accent outline-none">
+            <span class="block text-2xs text-muted mt-1">Sent with every MusicBrainz request. Form: <code>Name/Version ( contact )</code>.</span>
+        </label>
+
+        <label class="block">
+            <span class="block text-xs font-bold text-ink mb-1">Log level</span>
+            <select name="log_level"
+                    class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+                {% for lvl in ['debug', 'info', 'warning', 'error'] %}
+                <option value="{{ lvl }}" {{ 'selected' if lvl == cfg.log_level }}>{{ lvl }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <div class="pt-2">
+            <button type="submit"
+                    class="px-4 py-2 bg-accent hover:bg-accent-dark text-white rounded font-semibold text-sm transition">
+                Save settings
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

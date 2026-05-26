@@ -17,6 +17,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, Response, Uploa
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError as PydanticValidationError
 
 from harmonist import activity, cover_art, mb_lookup, mb_search, reconcile, scanner, url_recovery
 from harmonist import config as config_mod
@@ -131,6 +132,7 @@ def create_app(
     templates.env.globals["harmony_base"] = HARMONY_BASE
     templates.env.globals["AlbumState"] = AlbumState
     templates.env.globals["store_name"] = store_name
+    templates.env.globals["display_path"] = _display_path
     templates.env.globals["demo_mode"] = cfg.demo_mode
     # Evaluated per-render (callable, not a constant) so the header's
     # Sync/Set-up button flips the moment cookies are saved.
@@ -170,6 +172,16 @@ def _register_demo_routes(app: FastAPI) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _display_path(p: Path | str) -> str:
+    """Friendlier path for the UI: abbreviate the home dir to ~. Absolute
+    paths rarely mean anything to the user; the tail is what matters."""
+    path = Path(p)
+    try:
+        return "~/" + str(path.relative_to(Path.home()))
+    except ValueError:
+        return str(path)
 
 
 def _templates(request: Request) -> Jinja2Templates:
@@ -410,6 +422,66 @@ def _register_routes(app: FastAPI) -> None:
     def activity_feed(request: Request) -> Response:
         ctx = _ctx(request, events=activity.recent(100))
         return _templates(request).TemplateResponse(request, "partials/activity.html", ctx)
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request) -> Response:
+        cfg: config_mod.Config = request.app.state.cfg
+        ctx = _ctx(request, bandcamp_ok=_bandcamp_configured(cfg))
+        return _templates(request).TemplateResponse(request, "settings.html", ctx)
+
+    @app.post("/settings", response_class=HTMLResponse)
+    def settings_save(
+        request: Request,
+        download_format: str = Form(...),
+        max_downloads_per_sync: int = Form(...),
+        user_agent: str = Form(...),
+        cover_art_size: str = Form(...),
+        log_level: str = Form(...),
+    ) -> Response:
+        cfg: config_mod.Config = request.app.state.cfg
+        # Re-validate by constructing fresh sub-models (model_copy does NOT
+        # validate). Bad values (e.g. an invalid cover-art size) raise here.
+        try:
+            new_bandcamp = config_mod.BandcampConfig(
+                download_format=download_format.strip(),
+                max_downloads_per_sync=max_downloads_per_sync,
+                ignores_file=cfg.bandcamp.ignores_file,
+                cookies_file=cfg.bandcamp.cookies_file,
+            )
+            new_mb = config_mod.MusicBrainzConfig(user_agent=user_agent.strip())
+            # model_validate (vs the constructor) keeps mypy happy about the
+            # str→Literal narrowing while still validating the value at runtime.
+            new_cover = config_mod.CoverArtConfig.model_validate({"size": cover_art_size})
+            new_cfg = cfg.model_copy(
+                update={
+                    "bandcamp": new_bandcamp,
+                    "musicbrainz": new_mb,
+                    "cover_art": new_cover,
+                    "log_level": log_level.strip().lower(),
+                }
+            )
+        except (PydanticValidationError, ValueError) as e:
+            ctx = _ctx(request, bandcamp_ok=_bandcamp_configured(cfg), error=str(e))
+            return _templates(request).TemplateResponse(request, "settings.html", ctx)
+
+        config_mod.write_settings(
+            cfg.paths.config_dir,
+            {
+                "bandcamp.download_format": new_bandcamp.download_format,
+                "bandcamp.max_downloads_per_sync": new_bandcamp.max_downloads_per_sync,
+                "musicbrainz.user_agent": new_mb.user_agent,
+                "cover_art.size": new_cover.size,
+                "log_level": new_cfg.log_level,
+            },
+        )
+        # Apply live — code reads these from app.state.cfg at use-time. The
+        # MB user-agent is applied at startup, so re-configure it now too.
+        request.app.state.cfg = new_cfg
+        mb_lookup.configure(new_cfg.musicbrainz.user_agent)
+        activity.record("Settings updated", "info")
+
+        ctx = _ctx(request, bandcamp_ok=_bandcamp_configured(new_cfg), saved=True)
+        return _templates(request).TemplateResponse(request, "settings.html", ctx)
 
     @app.get("/sync/status")
     def sync_status(request: Request) -> Response:

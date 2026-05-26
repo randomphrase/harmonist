@@ -142,3 +142,28 @@ def load() -> Config:
         cfg = cfg.model_copy(update={"paths": cfg.paths.model_copy(update={"music_dir": sandbox})})
 
     return cfg
+
+
+def write_settings(config_dir: Path, updates: dict[str, object]) -> None:
+    """Persist a handful of editable settings to harmonist.toml in place.
+
+    `updates` keys are dotted (e.g. "bandcamp.download_format", "log_level").
+    Uses tomlkit so existing comments / formatting / unmanaged keys (incl.
+    demo_mode and [paths]) survive the round-trip.
+    """
+    import tomlkit
+
+    path = config_dir / "harmonist.toml"
+    doc = tomlkit.parse(path.read_text(encoding="utf-8")) if path.exists() else tomlkit.document()
+    for dotted, value in updates.items():
+        if "." in dotted:
+            table_name, key = dotted.split(".", 1)
+            table = doc.get(table_name)
+            if table is None:
+                table = tomlkit.table()
+                doc[table_name] = table
+            table[key] = value
+        else:
+            doc[dotted] = value
+    config_dir.mkdir(parents=True, exist_ok=True)
+    path.write_text(tomlkit.dumps(doc), encoding="utf-8")
