@@ -1,0 +1,20 @@
+# Keep the build context (and image) lean.
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.DS_Store
+
+# Dev-only / not needed at runtime
+test
+docs
+music
+music_demo
+*.md
+Makefile
+.envrc

@@ -2,7 +2,7 @@
 name = "harmonist"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["mutagen", "bandcampsync", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart", "tomlkit"]
+dependencies = ["mutagen", "bandcampsync", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart", "tomlkit", "uvicorn[standard]"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff", "mypy"]
