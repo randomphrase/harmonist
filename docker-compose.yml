@@ -1,0 +1,20 @@
+# Example compose for running Harmonist on a NAS / server.
+#   docker compose up -d --build
+#
+# Bind-mount your real music library at /music and a persistent config dir at
+# /config (holds harmonist.toml, cookies.txt, ignores.txt, the id registry).
+services:
+  harmonist:
+    build: .
+    # Or, once you've built/pushed an image:
+    # image: harmonist:latest
+    container_name: harmonist
+    ports:
+      - "8000:8000"
+    volumes:
+      - /Users/alastair/Music/harmonist-test:/music
+      - /Users/alastair/.config/harmonist:/config
+    restart: unless-stopped
+    # Synology bind-mount permissions: if the container can't write to the
+    # mounts, set user to your NAS uid:gid, e.g.
+    # user: "1026:100"
