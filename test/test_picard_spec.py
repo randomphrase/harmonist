@@ -152,7 +152,7 @@ def test_album_level_mbid_atoms_match_picard_names(tmp_path):
     assert _atom_strs(audio, ATOM_MB_ALBUM_ARTIST_ID) == ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
     assert _atom_str(audio, ATOM_MB_RELEASE_GROUP_ID) == "abcdef01-2345-6789-abcd-ef0123456789"
     assert _atom_str(audio, ATOM_MB_ALBUM_TYPE) == "Album"
-    assert _atom_str(audio, ATOM_MB_ALBUM_STATUS) == "Official"
+    assert _atom_str(audio, ATOM_MB_ALBUM_STATUS) == "official"  # Picard lower-cases status
     assert _atom_str(audio, ATOM_MB_ALBUM_COUNTRY) == "GB"
 
 

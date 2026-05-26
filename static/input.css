@@ -46,3 +46,13 @@
   --text-2xs: 0.625rem;
   --text-2xs--line-height: 0.875rem;
 }
+
+/* In-progress feedback for slow actions (MB lookup, tagging). Buttons use
+   hx-disabled-elt="this" so they get [disabled] during the request; forms in
+   flight get HTMX's .htmx-request class. Dimming + a progress cursor make it
+   obvious the backend is working — outcomes then land in the status bar. */
+button[disabled],
+.htmx-request {
+  opacity: 0.55;
+  cursor: progress;
+}

@@ -157,6 +157,7 @@ def _bare_syncer(max_downloads: int = 5) -> HarmonistSyncer:
     s._max_downloads_per_sync = max_downloads
     s._progress_callback = None
     s._post_download_callback = None
+    s.new_items = 0
     s.bandcamp = MagicMock()
     s.ignores = MagicMock()
     s.local_media = MagicMock()
