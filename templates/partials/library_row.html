@@ -135,7 +135,7 @@
 
                 <div class="flex gap-2 pt-2 border-t border-line">
                     <button hx-post="/retag/{{ album.id }}"
-                            hx-target="this" hx-swap="afterend"
+                            hx-swap="none" hx-disabled-elt="this"
                             class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
                         Re-tag from MB
                     </button>

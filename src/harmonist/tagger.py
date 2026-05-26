@@ -172,7 +172,8 @@ def _build_tagset(
         mb_album_artist_ids=_artist_ids(release.get("artist-credit")),
         mb_release_group_id=rg.get("id"),
         mb_album_type=rg.get("primary-type"),
-        mb_album_status=release.get("status"),
+        # Picard writes the status lower-cased (e.g. "official", not "Official").
+        mb_album_status=(release.get("status") or "").lower() or None,
         mb_album_country=release.get("country"),
         mb_track_id=(track.get("recording") or {}).get("id"),
         mb_release_track_id=track.get("id"),

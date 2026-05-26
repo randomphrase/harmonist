@@ -7,7 +7,7 @@
     </p>
     <div class="flex gap-2 flex-wrap">
         <button hx-post="/unconfirmed/{{ album.id }}/manual"
-                hx-target="this" hx-swap="afterend"
+                hx-swap="none" hx-disabled-elt="this"
                 class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
             Mark purchased elsewhere
         </button>
@@ -17,7 +17,7 @@
        so it doesn't compete with Sync / Mark-purchased. #}
     <details class="mt-3 text-xs">
         <summary class="cursor-pointer text-muted hover:text-ink select-none">Wrong store URL? Edit it</summary>
-        <form hx-post="/unconfirmed/{{ album.id }}/url" hx-target="this" hx-swap="afterend"
+        <form hx-post="/unconfirmed/{{ album.id }}/url" hx-swap="none" hx-disabled-elt="this"
               class="flex gap-2 mt-2">
             <input type="url" name="url" required
                    value="{{ album.sidecar.store_url if album.sidecar else '' }}"

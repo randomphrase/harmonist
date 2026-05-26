@@ -167,6 +167,10 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # write. Used to auto-resolve the store URL against MusicBrainz so an
         # in-MB release skips NEEDS_MBID. Must never abort the sync.
         self._post_download_callback = post_download_callback
+        # Count of albums actually downloaded this run (the sync runner reports
+        # it). Set before super().__init__ because bandcampsync runs the whole
+        # sync eagerly inside __init__.
+        self.new_items = 0
         super().__init__(dir_path=Path(dir_path), **kwargs)
 
     async def sync_items(self) -> None:
@@ -209,6 +213,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
 
         result = bool(super().sync_item(item))
         if result:
+            self.new_items += 1
             local_path = self.local_media.get_path_for_purchase(item)
             try:
                 write_sidecar_for_item(item, local_path)

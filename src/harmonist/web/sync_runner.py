@@ -97,7 +97,11 @@ class SyncRunner:
         error: str | None = None
         try:
             result = self._runner_fn()
-            new_items = int(getattr(result, "new_items_downloaded", False))
+            # Real syncer exposes an int `new_items` (count of downloads); the
+            # demo result exposes a `new_items_downloaded` bool. Prefer the count.
+            new_items = int(
+                getattr(result, "new_items", getattr(result, "new_items_downloaded", 0))
+            )
         except Exception as e:
             log.exception("sync failed")
             error = str(e)

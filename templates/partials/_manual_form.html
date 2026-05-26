@@ -2,7 +2,7 @@
    Expects: album (with album.id, album.title, album.artist) #}
 <div class="space-y-2 mt-2">
     <form hx-post="/manual/{{ album.id }}/assign"
-          hx-target="this" hx-swap="afterend"
+          hx-swap="none" hx-disabled-elt="this"
           class="flex gap-2">
         <input type="text" name="mbid" required
                placeholder="MB release URL or 36-char MBID"

@@ -16,7 +16,7 @@
                 {% if r.catalog_number %} · {{ r.catalog_number }}{% endif %}
             </div>
         </div>
-        <form hx-post="/manual/{{ album_id }}/assign" hx-target="this" hx-swap="afterend">
+        <form hx-post="/manual/{{ album_id }}/assign" hx-swap="none" hx-disabled-elt="this">
             <input type="hidden" name="mbid" value="{{ r.id }}">
             <button type="submit"
                     class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-2xs font-bold uppercase tracking-widest transition whitespace-nowrap">
