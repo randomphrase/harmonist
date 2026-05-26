@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Lint + type-check + tests, mirroring `make check`, across supported Pythons.
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install (with dev extras)
+        run: pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: ruff check src test
+
+      - name: Ruff format check
+        run: ruff format --check src test
+
+      - name: mypy (strict)
+        run: mypy
+
+      - name: Tests
+        run: pytest test/ -q
+
+  # The committed CSS bundle must match what the templates need. Runs once
+  # (no matrix) — Tailwind output is Python-version-independent.
+  css:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Tailwind wrapper
+        run: pip install pytailwindcss
+
+      - name: Rebuild CSS and check for drift
+        run: |
+          make css
+          git diff --exit-code static/harmonist.css \
+            || { echo "::error::static/harmonist.css is stale — run 'make css' and commit the result."; exit 1; }

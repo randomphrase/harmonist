@@ -265,9 +265,7 @@ def test_demo_confirm_tags_album_end_to_end(demo_client):
         nc = next(
             a
             for a in albums
-            if a.state == AlbumState.NEEDS_MBID
-            and a.sidecar
-            and a.sidecar.mb_match_candidate
+            if a.state == AlbumState.NEEDS_MBID and a.sidecar and a.sidecar.mb_match_candidate
         )
         aid = nc.id
     else:
