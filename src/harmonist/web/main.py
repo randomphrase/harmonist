@@ -426,8 +426,25 @@ def _register_routes(app: FastAPI) -> None:
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request) -> Response:
         cfg: config_mod.Config = request.app.state.cfg
-        ctx = _ctx(request, bandcamp_ok=_bandcamp_configured(cfg))
+        ctx = _ctx(
+            request,
+            bandcamp_ok=_bandcamp_configured(cfg),
+            sidecar_count=sidecar_mod.count_all(cfg.paths.music_dir),
+        )
         return _templates(request).TemplateResponse(request, "settings.html", ctx)
+
+    @app.post("/settings/erase-sidecars", response_class=HTMLResponse)
+    def erase_sidecars(request: Request) -> Response:
+        cfg: config_mod.Config = request.app.state.cfg
+        removed = sidecar_mod.delete_all(cfg.paths.music_dir)
+        activity.record(
+            f"Erased {removed} sidecar(s) — albums revert to tag-derived state", "warning"
+        )
+        return _flash_response(
+            "Sidecars erased",
+            f"{removed} removed — audio files untouched; albums will re-derive on next scan",
+            level="warning",
+        )
 
     @app.post("/settings", response_class=HTMLResponse)
     def settings_save(
@@ -461,7 +478,12 @@ def _register_routes(app: FastAPI) -> None:
                 }
             )
         except (PydanticValidationError, ValueError) as e:
-            ctx = _ctx(request, bandcamp_ok=_bandcamp_configured(cfg), error=str(e))
+            ctx = _ctx(
+                request,
+                bandcamp_ok=_bandcamp_configured(cfg),
+                sidecar_count=sidecar_mod.count_all(cfg.paths.music_dir),
+                error=str(e),
+            )
             return _templates(request).TemplateResponse(request, "settings.html", ctx)
 
         config_mod.write_settings(
@@ -480,7 +502,12 @@ def _register_routes(app: FastAPI) -> None:
         mb_lookup.configure(new_cfg.musicbrainz.user_agent)
         activity.record("Settings updated", "info")
 
-        ctx = _ctx(request, bandcamp_ok=_bandcamp_configured(new_cfg), saved=True)
+        ctx = _ctx(
+            request,
+            bandcamp_ok=_bandcamp_configured(new_cfg),
+            sidecar_count=sidecar_mod.count_all(new_cfg.paths.music_dir),
+            saved=True,
+        )
         return _templates(request).TemplateResponse(request, "settings.html", ctx)
 
     @app.get("/sync/status")

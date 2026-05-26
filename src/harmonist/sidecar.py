@@ -33,6 +33,30 @@ def has_sidecar(album_dir: Path) -> bool:
     return sidecar_path(album_dir).exists()
 
 
+def count_all(music_dir: Path) -> int:
+    """Number of `.harmonist.json` sidecars under music_dir."""
+    if not music_dir.exists():
+        return 0
+    return sum(1 for _ in music_dir.rglob(SIDECAR_FILENAME))
+
+
+def delete_all(music_dir: Path) -> int:
+    """Delete every `.harmonist.json` sidecar under music_dir; return the count
+    removed. ONLY touches sidecar files — audio and cover art are left alone.
+    Albums revert to their tag-derived state on the next scan.
+    """
+    if not music_dir.exists():
+        return 0
+    removed = 0
+    for p in music_dir.rglob(SIDECAR_FILENAME):
+        try:
+            p.unlink()
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def read(album_dir: Path) -> Sidecar | None:
     p = sidecar_path(album_dir)
     if not p.exists():

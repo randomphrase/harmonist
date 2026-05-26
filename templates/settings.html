@@ -121,5 +121,25 @@
             </button>
         </div>
     </form>
+
+    {# ---- Maintenance (destructive) ---- #}
+    <section class="border border-red-300 rounded-lg p-4 space-y-3">
+        <h2 class="text-sm font-bold text-red-700 uppercase tracking-widest">Maintenance</h2>
+        <div class="flex items-center justify-between gap-3">
+            <p class="text-sm text-muted">
+                Erase all <code>.harmonist.json</code> sidecars
+                (<span class="font-bold text-ink">{{ sidecar_count }}</span> found).
+                Audio files and tags are untouched; albums revert to their
+                tag-derived state and can be reconciled again. Mainly for testing.
+            </p>
+            <button hx-post="/settings/erase-sidecars"
+                    hx-swap="none" hx-disabled-elt="this"
+                    hx-confirm="Erase {{ sidecar_count }} sidecar(s)? Audio files are NOT touched, but all Harmonist state (matches, sync links) is removed. This cannot be undone."
+                    {% if not sidecar_count %}disabled{% endif %}
+                    class="flex-shrink-0 px-3 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-300 rounded text-xs font-bold uppercase tracking-widest transition">
+                Erase sidecars
+            </button>
+        </div>
+    </section>
 </div>
 {% endblock %}
