@@ -1,2 +1,5 @@
 __pycache__/
 *.egg-info/
+
+# Machine-specific Docker overrides
+docker-compose.override.yml
