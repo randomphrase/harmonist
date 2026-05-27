@@ -107,8 +107,14 @@ def fetch_release_urls(mbid: str) -> list[str]:
 
 
 def _is_not_found(exc: musicbrainzngs.ResponseError) -> bool:
-    """Detect 404 from a musicbrainzngs ResponseError."""
+    """Detect 404 from a musicbrainzngs ResponseError.
+
+    Prefer the structured HTTP status on the cause; fall back to the message
+    only as a safety net. The fallback matches a *standalone* 404 (e.g. in
+    "HTTP Error 404: Not Found"), NOT a 404 buried inside a longer number — a
+    decimal object id or an MBID could otherwise spuriously look like a 404.
+    """
     cause = getattr(exc, "cause", None)
     if cause is not None and getattr(cause, "code", None) == 404:
         return True
-    return "404" in str(exc)
+    return re.search(r"\b404\b", str(exc)) is not None

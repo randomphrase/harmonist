@@ -85,16 +85,52 @@ def test_lookup_returns_none_when_url_unknown_404(monkeypatch):
     assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") is None
 
 
-def test_lookup_raises_on_non_404_response_error(monkeypatch):
-    cause = MagicMock()
-    cause.code = 500
+class _Cause:
+    """Deterministic stand-in for a urllib HTTPError cause (a MagicMock's str
+    contains its object id, which can incidentally include '404' — flaky)."""
 
-    def raise_500(**kw):
+    def __init__(self, code: int | None, text: str):
+        self.code = code
+        self._text = text
+
+    def __str__(self) -> str:
+        return self._text
+
+
+def _raise_response_error(cause: _Cause):
+    def _raise(**kw):
         raise musicbrainzngs.ResponseError(cause=cause)
 
-    monkeypatch.setattr(musicbrainzngs, "browse_urls", raise_500)
+    return _raise
+
+
+def test_lookup_raises_on_non_404_response_error(monkeypatch):
+    monkeypatch.setattr(
+        musicbrainzngs, "browse_urls", _raise_response_error(_Cause(500, "Server Error"))
+    )
     with pytest.raises(MBError):
         lookup_by_bandcamp_url("https://x.bandcamp.com/album/y")
+
+
+def test_lookup_buried_404_in_number_is_not_treated_as_not_found(monkeypatch):
+    """A 404 embedded in a longer number (object id, MBID, …) must NOT look
+    like an HTTP 404 — it should still raise."""
+    monkeypatch.setattr(
+        musicbrainzngs, "browse_urls", _raise_response_error(_Cause(500, "id 12340456 failed"))
+    )
+    with pytest.raises(MBError):
+        lookup_by_bandcamp_url("https://x.bandcamp.com/album/y")
+
+
+def test_lookup_standalone_404_message_is_not_found(monkeypatch):
+    """No structured code, but a standalone 404 in the message → treat as a
+    'not found' (return None), not an error."""
+    monkeypatch.setattr(
+        musicbrainzngs,
+        "browse_urls",
+        _raise_response_error(_Cause(None, "HTTP Error 404: Not Found")),
+    )
+    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") is None
 
 
 def test_lookup_raises_on_network_error(monkeypatch):
