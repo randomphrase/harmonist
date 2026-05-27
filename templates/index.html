@@ -105,19 +105,48 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 <script>
-// Accordion behaviour for library rows — one expanded at a time.
-function harmonistToggleRow(id) {
-    const target = document.getElementById('exp-' + id);
-    if (!target) return;
-    const opening = target.classList.contains('hidden');
-    document.querySelectorAll('[id^="exp-"]').forEach(el => el.classList.add('hidden'));
-    document.querySelectorAll('[id^="chev-"]').forEach(el => el.classList.remove('rotate-180'));
-    if (opening) {
-        target.classList.remove('hidden');
-        const chev = document.getElementById('chev-' + id);
-        if (chev) chev.classList.add('rotate-180');
+// Library grid: clicking a tile reveals a full-width detail panel inserted
+// after that tile's row (one open at a time). The detail markup lives in an
+// inert <template id="album-tpl-{id}">; we clone it into the shared panel and
+// re-run htmx.process so the cloned Re-tag/Forget buttons are wired.
+function harmonistLibTile(id) {
+    const grid = document.getElementById('library-grid');
+    const detail = document.getElementById('album-detail-panel');
+    if (!grid || !detail) return;
+    const sel = (window.CSS && CSS.escape) ? CSS.escape(id) : id;
+    const tile = grid.querySelector('.lib-tile[data-id="' + sel + '"]');
+    if (!tile) return;
+
+    // Clicking the already-open tile closes it.
+    if (detail.dataset.open === id && !detail.classList.contains('hidden')) {
+        detail.classList.add('hidden');
+        detail.dataset.open = '';
+        tile.classList.remove('lib-tile-active');
+        return;
     }
+
+    const tiles = Array.from(grid.querySelectorAll('.lib-tile'));
+    tiles.forEach(t => t.classList.remove('lib-tile-active'));
+
+    // Full-width panel goes after the last tile sharing this tile's row top.
+    const top = tile.offsetTop;
+    const row = tiles.filter(t => t.offsetTop === top);
+    row[row.length - 1].after(detail);
+
+    const tpl = document.getElementById('album-tpl-' + id);
+    detail.innerHTML = tpl ? tpl.innerHTML : '';
+    if (window.htmx) htmx.process(detail);
+    detail.classList.remove('hidden');
+    detail.dataset.open = id;
+    tile.classList.add('lib-tile-active');
 }
+
+// Row boundaries shift on resize — close the panel to avoid a stale position.
+window.addEventListener('resize', function () {
+    const d = document.getElementById('album-detail-panel');
+    if (d) { d.classList.add('hidden'); d.dataset.open = ''; }
+    document.querySelectorAll('.lib-tile-active').forEach(t => t.classList.remove('lib-tile-active'));
+});
 </script>
 
 <script>

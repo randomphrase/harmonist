@@ -56,3 +56,8 @@ button[disabled],
   opacity: 0.55;
   cursor: progress;
 }
+
+/* The library tile whose detail panel is currently open. */
+.lib-tile-active img {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}

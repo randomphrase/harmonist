@@ -1,0 +1,106 @@
+{# Full-width expanded detail for a library album. Rendered inside an inert
+   <template> by library_page; cloned into #album-detail-panel on tile click. #}
+{% set sc = album.sidecar %}
+{% set bc = sc.bandcamp if sc else None %}
+{% set store = store_name(sc.store_url if sc else None) %}
+<div class="border border-line rounded-lg bg-surface p-4 mt-1 mb-1">
+    <div class="flex flex-col md:flex-row gap-4">
+        <img loading="lazy" src="/cover/{{ album.id }}"
+             onerror="this.style.visibility='hidden'" alt=""
+             class="w-full md:w-44 md:flex-shrink-0 aspect-square object-cover rounded border border-line bg-white"
+             style="max-width: 11rem;">
+
+        <div class="flex-grow min-w-0 space-y-3">
+            {# Title + artist shown once, here (the tile's labels are small). #}
+            <div>
+                <div class="text-lg font-bold text-ink break-words">{{ album.title }}</div>
+                <div class="text-sm text-muted break-words">{{ album.artist }}</div>
+            </div>
+
+            {% if sc and (sc.mb_release_id or sc.store_url) %}
+            <div class="flex gap-2 items-center flex-wrap">
+                {% if sc and sc.mb_release_id %}
+                <a href="https://musicbrainz.org/release/{{ sc.mb_release_id }}"
+                   target="_blank" rel="noopener"
+                   title="View on MusicBrainz · {{ sc.mb_release_id }}"
+                   class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-mb-purple/10 text-mb-purple border border-mb-purple/40 hover:bg-mb-purple/20 hover:border-mb-purple transition">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--color-mb-orange)" aria-hidden="true">
+                        <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
+                    </svg>
+                    MusicBrainz
+                </a>
+                {% endif %}
+                {% if sc and sc.store_url %}
+                {% set store_tip %}
+                    {%- if store == 'bandcamp' -%}
+                        View on Bandcamp · {{ sc.store_url }}
+                        {%- if bc and bc.item_id is not none %} · item #{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}{% endif -%}
+                    {%- else -%}
+                        View on {{ store|title if store else 'store' }} · {{ sc.store_url }}
+                    {%- endif -%}
+                {% endset %}
+                <a href="{{ sc.store_url }}"
+                   target="_blank" rel="noopener"
+                   title="{{ store_tip }}"
+                   class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-bc-teal/10 text-bc-teal border border-bc-teal/40 hover:bg-bc-teal/20 hover:border-bc-teal transition">
+                    {% if store == 'bandcamp' %}
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                        <path d="M0 18.75L7.437 5.25h16.563L16.563 18.75z"/>
+                    </svg>
+                    {% else %}
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
+                    {% endif %}
+                    {% if store == 'bandcamp' %}Bandcamp{% elif store %}{{ store|title }}{% else %}Store{% endif %}
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <div class="grid grid-cols-3 gap-2 text-xs">
+                {% if sc and sc.downloaded_at %}
+                <div>
+                    <div class="text-2xs text-muted uppercase tracking-widest">Downloaded</div>
+                    <div class="text-ink font-mono">{{ sc.downloaded_at.strftime('%Y-%m-%d') }}</div>
+                </div>
+                {% endif %}
+                {% if sc and sc.added_at %}
+                <div>
+                    <div class="text-2xs text-muted uppercase tracking-widest">Added</div>
+                    <div class="text-ink font-mono">{{ sc.added_at.strftime('%Y-%m-%d') }}</div>
+                </div>
+                {% endif %}
+                {% if sc and sc.tagged_at %}
+                <div>
+                    <div class="text-2xs text-muted uppercase tracking-widest">Tagged</div>
+                    <div class="text-ink font-mono">{{ sc.tagged_at.strftime('%Y-%m-%d') }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="text-xs">
+                <div class="text-2xs text-muted uppercase tracking-widest">Path</div>
+                <div class="text-muted break-all font-mono text-2xs"
+                     title="{{ album.path }}">{{ rel_path(album.path, cfg.paths.music_dir) }}</div>
+                <div class="text-2xs text-muted mt-0.5">
+                    {{ album.track_count }} track{{ 's' if album.track_count != 1 else '' }}{% if album.audio_format %} · {{ album.audio_format }}{% endif %}
+                </div>
+            </div>
+
+            <div class="flex gap-2 pt-2 border-t border-line">
+                <button hx-post="/retag/{{ album.id }}"
+                        hx-swap="none" hx-disabled-elt="this"
+                        class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
+                    Re-tag from MB
+                </button>
+                <button hx-post="/forget/{{ album.id }}"
+                        hx-swap="none" hx-disabled-elt="this"
+                        hx-confirm="Forget this album? The sidecar is deleted and the album reverts to NEW. Files are not touched."
+                        class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+                    Forget
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
