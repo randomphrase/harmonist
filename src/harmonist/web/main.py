@@ -133,6 +133,7 @@ def create_app(
     templates.env.globals["AlbumState"] = AlbumState
     templates.env.globals["store_name"] = store_name
     templates.env.globals["display_path"] = _display_path
+    templates.env.globals["rel_path"] = _rel_path
     templates.env.globals["demo_mode"] = cfg.demo_mode
     # Evaluated per-render (callable, not a constant) so the header's
     # Sync/Set-up button flips the moment cookies are saved.
@@ -182,6 +183,14 @@ def _display_path(p: Path | str) -> str:
         return "~/" + str(path.relative_to(Path.home()))
     except ValueError:
         return str(path)
+
+
+def _rel_path(p: Path | str, base: Path | str) -> str:
+    """Album path shown relative to the music root (full paths are noise)."""
+    try:
+        return str(Path(p).relative_to(base))
+    except ValueError:
+        return _display_path(p)
 
 
 def _templates(request: Request) -> Jinja2Templates:

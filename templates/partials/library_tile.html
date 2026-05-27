@@ -1,0 +1,29 @@
+{# One album tile in the Library grid. Clicking expands a full-width detail
+   panel below its row (see harmonistLibTile in index.html). The detail markup
+   lives in a sibling <template id="album-tpl-{id}"> rendered by library_page. #}
+{% set sc = album.sidecar %}
+{% set is_new = sc and sc.downloaded_at and (now - sc.downloaded_at).days < 7 %}
+<div id="lib-{{ album.id }}" data-id="{{ album.id }}"
+     onclick="harmonistLibTile('{{ album.id }}')"
+     class="lib-tile group cursor-pointer select-none">
+    <div class="relative">
+        <img loading="lazy" src="/cover/{{ album.id }}"
+             onerror="this.style.visibility='hidden'" alt=""
+             class="w-full aspect-square object-cover rounded-md border border-line bg-surface group-hover:opacity-90 transition">
+        {% if is_new %}
+        {# Bandcamp-style "New" flag (teal — a reserved badge colour). #}
+        <span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-2xs font-bold uppercase tracking-widest rounded bg-bc-teal text-white shadow-sm">New</span>
+        {% endif %}
+        {% if album.state == AlbumState.INCOMPLETE %}
+        <span class="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 text-2xs font-bold rounded bg-amber-50 text-amber-700 border border-amber-300"
+              title="{{ album.track_count }} of {{ sc.track_count_expected }} tracks on disk">
+            {{ album.track_count }} of {{ sc.track_count_expected }}
+        </span>
+        {% endif %}
+    </div>
+    <div class="mt-1.5 text-sm font-bold text-ink leading-tight line-clamp-2">{{ album.title }}</div>
+    <div class="text-xs text-muted truncate">{{ album.artist }}</div>
+    {% if album.partial_tag_count %}
+    <div class="text-2xs text-muted">{{ album.partial_tag_count[0] }}/{{ album.partial_tag_count[1] }} tagged</div>
+    {% endif %}
+</div>

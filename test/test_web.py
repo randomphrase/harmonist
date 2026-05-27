@@ -1361,3 +1361,32 @@ def test_settings_shows_sidecar_count(client, cfg):
     r = client.get("/settings")
     assert "Erase sidecars" in r.text
     assert "Maintenance" in r.text
+
+
+def test_library_new_ribbon_is_time_based(client, cfg):
+    """A 'New' ribbon shows on albums downloaded within the last week, not older ones."""
+    from datetime import timedelta
+
+    now = datetime.now(UTC)
+    fresh = _make_tagged_album(cfg, "FreshDrop", mbid="rel-fresh", tagged_at=now)
+    sc.write(
+        fresh,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-fresh",
+            tagged_at=now,
+            downloaded_at=now,
+        ),
+    )
+    stale = _make_tagged_album(cfg, "OldDrop", mbid="rel-stale", tagged_at=now)
+    sc.write(
+        stale,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-stale",
+            tagged_at=now,
+            downloaded_at=now - timedelta(days=30),
+        ),
+    )
+    r = client.get("/library")
+    assert r.text.count(">New</span>") == 1  # only the fresh download
