@@ -1,5 +1,11 @@
 .PHONY: css css-watch test run lint format typecheck check
 
+# Pin the Tailwind standalone binary so `make css` is byte-reproducible across
+# machines + CI — pytailwindcss otherwise downloads 'latest', whose minified
+# output drifts from the committed bundle (breaks the CI css-drift check).
+TAILWINDCSS_VERSION ?= v4.2.4
+export TAILWINDCSS_VERSION
+
 # Build the production CSS bundle. Re-run whenever templates change.
 css:
 	tailwindcss -i static/input.css -o static/harmonist.css --minify
