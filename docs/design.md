@@ -873,4 +873,13 @@ the state model and UI don't preclude them.
   complexity.
 - **Recent-messages popup** — a panel showing the last ~20 status
   messages (sync/reconcile transitions, action results); the status
-  bar only shows the most recent.
+  bar only shows the most recent. *(Shipped as the Activity tab.)*
+- **Ignored-but-not-present items** — a sync skips purchases listed in
+  `ignores.txt` (already downloaded). If an ignored item is no longer in
+  the library (deleted, or ignored without ever being kept), it's
+  invisible. Detect ignored purchases whose `bandcamp.item_id` has no
+  matching on-disk sidecar and surface a count to the Activity log, e.g.
+  "N purchased items are ignored but not in your library". Stretch: let
+  the user un-ignore them to re-download — the same mechanism as
+  **Re-download from Bandcamp** above (drop the entry from `ignores.txt`),
+  so the two should share UI.
