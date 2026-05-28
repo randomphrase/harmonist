@@ -621,6 +621,28 @@ def _register_routes(app: FastAPI) -> None:
         )
         return _templates(request).TemplateResponse(request, "partials/library_page.html", ctx)
 
+    @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
+    def library_compare(request: Request, album_id: str) -> Response:
+        """On-demand disk-vs-MB track comparison for a tagged album — a sanity
+        check that the right release was applied. Computed live (a fresh MB
+        fetch + assess_match); never persisted."""
+        album = _find_album(request, album_id)
+        sc = album.sidecar
+        if sc is None or not sc.mb_release_id:
+            return HTMLResponse(
+                '<p class="text-2xs text-muted italic mt-2">'
+                "No MusicBrainz release to compare against.</p>"
+            )
+        try:
+            release = mb_lookup.fetch_release(sc.mb_release_id)
+        except mb_lookup.MBError as e:
+            return HTMLResponse(
+                f'<p class="text-2xs text-red-700 mt-2">Couldn\'t fetch from MusicBrainz: {e}</p>'
+            )
+        candidate = assess_match(album.path, release)
+        ctx = _ctx(request, candidate=candidate)
+        return _templates(request).TemplateResponse(request, "partials/library_compare.html", ctx)
+
     @app.post("/retag/{album_id}", response_class=HTMLResponse)
     def retag(request: Request, album_id: str) -> Response:
         album = _find_album(request, album_id)

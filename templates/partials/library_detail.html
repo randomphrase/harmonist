@@ -88,6 +88,19 @@
                 </div>
             </div>
 
+            {% if sc and sc.mb_release_id %}
+            {# Lazy, on-demand sanity check: did we tag the right release? #}
+            <div>
+                <button hx-get="/library/{{ album.id }}/compare"
+                        hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"
+                        hx-disabled-elt="this"
+                        class="text-xs text-accent hover:underline font-semibold">
+                    Verify tagging vs MusicBrainz
+                </button>
+                <div id="compare-{{ album.id }}"></div>
+            </div>
+            {% endif %}
+
             <div class="flex gap-2 pt-2 border-t border-line">
                 <button hx-post="/retag/{{ album.id }}"
                         hx-swap="none" hx-disabled-elt="this"

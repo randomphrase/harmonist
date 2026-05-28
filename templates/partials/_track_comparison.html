@@ -1,0 +1,39 @@
+{# Disk-vs-MusicBrainz per-track side-by-side. Expects `candidate` (a
+   MatchCandidate with .track_comparisons). Used by the Needs MBID suggestion
+   card and the library "verify tagging" view. #}
+<div class="overflow-x-auto">
+    <table class="w-full text-xs">
+        <thead>
+            <tr class="text-muted uppercase tracking-widest text-2xs border-b border-line">
+                <th class="text-left py-1 px-2 font-bold">#</th>
+                <th class="text-left py-1 px-2 font-bold">On disk</th>
+                <th class="text-left py-1 px-2 font-bold">Length</th>
+                <th class="text-left py-1 px-2 font-bold">MusicBrainz</th>
+                <th class="text-left py-1 px-2 font-bold">Length</th>
+                <th class="text-left py-1 px-2 font-bold">Δ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tc in candidate.track_comparisons %}
+            {% set delta_class = 'text-muted' %}
+            {% if tc.delta_ms is not none and tc.delta_ms > 4000 %}
+                {% set delta_class = 'text-amber-700 font-bold' %}
+            {% elif tc.delta_ms is not none %}
+                {% set delta_class = 'text-accent font-semibold' %}
+            {% endif %}
+            <tr class="border-b border-line last:border-0">
+                <td class="py-1 px-2 font-mono text-muted">{{ loop.index }}</td>
+                <td class="py-1 px-2 text-ink truncate max-w-xs">
+                    {% if tc.file_title %}{{ tc.file_title }}{% else %}<span class="text-muted italic">— missing —</span>{% endif %}
+                </td>
+                <td class="py-1 px-2 font-mono text-muted">{% if tc.file_duration_ms is not none %}{{ '%d:%02d' | format(tc.file_duration_ms // 60000, (tc.file_duration_ms // 1000) % 60) }}{% else %}—{% endif %}</td>
+                <td class="py-1 px-2 text-ink truncate max-w-xs">
+                    {% if tc.mb_track_title %}{{ tc.mb_track_title }}{% else %}<span class="text-muted italic">— missing —</span>{% endif %}
+                </td>
+                <td class="py-1 px-2 font-mono text-muted">{% if tc.mb_track_length_ms is not none %}{{ '%d:%02d' | format(tc.mb_track_length_ms // 60000, (tc.mb_track_length_ms // 1000) % 60) }}{% else %}<span class="text-muted">?</span>{% endif %}</td>
+                <td class="py-1 px-2 font-mono {{ delta_class }}">{% if tc.delta_ms is not none %}{{ '%+.1fs' | format(tc.delta_ms / 1000) }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
