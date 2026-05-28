@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 dependencies = ["mutagen", "bandcampsync", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart", "tomlkit", "uvicorn[standard]"]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff", "mypy"]
+dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff", "mypy", "coverage"]
 
 [tool.setuptools.packages]
 find = {where = ["src"], include = ["harmonist*"]}

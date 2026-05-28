@@ -1,4 +1,4 @@
-.PHONY: css css-watch test run lint format typecheck check
+.PHONY: css css-watch test coverage run lint format typecheck check
 
 # Pin the Tailwind standalone binary so `make css` is byte-reproducible across
 # machines + CI — pytailwindcss otherwise downloads 'latest', whose minified
@@ -16,6 +16,10 @@ css-watch:
 
 test:
 	pytest test/
+
+# Test line coverage of the package.
+coverage:
+	coverage run --source=harmonist -m pytest -q && coverage report
 
 # Ruff lint (idioms, bugs, import order). Add ARGS=--fix to autofix.
 lint:
