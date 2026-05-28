@@ -1390,3 +1390,32 @@ def test_library_new_ribbon_is_time_based(client, cfg):
     )
     r = client.get("/library")
     assert r.text.count(">New</span>") == 1  # only the fresh download
+
+
+def test_library_compare_renders_side_by_side(client, cfg, monkeypatch):
+    """The on-demand 'verify tagging' view fetches MB + shows a disk-vs-MB table."""
+    d = _make_tagged_album(cfg, "Verifyme", mbid="rel-verify", tagged_at=datetime.now(UTC))
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Verifyme",
+            "medium-list": [
+                {
+                    "position": "1",
+                    "track-list": [{"id": "t1", "title": "Track 1", "length": "1000"}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    r = client.get(f"/library/{_id_for(cfg, d)}/compare")
+    assert r.status_code == 200
+    assert "On disk vs MusicBrainz" in r.text
+    assert "Track 1" in r.text
+
+
+def test_library_detail_offers_verify_tagging(client, cfg):
+    _make_tagged_album(cfg, "HasVerify", mbid="rel-v2", tagged_at=datetime.now(UTC))
+    r = client.get("/library")
+    assert "Verify tagging vs MusicBrainz" in r.text

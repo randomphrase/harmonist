@@ -1,0 +1,15 @@
+{# On-demand "did we tag the right release?" check for a library album.
+   `candidate` is a freshly-computed MatchCandidate (disk vs the tagged MB
+   release) — computed on demand, never persisted (sidecar-minimalism). #}
+<div class="mt-2 rounded border border-line p-2 bg-white">
+    <div class="text-2xs text-muted mb-1">
+        On disk vs MusicBrainz —
+        {% if candidate.confidence == 'exact' %}
+        <span class="text-accent font-bold">exact match</span>
+        {% else %}
+        <span class="text-amber-700 font-bold">{{ candidate.confidence }}</span>
+        {% for note in candidate.notes %}<span> · {{ note }}</span>{% endfor %}
+        {% endif %}
+    </div>
+    {% include 'partials/_track_comparison.html' %}
+</div>
