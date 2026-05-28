@@ -193,6 +193,53 @@ def _rel_path(p: Path | str, base: Path | str) -> str:
         return _display_path(p)
 
 
+# Libraries Harmonist builds on, for the About page. (name, pip distribution or
+# None for non-Python deps, homepage, licence). Versions are filled in live.
+_CREDITS: list[tuple[str, str | None, str, str]] = [
+    ("FastAPI", "fastapi", "https://fastapi.tiangolo.com", "MIT"),
+    ("Uvicorn", "uvicorn", "https://www.uvicorn.org", "BSD-3-Clause"),
+    ("Pydantic", "pydantic", "https://docs.pydantic.dev", "MIT"),
+    ("Jinja2", "jinja2", "https://jinja.palletsprojects.com", "BSD-3-Clause"),
+    ("HTMX", None, "https://htmx.org", "0BSD"),
+    ("Tailwind CSS", None, "https://tailwindcss.com", "MIT"),
+    ("mutagen", "mutagen", "https://mutagen.readthedocs.io", "GPL-2.0-or-later"),
+    (
+        "musicbrainzngs",
+        "musicbrainzngs",
+        "https://python-musicbrainzngs.readthedocs.io",
+        "BSD-2-Clause",
+    ),
+    ("bandcampsync", "bandcampsync", "https://github.com/meeb/bandcampsync", "BSD-3-Clause"),
+    ("HTTPX", "httpx", "https://www.python-httpx.org", "BSD-3-Clause"),
+    ("BeautifulSoup", "beautifulsoup4", "https://www.crummy.com/software/BeautifulSoup/", "MIT"),
+    ("tomlkit", "tomlkit", "https://github.com/python-poetry/tomlkit", "MIT"),
+]
+
+
+def _app_version() -> str:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("harmonist")
+    except PackageNotFoundError:
+        return "dev"
+
+
+def _credits() -> list[dict[str, str]]:
+    from importlib.metadata import PackageNotFoundError, version
+
+    out: list[dict[str, str]] = []
+    for name, dist, url, lic in _CREDITS:
+        ver = ""
+        if dist:
+            try:
+                ver = version(dist)
+            except PackageNotFoundError:
+                ver = ""
+        out.append({"name": name, "version": ver, "url": url, "license": lic})
+    return out
+
+
 def _templates(request: Request) -> Jinja2Templates:
     """Typed accessor for the app's Jinja2Templates. `app.state` is dynamically
     typed (Any), so going through here keeps route return types as Response."""
@@ -431,6 +478,11 @@ def _register_routes(app: FastAPI) -> None:
     def activity_feed(request: Request) -> Response:
         ctx = _ctx(request, events=activity.recent(100))
         return _templates(request).TemplateResponse(request, "partials/activity.html", ctx)
+
+    @app.get("/about", response_class=HTMLResponse)
+    def about_page(request: Request) -> Response:
+        ctx = _ctx(request, app_version=_app_version(), credits=_credits())
+        return _templates(request).TemplateResponse(request, "about.html", ctx)
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request) -> Response:

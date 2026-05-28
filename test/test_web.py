@@ -1419,3 +1419,13 @@ def test_library_detail_offers_verify_tagging(client, cfg):
     _make_tagged_album(cfg, "HasVerify", mbid="rel-v2", tagged_at=datetime.now(UTC))
     r = client.get("/library")
     assert "Verify tagging vs MusicBrainz" in r.text
+
+
+def test_about_page_renders(client):
+    r = client.get("/about")
+    assert r.status_code == 200
+    assert "About Harmonist" in r.text
+    assert "GPL-3.0-or-later" in r.text
+    assert "mutagen" in r.text
+    assert "MusicBrainz" in r.text
+    assert "github.com/randomphrase/harmonist" in r.text
