@@ -69,7 +69,7 @@ def demo_client(tmp_path):
         demo_mode=True,
     )
     cfg.paths.config_dir.mkdir(parents=True, exist_ok=True)
-    return TestClient(create_app(cfg))
+    return TestClient(create_app(cfg), headers={"HX-Request": "true"})
 
 
 def _wait_for_idle(client, timeout: float = 5.0) -> dict:

@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError as PydanticValidationError
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from harmonist import activity, cover_art, mb_lookup, mb_search, reconcile, scanner, url_recovery
 from harmonist import config as config_mod
@@ -28,6 +29,7 @@ from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar, store_nam
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
+from harmonist.web.security import BasicAuthMiddleware, CSRFMiddleware
 from harmonist.web.sync_runner import AlreadyRunningError, SyncRunner
 
 _MB_URL_RE = re.compile(r"/release/([a-f0-9-]{36})", re.IGNORECASE)
@@ -147,6 +149,8 @@ def create_app(
     app.state.forgotten_paths = forgotten_paths
     app.state.tagger = tagger
 
+    _install_security_middleware(app, cfg)
+
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
@@ -154,6 +158,49 @@ def create_app(
     if cfg.demo_mode:
         _register_demo_routes(app)
     return app
+
+
+def _install_security_middleware(app: FastAPI, cfg: config_mod.Config) -> None:
+    """Install the security stack from inside out.
+
+    Starlette wraps middleware in registration order so that the *last*
+    one added is the outermost. We want hostname rejection to happen
+    first (cheapest, blocks DNS rebinding before any other code runs),
+    then CSRF (no DB lookup, fast reject), then optional auth (innermost
+    so a failed auth challenge doesn't expose internal headers to
+    untrusted hosts). Hence: auth → CSRF → trusted-host, in that order.
+    """
+    if cfg.auth.enabled:
+        if not cfg.auth.username or not cfg.auth.password_hash:
+            log.error(
+                "auth.enabled=true but auth.username/password_hash is empty; "
+                "REFUSING TO START with broken auth. Run "
+                "`python -m harmonist.web.security` to generate a password hash."
+            )
+            raise RuntimeError("auth.enabled requires username and password_hash")
+        app.add_middleware(
+            BasicAuthMiddleware,
+            username=cfg.auth.username,
+            password_hash=cfg.auth.password_hash,
+        )
+
+    app.add_middleware(CSRFMiddleware)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=cfg.server.allowed_hosts)
+
+    # Best-effort warning: a non-loopback bind with a permissive host
+    # allow-list is the configuration that hands the worst-case DNS-
+    # rebinding attack to a passing browser. We don't refuse to start
+    # — some setups (Docker behind a trusted proxy) intentionally use
+    # ["*"] — but we want this to land in the logs.
+    if cfg.server.host not in ("127.0.0.1", "localhost", "::1") and cfg.server.allowed_hosts == [
+        "*"
+    ]:
+        log.warning(
+            "server.host=%s but server.allowed_hosts=['*']. For non-loopback "
+            "binds, set allowed_hosts to your actual hostname(s) to enable "
+            "DNS-rebinding protection. See README §Security.",
+            cfg.server.host,
+        )
 
 
 def _register_demo_routes(app: FastAPI) -> None:

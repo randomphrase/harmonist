@@ -225,7 +225,7 @@ def demo_client(tmp_path):
         demo_mode=True,
     )
     cfg.paths.config_dir.mkdir(parents=True, exist_ok=True)
-    return TestClient(create_app(cfg))
+    return TestClient(create_app(cfg), headers={"HX-Request": "true"})
 
 
 def test_demo_mode_seeds_on_startup(demo_client):
@@ -315,7 +315,7 @@ def test_demo_mode_off_no_demo_routes(tmp_path):
     )
     cfg.paths.config_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
-    client = TestClient(create_app(cfg))
+    client = TestClient(create_app(cfg), headers={"HX-Request": "true"})
     r = client.post("/demo/reset")
     assert r.status_code == 404
     # No banner
