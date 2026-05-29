@@ -212,7 +212,7 @@ def client(tmp_path):
     )
     cfg.paths.config_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
-    return TestClient(create_app(cfg))
+    return TestClient(create_app(cfg), headers={"HX-Request": "true"})
 
 
 def test_reconcile_status_endpoint_returns_json(client):

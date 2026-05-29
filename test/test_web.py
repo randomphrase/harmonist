@@ -44,7 +44,11 @@ def client(cfg):
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.config_dir.mkdir(parents=True, exist_ok=True)
     app = create_app(cfg)
-    return TestClient(app)
+    # The CSRF middleware requires HX-Request: true on state-changing
+    # methods — every real call in the app comes from HTMX, which sets
+    # this. TestClient doesn't, so we inject it as a default header for
+    # the whole client. See harmonist.web.security.CSRFMiddleware.
+    return TestClient(app, headers={"HX-Request": "true"})
 
 
 def _make_album(cfg, name: str, *, mbid: str | None = None, comment: str | None = None) -> Path:

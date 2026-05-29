@@ -35,6 +35,22 @@ class MusicBrainzConfig(BaseModel):
 class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
+    # DNS-rebinding protection (Starlette's TrustedHostMiddleware). Default
+    # ["*"] is permissive — set this to your real hostname(s) when exposing
+    # Harmonist beyond loopback. Loopback aliases are always implicitly
+    # allowed regardless, so a tightened list still works for local curl /
+    # healthcheck. See docs §security in the README.
+    allowed_hosts: list[str] = Field(default_factory=lambda: ["*"])
+
+
+class AuthConfig(BaseModel):
+    # Optional HTTP Basic auth — off by default. Defense in depth for users
+    # who don't run a reverse proxy with auth in front. The canonical
+    # deployment is "reverse proxy handles auth"; this knob exists for
+    # everyone else. Generate the hash with `python -m harmonist.web.security`.
+    enabled: bool = False
+    username: str = ""
+    password_hash: str = ""  # pbkdf2_sha256$<iter>$<salt_b64>$<hash_b64>
 
 
 class CoverArtConfig(BaseModel):
@@ -51,6 +67,7 @@ class Config(BaseModel):
     bandcamp: BandcampConfig = Field(default_factory=BandcampConfig)
     musicbrainz: MusicBrainzConfig = Field(default_factory=MusicBrainzConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     cover_art: CoverArtConfig = Field(default_factory=CoverArtConfig)
     test: TestConfig = Field(default_factory=TestConfig)
     log_level: str = "info"
@@ -95,6 +112,7 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     paths = data.setdefault("paths", {})
     bandcamp = data.setdefault("bandcamp", {})
     server = data.setdefault("server", {})
+    auth = data.setdefault("auth", {})
     cover_art = data.setdefault("cover_art", {})
     test = data.setdefault("test", {})
 
@@ -108,6 +126,15 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         server["host"] = v
     if v := env.get("HARMONIST_PORT"):
         server["port"] = int(v)
+    if v := env.get("HARMONIST_ALLOWED_HOSTS"):
+        # Comma-separated list, e.g. "harmonist.example.com,localhost".
+        server["allowed_hosts"] = [h.strip() for h in v.split(",") if h.strip()]
+    if v := env.get("HARMONIST_AUTH_ENABLED"):
+        auth["enabled"] = v.strip() not in ("", "0", "false", "False", "no")
+    if v := env.get("HARMONIST_AUTH_USERNAME"):
+        auth["username"] = v
+    if v := env.get("HARMONIST_AUTH_PASSWORD_HASH"):
+        auth["password_hash"] = v
     if v := env.get("HARMONIST_TEST_MODE"):
         test["mode"] = v
     if v := env.get("HARMONIST_LOG_LEVEL"):
