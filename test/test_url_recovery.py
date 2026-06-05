@@ -111,6 +111,39 @@ def test_recover_uses_dir_name_when_album_tag_absent(tmp_path):
     assert url == "https://myartist.bandcamp.com/album/fallbackname"
 
 
+# ---------- real Bandcamp comment format ("Visit <url>") ----------
+
+
+def test_recover_extracts_url_from_visit_prefix_album_comment(tmp_path):
+    """Bandcamp embeds prose, e.g. 'Visit https://x.bandcamp.com/album/foo' —
+    the URL must be extracted, not used as-is (which would carry 'Visit ')."""
+    album_dir = _make_album(
+        tmp_path, comment="Visit https://x.bandcamp.com/album/exact-album"
+    )
+
+    def boom(req):
+        raise AssertionError(f"unexpected network call: {req.url}")
+
+    url = recover_album_url(album_dir, client=_client(boom))
+    assert url == "https://x.bandcamp.com/album/exact-album"
+
+
+def test_recover_extracts_artist_url_from_visit_prefix_comment(tmp_path):
+    """The common case: comment is 'Visit https://artist.bandcamp.com' (root,
+    no album path). Extract it and scrape for the album by name."""
+    album_dir = _make_album(
+        tmp_path, comment="Visit https://myartist.bandcamp.com", album="My Album"
+    )
+    html = _artist_html([("My Album", "/album/my-album")])
+
+    def handler(req):
+        assert str(req.url) == "https://myartist.bandcamp.com"  # no 'Visit ' prefix
+        return httpx.Response(200, content=html.encode("utf-8"))
+
+    url = recover_album_url(album_dir, client=_client(handler))
+    assert url == "https://myartist.bandcamp.com/album/my-album"
+
+
 # ---------- short-circuit cases ----------
 
 
