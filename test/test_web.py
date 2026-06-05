@@ -1475,6 +1475,21 @@ def test_erase_sidecars_removes_only_sidecars(client, cfg):
     assert audio.exists()
 
 
+def test_erase_sidecars_clears_bandcampsync_checkpoint(client, cfg):
+    """Nuke also forgets the sync checkpoint so the next sync re-pages the
+    whole collection. ignores.txt is left alone (not a re-download)."""
+    state_file = cfg.paths.music_dir / ".bandcampsync-state.json"
+    state_file.write_text('{"last_seen_token": "x"}')
+    ignores = cfg.paths.config_dir / "ignores.txt"
+    ignores.write_text("123  # keep me\n")
+
+    r = client.post("/settings/erase-sidecars")
+    assert r.status_code == 200
+    assert not state_file.exists()  # checkpoint cleared
+    assert "checkpoint reset" in r.text
+    assert ignores.read_text() == "123  # keep me\n"  # ignores untouched
+
+
 def test_settings_shows_sidecar_count(client, cfg):
     from harmonist import sidecar as scmod
 
