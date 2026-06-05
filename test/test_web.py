@@ -1458,6 +1458,25 @@ def test_settings_save_rejects_invalid_cover_size(client, cfg):
     assert not (cfg.paths.config_dir / "harmonist.toml").exists()
 
 
+def test_app_attribute_is_memoized(monkeypatch):
+    """`harmonist.web.main.app` builds the app once and caches it — repeated
+    access (uvicorn does this at startup) must not run create_app() twice."""
+    import harmonist.web.main as m
+
+    calls: list = []
+
+    def fake_create_app():
+        calls.append(1)
+        return object()
+
+    monkeypatch.setattr(m, "create_app", fake_create_app)
+    monkeypatch.setattr(m, "_app_singleton", None)
+    first = m.app
+    second = m.app
+    assert first is second
+    assert len(calls) == 1
+
+
 def test_erase_sidecars_removes_only_sidecars(client, cfg):
     from harmonist import sidecar as scmod
 
