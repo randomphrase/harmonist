@@ -3,8 +3,10 @@
      {% with mb_release_id=..., store_url=... %}
        {% include 'partials/_links.html' %}
      {% endwith %}
-   Renders nothing when neither is present. #}
+   Renders nothing when neither is present. Optional store_private flags a
+   private/unlisted Bandcamp release (badge reads "Bandcamp (private)"). #}
 {% set _store = store_name(store_url) if store_url else None %}
+{% set _private = store_private if store_private is defined else False %}
 {% if mb_release_id or store_url %}
 <div class="flex gap-2 items-center flex-wrap justify-end">
     {% if mb_release_id %}
@@ -21,7 +23,7 @@
     {% if store_url %}
     <a href="{{ store_url }}"
        target="_blank" rel="noopener"
-       title="{% if _store == 'bandcamp' %}View on Bandcamp{% elif _store %}View on {{ _store|title }}{% else %}Open store page{% endif %} · {{ store_url }}"
+       title="{% if _store == 'bandcamp' %}View on Bandcamp{% elif _store %}View on {{ _store|title }}{% else %}Open store page{% endif %}{% if _private %} (private release){% endif %} · {{ store_url }}"
        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-bc-teal/10 text-bc-teal border border-bc-teal/40 hover:bg-bc-teal/20 hover:border-bc-teal transition">
         {% if _store == 'bandcamp' %}
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
@@ -32,7 +34,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
         </svg>
         {% endif %}
-        {% if _store == 'bandcamp' %}Bandcamp{% elif _store %}{{ _store|title }}{% else %}Store{% endif %}
+        {% if _store == 'bandcamp' %}Bandcamp{% elif _store %}{{ _store|title }}{% else %}Store{% endif %}{% if _private %} (private){% endif %}
     </a>
     {% endif %}
 </div>

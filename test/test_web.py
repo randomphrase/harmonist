@@ -278,6 +278,29 @@ def test_needs_mbid_card_with_store_url_rendered(client, cfg):
     assert "harmony.pulsewidth.org.uk" in r.text
 
 
+def test_needs_mbid_private_release_suppresses_harmony_and_recheck(client, cfg):
+    """A private Bandcamp release (public URL 404s) must not offer Harmony
+    seeding or Recheck — its URL can't be added to MusicBrainz. The manual
+    MBID form stays, and the badge reads 'Bandcamp (private)'."""
+    d = _make_album(cfg, "Private")
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/secret",
+            bandcamp=BandcampInfo(item_id=1, is_private=True),
+        ),
+    )
+    r = client.get("/tasks")
+    assert ">MBID</abbr>" in r.text  # still a Needs MBID card
+    assert "Open in Harmony" not in r.text
+    assert "/recheck/" not in r.text
+    assert "not eligible for MB import" in r.text
+    assert "Bandcamp (private)" in r.text
+    # The manual resolution path remains.
+    assert 'name="mbid"' in r.text
+
+
 def test_needs_mbid_card_without_store_url_rendered(client, cfg):
     d = _make_album(cfg, "NoURL")
     sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))

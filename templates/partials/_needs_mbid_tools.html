@@ -3,7 +3,15 @@
    as the primary affordance (no suggestion) and inside the "wrong release?"
    disclosure (suggestion present). #}
 {% set sc = album.sidecar %}
-{% if sc and sc.store_url %}
+{% set _private = sc and sc.bandcamp and sc.bandcamp.is_private %}
+{% if sc and sc.store_url and _private %}
+{# Private/unlisted Bandcamp release: its public URL 404s, so neither Harmony
+   seeding nor a by-URL recheck can work — and the URL shouldn't go to MB. #}
+<p class="text-xs text-muted mb-3 italic">
+    Private Bandcamp release — not eligible for MB import. Assign a MusicBrainz
+    ID manually below.
+</p>
+{% elif sc and sc.store_url %}
 <div class="flex gap-2 flex-wrap mb-3">
     <a href="{{ harmony_base }}/release?url={{ sc.store_url|urlencode }}"
        target="_blank" rel="noopener"
