@@ -1274,7 +1274,19 @@ def _flash_response(
 # global MB/Bandcamp services at import time and leak into unrelated tests.
 # `uvicorn harmonist.web.main:app` triggers creation on first access; the
 # `--factory` form (`...:create_app --factory`) works too.
+#
+# Memoized: uvicorn accesses `.app` more than once during startup, and an
+# unmemoized factory would build (and run startup for) a second app — doubling
+# every startup log and, once scanning moves to a startup task, kicking two
+# scans. Tests never touch `.app` (they call create_app() directly), so the
+# import-time-safety note above still holds.
+_app_singleton: FastAPI | None = None
+
+
 def __getattr__(name: str) -> Any:
     if name == "app":
-        return create_app()
+        global _app_singleton
+        if _app_singleton is None:
+            _app_singleton = create_app()
+        return _app_singleton
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
