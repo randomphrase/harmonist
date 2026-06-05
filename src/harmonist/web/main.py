@@ -377,6 +377,24 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     return base
 
 
+# bandcampsync's collection checkpoint (Syncer.STATE_FILENAME) — lives in the
+# music dir root. Hardcoded to avoid importing bandcampsync internals here.
+_BANDCAMPSYNC_STATE_FILE = ".bandcampsync-state.json"
+
+
+def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
+    """Remove bandcampsync's collection-checkpoint file if present. Returns
+    True if a file was removed. Never raises — best-effort."""
+    state_file = music_dir / _BANDCAMPSYNC_STATE_FILE
+    try:
+        if state_file.is_file():
+            state_file.unlink()
+            return True
+    except OSError as e:
+        log.warning("could not remove bandcampsync checkpoint %s: %s", state_file, e)
+    return False
+
+
 def _albums(request: Request) -> list[Album]:
     cfg: config_mod.Config = request.app.state.cfg
     # Only serve from cache while a runner is active — that's the window with
@@ -631,12 +649,18 @@ def _register_routes(app: FastAPI) -> None:
     def erase_sidecars(request: Request) -> Response:
         cfg: config_mod.Config = request.app.state.cfg
         removed = sidecar_mod.delete_all(cfg.paths.music_dir)
+        # "Start fresh" should also forget where the last sync left off, so the
+        # next sync re-pages the whole Bandcamp collection rather than stopping
+        # at bandcampsync's saved checkpoint. ignores.txt is deliberately left
+        # alone — clearing it would re-download audio, which nuke is not about.
+        state_cleared = _clear_bandcampsync_checkpoint(cfg.paths.music_dir)
+        suffix = " · sync checkpoint reset" if state_cleared else ""
         activity.record(
-            f"Erased {removed} sidecar(s) — albums revert to tag-derived state", "warning"
+            f"Erased {removed} sidecar(s) — albums revert to tag-derived state{suffix}", "warning"
         )
         return _flash_response(
             "Sidecars erased",
-            f"{removed} removed — audio files untouched; albums will re-derive on next scan",
+            f"{removed} removed — audio untouched; albums re-derive on next scan{suffix}",
             level="warning",
         )
 
