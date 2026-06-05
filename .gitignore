@@ -3,3 +3,16 @@ __pycache__/
 
 # Machine-specific Docker overrides
 docker-compose.override.yml
+
+# Editor / OS / tooling cruft
+.DS_Store
+*~
+\#*\#
+.envrc
+.coverage
+
+# Generated markdown/design previews (source lives in docs/*.md)
+/docs/*.html
+
+# Local scratch / dev data dirs
+/music/
