@@ -2,7 +2,10 @@
 name = "harmonist"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["mutagen", "bandcampsync", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart", "tomlkit", "uvicorn[standard]"]
+# bandcampsync is pinned: 0.8.0 changed the Syncer.__init__ signature
+# (dropped `dir_path`), which breaks our HarmonistSyncer subclass. Stay on
+# the 0.7.x line until the 0.8 migration is done — see the open task.
+dependencies = ["mutagen", "bandcampsync~=0.7.0", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart", "tomlkit", "uvicorn[standard]"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff", "mypy", "coverage"]

@@ -8,6 +8,7 @@ import logging
 # Demo mode is conditionally imported in create_app() — keeps demo-only code
 # out of the production import path entirely.
 import re
+import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -62,6 +63,37 @@ HARMONY_BASE = "https://harmony.pulsewidth.org.uk"
 _TERMINAL_STATES = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
 
 
+_logging_configured = False
+
+
+def _configure_logging(cfg: config_mod.Config) -> None:
+    """Send `harmonist.*` logs (with tracebacks) to stdout so they show up in
+    `docker logs`.
+
+    Without this, the only handler on the `harmonist` logger is the activity
+    feed mirror (`activity.install_log_handler`), which records just the
+    message text and drops `exc_info`. Because that handler *exists*, Python's
+    `logging.lastResort` stderr fallback is suppressed — so a `log.exception`
+    in a background thread surfaces as a one-line flash with no stack trace
+    anywhere. A real stream handler with a formatter fixes that.
+
+    Idempotent: `create_app()` runs many times under test. The level always
+    tracks the current config; the stdout handler is installed once.
+    """
+    global _logging_configured
+    level = getattr(logging, cfg.log_level.upper(), logging.INFO)
+    logger = logging.getLogger("harmonist")
+    logger.setLevel(level)
+    if not _logging_configured:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        logger.addHandler(handler)
+        # We own the harmonist logger's output; don't also bubble to the root
+        # logger (avoids duplicate lines if anything ever configures root).
+        logger.propagate = False
+        _logging_configured = True
+
+
 def create_app(
     cfg: config_mod.Config | None = None,
     *,
@@ -75,6 +107,7 @@ def create_app(
     if tagger is None:
         tagger = PicardCompatibleTagger()
 
+    _configure_logging(cfg)
     mb_lookup.configure(cfg.musicbrainz.user_agent)
     activity.install_log_handler()
 
