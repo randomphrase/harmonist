@@ -381,6 +381,7 @@ def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
 
     s = _bare_syncer()
     s.local_media.media_dir = str(tmp_path)
+    s.ignores.is_ignored = MagicMock(return_value=False)  # not yet marked
     parent_called = []
 
     def parent_sync_item(self, item, encoding=None):
@@ -394,10 +395,39 @@ def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
 
     assert parent_called == []  # short-circuited
     assert result is False  # didn't download
-    s.ignores.add.assert_called_once_with(item)
+    s.ignores.add.assert_called_once_with(item)  # marked once
     # Existing sidecar got item_id filled in
     loaded = sc.read(existing_dir)
     assert loaded.bandcamp.item_id == 12345
+
+
+def test_sync_item_short_circuit_does_not_re_add_already_ignored(monkeypatch, tmp_path):
+    """The short-circuit runs every sync for an on-disk album; if the item is
+    already in ignores.txt we must NOT add it again (else duplicates pile up —
+    bandcampsync's Ignores.add appends without dedup)."""
+    existing_dir = tmp_path / "Old" / "Path"
+    existing_dir.mkdir(parents=True)
+    sc.write(
+        existing_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            mb_release_id="rel-aaa",
+        ),
+    )
+
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.ignores.is_ignored = MagicMock(return_value=True)  # already marked
+
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item, encoding=None: True,
+    )
+
+    item = _StubItem(item_id=12345, url_hints={"subdomain": "x", "slug": "y"})
+    assert s.sync_item(item) is False  # still short-circuits
+    s.ignores.add.assert_not_called()  # but does NOT re-add
 
 
 class _StubBandcamp:

@@ -223,7 +223,12 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             if existing_dir is not None:
                 try:
                     write_sidecar_for_item(item, existing_dir)
-                    self.ignores.add(item)
+                    # Guard the add: this short-circuit runs every sync for an
+                    # on-disk album, and bandcampsync's Ignores.add appends a
+                    # line unconditionally (no dedup) — so re-adding bloats
+                    # ignores.txt with duplicates. Only mark it once.
+                    if not self.ignores.is_ignored(item):
+                        self.ignores.add(item)
                 except Exception as e:
                     log.warning(
                         "could not fill in pre-existing sidecar for %s: %s",
