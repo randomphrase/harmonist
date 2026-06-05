@@ -9,6 +9,8 @@ import logging
 # out of the production import path entirely.
 import re
 import sys
+import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -61,6 +63,43 @@ HARMONY_BASE = "https://harmony.pulsewidth.org.uk"
 
 # Terminal states — hidden from the inbox, shown in the library.
 _TERMINAL_STATES = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
+
+
+class _AlbumCache:
+    """Short-TTL cache of `scanner.scan()`, used *only* while a sync or
+    reconcile is running.
+
+    A full scan walks the whole library reading every track's tags —
+    expensive on a large library / NAS disk. The inbox re-fetches `/tasks`
+    every 1.5s during sync/reconcile, so without a cache a 380-album
+    library gets fully re-walked every 1.5 seconds for the several minutes
+    a cold-start reconcile takes.
+
+    Caching is gated on `allow_cache` (the caller passes True only when a
+    runner is active). When idle — every normal user action and every
+    test — it's pass-through and always fresh, so mutations are immediate
+    and there's no invalidation to get wrong. A few seconds of inbox lag
+    while a progress-barred reconcile runs is invisible.
+    """
+
+    def __init__(self, ttl_seconds: float = 3.0) -> None:
+        self._ttl = ttl_seconds
+        self._lock = threading.Lock()
+        self._key: Path | None = None
+        self._at = 0.0
+        self._albums: list[Album] = []
+
+    def get(self, music_dir: Path, *, allow_cache: bool) -> list[Album]:
+        if allow_cache:
+            with self._lock:
+                if self._key == music_dir and (time.monotonic() - self._at) <= self._ttl:
+                    return self._albums
+        albums = scanner.scan(music_dir)
+        with self._lock:
+            self._key = music_dir
+            self._at = time.monotonic()
+            self._albums = albums
+        return albums
 
 
 _logging_configured = False
@@ -181,6 +220,7 @@ def create_app(
     app.state.reconcile_runner = reconcile_runner
     app.state.forgotten_paths = forgotten_paths
     app.state.tagger = tagger
+    app.state.album_cache = _AlbumCache()
 
     _install_security_middleware(app, cfg)
 
@@ -339,7 +379,15 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
 
 def _albums(request: Request) -> list[Album]:
     cfg: config_mod.Config = request.app.state.cfg
-    return scanner.scan(cfg.paths.music_dir)
+    # Only serve from cache while a runner is active — that's the window with
+    # the 1.5s inbox polling. Idle (every user action, every test) is always
+    # fresh, so mutations show up immediately with no invalidation to manage.
+    runners_active = (
+        request.app.state.sync_runner.is_running
+        or request.app.state.reconcile_runner.is_running
+    )
+    cache: _AlbumCache = request.app.state.album_cache
+    return cache.get(cfg.paths.music_dir, allow_cache=runners_active)
 
 
 def _find_album(request: Request, album_id: str) -> Album:

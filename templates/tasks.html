@@ -25,6 +25,9 @@
     AlbumState.NEEDS_SYNC,
     AlbumState.TAGGING,
 ] %}
+{# Groups larger than this collapse into a <details> so importing a big
+   library doesn't bury the page under an endless wall of cards. #}
+{% set collapse_threshold = 12 %}
 
 <div class="space-y-6">
 {% for state in state_order %}
@@ -66,7 +69,18 @@
                 {% elif state == AlbumState.TAGGING %}Files being written…
                 {% endif %}
             </p>
+            {% if state == AlbumState.NEEDS_SYNC %}
+            {# The whole group is fixed by one Sync run — surface it inline so
+               the user doesn't hunt for the header button. #}
+            <button hx-post="/sync" hx-swap="none" hx-disabled-elt="this"
+                    class="mt-2 inline-flex items-center px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+                Sync to link {% if group|length > 1 %}all {{ group|length }}{% else %}it{% endif %}
+            </button>
+            {% endif %}
         </div>
+        {# Render the cards once, then place them inline or inside a collapsed
+           disclosure depending on group size. #}
+        {% set cards %}
         <div class="grid grid-cols-1 gap-3">
             {% for album in group %}
                 {% if state == AlbumState.INCONSISTENT %}{% include 'partials/task_card_inconsistent.html' %}{% endif %}
@@ -76,6 +90,17 @@
                 {% if state == AlbumState.TAGGING %}{% include 'partials/task_card_tagging.html' %}{% endif %}
             {% endfor %}
         </div>
+        {% endset %}
+        {% if group|length > collapse_threshold %}
+        <details class="rounded-md border border-line bg-white/40 px-3 py-2">
+            <summary class="cursor-pointer select-none text-xs font-bold uppercase tracking-widest text-muted hover:text-ink">
+                Show all {{ group|length }} albums
+            </summary>
+            <div class="mt-3">{{ cards }}</div>
+        </details>
+        {% else %}
+        {{ cards }}
+        {% endif %}
     </section>
     {% endif %}
 {% endfor %}

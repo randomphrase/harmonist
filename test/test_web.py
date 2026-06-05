@@ -243,6 +243,64 @@ def test_tasks_needs_sync_section_advises_sync(client, cfg):
     assert "Needs Sync" in r.text
     # Instruction explicitly calls out Sync
     assert "Click Sync" in r.text
+    # Inline bulk-Sync affordance (the whole group is fixed by one Sync).
+    # /tasks is a fragment with no header, so hx-post="/sync" is this button.
+    assert 'hx-post="/sync"' in r.text
+    assert "Sync to link" in r.text
+
+
+def test_large_inbox_group_collapses_into_details(client, cfg):
+    """A group past the collapse threshold (12) folds into a <details> so a
+    big library import doesn't render as an endless wall of cards."""
+    for i in range(13):
+        _make_album(cfg, f"New {i:02d}")
+    r = client.get("/tasks")
+    assert "Show all 13 albums" in r.text
+
+
+def test_small_inbox_group_not_collapsed(client, cfg):
+    """Below the threshold the cards render inline — no 'Show all' disclosure.
+    (Cards carry their own <details> for tools, so 'Show all N' is the marker.)"""
+    _make_album(cfg, "Solo New")
+    r = client.get("/tasks")
+    assert "Show all" not in r.text
+
+
+def test_album_cache_idle_always_rescans(monkeypatch, tmp_path):
+    """When no runner is active (every user action / test), the cache is
+    pass-through so mutations are immediate — no staleness."""
+    from harmonist import scanner
+    from harmonist.web.main import _AlbumCache
+
+    calls: list = []
+
+    def fake_scan(d):
+        calls.append(d)
+        return []
+
+    monkeypatch.setattr(scanner, "scan", fake_scan)
+    c = _AlbumCache(ttl_seconds=100)
+    c.get(tmp_path, allow_cache=False)
+    c.get(tmp_path, allow_cache=False)
+    assert len(calls) == 2  # never served from cache while idle
+
+
+def test_album_cache_serves_cached_while_runner_active(monkeypatch, tmp_path):
+    """During sync/reconcile the 1.5s polls collapse onto one scan within TTL."""
+    from harmonist import scanner
+    from harmonist.web.main import _AlbumCache
+
+    calls: list = []
+
+    def fake_scan(d):
+        calls.append(d)
+        return []
+
+    monkeypatch.setattr(scanner, "scan", fake_scan)
+    c = _AlbumCache(ttl_seconds=100)
+    c.get(tmp_path, allow_cache=True)
+    c.get(tmp_path, allow_cache=True)
+    assert len(calls) == 1  # second call served from cache
 
 
 def test_tasks_empty_state_message_distinguishes_zero_vs_all_done(client, cfg):
