@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
 from . import sidecar as sidecar_mod
@@ -144,24 +145,33 @@ def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
 class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
     """bandcampsync.Syncer subclass with download cap + sidecar capture.
 
-    NOTE: bandcampsync's parent __init__ runs the sync eagerly (calls
-    asyncio.run(self.sync_items()) before returning). Our overrides hook into
-    that flow: sync_items() pre-checks the cap, sync_item() post-writes the
-    sidecar after each successful download.
+    NOTE: when ``auto_run`` is true (the default), bandcampsync's parent
+    __init__ runs the sync eagerly (calls asyncio.run(self.sync_items())
+    before returning). Our overrides hook into that flow: sync_items()
+    pre-checks the cap, sync_item() post-writes the sidecar after each
+    successful download.
 
-    All arguments are keyword-only. `dir_path` is foolproofed: accepts either
-    a `str` or `Path` and coerces to `Path` before handing to bandcampsync,
-    whose `LocalMedia` uses Path-only operations (`.iterdir()`, `/`).
+    This is the adapter layer over bandcampsync: it takes our flat keyword
+    args and assembles the ``BandcampSyncOptions`` the 0.8 ``Syncer`` wants,
+    so the rest of Harmonist never imports bandcampsync's option model.
+    ``dir_path`` is foolproofed (str or Path → Path) because bandcampsync's
+    ``LocalMedia`` uses Path-only operations (`.iterdir()`, `/`).
     """
 
     def __init__(
         self,
         *,
+        cookies: str,
         dir_path: Path | str,
+        media_format: str,
         max_downloads_per_sync: int,
+        temp_dir_root: Path | None = None,
+        ign_file_path: str | Path | None = None,
+        ign_patterns: str = "",
+        notify_url: str | None = None,
         progress_callback: Callable[[str], None] | None = None,
         post_download_callback: Callable[[Path], None] | None = None,
-        **kwargs: Any,
+        auto_run: bool = True,
     ):
         self._max_downloads_per_sync = max_downloads_per_sync
         self._progress_callback = progress_callback
@@ -173,7 +183,16 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # it). Set before super().__init__ because bandcampsync runs the whole
         # sync eagerly inside __init__.
         self.new_items = 0
-        super().__init__(dir_path=Path(dir_path), **kwargs)
+        options = BandcampSyncOptions(
+            cookies=cookies,
+            dir_path=Path(dir_path),
+            media_format=media_format,
+            temp_dir_root=temp_dir_root,
+            ign_file_path=Path(ign_file_path) if ign_file_path is not None else None,
+            ign_patterns=ign_patterns,
+            notify_url=notify_url,
+        )
+        super().__init__(options, auto_run=auto_run)
 
     async def sync_items(self) -> None:
         # Count items that would actually download (i.e. not ignored, not preorder).
@@ -187,7 +206,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         check_download_cap(len(candidates), self._max_downloads_per_sync)
         await super().sync_items()
 
-    def sync_item(self, item: Any) -> bool:
+    def sync_item(self, item: Any, encoding: str | None = None) -> bool:
         if self._progress_callback:
             label = f"{getattr(item, 'band_name', '?')} / {getattr(item, 'item_title', '?')}"
             # Never let a progress callback failure abort the sync.
@@ -213,7 +232,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                     )
                 return False  # didn't download (already on disk)
 
-        result = bool(super().sync_item(item))
+        result = bool(super().sync_item(item, encoding))
         if result:
             self.new_items += 1
             local_path = self.local_media.get_path_for_purchase(item)
