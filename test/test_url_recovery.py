@@ -117,9 +117,7 @@ def test_recover_uses_dir_name_when_album_tag_absent(tmp_path):
 def test_recover_extracts_url_from_visit_prefix_album_comment(tmp_path):
     """Bandcamp embeds prose, e.g. 'Visit https://x.bandcamp.com/album/foo' —
     the URL must be extracted, not used as-is (which would carry 'Visit ')."""
-    album_dir = _make_album(
-        tmp_path, comment="Visit https://x.bandcamp.com/album/exact-album"
-    )
+    album_dir = _make_album(tmp_path, comment="Visit https://x.bandcamp.com/album/exact-album")
 
     def boom(req):
         raise AssertionError(f"unexpected network call: {req.url}")

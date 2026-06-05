@@ -29,12 +29,18 @@ lint:
 format:
 	ruff format $(ARGS) src test
 
+# Verify formatting only — same as CI's `ruff format --check`. Run `make
+# format` to apply. Part of `check` so format drift is caught locally, not
+# only in CI.
+format-check:
+	ruff format --check src test
+
 # mypy strict type check.
 typecheck:
 	mypy
 
-# Everything CI would gate on.
-check: lint typecheck test
+# Everything CI would gate on (lint + format + types + tests).
+check: lint format-check typecheck test
 
 # Local dev server. Set HARMONIST_MUSIC_DIR / HARMONIST_CONFIG_DIR as needed.
 run:
