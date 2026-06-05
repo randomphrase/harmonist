@@ -59,6 +59,10 @@ class BandcampInfo:
 
     item_id: int | None = None
     band_id: int | None = None
+    # True when the Bandcamp release is marked private/unlisted (its public
+    # URL 404s). Load-bearing: suppresses the "Open in Harmony" + Recheck
+    # affordances, since a private URL should not be added to MusicBrainz.
+    is_private: bool = False
 
 
 @dataclass

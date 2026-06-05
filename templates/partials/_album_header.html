@@ -5,6 +5,7 @@
    State identity lives on the inbox section header, not a per-card pill. #}
 {% set _lk_mbid = mb_release_id if mb_release_id is defined else (album.sidecar.mb_release_id if album.sidecar else None) %}
 {% set _lk_store = store_url if store_url is defined else (album.sidecar.store_url if album.sidecar else None) %}
+{% set _lk_private = album.sidecar and album.sidecar.bandcamp and album.sidecar.bandcamp.is_private %}
 <div class="flex items-start justify-between gap-3 mb-3">
     <div class="flex items-center min-w-0 flex-grow">
         <img src="/cover/{{ album.id }}"
@@ -21,7 +22,7 @@
     </div>
     {% if _lk_mbid or _lk_store %}
     <div class="flex-shrink-0">
-        {% with mb_release_id=_lk_mbid, store_url=_lk_store %}
+        {% with mb_release_id=_lk_mbid, store_url=_lk_store, store_private=_lk_private %}
             {% include 'partials/_links.html' %}
         {% endwith %}
     </div>

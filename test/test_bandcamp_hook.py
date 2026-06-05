@@ -146,6 +146,24 @@ def test_write_sidecar_handles_missing_band_id(tmp_path):
     assert sidecar.bandcamp.band_id is None
 
 
+def test_write_sidecar_captures_is_private(tmp_path):
+    """The Bandcamp `is_private` flag rides into the sidecar (and round-trips
+    through disk) so the UI can suppress Harmony/Recheck for private URLs."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    item = _StubItem(item_id=1, is_private=True, url_hints={"subdomain": "x", "slug": "y"})
+    write_sidecar_for_item(item, album_dir)
+    assert sc.read(album_dir).bandcamp.is_private is True
+
+
+def test_write_sidecar_is_private_defaults_false(tmp_path):
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    item = _StubItem(item_id=1, url_hints={"subdomain": "x", "slug": "y"})  # no is_private
+    write_sidecar_for_item(item, album_dir)
+    assert sc.read(album_dir).bandcamp.is_private is False
+
+
 # ---------- HarmonistSyncer subclass plumbing ----------
 # We can't construct a full HarmonistSyncer (parent __init__ hits Bandcamp).
 # Instead: build via __new__, wire up the bits the overrides touch, and

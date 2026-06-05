@@ -87,6 +87,7 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
     band_id_raw = getattr(item, "_data", {}).get("band_id")
     band_id = int(band_id_raw) if band_id_raw is not None else None
     item_id = int(item.item_id)
+    is_private = bool(getattr(item, "_data", {}).get("is_private"))
 
     existing = sidecar_mod.read(album_dir)
     if existing is not None:
@@ -96,6 +97,7 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
             band_id=band_id
             if band_id is not None
             else (existing.bandcamp.band_id if existing.bandcamp else None),
+            is_private=is_private,
         )
         merged = Sidecar(
             schema_version=existing.schema_version,
@@ -114,7 +116,7 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
     sc = Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
         store_url=url,
-        bandcamp=BandcampInfo(item_id=item_id, band_id=band_id),
+        bandcamp=BandcampInfo(item_id=item_id, band_id=band_id, is_private=is_private),
         downloaded_at=datetime.now(UTC),
     )
     sidecar_mod.write(album_dir, sc)

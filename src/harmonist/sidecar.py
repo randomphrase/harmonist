@@ -121,6 +121,8 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
             bd["item_id"] = s.bandcamp.item_id
         if s.bandcamp.band_id is not None:
             bd["band_id"] = s.bandcamp.band_id
+        if s.bandcamp.is_private:  # omit the default (False) to keep sidecars lean
+            bd["is_private"] = True
         if bd:  # only include the block when it has content
             d["bandcamp"] = bd
     if s.downloaded_at:
@@ -211,7 +213,11 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
         try:
             item_id_raw = bd.get("item_id")
             item_id = int(item_id_raw) if item_id_raw is not None else None
-            bandcamp = BandcampInfo(item_id=item_id, band_id=bd.get("band_id"))
+            bandcamp = BandcampInfo(
+                item_id=item_id,
+                band_id=bd.get("band_id"),
+                is_private=bool(bd.get("is_private", False)),
+            )
         except (KeyError, TypeError, ValueError) as e:
             raise InvalidSidecarError(
                 f"sidecar at {source_path} has malformed bandcamp block: {e}"
