@@ -244,7 +244,7 @@ def test_sync_item_writes_sidecar_on_successful_download(monkeypatch, tmp_path):
     # Patch parent's sync_item to "succeed"
     monkeypatch.setattr(
         "harmonist.bandcamp_hook._BCSyncer.sync_item",
-        lambda self, item: True,
+        lambda self, item, encoding=None: True,
     )
 
     item = _StubItem(item_id=99, url_hints={"subdomain": "x", "slug": "y"})
@@ -268,7 +268,7 @@ def test_sync_item_invokes_post_download_callback_after_sidecar(monkeypatch, tmp
 
     monkeypatch.setattr(
         "harmonist.bandcamp_hook._BCSyncer.sync_item",
-        lambda self, item: True,
+        lambda self, item, encoding=None: True,
     )
 
     item = _StubItem(item_id=99, url_hints={"subdomain": "x", "slug": "y"})
@@ -290,7 +290,7 @@ def test_sync_item_post_download_callback_failure_does_not_break_sync(monkeypatc
     s._post_download_callback = boom
     monkeypatch.setattr(
         "harmonist.bandcamp_hook._BCSyncer.sync_item",
-        lambda self, item: True,
+        lambda self, item, encoding=None: True,
     )
 
     item = _StubItem(item_id=99, url_hints={"subdomain": "x", "slug": "y"})
@@ -306,7 +306,7 @@ def test_sync_item_no_sidecar_on_skipped_download(monkeypatch, tmp_path):
     s.local_media.media_dir = str(tmp_path)
     monkeypatch.setattr(
         "harmonist.bandcamp_hook._BCSyncer.sync_item",
-        lambda self, item: False,
+        lambda self, item, encoding=None: False,
     )
 
     item = _StubItem(item_id=1, url_hints={"subdomain": "x", "slug": "y"})
@@ -383,7 +383,7 @@ def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
     s.local_media.media_dir = str(tmp_path)
     parent_called = []
 
-    def parent_sync_item(self, item):
+    def parent_sync_item(self, item, encoding=None):
         parent_called.append(True)
         return True
 
@@ -410,7 +410,8 @@ class _StubBandcamp:
     def verify_authentication(self):
         return True
 
-    def load_purchases(self):
+    def load_purchases(self, **kwargs):
+        # 0.8 calls load_purchases(stop_when=...); accept and ignore kwargs.
         return True
 
 
@@ -499,7 +500,7 @@ def test_sync_item_invokes_progress_callback(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "harmonist.bandcamp_hook._BCSyncer.sync_item",
-        lambda self, item: True,
+        lambda self, item, encoding=None: True,
     )
 
     item = _StubItem(
@@ -527,7 +528,7 @@ def test_sync_item_callback_failure_does_not_break_sync(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "harmonist.bandcamp_hook._BCSyncer.sync_item",
-        lambda self, item: True,
+        lambda self, item, encoding=None: True,
     )
 
     item = _StubItem(item_id=1, url_hints={"subdomain": "x", "slug": "y"})
@@ -545,7 +546,7 @@ def test_sync_item_does_not_short_circuit_when_no_match(monkeypatch, tmp_path):
 
     parent_called = []
 
-    def parent_sync_item(self, item):
+    def parent_sync_item(self, item, encoding=None):
         parent_called.append(True)
         return True
 

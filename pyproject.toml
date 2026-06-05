@@ -2,10 +2,9 @@
 name = "harmonist"
 version = "0.1.0"
 requires-python = ">=3.12"
-# bandcampsync is pinned: 0.8.0 changed the Syncer.__init__ signature
-# (dropped `dir_path`), which breaks our HarmonistSyncer subclass. Stay on
-# the 0.7.x line until the 0.8 migration is done — see the open task.
-dependencies = ["mutagen", "bandcampsync~=0.7.0", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart", "tomlkit", "uvicorn[standard]"]
+# bandcampsync 0.8 reshaped Syncer.__init__ to take a BandcampSyncOptions
+# object (+ auto_run); HarmonistSyncer adapts to it in bandcamp_hook.py.
+dependencies = ["mutagen", "bandcampsync~=0.8.0", "fastapi", "jinja2", "httpx", "beautifulsoup4", "musicbrainzngs", "pydantic", "python-multipart", "tomlkit", "uvicorn[standard]"]
 
 [project.optional-dependencies]
 # ruff + mypy are pinned exactly: an unpinned formatter/linter drifts between
