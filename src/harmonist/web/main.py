@@ -383,8 +383,7 @@ def _albums(request: Request) -> list[Album]:
     # the 1.5s inbox polling. Idle (every user action, every test) is always
     # fresh, so mutations show up immediately with no invalidation to manage.
     runners_active = (
-        request.app.state.sync_runner.is_running
-        or request.app.state.reconcile_runner.is_running
+        request.app.state.sync_runner.is_running or request.app.state.reconcile_runner.is_running
     )
     cache: _AlbumCache = request.app.state.album_cache
     return cache.get(cfg.paths.music_dir, allow_cache=runners_active)
