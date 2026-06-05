@@ -1081,6 +1081,10 @@ def _register_routes(app: FastAPI) -> None:
                 "results": results,
                 "album_id": album.id,
                 "query": {"artist": artist, "title": title},
+                # Local album facts so the template can flag obvious mismatches
+                # (track count, artist) inline against each candidate.
+                "local_track_count": album.track_count,
+                "local_artist": album.artist,
             },
         )
 
