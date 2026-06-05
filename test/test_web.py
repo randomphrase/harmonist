@@ -608,6 +608,25 @@ def test_manual_search_returns_results(client, cfg, monkeypatch):
     # Each row links out to the release on MusicBrainz for closer inspection.
     assert "musicbrainz.org/release/rel-1" in r.text
     assert "musicbrainz.org/release/rel-2" in r.text
+    # The local album has 1 file; both results (10/12 tracks) mismatch and are
+    # struck through with an explanatory tooltip.
+    assert "line-through" in r.text
+    assert "your album has 1 file" in r.text
+
+
+def test_manual_search_no_strikethrough_on_track_count_match(client, cfg, monkeypatch):
+    """A candidate whose track count matches the local file count isn't flagged."""
+    d = _make_album(cfg, "MatchCount")  # 1 file
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_search.search_releases",
+        lambda artist, title, limit=10: [
+            {"id": "rel-9", "title": "Exactly One", "artist": "X", "track_count": 1}
+        ],
+    )
+    r = client.post(f"/manual/{aid}/search", data={"artist": "X", "title": "Y"})
+    assert "rel-9" in r.text
+    assert "line-through" not in r.text
 
 
 def test_manual_search_caps_results_at_five(client, cfg, monkeypatch):
