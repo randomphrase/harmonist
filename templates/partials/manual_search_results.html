@@ -16,13 +16,23 @@
                 {% if r.catalog_number %} · {{ r.catalog_number }}{% endif %}
             </div>
         </div>
-        <form hx-post="/manual/{{ album_id }}/assign" hx-swap="none" hx-disabled-elt="this">
-            <input type="hidden" name="mbid" value="{{ r.id }}">
-            <button type="submit"
-                    class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-2xs font-bold uppercase tracking-widest transition whitespace-nowrap">
-                Use
-            </button>
-        </form>
+        <div class="flex items-center gap-2 flex-shrink-0">
+            {# Escape hatch: when the row's metadata isn't enough to judge a
+               match, open the actual release on MusicBrainz to eyeball it. #}
+            <a href="https://musicbrainz.org/release/{{ r.id }}"
+               target="_blank" rel="noopener"
+               title="View this release on MusicBrainz"
+               class="inline-flex items-center gap-1 px-2 py-1 rounded text-2xs font-bold uppercase tracking-widest text-mb-purple border border-mb-purple/30 hover:bg-mb-purple/10 transition whitespace-nowrap">
+                MB ↗
+            </a>
+            <form hx-post="/manual/{{ album_id }}/assign" hx-swap="none" hx-disabled-elt="this">
+                <input type="hidden" name="mbid" value="{{ r.id }}">
+                <button type="submit"
+                        class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-2xs font-bold uppercase tracking-widest transition whitespace-nowrap">
+                    Use
+                </button>
+            </form>
+        </div>
     </div>
     {% endfor %}
 </div>

@@ -605,6 +605,24 @@ def test_manual_search_returns_results(client, cfg, monkeypatch):
     assert "Result B" in r.text
     assert "rel-1" in r.text
     assert 'name="mbid"' in r.text  # hidden mbid input on each "Use" button
+    # Each row links out to the release on MusicBrainz for closer inspection.
+    assert "musicbrainz.org/release/rel-1" in r.text
+    assert "musicbrainz.org/release/rel-2" in r.text
+
+
+def test_manual_search_caps_results_at_five(client, cfg, monkeypatch):
+    """The route requests at most 5 from MB — beyond that, MB's own search."""
+    seen = {}
+
+    def fake_search(artist, title, limit=10):
+        seen["limit"] = limit
+        return []
+
+    monkeypatch.setattr("harmonist.mb_search.search_releases", fake_search)
+    d = _make_album(cfg, "CapSearch")
+    aid = _id_for(cfg, d)
+    client.post(f"/manual/{aid}/search", data={"artist": "X", "title": "Y"})
+    assert seen["limit"] == 5
 
 
 def test_manual_search_empty_results(client, cfg, monkeypatch):
