@@ -1068,7 +1068,9 @@ def _register_routes(app: FastAPI) -> None:
         # Validate album exists; a 404 is the right signal for a stale UI.
         album = _find_album(request, album_id)
         try:
-            results = mb_search.search_releases(artist, title)
+            # Cap to a handful — beyond this, MB's own search is the better
+            # tool. Each row links out to the release for closer inspection.
+            results = mb_search.search_releases(artist, title, limit=5)
         except mb_search.MBSearchError as e:
             return _flash_response("MB search failed", str(e), level="error", tasks_changed=False)
         return _templates(request).TemplateResponse(
