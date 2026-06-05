@@ -24,7 +24,7 @@ from harmonist import activity, cover_art, mb_lookup, mb_search, reconcile, scan
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
 from harmonist.bandcamp_hook import HarmonistSyncer
-from harmonist.match import assess_match
+from harmonist.match import assess_match, best_match
 from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar, store_name
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
@@ -388,18 +388,24 @@ def _run_bandcamp_sync(
     )
 
 
-def _apply_match(
-    album_path: Path, mbid: str, cfg: config_mod.Config, tagger: Tagger
+def _apply_best_match(
+    album_path: Path, mbids: list[str], cfg: config_mod.Config, tagger: Tagger
 ) -> tuple[str, str]:
-    """Fetch MB release, run match assessment, then either tag or stash candidate.
+    """Fetch every candidate MB release, pick the best fit, then tag or stash.
 
-    Returns (status, message) where status is 'tagged' | 'needs_confirmation'.
+    A Bandcamp URL can resolve to several MB releases; we assess the album
+    against each and act on the strongest match (``match.best_match``).
+
+    Returns (status, message) where status is
+    'tagged' | 'needs_confirmation' | 'no_match'.
     """
-    release = mb_lookup.fetch_release(mbid)
-    candidate = assess_match(album_path, release)
+    releases = [mb_lookup.fetch_release(m) for m in mbids]
+    candidate = best_match(album_path, releases)
+    if candidate is None:
+        return "no_match", "No MusicBrainz release linked."
 
     if candidate.confidence == "exact":
-        _tag_with_release(album_path, mbid, cfg, tagger)
+        _tag_with_release(album_path, candidate.mb_release_id, cfg, tagger)
         return "tagged", "Match exact — files tagged."
 
     existing = sidecar_mod.read(album_path)
@@ -477,11 +483,11 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
     if sc is None or not sc.store_url or sc.mb_release_id:
         return "skipped"  # nothing to resolve, or already resolved
     try:
-        mbid = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
-        if not mbid:
+        mbids = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
+        if not mbids:
             activity.record(f"Synced {album_path.name} — no MusicBrainz match yet", "info")
             return "no_match"
-        status_str, _ = _apply_match(album_path, mbid, cfg, tagger)
+        status_str, _ = _apply_best_match(album_path, mbids, cfg, tagger)
         if status_str == "tagged":
             activity.record(f"Auto-tagged {album_path.name} from MusicBrainz after sync", "info")
         else:
@@ -842,10 +848,10 @@ def _register_routes(app: FastAPI) -> None:
         if sc is None or not sc.store_url:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no store URL on sidecar")
         try:
-            mbid = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
+            mbids = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
         except mb_lookup.MBError as e:
             return _flash_response("MB lookup failed", str(e), level="error", tasks_changed=False)
-        if not mbid:
+        if not mbids:
             return _flash_response(
                 "Still no match",
                 f"{album.title}: no MusicBrainz release for this URL yet",
@@ -854,10 +860,14 @@ def _register_routes(app: FastAPI) -> None:
             )
 
         try:
-            release = mb_lookup.fetch_release(mbid)
+            releases = [mb_lookup.fetch_release(m) for m in mbids]
         except mb_lookup.MBError as e:
             return _flash_response("MB fetch failed", str(e), level="error", tasks_changed=False)
-        candidate = assess_match(album.path, release)
+        # A URL can map to several MB releases (e.g. a long digital edition
+        # plus a shorter CD mix); pick the one that fits the files on disk.
+        candidate = best_match(album.path, releases)
+        assert candidate is not None  # releases is non-empty (mbids guarded)
+        mbid = candidate.mb_release_id
 
         new_sc = Sidecar(
             schema_version=sc.schema_version,
@@ -1004,8 +1014,8 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
             )
         try:
-            status_str, msg = _apply_match(
-                album.path, extracted, request.app.state.cfg, request.app.state.tagger
+            status_str, msg = _apply_best_match(
+                album.path, [extracted], request.app.state.cfg, request.app.state.tagger
             )
         except mb_lookup.MBError as e:
             return _flash_response("MB lookup failed", str(e), level="error", tasks_changed=False)

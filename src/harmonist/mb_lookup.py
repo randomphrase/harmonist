@@ -38,28 +38,36 @@ def configure(user_agent: str) -> None:
     musicbrainzngs.set_useragent(name.strip(), version.strip(), contact.strip())
 
 
-def lookup_by_bandcamp_url(bandcamp_url: str) -> str | None:
-    """Return the MB release MBID linked to this Bandcamp album URL, or None.
+def lookup_by_bandcamp_url(bandcamp_url: str) -> list[str]:
+    """Return the MB release MBIDs linked to this Bandcamp album URL.
+
+    A single Bandcamp store URL can be attached to *more than one* MB
+    release — e.g. a long-form digital edition and a shorter CD mix sold
+    from the same Bandcamp page. We return every linked release MBID and
+    leave it to the caller (``match.best_match``) to pick the one whose
+    tracklist matches the files on disk.
 
     Hits MB's URL relationship endpoint — if the URL isn't known to MB,
-    we get a 404, which we translate to None (a "no match", not an error).
+    we get a 404, which we translate to an empty list (a "no match", not
+    an error).
     """
     try:
         result = musicbrainzngs.browse_urls(resource=bandcamp_url, includes=["release-rels"])
     except musicbrainzngs.ResponseError as e:
         if _is_not_found(e):
-            return None
+            return []
         raise MBError(f"MB ResponseError: {e}") from e
     except (musicbrainzngs.NetworkError, musicbrainzngs.AuthenticationError) as e:
         raise MBError(f"MB request failed: {e}") from e
 
     url_data = result.get("url") or {}
     rels = url_data.get("release-relation-list") or []
+    mbids: list[str] = []
     for rel in rels:
         release = rel.get("release") or {}
         if mbid := release.get("id"):
-            return str(mbid)
-    return None
+            mbids.append(str(mbid))
+    return mbids
 
 
 def fetch_release(mbid: str) -> Release:

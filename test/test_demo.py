@@ -174,11 +174,10 @@ def test_fetch_release_unknown_mbid_raises():
 
 
 def test_lookup_by_bandcamp_url():
-    assert (
-        demo.lookup_by_bandcamp_url("https://thamesmen.bandcamp.com/album/gimme-some-money")
-        == "demo-rel-thamesmen"
-    )
-    assert demo.lookup_by_bandcamp_url("https://example.com/whatever") is None
+    assert demo.lookup_by_bandcamp_url(
+        "https://thamesmen.bandcamp.com/album/gimme-some-money"
+    ) == ["demo-rel-thamesmen"]
+    assert demo.lookup_by_bandcamp_url("https://example.com/whatever") == []
 
 
 def test_fetch_release_urls_returns_bandcamp_url():
