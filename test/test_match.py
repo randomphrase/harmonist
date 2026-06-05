@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from harmonist.match import _mb_track_length_ms, assess_match
+from harmonist.match import _mb_track_length_ms, assess_match, best_match
 from harmonist.tagger import ATOM_TITLE
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -217,3 +217,56 @@ def test_no_match_when_no_files(tmp_path):
     result = assess_match(album_dir, _release([FIXTURE_DURATION_MS]))
     assert result.confidence == "no_match"
     assert result.file_count == 0
+
+
+# ---------- best_match: one Bandcamp URL → several MB releases ----------
+
+
+def _release_with_id(rel_id: str, track_lengths_ms: list[int | None]) -> dict:
+    rel = _release(track_lengths_ms)
+    rel["id"] = rel_id
+    return rel
+
+
+def test_best_match_none_when_no_releases(tmp_path):
+    assert best_match(_album_with(tmp_path, 1), []) is None
+
+
+def test_best_match_picks_tracklist_that_fits_the_files(tmp_path):
+    """The Variant case: a 6-track digital edition and a 1-track CD mix share
+    one Bandcamp URL. A 6-file download must resolve to the 6-track release —
+    the 1-track release is a clean no_match and must lose."""
+    album_dir = _album_with(tmp_path, 6)
+    cd_mix = _release_with_id("rel-cd", [FIXTURE_DURATION_MS])
+    digital = _release_with_id("rel-digital", [FIXTURE_DURATION_MS] * 6)
+
+    result = best_match(album_dir, [cd_mix, digital])
+    assert result is not None
+    assert result.mb_release_id == "rel-digital"
+    assert result.confidence == "exact"
+
+
+def test_best_match_picks_single_track_release_for_single_file(tmp_path):
+    """Mirror of the above: the 1-file CD-mix download resolves to the
+    1-track release, not the 6-track one. Order is independent of input."""
+    album_dir = _album_with(tmp_path, 1)
+    cd_mix = _release_with_id("rel-cd", [FIXTURE_DURATION_MS])
+    digital = _release_with_id("rel-digital", [FIXTURE_DURATION_MS] * 6)
+
+    result = best_match(album_dir, [digital, cd_mix])
+    assert result is not None
+    assert result.mb_release_id == "rel-cd"
+    assert result.confidence == "exact"
+
+
+def test_best_match_breaks_count_ties_on_closest_lengths(tmp_path):
+    """Two releases with the same track count but different lengths: the one
+    whose track lengths sit closest to the files wins, even when neither is a
+    perfect exact match."""
+    album_dir = _album_with(tmp_path, 1)
+    close = _release_with_id("rel-close", [FIXTURE_DURATION_MS + 10_000])  # +10s
+    far = _release_with_id("rel-far", [FIXTURE_DURATION_MS + 60_000])  # +60s
+
+    result = best_match(album_dir, [far, close])
+    assert result is not None
+    assert result.mb_release_id == "rel-close"

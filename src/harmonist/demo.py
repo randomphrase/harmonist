@@ -542,8 +542,9 @@ def fetch_release_urls(mbid: str) -> list[str]:
     return [url for url, m in URL_RELS.items() if m == mbid]
 
 
-def lookup_by_bandcamp_url(bandcamp_url: str) -> str | None:
-    return URL_RELS.get(bandcamp_url)
+def lookup_by_bandcamp_url(bandcamp_url: str) -> list[str]:
+    mbid = URL_RELS.get(bandcamp_url)
+    return [mbid] if mbid else []
 
 
 def search_releases(artist: str, title: str, limit: int = 10) -> list[dict[str, Any]]:

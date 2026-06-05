@@ -50,11 +50,14 @@ def test_lookup_returns_mbid_when_url_linked(monkeypatch):
     }
     monkeypatch.setattr(musicbrainzngs, "browse_urls", lambda **kw: response)
 
-    mbid = lookup_by_bandcamp_url("https://x.bandcamp.com/album/y")
-    assert mbid == "rel-aaa"
+    mbids = lookup_by_bandcamp_url("https://x.bandcamp.com/album/y")
+    assert mbids == ["rel-aaa"]
 
 
-def test_lookup_returns_first_release_when_multiple_linked(monkeypatch):
+def test_lookup_returns_all_releases_when_multiple_linked(monkeypatch):
+    """One Bandcamp URL can be attached to several MB releases (e.g. a long
+    digital edition + a shorter CD mix). All linked MBIDs must come back so
+    the caller can disambiguate by tracklist."""
     response = {
         "url": {
             "release-relation-list": [
@@ -64,16 +67,16 @@ def test_lookup_returns_first_release_when_multiple_linked(monkeypatch):
         }
     }
     monkeypatch.setattr(musicbrainzngs, "browse_urls", lambda **kw: response)
-    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") == "rel-aaa"
+    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") == ["rel-aaa", "rel-bbb"]
 
 
-def test_lookup_returns_none_when_no_relations(monkeypatch):
+def test_lookup_returns_empty_when_no_relations(monkeypatch):
     response = {"url": {"id": "url-aaa", "release-relation-list": []}}
     monkeypatch.setattr(musicbrainzngs, "browse_urls", lambda **kw: response)
-    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") is None
+    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") == []
 
 
-def test_lookup_returns_none_when_url_unknown_404(monkeypatch):
+def test_lookup_returns_empty_when_url_unknown_404(monkeypatch):
     cause = MagicMock()
     cause.code = 404
 
@@ -82,7 +85,7 @@ def test_lookup_returns_none_when_url_unknown_404(monkeypatch):
         raise err
 
     monkeypatch.setattr(musicbrainzngs, "browse_urls", raise_404)
-    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") is None
+    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") == []
 
 
 class _Cause:
@@ -130,7 +133,7 @@ def test_lookup_standalone_404_message_is_not_found(monkeypatch):
         "browse_urls",
         _raise_response_error(_Cause(None, "HTTP Error 404: Not Found")),
     )
-    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") is None
+    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") == []
 
 
 def test_lookup_raises_on_network_error(monkeypatch):

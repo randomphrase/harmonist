@@ -110,6 +110,41 @@ def assess_match(album_dir: Path, release: Release) -> MatchCandidate:
     )
 
 
+def best_match(album_dir: Path, releases: list[Release]) -> MatchCandidate | None:
+    """Pick the MB release whose tracklist best fits the files on disk.
+
+    A single Bandcamp URL can map to several MB releases (see
+    ``mb_lookup.lookup_by_bandcamp_url``). Assess the album against each
+    candidate and return the strongest match, or None when ``releases``
+    is empty.
+
+    Ranking, best first:
+      1. confidence — exact > approximate > no_match;
+      2. closer file/track counts (smaller ``|file_count - track_count|``);
+      3. smaller total per-track length delta.
+
+    For a 6-track download offered against a [1-track, 6-track] pair, the
+    6-track release scores "exact" and the 1-track one "no_match", so the
+    right release wins outright. The count/length tie-breakers only decide
+    genuinely close calls.
+    """
+    if not releases:
+        return None
+    candidates = [assess_match(album_dir, r) for r in releases]
+    return max(candidates, key=_rank_key)
+
+
+_CONFIDENCE_RANK = {"exact": 2, "approximate": 1, "no_match": 0}
+
+
+def _rank_key(c: MatchCandidate) -> tuple[int, int, int]:
+    """Sort key for ``best_match`` — higher is better (used with max())."""
+    confidence = _CONFIDENCE_RANK[c.confidence]
+    count_gap = abs(c.file_count - c.track_count)
+    total_delta = sum(abs(tc.delta_ms) for tc in c.track_comparisons if tc.delta_ms is not None)
+    return (confidence, -count_gap, -total_delta)
+
+
 def _file_duration_ms(file_path: Path) -> int:
     return formats.read_duration_ms(file_path) or 0
 
