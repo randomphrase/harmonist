@@ -11,6 +11,7 @@ that captures URLs at download time; secondary is manual entry via the UI.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 import httpx
@@ -19,6 +20,11 @@ from bs4 import BeautifulSoup
 from . import formats
 
 log = logging.getLogger(__name__)
+
+# Bandcamp embeds the link as prose in the comment tag, e.g.
+# "Visit https://artist.bandcamp.com" — so we extract the URL rather than
+# treating the whole comment as one.
+_URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
 
 def recover_album_url(album_dir: Path, *, client: httpx.Client | None = None) -> str | None:
@@ -31,18 +37,31 @@ def recover_album_url(album_dir: Path, *, client: httpx.Client | None = None) ->
         return None
 
     cmt, album_name = _read_comment_and_album(files[0])
-    if not cmt or "bandcamp.com" not in cmt:
+    url = _extract_bandcamp_url(cmt)
+    if url is None:
         return None
 
-    # If the comment is already a /album/ or /track/ URL, return it directly.
-    if "/album/" in cmt or "/track/" in cmt:
-        return cmt
+    # If the comment URL is already a /album/ or /track/ URL, use it directly.
+    if "/album/" in url or "/track/" in url:
+        return url
 
-    # Otherwise it's an artist URL — scrape it to find the album link.
+    # Otherwise it's an artist/label root URL — scrape it to find the album link.
     if not album_name:
         album_name = album_dir.name
 
-    return _scrape_artist_for_album(cmt, album_name, client=client)
+    return _scrape_artist_for_album(url, album_name, client=client)
+
+
+def _extract_bandcamp_url(comment: str) -> str | None:
+    """Pull the first bandcamp.com URL out of a comment tag, stripping any
+    surrounding prose ("Visit …") and trailing punctuation. Returns None when
+    the comment has no Bandcamp link.
+    """
+    for match in _URL_RE.finditer(comment or ""):
+        url = match.group(0).rstrip(".,);]>\"'")
+        if "bandcamp.com" in url.lower():
+            return url
+    return None
 
 
 def _read_comment_and_album(file_path: Path) -> tuple[str, str]:
