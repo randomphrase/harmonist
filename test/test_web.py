@@ -266,43 +266,6 @@ def test_small_inbox_group_not_collapsed(client, cfg):
     assert "Show all" not in r.text
 
 
-def test_album_cache_idle_always_rescans(monkeypatch, tmp_path):
-    """When no runner is active (every user action / test), the cache is
-    pass-through so mutations are immediate — no staleness."""
-    from harmonist import scanner
-    from harmonist.web.main import _AlbumCache
-
-    calls: list = []
-
-    def fake_scan(d, *, album_cache=None):
-        calls.append(d)
-        return []
-
-    monkeypatch.setattr(scanner, "scan", fake_scan)
-    c = _AlbumCache(ttl_seconds=100)
-    c.get(tmp_path, allow_cache=False)
-    c.get(tmp_path, allow_cache=False)
-    assert len(calls) == 2  # never served from cache while idle
-
-
-def test_album_cache_serves_cached_while_runner_active(monkeypatch, tmp_path):
-    """During sync/reconcile the 1.5s polls collapse onto one scan within TTL."""
-    from harmonist import scanner
-    from harmonist.web.main import _AlbumCache
-
-    calls: list = []
-
-    def fake_scan(d, *, album_cache=None):
-        calls.append(d)
-        return []
-
-    monkeypatch.setattr(scanner, "scan", fake_scan)
-    c = _AlbumCache(ttl_seconds=100)
-    c.get(tmp_path, allow_cache=True)
-    c.get(tmp_path, allow_cache=True)
-    assert len(calls) == 1  # second call served from cache
-
-
 def test_tasks_empty_state_message_distinguishes_zero_vs_all_done(client, cfg):
     # Empty library
     r = client.get("/tasks")
@@ -1456,6 +1419,26 @@ def test_settings_save_rejects_invalid_cover_size(client, cfg):
     assert "Couldn't save" in r.text
     # nothing persisted
     assert not (cfg.paths.config_dir / "harmonist.toml").exists()
+
+
+def test_engaged_lifespan_serves_background_scan_snapshot(cfg):
+    """With the lifespan running (TestClient as a context manager), the
+    background scanner engages and routes serve its snapshot — not a
+    request-time scan. The /scan/status endpoint reports progress."""
+    import time as _time
+
+    _make_album(cfg, "BgAlbum")  # present before startup → initial scan finds it
+    with TestClient(create_app(cfg), headers={"HX-Request": "true"}) as client:
+        status = {}
+        for _ in range(200):
+            status = client.get("/scan/status").json()
+            if status["state"] == "done":
+                break
+            _time.sleep(0.02)
+        assert status["state"] == "done"
+        assert status["albums_found"] == 1
+        # /tasks serves the snapshot the background scan produced.
+        assert "BgAlbum" in client.get("/tasks").text
 
 
 def test_app_attribute_is_memoized(monkeypatch):
