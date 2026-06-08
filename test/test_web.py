@@ -274,7 +274,7 @@ def test_album_cache_idle_always_rescans(monkeypatch, tmp_path):
 
     calls: list = []
 
-    def fake_scan(d):
+    def fake_scan(d, *, album_cache=None):
         calls.append(d)
         return []
 
@@ -292,7 +292,7 @@ def test_album_cache_serves_cached_while_runner_active(monkeypatch, tmp_path):
 
     calls: list = []
 
-    def fake_scan(d):
+    def fake_scan(d, *, album_cache=None):
         calls.append(d)
         return []
 
