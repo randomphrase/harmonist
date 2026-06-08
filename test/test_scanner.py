@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -615,3 +617,82 @@ def test_scan_skips_album_with_invalid_sidecar(tmp_path, caplog):
     paths = {a.path for a in albums}
     assert good_dir in paths
     assert bad_dir not in paths
+
+
+# ---------- per-album mtime cache (opt-in) ----------
+
+
+def _build_album_spy(monkeypatch):
+    """Wrap scanner._build_album to record which dirs get (re)read."""
+    from harmonist import scanner
+
+    calls: list[Path] = []
+    real = scanner._build_album
+
+    def spy(album_dir, audio_files):
+        calls.append(album_dir)
+        return real(album_dir, audio_files)
+
+    monkeypatch.setattr(scanner, "_build_album", spy)
+    return calls
+
+
+def test_scan_without_cache_rebuilds_every_time(tmp_path, monkeypatch):
+    from harmonist import scanner
+
+    _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    calls = _build_album_spy(monkeypatch)
+    scanner.scan(tmp_path)
+    scanner.scan(tmp_path)
+    assert len(calls) == 2  # no cache → read both times
+
+
+def test_scan_cache_reuses_unchanged_album(tmp_path, monkeypatch):
+    from harmonist import scanner
+
+    _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    calls = _build_album_spy(monkeypatch)
+    cache: scanner.AlbumCache = {}
+    first = scanner.scan(tmp_path, album_cache=cache)
+    second = scanner.scan(tmp_path, album_cache=cache)
+    assert len(first) == len(second) == 1
+    assert len(calls) == 1  # second scan served the unchanged album from cache
+
+
+def test_scan_cache_rebuilds_on_file_change(tmp_path, monkeypatch):
+    from harmonist import scanner
+
+    d = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=1)
+    calls = _build_album_spy(monkeypatch)
+    cache: scanner.AlbumCache = {}
+    scanner.scan(tmp_path, album_cache=cache)
+    # Bump the track's mtime to a distinct value (simulates a Picard re-tag).
+    track = d / "01 Track 1.m4a"
+    future = time.time() + 10
+    os.utime(track, (future, future))
+    scanner.scan(tmp_path, album_cache=cache)
+    assert len(calls) == 2  # signature changed → re-read
+
+
+def test_scan_cache_rebuilds_on_sidecar_write(tmp_path, monkeypatch):
+    from harmonist import scanner
+
+    d = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=1)
+    calls = _build_album_spy(monkeypatch)
+    cache: scanner.AlbumCache = {}
+    scanner.scan(tmp_path, album_cache=cache)
+    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-x"))
+    scanner.scan(tmp_path, album_cache=cache)
+    assert len(calls) == 2  # new sidecar → signature changed → re-read
+
+
+def test_scan_cache_prunes_removed_album(tmp_path):
+    from harmonist import scanner
+
+    d = _make_album_dir(tmp_path, "Artist", "Gone", n_tracks=1)
+    cache: scanner.AlbumCache = {}
+    scanner.scan(tmp_path, album_cache=cache)
+    assert d in cache
+    shutil.rmtree(d)
+    scanner.scan(tmp_path, album_cache=cache)
+    assert d not in cache  # stale entry pruned

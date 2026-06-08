@@ -88,13 +88,16 @@ class _AlbumCache:
         self._key: Path | None = None
         self._at = 0.0
         self._albums: list[Album] = []
+        # Per-album mtime cache threaded into every scan() so even a cache-miss
+        # re-scan only re-reads albums that actually changed on disk.
+        self._per_album: scanner.AlbumCache = {}
 
     def get(self, music_dir: Path, *, allow_cache: bool) -> list[Album]:
         if allow_cache:
             with self._lock:
                 if self._key == music_dir and (time.monotonic() - self._at) <= self._ttl:
                     return self._albums
-        albums = scanner.scan(music_dir)
+        albums = scanner.scan(music_dir, album_cache=self._per_album)
         with self._lock:
             self._key = music_dir
             self._at = time.monotonic()
