@@ -9,9 +9,8 @@ import logging
 # out of the production import path entirely.
 import re
 import sys
-import threading
-import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -32,6 +31,7 @@ from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar, store_nam
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
+from harmonist.web.scan_runner import ScanRunner
 from harmonist.web.security import BasicAuthMiddleware, CSRFMiddleware
 from harmonist.web.sync_runner import AlreadyRunningError, SyncRunner
 
@@ -63,46 +63,6 @@ HARMONY_BASE = "https://harmony.pulsewidth.org.uk"
 
 # Terminal states — hidden from the inbox, shown in the library.
 _TERMINAL_STATES = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
-
-
-class _AlbumCache:
-    """Short-TTL cache of `scanner.scan()`, used *only* while a sync or
-    reconcile is running.
-
-    A full scan walks the whole library reading every track's tags —
-    expensive on a large library / NAS disk. The inbox re-fetches `/tasks`
-    every 1.5s during sync/reconcile, so without a cache a 380-album
-    library gets fully re-walked every 1.5 seconds for the several minutes
-    a cold-start reconcile takes.
-
-    Caching is gated on `allow_cache` (the caller passes True only when a
-    runner is active). When idle — every normal user action and every
-    test — it's pass-through and always fresh, so mutations are immediate
-    and there's no invalidation to get wrong. A few seconds of inbox lag
-    while a progress-barred reconcile runs is invisible.
-    """
-
-    def __init__(self, ttl_seconds: float = 3.0) -> None:
-        self._ttl = ttl_seconds
-        self._lock = threading.Lock()
-        self._key: Path | None = None
-        self._at = 0.0
-        self._albums: list[Album] = []
-        # Per-album mtime cache threaded into every scan() so even a cache-miss
-        # re-scan only re-reads albums that actually changed on disk.
-        self._per_album: scanner.AlbumCache = {}
-
-    def get(self, music_dir: Path, *, allow_cache: bool) -> list[Album]:
-        if allow_cache:
-            with self._lock:
-                if self._key == music_dir and (time.monotonic() - self._at) <= self._ttl:
-                    return self._albums
-        albums = scanner.scan(music_dir, album_cache=self._per_album)
-        with self._lock:
-            self._key = music_dir
-            self._at = time.monotonic()
-            self._albums = albums
-        return albums
 
 
 _logging_configured = False
@@ -154,6 +114,7 @@ def create_app(
     activity.install_log_handler()
 
     sync_runner = SyncRunner(runner_fn=lambda: None)  # placeholder, replaced below
+    scan_runner = ScanRunner(cfg.paths.music_dir)
 
     if cfg.demo_mode:
         from harmonist import demo
@@ -167,9 +128,11 @@ def create_app(
         demo.ensure_seeded(cfg.paths.music_dir)
 
         def runner_fn() -> Any:
-            return demo.run_demo_sync(
+            result = demo.run_demo_sync(
                 cfg.paths.music_dir, progress_callback=sync_runner.set_current_item
             )
+            scan_runner.request_scan()  # downloads landed → refresh the snapshot
+            return result
     else:
 
         def resolve_after_download(album_dir: Path) -> None:
@@ -179,11 +142,13 @@ def create_app(
             _resolve_by_store_url(album_dir, cfg, tagger)
 
         def runner_fn() -> Any:
-            return _run_bandcamp_sync(
+            result = _run_bandcamp_sync(
                 cfg,
                 progress_callback=sync_runner.set_current_item,
                 post_download_callback=resolve_after_download,
             )
+            scan_runner.request_scan()  # downloads landed → refresh the snapshot
+            return result
 
     sync_runner._runner_fn = runner_fn
 
@@ -199,6 +164,7 @@ def create_app(
             status_updater=status_updater,
             exempt_paths=forgotten_paths,
         )
+        scan_runner.request_scan()  # sidecars written → refresh the snapshot
 
     reconcile_runner = ReconcileRunner(runner_fn=reconcile_runner_fn)
 
@@ -216,14 +182,31 @@ def create_app(
     # Sync/Set-up button flips the moment cookies are saved.
     templates.env.globals["bandcamp_configured"] = lambda: _bandcamp_configured(cfg)
 
-    app = FastAPI(title="Harmonist")
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Engage the background scanner once the event loop is running, kicking
+        # the initial library scan off the request path.
+        scan_runner.attach_loop()
+        yield
+
+    app = FastAPI(title="Harmonist", lifespan=lifespan)
     app.state.cfg = cfg
     app.state.templates = templates
     app.state.sync_runner = sync_runner
     app.state.reconcile_runner = reconcile_runner
+    app.state.scan_runner = scan_runner
     app.state.forgotten_paths = forgotten_paths
     app.state.tagger = tagger
-    app.state.album_cache = _AlbumCache()
+
+    @app.middleware("http")
+    async def _rescan_after_mutation(request: Request, call_next: Any) -> Response:
+        response: Response = await call_next(request)
+        # A state-changing request likely touched the library (tag, forget,
+        # confirm, erase…). Trigger a background re-scan; the per-album mtime
+        # cache keeps it cheap, and request_scan() is a no-op until engaged.
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            request.app.state.scan_runner.request_scan()
+        return response
 
     _install_security_middleware(app, cfg)
 
@@ -400,14 +383,14 @@ def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
 
 def _albums(request: Request) -> list[Album]:
     cfg: config_mod.Config = request.app.state.cfg
-    # Only serve from cache while a runner is active — that's the window with
-    # the 1.5s inbox polling. Idle (every user action, every test) is always
-    # fresh, so mutations show up immediately with no invalidation to manage.
-    runners_active = (
-        request.app.state.sync_runner.is_running or request.app.state.reconcile_runner.is_running
-    )
-    cache: _AlbumCache = request.app.state.album_cache
-    return cache.get(cfg.paths.music_dir, allow_cache=runners_active)
+    runner: ScanRunner = request.app.state.scan_runner
+    # In production the background scanner is engaged (lifespan ran): serve its
+    # snapshot instantly — never walk the tree on the request path. In unit
+    # tests the TestClient is built without the lifespan, so the runner isn't
+    # engaged and we scan synchronously, preserving request-time freshness.
+    if runner.is_engaged():
+        return runner.albums()
+    return scanner.scan(cfg.paths.music_dir)
 
 
 def _find_album(request: Request, album_id: str) -> Album:
@@ -738,6 +721,10 @@ def _register_routes(app: FastAPI) -> None:
     @app.get("/reconcile/status")
     def reconcile_status(request: Request) -> Response:
         return JSONResponse(request.app.state.reconcile_runner.status())
+
+    @app.get("/scan/status")
+    def scan_status(request: Request) -> Response:
+        return JSONResponse(request.app.state.scan_runner.status())
 
     @app.post("/reconcile", response_class=HTMLResponse)
     def reconcile_start(request: Request) -> Response:

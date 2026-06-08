@@ -8,6 +8,7 @@ new submodule in `formats/__init__.py`.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from stat import S_ISREG
@@ -40,69 +41,89 @@ def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Albu
     is unchanged since the last scan — the big win on slow filesystems.
     Omit it (the default) for a full, uncached scan.
     """
-    albums = list(_iter_albums(music_dir, album_cache))
+    albums: list[Album] = []
+    for album_dir, audio_files, signature in iter_album_dirs(music_dir):
+        album = resolve_album(album_dir, audio_files, signature, album_cache)
+        if album is not None:
+            albums.append(album)
     if album_cache is not None:
-        # Drop cache entries for album dirs that no longer exist.
-        seen = {a.path for a in albums}
-        for stale in [p for p in album_cache if p not in seen]:
-            del album_cache[stale]
+        prune_cache(album_cache, {a.path for a in albums})
     return albums
 
 
-def _iter_albums(root: Path, album_cache: AlbumCache | None) -> Iterator[Album]:
+def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], AlbumSignature]]:
+    """Yield (album_dir, sorted_audio_files, signature) for every directory
+    containing supported audio, ONE DIRECTORY AT A TIME.
+
+    Uses ``os.walk`` (not ``rglob`` + groupby) so a caller can interleave work
+    between directories — the async scan runner yields to the event loop here.
+    The signature is built from the same stat calls, so re-scans can skip
+    unchanged albums (see ``resolve_album``).
+    """
     if not root.exists():
         return
-    for album_dir, audio_files, signature in _find_album_dirs(root):
-        try:
-            if album_cache is not None:
-                cached = album_cache.get(album_dir)
-                if cached is not None and cached[0] == signature:
-                    yield cached[1]
-                    continue
-            album = _build_album(album_dir, audio_files)
-            if album_cache is not None:
-                album_cache[album_dir] = (signature, album)
-            yield album
-        except (InvalidSidecarError, UnsupportedSchemaVersionError) as e:
-            log.warning("skipping %s: %s", album_dir, e)
+    for dirpath, _dirnames, filenames in os.walk(root):
+        d = Path(dirpath)
+        audio: list[tuple[Path, int, int]] = []
+        sidecar_mtime: int | None = None
+        cover_mtime: int | None = None
+        for name in filenames:
+            f = d / name
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            if not S_ISREG(st.st_mode):
+                continue
+            if formats.is_supported(f):
+                audio.append((f, st.st_mtime_ns, st.st_size))
+            elif name == ".harmonist.json":
+                sidecar_mtime = st.st_mtime_ns
+            elif name in ("cover.jpg", "cover.png"):
+                cover_mtime = st.st_mtime_ns
+        if not audio:
             continue
-        except Exception as e:
-            log.warning("error scanning %s: %s", album_dir, e)
-            continue
-
-
-def _find_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], AlbumSignature]]:
-    """Yield (album_dir, sorted_audio_files, signature) for every dir with
-    supported audio. The signature is gathered from the single walk's stat
-    calls (no extra I/O over the old is_file() check) so re-scans can skip
-    unchanged albums.
-    """
-    audio: dict[Path, list[tuple[Path, int, int]]] = {}
-    sidecar_mtime: dict[Path, int] = {}
-    cover_mtime: dict[Path, int] = {}
-    for f in root.rglob("*"):
-        try:
-            st = f.stat()
-        except OSError:
-            continue
-        if not S_ISREG(st.st_mode):
-            continue
-        parent = f.parent
-        if formats.is_supported(f):
-            audio.setdefault(parent, []).append((f, st.st_mtime_ns, st.st_size))
-        elif f.name == ".harmonist.json":
-            sidecar_mtime[parent] = st.st_mtime_ns
-        elif f.name in ("cover.jpg", "cover.png"):
-            cover_mtime[parent] = st.st_mtime_ns
-    for d, entries in audio.items():
-        entries.sort(key=lambda e: e[0].name)
-        files = [e[0] for e in entries]
+        audio.sort(key=lambda e: e[0].name)
+        files = [e[0] for e in audio]
         signature: AlbumSignature = (
-            tuple((e[0].name, e[1], e[2]) for e in entries),
-            sidecar_mtime.get(d),
-            cover_mtime.get(d),
+            tuple((e[0].name, e[1], e[2]) for e in audio),
+            sidecar_mtime,
+            cover_mtime,
         )
         yield d, files, signature
+
+
+def resolve_album(
+    album_dir: Path,
+    audio_files: list[Path],
+    signature: AlbumSignature,
+    album_cache: AlbumCache | None,
+) -> Album | None:
+    """Return the Album for one directory: from the cache when its signature
+    is unchanged, else freshly built (reading tags). Returns None — logging a
+    warning — when the album can't be built (bad sidecar, I/O error).
+    """
+    if album_cache is not None:
+        cached = album_cache.get(album_dir)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+    try:
+        album = _build_album(album_dir, audio_files)
+    except (InvalidSidecarError, UnsupportedSchemaVersionError) as e:
+        log.warning("skipping %s: %s", album_dir, e)
+        return None
+    except Exception as e:
+        log.warning("error scanning %s: %s", album_dir, e)
+        return None
+    if album_cache is not None:
+        album_cache[album_dir] = (signature, album)
+    return album
+
+
+def prune_cache(album_cache: AlbumCache, seen: set[Path]) -> None:
+    """Drop cache entries for album dirs not present in `seen` (removed dirs)."""
+    for stale in [p for p in album_cache if p not in seen]:
+        del album_cache[stale]
 
 
 def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
