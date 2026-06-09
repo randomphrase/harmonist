@@ -4,7 +4,18 @@
     </p>
 </div>
 
-{% if not albums %}
+{% if not albums and scan and scan.state == 'scanning' %}
+{# Cold-start (or re-scan) in progress: the snapshot isn't ready yet. The
+   page polls /scan/status and swaps the real inbox in when it completes. #}
+<div class="p-10 text-center border border-line rounded-lg">
+    <p class="text-muted italic">
+        Scanning your library…
+        <span class="text-ink font-semibold">{{ scan.dirs_scanned }}</span> directories ·
+        <span class="text-ink font-semibold">{{ scan.albums_found }}</span> albums found
+    </p>
+    <p class="text-2xs text-muted mt-1">Large libraries on a network mount can take a few minutes.</p>
+</div>
+{% elif not albums %}
 <div class="p-10 text-center border border-line rounded-lg">
     <p class="text-muted italic">
         {% if total_albums %}

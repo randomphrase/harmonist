@@ -14,6 +14,11 @@
          hx-trigger="load, every 2000ms"
          hx-swap="innerHTML"
          class="hidden"></div>
+    <div id="scan-status-source"
+         hx-get="/scan/status"
+         hx-trigger="load, every 1500ms"
+         hx-swap="innerHTML"
+         class="hidden"></div>
 
     {# Bandcamp-style text tabs: Inbox / Library. Both panels stay mounted so
        their HTMX polling/triggers keep firing; the tabs only toggle which is
@@ -36,7 +41,7 @@
     <div id="panel-inbox">
         <div id="task-list"
              hx-get="/tasks"
-             hx-trigger="load, every 1500ms[document.querySelector('#sync-status-pill')?.dataset?.state==='running' || document.querySelector('#reconcile-status-source')?.dataset?.state==='running'], tasks-changed from:body"
+             hx-trigger="load, every 1500ms[document.querySelector('#sync-status-pill')?.dataset?.state==='running' || document.querySelector('#reconcile-status-source')?.dataset?.state==='running' || document.querySelector('#scan-status-source')?.dataset?.state==='scanning'], tasks-changed from:body"
              hx-swap="innerHTML"
              class="space-y-3">
             <div class="text-center py-10">
@@ -164,8 +169,10 @@ window.addEventListener('resize', function () {
     const STATUS_EL_ID = 'harmonist-status';
     let lastSyncState = 'idle';
     let lastReconcileState = 'idle';
+    let lastScanState = 'idle';
     let syncDisplay = null;       // current running-sync HTML, or null
     let reconcileDisplay = null;  // current running-reconcile HTML, or null
+    let scanDisplay = null;       // current library-scan HTML, or null
     let latestActionMessage = null;  // last flash text from an action, or null
 
     const esc = (s) => String(s).replace(/[&<>"']/g, c => (
@@ -181,6 +188,7 @@ window.addEventListener('resize', function () {
         if (!el) return;
         if (syncDisplay) { el.innerHTML = syncDisplay; return; }
         if (reconcileDisplay) { el.innerHTML = reconcileDisplay; return; }
+        if (scanDisplay) { el.innerHTML = scanDisplay; return; }
         if (latestActionMessage) { el.innerHTML = latestActionMessage; return; }
         el.innerHTML = '';
     }
@@ -244,6 +252,32 @@ window.addEventListener('resize', function () {
                 reconcileDisplay = pill + (details ? `<span class="ml-2 text-slate-300">${details}</span>` : '');
             } else {
                 reconcileDisplay = null;
+            }
+            renderStatus();
+            return;
+        }
+
+        // ----- Library scan polling source -----
+        if (targetId === 'scan-status-source') {
+            let data;
+            try { data = JSON.parse(evt.detail.target.textContent); }
+            catch (e) { return; }
+            const src = evt.detail.target;
+            src.dataset.state = data.state;
+
+            // On the scanning→done edge, swap the real inbox + library in
+            // (the snapshot is now populated). tasks-changed refreshes all panels.
+            if (lastScanState === 'scanning' && data.state === 'done') {
+                document.body.dispatchEvent(new Event('tasks-changed'));
+            }
+            lastScanState = data.state;
+
+            if (data.state === 'scanning') {
+                const prog = `${data.dirs_scanned} dirs · ${data.albums_found} albums`;
+                const pill = `<span class="px-3 py-0.5 bg-mb-purple/15 text-mb-purple border border-mb-purple/40 rounded-full font-bold text-xs">Scanning</span>`;
+                scanDisplay = pill + `<span class="ml-2 text-slate-300">${prog}</span>`;
+            } else {
+                scanDisplay = null;
             }
             renderStatus();
             return;
