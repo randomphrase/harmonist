@@ -37,7 +37,7 @@ from mutagen.id3 import (
 )
 from mutagen.mp3 import MP3
 
-from .types import TagSet
+from .types import ScanFields, TagSet
 
 EXTENSIONS = (".mp3",)
 
@@ -128,6 +128,20 @@ def read_duration_ms(path: Path) -> int | None:
 
 def describe(path: Path) -> str:
     return "MP3"
+
+
+def read_scan_fields(path: Path) -> ScanFields:
+    """All scanner-needed fields in one open (album, MB album id, artist, codec)."""
+    audio = _open(path)
+    if audio is None:
+        return ScanFields(None, None, None, "MP3")
+    tags = audio.tags
+    return ScanFields(
+        album_title=_text(tags, "TALB"),
+        album_id=_txxx(tags, TXXX_ALBUM_ID),
+        artist=_text(tags, "TPE1"),
+        codec="MP3",
+    )
 
 
 # ---------------------------------------------------------------------------

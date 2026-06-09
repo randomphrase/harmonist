@@ -12,6 +12,7 @@ from pathlib import Path
 from mutagen.oggvorbis import OggVorbis
 
 from . import _vorbis
+from .types import ScanFields
 
 EXTENSIONS = (".ogg", ".oga")
 
@@ -36,3 +37,7 @@ read_track_title = _impl.read_track_title
 read_comment = _impl.read_comment
 read_duration_ms = _impl.read_duration_ms
 write_tags = _impl.write_tags
+
+
+def read_scan_fields(path: Path) -> ScanFields:
+    return _impl.read_scan_fields(path, "Vorbis")

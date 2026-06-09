@@ -14,7 +14,7 @@ from pathlib import Path
 from types import ModuleType
 
 from . import flac, m4a, mp3, ogg, opus
-from .types import TagSet, UnsupportedFormatError
+from .types import ScanFields, TagSet, UnsupportedFormatError
 
 _MODULES: tuple[ModuleType, ...] = (m4a, mp3, flac, ogg, opus)
 
@@ -76,6 +76,17 @@ def describe(path: Path) -> str | None:
     return mod.describe(path) if mod else None
 
 
+def read_scan_fields(path: Path) -> ScanFields:
+    """Read the scanner's per-file fields (album title, MB album id, artist,
+    codec) in a SINGLE file open. None-filled when no module handles the
+    extension. Replaces N separate read_*() opens per file during a scan."""
+    mod = _module_for(path)
+    if mod is None:
+        return ScanFields(None, None, None, None)
+    fields: ScanFields = mod.read_scan_fields(path)
+    return fields
+
+
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     """Write `tagset` to `path` in its native format. `cover` is raw image
     bytes (jpeg/png) or None to leave existing cover untouched.
@@ -87,14 +98,17 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
 
 
 __all__ = [
+    "ScanFields",
     "TagSet",
     "UnsupportedFormatError",
+    "describe",
     "is_supported",
     "read_album_id",
     "read_album_title",
     "read_artist",
     "read_comment",
     "read_duration_ms",
+    "read_scan_fields",
     "read_track_title",
     "supported_extensions",
     "write_tags",

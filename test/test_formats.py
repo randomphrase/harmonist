@@ -112,6 +112,31 @@ def test_tag_and_read_back(tmp_path, ext, fixture):
 
 
 @pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_read_scan_fields_matches_individual_reads(tmp_path, ext, fixture):
+    """The single-open scan read returns the same values as the per-field
+    reads (the consolidation must be behaviour-identical), plus the codec."""
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+
+    sf = formats.read_scan_fields(f)
+    assert sf.album_id == formats.read_album_id(f) == "rel-fmt-1"
+    assert sf.album_title == formats.read_album_title(f) == "Format Album"
+    assert sf.artist == formats.read_artist(f) == "Format Artist"
+    assert sf.codec == formats.describe(f)
+
+
+def test_read_scan_fields_untagged_has_codec_but_no_tags(tmp_path):
+    d = _make_album(tmp_path, "sine.flac")
+    f = next(d.glob("*.flac"))
+    sf = formats.read_scan_fields(f)
+    assert sf.album_id is None
+    assert sf.album_title is None
+    assert sf.artist is None
+    assert sf.codec == "FLAC"
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
 def test_untagged_reads_return_none(tmp_path, ext, fixture):
     d = _make_album(tmp_path, fixture)
     f = next(d.glob(f"*{ext}"))

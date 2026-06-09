@@ -9,6 +9,17 @@ Vorbis comments, etc.).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import NamedTuple
+
+
+class ScanFields(NamedTuple):
+    """The tag fields the scanner needs per file, read in a SINGLE file open
+    (instead of one open per field). `codec` is the short format label."""
+
+    album_title: str | None
+    album_id: str | None
+    artist: str | None
+    codec: str | None
 
 
 @dataclass

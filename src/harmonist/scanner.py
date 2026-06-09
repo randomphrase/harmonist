@@ -128,15 +128,18 @@ def prune_cache(album_cache: AlbumCache, seen: set[Path]) -> None:
 
 def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
     sidecar = read_sidecar(album_dir)
-    title, artist = _read_album_artist(audio_files[0]) if audio_files else ("", "")
-    if not title:
-        title = album_dir.name
+    # Read each file's tags ONCE (album title, MB album id, artist, codec)
+    # rather than re-opening per field across the checks below.
+    fields = [formats.read_scan_fields(f) for f in audio_files]
+
+    title = (fields[0].album_title if fields else None) or album_dir.name
+    artist = (fields[0].artist if fields else None) or ""
 
     # Inconsistency trumps sidecar-driven state — see design §15.2.
     # The sidecar is kept on disk; once the user fixes the on-disk tags
     # via Picard, the next scan re-derives state from the sidecar.
-    inconsistent_tracks = _check_consistency(audio_files)
-    state = AlbumState.INCONSISTENT if inconsistent_tracks else _derive_state(sidecar, audio_files)
+    inconsistent_tracks = _check_consistency(audio_files, fields)
+    state = AlbumState.INCONSISTENT if inconsistent_tracks else _derive_state(sidecar, fields)
 
     cover_path = _find_cover(album_dir)
 
@@ -150,15 +153,15 @@ def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
         sidecar=sidecar,
         cover_path=cover_path,
         inconsistent_tracks=inconsistent_tracks,
-        partial_tag_count=_partial_tag_count(sidecar, audio_files),
-        audio_format=_audio_format(audio_files),
+        partial_tag_count=_partial_tag_count(sidecar, fields),
+        audio_format=_audio_format(fields),
     )
 
 
-def _audio_format(audio_files: list[Path]) -> str | None:
+def _audio_format(fields: list[formats.ScanFields]) -> str | None:
     """Distinct codec label across the album's files. A single value when
     consistent (the norm), "Mixed" when files differ."""
-    labels = {formats.describe(f) for f in audio_files}
+    labels = {sf.codec for sf in fields}
     labels.discard(None)
     if not labels:
         return None
@@ -169,26 +172,25 @@ def _audio_format(audio_files: list[Path]) -> str | None:
 
 def _partial_tag_count(
     sidecar: Sidecar | None,
-    audio_files: list[Path],
+    fields: list[formats.ScanFields],
 ) -> tuple[int, int] | None:
     """Return `(tagged, total)` when only some files carry the matching
     MB Album Id atom (0 < tagged < total). None when fully tagged, none
     tagged, or when there's no MBID to compare against. Quality indicator
     only — does not affect state (§15.1).
     """
-    if not sidecar or not sidecar.mb_release_id or not audio_files:
+    if not sidecar or not sidecar.mb_release_id or not fields:
         return None
-    tagged = _count_files_tagged_with(audio_files, sidecar.mb_release_id)
-    total = len(audio_files)
+    tagged = _count_files_tagged_with(fields, sidecar.mb_release_id)
+    total = len(fields)
     if 0 < tagged < total:
         return (tagged, total)
     return None
 
 
-def _count_files_tagged_with(audio_files: list[Path], mbid: str) -> int:
-    """Return how many of the given files carry an MB Album Id atom
-    matching `mbid`."""
-    return sum(1 for f in audio_files if formats.read_album_id(f) == mbid)
+def _count_files_tagged_with(fields: list[formats.ScanFields], mbid: str) -> int:
+    """Return how many files carry an MB Album Id matching `mbid`."""
+    return sum(1 for sf in fields if sf.album_id == mbid)
 
 
 def _album_id(album_dir: Path, sidecar: Sidecar | None) -> str:
@@ -203,7 +205,7 @@ def _album_id(album_dir: Path, sidecar: Sidecar | None) -> str:
     return id_registry.get_or_mint(album_dir)
 
 
-def _derive_state(sidecar: Sidecar | None, audio_files: list[Path]) -> AlbumState:
+def _derive_state(sidecar: Sidecar | None, fields: list[formats.ScanFields]) -> AlbumState:
     if sidecar is None:
         return AlbumState.NEW
     if sidecar.mb_release_id is None:
@@ -212,15 +214,12 @@ def _derive_state(sidecar: Sidecar | None, audio_files: list[Path]) -> AlbumStat
         # present — but it's all one state, so the user never round-trips
         # between "review" and "assign".
         return AlbumState.NEEDS_MBID
-    if _files_tagged_with(audio_files, sidecar.mb_release_id):
+    if _files_tagged_with(fields, sidecar.mb_release_id):
         # INCOMPLETE wins over NEEDS_SYNC when set: the user has explicitly
         # confirmed-as-incomplete (track_count_expected only gets set at
         # tag time), and that intent should be visible even on bandcamp
         # albums missing an item_id.
-        if (
-            sidecar.track_count_expected is not None
-            and len(audio_files) < sidecar.track_count_expected
-        ):
+        if sidecar.track_count_expected is not None and len(fields) < sidecar.track_count_expected:
             return AlbumState.INCOMPLETE
         # NEEDS_SYNC: Bandcamp-sourced album, MB release known, files tagged,
         # but Bandcamp item_id not yet linked (a Sync run resolves this).
@@ -232,7 +231,9 @@ def _derive_state(sidecar: Sidecar | None, audio_files: list[Path]) -> AlbumStat
     return AlbumState.TAGGING
 
 
-def _check_consistency(audio_files: list[Path]) -> list[InconsistentTrack]:
+def _check_consistency(
+    audio_files: list[Path], fields: list[formats.ScanFields]
+) -> list[InconsistentTrack]:
     """Detect mixed-album dirs: files disagreeing on album title or MB
     Album Id. Compilations (varying artist, consistent album + MBID) are
     NOT inconsistent and produce an empty list.
@@ -245,12 +246,8 @@ def _check_consistency(audio_files: list[Path]) -> list[InconsistentTrack]:
         return []  # single-file album can't be inconsistent
 
     rows = [
-        InconsistentTrack(
-            file_name=f.name,
-            album_title=formats.read_album_title(f),
-            mb_album_id=formats.read_album_id(f),
-        )
-        for f in audio_files
+        InconsistentTrack(file_name=f.name, album_title=sf.album_title, mb_album_id=sf.album_id)
+        for f, sf in zip(audio_files, fields, strict=True)
     ]
 
     titles = {r.album_title for r in rows if r.album_title is not None}
@@ -260,13 +257,9 @@ def _check_consistency(audio_files: list[Path]) -> list[InconsistentTrack]:
     return []
 
 
-def _files_tagged_with(audio_files: list[Path], mbid: str) -> bool:
-    """True iff at least one file's MB Album Id atom matches mbid."""
-    return _count_files_tagged_with(audio_files, mbid) > 0
-
-
-def _read_album_artist(file_path: Path) -> tuple[str, str]:
-    return (formats.read_album_title(file_path) or "", formats.read_artist(file_path) or "")
+def _files_tagged_with(fields: list[formats.ScanFields], mbid: str) -> bool:
+    """True iff at least one file carries an MB Album Id matching mbid."""
+    return _count_files_tagged_with(fields, mbid) > 0
 
 
 def _find_cover(album_dir: Path) -> Path | None:
