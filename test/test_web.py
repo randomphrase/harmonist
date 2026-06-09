@@ -1421,6 +1421,29 @@ def test_settings_save_rejects_invalid_cover_size(client, cfg):
     assert not (cfg.paths.config_dir / "harmonist.toml").exists()
 
 
+def test_tasks_shows_scanning_placeholder_while_scanning(client, cfg, monkeypatch):
+    """While the background scan is in progress and the snapshot is empty, the
+    inbox shows a 'Scanning…' placeholder with live counts (not 'Inbox empty')."""
+    runner = client.app.state.scan_runner
+    monkeypatch.setattr(
+        runner,
+        "status",
+        lambda: {
+            "state": "scanning",
+            "dirs_scanned": 42,
+            "albums_found": 10,
+            "started_at": None,
+            "finished_at": None,
+            "last_error": None,
+        },
+    )
+    r = client.get("/tasks")  # no albums on disk → empty snapshot
+    assert "Scanning your library" in r.text
+    assert "42" in r.text
+    assert "directories" in r.text
+    assert "Inbox is empty" not in r.text
+
+
 def test_engaged_lifespan_serves_background_scan_snapshot(cfg):
     """With the lifespan running (TestClient as a context manager), the
     background scanner engages and routes serve its snapshot — not a

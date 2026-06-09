@@ -608,7 +608,12 @@ def _register_routes(app: FastAPI) -> None:
         # "no MBID, skip" case — cost is cheap for non-reconcilable orphans.
         if any(a.state == AlbumState.NEW for a in albums):
             request.app.state.reconcile_runner.start()
-        ctx = _ctx(request, albums=_inbox_albums(albums), total_albums=len(albums))
+        ctx = _ctx(
+            request,
+            albums=_inbox_albums(albums),
+            total_albums=len(albums),
+            scan=request.app.state.scan_runner.status(),
+        )
         return _templates(request).TemplateResponse(request, "tasks.html", ctx)
 
     @app.get("/activity", response_class=HTMLResponse)
