@@ -20,7 +20,7 @@ from typing import Any
 
 from mutagen.flac import Picture
 
-from .types import TagSet
+from .types import ScanFields, TagSet
 
 # Vorbis comment keys (uppercase by convention; lookups are case-insensitive).
 KEY_ALBUM_ID = "MUSICBRAINZ_ALBUMID"
@@ -135,6 +135,25 @@ class VorbisTagger:
             return None
         ms: int = round(audio.info.length * 1000)
         return ms
+
+    def read_scan_fields(self, path: Path, codec: str) -> ScanFields:
+        """All scanner-needed fields in one open. `codec` is the format label
+        (a constant per Vorbis container — FLAC/Vorbis/Opus)."""
+        audio = self._open(path)
+        if audio is None or audio.tags is None:
+            return ScanFields(None, None, None, codec)
+        tags = audio.tags
+
+        def first(key: str) -> str | None:
+            values = tags.get(key)
+            return (str(values[0]) or None) if values else None
+
+        return ScanFields(
+            album_title=first(KEY_ALBUM),
+            album_id=first(KEY_ALBUM_ID),
+            artist=first(KEY_ARTIST),
+            codec=codec,
+        )
 
     # ---- write ----
 

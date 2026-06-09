@@ -11,7 +11,7 @@ from pathlib import Path
 
 from mutagen.mp4 import MP4, MP4Cover
 
-from .types import TagSet
+from .types import ScanFields, TagSet
 
 EXTENSIONS = (".m4a", ".mp4")
 
@@ -120,16 +120,33 @@ def read_duration_ms(path: Path) -> int | None:
     return ms
 
 
-def describe(path: Path) -> str:
-    """Short codec label. MP4 is a container — distinguish lossless ALAC
-    from lossy AAC so it confirms the user's download-format choice."""
-    audio = _open(path)
-    codec = getattr(audio.info, "codec", "") if audio else ""
+def _codec_label(audio: MP4) -> str:
+    codec = getattr(audio.info, "codec", "")
     if codec == "alac":
         return "ALAC"
     if codec == "mp4a":
         return "AAC"
     return "MP4"
+
+
+def describe(path: Path) -> str:
+    """Short codec label. MP4 is a container — distinguish lossless ALAC
+    from lossy AAC so it confirms the user's download-format choice."""
+    audio = _open(path)
+    return _codec_label(audio) if audio else "MP4"
+
+
+def read_scan_fields(path: Path) -> ScanFields:
+    """All scanner-needed fields in one open (album, MB album id, artist, codec)."""
+    audio = _open(path)
+    if audio is None:
+        return ScanFields(None, None, None, None)
+    return ScanFields(
+        album_title=_text_atom(audio, ATOM_ALBUM),
+        album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),
+        artist=_text_atom(audio, ATOM_ARTIST),
+        codec=_codec_label(audio),
+    )
 
 
 # ---------------------------------------------------------------------------
