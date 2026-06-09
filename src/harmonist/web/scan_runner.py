@@ -35,6 +35,8 @@ log = logging.getLogger(__name__)
 # Cooperative yield cadence: hand the event loop back at least this often
 # (seconds of wall-clock work) so requests don't wait behind the whole scan.
 _YIELD_INTERVAL_S = 0.05
+# How often to log a progress line during a long scan (slow FS / big library).
+_LOG_INTERVAL_S = 3.0
 
 
 @dataclass
@@ -132,21 +134,39 @@ class ScanRunner:
                 self._status.last_error = str(e)
 
     async def _scan_once(self) -> None:
+        started = time.monotonic()
+        log.info("Library scan started: %s", self._music_dir)
         status = ScanStatus(state="scanning", started_at=datetime.now(UTC))
         self._status = status
         results: list[Album] = []
-        last_yield = time.monotonic()
+        last_yield = started
+        last_log = started
         for album_dir, files, sig in scanner.iter_album_dirs(self._music_dir):
             status.dirs_scanned += 1
             album = scanner.resolve_album(album_dir, files, sig, self._cache)
             if album is not None:
                 results.append(album)
                 status.albums_found = len(results)
-            if time.monotonic() - last_yield >= _YIELD_INTERVAL_S:
+            now = time.monotonic()
+            if now - last_log >= _LOG_INTERVAL_S:
+                log.info(
+                    "Library scan in progress: %d dirs, %d albums (%.0fs)",
+                    status.dirs_scanned,
+                    status.albums_found,
+                    now - started,
+                )
+                last_log = now
+            if now - last_yield >= _YIELD_INTERVAL_S:
                 await asyncio.sleep(0)
-                last_yield = time.monotonic()
+                last_yield = now
         scanner.prune_cache(self._cache, {a.path for a in results})
         self._albums = results
         self._completed_once = True
         status.state = "done"
         status.finished_at = datetime.now(UTC)
+        log.info(
+            "Library scan complete: %d albums across %d dirs in %.1fs",
+            len(results),
+            status.dirs_scanned,
+            time.monotonic() - started,
+        )
