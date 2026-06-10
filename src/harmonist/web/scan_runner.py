@@ -22,21 +22,21 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from harmonist import scanner
 from harmonist.models import Album
 
 log = logging.getLogger(__name__)
 
-# Cooperative yield cadence: hand the event loop back at least this often
-# (seconds of wall-clock work) so requests don't wait behind the whole scan.
-_YIELD_INTERVAL_S = 0.05
 # How often to log a progress line during a long scan (slow FS / big library).
 _LOG_INTERVAL_S = 3.0
+# Sentinel for "the walk generator is exhausted" (run via the executor).
+_DONE = object()
 
 
 @dataclass
@@ -75,6 +75,13 @@ class ScanRunner:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[None] | None = None
         self._dirty = True  # a (re)scan is wanted
+        # A SINGLE worker thread runs all the scan's blocking filesystem I/O
+        # (walk/stat + tag reads), so the event loop never blocks on syscalls.
+        # One worker keeps reads serial → no parallel-I/O concurrency, and the
+        # worker functions are pure (no shared state), so the only hand-off is
+        # arg-in/result-out via the executor's Future. All mutable state (cache,
+        # snapshot, status, id registry) is touched only on the loop thread.
+        self._executor: ThreadPoolExecutor | None = None
 
     # ----- engagement (lifespan) -----
 
@@ -82,6 +89,7 @@ class ScanRunner:
         """Capture the running loop and kick the initial scan. Call from the
         lifespan startup (inside the event loop)."""
         self._loop = asyncio.get_running_loop()
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="harmonist-scan")
         self._kick()
 
     def is_engaged(self) -> bool:
@@ -134,19 +142,45 @@ class ScanRunner:
                 self._status.last_error = str(e)
 
     async def _scan_once(self) -> None:
+        loop = asyncio.get_running_loop()
+        executor = self._executor
+        assert executor is not None  # set in attach_loop before any scan
+
         started = time.monotonic()
         log.info("Library scan started: %s", self._music_dir)
         status = ScanStatus(state="scanning", started_at=datetime.now(UTC))
         self._status = status
         results: list[Album] = []
-        last_yield = started
         last_log = started
-        for album_dir, files, sig in scanner.iter_album_dirs(self._music_dir):
+
+        # The walk generator does blocking scandir/stat; it is advanced ONLY on
+        # the worker thread (one step at a time, awaited), never concurrently.
+        walk = scanner.iter_album_dirs(self._music_dir)
+        while True:
+            # Blocking walk+stat for the next album → worker; loop stays free.
+            item = await loop.run_in_executor(executor, next, walk, _DONE)
+            if item is _DONE:
+                break
+            album_dir, files, signature = cast(
+                "tuple[Path, list[Path], scanner.AlbumSignature]", item
+            )
             status.dirs_scanned += 1
-            album = scanner.resolve_album(album_dir, files, sig, self._cache)
-            if album is not None:
+            try:
+                cached = self._cache.get(album_dir)
+                if cached is not None and cached[0] == signature:
+                    album = cached[1]  # mtime-cache hit → no tag reads
+                else:
+                    # Blocking sidecar + tag reads → worker; loop stays free.
+                    io = await loop.run_in_executor(
+                        executor, scanner.read_album_io, album_dir, files
+                    )
+                    album = scanner.build_album(album_dir, files, io)  # CPU, on loop
+                    self._cache[album_dir] = (signature, album)
                 results.append(album)
                 status.albums_found = len(results)
+            except Exception as e:  # one bad album must not abort the scan
+                log.warning("error scanning %s: %s", album_dir, e)
+
             now = time.monotonic()
             if now - last_log >= _LOG_INTERVAL_S:
                 log.info(
@@ -156,9 +190,7 @@ class ScanRunner:
                     now - started,
                 )
                 last_log = now
-            if now - last_yield >= _YIELD_INTERVAL_S:
-                await asyncio.sleep(0)
-                last_yield = now
+
         scanner.prune_cache(self._cache, {a.path for a in results})
         self._albums = results
         self._completed_once = True
