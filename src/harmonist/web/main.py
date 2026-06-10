@@ -634,6 +634,7 @@ def _register_routes(app: FastAPI) -> None:
             albums=_inbox_albums(albums),
             total_albums=len(albums),
             scan=request.app.state.scan_runner.status(),
+            reconcile=request.app.state.reconcile_runner.status(),
         )
         return _templates(request).TemplateResponse(request, "tasks.html", ctx)
 
@@ -781,6 +782,18 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post("/sync", response_class=HTMLResponse)
     def start_sync(request: Request) -> Response:
+        # Backstop the UI gating: don't kick a sync while a reconcile pass is
+        # in flight (it's mutating sidecars / the inbox). The button is
+        # disabled client-side, but a stale page or the race window before the
+        # next /status poll could still POST here.
+        if request.app.state.reconcile_runner.is_running:
+            return _flash_response(
+                "Sync unavailable",
+                "reconciling — try again in a moment",
+                level="warning",
+                tasks_changed=False,
+                status_code=status.HTTP_409_CONFLICT,
+            )
         try:
             request.app.state.sync_runner.start()
         except AlreadyRunningError:
