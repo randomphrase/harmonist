@@ -498,6 +498,66 @@ def test_post_sync_409_when_already_running(client):
     assert "already running" in r.text
 
 
+def test_post_sync_409_while_reconciling(client):
+    # A sync must not start while a reconcile pass is in flight — it mutates
+    # sidecars and the inbox. The endpoint backstops the disabled button.
+    client.app.state.sync_runner._runner_fn = lambda: None
+    client.app.state.reconcile_runner._status.state = "running"
+    r = client.post("/sync")
+    assert r.status_code == 409
+    assert "reconciling" in r.text.lower()
+
+
+def test_needs_sync_bulk_button_disabled_while_reconciling(client, cfg):
+    # The inline NEEDS_SYNC bulk-sync button renders disabled when a reconcile
+    # pass is running, so the page doesn't offer an action that would race it.
+    d = _make_album(cfg, "BulkSync")
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-bulk-1"]
+    audio.save()
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-bulk-1",
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+    client.app.state.reconcile_runner._status.state = "running"
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    assert "sync-trigger" in r.text
+    # The button carries the disabled attribute (+ explanatory title) while
+    # reconciling. (Note the class list always contains `disabled:` Tailwind
+    # variants, so key on the title rather than a bare "disabled" substring.)
+    button = r.text[r.text.index("sync-trigger") : r.text.index("sync-trigger") + 400]
+    assert 'disabled title="Reconciling' in button
+
+
+def test_needs_sync_bulk_button_enabled_when_idle(client, cfg):
+    # Sanity counterpart: with no reconcile running the button is not disabled.
+    d = _make_album(cfg, "BulkSyncIdle")
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-bulk-2"]
+    audio.save()
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-bulk-2",
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    button = r.text[r.text.index("sync-trigger") : r.text.index("sync-trigger") + 400]
+    assert "disabled title=" not in button
+
+
 def test_reject_clears_candidate(client, cfg):
     d = _make_album(cfg, "RC")
     sc.write(

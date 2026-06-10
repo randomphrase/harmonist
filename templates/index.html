@@ -198,15 +198,28 @@ window.addEventListener('resize', function () {
         el.dataset.reconcile = reconcile.state;
         el.dataset.scan = scan.state;
 
+        // A sync must not be kicked while either a sync OR a reconcile is in
+        // flight — reconcile mutates sidecars and shifts the inbox, so a sync
+        // started now would race it. Gate every sync trigger (header button +
+        // the inline NEEDS_SYNC bulk button) on both. The inline button is
+        // re-rendered on tasks-changed, so re-apply here on every poll.
+        const syncBusy = sync.state === 'running' || reconcile.state === 'running';
+        const reason = sync.state === 'running' ? 'Sync in progress'
+            : 'Reconciling — finishing up before sync';
+        document.querySelectorAll('#sync-button, .sync-trigger').forEach(function (b) {
+            b.disabled = syncBusy;
+            b.classList.toggle('opacity-40', syncBusy);
+            b.classList.toggle('cursor-not-allowed', syncBusy);
+            if (syncBusy) { b.title = reason; } else { b.removeAttribute('title'); }
+        });
+
         // ----- Sync -----
         if (lastSyncState === 'running' && sync.state === 'idle') refreshLibrary();
         lastSyncState = sync.state;
-        const btn = document.getElementById('sync-button');
         if (sync.state === 'running') {
             const details = sync.current_item ? esc(sync.current_item) : null;
             const pill = `<span class="px-3 py-0.5 bg-amber-500/15 text-amber-300 border border-amber-500/40 rounded-full font-bold text-xs">Syncing</span>`;
             syncDisplay = pill + (details ? `<span class="ml-2 text-slate-300">${details}</span>` : '');
-            if (btn) { btn.disabled = true; btn.classList.add('opacity-40', 'cursor-not-allowed'); }
         } else {
             syncDisplay = null;
             if (sync.last_error) {
@@ -215,7 +228,6 @@ window.addEventListener('resize', function () {
                 const summary = sync.new_items ? `${sync.new_items} new` : 'no new items';
                 latestActionMessage = renderActionMessage('Last sync', summary, 'info');
             }
-            if (btn) { btn.disabled = false; btn.classList.remove('opacity-40', 'cursor-not-allowed'); }
         }
 
         // ----- Reconcile -----
