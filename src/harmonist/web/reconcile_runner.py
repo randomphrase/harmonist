@@ -174,6 +174,7 @@ def reconcile_pending_orphans(
     total = len(pending)
     if status_updater:
         status_updater(total=total, completed=0)
+    log.info("Reconcile: %d orphan album(s) to check for a MusicBrainz Id", total)
 
     completed = 0
     reconciled_bandcamp = 0
@@ -182,29 +183,41 @@ def reconcile_pending_orphans(
     errors = 0
 
     for idx, album in enumerate(pending, start=1):
+        label = f"{album.artist} / {album.title}"
         if status_updater:
-            status_updater(current_item=f"{album.artist} / {album.title}", completed=completed)
+            status_updater(current_item=label, completed=completed)
         try:
             sc = reconcile.reconcile_album(album.path, fetch_urls=fetch_urls)
         except Exception as e:
-            log.warning("reconcile_album failed for %s: %s", album.path, e)
+            log.warning("Reconcile failed for %s: %s", label, e)
             errors += 1
             continue
         if sc is None:
             skipped += 1
+            log.debug("Reconcile skipped (no MusicBrainz Id in tags): %s", label)
         elif sc.store_url:
             reconciled_bandcamp += 1
+            log.info("Reconciled %s → %s", label, sc.store_url)
         else:
             reconciled_manual += 1
+            log.info("Reconciled %s → MBID %s", label, sc.mb_release_id)
         completed += 1
         if status_updater:
             status_updater(completed=completed)
-        # Rate-limit MB queries. reconcile_album only makes a network call
-        # when an MBID was found; skipped albums (no MBID) make no call,
-        # but we conservatively pace anyway.
-        if idx < total and rate_limit_seconds > 0:
+        # Rate-limit MB queries — but ONLY when a lookup actually happened.
+        # reconcile_album hits the network only when the tags carry an MBID;
+        # a skip (no MBID, sc is None) makes no call, so don't pace it.
+        if sc is not None and idx < total and rate_limit_seconds > 0:
             time.sleep(rate_limit_seconds)
 
+    log.info(
+        "Reconcile done: %d reconciled (%d bandcamp, %d manual), %d skipped (no MBID), %d failed",
+        reconciled_bandcamp + reconciled_manual,
+        reconciled_bandcamp,
+        reconciled_manual,
+        skipped,
+        errors,
+    )
     return {
         "total": total,
         "reconciled_bandcamp": reconciled_bandcamp,
