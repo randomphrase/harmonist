@@ -5,7 +5,11 @@
    among grid items doesn't affect layout. #}
 {% if is_first_page %}
 <div class="flex justify-between items-baseline mb-3">
-    <h2 class="text-sm font-semibold text-muted uppercase tracking-widest">Library
+    {# data-total-done carries the full terminal-album count (not just this
+       page) so the Library tab badge can show the real total — the grid is
+       paginated, so counting rendered rows would under-report. #}
+    <h2 id="library-total" data-total-done="{{ total_done }}"
+        class="text-sm font-semibold text-muted uppercase tracking-widest">Library
         <span class="ml-1 font-normal normal-case tracking-normal">· {{ total_done }} done</span>
     </h2>
     <button hx-get="/library?offset=0&limit={{ limit }}"
