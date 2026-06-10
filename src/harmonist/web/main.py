@@ -731,6 +731,19 @@ def _register_routes(app: FastAPI) -> None:
     def scan_status(request: Request) -> Response:
         return JSONResponse(request.app.state.scan_runner.status())
 
+    @app.get("/status")
+    def app_status(request: Request) -> Response:
+        """Consolidated status — one poll instead of three. The status bar
+        polls only this; the individual endpoints above remain for tests/curl."""
+        state = request.app.state
+        return JSONResponse(
+            {
+                "sync": state.sync_runner.status(),
+                "reconcile": state.reconcile_runner.status(),
+                "scan": state.scan_runner.status(),
+            }
+        )
+
     @app.post("/reconcile", response_class=HTMLResponse)
     def reconcile_start(request: Request) -> Response:
         """Manual trigger — same handler the inbox auto-kicks. Useful when

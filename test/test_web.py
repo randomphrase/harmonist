@@ -165,6 +165,17 @@ def test_sync_status_idle(client):
     assert "current_item" in body  # always present so the JS doesn't NPE
 
 
+def test_consolidated_status_endpoint(client):
+    """One poll returns sync + reconcile + scan, replacing three separate polls."""
+    r = client.get("/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == {"sync", "reconcile", "scan"}
+    assert body["sync"]["state"] == "idle"
+    assert body["reconcile"]["state"] == "idle"
+    assert "state" in body["scan"]
+
+
 def test_tasks_renders_inbox_count(client, cfg):
     """The inbox count lives inside the polled /tasks fragment so it
     updates without a full-page reload.
