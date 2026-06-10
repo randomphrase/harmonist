@@ -165,6 +165,22 @@ def test_sync_status_idle(client):
     assert "current_item" in body  # always present so the JS doesn't NPE
 
 
+def test_inbox_card_omits_cover_request_when_no_cover(client, cfg):
+    """A NEW album with no folder cover must NOT emit a /cover <img> — else
+    hundreds of them flood the logs with 404s (and fetch even when collapsed)."""
+    _make_album(cfg, "NoCoverAlbum")  # no cover.jpg on disk
+    r = client.get("/tasks")
+    assert 'src="/cover/' not in r.text
+
+
+def test_inbox_card_lazy_loads_cover_when_present(client, cfg):
+    d = _make_album(cfg, "HasCoverAlbum")
+    (d / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0")  # looks like a JPEG header
+    r = client.get("/tasks")
+    assert 'src="/cover/' in r.text
+    assert 'loading="lazy"' in r.text
+
+
 def test_consolidated_status_endpoint(client):
     """One poll returns sync + reconcile + scan, replacing three separate polls."""
     r = client.get("/status")
