@@ -33,14 +33,21 @@ class Event:
 _LOCK = threading.Lock()
 _EVENTS: deque[Event] = deque(maxlen=_MAX_EVENTS)
 
+log = logging.getLogger(__name__)
+_LOG_LEVELS = {"info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
+
 
 def record(message: str, level: _Level = "info") -> None:
-    """Append an event. Safe to call from any thread."""
+    """Append an event (Activity feed) AND emit it to the log, so the docker
+    log is a superset of the feed. Safe to call from any thread."""
     message = (message or "").strip()
     if not message:
         return
     with _LOCK:
         _EVENTS.append(Event(ts=datetime.now(UTC), level=level, message=message))
+    # Mirror to the log. The `_activity` flag stops _ActivityLogHandler from
+    # re-recording it (which would feed back into this function — a loop).
+    log.log(_LOG_LEVELS.get(level, logging.INFO), "%s", message, extra={"_activity": True})
 
 
 def recent(limit: int = 100) -> list[Event]:
@@ -62,6 +69,8 @@ class _ActivityLogHandler(logging.Handler):
     background failures (sync errors, skipped albums, …) are visible."""
 
     def emit(self, rec: logging.LogRecord) -> None:
+        if getattr(rec, "_activity", False):
+            return  # already recorded via record(); don't loop it back
         try:
             msg = rec.getMessage()
         except Exception:
