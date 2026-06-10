@@ -12,6 +12,7 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 from stat import S_ISREG
+from typing import NamedTuple
 
 from . import formats, id_registry
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
@@ -126,12 +127,34 @@ def prune_cache(album_cache: AlbumCache, seen: set[Path]) -> None:
         del album_cache[stale]
 
 
-def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
-    sidecar = read_sidecar(album_dir)
-    # Read each file's tags ONCE (album title, MB album id, artist, codec)
-    # rather than re-opening per field across the checks below.
-    fields = [formats.read_scan_fields(f) for f in audio_files]
+class AlbumIO(NamedTuple):
+    """Everything for one album that requires blocking filesystem I/O —
+    sidecar JSON, each track's tags, and the cover lookup. Produced by
+    `read_album_io` (safe to run in a worker thread: pure I/O, no shared
+    state) and consumed by `build_album` (CPU only, runs on the event loop)."""
 
+    sidecar: Sidecar | None
+    fields: list[formats.ScanFields]
+    cover_path: Path | None
+
+
+def read_album_io(album_dir: Path, audio_files: list[Path]) -> AlbumIO:
+    """Do ALL of an album's blocking reads in one place: the sidecar, each
+    track's tags (one open per file), and the cover lookup. Touches no shared
+    state, so the async scan runner can hand this to a worker thread.
+    """
+    return AlbumIO(
+        sidecar=read_sidecar(album_dir),
+        fields=[formats.read_scan_fields(f) for f in audio_files],
+        cover_path=_find_cover(album_dir),
+    )
+
+
+def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
+    """Assemble the Album from pre-read I/O. CPU + id-registry only (no file
+    I/O), so it runs on the event-loop thread where the shared registry lives."""
+    sidecar = io.sidecar
+    fields = io.fields
     title = (fields[0].album_title if fields else None) or album_dir.name
     artist = (fields[0].artist if fields else None) or ""
 
@@ -141,8 +164,6 @@ def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
     inconsistent_tracks = _check_consistency(audio_files, fields)
     state = AlbumState.INCONSISTENT if inconsistent_tracks else _derive_state(sidecar, fields)
 
-    cover_path = _find_cover(album_dir)
-
     return Album(
         id=_album_id(album_dir, sidecar),
         path=album_dir,
@@ -151,11 +172,16 @@ def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
         track_count=len(audio_files),
         state=state,
         sidecar=sidecar,
-        cover_path=cover_path,
+        cover_path=io.cover_path,
         inconsistent_tracks=inconsistent_tracks,
         partial_tag_count=_partial_tag_count(sidecar, fields),
         audio_format=_audio_format(fields),
     )
+
+
+def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
+    """Synchronous read + build, used by the non-async scan() path (tests)."""
+    return build_album(album_dir, audio_files, read_album_io(album_dir, audio_files))
 
 
 def _audio_format(fields: list[formats.ScanFields]) -> str | None:
