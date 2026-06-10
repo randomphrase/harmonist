@@ -87,7 +87,11 @@ document.body.addEventListener('htmx:afterSwap', function (evt) {
         const el = document.getElementById('inbox-count');
         if (el) el.textContent = n;
     } else if (id === 'library-rows') {
-        const n = evt.detail.target.querySelectorAll('[id^="lib-"]').length;
+        // The grid is paginated — show the full terminal-album total carried on
+        // the page header, not the count of rows rendered on this first page.
+        const header = evt.detail.target.querySelector('#library-total');
+        const n = header ? header.dataset.totalDone
+                         : evt.detail.target.querySelectorAll('[id^="lib-"]').length;
         const el = document.getElementById('library-count');
         if (el) el.textContent = n;
     }

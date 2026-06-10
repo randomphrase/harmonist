@@ -948,6 +948,9 @@ def test_library_pagination_offset_limit(client, cfg):
     assert r.text.count('id="lib-') == 2
     # Load more button references offset=2
     assert "offset=2" in r.text
+    # The tab-badge total reflects ALL done albums (5), not the 2 rendered —
+    # this is the attribute the Library tab count reads.
+    assert 'data-total-done="5"' in r.text
 
 
 def test_library_load_more_button_absent_on_last_page(client, cfg):
