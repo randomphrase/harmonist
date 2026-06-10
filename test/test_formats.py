@@ -126,6 +126,36 @@ def test_read_scan_fields_matches_individual_reads(tmp_path, ext, fixture):
     assert sf.codec == formats.describe(f)
 
 
+_TINY_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00" + b"\x00" * 40
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_read_cover_and_has_cover_after_embedding(tmp_path, ext, fixture):
+    """Embedding cover art is detected by has_cover and extracted by
+    read_cover (image bytes + mime), across all formats."""
+    d = _make_album(tmp_path, fixture)
+    cover = tmp_path / "art.jpg"
+    cover.write_bytes(_TINY_JPEG)
+    tag_album(d, _release_one_track(), cover_path=cover)
+    f = next(d.glob(f"*{ext}"))
+
+    assert formats.read_scan_fields(f).has_cover is True
+    result = formats.read_cover(f)
+    assert result is not None
+    data, mime = result
+    assert data == _TINY_JPEG
+    assert mime == "image/jpeg"
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_read_cover_none_when_no_art(tmp_path, ext, fixture):
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())  # no cover embedded
+    f = next(d.glob(f"*{ext}"))
+    assert formats.read_scan_fields(f).has_cover is False
+    assert formats.read_cover(f) is None
+
+
 def test_read_scan_fields_untagged_has_codec_but_no_tags(tmp_path):
     d = _make_album(tmp_path, "sine.flac")
     f = next(d.glob("*.flac"))

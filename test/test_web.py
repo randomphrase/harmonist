@@ -165,6 +165,23 @@ def test_sync_status_idle(client):
     assert "current_item" in body  # always present so the JS doesn't NPE
 
 
+def test_cover_serves_embedded_art_without_folder_cover(client, cfg):
+    """No cover.jpg on disk, but the track has embedded art → /cover serves it
+    on the fly (200), no need to write it to disk first."""
+    from mutagen.mp4 import MP4, MP4Cover
+
+    d = _make_album(cfg, "EmbeddedArt")
+    audio = MP4(d / "01 Track.m4a")
+    audio["covr"] = [MP4Cover(b"\xff\xd8\xfftest-jpeg-bytes", imageformat=MP4Cover.FORMAT_JPEG)]
+    audio.save()
+    aid = _id_for(cfg, d)
+
+    r = client.get(f"/cover/{aid}")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("image/")
+    assert b"test-jpeg-bytes" in r.content
+
+
 def test_inbox_card_omits_cover_request_when_no_cover(client, cfg):
     """A NEW album with no folder cover must NOT emit a /cover <img> — else
     hundreds of them flood the logs with 404s (and fetch even when collapsed)."""

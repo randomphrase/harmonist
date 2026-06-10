@@ -78,6 +78,15 @@ _MANAGED_KEYS = (
 )
 
 
+def _has_embedded_cover(audio: Any) -> bool:
+    """True if the file carries cover art — FLAC native pictures or the
+    Ogg/Opus base64 METADATA_BLOCK_PICTURE comment."""
+    if getattr(audio, "pictures", None):  # FLAC
+        return True
+    tags = audio.tags
+    return bool(tags and tags.get("metadata_block_picture"))
+
+
 def make_picture(cover: bytes) -> Picture:
     """Build a FLAC front-cover Picture from raw image bytes."""
     pic = Picture()
@@ -140,9 +149,12 @@ class VorbisTagger:
         """All scanner-needed fields in one open. `codec` is the format label
         (a constant per Vorbis container — FLAC/Vorbis/Opus)."""
         audio = self._open(path)
-        if audio is None or audio.tags is None:
+        if audio is None:
             return ScanFields(None, None, None, codec)
+        has_cover = _has_embedded_cover(audio)
         tags = audio.tags
+        if tags is None:
+            return ScanFields(None, None, None, codec, has_cover)
 
         def first(key: str) -> str | None:
             values = tags.get(key)
@@ -153,7 +165,28 @@ class VorbisTagger:
             album_id=first(KEY_ALBUM_ID),
             artist=first(KEY_ARTIST),
             codec=codec,
+            has_cover=has_cover,
         )
+
+    def read_cover(self, path: Path) -> tuple[bytes, str] | None:
+        """Extract embedded cover art as (image_bytes, mime). Handles both the
+        FLAC native picture block and the Ogg/Opus base64 METADATA_BLOCK_PICTURE."""
+        audio = self._open(path)
+        if audio is None:
+            return None
+        pictures = getattr(audio, "pictures", None)  # FLAC
+        if pictures:
+            pic = pictures[0]
+            return bytes(pic.data), (pic.mime or "image/jpeg")
+        tags = audio.tags  # Ogg/Opus
+        encoded = tags.get("metadata_block_picture") if tags else None
+        if encoded:
+            try:
+                pic = Picture(base64.b64decode(encoded[0]))
+            except Exception:
+                return None
+            return bytes(pic.data), (pic.mime or "image/jpeg")
+        return None
 
     # ---- write ----
 

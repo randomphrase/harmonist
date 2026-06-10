@@ -176,6 +176,9 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         inconsistent_tracks=inconsistent_tracks,
         partial_tag_count=_partial_tag_count(sidecar, fields),
         audio_format=_audio_format(fields),
+        # A cover exists if there's a folder cover.* OR the first track has
+        # embedded art (album art is on every track; first is representative).
+        has_cover=io.cover_path is not None or (bool(fields) and fields[0].has_cover),
     )
 
 

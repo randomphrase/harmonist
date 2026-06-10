@@ -141,7 +141,20 @@ def read_scan_fields(path: Path) -> ScanFields:
         album_id=_txxx(tags, TXXX_ALBUM_ID),
         artist=_text(tags, "TPE1"),
         codec="MP3",
+        has_cover=bool(tags and tags.getall("APIC")),
     )
+
+
+def read_cover(path: Path) -> tuple[bytes, str] | None:
+    """Extract the embedded APIC cover art as (image_bytes, mime), or None."""
+    audio = _open(path)
+    if audio is None or audio.tags is None:
+        return None
+    apics = audio.tags.getall("APIC")
+    if not apics:
+        return None
+    pic = apics[0]
+    return bytes(pic.data), (pic.mime or "image/jpeg")
 
 
 # ---------------------------------------------------------------------------

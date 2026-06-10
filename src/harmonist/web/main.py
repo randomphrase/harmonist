@@ -22,7 +22,16 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError as PydanticValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from harmonist import activity, cover_art, mb_lookup, mb_search, reconcile, scanner, url_recovery
+from harmonist import (
+    activity,
+    cover_art,
+    formats,
+    mb_lookup,
+    mb_search,
+    reconcile,
+    scanner,
+    url_recovery,
+)
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
 from harmonist.bandcamp_hook import HarmonistSyncer
@@ -379,6 +388,18 @@ def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
     except OSError as e:
         log.warning("could not remove bandcampsync checkpoint %s: %s", state_file, e)
     return False
+
+
+def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
+    """Extract embedded cover art (bytes, mime) from the album's first audio
+    file, or None. Used by /cover to serve art without writing it to disk."""
+    try:
+        files = sorted(p for p in album_path.iterdir() if formats.is_supported(p))
+    except OSError:
+        return None
+    if not files:
+        return None
+    return formats.read_cover(files[0])
 
 
 def _albums(request: Request) -> list[Album]:
@@ -913,11 +934,19 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/cover/{album_id}")
     def cover(request: Request, album_id: str) -> Response:
+        # Sync route → FastAPI runs it in its threadpool, so the (blocking)
+        # cover read is already off the event loop.
         album = _find_album(request, album_id)
-        if not album.cover_path or not album.cover_path.exists():
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "no cover")
-        media_type = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
-        return FileResponse(album.cover_path, media_type=media_type)
+        if album.cover_path and album.cover_path.exists():
+            media_type = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
+            return FileResponse(album.cover_path, media_type=media_type)
+        # No folder cover — serve the art embedded in the tracks directly,
+        # extracted on the fly (no need to write a cover.* to disk).
+        embedded = _embedded_cover(album.path)
+        if embedded is not None:
+            data, media_type = embedded
+            return Response(content=data, media_type=media_type)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no cover")
 
     @app.post("/reconcile/{album_id}", response_class=HTMLResponse)
     def reconcile_album_route(request: Request, album_id: str) -> Response:
