@@ -18,6 +18,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
@@ -68,12 +69,18 @@ def check_download_cap(would_download_count: int, cap: int) -> None:
         )
 
 
-def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
+def write_sidecar_for_item(item: Any, album_dir: Path, *, prefer_item_url: bool = False) -> bool:
     """Write or update the sidecar for a Bandcamp item at album_dir.
 
     If a sidecar already exists (typical after reconciliation has run), fills
     in the missing `bandcamp.item_id` / `band_id`. Otherwise creates a fresh
     sidecar for a brand-new download.
+
+    `prefer_item_url`: normally we keep an existing sidecar's `store_url`
+    (it's the canonical MB-derived URL). But when we matched the item to this
+    album by *slug* — i.e. the existing URL and the item URL point at the same
+    release under different subdomains — the item's URL is where the user
+    actually purchased it, so we adopt it as the authoritative store_url.
 
     Returns True on success, False if the URL couldn't be reconstructed.
     """
@@ -102,7 +109,9 @@ def write_sidecar_for_item(item: Any, album_dir: Path) -> bool:
         )
         merged = Sidecar(
             schema_version=existing.schema_version,
-            store_url=existing.store_url or url,  # keep existing canonical URL
+            # Keep the existing canonical URL, unless a slug match told us to
+            # adopt the item's (purchase-authoritative) URL instead.
+            store_url=url if prefer_item_url else (existing.store_url or url),
             bandcamp=merged_bandcamp,
             downloaded_at=existing.downloaded_at or datetime.now(UTC),
             added_at=existing.added_at,
@@ -138,6 +147,68 @@ def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
         if sc and sc.store_url == target_url:
             return f.parent
     return None
+
+
+def album_slug(url: str | None) -> str | None:
+    """Extract the Bandcamp release slug from a URL, ignoring the subdomain.
+
+    `https://echospace313.bandcamp.com/album/dimensional-space-remastered-by-pole`
+    → `album/dimensional-space-remastered-by-pole`
+
+    The slug is Bandcamp's stable per-release handle: minted once at release
+    and effectively immutable, even when the artist renames the band or
+    re-letters the title. The *subdomain*, by contrast, varies — the same
+    release is often cross-listed under both a label page and an artist page
+    (e.g. `echospacedetroit` vs the artist's own subdomain), which defeats a
+    whole-URL compare. Matching on the slug bridges that.
+
+    Returns `None` for URLs that aren't an `/album/<slug>` or `/track/<slug>`
+    shape (e.g. a bare `artist.bandcamp.com` landing page embedded in tags) —
+    those carry no release identity and must never match.
+
+    The item-type segment (`album`/`track`) is kept in the key so an album and
+    a track that happen to share a slug don't collide.
+    """
+    if not url:
+        return None
+    try:
+        path = urlparse(url).path
+    except ValueError:
+        return None
+    parts = [seg for seg in path.split("/") if seg]
+    if len(parts) >= 2 and parts[-2] in ("album", "track"):
+        return f"{parts[-2]}/{parts[-1].lower()}"
+    return None
+
+
+def find_existing_album_by_slug(music_dir: Path, target_url: str) -> Path | None:
+    """Slug-match fallback for `find_existing_album_by_url`.
+
+    Find an on-disk album whose `store_url` shares `target_url`'s release slug
+    (subdomain ignored) AND which isn't already linked to a Bandcamp item.
+    Restricting to unlinked albums (no `bandcamp.item_id`) means we only ever
+    *fill in* a missing id, never hijack a correctly-linked album.
+
+    Guards against ambiguity: if two or more unlinked albums share the slug we
+    return `None` and leave them for manual linking rather than guess. Returns
+    `None` when `target_url` has no slug (see `album_slug`).
+    """
+    target = album_slug(target_url)
+    if target is None:
+        return None
+    matches: list[Path] = []
+    for f in music_dir.rglob(".harmonist.json"):
+        try:
+            sc = sidecar_mod.read(f.parent)
+        except Exception:
+            continue
+        if sc is None or not sc.store_url:
+            continue
+        if sc.bandcamp is not None and sc.bandcamp.item_id is not None:
+            continue  # already linked — don't touch
+        if album_slug(sc.store_url) == target:
+            matches.append(f.parent)
+    return matches[0] if len(matches) == 1 else None
 
 
 # bandcampsync ships no types, so _BCSyncer is Any; subclassing it is the
@@ -219,10 +290,25 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         url = construct_bandcamp_url(item)
         media_dir = getattr(self.local_media, "media_dir", None)
         if url and media_dir:
+            # Exact-URL match first; fall back to a subdomain-agnostic slug
+            # match (same release cross-listed under a different subdomain).
+            # The slug fallback adopts the item's URL as the new store_url.
             existing_dir = find_existing_album_by_url(Path(media_dir), url)
+            by_slug = False
+            if existing_dir is None:
+                existing_dir = find_existing_album_by_slug(Path(media_dir), url)
+                by_slug = existing_dir is not None
             if existing_dir is not None:
                 try:
-                    write_sidecar_for_item(item, existing_dir)
+                    write_sidecar_for_item(item, existing_dir, prefer_item_url=by_slug)
+                    if by_slug:
+                        log.info(
+                            "Linked by slug: %s / %s → %s (item_id=%s)",
+                            getattr(item, "band_name", "?"),
+                            getattr(item, "item_title", "?"),
+                            existing_dir.name,
+                            getattr(item, "item_id", "?"),
+                        )
                     # Guard the add: this short-circuit runs every sync for an
                     # on-disk album, and bandcampsync's Ignores.add appends a
                     # line unconditionally (no dedup) — so re-adding bloats

@@ -1,0 +1,1718 @@
+2026-06-09 21:17:09,873 INFO harmonist.activity: Bandcamp sync started
+2026-06-09 21:17:09,873 INFO harmonist.activity: Sync started — watch the inbox
+2026-06-09 21:17:09,874 INFO harmonist.web.scan_runner: Library scan started: /Users/alastair/Music/harmonist-test
+INFO:     127.0.0.1:64291 - "POST /sync HTTP/1.1" 200 OK
+2026-06-09 21:17:09,875 ignores [INFO] Ignore file: /Users/alastair/.config/harmonist/ignores.txt
+2026-06-09 21:17:09,877 media [INFO] Local media directory: /Users/alastair/Music/harmonist-test
+2026-06-09 21:17:09,929 bandcamp [INFO] Located Bandcamp identity in cookies: 7%09C2J5pLMJPPNCdGVq...
+2026-06-09 21:17:09,967 INFO harmonist.web.scan_runner: Library scan complete: 346 albums across 346 dirs in 0.1s
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+2026-06-09 21:17:10,216 bandcamp [INFO] Loaded page data, session is authenticated for user id: 105910)
+2026-06-09 21:17:10,216 bandcamp [INFO] Loading purchases for user id: 105910
+2026-06-09 21:17:10,216 bandcamp [INFO] Requesting 100 purchases using token 1781054230:0:a::
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: variant / while the universe sleeps (long-form edition) (id:3417563775)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: variant / while the universe sleeps (id:631669900)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: Mike Lazarev / Gradiscence (id:3407888944)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: variant / vortexual [outtake] (id:218193756)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: variant / auratia (id:518914225)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: variant / apsis [extended edition] (id:880511911)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: cv313 / depths of perception : submerging waves [variant submersion] (id:3633605669)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: claude vonstroke / who's afraid of detroit? [deepchord + soultek mixes] (id:2491734286)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: variant / vortexual [cv313 rewire] (id:2934830720)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: c v 3 1 3 / satosphere sessions [transmission II] (id:3641171220)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: c v 3 1 3 / affiniti (id:3805557120)
+2026-06-09 21:17:10,987 bandcamp [INFO] Found item: echospace / sonorous w/variant reduction (id:401853922)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: cv313 / seconds to forever [reprised] D​.​E​.​M​.​F. limited edition w/variant reduction (id:3314569164)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: variant / vortexual [tape sessions] series collection (id:332819773)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: Rayan Haïdar / Cities burn as we dream of a return (id:3964067176)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: various / intrusion dub/subtraktive [AIR studios] remastered versions (id:813761051)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: cv313 / subtraktive [redesigns] original 12" (id:2902583159)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: shorelights / summer cottage soundscapes (id:3318389338)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: various / dc trax [the octal years] (id:100070985)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: radius / interpolaton tapes [1/3] (id:790060811)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: a601-2 / shibuya hypnagogia (id:2183463707)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: c v 3 1 3 / [live excursions] D.E.M.F. 2001 (id:4214308661)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: stl / checkmate [ep] (id:1749950944)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: phase90 / infinitati (id:3428588828)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: c v 3 1 3 / dimensional space [dual disk edition] (id:3459299196)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: Various Artists / 15 | 2 (id:1104640292)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: Various Artists / Serial One (id:1187738689)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: Yagya / Sleepygirls (id:1366827324)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: Yann Novak / Surroundings (id:3971263807)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: Robert Takahashi Crouch + Yann Novak / Giving Water to the Dead (id:3048993396)
+2026-06-09 21:17:10,988 bandcamp [INFO] Found item: zakè / HH (id:375267609)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Yann Novak / Idleness, Endlessness (id:3450804516)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Cameron MacNair / To Make The Body Glow (id:92678585)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: variant / thru the cosmos [ison + spica] 44:41 (id:521405920)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: variant / thru the cosmos [eta/aquariids] (id:1986918774)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: variant / thru the cosmos [pallas/perseids] (id:2647564368)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: variant / vortexual [series collection] volume one (id:2750974037)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: variant / lake of the clouds [live] (id:2836046294)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: c v 3 1 3 / baring stars (id:3083929515)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: radius / obsolete machines [variant reshapes] (id:3334910772)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: c v 3 1 3 / beyond dreams [analog passages] (id:3725107372)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: System 7 / Flower of Life (id:3058779203)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: zakè, Ossa, ASC / Microliths and Momentary Drifts (id:3443755647)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Yann Novak / Meadowsweet (redux) (id:1421362789)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: NAKAMURA Hiroyuki / Sen no Tsudoi (id:3591468018)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Arvin Dola / O Ghost (id:2153476676)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Yann Novak / The Voices of Theseus (id:2196186184)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Yann Novak / Continuity (id:2495341070)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Yann Novak + Richard Chartier / Undefined (id:1184950592)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Various Artists / 15 | 1 (id:1739561799)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Markus Guentner / Aeris (id:2213988827)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: zakè | Spieth | Guentner / Arcadia (id:884771656)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Joachim Spieth | Andrew Thomas / Nocturna (id:3184635096)
+2026-06-09 21:17:10,989 bandcamp [INFO] Found item: Joachim Spieth / Terrain (id:2966071460)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: deepchord presents echospace / silent world [original motion picture soundtrack] CD (id:4128780173)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: 36 / Night Language (id:4244748098)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Joachim Spieth / Vestige (id:88521517)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Joachim Spieth / Tides (id:3901933956)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Imperial Valley / Imperial Valley, IV (id:2325592001)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: The Inward Circles / Before We Lie Down in Darknesse (id:3615059109)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Richard Skelton / Shear Planes (id:2448782790)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: model 500 / starlight [intrusion's unreleased tape session] (id:2360090316)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Richard Skelton / The Oracle Bone (id:4279830397)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Earth House Hold / Glory Be (id:2468707380)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Richard Skelton / Towards A Frontier (id:1780494276)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Richard Skelton / Verse of Birds (id:2045203268)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: *AR / Wolf Notes (id:1958972811)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Guentner   Spieth / Overlay Variations (id:91406636)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Guentner   Spieth / Overlay Reworks | Pt. 1 (by Hollie Kenniff & Rafael Anton Irisarri) (id:224418410)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Guentner   Spieth / Overlay Reworks (id:1127770196)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Guentner   Spieth / Conversion (id:1192646687)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Guentner   Spieth / Overlay Reworks | Pt. 2 (by Pole & Abul Mogard) (id:1204849713)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Guentner   Spieth / Overlay (id:1420951928)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Guentner   Spieth / Prologue (id:2505542769)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Guentner   Spieth / Valenz (GALÁN / VOGT Rework) (id:3260691437)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: A Broken Consort / Box of Birch (id:46894908)
+2026-06-09 21:17:10,990 bandcamp [INFO] Found item: Rafael Anton Irisarri / Points of Inaccessibility (id:2180528479)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: bvdub | Brock Van Wey / At the Alter (id:3432476015)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: c v 3 1 3 / live at primary [chicago, usa] (id:1682020668)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: zakè / Tape Piano Improvisations in Four Parts (id:3315870278)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Richard Skelton / The Complete Marking Time (id:3206175072)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Clouwbeck / A Moraine (id:882656786)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Deadbeat / Kansai Botanicals (id:1032086361)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: variant / cosmic currents (id:471389902)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: cv313 / the other side [remastered] (id:967810607)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: variant / vortexual [element four] live @ antique modulation "sound in motion" exhibit (id:1174849849)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: variant / vortexual - element zero [coppice halifax nightly excavation] (id:1695480319)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: variant / deep sky network [electric density artifacts] (id:3006843395)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: intrusion / amongst the stars w/variant etherscape (id:4108973874)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: variant / vortexual [element six] coppice halifax evaporant (id:4210977652)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: ian hawgood / well, here we are (id:3212177784)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: 36 / A Warm Static Sphere (id:3995080393)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Rosales / Half-Light (id:1973584253)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Rafael Anton Irisarri / A Fragile Geography (10th Anniversary Remastered) (id:163876265)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Abul Mogard & Rafael Anton Irisarri / Impossibly distant, impossibly close (id:2141230429)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Rosales / Woven Songs (id:204990400)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Sinemis / Dua (id:3858439964)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Rosales / To Live (id:1183047719)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Black Swan / From the End of Time (id:1909222385)
+2026-06-09 21:17:10,991 bandcamp [INFO] Found item: Markus Guentner / Black Dahlia (id:798262005)
+2026-06-09 21:17:10,991 bandcamp [INFO] Requesting 100 purchases using token 1769696197:798262005:a::
+INFO:     127.0.0.1:64290 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Ruby My Dear / Lst (id:3977251201)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: keinseier / Reduktion (id:70315713)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: The Flashbulb / Papillon (id:463419962)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Variant / The Setting Sun (id:3738416771)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: WNDFRM / WVLT (id:2598010379)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Rhins / The Burnout (id:111889048)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Abul Mogard & Rafael Anton Irisarri / Live at Le Guess Who? (id:861279370)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Tom Leclerc / a brief story of slowness (id:3867378599)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Øystein Skar / Hem (id:3495443710)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Deaf Center / Reverie (id:2429362044)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Sinemis / Farewell (id:3644793416)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: c v 3 1 3 / land of the low lying clouds [edition two] (id:761120258)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: cv313 / analogue oceans [subduction/obduction] limited edition (id:1751773585)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: cv313 / suspended in a moment [someplace else] ​w/variant refocus (id:2797916489)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: cv313 / plays sequential space (id:2845339880)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: cv313 / [satosphere sessions] (id:2905623037)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Hammock / Nevertheless (id:2620896449)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: ARROWOUNDS / The Loneliness of the Hollow Earth Explorer Vol. 2 (id:3663126972)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: ARROWOUNDS / The Loneliness of the Hollow Earth Explorer Vol. 1 (id:3843049542)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Billow Observatory / The Glass Curtain (id:398744918)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: From the Mouth of the Sun / In Wind or Dust (id:3781796543)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Slow Blink / Letters Home (id:263449643)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Machinefabriek / Stof en Ruis (id:2487023674)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Benoît Pioulard / Stanza IV (id:4227298231)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: variant / plays sequential space (id:570621060)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: variant / sequential sleep [series collection] (id:1218266736)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: brock van wey / home (id:2043061668)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Illuvia / Mauna Kea (id:4209307916)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: ASC / Tales of Introspection (id:141795324)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Yagya / Rhythm of Snow (remastered) (id:895597950)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: 36 & zakè / Stasis Sounds For Long​-​Distance Space Travel III (id:4166027309)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Yann Novak / The Voice of Theseus (id:3427735975)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Yann Novak / Lifeblood of Light and Rapture (id:3837310317)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Mike Lazarev / Tarnished Tapes and Saturated Signals (id:4110606681)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Slow Dancing Society & zakè / Stars & Silence (id:818641059)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: Richard Skelton / The Second Chamber (id:2677764601)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: c v 3 1 3 / land of the low lying clouds [live in hana] (id:2075532514)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: intrusion / reflection I [unreleased + redesigned] (id:261396839)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: intrusion / staticwaves [rethought + remastered] (id:1233706678)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: intrusion / love in lofi [unreleased tape sessions] (id:1349112600)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: cv313 / dimensional space [extended CD edition] alchemy remasters (id:1353893397)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: model 500 / starlight [original vinyl masters] (id:3923680966)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: zakè & Benoît Pioulard / eve (id:3284089435)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: variant / live@heartlandgathering [09.27.25] (id:902262129)
+2026-06-09 21:17:11,781 bandcamp [INFO] Found item: zakè & rhubiqs / Hild (id:2825045907)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Juri Suzue / Dial Back [GRSCL48] (id:1874020345)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: variant / sequential sleep [ver 0​.​0] limited edition (id:1133283102)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: werner/hitchell / all the engines (id:1326226660)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: cv313 / atonal expressions [in an analog dialect] (id:2259227652)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: intrusion / a gentle embrace [variant reshapes] (id:3124356360)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: empathyboxx / live@spybar | chicago (id:1128716985)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè / Low Harmonics (id:2164875589)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè / Remembrance (id:2800712545)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè [ft. various artists] / Silentium (id:1649158695)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: cv313 / altering illusions [1 of 3] (id:2044989506)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: ub313 / trak6 [echospace dub] (id:2529205542)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: cv313 / deepspace [ep] (id:2729805751)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: cv313 / galaxy313 (id:3099555548)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: echospace / sonorous [ep] (id:2457514109)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: soultek / clouds overhead ep (id:1652114734)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: echospace / o.b.m.x. [ep] (id:598655171)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè [ft. Slow Blink] / Caelum (id:190020021)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè / Cantus for Winter in Six Parts (id:2361133106)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Dawn Chorus and the Infallible Sea / Liberamente (id:2135290130)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè & Wayne Robert Thomas / To Those Who Dwelt in a Land of Deep Darkness (id:3030264121)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Pillars / CAVUM (id:2847528476)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Dawn Chorus and the Infallible Sea / Reveries (id:2434534313)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Sonic Buckwit / Subcortical [GRSCLM150] (id:86364131)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: intrusion / intrusion/reflection [original vinyl masters] (id:690309260)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: From Overseas & zakè / Demain, dès l’aube (id:3264157945)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè / Deep into the unknown, we shall endlessly roam (id:3184512859)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: The Black Dog / Loud Ambient (id:1955681258)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè / Veta (id:4262141718)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Pillars / OF SALT AND SEA (id:3690672636)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: c v 3 1 3 / dimensional space [lp edition] remastered by pole (id:1000356327)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Various / Mood Compiled 4 [GRSCLMCD004] (id:77009825)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Various / Mood Compiled 3 [GRSCLMCD003] (id:2085485077)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Various / Mood Compiled 2 [GRSCLMCD002] (id:3731855565)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Various / Mood Compiled [GRSCLMCD001] (id:2165783870)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: deepchord presents echospace / live in detroit [ghost in the sound] (id:184463228)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: deepchord presents echospace / [ spatialdimension ] remastered (id:596612966)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: echospace plays michael mantra / sea shell city (id:2929628384)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: radius / obsolete machines [stage two] limited cd edition (id:3644559340)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: variant / sequential sleep (id:4032507453)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: cv313 / standing still [ep] (id:649459745)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: soultek / dreaming under a starlit sky [1993-2003] (id:1719752074)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: cv313 / subtraktive [digital edition] (id:2781186984)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Oliver Lieb / Subraumstimulation - 2025 Remaster (id:355048437)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Voices From The Lake / II (id:2669702977)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: Dawn Chorus and the Infallible Sea / Alpha (id:3167658209)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè / Collected Orchestral Works, Vol. I (id:1039515690)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: zakè / zakè (id:3253902886)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: 36 / Exit All The Lights (id:2309459999)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: 36 / Trance Anthems For A Sunken Generation (id:2861462050)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: 36 / Colours In The Dark (id:383765593)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: 36 / Black Soma (id:846601922)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: 36 / Symmetry Systems (id:3532742679)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: soultek / dreaming under a starlit sky [ep] (id:472381409)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: cv313 / seconds to forever [original 12"] (id:489525922)
+2026-06-09 21:17:11,782 bandcamp [INFO] Found item: radius / obsolete machines [alchemy remastered edition] LP set (id:600754844)
+2026-06-09 21:17:11,782 bandcamp [INFO] Requesting 100 purchases using token 1760914139:600754844:a::
+INFO:     127.0.0.1:64288 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+2026-06-09 21:17:12,779 bandcamp [INFO] Found item: soultek / analogue heart [nsc remastered LP edition] (id:1127011431)
+2026-06-09 21:17:12,779 bandcamp [INFO] Found item: soultek / what dreams are made of... (id:1427915977)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: 36 / The Lower Lights (id:4286635485)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 / infinit-1 [remastered] limited edition (id:188464609)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 / dimensional space [ep] (id:543122963)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: model 500 / starlight [intrusion + mike huckaby mixes] original 12" mixes (id:1097238870)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 / fading lights [alchemy remasters] (id:1205190709)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 / live at elixir [corktown, detroit, mi] (id:1455918453)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 / analogue oceans [double cd edition] w/digital exclusive (id:1871057576)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 / live (id:2095758162)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: sons of the dragon / motor city matrix (id:2151184603)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 / sailing stars [ep] (id:2446220355)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: sons of the dragon / the journey (id:3103241795)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 / beyond the clouds / beyond the sequence [live in japan] (id:3639919056)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: radius / obsolete machines [w/cv313 reshapes] (id:3793962214)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: 36 / Void Dance (Remastered) (id:134920472)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: 36 / Sine Dust (Remastered) (id:3576426390)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: variant / falling stars (id:378919538)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 plays mike huckabty / our life with the wave ep (id:962690272)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: various / the midst of something beautiful (id:1222665439)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: phase90 / a b s o n i a (id:1311301591)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: phase90 / infinitati [intrusion dubs] (id:1569562952)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: soultek / reflective [1993-2000] (id:1665886951)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: intrusion / amongst the stars [unreleased tape sessions] (id:2326219628)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: radius / interpolation tapes [0/3] (id:2562410667)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: various / the midst of something beautiful [volume two] remastered (id:3723400188)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: intrusion / a gentle embrace [ep] (id:382872919)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: c v 3 1 3 / beyond the clouds [remastered] (id:425255059)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: intrusion / a gentle embrace [cv313 rewire] (id:823274771)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: intrusion / tswana dub [12" masters] (id:3548282598)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: intrusion / little angel w/paul st. hilaire (id:3628377005)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: intrusion / the seduction of silence [ep] (id:3673036296)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: various / lofi sound system (id:4045874273)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: cv313 / dimensional space [extended edition] (id:4084524865)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: 36 / The Box (id:2906399022)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: bvdub | Brock Van Wey / 13 (id:1269081221)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: VC-118A / Back To Life (id:2708270686)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: THE FUTURE SOUND OF LONDON / A Space of Partial Illumination E7.002 (id:28364716)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Subaqual / Bilander (id:3118028446)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: loscil / LUX Refractions (id:903134722)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: loscil / Faults, Coasts, Lines (id:2415686522)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: loscil / Suns (id:185406926)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: loscil / Endless Falls (id:3590567650)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Jason van Wyk / Descendants (id:2567220385)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: loscil / Plume (id:1989181575)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: L.S.G. / Vol.2 Mixes - 2025 Remaster (id:1615753539)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Uun / Aspect of Obliteration (id:4288047289)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Earth House Hold / When Love Lived (id:1788168247)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: bvdub | Brock Van Wey / Us Again (id:73733306)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: The 7th Plain / Chronicles (id:1608012315)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Forest Drive West / Dualism E.P. (id:849997773)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Rrose x Polygonia / Dermatology (id:1741202725)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Fluxion / Fluxion - Haze (id:1838622721)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Uun / Platform Decay (id:2661097027)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: AES DANA / Leylines (id:3086728870)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: THE FUTURE SOUND OF LONDON / Rituals E7.001 (id:734327237)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: The Black Dog / Live At The ICA (id:2181640430)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: The Black Dog / Further Vexations (Remastered) (id:4202457926)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Mogwai / The Bad Fire (id:3160421753)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Kangding Ray / OR (id:116943911)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Brock Van Wey / White Clouds Drift On and On (id:1686751268)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: VC-118A / Spiritual Machines (id:1809143178)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Underworld / Strawberry Hotel (id:4061440112)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: James Holden / Imagine This Is A High Dimensional Space Of All Possibilities (id:3450412004)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: The Black Dog / The Black Dog Live @ Festival Of The Mind (id:306006818)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: The Black Dog / Sleep Deprivation (id:2491601729)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: MARTIN NONSTATIC / Live in Athens (24bit) (id:954108001)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Alessandro Cortini / SCURO CHIARO (id:732543694)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Convextion / R-CNVX2 (id:2033120363)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Monolake / Studio (id:1473942535)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Infinity Machine / Infinity Machine 001 (id:123210353)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Bicep / Isles (id:3286467797)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Birds ov Paradise / Memorial (id:1353573550)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: loscil // lawrence english / Colours Of Air (id:2688766583)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: -12dB / Half Eclipse (id:763714363)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Rrose / Please  Touch (id:1566564121)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Rival Consoles / Now Is (id:1163555637)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Four Tet / There Is Love In You (id:2384954380)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: THE FUTURE SOUND OF LONDON / Environment 7.003 (id:1226372138)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Deadbeat / Kübler-Ross Soliloquies (id:928339234)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: Voices From The Lake / Voices From The Lake (id:4185304679)
+2026-06-09 21:17:12,780 bandcamp [INFO] Found item: VC-118A / Waves of Change (id:74176690)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Robert Leiner / 2020 (id:2516422287)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: AES DANA / Inks (24bit) (id:879048191)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: MASTER MARGHERITA / Border 50 (24bit) (id:2301345038)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Lamont Kohner / Willamette Dubs (id:3053296973)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Daniel Avery / Ultra Truth (id:3177667306)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Noah Lyas / Elsewhere (id:3558828551)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Deni Diezer & Martin Nonstatic / Invisible Balance (id:1185801074)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: VC-118A / Inside (id:831372237)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: swayzak / Snowboarding In Argentina 1st Issue (id:2095414869)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: John Tejada / Sleepwalker (id:1484179564)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Moderat / III (id:4205355711)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Hunter/Game / Adaptation Remixe (id:276319254)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Max Cooper / Emergence Remixed (id:193921023)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Uun / Derealization LP (id:3729127798)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Moderat / MORE D4TA (id:945398572)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: The Field / From Here We Go Sublime (id:1216253061)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: Banco de Gaia / Live at Glastonbury (id:1390181902)
+2026-06-09 21:17:12,781 bandcamp [INFO] Found item: System 7 / Power of Seven (id:2045937855)
+2026-06-09 21:17:12,781 bandcamp [INFO] Requesting 100 purchases using token 1628030235:2045937855:a::
+INFO:     127.0.0.1:64290 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Kruder & Dorfmeister / 1995 (id:3273665939)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: ASURA / Life² (id:4164843950)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: micronism / inside a quiet mind (id:913797457)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: A Winged Victory for the Sullen / Invisible Cities (id:3589852797)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: loscil / Equivalents (id:2122188959)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: loscil / Clara (id:4149141204)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: The Necks / Three (id:4185856817)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Mogwai / As The Love Continues (id:3793168922)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: L.S.G. / Into Deep LP - Remastered (id:2594762320)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Four Tet / Parallel (id:3301158852)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Steve Roach / TOMORROW (id:123200264)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Biosphere / Substrata (id:616828950)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Banco de Gaia / Farewell Ferengistan (id:1260526050)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: L.S.G. / Rendezvous In Outer Space LP - Remastered (id:3285536474)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: CELL / Live in Corfu (24bit) (id:2084171964)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Conforce / Dawn Chorus (id:1257698426)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Underworld / DRIFT Series 1 -  Complete (id:2504907261)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Shpongle / Tales Of The Inexpressible (Remastered) (id:3649297335)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Forest Drive West / Apparitions (id:2115487310)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Kaito / A Hundred Million Light Years (id:3421263140)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Max Cooper / Human (id:2436367420)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Underworld / RicksDubbedOutDriftExperience (Live in Amsterdam) (id:3138629046)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Mogwai / Music Industry 3. Fitness Industry 1. EP (id:4179847498)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Biodub / Tiefenrausch 015 - Biodub - Holmsund EP (id:1696126400)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: System 7 & Mirror System / Café Seven (id:1255574235)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Pye Corner Audio / Where Things Are Hollow 2 (id:64534327)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Pye Corner Audio / Where Things Are Hollow (id:2913444343)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: The Orb / Abolition of The Royal Familia (id:1511251486)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Minor Science / Second Language (id:3488178668)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: John Tejada / Moving 909s (id:2352382638)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Surgeon / BP044 Search Deep Inside Yourself (id:505786262)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Yagya / Rigning (id:4136080605)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Evan Marc + Steve Hillage / Evan Marc + Steve Hillage - Dreamtime Submersible (id:1325374524)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Mogwai / Rave Tapes (id:652048113)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Shpongle Static / Shpongle Static - Live at Ozora 2019 (id:267587152)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: System 7 / X-Port (id:350589204)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Max Cooper / 3D Reworks 001 (id:1575866570)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: HOLOVR / Anterior Space (id:3360757887)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Telefon Tel Aviv / Dreams Are Not Enough (id:1132982331)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Bersarin Quartett / Methoden und Maschinen (id:2779398732)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Barker / Utility (id:4104692156)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Deadbeat / The Echocord Sessions (id:361368264)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: JAH WOBBLE & BILL LASWELL / REALM OF SPELLS (id:340709718)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Sonmi451 / AI-13: Nachtmuziek (id:73690866)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: A Winged Victory for the Sullen / The Undivided Five (id:2720470098)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Hunter/Game / Adaptation (id:609823701)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: ESKOSTATIC / Serpentines & Valleys (24bit) (id:3236792241)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Deepchord / AI-10: Immersions (id:4042960945)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Shpongle / Nothing Lasts...But Nothing Is Lost (Remastered) (id:2638493048)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Blanck Mass / Animated Violence Mild (id:1302611116)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Deadbeat / Waking Life (id:3655879353)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: The Field / Looping State Of Mind (id:1394689631)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Jah Wobble / Bill Laswell / Radioaxiom –  A Dub Transmission (id:558302020)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: ASC / Astral Projection (id:3661338731)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: V/A - Mixed by Focal / POLARITY (id:3795418432)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: The Field / Infinite Moment (id:3031646034)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Deadbeat / Wax Poetic For This Our Great Resolve (id:778703689)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Nils Frahm / All Melody (id:3467926826)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: AES DANA / Pollen (id:1086866102)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Jane Weaver / Modern Kosmology (id:645773167)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: King Gizzard & The Lizard Wizard / Murder Of The Universe (id:1787442871)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Earthen Sea / An Act of Love (id:271403746)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: loscil / Monument Builders (id:794123225)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: AES DANA feat. MIKTEK / Far & Off (id:1610307875)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Various Artists / Total 16 (id:1165930684)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Ocoeur / Reversed (id:648851009)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Ital Tek / Hollowed (id:3979817496)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: The Field / The Follower (id:1634904465)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: MARTIN NONSTATIC / Granite (id:120238029)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: ASURA / 360 (id:3443035912)
+2026-06-09 21:17:13,540 bandcamp [INFO] Found item: Deadbeat / Walls & Dimensions (id:2073733157)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: The Black Dog / Neither/Neither (id:3761020004)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: CIRCULAR / Moon Pool (id:3286467840)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: Zenon Records / Zenon Records - 10 Years (id:2264497294)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: woob / ULTRASCOPE (id:537551947)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: woob / Lost 1194 (id:2984136251)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: MIKTEK / Elsewhere (id:2640890973)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: woob / Have Landed (id:3047105465)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: CONNECT.OHM / 9980 (id:171685143)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: All India Radio / Red Shadow Landing (id:681098003)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: Panzah Zandahz / Me & THIS Army: Radiohead Remixed & Mashed Up by PZ (id:3544404259)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: woob / Repurpose (id:1399445365)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: woob / Return to the City (Original Soundtrack) (id:3972002421)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: All India Radio / The Silent Surf (id:2457050340)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: Blamstrain / Selected Ambient Dub Works 06-09 (id:102578858)
+2026-06-09 21:17:13,541 bandcamp [INFO] Found item: Various / ... and darkness came (id:3931134604)
+2026-06-09 21:17:13,541 bandcamp [INFO] Requesting 100 purchases using token 1358310520:3931134604:a::1
+2026-06-09 21:17:13,679 bandcamp [INFO] Reached end of items
+2026-06-09 21:17:13,679 bandcamp [INFO] Loaded 386 purchases
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / while the universe sleeps (long-form edition) due to its id 3417563775 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / while the universe sleeps due to its id 631669900 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Mike Lazarev / Gradiscence due to its id 3407888944 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / vortexual [outtake] due to its id 218193756 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / auratia due to its id 518914225 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / apsis [extended edition] due to its id 880511911 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item cv313 / depths of perception : submerging waves [variant submersion] due to its id 3633605669 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item claude vonstroke / who's afraid of detroit? [deepchord + soultek mixes] due to its id 2491734286 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / vortexual [cv313 rewire] due to its id 2934830720 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item c v 3 1 3 / satosphere sessions [transmission II] due to its id 3641171220 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item c v 3 1 3 / affiniti due to its id 3805557120 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item echospace / sonorous w/variant reduction due to its id 401853922 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item cv313 / seconds to forever [reprised] D​.​E​.​M​.​F. limited edition w/variant reduction due to its id 3314569164 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / vortexual [tape sessions] series collection due to its id 332819773 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Rayan Haïdar / Cities burn as we dream of a return due to its id 3964067176 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item various / intrusion dub/subtraktive [AIR studios] remastered versions due to its id 813761051 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item cv313 / subtraktive [redesigns] original 12" due to its id 2902583159 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item shorelights / summer cottage soundscapes due to its id 3318389338 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item various / dc trax [the octal years] due to its id 100070985 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item radius / interpolaton tapes [1/3] due to its id 790060811 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item a601-2 / shibuya hypnagogia due to its id 2183463707 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item c v 3 1 3 / [live excursions] D.E.M.F. 2001 due to its id 4214308661 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item stl / checkmate [ep] due to its id 1749950944 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item phase90 / infinitati due to its id 3428588828 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item c v 3 1 3 / dimensional space [dual disk edition] due to its id 3459299196 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Various Artists / 15 | 2 due to its id 1104640292 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Various Artists / Serial One due to its id 1187738689 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Yagya / Sleepygirls due to its id 1366827324 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Yann Novak / Surroundings due to its id 3971263807 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Robert Takahashi Crouch + Yann Novak / Giving Water to the Dead due to its id 3048993396 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item zakè / HH due to its id 375267609 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Yann Novak / Idleness, Endlessness due to its id 3450804516 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Cameron MacNair / To Make The Body Glow due to its id 92678585 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / thru the cosmos [ison + spica] 44:41 due to its id 521405920 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / thru the cosmos [eta/aquariids] due to its id 1986918774 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / thru the cosmos [pallas/perseids] due to its id 2647564368 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / vortexual [series collection] volume one due to its id 2750974037 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item variant / lake of the clouds [live] due to its id 2836046294 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item c v 3 1 3 / baring stars due to its id 3083929515 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item radius / obsolete machines [variant reshapes] due to its id 3334910772 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item c v 3 1 3 / beyond dreams [analog passages] due to its id 3725107372 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item System 7 / Flower of Life due to its id 3058779203 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item zakè, Ossa, ASC / Microliths and Momentary Drifts due to its id 3443755647 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Yann Novak / Meadowsweet (redux) due to its id 1421362789 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item NAKAMURA Hiroyuki / Sen no Tsudoi due to its id 3591468018 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Arvin Dola / O Ghost due to its id 2153476676 being present in the ignore file
+2026-06-09 21:17:13,679 ignores [WARNING] Skipping item Yann Novak / The Voices of Theseus due to its id 2196186184 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Yann Novak / Continuity due to its id 2495341070 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Yann Novak + Richard Chartier / Undefined due to its id 1184950592 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Various Artists / 15 | 1 due to its id 1739561799 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Markus Guentner / Aeris due to its id 2213988827 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè | Spieth | Guentner / Arcadia due to its id 884771656 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Joachim Spieth | Andrew Thomas / Nocturna due to its id 3184635096 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Joachim Spieth / Terrain due to its id 2966071460 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item deepchord presents echospace / silent world [original motion picture soundtrack] CD due to its id 4128780173 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item 36 / Night Language due to its id 4244748098 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Joachim Spieth / Vestige due to its id 88521517 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Joachim Spieth / Tides due to its id 3901933956 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Imperial Valley / Imperial Valley, IV due to its id 2325592001 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item The Inward Circles / Before We Lie Down in Darknesse due to its id 3615059109 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Richard Skelton / Shear Planes due to its id 2448782790 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item model 500 / starlight [intrusion's unreleased tape session] due to its id 2360090316 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Richard Skelton / The Oracle Bone due to its id 4279830397 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Earth House Hold / Glory Be due to its id 2468707380 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Richard Skelton / Towards A Frontier due to its id 1780494276 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Richard Skelton / Verse of Birds due to its id 2045203268 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item *AR / Wolf Notes due to its id 1958972811 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Guentner   Spieth / Overlay Variations due to its id 91406636 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Guentner   Spieth / Overlay Reworks | Pt. 1 (by Hollie Kenniff & Rafael Anton Irisarri) due to its id 224418410 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Guentner   Spieth / Overlay Reworks due to its id 1127770196 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Guentner   Spieth / Conversion due to its id 1192646687 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Guentner   Spieth / Overlay Reworks | Pt. 2 (by Pole & Abul Mogard) due to its id 1204849713 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Guentner   Spieth / Overlay due to its id 1420951928 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Guentner   Spieth / Prologue due to its id 2505542769 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Guentner   Spieth / Valenz (GALÁN / VOGT Rework) due to its id 3260691437 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item A Broken Consort / Box of Birch due to its id 46894908 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Rafael Anton Irisarri / Points of Inaccessibility due to its id 2180528479 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item bvdub | Brock Van Wey / At the Alter due to its id 3432476015 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item c v 3 1 3 / live at primary [chicago, usa] due to its id 1682020668 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè / Tape Piano Improvisations in Four Parts due to its id 3315870278 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Richard Skelton / The Complete Marking Time due to its id 3206175072 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Clouwbeck / A Moraine due to its id 882656786 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Deadbeat / Kansai Botanicals due to its id 1032086361 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item variant / cosmic currents due to its id 471389902 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / the other side [remastered] due to its id 967810607 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item variant / vortexual [element four] live @ antique modulation "sound in motion" exhibit due to its id 1174849849 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item variant / vortexual - element zero [coppice halifax nightly excavation] due to its id 1695480319 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item variant / deep sky network [electric density artifacts] due to its id 3006843395 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item intrusion / amongst the stars w/variant etherscape due to its id 4108973874 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item variant / vortexual [element six] coppice halifax evaporant due to its id 4210977652 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item ian hawgood / well, here we are due to its id 3212177784 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item 36 / A Warm Static Sphere due to its id 3995080393 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Rosales / Half-Light due to its id 1973584253 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Rafael Anton Irisarri / A Fragile Geography (10th Anniversary Remastered) due to its id 163876265 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Abul Mogard & Rafael Anton Irisarri / Impossibly distant, impossibly close due to its id 2141230429 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Rosales / Woven Songs due to its id 204990400 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Sinemis / Dua due to its id 3858439964 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Rosales / To Live due to its id 1183047719 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Black Swan / From the End of Time due to its id 1909222385 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Markus Guentner / Black Dahlia due to its id 798262005 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Ruby My Dear / Lst due to its id 3977251201 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item keinseier / Reduktion due to its id 70315713 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item The Flashbulb / Papillon due to its id 463419962 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Variant / The Setting Sun due to its id 3738416771 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item WNDFRM / WVLT due to its id 2598010379 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Rhins / The Burnout due to its id 111889048 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Abul Mogard & Rafael Anton Irisarri / Live at Le Guess Who? due to its id 861279370 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Tom Leclerc / a brief story of slowness due to its id 3867378599 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Øystein Skar / Hem due to its id 3495443710 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Deaf Center / Reverie due to its id 2429362044 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Sinemis / Farewell due to its id 3644793416 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item c v 3 1 3 / land of the low lying clouds [edition two] due to its id 761120258 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / analogue oceans [subduction/obduction] limited edition due to its id 1751773585 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / suspended in a moment [someplace else] ​w/variant refocus due to its id 2797916489 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / plays sequential space due to its id 2845339880 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / [satosphere sessions] due to its id 2905623037 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Hammock / Nevertheless due to its id 2620896449 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item ARROWOUNDS / The Loneliness of the Hollow Earth Explorer Vol. 2 due to its id 3663126972 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item ARROWOUNDS / The Loneliness of the Hollow Earth Explorer Vol. 1 due to its id 3843049542 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Billow Observatory / The Glass Curtain due to its id 398744918 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item From the Mouth of the Sun / In Wind or Dust due to its id 3781796543 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Slow Blink / Letters Home due to its id 263449643 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Machinefabriek / Stof en Ruis due to its id 2487023674 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Benoît Pioulard / Stanza IV due to its id 4227298231 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item variant / plays sequential space due to its id 570621060 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item variant / sequential sleep [series collection] due to its id 1218266736 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item brock van wey / home due to its id 2043061668 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Illuvia / Mauna Kea due to its id 4209307916 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item ASC / Tales of Introspection due to its id 141795324 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Yagya / Rhythm of Snow (remastered) due to its id 895597950 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item 36 & zakè / Stasis Sounds For Long​-​Distance Space Travel III due to its id 4166027309 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Yann Novak / The Voice of Theseus due to its id 3427735975 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Yann Novak / Lifeblood of Light and Rapture due to its id 3837310317 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Mike Lazarev / Tarnished Tapes and Saturated Signals due to its id 4110606681 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Slow Dancing Society & zakè / Stars & Silence due to its id 818641059 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Richard Skelton / The Second Chamber due to its id 2677764601 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item c v 3 1 3 / land of the low lying clouds [live in hana] due to its id 2075532514 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item intrusion / reflection I [unreleased + redesigned] due to its id 261396839 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item intrusion / staticwaves [rethought + remastered] due to its id 1233706678 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item intrusion / love in lofi [unreleased tape sessions] due to its id 1349112600 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / dimensional space [extended CD edition] alchemy remasters due to its id 1353893397 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item model 500 / starlight [original vinyl masters] due to its id 3923680966 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè & Benoît Pioulard / eve due to its id 3284089435 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item variant / live@heartlandgathering [09.27.25] due to its id 902262129 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè & rhubiqs / Hild due to its id 2825045907 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Juri Suzue / Dial Back [GRSCL48] due to its id 1874020345 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item variant / sequential sleep [ver 0​.​0] limited edition due to its id 1133283102 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item werner/hitchell / all the engines due to its id 1326226660 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / atonal expressions [in an analog dialect] due to its id 2259227652 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item intrusion / a gentle embrace [variant reshapes] due to its id 3124356360 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item empathyboxx / live@spybar | chicago due to its id 1128716985 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè / Low Harmonics due to its id 2164875589 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè / Remembrance due to its id 2800712545 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè [ft. various artists] / Silentium due to its id 1649158695 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / altering illusions [1 of 3] due to its id 2044989506 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item ub313 / trak6 [echospace dub] due to its id 2529205542 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / deepspace [ep] due to its id 2729805751 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item cv313 / galaxy313 due to its id 3099555548 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item echospace / sonorous [ep] due to its id 2457514109 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item soultek / clouds overhead ep due to its id 1652114734 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item echospace / o.b.m.x. [ep] due to its id 598655171 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè [ft. Slow Blink] / Caelum due to its id 190020021 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè / Cantus for Winter in Six Parts due to its id 2361133106 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Dawn Chorus and the Infallible Sea / Liberamente due to its id 2135290130 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item zakè & Wayne Robert Thomas / To Those Who Dwelt in a Land of Deep Darkness due to its id 3030264121 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Pillars / CAVUM due to its id 2847528476 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Dawn Chorus and the Infallible Sea / Reveries due to its id 2434534313 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item Sonic Buckwit / Subcortical [GRSCLM150] due to its id 86364131 being present in the ignore file
+2026-06-09 21:17:13,680 ignores [WARNING] Skipping item intrusion / intrusion/reflection [original vinyl masters] due to its id 690309260 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item From Overseas & zakè / Demain, dès l’aube due to its id 3264157945 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item zakè / Deep into the unknown, we shall endlessly roam due to its id 3184512859 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item The Black Dog / Loud Ambient due to its id 1955681258 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item zakè / Veta due to its id 4262141718 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Pillars / OF SALT AND SEA due to its id 3690672636 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item c v 3 1 3 / dimensional space [lp edition] remastered by pole due to its id 1000356327 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Various / Mood Compiled 4 [GRSCLMCD004] due to its id 77009825 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Various / Mood Compiled 3 [GRSCLMCD003] due to its id 2085485077 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Various / Mood Compiled 2 [GRSCLMCD002] due to its id 3731855565 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Various / Mood Compiled [GRSCLMCD001] due to its id 2165783870 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item deepchord presents echospace / live in detroit [ghost in the sound] due to its id 184463228 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item deepchord presents echospace / [ spatialdimension ] remastered due to its id 596612966 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item echospace plays michael mantra / sea shell city due to its id 2929628384 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item radius / obsolete machines [stage two] limited cd edition due to its id 3644559340 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item variant / sequential sleep due to its id 4032507453 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / standing still [ep] due to its id 649459745 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item soultek / dreaming under a starlit sky [1993-2003] due to its id 1719752074 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / subtraktive [digital edition] due to its id 2781186984 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Oliver Lieb / Subraumstimulation - 2025 Remaster due to its id 355048437 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Voices From The Lake / II due to its id 2669702977 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Dawn Chorus and the Infallible Sea / Alpha due to its id 3167658209 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item zakè / Collected Orchestral Works, Vol. I due to its id 1039515690 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item zakè / zakè due to its id 3253902886 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item 36 / Exit All The Lights due to its id 2309459999 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item 36 / Trance Anthems For A Sunken Generation due to its id 2861462050 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item 36 / Colours In The Dark due to its id 383765593 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item 36 / Black Soma due to its id 846601922 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item 36 / Symmetry Systems due to its id 3532742679 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item soultek / dreaming under a starlit sky [ep] due to its id 472381409 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / seconds to forever [original 12"] due to its id 489525922 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item radius / obsolete machines [alchemy remastered edition] LP set due to its id 600754844 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item soultek / analogue heart [nsc remastered LP edition] due to its id 1127011431 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item soultek / what dreams are made of... due to its id 1427915977 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item 36 / The Lower Lights due to its id 4286635485 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / infinit-1 [remastered] limited edition due to its id 188464609 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / dimensional space [ep] due to its id 543122963 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item model 500 / starlight [intrusion + mike huckaby mixes] original 12" mixes due to its id 1097238870 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / fading lights [alchemy remasters] due to its id 1205190709 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / live at elixir [corktown, detroit, mi] due to its id 1455918453 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / analogue oceans [double cd edition] w/digital exclusive due to its id 1871057576 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / live due to its id 2095758162 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item sons of the dragon / motor city matrix due to its id 2151184603 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / sailing stars [ep] due to its id 2446220355 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item sons of the dragon / the journey due to its id 3103241795 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / beyond the clouds / beyond the sequence [live in japan] due to its id 3639919056 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item radius / obsolete machines [w/cv313 reshapes] due to its id 3793962214 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item 36 / Void Dance (Remastered) due to its id 134920472 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item 36 / Sine Dust (Remastered) due to its id 3576426390 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item variant / falling stars due to its id 378919538 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 plays mike huckabty / our life with the wave ep due to its id 962690272 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item various / the midst of something beautiful due to its id 1222665439 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item phase90 / a b s o n i a due to its id 1311301591 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item phase90 / infinitati [intrusion dubs] due to its id 1569562952 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item soultek / reflective [1993-2000] due to its id 1665886951 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item intrusion / amongst the stars [unreleased tape sessions] due to its id 2326219628 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item radius / interpolation tapes [0/3] due to its id 2562410667 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item various / the midst of something beautiful [volume two] remastered due to its id 3723400188 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item intrusion / a gentle embrace [ep] due to its id 382872919 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item c v 3 1 3 / beyond the clouds [remastered] due to its id 425255059 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item intrusion / a gentle embrace [cv313 rewire] due to its id 823274771 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item intrusion / tswana dub [12" masters] due to its id 3548282598 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item intrusion / little angel w/paul st. hilaire due to its id 3628377005 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item intrusion / the seduction of silence [ep] due to its id 3673036296 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item various / lofi sound system due to its id 4045874273 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item cv313 / dimensional space [extended edition] due to its id 4084524865 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item 36 / The Box due to its id 2906399022 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item bvdub | Brock Van Wey / 13 due to its id 1269081221 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item VC-118A / Back To Life due to its id 2708270686 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item THE FUTURE SOUND OF LONDON / A Space of Partial Illumination E7.002 due to its id 28364716 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Subaqual / Bilander due to its id 3118028446 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item loscil / LUX Refractions due to its id 903134722 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item loscil / Faults, Coasts, Lines due to its id 2415686522 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item loscil / Suns due to its id 185406926 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item loscil / Endless Falls due to its id 3590567650 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Jason van Wyk / Descendants due to its id 2567220385 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item loscil / Plume due to its id 1989181575 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item L.S.G. / Vol.2 Mixes - 2025 Remaster due to its id 1615753539 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Uun / Aspect of Obliteration due to its id 4288047289 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Earth House Hold / When Love Lived due to its id 1788168247 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item bvdub | Brock Van Wey / Us Again due to its id 73733306 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item The 7th Plain / Chronicles due to its id 1608012315 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Forest Drive West / Dualism E.P. due to its id 849997773 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Rrose x Polygonia / Dermatology due to its id 1741202725 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Fluxion / Fluxion - Haze due to its id 1838622721 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Uun / Platform Decay due to its id 2661097027 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item AES DANA / Leylines due to its id 3086728870 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item THE FUTURE SOUND OF LONDON / Rituals E7.001 due to its id 734327237 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item The Black Dog / Live At The ICA due to its id 2181640430 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item The Black Dog / Further Vexations (Remastered) due to its id 4202457926 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Mogwai / The Bad Fire due to its id 3160421753 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Kangding Ray / OR due to its id 116943911 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Brock Van Wey / White Clouds Drift On and On due to its id 1686751268 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item VC-118A / Spiritual Machines due to its id 1809143178 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Underworld / Strawberry Hotel due to its id 4061440112 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item James Holden / Imagine This Is A High Dimensional Space Of All Possibilities due to its id 3450412004 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item The Black Dog / The Black Dog Live @ Festival Of The Mind due to its id 306006818 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item The Black Dog / Sleep Deprivation due to its id 2491601729 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item MARTIN NONSTATIC / Live in Athens (24bit) due to its id 954108001 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Alessandro Cortini / SCURO CHIARO due to its id 732543694 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Convextion / R-CNVX2 due to its id 2033120363 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Monolake / Studio due to its id 1473942535 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Infinity Machine / Infinity Machine 001 due to its id 123210353 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Bicep / Isles due to its id 3286467797 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Birds ov Paradise / Memorial due to its id 1353573550 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item loscil // lawrence english / Colours Of Air due to its id 2688766583 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item -12dB / Half Eclipse due to its id 763714363 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Rrose / Please  Touch due to its id 1566564121 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Rival Consoles / Now Is due to its id 1163555637 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Four Tet / There Is Love In You due to its id 2384954380 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item THE FUTURE SOUND OF LONDON / Environment 7.003 due to its id 1226372138 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Deadbeat / Kübler-Ross Soliloquies due to its id 928339234 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Voices From The Lake / Voices From The Lake due to its id 4185304679 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item VC-118A / Waves of Change due to its id 74176690 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Robert Leiner / 2020 due to its id 2516422287 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item AES DANA / Inks (24bit) due to its id 879048191 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item MASTER MARGHERITA / Border 50 (24bit) due to its id 2301345038 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Lamont Kohner / Willamette Dubs due to its id 3053296973 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Daniel Avery / Ultra Truth due to its id 3177667306 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Noah Lyas / Elsewhere due to its id 3558828551 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item Deni Diezer & Martin Nonstatic / Invisible Balance due to its id 1185801074 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item VC-118A / Inside due to its id 831372237 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item swayzak / Snowboarding In Argentina 1st Issue due to its id 2095414869 being present in the ignore file
+2026-06-09 21:17:13,681 ignores [WARNING] Skipping item John Tejada / Sleepwalker due to its id 1484179564 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Moderat / III due to its id 4205355711 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Hunter/Game / Adaptation Remixe due to its id 276319254 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Max Cooper / Emergence Remixed due to its id 193921023 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Uun / Derealization LP due to its id 3729127798 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Moderat / MORE D4TA due to its id 945398572 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item The Field / From Here We Go Sublime due to its id 1216253061 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Banco de Gaia / Live at Glastonbury due to its id 1390181902 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item System 7 / Power of Seven due to its id 2045937855 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Kruder & Dorfmeister / 1995 due to its id 3273665939 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item ASURA / Life² due to its id 4164843950 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item micronism / inside a quiet mind due to its id 913797457 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item A Winged Victory for the Sullen / Invisible Cities due to its id 3589852797 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item loscil / Equivalents due to its id 2122188959 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item loscil / Clara due to its id 4149141204 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item The Necks / Three due to its id 4185856817 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Mogwai / As The Love Continues due to its id 3793168922 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item L.S.G. / Into Deep LP - Remastered due to its id 2594762320 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Four Tet / Parallel due to its id 3301158852 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Steve Roach / TOMORROW due to its id 123200264 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Biosphere / Substrata due to its id 616828950 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Banco de Gaia / Farewell Ferengistan due to its id 1260526050 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item L.S.G. / Rendezvous In Outer Space LP - Remastered due to its id 3285536474 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item CELL / Live in Corfu (24bit) due to its id 2084171964 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Conforce / Dawn Chorus due to its id 1257698426 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Underworld / DRIFT Series 1 -  Complete due to its id 2504907261 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Shpongle / Tales Of The Inexpressible (Remastered) due to its id 3649297335 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Forest Drive West / Apparitions due to its id 2115487310 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Kaito / A Hundred Million Light Years due to its id 3421263140 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Max Cooper / Human due to its id 2436367420 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Underworld / RicksDubbedOutDriftExperience (Live in Amsterdam) due to its id 3138629046 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Mogwai / Music Industry 3. Fitness Industry 1. EP due to its id 4179847498 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Biodub / Tiefenrausch 015 - Biodub - Holmsund EP due to its id 1696126400 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item System 7 & Mirror System / Café Seven due to its id 1255574235 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Pye Corner Audio / Where Things Are Hollow 2 due to its id 64534327 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Pye Corner Audio / Where Things Are Hollow due to its id 2913444343 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item The Orb / Abolition of The Royal Familia due to its id 1511251486 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Minor Science / Second Language due to its id 3488178668 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item John Tejada / Moving 909s due to its id 2352382638 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Surgeon / BP044 Search Deep Inside Yourself due to its id 505786262 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Yagya / Rigning due to its id 4136080605 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Evan Marc + Steve Hillage / Evan Marc + Steve Hillage - Dreamtime Submersible due to its id 1325374524 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Mogwai / Rave Tapes due to its id 652048113 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Shpongle Static / Shpongle Static - Live at Ozora 2019 due to its id 267587152 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item System 7 / X-Port due to its id 350589204 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Max Cooper / 3D Reworks 001 due to its id 1575866570 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item HOLOVR / Anterior Space due to its id 3360757887 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Telefon Tel Aviv / Dreams Are Not Enough due to its id 1132982331 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Bersarin Quartett / Methoden und Maschinen due to its id 2779398732 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Barker / Utility due to its id 4104692156 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Deadbeat / The Echocord Sessions due to its id 361368264 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item JAH WOBBLE & BILL LASWELL / REALM OF SPELLS due to its id 340709718 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Sonmi451 / AI-13: Nachtmuziek due to its id 73690866 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item A Winged Victory for the Sullen / The Undivided Five due to its id 2720470098 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Hunter/Game / Adaptation due to its id 609823701 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item ESKOSTATIC / Serpentines & Valleys (24bit) due to its id 3236792241 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Deepchord / AI-10: Immersions due to its id 4042960945 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Shpongle / Nothing Lasts...But Nothing Is Lost (Remastered) due to its id 2638493048 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Blanck Mass / Animated Violence Mild due to its id 1302611116 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Deadbeat / Waking Life due to its id 3655879353 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item The Field / Looping State Of Mind due to its id 1394689631 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Jah Wobble / Bill Laswell / Radioaxiom –  A Dub Transmission due to its id 558302020 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item ASC / Astral Projection due to its id 3661338731 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item V/A - Mixed by Focal / POLARITY due to its id 3795418432 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item The Field / Infinite Moment due to its id 3031646034 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Deadbeat / Wax Poetic For This Our Great Resolve due to its id 778703689 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Nils Frahm / All Melody due to its id 3467926826 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item AES DANA / Pollen due to its id 1086866102 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Jane Weaver / Modern Kosmology due to its id 645773167 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item King Gizzard & The Lizard Wizard / Murder Of The Universe due to its id 1787442871 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Earthen Sea / An Act of Love due to its id 271403746 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item loscil / Monument Builders due to its id 794123225 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item AES DANA feat. MIKTEK / Far & Off due to its id 1610307875 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Various Artists / Total 16 due to its id 1165930684 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Ocoeur / Reversed due to its id 648851009 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Ital Tek / Hollowed due to its id 3979817496 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item The Field / The Follower due to its id 1634904465 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item MARTIN NONSTATIC / Granite due to its id 120238029 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item ASURA / 360 due to its id 3443035912 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Deadbeat / Walls & Dimensions due to its id 2073733157 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item The Black Dog / Neither/Neither due to its id 3761020004 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item CIRCULAR / Moon Pool due to its id 3286467840 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Zenon Records / Zenon Records - 10 Years due to its id 2264497294 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item woob / ULTRASCOPE due to its id 537551947 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item woob / Lost 1194 due to its id 2984136251 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item MIKTEK / Elsewhere due to its id 2640890973 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item woob / Have Landed due to its id 3047105465 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item CONNECT.OHM / 9980 due to its id 171685143 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item All India Radio / Red Shadow Landing due to its id 681098003 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Panzah Zandahz / Me & THIS Army: Radiohead Remixed & Mashed Up by PZ due to its id 3544404259 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item woob / Repurpose due to its id 1399445365 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item woob / Return to the City (Original Soundtrack) due to its id 3972002421 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item All India Radio / The Silent Surf due to its id 2457050340 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Blamstrain / Selected Ambient Dub Works 06-09 due to its id 102578858 being present in the ignore file
+2026-06-09 21:17:13,682 ignores [WARNING] Skipping item Various / ... and darkness came due to its id 3931134604 being present in the ignore file
+2026-06-09 21:17:13,691 sync [INFO] Syncing item 1 of 386 (0.3%)
+2026-06-09 21:17:13,709 ignores [WARNING] Skipping item variant / while the universe sleeps (long-form edition) due to its id 3417563775 being present in the ignore file
+2026-06-09 21:17:13,709 sync [INFO] Syncing item 2 of 386 (0.5%)
+2026-06-09 21:17:13,717 ignores [WARNING] Skipping item variant / while the universe sleeps due to its id 631669900 being present in the ignore file
+2026-06-09 21:17:13,717 sync [INFO] Syncing item 3 of 386 (0.8%)
+INFO:     127.0.0.1:64288 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+2026-06-09 21:17:13,768 ignores [WARNING] Skipping item Mike Lazarev / Gradiscence due to its id 3407888944 being present in the ignore file
+2026-06-09 21:17:13,768 sync [INFO] Syncing item 4 of 386 (1.0%)
+2026-06-09 21:17:13,775 ignores [WARNING] Skipping item variant / vortexual [outtake] due to its id 218193756 being present in the ignore file
+2026-06-09 21:17:13,775 sync [INFO] Syncing item 5 of 386 (1.3%)
+2026-06-09 21:17:13,782 ignores [WARNING] Skipping item variant / auratia due to its id 518914225 being present in the ignore file
+2026-06-09 21:17:13,782 sync [INFO] Syncing item 6 of 386 (1.6%)
+2026-06-09 21:17:13,789 ignores [WARNING] Skipping item variant / apsis [extended edition] due to its id 880511911 being present in the ignore file
+2026-06-09 21:17:13,789 sync [INFO] Syncing item 7 of 386 (1.8%)
+2026-06-09 21:17:13,799 ignores [WARNING] Skipping item cv313 / depths of perception : submerging waves [variant submersion] due to its id 3633605669 being present in the ignore file
+2026-06-09 21:17:13,799 sync [INFO] Syncing item 8 of 386 (2.1%)
+2026-06-09 21:17:13,807 ignores [WARNING] Skipping item claude vonstroke / who's afraid of detroit? [deepchord + soultek mixes] due to its id 2491734286 being present in the ignore file
+2026-06-09 21:17:13,807 sync [INFO] Syncing item 9 of 386 (2.3%)
+2026-06-09 21:17:13,819 ignores [WARNING] Skipping item variant / vortexual [cv313 rewire] due to its id 2934830720 being present in the ignore file
+2026-06-09 21:17:13,819 sync [INFO] Syncing item 10 of 386 (2.6%)
+2026-06-09 21:17:13,827 ignores [WARNING] Skipping item c v 3 1 3 / satosphere sessions [transmission II] due to its id 3641171220 being present in the ignore file
+2026-06-09 21:17:13,828 sync [INFO] Syncing item 11 of 386 (2.8%)
+2026-06-09 21:17:13,836 ignores [WARNING] Skipping item c v 3 1 3 / affiniti due to its id 3805557120 being present in the ignore file
+2026-06-09 21:17:13,836 sync [INFO] Syncing item 12 of 386 (3.1%)
+2026-06-09 21:17:13,871 ignores [WARNING] Skipping item echospace / sonorous w/variant reduction due to its id 401853922 being present in the ignore file
+2026-06-09 21:17:13,871 sync [INFO] Syncing item 13 of 386 (3.4%)
+2026-06-09 21:17:13,880 ignores [WARNING] Skipping item cv313 / seconds to forever [reprised] D​.​E​.​M​.​F. limited edition w/variant reduction due to its id 3314569164 being present in the ignore file
+2026-06-09 21:17:13,881 sync [INFO] Syncing item 14 of 386 (3.6%)
+2026-06-09 21:17:13,886 ignores [WARNING] Skipping item variant / vortexual [tape sessions] series collection due to its id 332819773 being present in the ignore file
+2026-06-09 21:17:13,886 sync [INFO] Syncing item 15 of 386 (3.9%)
+2026-06-09 21:17:13,904 ignores [WARNING] Skipping item Rayan Haïdar / Cities burn as we dream of a return due to its id 3964067176 being present in the ignore file
+2026-06-09 21:17:13,904 sync [INFO] Syncing item 16 of 386 (4.1%)
+2026-06-09 21:17:13,932 ignores [WARNING] Skipping item various / intrusion dub/subtraktive [AIR studios] remastered versions due to its id 813761051 being present in the ignore file
+2026-06-09 21:17:13,932 sync [INFO] Syncing item 17 of 386 (4.4%)
+2026-06-09 21:17:13,944 ignores [WARNING] Skipping item cv313 / subtraktive [redesigns] original 12" due to its id 2902583159 being present in the ignore file
+2026-06-09 21:17:13,944 sync [INFO] Syncing item 18 of 386 (4.7%)
+2026-06-09 21:17:13,971 ignores [WARNING] Skipping item shorelights / summer cottage soundscapes due to its id 3318389338 being present in the ignore file
+2026-06-09 21:17:13,971 sync [INFO] Syncing item 19 of 386 (4.9%)
+2026-06-09 21:17:14,003 ignores [WARNING] Skipping item various / dc trax [the octal years] due to its id 100070985 being present in the ignore file
+2026-06-09 21:17:14,003 sync [INFO] Syncing item 20 of 386 (5.2%)
+2026-06-09 21:17:14,034 ignores [WARNING] Skipping item radius / interpolaton tapes [1/3] due to its id 790060811 being present in the ignore file
+2026-06-09 21:17:14,034 sync [INFO] Syncing item 21 of 386 (5.4%)
+2026-06-09 21:17:14,059 ignores [WARNING] Skipping item a601-2 / shibuya hypnagogia due to its id 2183463707 being present in the ignore file
+2026-06-09 21:17:14,059 sync [INFO] Syncing item 22 of 386 (5.7%)
+2026-06-09 21:17:14,088 ignores [WARNING] Skipping item c v 3 1 3 / [live excursions] D.E.M.F. 2001 due to its id 4214308661 being present in the ignore file
+2026-06-09 21:17:14,088 sync [INFO] Syncing item 23 of 386 (6.0%)
+2026-06-09 21:17:14,120 ignores [WARNING] Skipping item stl / checkmate [ep] due to its id 1749950944 being present in the ignore file
+2026-06-09 21:17:14,120 sync [INFO] Syncing item 24 of 386 (6.2%)
+2026-06-09 21:17:14,150 ignores [WARNING] Skipping item phase90 / infinitati due to its id 3428588828 being present in the ignore file
+2026-06-09 21:17:14,150 sync [INFO] Syncing item 25 of 386 (6.5%)
+2026-06-09 21:17:14,161 ignores [WARNING] Skipping item c v 3 1 3 / dimensional space [dual disk edition] due to its id 3459299196 being present in the ignore file
+2026-06-09 21:17:14,161 sync [INFO] Syncing item 26 of 386 (6.7%)
+2026-06-09 21:17:14,191 ignores [WARNING] Skipping item Various Artists / 15 | 2 due to its id 1104640292 being present in the ignore file
+2026-06-09 21:17:14,191 sync [INFO] Syncing item 27 of 386 (7.0%)
+2026-06-09 21:17:14,228 ignores [WARNING] Skipping item Various Artists / Serial One due to its id 1187738689 being present in the ignore file
+2026-06-09 21:17:14,228 sync [INFO] Syncing item 28 of 386 (7.3%)
+2026-06-09 21:17:14,272 ignores [WARNING] Skipping item Yagya / Sleepygirls due to its id 1366827324 being present in the ignore file
+2026-06-09 21:17:14,272 sync [INFO] Syncing item 29 of 386 (7.5%)
+2026-06-09 21:17:14,310 ignores [WARNING] Skipping item Yann Novak / Surroundings due to its id 3971263807 being present in the ignore file
+2026-06-09 21:17:14,310 sync [INFO] Syncing item 30 of 386 (7.8%)
+2026-06-09 21:17:14,363 ignores [WARNING] Skipping item Robert Takahashi Crouch + Yann Novak / Giving Water to the Dead due to its id 3048993396 being present in the ignore file
+2026-06-09 21:17:14,363 sync [INFO] Syncing item 31 of 386 (8.0%)
+2026-06-09 21:17:14,433 ignores [WARNING] Skipping item zakè / HH due to its id 375267609 being present in the ignore file
+2026-06-09 21:17:14,433 sync [INFO] Syncing item 32 of 386 (8.3%)
+2026-06-09 21:17:14,466 ignores [WARNING] Skipping item Yann Novak / Idleness, Endlessness due to its id 3450804516 being present in the ignore file
+2026-06-09 21:17:14,466 sync [INFO] Syncing item 33 of 386 (8.5%)
+2026-06-09 21:17:14,496 ignores [WARNING] Skipping item Cameron MacNair / To Make The Body Glow due to its id 92678585 being present in the ignore file
+2026-06-09 21:17:14,496 sync [INFO] Syncing item 34 of 386 (8.8%)
+2026-06-09 21:17:14,663 ignores [WARNING] Skipping item variant / thru the cosmos [ison + spica] 44:41 due to its id 521405920 being present in the ignore file
+2026-06-09 21:17:14,663 sync [INFO] Syncing item 35 of 386 (9.1%)
+INFO:     127.0.0.1:64290 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+2026-06-09 21:17:14,846 ignores [WARNING] Skipping item variant / thru the cosmos [eta/aquariids] due to its id 1986918774 being present in the ignore file
+2026-06-09 21:17:14,846 sync [INFO] Syncing item 36 of 386 (9.3%)
+2026-06-09 21:17:14,948 ignores [WARNING] Skipping item variant / thru the cosmos [pallas/perseids] due to its id 2647564368 being present in the ignore file
+2026-06-09 21:17:14,949 sync [INFO] Syncing item 37 of 386 (9.6%)
+2026-06-09 21:17:15,123 ignores [WARNING] Skipping item variant / vortexual [series collection] volume one due to its id 2750974037 being present in the ignore file
+2026-06-09 21:17:15,123 sync [INFO] Syncing item 38 of 386 (9.8%)
+2026-06-09 21:17:15,223 ignores [WARNING] Skipping item variant / lake of the clouds [live] due to its id 2836046294 being present in the ignore file
+2026-06-09 21:17:15,223 sync [INFO] Syncing item 39 of 386 (10.1%)
+2026-06-09 21:17:15,233 ignores [WARNING] Skipping item c v 3 1 3 / baring stars due to its id 3083929515 being present in the ignore file
+2026-06-09 21:17:15,233 sync [INFO] Syncing item 40 of 386 (10.4%)
+2026-06-09 21:17:15,260 ignores [WARNING] Skipping item radius / obsolete machines [variant reshapes] due to its id 3334910772 being present in the ignore file
+2026-06-09 21:17:15,260 sync [INFO] Syncing item 41 of 386 (10.6%)
+2026-06-09 21:17:15,270 ignores [WARNING] Skipping item c v 3 1 3 / beyond dreams [analog passages] due to its id 3725107372 being present in the ignore file
+2026-06-09 21:17:15,270 sync [INFO] Syncing item 42 of 386 (10.9%)
+INFO:     127.0.0.1:64288 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+2026-06-09 21:17:15,314 ignores [WARNING] Skipping item System 7 / Flower of Life due to its id 3058779203 being present in the ignore file
+2026-06-09 21:17:15,314 sync [INFO] Syncing item 43 of 386 (11.1%)
+2026-06-09 21:17:15,353 ignores [WARNING] Skipping item zakè, Ossa, ASC / Microliths and Momentary Drifts due to its id 3443755647 being present in the ignore file
+2026-06-09 21:17:15,353 sync [INFO] Syncing item 44 of 386 (11.4%)
+2026-06-09 21:17:15,378 ignores [WARNING] Skipping item Yann Novak / Meadowsweet (redux) due to its id 1421362789 being present in the ignore file
+2026-06-09 21:17:15,379 sync [INFO] Syncing item 45 of 386 (11.7%)
+2026-06-09 21:17:15,404 ignores [WARNING] Skipping item NAKAMURA Hiroyuki / Sen no Tsudoi due to its id 3591468018 being present in the ignore file
+2026-06-09 21:17:15,404 sync [INFO] Syncing item 46 of 386 (11.9%)
+2026-06-09 21:17:15,411 ignores [WARNING] Skipping item Arvin Dola / O Ghost due to its id 2153476676 being present in the ignore file
+2026-06-09 21:17:15,411 sync [INFO] Syncing item 47 of 386 (12.2%)
+2026-06-09 21:17:15,437 ignores [WARNING] Skipping item Yann Novak / The Voices of Theseus due to its id 2196186184 being present in the ignore file
+2026-06-09 21:17:15,438 sync [INFO] Syncing item 48 of 386 (12.4%)
+2026-06-09 21:17:15,466 ignores [WARNING] Skipping item Yann Novak / Continuity due to its id 2495341070 being present in the ignore file
+2026-06-09 21:17:15,466 sync [INFO] Syncing item 49 of 386 (12.7%)
+2026-06-09 21:17:15,491 ignores [WARNING] Skipping item Yann Novak + Richard Chartier / Undefined due to its id 1184950592 being present in the ignore file
+2026-06-09 21:17:15,491 sync [INFO] Syncing item 50 of 386 (13.0%)
+2026-06-09 21:17:15,517 ignores [WARNING] Skipping item Various Artists / 15 | 1 due to its id 1739561799 being present in the ignore file
+2026-06-09 21:17:15,517 sync [INFO] Syncing item 51 of 386 (13.2%)
+2026-06-09 21:17:15,540 ignores [WARNING] Skipping item Markus Guentner / Aeris due to its id 2213988827 being present in the ignore file
+2026-06-09 21:17:15,540 sync [INFO] Syncing item 52 of 386 (13.5%)
+2026-06-09 21:17:15,566 ignores [WARNING] Skipping item zakè | Spieth | Guentner / Arcadia due to its id 884771656 being present in the ignore file
+2026-06-09 21:17:15,566 sync [INFO] Syncing item 53 of 386 (13.7%)
+2026-06-09 21:17:15,593 ignores [WARNING] Skipping item Joachim Spieth | Andrew Thomas / Nocturna due to its id 3184635096 being present in the ignore file
+2026-06-09 21:17:15,593 sync [INFO] Syncing item 54 of 386 (14.0%)
+2026-06-09 21:17:15,645 ignores [WARNING] Skipping item Joachim Spieth / Terrain due to its id 2966071460 being present in the ignore file
+2026-06-09 21:17:15,645 sync [INFO] Syncing item 55 of 386 (14.2%)
+2026-06-09 21:17:15,687 ignores [WARNING] Skipping item deepchord presents echospace / silent world [original motion picture soundtrack] CD due to its id 4128780173 being present in the ignore file
+2026-06-09 21:17:15,687 sync [INFO] Syncing item 56 of 386 (14.5%)
+2026-06-09 21:17:15,712 ignores [WARNING] Skipping item 36 / Night Language due to its id 4244748098 being present in the ignore file
+2026-06-09 21:17:15,712 sync [INFO] Syncing item 57 of 386 (14.8%)
+2026-06-09 21:17:15,762 ignores [WARNING] Skipping item Joachim Spieth / Vestige due to its id 88521517 being present in the ignore file
+2026-06-09 21:17:15,762 sync [INFO] Syncing item 58 of 386 (15.0%)
+2026-06-09 21:17:15,804 ignores [WARNING] Skipping item Joachim Spieth / Tides due to its id 3901933956 being present in the ignore file
+2026-06-09 21:17:15,804 sync [INFO] Syncing item 59 of 386 (15.3%)
+2026-06-09 21:17:15,834 ignores [WARNING] Skipping item Imperial Valley / Imperial Valley, IV due to its id 2325592001 being present in the ignore file
+2026-06-09 21:17:15,834 sync [INFO] Syncing item 60 of 386 (15.5%)
+2026-06-09 21:17:15,890 ignores [WARNING] Skipping item The Inward Circles / Before We Lie Down in Darknesse due to its id 3615059109 being present in the ignore file
+2026-06-09 21:17:15,891 sync [INFO] Syncing item 61 of 386 (15.8%)
+2026-06-09 21:17:15,924 ignores [WARNING] Skipping item Richard Skelton / Shear Planes due to its id 2448782790 being present in the ignore file
+2026-06-09 21:17:15,924 sync [INFO] Syncing item 62 of 386 (16.1%)
+2026-06-09 21:17:15,973 ignores [WARNING] Skipping item model 500 / starlight [intrusion's unreleased tape session] due to its id 2360090316 being present in the ignore file
+2026-06-09 21:17:15,973 sync [INFO] Syncing item 63 of 386 (16.3%)
+2026-06-09 21:17:16,002 ignores [WARNING] Skipping item Richard Skelton / The Oracle Bone due to its id 4279830397 being present in the ignore file
+2026-06-09 21:17:16,002 sync [INFO] Syncing item 64 of 386 (16.6%)
+2026-06-09 21:17:16,022 ignores [WARNING] Skipping item Earth House Hold / Glory Be due to its id 2468707380 being present in the ignore file
+2026-06-09 21:17:16,022 sync [INFO] Syncing item 65 of 386 (16.8%)
+2026-06-09 21:17:16,089 ignores [WARNING] Skipping item Richard Skelton / Towards A Frontier due to its id 1780494276 being present in the ignore file
+2026-06-09 21:17:16,089 sync [INFO] Syncing item 66 of 386 (17.1%)
+2026-06-09 21:17:16,116 INFO harmonist.web.reconcile_runner: Reconcile: 1 orphan album(s) to check for a MusicBrainz Id
+2026-06-09 21:17:16,117 INFO harmonist.web.reconcile_runner: Reconcile done: 0 reconciled (0 bandcamp, 0 manual), 1 skipped (no MBID), 0 failed
+2026-06-09 21:17:16,118 INFO harmonist.web.scan_runner: Library scan started: /Users/alastair/Music/harmonist-test
+2026-06-09 21:17:16,127 ignores [WARNING] Skipping item Richard Skelton / Verse of Birds due to its id 2045203268 being present in the ignore file
+2026-06-09 21:17:16,127 sync [INFO] Syncing item 67 of 386 (17.4%)
+2026-06-09 21:17:16,136 ignores [WARNING] Skipping item *AR / Wolf Notes due to its id 1958972811 being present in the ignore file
+2026-06-09 21:17:16,136 sync [INFO] Syncing item 68 of 386 (17.6%)
+2026-06-09 21:17:16,141 ignores [WARNING] Skipping item Guentner   Spieth / Overlay Variations due to its id 91406636 being present in the ignore file
+2026-06-09 21:17:16,141 sync [INFO] Syncing item 69 of 386 (17.9%)
+2026-06-09 21:17:16,145 ignores [WARNING] Skipping item Guentner   Spieth / Overlay Reworks | Pt. 1 (by Hollie Kenniff & Rafael Anton Irisarri) due to its id 224418410 being present in the ignore file
+2026-06-09 21:17:16,145 sync [INFO] Syncing item 70 of 386 (18.1%)
+2026-06-09 21:17:16,148 ignores [WARNING] Skipping item Guentner   Spieth / Overlay Reworks due to its id 1127770196 being present in the ignore file
+2026-06-09 21:17:16,149 sync [INFO] Syncing item 71 of 386 (18.4%)
+2026-06-09 21:17:16,152 ignores [WARNING] Skipping item Guentner   Spieth / Conversion due to its id 1192646687 being present in the ignore file
+2026-06-09 21:17:16,152 sync [INFO] Syncing item 72 of 386 (18.7%)
+2026-06-09 21:17:16,155 ignores [WARNING] Skipping item Guentner   Spieth / Overlay Reworks | Pt. 2 (by Pole & Abul Mogard) due to its id 1204849713 being present in the ignore file
+2026-06-09 21:17:16,155 sync [INFO] Syncing item 73 of 386 (18.9%)
+2026-06-09 21:17:16,158 ignores [WARNING] Skipping item Guentner   Spieth / Overlay due to its id 1420951928 being present in the ignore file
+2026-06-09 21:17:16,158 sync [INFO] Syncing item 74 of 386 (19.2%)
+2026-06-09 21:17:16,161 ignores [WARNING] Skipping item Guentner   Spieth / Prologue due to its id 2505542769 being present in the ignore file
+2026-06-09 21:17:16,161 sync [INFO] Syncing item 75 of 386 (19.4%)
+2026-06-09 21:17:16,165 ignores [WARNING] Skipping item Guentner   Spieth / Valenz (GALÁN / VOGT Rework) due to its id 3260691437 being present in the ignore file
+2026-06-09 21:17:16,165 sync [INFO] Syncing item 76 of 386 (19.7%)
+2026-06-09 21:17:16,196 ignores [WARNING] Skipping item A Broken Consort / Box of Birch due to its id 46894908 being present in the ignore file
+2026-06-09 21:17:16,196 sync [INFO] Syncing item 77 of 386 (19.9%)
+INFO:     127.0.0.1:64290 - "GET /status HTTP/1.1" 200 OK
+2026-06-09 21:17:16,230 ignores [WARNING] Skipping item Rafael Anton Irisarri / Points of Inaccessibility due to its id 2180528479 being present in the ignore file
+2026-06-09 21:17:16,230 sync [INFO] Syncing item 78 of 386 (20.2%)
+INFO:     127.0.0.1:64288 - "GET /library?offset=0&limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+2026-06-09 21:17:16,253 ignores [WARNING] Skipping item bvdub | Brock Van Wey / At the Alter due to its id 3432476015 being present in the ignore file
+2026-06-09 21:17:16,253 sync [INFO] Syncing item 79 of 386 (20.5%)
+2026-06-09 21:17:16,272 ignores [WARNING] Skipping item c v 3 1 3 / live at primary [chicago, usa] due to its id 1682020668 being present in the ignore file
+2026-06-09 21:17:16,272 sync [INFO] Syncing item 80 of 386 (20.7%)
+2026-06-09 21:17:16,322 ignores [WARNING] Skipping item zakè / Tape Piano Improvisations in Four Parts due to its id 3315870278 being present in the ignore file
+2026-06-09 21:17:16,322 sync [INFO] Syncing item 81 of 386 (21.0%)
+2026-06-09 21:17:16,353 INFO harmonist.web.scan_runner: Library scan complete: 346 albums across 346 dirs in 0.2s
+2026-06-09 21:17:16,360 ignores [WARNING] Skipping item Richard Skelton / The Complete Marking Time due to its id 3206175072 being present in the ignore file
+2026-06-09 21:17:16,360 sync [INFO] Syncing item 82 of 386 (21.2%)
+2026-06-09 21:17:16,362 ignores [WARNING] Skipping item Clouwbeck / A Moraine due to its id 882656786 being present in the ignore file
+2026-06-09 21:17:16,362 sync [INFO] Syncing item 83 of 386 (21.5%)
+2026-06-09 21:17:16,368 ignores [WARNING] Skipping item Deadbeat / Kansai Botanicals due to its id 1032086361 being present in the ignore file
+2026-06-09 21:17:16,368 sync [INFO] Syncing item 84 of 386 (21.8%)
+2026-06-09 21:17:16,387 ignores [WARNING] Skipping item variant / cosmic currents due to its id 471389902 being present in the ignore file
+2026-06-09 21:17:16,387 sync [INFO] Syncing item 85 of 386 (22.0%)
+2026-06-09 21:17:16,393 ignores [WARNING] Skipping item cv313 / the other side [remastered] due to its id 967810607 being present in the ignore file
+2026-06-09 21:17:16,393 sync [INFO] Syncing item 86 of 386 (22.3%)
+2026-06-09 21:17:16,412 ignores [WARNING] Skipping item variant / vortexual [element four] live @ antique modulation "sound in motion" exhibit due to its id 1174849849 being present in the ignore file
+2026-06-09 21:17:16,413 sync [INFO] Syncing item 87 of 386 (22.5%)
+2026-06-09 21:17:16,433 ignores [WARNING] Skipping item variant / vortexual - element zero [coppice halifax nightly excavation] due to its id 1695480319 being present in the ignore file
+2026-06-09 21:17:16,433 sync [INFO] Syncing item 88 of 386 (22.8%)
+2026-06-09 21:17:16,453 ignores [WARNING] Skipping item variant / deep sky network [electric density artifacts] due to its id 3006843395 being present in the ignore file
+2026-06-09 21:17:16,454 sync [INFO] Syncing item 89 of 386 (23.1%)
+2026-06-09 21:17:16,473 ignores [WARNING] Skipping item intrusion / amongst the stars w/variant etherscape due to its id 4108973874 being present in the ignore file
+2026-06-09 21:17:16,473 sync [INFO] Syncing item 90 of 386 (23.3%)
+2026-06-09 21:17:16,492 ignores [WARNING] Skipping item variant / vortexual [element six] coppice halifax evaporant due to its id 4210977652 being present in the ignore file
+2026-06-09 21:17:16,492 sync [INFO] Syncing item 91 of 386 (23.6%)
+2026-06-09 21:17:16,511 ignores [WARNING] Skipping item ian hawgood / well, here we are due to its id 3212177784 being present in the ignore file
+2026-06-09 21:17:16,511 sync [INFO] Syncing item 92 of 386 (23.8%)
+2026-06-09 21:17:16,523 ignores [WARNING] Skipping item 36 / A Warm Static Sphere due to its id 3995080393 being present in the ignore file
+2026-06-09 21:17:16,523 sync [INFO] Syncing item 93 of 386 (24.1%)
+2026-06-09 21:17:16,542 ignores [WARNING] Skipping item Rosales / Half-Light due to its id 1973584253 being present in the ignore file
+2026-06-09 21:17:16,542 sync [INFO] Syncing item 94 of 386 (24.4%)
+2026-06-09 21:17:16,561 ignores [WARNING] Skipping item Rafael Anton Irisarri / A Fragile Geography (10th Anniversary Remastered) due to its id 163876265 being present in the ignore file
+2026-06-09 21:17:16,561 sync [INFO] Syncing item 95 of 386 (24.6%)
+2026-06-09 21:17:16,565 ignores [WARNING] Skipping item Abul Mogard & Rafael Anton Irisarri / Impossibly distant, impossibly close due to its id 2141230429 being present in the ignore file
+2026-06-09 21:17:16,565 sync [INFO] Syncing item 96 of 386 (24.9%)
+2026-06-09 21:17:16,584 ignores [WARNING] Skipping item Rosales / Woven Songs due to its id 204990400 being present in the ignore file
+2026-06-09 21:17:16,584 sync [INFO] Syncing item 97 of 386 (25.1%)
+2026-06-09 21:17:16,603 ignores [WARNING] Skipping item Sinemis / Dua due to its id 3858439964 being present in the ignore file
+2026-06-09 21:17:16,603 sync [INFO] Syncing item 98 of 386 (25.4%)
+2026-06-09 21:17:16,621 ignores [WARNING] Skipping item Rosales / To Live due to its id 1183047719 being present in the ignore file
+2026-06-09 21:17:16,621 sync [INFO] Syncing item 99 of 386 (25.6%)
+2026-06-09 21:17:16,630 ignores [WARNING] Skipping item Black Swan / From the End of Time due to its id 1909222385 being present in the ignore file
+2026-06-09 21:17:16,630 sync [INFO] Syncing item 100 of 386 (25.9%)
+2026-06-09 21:17:16,650 ignores [WARNING] Skipping item Markus Guentner / Black Dahlia due to its id 798262005 being present in the ignore file
+2026-06-09 21:17:16,650 sync [INFO] Syncing item 101 of 386 (26.2%)
+2026-06-09 21:17:16,671 ignores [WARNING] Skipping item Ruby My Dear / Lst due to its id 3977251201 being present in the ignore file
+2026-06-09 21:17:16,671 sync [INFO] Syncing item 102 of 386 (26.4%)
+2026-06-09 21:17:16,690 ignores [WARNING] Skipping item keinseier / Reduktion due to its id 70315713 being present in the ignore file
+2026-06-09 21:17:16,690 sync [INFO] Syncing item 103 of 386 (26.7%)
+2026-06-09 21:17:16,710 ignores [WARNING] Skipping item The Flashbulb / Papillon due to its id 463419962 being present in the ignore file
+2026-06-09 21:17:16,710 sync [INFO] Syncing item 104 of 386 (26.9%)
+2026-06-09 21:17:16,732 ignores [WARNING] Skipping item Variant / The Setting Sun due to its id 3738416771 being present in the ignore file
+2026-06-09 21:17:16,732 sync [INFO] Syncing item 105 of 386 (27.2%)
+2026-06-09 21:17:16,752 ignores [WARNING] Skipping item WNDFRM / WVLT due to its id 2598010379 being present in the ignore file
+2026-06-09 21:17:16,752 sync [INFO] Syncing item 106 of 386 (27.5%)
+2026-06-09 21:17:16,773 ignores [WARNING] Skipping item Rhins / The Burnout due to its id 111889048 being present in the ignore file
+2026-06-09 21:17:16,773 sync [INFO] Syncing item 107 of 386 (27.7%)
+2026-06-09 21:17:16,778 ignores [WARNING] Skipping item Abul Mogard & Rafael Anton Irisarri / Live at Le Guess Who? due to its id 861279370 being present in the ignore file
+2026-06-09 21:17:16,778 sync [INFO] Syncing item 108 of 386 (28.0%)
+2026-06-09 21:17:16,798 ignores [WARNING] Skipping item Tom Leclerc / a brief story of slowness due to its id 3867378599 being present in the ignore file
+2026-06-09 21:17:16,798 sync [INFO] Syncing item 109 of 386 (28.2%)
+2026-06-09 21:17:16,818 ignores [WARNING] Skipping item Øystein Skar / Hem due to its id 3495443710 being present in the ignore file
+2026-06-09 21:17:16,818 sync [INFO] Syncing item 110 of 386 (28.5%)
+2026-06-09 21:17:16,836 ignores [WARNING] Skipping item Deaf Center / Reverie due to its id 2429362044 being present in the ignore file
+2026-06-09 21:17:16,836 sync [INFO] Syncing item 111 of 386 (28.8%)
+2026-06-09 21:17:16,855 ignores [WARNING] Skipping item Sinemis / Farewell due to its id 3644793416 being present in the ignore file
+2026-06-09 21:17:16,855 sync [INFO] Syncing item 112 of 386 (29.0%)
+2026-06-09 21:17:16,863 ignores [WARNING] Skipping item c v 3 1 3 / land of the low lying clouds [edition two] due to its id 761120258 being present in the ignore file
+2026-06-09 21:17:16,863 sync [INFO] Syncing item 113 of 386 (29.3%)
+2026-06-09 21:17:16,869 ignores [WARNING] Skipping item cv313 / analogue oceans [subduction/obduction] limited edition due to its id 1751773585 being present in the ignore file
+2026-06-09 21:17:16,869 sync [INFO] Syncing item 114 of 386 (29.5%)
+2026-06-09 21:17:16,876 ignores [WARNING] Skipping item cv313 / suspended in a moment [someplace else] ​w/variant refocus due to its id 2797916489 being present in the ignore file
+2026-06-09 21:17:16,876 sync [INFO] Syncing item 115 of 386 (29.8%)
+2026-06-09 21:17:16,884 ignores [WARNING] Skipping item cv313 / plays sequential space due to its id 2845339880 being present in the ignore file
+2026-06-09 21:17:16,884 sync [INFO] Syncing item 116 of 386 (30.1%)
+INFO:     127.0.0.1:64290 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+2026-06-09 21:17:16,892 ignores [WARNING] Skipping item cv313 / [satosphere sessions] due to its id 2905623037 being present in the ignore file
+2026-06-09 21:17:16,893 sync [INFO] Syncing item 117 of 386 (30.3%)
+2026-06-09 21:17:16,913 ignores [WARNING] Skipping item Hammock / Nevertheless due to its id 2620896449 being present in the ignore file
+2026-06-09 21:17:16,913 sync [INFO] Syncing item 118 of 386 (30.6%)
+2026-06-09 21:17:16,925 ignores [WARNING] Skipping item ARROWOUNDS / The Loneliness of the Hollow Earth Explorer Vol. 2 due to its id 3663126972 being present in the ignore file
+2026-06-09 21:17:16,925 sync [INFO] Syncing item 119 of 386 (30.8%)
+2026-06-09 21:17:16,937 ignores [WARNING] Skipping item ARROWOUNDS / The Loneliness of the Hollow Earth Explorer Vol. 1 due to its id 3843049542 being present in the ignore file
+2026-06-09 21:17:16,937 sync [INFO] Syncing item 120 of 386 (31.1%)
+2026-06-09 21:17:16,940 ignores [WARNING] Skipping item Billow Observatory / The Glass Curtain due to its id 398744918 being present in the ignore file
+2026-06-09 21:17:16,940 sync [INFO] Syncing item 121 of 386 (31.3%)
+2026-06-09 21:17:16,943 ignores [WARNING] Skipping item From the Mouth of the Sun / In Wind or Dust due to its id 3781796543 being present in the ignore file
+2026-06-09 21:17:16,943 sync [INFO] Syncing item 122 of 386 (31.6%)
+2026-06-09 21:17:16,961 ignores [WARNING] Skipping item Slow Blink / Letters Home due to its id 263449643 being present in the ignore file
+2026-06-09 21:17:16,961 sync [INFO] Syncing item 123 of 386 (31.9%)
+2026-06-09 21:17:16,979 ignores [WARNING] Skipping item Machinefabriek / Stof en Ruis due to its id 2487023674 being present in the ignore file
+2026-06-09 21:17:16,979 sync [INFO] Syncing item 124 of 386 (32.1%)
+2026-06-09 21:17:16,987 ignores [WARNING] Skipping item Benoît Pioulard / Stanza IV due to its id 4227298231 being present in the ignore file
+2026-06-09 21:17:16,987 sync [INFO] Syncing item 125 of 386 (32.4%)
+2026-06-09 21:17:17,005 ignores [WARNING] Skipping item variant / plays sequential space due to its id 570621060 being present in the ignore file
+2026-06-09 21:17:17,005 sync [INFO] Syncing item 126 of 386 (32.6%)
+2026-06-09 21:17:17,022 ignores [WARNING] Skipping item variant / sequential sleep [series collection] due to its id 1218266736 being present in the ignore file
+2026-06-09 21:17:17,023 sync [INFO] Syncing item 127 of 386 (32.9%)
+2026-06-09 21:17:17,040 ignores [WARNING] Skipping item brock van wey / home due to its id 2043061668 being present in the ignore file
+2026-06-09 21:17:17,040 sync [INFO] Syncing item 128 of 386 (33.2%)
+2026-06-09 21:17:17,060 ignores [WARNING] Skipping item Illuvia / Mauna Kea due to its id 4209307916 being present in the ignore file
+2026-06-09 21:17:17,060 sync [INFO] Syncing item 129 of 386 (33.4%)
+2026-06-09 21:17:17,078 ignores [WARNING] Skipping item ASC / Tales of Introspection due to its id 141795324 being present in the ignore file
+2026-06-09 21:17:17,078 sync [INFO] Syncing item 130 of 386 (33.7%)
+2026-06-09 21:17:17,099 ignores [WARNING] Skipping item Yagya / Rhythm of Snow (remastered) due to its id 895597950 being present in the ignore file
+2026-06-09 21:17:17,099 sync [INFO] Syncing item 131 of 386 (33.9%)
+2026-06-09 21:17:17,120 ignores [WARNING] Skipping item 36 & zakè / Stasis Sounds For Long​-​Distance Space Travel III due to its id 4166027309 being present in the ignore file
+2026-06-09 21:17:17,120 sync [INFO] Syncing item 132 of 386 (34.2%)
+2026-06-09 21:17:17,138 ignores [WARNING] Skipping item Yann Novak / The Voice of Theseus due to its id 3427735975 being present in the ignore file
+2026-06-09 21:17:17,138 sync [INFO] Syncing item 133 of 386 (34.5%)
+2026-06-09 21:17:17,156 ignores [WARNING] Skipping item Yann Novak / Lifeblood of Light and Rapture due to its id 3837310317 being present in the ignore file
+2026-06-09 21:17:17,157 sync [INFO] Syncing item 134 of 386 (34.7%)
+2026-06-09 21:17:17,176 ignores [WARNING] Skipping item Mike Lazarev / Tarnished Tapes and Saturated Signals due to its id 4110606681 being present in the ignore file
+2026-06-09 21:17:17,176 sync [INFO] Syncing item 135 of 386 (35.0%)
+2026-06-09 21:17:17,193 ignores [WARNING] Skipping item Slow Dancing Society & zakè / Stars & Silence due to its id 818641059 being present in the ignore file
+2026-06-09 21:17:17,193 sync [INFO] Syncing item 136 of 386 (35.2%)
+2026-06-09 21:17:17,212 ignores [WARNING] Skipping item Richard Skelton / The Second Chamber due to its id 2677764601 being present in the ignore file
+2026-06-09 21:17:17,212 sync [INFO] Syncing item 137 of 386 (35.5%)
+2026-06-09 21:17:17,219 ignores [WARNING] Skipping item c v 3 1 3 / land of the low lying clouds [live in hana] due to its id 2075532514 being present in the ignore file
+2026-06-09 21:17:17,219 sync [INFO] Syncing item 138 of 386 (35.8%)
+2026-06-09 21:17:17,238 ignores [WARNING] Skipping item intrusion / reflection I [unreleased + redesigned] due to its id 261396839 being present in the ignore file
+2026-06-09 21:17:17,238 sync [INFO] Syncing item 139 of 386 (36.0%)
+2026-06-09 21:17:17,260 ignores [WARNING] Skipping item intrusion / staticwaves [rethought + remastered] due to its id 1233706678 being present in the ignore file
+2026-06-09 21:17:17,260 sync [INFO] Syncing item 140 of 386 (36.3%)
+2026-06-09 21:17:17,279 ignores [WARNING] Skipping item intrusion / love in lofi [unreleased tape sessions] due to its id 1349112600 being present in the ignore file
+2026-06-09 21:17:17,279 sync [INFO] Syncing item 141 of 386 (36.5%)
+2026-06-09 21:17:17,286 ignores [WARNING] Skipping item cv313 / dimensional space [extended CD edition] alchemy remasters due to its id 1353893397 being present in the ignore file
+2026-06-09 21:17:17,286 sync [INFO] Syncing item 142 of 386 (36.8%)
+2026-06-09 21:17:17,304 ignores [WARNING] Skipping item model 500 / starlight [original vinyl masters] due to its id 3923680966 being present in the ignore file
+2026-06-09 21:17:17,304 sync [INFO] Syncing item 143 of 386 (37.0%)
+2026-06-09 21:17:17,321 ignores [WARNING] Skipping item zakè & Benoît Pioulard / eve due to its id 3284089435 being present in the ignore file
+2026-06-09 21:17:17,321 sync [INFO] Syncing item 144 of 386 (37.3%)
+2026-06-09 21:17:17,339 ignores [WARNING] Skipping item variant / live@heartlandgathering [09.27.25] due to its id 902262129 being present in the ignore file
+2026-06-09 21:17:17,339 sync [INFO] Syncing item 145 of 386 (37.6%)
+2026-06-09 21:17:17,356 ignores [WARNING] Skipping item zakè & rhubiqs / Hild due to its id 2825045907 being present in the ignore file
+2026-06-09 21:17:17,356 sync [INFO] Syncing item 146 of 386 (37.8%)
+2026-06-09 21:17:17,375 ignores [WARNING] Skipping item Juri Suzue / Dial Back [GRSCL48] due to its id 1874020345 being present in the ignore file
+2026-06-09 21:17:17,375 sync [INFO] Syncing item 147 of 386 (38.1%)
+2026-06-09 21:17:17,393 ignores [WARNING] Skipping item variant / sequential sleep [ver 0​.​0] limited edition due to its id 1133283102 being present in the ignore file
+2026-06-09 21:17:17,393 sync [INFO] Syncing item 148 of 386 (38.3%)
+2026-06-09 21:17:17,412 ignores [WARNING] Skipping item werner/hitchell / all the engines due to its id 1326226660 being present in the ignore file
+2026-06-09 21:17:17,412 sync [INFO] Syncing item 149 of 386 (38.6%)
+2026-06-09 21:17:17,419 ignores [WARNING] Skipping item cv313 / atonal expressions [in an analog dialect] due to its id 2259227652 being present in the ignore file
+2026-06-09 21:17:17,419 sync [INFO] Syncing item 150 of 386 (38.9%)
+2026-06-09 21:17:17,438 ignores [WARNING] Skipping item intrusion / a gentle embrace [variant reshapes] due to its id 3124356360 being present in the ignore file
+2026-06-09 21:17:17,439 sync [INFO] Syncing item 151 of 386 (39.1%)
+2026-06-09 21:17:17,442 ignores [WARNING] Skipping item empathyboxx / live@spybar | chicago due to its id 1128716985 being present in the ignore file
+2026-06-09 21:17:17,442 sync [INFO] Syncing item 152 of 386 (39.4%)
+2026-06-09 21:17:17,461 ignores [WARNING] Skipping item zakè / Low Harmonics due to its id 2164875589 being present in the ignore file
+2026-06-09 21:17:17,461 sync [INFO] Syncing item 153 of 386 (39.6%)
+2026-06-09 21:17:17,480 ignores [WARNING] Skipping item zakè / Remembrance due to its id 2800712545 being present in the ignore file
+2026-06-09 21:17:17,480 sync [INFO] Syncing item 154 of 386 (39.9%)
+2026-06-09 21:17:17,498 ignores [WARNING] Skipping item zakè [ft. various artists] / Silentium due to its id 1649158695 being present in the ignore file
+2026-06-09 21:17:17,498 sync [INFO] Syncing item 155 of 386 (40.2%)
+2026-06-09 21:17:17,505 ignores [WARNING] Skipping item cv313 / altering illusions [1 of 3] due to its id 2044989506 being present in the ignore file
+2026-06-09 21:17:17,505 sync [INFO] Syncing item 156 of 386 (40.4%)
+2026-06-09 21:17:17,512 ignores [WARNING] Skipping item ub313 / trak6 [echospace dub] due to its id 2529205542 being present in the ignore file
+2026-06-09 21:17:17,512 sync [INFO] Syncing item 157 of 386 (40.7%)
+2026-06-09 21:17:17,519 ignores [WARNING] Skipping item cv313 / deepspace [ep] due to its id 2729805751 being present in the ignore file
+2026-06-09 21:17:17,519 sync [INFO] Syncing item 158 of 386 (40.9%)
+2026-06-09 21:17:17,525 ignores [WARNING] Skipping item cv313 / galaxy313 due to its id 3099555548 being present in the ignore file
+2026-06-09 21:17:17,525 sync [INFO] Syncing item 159 of 386 (41.2%)
+2026-06-09 21:17:17,545 ignores [WARNING] Skipping item echospace / sonorous [ep] due to its id 2457514109 being present in the ignore file
+2026-06-09 21:17:17,545 sync [INFO] Syncing item 160 of 386 (41.5%)
+2026-06-09 21:17:17,563 ignores [WARNING] Skipping item soultek / clouds overhead ep due to its id 1652114734 being present in the ignore file
+2026-06-09 21:17:17,563 sync [INFO] Syncing item 161 of 386 (41.7%)
+2026-06-09 21:17:17,582 ignores [WARNING] Skipping item echospace / o.b.m.x. [ep] due to its id 598655171 being present in the ignore file
+2026-06-09 21:17:17,582 sync [INFO] Syncing item 162 of 386 (42.0%)
+2026-06-09 21:17:17,601 ignores [WARNING] Skipping item zakè [ft. Slow Blink] / Caelum due to its id 190020021 being present in the ignore file
+2026-06-09 21:17:17,601 sync [INFO] Syncing item 163 of 386 (42.2%)
+2026-06-09 21:17:17,618 ignores [WARNING] Skipping item zakè / Cantus for Winter in Six Parts due to its id 2361133106 being present in the ignore file
+2026-06-09 21:17:17,618 sync [INFO] Syncing item 164 of 386 (42.5%)
+2026-06-09 21:17:17,627 ignores [WARNING] Skipping item Dawn Chorus and the Infallible Sea / Liberamente due to its id 2135290130 being present in the ignore file
+2026-06-09 21:17:17,627 sync [INFO] Syncing item 165 of 386 (42.7%)
+2026-06-09 21:17:17,645 ignores [WARNING] Skipping item zakè & Wayne Robert Thomas / To Those Who Dwelt in a Land of Deep Darkness due to its id 3030264121 being present in the ignore file
+2026-06-09 21:17:17,645 sync [INFO] Syncing item 166 of 386 (43.0%)
+2026-06-09 21:17:17,662 ignores [WARNING] Skipping item Pillars / CAVUM due to its id 2847528476 being present in the ignore file
+2026-06-09 21:17:17,662 sync [INFO] Syncing item 167 of 386 (43.3%)
+2026-06-09 21:17:17,672 ignores [WARNING] Skipping item Dawn Chorus and the Infallible Sea / Reveries due to its id 2434534313 being present in the ignore file
+2026-06-09 21:17:17,672 sync [INFO] Syncing item 168 of 386 (43.5%)
+2026-06-09 21:17:17,689 ignores [WARNING] Skipping item Sonic Buckwit / Subcortical [GRSCLM150] due to its id 86364131 being present in the ignore file
+2026-06-09 21:17:17,689 sync [INFO] Syncing item 169 of 386 (43.8%)
+2026-06-09 21:17:17,708 ignores [WARNING] Skipping item intrusion / intrusion/reflection [original vinyl masters] due to its id 690309260 being present in the ignore file
+2026-06-09 21:17:17,708 sync [INFO] Syncing item 170 of 386 (44.0%)
+2026-06-09 21:17:17,728 ignores [WARNING] Skipping item From Overseas & zakè / Demain, dès l’aube due to its id 3264157945 being present in the ignore file
+2026-06-09 21:17:17,728 sync [INFO] Syncing item 171 of 386 (44.3%)
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64290 - "GET /library?offset=0&limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /activity HTTP/1.1" 200 OK
+2026-06-09 21:17:17,760 ignores [WARNING] Skipping item zakè / Deep into the unknown, we shall endlessly roam due to its id 3184512859 being present in the ignore file
+2026-06-09 21:17:17,760 sync [INFO] Syncing item 172 of 386 (44.6%)
+2026-06-09 21:17:17,781 ignores [WARNING] Skipping item The Black Dog / Loud Ambient due to its id 1955681258 being present in the ignore file
+2026-06-09 21:17:17,781 sync [INFO] Syncing item 173 of 386 (44.8%)
+2026-06-09 21:17:17,802 ignores [WARNING] Skipping item zakè / Veta due to its id 4262141718 being present in the ignore file
+2026-06-09 21:17:17,802 sync [INFO] Syncing item 174 of 386 (45.1%)
+2026-06-09 21:17:17,823 ignores [WARNING] Skipping item Pillars / OF SALT AND SEA due to its id 3690672636 being present in the ignore file
+2026-06-09 21:17:17,823 sync [INFO] Syncing item 175 of 386 (45.3%)
+2026-06-09 21:17:17,843 ignores [WARNING] Skipping item c v 3 1 3 / dimensional space [lp edition] remastered by pole due to its id 1000356327 being present in the ignore file
+2026-06-09 21:17:17,843 sync [INFO] Syncing item 176 of 386 (45.6%)
+2026-06-09 21:17:17,863 ignores [WARNING] Skipping item Various / Mood Compiled 4 [GRSCLMCD004] due to its id 77009825 being present in the ignore file
+2026-06-09 21:17:17,863 sync [INFO] Syncing item 177 of 386 (45.9%)
+2026-06-09 21:17:17,882 ignores [WARNING] Skipping item Various / Mood Compiled 3 [GRSCLMCD003] due to its id 2085485077 being present in the ignore file
+2026-06-09 21:17:17,882 sync [INFO] Syncing item 178 of 386 (46.1%)
+2026-06-09 21:17:17,902 ignores [WARNING] Skipping item Various / Mood Compiled 2 [GRSCLMCD002] due to its id 3731855565 being present in the ignore file
+2026-06-09 21:17:17,902 sync [INFO] Syncing item 179 of 386 (46.4%)
+2026-06-09 21:17:17,919 ignores [WARNING] Skipping item Various / Mood Compiled [GRSCLMCD001] due to its id 2165783870 being present in the ignore file
+2026-06-09 21:17:17,919 sync [INFO] Syncing item 180 of 386 (46.6%)
+2026-06-09 21:17:17,931 ignores [WARNING] Skipping item deepchord presents echospace / live in detroit [ghost in the sound] due to its id 184463228 being present in the ignore file
+2026-06-09 21:17:17,931 sync [INFO] Syncing item 181 of 386 (46.9%)
+2026-06-09 21:17:17,942 ignores [WARNING] Skipping item deepchord presents echospace / [ spatialdimension ] remastered due to its id 596612966 being present in the ignore file
+2026-06-09 21:17:17,942 sync [INFO] Syncing item 182 of 386 (47.2%)
+2026-06-09 21:17:17,960 ignores [WARNING] Skipping item echospace plays michael mantra / sea shell city due to its id 2929628384 being present in the ignore file
+2026-06-09 21:17:17,960 sync [INFO] Syncing item 183 of 386 (47.4%)
+2026-06-09 21:17:17,979 ignores [WARNING] Skipping item radius / obsolete machines [stage two] limited cd edition due to its id 3644559340 being present in the ignore file
+2026-06-09 21:17:17,979 sync [INFO] Syncing item 184 of 386 (47.7%)
+2026-06-09 21:17:17,997 ignores [WARNING] Skipping item variant / sequential sleep due to its id 4032507453 being present in the ignore file
+2026-06-09 21:17:17,997 sync [INFO] Syncing item 185 of 386 (47.9%)
+2026-06-09 21:17:18,005 ignores [WARNING] Skipping item cv313 / standing still [ep] due to its id 649459745 being present in the ignore file
+2026-06-09 21:17:18,005 sync [INFO] Syncing item 186 of 386 (48.2%)
+2026-06-09 21:17:18,024 ignores [WARNING] Skipping item soultek / dreaming under a starlit sky [1993-2003] due to its id 1719752074 being present in the ignore file
+2026-06-09 21:17:18,024 sync [INFO] Syncing item 187 of 386 (48.4%)
+2026-06-09 21:17:18,031 ignores [WARNING] Skipping item cv313 / subtraktive [digital edition] due to its id 2781186984 being present in the ignore file
+2026-06-09 21:17:18,031 sync [INFO] Syncing item 188 of 386 (48.7%)
+2026-06-09 21:17:18,050 ignores [WARNING] Skipping item Oliver Lieb / Subraumstimulation - 2025 Remaster due to its id 355048437 being present in the ignore file
+2026-06-09 21:17:18,050 sync [INFO] Syncing item 189 of 386 (49.0%)
+2026-06-09 21:17:18,069 ignores [WARNING] Skipping item Voices From The Lake / II due to its id 2669702977 being present in the ignore file
+2026-06-09 21:17:18,069 sync [INFO] Syncing item 190 of 386 (49.2%)
+2026-06-09 21:17:18,079 ignores [WARNING] Skipping item Dawn Chorus and the Infallible Sea / Alpha due to its id 3167658209 being present in the ignore file
+2026-06-09 21:17:18,079 sync [INFO] Syncing item 191 of 386 (49.5%)
+2026-06-09 21:17:18,098 ignores [WARNING] Skipping item zakè / Collected Orchestral Works, Vol. I due to its id 1039515690 being present in the ignore file
+2026-06-09 21:17:18,098 sync [INFO] Syncing item 192 of 386 (49.7%)
+2026-06-09 21:17:18,119 ignores [WARNING] Skipping item zakè / zakè due to its id 3253902886 being present in the ignore file
+2026-06-09 21:17:18,119 sync [INFO] Syncing item 193 of 386 (50.0%)
+2026-06-09 21:17:18,139 ignores [WARNING] Skipping item 36 / Exit All The Lights due to its id 2309459999 being present in the ignore file
+2026-06-09 21:17:18,139 sync [INFO] Syncing item 194 of 386 (50.3%)
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+2026-06-09 21:17:18,165 ignores [WARNING] Skipping item 36 / Trance Anthems For A Sunken Generation due to its id 2861462050 being present in the ignore file
+2026-06-09 21:17:18,165 sync [INFO] Syncing item 195 of 386 (50.5%)
+2026-06-09 21:17:18,186 ignores [WARNING] Skipping item 36 / Colours In The Dark due to its id 383765593 being present in the ignore file
+2026-06-09 21:17:18,186 sync [INFO] Syncing item 196 of 386 (50.8%)
+2026-06-09 21:17:18,205 ignores [WARNING] Skipping item 36 / Black Soma due to its id 846601922 being present in the ignore file
+2026-06-09 21:17:18,205 sync [INFO] Syncing item 197 of 386 (51.0%)
+2026-06-09 21:17:18,224 ignores [WARNING] Skipping item 36 / Symmetry Systems due to its id 3532742679 being present in the ignore file
+2026-06-09 21:17:18,224 sync [INFO] Syncing item 198 of 386 (51.3%)
+2026-06-09 21:17:18,246 ignores [WARNING] Skipping item soultek / dreaming under a starlit sky [ep] due to its id 472381409 being present in the ignore file
+2026-06-09 21:17:18,247 sync [INFO] Syncing item 199 of 386 (51.6%)
+2026-06-09 21:17:18,256 ignores [WARNING] Skipping item cv313 / seconds to forever [original 12"] due to its id 489525922 being present in the ignore file
+2026-06-09 21:17:18,256 sync [INFO] Syncing item 200 of 386 (51.8%)
+2026-06-09 21:17:18,276 ignores [WARNING] Skipping item radius / obsolete machines [alchemy remastered edition] LP set due to its id 600754844 being present in the ignore file
+2026-06-09 21:17:18,276 sync [INFO] Syncing item 201 of 386 (52.1%)
+2026-06-09 21:17:18,295 ignores [WARNING] Skipping item soultek / analogue heart [nsc remastered LP edition] due to its id 1127011431 being present in the ignore file
+2026-06-09 21:17:18,295 sync [INFO] Syncing item 202 of 386 (52.3%)
+2026-06-09 21:17:18,314 ignores [WARNING] Skipping item soultek / what dreams are made of... due to its id 1427915977 being present in the ignore file
+2026-06-09 21:17:18,314 sync [INFO] Syncing item 203 of 386 (52.6%)
+2026-06-09 21:17:18,334 ignores [WARNING] Skipping item 36 / The Lower Lights due to its id 4286635485 being present in the ignore file
+2026-06-09 21:17:18,334 sync [INFO] Syncing item 204 of 386 (52.8%)
+2026-06-09 21:17:18,342 ignores [WARNING] Skipping item cv313 / infinit-1 [remastered] limited edition due to its id 188464609 being present in the ignore file
+2026-06-09 21:17:18,342 sync [INFO] Syncing item 205 of 386 (53.1%)
+2026-06-09 21:17:18,348 ignores [WARNING] Skipping item cv313 / dimensional space [ep] due to its id 543122963 being present in the ignore file
+2026-06-09 21:17:18,348 sync [INFO] Syncing item 206 of 386 (53.4%)
+2026-06-09 21:17:18,367 ignores [WARNING] Skipping item model 500 / starlight [intrusion + mike huckaby mixes] original 12" mixes due to its id 1097238870 being present in the ignore file
+2026-06-09 21:17:18,367 sync [INFO] Syncing item 207 of 386 (53.6%)
+2026-06-09 21:17:18,374 ignores [WARNING] Skipping item cv313 / fading lights [alchemy remasters] due to its id 1205190709 being present in the ignore file
+2026-06-09 21:17:18,374 sync [INFO] Syncing item 208 of 386 (53.9%)
+2026-06-09 21:17:18,382 ignores [WARNING] Skipping item cv313 / live at elixir [corktown, detroit, mi] due to its id 1455918453 being present in the ignore file
+2026-06-09 21:17:18,382 sync [INFO] Syncing item 209 of 386 (54.1%)
+2026-06-09 21:17:18,388 ignores [WARNING] Skipping item cv313 / analogue oceans [double cd edition] w/digital exclusive due to its id 1871057576 being present in the ignore file
+2026-06-09 21:17:18,388 sync [INFO] Syncing item 210 of 386 (54.4%)
+2026-06-09 21:17:18,395 ignores [WARNING] Skipping item cv313 / live due to its id 2095758162 being present in the ignore file
+2026-06-09 21:17:18,395 sync [INFO] Syncing item 211 of 386 (54.7%)
+2026-06-09 21:17:18,413 ignores [WARNING] Skipping item sons of the dragon / motor city matrix due to its id 2151184603 being present in the ignore file
+2026-06-09 21:17:18,413 sync [INFO] Syncing item 212 of 386 (54.9%)
+2026-06-09 21:17:18,420 ignores [WARNING] Skipping item cv313 / sailing stars [ep] due to its id 2446220355 being present in the ignore file
+2026-06-09 21:17:18,420 sync [INFO] Syncing item 213 of 386 (55.2%)
+2026-06-09 21:17:18,439 ignores [WARNING] Skipping item sons of the dragon / the journey due to its id 3103241795 being present in the ignore file
+2026-06-09 21:17:18,439 sync [INFO] Syncing item 214 of 386 (55.4%)
+2026-06-09 21:17:18,447 ignores [WARNING] Skipping item cv313 / beyond the clouds / beyond the sequence [live in japan] due to its id 3639919056 being present in the ignore file
+2026-06-09 21:17:18,447 sync [INFO] Syncing item 215 of 386 (55.7%)
+2026-06-09 21:17:18,467 ignores [WARNING] Skipping item radius / obsolete machines [w/cv313 reshapes] due to its id 3793962214 being present in the ignore file
+2026-06-09 21:17:18,467 sync [INFO] Syncing item 216 of 386 (56.0%)
+2026-06-09 21:17:18,486 ignores [WARNING] Skipping item 36 / Void Dance (Remastered) due to its id 134920472 being present in the ignore file
+2026-06-09 21:17:18,486 sync [INFO] Syncing item 217 of 386 (56.2%)
+2026-06-09 21:17:18,504 ignores [WARNING] Skipping item 36 / Sine Dust (Remastered) due to its id 3576426390 being present in the ignore file
+2026-06-09 21:17:18,504 sync [INFO] Syncing item 218 of 386 (56.5%)
+2026-06-09 21:17:18,523 ignores [WARNING] Skipping item variant / falling stars due to its id 378919538 being present in the ignore file
+2026-06-09 21:17:18,523 sync [INFO] Syncing item 219 of 386 (56.7%)
+2026-06-09 21:17:18,529 ignores [WARNING] Skipping item cv313 plays mike huckabty / our life with the wave ep due to its id 962690272 being present in the ignore file
+2026-06-09 21:17:18,529 sync [INFO] Syncing item 220 of 386 (57.0%)
+2026-06-09 21:17:18,548 ignores [WARNING] Skipping item various / the midst of something beautiful due to its id 1222665439 being present in the ignore file
+2026-06-09 21:17:18,548 sync [INFO] Syncing item 221 of 386 (57.3%)
+2026-06-09 21:17:18,566 ignores [WARNING] Skipping item phase90 / a b s o n i a due to its id 1311301591 being present in the ignore file
+2026-06-09 21:17:18,566 sync [INFO] Syncing item 222 of 386 (57.5%)
+2026-06-09 21:17:18,584 ignores [WARNING] Skipping item phase90 / infinitati [intrusion dubs] due to its id 1569562952 being present in the ignore file
+2026-06-09 21:17:18,585 sync [INFO] Syncing item 223 of 386 (57.8%)
+2026-06-09 21:17:18,603 ignores [WARNING] Skipping item soultek / reflective [1993-2000] due to its id 1665886951 being present in the ignore file
+2026-06-09 21:17:18,603 sync [INFO] Syncing item 224 of 386 (58.0%)
+2026-06-09 21:17:18,621 ignores [WARNING] Skipping item intrusion / amongst the stars [unreleased tape sessions] due to its id 2326219628 being present in the ignore file
+2026-06-09 21:17:18,621 sync [INFO] Syncing item 225 of 386 (58.3%)
+2026-06-09 21:17:18,640 ignores [WARNING] Skipping item radius / interpolation tapes [0/3] due to its id 2562410667 being present in the ignore file
+2026-06-09 21:17:18,640 sync [INFO] Syncing item 226 of 386 (58.5%)
+2026-06-09 21:17:18,658 ignores [WARNING] Skipping item various / the midst of something beautiful [volume two] remastered due to its id 3723400188 being present in the ignore file
+2026-06-09 21:17:18,658 sync [INFO] Syncing item 227 of 386 (58.8%)
+INFO:     127.0.0.1:64290 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+2026-06-09 21:17:18,680 ignores [WARNING] Skipping item intrusion / a gentle embrace [ep] due to its id 382872919 being present in the ignore file
+2026-06-09 21:17:18,680 sync [INFO] Syncing item 228 of 386 (59.1%)
+2026-06-09 21:17:18,688 ignores [WARNING] Skipping item c v 3 1 3 / beyond the clouds [remastered] due to its id 425255059 being present in the ignore file
+2026-06-09 21:17:18,688 sync [INFO] Syncing item 229 of 386 (59.3%)
+2026-06-09 21:17:18,710 ignores [WARNING] Skipping item intrusion / a gentle embrace [cv313 rewire] due to its id 823274771 being present in the ignore file
+2026-06-09 21:17:18,711 sync [INFO] Syncing item 230 of 386 (59.6%)
+2026-06-09 21:17:18,736 ignores [WARNING] Skipping item intrusion / tswana dub [12" masters] due to its id 3548282598 being present in the ignore file
+2026-06-09 21:17:18,737 sync [INFO] Syncing item 231 of 386 (59.8%)
+2026-06-09 21:17:18,758 ignores [WARNING] Skipping item intrusion / little angel w/paul st. hilaire due to its id 3628377005 being present in the ignore file
+2026-06-09 21:17:18,758 sync [INFO] Syncing item 232 of 386 (60.1%)
+2026-06-09 21:17:18,778 ignores [WARNING] Skipping item intrusion / the seduction of silence [ep] due to its id 3673036296 being present in the ignore file
+2026-06-09 21:17:18,778 sync [INFO] Syncing item 233 of 386 (60.4%)
+2026-06-09 21:17:18,799 ignores [WARNING] Skipping item various / lofi sound system due to its id 4045874273 being present in the ignore file
+2026-06-09 21:17:18,799 sync [INFO] Syncing item 234 of 386 (60.6%)
+2026-06-09 21:17:18,806 ignores [WARNING] Skipping item cv313 / dimensional space [extended edition] due to its id 4084524865 being present in the ignore file
+2026-06-09 21:17:18,806 sync [INFO] Syncing item 235 of 386 (60.9%)
+2026-06-09 21:17:18,827 ignores [WARNING] Skipping item 36 / The Box due to its id 2906399022 being present in the ignore file
+2026-06-09 21:17:18,827 sync [INFO] Syncing item 236 of 386 (61.1%)
+2026-06-09 21:17:18,847 ignores [WARNING] Skipping item bvdub | Brock Van Wey / 13 due to its id 1269081221 being present in the ignore file
+2026-06-09 21:17:18,847 sync [INFO] Syncing item 237 of 386 (61.4%)
+2026-06-09 21:17:18,865 ignores [WARNING] Skipping item VC-118A / Back To Life due to its id 2708270686 being present in the ignore file
+2026-06-09 21:17:18,865 sync [INFO] Syncing item 238 of 386 (61.7%)
+2026-06-09 21:17:18,884 ignores [WARNING] Skipping item THE FUTURE SOUND OF LONDON / A Space of Partial Illumination E7.002 due to its id 28364716 being present in the ignore file
+2026-06-09 21:17:18,884 sync [INFO] Syncing item 239 of 386 (61.9%)
+2026-06-09 21:17:18,901 ignores [WARNING] Skipping item Subaqual / Bilander due to its id 3118028446 being present in the ignore file
+2026-06-09 21:17:18,901 sync [INFO] Syncing item 240 of 386 (62.2%)
+2026-06-09 21:17:18,919 ignores [WARNING] Skipping item loscil / LUX Refractions due to its id 903134722 being present in the ignore file
+2026-06-09 21:17:18,920 sync [INFO] Syncing item 241 of 386 (62.4%)
+2026-06-09 21:17:18,940 ignores [WARNING] Skipping item loscil / Faults, Coasts, Lines due to its id 2415686522 being present in the ignore file
+2026-06-09 21:17:18,940 sync [INFO] Syncing item 242 of 386 (62.7%)
+2026-06-09 21:17:18,958 ignores [WARNING] Skipping item loscil / Suns due to its id 185406926 being present in the ignore file
+2026-06-09 21:17:18,958 sync [INFO] Syncing item 243 of 386 (63.0%)
+2026-06-09 21:17:18,976 ignores [WARNING] Skipping item loscil / Endless Falls due to its id 3590567650 being present in the ignore file
+2026-06-09 21:17:18,976 sync [INFO] Syncing item 244 of 386 (63.2%)
+2026-06-09 21:17:18,994 ignores [WARNING] Skipping item Jason van Wyk / Descendants due to its id 2567220385 being present in the ignore file
+2026-06-09 21:17:18,994 sync [INFO] Syncing item 245 of 386 (63.5%)
+2026-06-09 21:17:19,012 ignores [WARNING] Skipping item loscil / Plume due to its id 1989181575 being present in the ignore file
+2026-06-09 21:17:19,012 sync [INFO] Syncing item 246 of 386 (63.7%)
+2026-06-09 21:17:19,030 ignores [WARNING] Skipping item L.S.G. / Vol.2 Mixes - 2025 Remaster due to its id 1615753539 being present in the ignore file
+2026-06-09 21:17:19,030 sync [INFO] Syncing item 247 of 386 (64.0%)
+2026-06-09 21:17:19,048 ignores [WARNING] Skipping item Uun / Aspect of Obliteration due to its id 4288047289 being present in the ignore file
+2026-06-09 21:17:19,048 sync [INFO] Syncing item 248 of 386 (64.2%)
+2026-06-09 21:17:19,065 ignores [WARNING] Skipping item Earth House Hold / When Love Lived due to its id 1788168247 being present in the ignore file
+2026-06-09 21:17:19,065 sync [INFO] Syncing item 249 of 386 (64.5%)
+2026-06-09 21:17:19,071 ignores [WARNING] Skipping item bvdub | Brock Van Wey / Us Again due to its id 73733306 being present in the ignore file
+2026-06-09 21:17:19,071 sync [INFO] Syncing item 250 of 386 (64.8%)
+2026-06-09 21:17:19,089 ignores [WARNING] Skipping item The 7th Plain / Chronicles due to its id 1608012315 being present in the ignore file
+2026-06-09 21:17:19,089 sync [INFO] Syncing item 251 of 386 (65.0%)
+2026-06-09 21:17:19,102 ignores [WARNING] Skipping item Forest Drive West / Dualism E.P. due to its id 849997773 being present in the ignore file
+2026-06-09 21:17:19,102 sync [INFO] Syncing item 252 of 386 (65.3%)
+2026-06-09 21:17:19,122 ignores [WARNING] Skipping item Rrose x Polygonia / Dermatology due to its id 1741202725 being present in the ignore file
+2026-06-09 21:17:19,123 sync [INFO] Syncing item 253 of 386 (65.5%)
+2026-06-09 21:17:19,124 ignores [WARNING] Skipping item Fluxion / Fluxion - Haze due to its id 1838622721 being present in the ignore file
+2026-06-09 21:17:19,124 sync [INFO] Syncing item 254 of 386 (65.8%)
+2026-06-09 21:17:19,144 ignores [WARNING] Skipping item Uun / Platform Decay due to its id 2661097027 being present in the ignore file
+2026-06-09 21:17:19,144 sync [INFO] Syncing item 255 of 386 (66.1%)
+2026-06-09 21:17:19,158 ignores [WARNING] Skipping item AES DANA / Leylines due to its id 3086728870 being present in the ignore file
+2026-06-09 21:17:19,158 sync [INFO] Syncing item 256 of 386 (66.3%)
+2026-06-09 21:17:19,177 ignores [WARNING] Skipping item THE FUTURE SOUND OF LONDON / Rituals E7.001 due to its id 734327237 being present in the ignore file
+2026-06-09 21:17:19,177 sync [INFO] Syncing item 257 of 386 (66.6%)
+2026-06-09 21:17:19,194 ignores [WARNING] Skipping item The Black Dog / Live At The ICA due to its id 2181640430 being present in the ignore file
+2026-06-09 21:17:19,195 sync [INFO] Syncing item 258 of 386 (66.8%)
+2026-06-09 21:17:19,212 ignores [WARNING] Skipping item The Black Dog / Further Vexations (Remastered) due to its id 4202457926 being present in the ignore file
+2026-06-09 21:17:19,212 sync [INFO] Syncing item 259 of 386 (67.1%)
+2026-06-09 21:17:19,229 ignores [WARNING] Skipping item Mogwai / The Bad Fire due to its id 3160421753 being present in the ignore file
+2026-06-09 21:17:19,229 sync [INFO] Syncing item 260 of 386 (67.4%)
+2026-06-09 21:17:19,250 ignores [WARNING] Skipping item Kangding Ray / OR due to its id 116943911 being present in the ignore file
+2026-06-09 21:17:19,250 sync [INFO] Syncing item 261 of 386 (67.6%)
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+2026-06-09 21:17:19,276 ignores [WARNING] Skipping item Brock Van Wey / White Clouds Drift On and On due to its id 1686751268 being present in the ignore file
+2026-06-09 21:17:19,276 sync [INFO] Syncing item 262 of 386 (67.9%)
+2026-06-09 21:17:19,296 ignores [WARNING] Skipping item VC-118A / Spiritual Machines due to its id 1809143178 being present in the ignore file
+2026-06-09 21:17:19,296 sync [INFO] Syncing item 263 of 386 (68.1%)
+2026-06-09 21:17:19,318 ignores [WARNING] Skipping item Underworld / Strawberry Hotel due to its id 4061440112 being present in the ignore file
+2026-06-09 21:17:19,318 sync [INFO] Syncing item 264 of 386 (68.4%)
+2026-06-09 21:17:19,338 ignores [WARNING] Skipping item James Holden / Imagine This Is A High Dimensional Space Of All Possibilities due to its id 3450412004 being present in the ignore file
+2026-06-09 21:17:19,338 sync [INFO] Syncing item 265 of 386 (68.7%)
+2026-06-09 21:17:19,357 ignores [WARNING] Skipping item The Black Dog / The Black Dog Live @ Festival Of The Mind due to its id 306006818 being present in the ignore file
+2026-06-09 21:17:19,357 sync [INFO] Syncing item 266 of 386 (68.9%)
+2026-06-09 21:17:19,375 ignores [WARNING] Skipping item The Black Dog / Sleep Deprivation due to its id 2491601729 being present in the ignore file
+2026-06-09 21:17:19,375 sync [INFO] Syncing item 267 of 386 (69.2%)
+2026-06-09 21:17:19,394 ignores [WARNING] Skipping item MARTIN NONSTATIC / Live in Athens (24bit) due to its id 954108001 being present in the ignore file
+2026-06-09 21:17:19,394 sync [INFO] Syncing item 268 of 386 (69.4%)
+2026-06-09 21:17:19,408 ignores [WARNING] Skipping item Alessandro Cortini / SCURO CHIARO due to its id 732543694 being present in the ignore file
+2026-06-09 21:17:19,408 sync [INFO] Syncing item 269 of 386 (69.7%)
+2026-06-09 21:17:19,419 ignores [WARNING] Skipping item Convextion / R-CNVX2 due to its id 2033120363 being present in the ignore file
+2026-06-09 21:17:19,419 sync [INFO] Syncing item 270 of 386 (69.9%)
+2026-06-09 21:17:19,438 ignores [WARNING] Skipping item Monolake / Studio due to its id 1473942535 being present in the ignore file
+2026-06-09 21:17:19,439 sync [INFO] Syncing item 271 of 386 (70.2%)
+2026-06-09 21:17:19,461 ignores [WARNING] Skipping item Infinity Machine / Infinity Machine 001 due to its id 123210353 being present in the ignore file
+2026-06-09 21:17:19,461 sync [INFO] Syncing item 272 of 386 (70.5%)
+2026-06-09 21:17:19,465 ignores [WARNING] Skipping item Bicep / Isles due to its id 3286467797 being present in the ignore file
+2026-06-09 21:17:19,465 sync [INFO] Syncing item 273 of 386 (70.7%)
+2026-06-09 21:17:19,480 ignores [WARNING] Skipping item Birds ov Paradise / Memorial due to its id 1353573550 being present in the ignore file
+2026-06-09 21:17:19,480 sync [INFO] Syncing item 274 of 386 (71.0%)
+2026-06-09 21:17:19,499 ignores [WARNING] Skipping item loscil // lawrence english / Colours Of Air due to its id 2688766583 being present in the ignore file
+2026-06-09 21:17:19,499 sync [INFO] Syncing item 275 of 386 (71.2%)
+2026-06-09 21:17:19,519 ignores [WARNING] Skipping item -12dB / Half Eclipse due to its id 763714363 being present in the ignore file
+2026-06-09 21:17:19,519 sync [INFO] Syncing item 276 of 386 (71.5%)
+2026-06-09 21:17:19,538 ignores [WARNING] Skipping item Rrose / Please  Touch due to its id 1566564121 being present in the ignore file
+2026-06-09 21:17:19,538 sync [INFO] Syncing item 277 of 386 (71.8%)
+2026-06-09 21:17:19,557 ignores [WARNING] Skipping item Rival Consoles / Now Is due to its id 1163555637 being present in the ignore file
+2026-06-09 21:17:19,557 sync [INFO] Syncing item 278 of 386 (72.0%)
+2026-06-09 21:17:19,560 ignores [WARNING] Skipping item Four Tet / There Is Love In You due to its id 2384954380 being present in the ignore file
+2026-06-09 21:17:19,560 sync [INFO] Syncing item 279 of 386 (72.3%)
+2026-06-09 21:17:19,579 ignores [WARNING] Skipping item THE FUTURE SOUND OF LONDON / Environment 7.003 due to its id 1226372138 being present in the ignore file
+2026-06-09 21:17:19,579 sync [INFO] Syncing item 280 of 386 (72.5%)
+2026-06-09 21:17:19,586 ignores [WARNING] Skipping item Deadbeat / Kübler-Ross Soliloquies due to its id 928339234 being present in the ignore file
+2026-06-09 21:17:19,586 sync [INFO] Syncing item 281 of 386 (72.8%)
+2026-06-09 21:17:19,604 ignores [WARNING] Skipping item Voices From The Lake / Voices From The Lake due to its id 4185304679 being present in the ignore file
+2026-06-09 21:17:19,604 sync [INFO] Syncing item 282 of 386 (73.1%)
+2026-06-09 21:17:19,622 ignores [WARNING] Skipping item VC-118A / Waves of Change due to its id 74176690 being present in the ignore file
+2026-06-09 21:17:19,622 sync [INFO] Syncing item 283 of 386 (73.3%)
+2026-06-09 21:17:19,641 ignores [WARNING] Skipping item Robert Leiner / 2020 due to its id 2516422287 being present in the ignore file
+2026-06-09 21:17:19,641 sync [INFO] Syncing item 284 of 386 (73.6%)
+2026-06-09 21:17:19,655 ignores [WARNING] Skipping item AES DANA / Inks (24bit) due to its id 879048191 being present in the ignore file
+2026-06-09 21:17:19,655 sync [INFO] Syncing item 285 of 386 (73.8%)
+2026-06-09 21:17:19,675 ignores [WARNING] Skipping item MASTER MARGHERITA / Border 50 (24bit) due to its id 2301345038 being present in the ignore file
+2026-06-09 21:17:19,675 sync [INFO] Syncing item 286 of 386 (74.1%)
+INFO:     127.0.0.1:64290 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+2026-06-09 21:17:19,697 ignores [WARNING] Skipping item Lamont Kohner / Willamette Dubs due to its id 3053296973 being present in the ignore file
+2026-06-09 21:17:19,697 sync [INFO] Syncing item 287 of 386 (74.4%)
+2026-06-09 21:17:19,708 ignores [WARNING] Skipping item Daniel Avery / Ultra Truth due to its id 3177667306 being present in the ignore file
+2026-06-09 21:17:19,708 sync [INFO] Syncing item 288 of 386 (74.6%)
+2026-06-09 21:17:19,731 ignores [WARNING] Skipping item Noah Lyas / Elsewhere due to its id 3558828551 being present in the ignore file
+2026-06-09 21:17:19,731 sync [INFO] Syncing item 289 of 386 (74.9%)
+2026-06-09 21:17:19,753 ignores [WARNING] Skipping item Deni Diezer & Martin Nonstatic / Invisible Balance due to its id 1185801074 being present in the ignore file
+2026-06-09 21:17:19,754 sync [INFO] Syncing item 290 of 386 (75.1%)
+2026-06-09 21:17:19,773 ignores [WARNING] Skipping item VC-118A / Inside due to its id 831372237 being present in the ignore file
+2026-06-09 21:17:19,773 sync [INFO] Syncing item 291 of 386 (75.4%)
+2026-06-09 21:17:19,795 ignores [WARNING] Skipping item swayzak / Snowboarding In Argentina 1st Issue due to its id 2095414869 being present in the ignore file
+2026-06-09 21:17:19,795 sync [INFO] Syncing item 292 of 386 (75.6%)
+2026-06-09 21:17:19,815 ignores [WARNING] Skipping item John Tejada / Sleepwalker due to its id 1484179564 being present in the ignore file
+2026-06-09 21:17:19,815 sync [INFO] Syncing item 293 of 386 (75.9%)
+2026-06-09 21:17:19,834 ignores [WARNING] Skipping item Moderat / III due to its id 4205355711 being present in the ignore file
+2026-06-09 21:17:19,834 sync [INFO] Syncing item 294 of 386 (76.2%)
+2026-06-09 21:17:19,839 ignores [WARNING] Skipping item Hunter/Game / Adaptation Remixe due to its id 276319254 being present in the ignore file
+2026-06-09 21:17:19,839 sync [INFO] Syncing item 295 of 386 (76.4%)
+2026-06-09 21:17:19,858 ignores [WARNING] Skipping item Max Cooper / Emergence Remixed due to its id 193921023 being present in the ignore file
+2026-06-09 21:17:19,858 sync [INFO] Syncing item 296 of 386 (76.7%)
+2026-06-09 21:17:19,877 ignores [WARNING] Skipping item Uun / Derealization LP due to its id 3729127798 being present in the ignore file
+2026-06-09 21:17:19,877 sync [INFO] Syncing item 297 of 386 (76.9%)
+2026-06-09 21:17:19,895 ignores [WARNING] Skipping item Moderat / MORE D4TA due to its id 945398572 being present in the ignore file
+2026-06-09 21:17:19,895 sync [INFO] Syncing item 298 of 386 (77.2%)
+2026-06-09 21:17:19,913 ignores [WARNING] Skipping item The Field / From Here We Go Sublime due to its id 1216253061 being present in the ignore file
+2026-06-09 21:17:19,914 sync [INFO] Syncing item 299 of 386 (77.5%)
+2026-06-09 21:17:19,931 ignores [WARNING] Skipping item Banco de Gaia / Live at Glastonbury due to its id 1390181902 being present in the ignore file
+2026-06-09 21:17:19,931 sync [INFO] Syncing item 300 of 386 (77.7%)
+2026-06-09 21:17:19,949 ignores [WARNING] Skipping item System 7 / Power of Seven due to its id 2045937855 being present in the ignore file
+2026-06-09 21:17:19,950 sync [INFO] Syncing item 301 of 386 (78.0%)
+2026-06-09 21:17:19,967 ignores [WARNING] Skipping item Kruder & Dorfmeister / 1995 due to its id 3273665939 being present in the ignore file
+2026-06-09 21:17:19,967 sync [INFO] Syncing item 302 of 386 (78.2%)
+2026-06-09 21:17:19,985 ignores [WARNING] Skipping item ASURA / Life² due to its id 4164843950 being present in the ignore file
+2026-06-09 21:17:19,985 sync [INFO] Syncing item 303 of 386 (78.5%)
+2026-06-09 21:17:20,003 ignores [WARNING] Skipping item micronism / inside a quiet mind due to its id 913797457 being present in the ignore file
+2026-06-09 21:17:20,003 sync [INFO] Syncing item 304 of 386 (78.8%)
+2026-06-09 21:17:20,018 ignores [WARNING] Skipping item A Winged Victory for the Sullen / Invisible Cities due to its id 3589852797 being present in the ignore file
+2026-06-09 21:17:20,018 sync [INFO] Syncing item 305 of 386 (79.0%)
+2026-06-09 21:17:20,036 ignores [WARNING] Skipping item loscil / Equivalents due to its id 2122188959 being present in the ignore file
+2026-06-09 21:17:20,036 sync [INFO] Syncing item 306 of 386 (79.3%)
+2026-06-09 21:17:20,053 ignores [WARNING] Skipping item loscil / Clara due to its id 4149141204 being present in the ignore file
+2026-06-09 21:17:20,053 sync [INFO] Syncing item 307 of 386 (79.5%)
+2026-06-09 21:17:20,071 ignores [WARNING] Skipping item The Necks / Three due to its id 4185856817 being present in the ignore file
+2026-06-09 21:17:20,071 sync [INFO] Syncing item 308 of 386 (79.8%)
+2026-06-09 21:17:20,088 ignores [WARNING] Skipping item Mogwai / As The Love Continues due to its id 3793168922 being present in the ignore file
+2026-06-09 21:17:20,088 sync [INFO] Syncing item 309 of 386 (80.1%)
+2026-06-09 21:17:20,107 ignores [WARNING] Skipping item L.S.G. / Into Deep LP - Remastered due to its id 2594762320 being present in the ignore file
+2026-06-09 21:17:20,107 sync [INFO] Syncing item 310 of 386 (80.3%)
+2026-06-09 21:17:20,110 ignores [WARNING] Skipping item Four Tet / Parallel due to its id 3301158852 being present in the ignore file
+2026-06-09 21:17:20,110 sync [INFO] Syncing item 311 of 386 (80.6%)
+2026-06-09 21:17:20,130 ignores [WARNING] Skipping item Steve Roach / TOMORROW due to its id 123200264 being present in the ignore file
+2026-06-09 21:17:20,130 sync [INFO] Syncing item 312 of 386 (80.8%)
+2026-06-09 21:17:20,149 ignores [WARNING] Skipping item Biosphere / Substrata due to its id 616828950 being present in the ignore file
+2026-06-09 21:17:20,149 sync [INFO] Syncing item 313 of 386 (81.1%)
+2026-06-09 21:17:20,153 ignores [WARNING] Skipping item Banco de Gaia / Farewell Ferengistan due to its id 1260526050 being present in the ignore file
+2026-06-09 21:17:20,153 sync [INFO] Syncing item 314 of 386 (81.3%)
+2026-06-09 21:17:20,171 ignores [WARNING] Skipping item L.S.G. / Rendezvous In Outer Space LP - Remastered due to its id 3285536474 being present in the ignore file
+2026-06-09 21:17:20,171 sync [INFO] Syncing item 315 of 386 (81.6%)
+2026-06-09 21:17:20,189 ignores [WARNING] Skipping item CELL / Live in Corfu (24bit) due to its id 2084171964 being present in the ignore file
+2026-06-09 21:17:20,189 sync [INFO] Syncing item 316 of 386 (81.9%)
+2026-06-09 21:17:20,202 ignores [WARNING] Skipping item Conforce / Dawn Chorus due to its id 1257698426 being present in the ignore file
+2026-06-09 21:17:20,202 sync [INFO] Syncing item 317 of 386 (82.1%)
+2026-06-09 21:17:20,219 ignores [WARNING] Skipping item Underworld / DRIFT Series 1 -  Complete due to its id 2504907261 being present in the ignore file
+2026-06-09 21:17:20,219 sync [INFO] Syncing item 318 of 386 (82.4%)
+2026-06-09 21:17:20,239 ignores [WARNING] Skipping item Shpongle / Tales Of The Inexpressible (Remastered) due to its id 3649297335 being present in the ignore file
+2026-06-09 21:17:20,239 sync [INFO] Syncing item 319 of 386 (82.6%)
+2026-06-09 21:17:20,260 ignores [WARNING] Skipping item Forest Drive West / Apparitions due to its id 2115487310 being present in the ignore file
+2026-06-09 21:17:20,260 sync [INFO] Syncing item 320 of 386 (82.9%)
+2026-06-09 21:17:20,278 ignores [WARNING] Skipping item Kaito / A Hundred Million Light Years due to its id 3421263140 being present in the ignore file
+2026-06-09 21:17:20,278 sync [INFO] Syncing item 321 of 386 (83.2%)
+2026-06-09 21:17:20,296 ignores [WARNING] Skipping item Max Cooper / Human due to its id 2436367420 being present in the ignore file
+2026-06-09 21:17:20,297 sync [INFO] Syncing item 322 of 386 (83.4%)
+2026-06-09 21:17:20,314 ignores [WARNING] Skipping item Underworld / RicksDubbedOutDriftExperience (Live in Amsterdam) due to its id 3138629046 being present in the ignore file
+2026-06-09 21:17:20,314 sync [INFO] Syncing item 323 of 386 (83.7%)
+2026-06-09 21:17:20,332 ignores [WARNING] Skipping item Mogwai / Music Industry 3. Fitness Industry 1. EP due to its id 4179847498 being present in the ignore file
+2026-06-09 21:17:20,332 sync [INFO] Syncing item 324 of 386 (83.9%)
+2026-06-09 21:17:20,349 ignores [WARNING] Skipping item Biodub / Tiefenrausch 015 - Biodub - Holmsund EP due to its id 1696126400 being present in the ignore file
+2026-06-09 21:17:20,349 sync [INFO] Syncing item 325 of 386 (84.2%)
+2026-06-09 21:17:20,366 ignores [WARNING] Skipping item System 7 & Mirror System / Café Seven due to its id 1255574235 being present in the ignore file
+2026-06-09 21:17:20,366 sync [INFO] Syncing item 326 of 386 (84.5%)
+2026-06-09 21:17:20,383 ignores [WARNING] Skipping item Pye Corner Audio / Where Things Are Hollow 2 due to its id 64534327 being present in the ignore file
+2026-06-09 21:17:20,383 sync [INFO] Syncing item 327 of 386 (84.7%)
+2026-06-09 21:17:20,401 ignores [WARNING] Skipping item Pye Corner Audio / Where Things Are Hollow due to its id 2913444343 being present in the ignore file
+2026-06-09 21:17:20,401 sync [INFO] Syncing item 328 of 386 (85.0%)
+2026-06-09 21:17:20,419 ignores [WARNING] Skipping item The Orb / Abolition of The Royal Familia due to its id 1511251486 being present in the ignore file
+2026-06-09 21:17:20,419 sync [INFO] Syncing item 329 of 386 (85.2%)
+2026-06-09 21:17:20,436 ignores [WARNING] Skipping item Minor Science / Second Language due to its id 3488178668 being present in the ignore file
+2026-06-09 21:17:20,436 sync [INFO] Syncing item 330 of 386 (85.5%)
+2026-06-09 21:17:20,456 ignores [WARNING] Skipping item John Tejada / Moving 909s due to its id 2352382638 being present in the ignore file
+2026-06-09 21:17:20,456 sync [INFO] Syncing item 331 of 386 (85.8%)
+2026-06-09 21:17:20,475 ignores [WARNING] Skipping item Surgeon / BP044 Search Deep Inside Yourself due to its id 505786262 being present in the ignore file
+2026-06-09 21:17:20,475 sync [INFO] Syncing item 332 of 386 (86.0%)
+2026-06-09 21:17:20,493 ignores [WARNING] Skipping item Yagya / Rigning due to its id 4136080605 being present in the ignore file
+2026-06-09 21:17:20,493 sync [INFO] Syncing item 333 of 386 (86.3%)
+2026-06-09 21:17:20,512 ignores [WARNING] Skipping item Evan Marc + Steve Hillage / Evan Marc + Steve Hillage - Dreamtime Submersible due to its id 1325374524 being present in the ignore file
+2026-06-09 21:17:20,512 sync [INFO] Syncing item 334 of 386 (86.5%)
+2026-06-09 21:17:20,530 ignores [WARNING] Skipping item Mogwai / Rave Tapes due to its id 652048113 being present in the ignore file
+2026-06-09 21:17:20,530 sync [INFO] Syncing item 335 of 386 (86.8%)
+2026-06-09 21:17:20,547 ignores [WARNING] Skipping item Shpongle Static / Shpongle Static - Live at Ozora 2019 due to its id 267587152 being present in the ignore file
+2026-06-09 21:17:20,547 sync [INFO] Syncing item 336 of 386 (87.0%)
+2026-06-09 21:17:20,565 ignores [WARNING] Skipping item System 7 / X-Port due to its id 350589204 being present in the ignore file
+2026-06-09 21:17:20,565 sync [INFO] Syncing item 337 of 386 (87.3%)
+2026-06-09 21:17:20,583 ignores [WARNING] Skipping item Max Cooper / 3D Reworks 001 due to its id 1575866570 being present in the ignore file
+2026-06-09 21:17:20,583 sync [INFO] Syncing item 338 of 386 (87.6%)
+2026-06-09 21:17:20,601 ignores [WARNING] Skipping item HOLOVR / Anterior Space due to its id 3360757887 being present in the ignore file
+2026-06-09 21:17:20,601 sync [INFO] Syncing item 339 of 386 (87.8%)
+2026-06-09 21:17:20,618 ignores [WARNING] Skipping item Telefon Tel Aviv / Dreams Are Not Enough due to its id 1132982331 being present in the ignore file
+2026-06-09 21:17:20,618 sync [INFO] Syncing item 340 of 386 (88.1%)
+2026-06-09 21:17:20,633 ignores [WARNING] Skipping item Bersarin Quartett / Methoden und Maschinen due to its id 2779398732 being present in the ignore file
+2026-06-09 21:17:20,633 sync [INFO] Syncing item 341 of 386 (88.3%)
+2026-06-09 21:17:20,650 ignores [WARNING] Skipping item Barker / Utility due to its id 4104692156 being present in the ignore file
+2026-06-09 21:17:20,650 sync [INFO] Syncing item 342 of 386 (88.6%)
+2026-06-09 21:17:20,668 ignores [WARNING] Skipping item Deadbeat / The Echocord Sessions due to its id 361368264 being present in the ignore file
+2026-06-09 21:17:20,668 sync [INFO] Syncing item 343 of 386 (88.9%)
+2026-06-09 21:17:20,686 ignores [WARNING] Skipping item JAH WOBBLE & BILL LASWELL / REALM OF SPELLS due to its id 340709718 being present in the ignore file
+2026-06-09 21:17:20,686 sync [INFO] Syncing item 344 of 386 (89.1%)
+2026-06-09 21:17:20,703 ignores [WARNING] Skipping item Sonmi451 / AI-13: Nachtmuziek due to its id 73690866 being present in the ignore file
+2026-06-09 21:17:20,703 sync [INFO] Syncing item 345 of 386 (89.4%)
+2026-06-09 21:17:20,720 ignores [WARNING] Skipping item A Winged Victory for the Sullen / The Undivided Five due to its id 2720470098 being present in the ignore file
+2026-06-09 21:17:20,720 sync [INFO] Syncing item 346 of 386 (89.6%)
+2026-06-09 21:17:20,739 ignores [WARNING] Skipping item Hunter/Game / Adaptation due to its id 609823701 being present in the ignore file
+2026-06-09 21:17:20,739 sync [INFO] Syncing item 347 of 386 (89.9%)
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+2026-06-09 21:17:20,762 ignores [WARNING] Skipping item ESKOSTATIC / Serpentines & Valleys (24bit) due to its id 3236792241 being present in the ignore file
+2026-06-09 21:17:20,762 sync [INFO] Syncing item 348 of 386 (90.2%)
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+2026-06-09 21:17:20,779 ignores [WARNING] Skipping item Deepchord / AI-10: Immersions due to its id 4042960945 being present in the ignore file
+2026-06-09 21:17:20,779 sync [INFO] Syncing item 349 of 386 (90.4%)
+2026-06-09 21:17:20,799 ignores [WARNING] Skipping item Shpongle / Nothing Lasts...But Nothing Is Lost (Remastered) due to its id 2638493048 being present in the ignore file
+2026-06-09 21:17:20,800 sync [INFO] Syncing item 350 of 386 (90.7%)
+2026-06-09 21:17:20,804 ignores [WARNING] Skipping item Blanck Mass / Animated Violence Mild due to its id 1302611116 being present in the ignore file
+2026-06-09 21:17:20,804 sync [INFO] Syncing item 351 of 386 (90.9%)
+2026-06-09 21:17:20,810 ignores [WARNING] Skipping item Deadbeat / Waking Life due to its id 3655879353 being present in the ignore file
+2026-06-09 21:17:20,810 sync [INFO] Syncing item 352 of 386 (91.2%)
+2026-06-09 21:17:20,829 ignores [WARNING] Skipping item The Field / Looping State Of Mind due to its id 1394689631 being present in the ignore file
+2026-06-09 21:17:20,829 sync [INFO] Syncing item 353 of 386 (91.5%)
+2026-06-09 21:17:20,848 ignores [WARNING] Skipping item Jah Wobble / Bill Laswell / Radioaxiom –  A Dub Transmission due to its id 558302020 being present in the ignore file
+2026-06-09 21:17:20,848 sync [INFO] Syncing item 354 of 386 (91.7%)
+2026-06-09 21:17:20,865 ignores [WARNING] Skipping item ASC / Astral Projection due to its id 3661338731 being present in the ignore file
+2026-06-09 21:17:20,865 sync [INFO] Syncing item 355 of 386 (92.0%)
+2026-06-09 21:17:20,882 ignores [WARNING] Skipping item V/A - Mixed by Focal / POLARITY due to its id 3795418432 being present in the ignore file
+2026-06-09 21:17:20,882 sync [INFO] Syncing item 356 of 386 (92.2%)
+2026-06-09 21:17:20,900 ignores [WARNING] Skipping item The Field / Infinite Moment due to its id 3031646034 being present in the ignore file
+2026-06-09 21:17:20,900 sync [INFO] Syncing item 357 of 386 (92.5%)
+2026-06-09 21:17:20,906 ignores [WARNING] Skipping item Deadbeat / Wax Poetic For This Our Great Resolve due to its id 778703689 being present in the ignore file
+2026-06-09 21:17:20,906 sync [INFO] Syncing item 358 of 386 (92.7%)
+2026-06-09 21:17:20,923 ignores [WARNING] Skipping item Nils Frahm / All Melody due to its id 3467926826 being present in the ignore file
+2026-06-09 21:17:20,923 sync [INFO] Syncing item 359 of 386 (93.0%)
+2026-06-09 21:17:20,941 ignores [WARNING] Skipping item AES DANA / Pollen due to its id 1086866102 being present in the ignore file
+2026-06-09 21:17:20,941 sync [INFO] Syncing item 360 of 386 (93.3%)
+2026-06-09 21:17:20,959 ignores [WARNING] Skipping item Jane Weaver / Modern Kosmology due to its id 645773167 being present in the ignore file
+2026-06-09 21:17:20,959 sync [INFO] Syncing item 361 of 386 (93.5%)
+2026-06-09 21:17:20,978 ignores [WARNING] Skipping item King Gizzard & The Lizard Wizard / Murder Of The Universe due to its id 1787442871 being present in the ignore file
+2026-06-09 21:17:20,978 sync [INFO] Syncing item 362 of 386 (93.8%)
+2026-06-09 21:17:20,995 ignores [WARNING] Skipping item Earthen Sea / An Act of Love due to its id 271403746 being present in the ignore file
+2026-06-09 21:17:20,995 sync [INFO] Syncing item 363 of 386 (94.0%)
+2026-06-09 21:17:21,013 ignores [WARNING] Skipping item loscil / Monument Builders due to its id 794123225 being present in the ignore file
+2026-06-09 21:17:21,013 sync [INFO] Syncing item 364 of 386 (94.3%)
+2026-06-09 21:17:21,030 ignores [WARNING] Skipping item AES DANA feat. MIKTEK / Far & Off due to its id 1610307875 being present in the ignore file
+2026-06-09 21:17:21,030 sync [INFO] Syncing item 365 of 386 (94.6%)
+2026-06-09 21:17:21,048 ignores [WARNING] Skipping item Various Artists / Total 16 due to its id 1165930684 being present in the ignore file
+2026-06-09 21:17:21,048 sync [INFO] Syncing item 366 of 386 (94.8%)
+2026-06-09 21:17:21,065 ignores [WARNING] Skipping item Ocoeur / Reversed due to its id 648851009 being present in the ignore file
+2026-06-09 21:17:21,066 sync [INFO] Syncing item 367 of 386 (95.1%)
+2026-06-09 21:17:21,083 ignores [WARNING] Skipping item Ital Tek / Hollowed due to its id 3979817496 being present in the ignore file
+2026-06-09 21:17:21,083 sync [INFO] Syncing item 368 of 386 (95.3%)
+2026-06-09 21:17:21,101 ignores [WARNING] Skipping item The Field / The Follower due to its id 1634904465 being present in the ignore file
+2026-06-09 21:17:21,101 sync [INFO] Syncing item 369 of 386 (95.6%)
+2026-06-09 21:17:21,120 ignores [WARNING] Skipping item MARTIN NONSTATIC / Granite due to its id 120238029 being present in the ignore file
+2026-06-09 21:17:21,121 sync [INFO] Syncing item 370 of 386 (95.9%)
+2026-06-09 21:17:21,140 ignores [WARNING] Skipping item ASURA / 360 due to its id 3443035912 being present in the ignore file
+2026-06-09 21:17:21,140 sync [INFO] Syncing item 371 of 386 (96.1%)
+2026-06-09 21:17:21,159 ignores [WARNING] Skipping item Deadbeat / Walls & Dimensions due to its id 2073733157 being present in the ignore file
+2026-06-09 21:17:21,159 sync [INFO] Syncing item 372 of 386 (96.4%)
+INFO:     127.0.0.1:64290 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+2026-06-09 21:17:21,181 ignores [WARNING] Skipping item The Black Dog / Neither/Neither due to its id 3761020004 being present in the ignore file
+2026-06-09 21:17:21,181 sync [INFO] Syncing item 373 of 386 (96.6%)
+2026-06-09 21:17:21,185 ignores [WARNING] Skipping item CIRCULAR / Moon Pool due to its id 3286467840 being present in the ignore file
+2026-06-09 21:17:21,185 sync [INFO] Syncing item 374 of 386 (96.9%)
+2026-06-09 21:17:21,205 ignores [WARNING] Skipping item Zenon Records / Zenon Records - 10 Years due to its id 2264497294 being present in the ignore file
+2026-06-09 21:17:21,205 sync [INFO] Syncing item 375 of 386 (97.2%)
+2026-06-09 21:17:21,223 ignores [WARNING] Skipping item woob / ULTRASCOPE due to its id 537551947 being present in the ignore file
+2026-06-09 21:17:21,223 sync [INFO] Syncing item 376 of 386 (97.4%)
+2026-06-09 21:17:21,243 ignores [WARNING] Skipping item woob / Lost 1194 due to its id 2984136251 being present in the ignore file
+2026-06-09 21:17:21,243 sync [INFO] Syncing item 377 of 386 (97.7%)
+2026-06-09 21:17:21,264 ignores [WARNING] Skipping item MIKTEK / Elsewhere due to its id 2640890973 being present in the ignore file
+2026-06-09 21:17:21,264 sync [INFO] Syncing item 378 of 386 (97.9%)
+2026-06-09 21:17:21,282 ignores [WARNING] Skipping item woob / Have Landed due to its id 3047105465 being present in the ignore file
+2026-06-09 21:17:21,282 sync [INFO] Syncing item 379 of 386 (98.2%)
+2026-06-09 21:17:21,299 ignores [WARNING] Skipping item CONNECT.OHM / 9980 due to its id 171685143 being present in the ignore file
+2026-06-09 21:17:21,299 sync [INFO] Syncing item 380 of 386 (98.4%)
+2026-06-09 21:17:21,317 ignores [WARNING] Skipping item Various / ... and darkness came due to its id 3931134604 being present in the ignore file
+2026-06-09 21:17:21,317 sync [INFO] Syncing item 381 of 386 (98.7%)
+2026-06-09 21:17:21,334 ignores [WARNING] Skipping item All India Radio / Red Shadow Landing due to its id 681098003 being present in the ignore file
+2026-06-09 21:17:21,334 sync [INFO] Syncing item 382 of 386 (99.0%)
+2026-06-09 21:17:21,352 ignores [WARNING] Skipping item Panzah Zandahz / Me & THIS Army: Radiohead Remixed & Mashed Up by PZ due to its id 3544404259 being present in the ignore file
+2026-06-09 21:17:21,352 sync [INFO] Syncing item 383 of 386 (99.2%)
+2026-06-09 21:17:21,370 ignores [WARNING] Skipping item woob / Repurpose due to its id 1399445365 being present in the ignore file
+2026-06-09 21:17:21,370 sync [INFO] Syncing item 384 of 386 (99.5%)
+2026-06-09 21:17:21,387 ignores [WARNING] Skipping item woob / Return to the City (Original Soundtrack) due to its id 3972002421 being present in the ignore file
+2026-06-09 21:17:21,388 sync [INFO] Syncing item 385 of 386 (99.7%)
+2026-06-09 21:17:21,406 ignores [WARNING] Skipping item All India Radio / The Silent Surf due to its id 2457050340 being present in the ignore file
+2026-06-09 21:17:21,406 sync [INFO] Syncing item 386 of 386 (100.0%)
+2026-06-09 21:17:21,423 ignores [WARNING] Skipping item Blamstrain / Selected Ambient Dub Works 06-09 due to its id 102578858 being present in the ignore file
+2026-06-09 21:17:21,423 sync [INFO] Updated collection checkpoint: "/Users/alastair/Music/harmonist-test/.bandcampsync-state.json"
+2026-06-09 21:17:21,424 INFO harmonist.activity: Bandcamp sync finished — 0 new items
+2026-06-09 21:17:21,424 INFO harmonist.web.scan_runner: Library scan started: /Users/alastair/Music/harmonist-test
+2026-06-09 21:17:21,897 INFO harmonist.web.scan_runner: Library scan complete: 346 albums across 346 dirs in 0.5s
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64290 - "GET /library?offset=0&limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /cover/a5232fd5-cb26-423a-8257-6bf2108fbb20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64290 - "GET /cover/eb1ce688-f2e9-491c-bc50-858e3c25cbe7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /cover/f73344f0-5825-4d81-8148-8e950ae1f910 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64290 - "GET /cover/c7b5662f-ae43-4ee0-a967-9bbf8ff86f49 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /cover/98c9d873-744d-4873-9d63-aef5284ac077 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64290 - "GET /tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64290 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+2026-06-09 21:17:27,120 INFO harmonist.web.reconcile_runner: Reconcile: 1 orphan album(s) to check for a MusicBrainz Id
+2026-06-09 21:17:27,120 INFO harmonist.web.reconcile_runner: Reconcile done: 0 reconciled (0 bandcamp, 0 manual), 1 skipped (no MBID), 0 failed
+2026-06-09 21:17:27,121 INFO harmonist.web.scan_runner: Library scan started: /Users/alastair/Music/harmonist-test
+2026-06-09 21:17:27,176 INFO harmonist.web.scan_runner: Library scan complete: 346 albums across 346 dirs in 0.1s
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /library?offset=0&limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64290 - "GET /cover/f449c2ffbdfe455d82a2f9c1586b8f0b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /cover/ed1d8b1a-02ee-416c-8a7c-0c545d05c616 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /cover/fcad3d1c-ca71-4ba8-a133-8579b9720080 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /cover/771ae005-6f8b-4831-9350-c3a7fdcb2442 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /cover/215c3fe0-faf3-39b8-af0f-29f3918d84aa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /cover/8dba855c-aff7-4692-84e0-cae1156bf0fc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /cover/aaffb153-587a-4804-b78e-2072229991d4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /cover/6a76904c-0caf-34e1-8cc2-7d95e86a3824 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /cover/d02221a7-007c-4821-b8ee-855d0f76f7c5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /cover/c225674c-3df6-4c02-8b28-c53a2f6472ef HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64487 - "GET /cover/735c3912-b9dd-42a2-af44-f4f6d25fe6f4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64360 - "GET /cover/15b70b2a-c80e-41db-b445-bcfc8976e872 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64288 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /library?offset=30&limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /cover/f2bd8232-e679-4364-8dab-71158f40df6a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /cover/b05efa9e-3467-4a46-90c1-81485b2eed4c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /cover/ec0fd084-9609-4e9f-a748-37ff237a2a81 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /cover/e4b49d8b-f271-4f3c-a319-718e2679c306 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64513 - "GET /cover/eaf6f1e2-6222-4e6b-a838-2e221203032c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /cover/2b64ce00-58b9-4972-8bf5-c04be8b14448 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64513 - "GET /cover/f87ca758-4ab7-431e-92de-a988d5be6cf2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /cover/6b263242-6e5b-4cb9-a489-6455b02bc48c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /cover/e6a0cf2a-c453-467b-94ea-55e122e5d808 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /cover/66cc5ec7-f366-450a-a1f0-6657d334462f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64514 - "GET /cover/0c976bd1-88db-48f9-ac71-e5309e0e54d5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64515 - "GET /cover/4baf4134-bd9d-3591-8498-1ad8335d43fb HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /cover/bbfc83ad-826f-4957-893d-a808105c828b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64514 - "GET /cover/7c6f8d63-edf7-4d99-b17e-2ab54e37bd56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64515 - "GET /cover/4776807d-9c01-4b29-aad8-22f70ea7f093 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /cover/5f1d9751-c34d-4c51-8f43-00a70fb9bb22 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /cover/dd1f1f13-f493-41d5-b825-7a26ed3c5dc6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64514 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /library/c9720556-d4d2-4a2a-88b6-1209bc1bf6a1/compare HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64486 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64291 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /cover/66cc5ec7-f366-450a-a1f0-6657d334462f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64485 - "GET /status HTTP/1.1" 200 OK
