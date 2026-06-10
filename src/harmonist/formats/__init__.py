@@ -87,6 +87,16 @@ def read_scan_fields(path: Path) -> ScanFields:
     return fields
 
 
+def read_cover(path: Path) -> tuple[bytes, str] | None:
+    """Extract the file's embedded cover art as (image_bytes, mime_type), or
+    None when there's no cover / no module for the extension."""
+    mod = _module_for(path)
+    if mod is None:
+        return None
+    result: tuple[bytes, str] | None = mod.read_cover(path)
+    return result
+
+
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     """Write `tagset` to `path` in its native format. `cover` is raw image
     bytes (jpeg/png) or None to leave existing cover untouched.
@@ -107,6 +117,7 @@ __all__ = [
     "read_album_title",
     "read_artist",
     "read_comment",
+    "read_cover",
     "read_duration_ms",
     "read_scan_fields",
     "read_track_title",

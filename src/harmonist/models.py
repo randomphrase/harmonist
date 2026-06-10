@@ -162,6 +162,10 @@ class Album:
     # "Mixed" when files disagree. Scanner-derived; not persisted. Confirms
     # the download format the user chose actually landed.
     audio_format: str | None = None
+    # True if a cover is available — a folder cover.* OR embedded art in the
+    # tracks. Drives whether the UI requests /cover (avoids 404 floods) and
+    # lets /cover serve the embedded art without writing it to disk.
+    has_cover: bool = False
 
 
 # ---------------------------------------------------------------------------

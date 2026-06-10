@@ -8,11 +8,11 @@
 {% set _lk_private = album.sidecar and album.sidecar.bandcamp and album.sidecar.bandcamp.is_private %}
 <div class="flex items-start justify-between gap-3 mb-3">
     <div class="flex items-center min-w-0 flex-grow">
-        {# Only request the cover when one exists on disk — otherwise /cover
-           404s, and with hundreds of NEW albums that floods the logs (and the
-           network, even for cards hidden in a collapsed group). No-cover albums
-           get an empty placeholder box, same as the failed-img looked anyway. #}
-        {% if album.cover_path %}
+        {# Only request the cover when one exists (folder cover.* OR embedded
+           art) — otherwise /cover 404s, and with hundreds of NEW albums that
+           floods the logs/network even for cards hidden in a collapsed group.
+           No-cover albums get an empty placeholder box. #}
+        {% if album.has_cover %}
         <img src="/cover/{{ album.id }}"
              loading="lazy"
              onerror="this.style.visibility='hidden'"

@@ -146,7 +146,21 @@ def read_scan_fields(path: Path) -> ScanFields:
         album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),
         artist=_text_atom(audio, ATOM_ARTIST),
         codec=_codec_label(audio),
+        has_cover=bool(audio.get(ATOM_COVER)),
     )
+
+
+def read_cover(path: Path) -> tuple[bytes, str] | None:
+    """Extract the embedded cover art as (image_bytes, mime), or None."""
+    audio = _open(path)
+    if audio is None:
+        return None
+    covers = audio.get(ATOM_COVER)
+    if not covers:
+        return None
+    cover = covers[0]
+    is_png = getattr(cover, "imageformat", None) == MP4Cover.FORMAT_PNG
+    return bytes(cover), ("image/png" if is_png else "image/jpeg")
 
 
 # ---------------------------------------------------------------------------
