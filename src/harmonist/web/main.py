@@ -156,6 +156,8 @@ def create_app(
                 progress_callback=sync_runner.set_current_item,
                 post_download_callback=resolve_after_download,
             )
+            # Tell the user (log + Activity) which albums sync couldn't link.
+            _report_unmatched_after_sync(cfg)
             scan_runner.request_scan()  # downloads landed → refresh the snapshot
             return result
 
@@ -388,6 +390,38 @@ def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
     except OSError as e:
         log.warning("could not remove bandcampsync checkpoint %s: %s", state_file, e)
     return False
+
+
+def _report_unmatched_after_sync(cfg: config_mod.Config) -> None:
+    """After a sync, surface albums still lacking a Bandcamp link so the user
+    sees what needs manual attention — in BOTH the app log and the Activity
+    feed (via `activity.record`, which mirrors to the log).
+
+    An album reaches `NEEDS_SYNC` with `bandcamp.item_id` still unset when the
+    sync's store_url + slug match couldn't tie it to a purchase (e.g. the MB
+    relationship URL is stale, or — with the collection checkpoint in play —
+    the item simply wasn't revisited this pass). Either way the fix is the
+    per-album "Try a different URL" affordance, so we point at it.
+
+    Best-effort: never raises into the sync runner.
+    """
+    try:
+        albums = scanner.scan(cfg.paths.music_dir)
+    except Exception:
+        log.exception("post-sync unmatched scan failed")
+        return
+    unmatched = [a for a in albums if a.state == AlbumState.NEEDS_SYNC]
+    if not unmatched:
+        log.info("Sync: all Bandcamp-sourced albums are linked")
+        return
+    listed = "; ".join(f"{a.artist} — {a.title}" for a in unmatched[:20])
+    suffix = "" if len(unmatched) <= 20 else f" (+{len(unmatched) - 20} more)"
+    activity.record(
+        f"Sync finished: {len(unmatched)} album(s) still aren't linked to a "
+        f"Bandcamp purchase: {listed}{suffix}. "
+        f"Open each and use 'Try a different URL' to link it manually.",
+        level="warning",
+    )
 
 
 def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
