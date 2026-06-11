@@ -558,6 +558,54 @@ def test_needs_sync_bulk_button_enabled_when_idle(client, cfg):
     assert "disabled title=" not in button
 
 
+def test_report_unmatched_after_sync_warns_in_activity(cfg):
+    """After a sync, an album still in NEEDS_SYNC is surfaced as a WARNING in
+    the Activity feed (which mirrors to the app log) with the manual-fix hint."""
+    from harmonist import activity
+    from harmonist.web.main import _report_unmatched_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _make_album(cfg, "Stranded", mbid="rel-x")
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://label.bandcamp.com/album/stranded",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-x",
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+    activity.clear()
+    _report_unmatched_after_sync(cfg)
+    warnings = [e for e in activity.recent(10) if e.level == "warning"]
+    assert len(warnings) == 1
+    assert "1 album(s)" in warnings[0].message
+    assert "Try a different URL" in warnings[0].message
+
+
+def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):
+    """A linked album (item_id set) is COMPLETE, not NEEDS_SYNC — no warning."""
+    from harmonist import activity
+    from harmonist.web.main import _report_unmatched_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _make_album(cfg, "Linked", mbid="rel-y")
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://label.bandcamp.com/album/linked",
+            bandcamp=BandcampInfo(item_id=123),
+            mb_release_id="rel-y",
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+    activity.clear()
+    _report_unmatched_after_sync(cfg)
+    assert [e for e in activity.recent(10) if e.level == "warning"] == []
+
+
 def test_reject_clears_candidate(client, cfg):
     d = _make_album(cfg, "RC")
     sc.write(
