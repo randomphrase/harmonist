@@ -84,17 +84,78 @@ For each such album (`harmonist.reconcile.reconcile_album`):
 
 The `©cmt` evidence rule prevents false-positive "purchased on Bandcamp" classifications when a user happens to own an album that's *also* available on Bandcamp but they bought it elsewhere (Beatport, CD rip, etc.).
 
-**Item_id is filled in opportunistically by Sync.** When the user runs Sync (cookies present), `bandcamp_hook.HarmonistSyncer` iterates their Bandcamp purchases. For each purchase URL, it scans existing sidecars for a match. If found:
+**Item_id is filled in opportunistically by Sync.** When the user runs Sync
+(cookies present), `bandcamp_hook.HarmonistSyncer` iterates their Bandcamp
+purchases. For each purchased item it constructs the public album URL
+(`construct_bandcamp_url`) and tries to match it to an album already on disk
+**before** downloading. The match runs as a deliberate ladder, strict → loose:
+
+1. **Exact store_url** (`find_existing_album_by_url`). The sidecar's `store_url`
+   equals the item's constructed URL, byte for byte. The common case: a
+   freshly-downloaded album, or one whose reconciled URL already matches.
+
+2. **Slug fallback** (`find_existing_album_by_slug`). If the exact compare
+   misses, compare only the *release slug* — the `/album/<slug>` segment —
+   ignoring the subdomain. Bandcamp routinely cross-lists one release under
+   several subdomains (a label page **and** the artist's own page), so the
+   same record can have a `store_url` of `thelabel.bandcamp.com/album/home`
+   on disk (taken from MusicBrainz's Bandcamp relationship) while the purchase
+   lives at `theartist.bandcamp.com/album/home`. The slug (`album/home`) is
+   identical; only the host differs. The slug is Bandcamp's **stable per-release
+   handle** — minted once and effectively immutable even as the artist renames
+   the band or re-letters the title — which is exactly what makes it a safe key.
+   Guards: only **unlinked** albums (no `bandcamp.item_id`) are eligible, and if
+   two or more unlinked albums share the slug the matcher **refuses** rather than
+   guess. The item-type segment (`album`/`track`) is part of the key so the two
+   namespaces can't collide.
+
+On a hit at either rung, sync:
 - Fills in `bandcamp.item_id` (and `band_id`) on the existing sidecar.
+- For a **slug** hit, also adopts the *item's* URL as the new `store_url` — it's
+  where the user actually purchased the release, so the badge should follow it
+  (the on-disk URL was the stale MB-relationship one). Exact hits leave the URL
+  unchanged (it already matches).
 - Appends the item_id to `bandcampsync`'s `ignores.txt`.
-- **Skips the download** (returns False from `sync_item`) — the album is already on disk.
+- **Skips the download** (returns False from `sync_item`) — the album is already
+  on disk.
 
 For purchases with no matching sidecar, sync downloads as normal.
 
+**Why there is no third rung on artist + title.** The obvious next fallback —
+normalised `artist + title` — is deliberately **not** implemented, and this is a
+load-bearing decision, not an omission. Artist and title are the *least* stable
+fields in a real catalogue. Some artists reissue a single title in many closely
+named editions (`[ep]`, `[extended edition]`, `[lp edition] remastered by …`, …)
+and render their own name inconsistently from one release to the next (spacing,
+punctuation, capitalisation). Any normalisation loose enough to be useful erases
+the bracketed edition qualifier — which is precisely the discriminator — so an
+on-disk copy of one edition would match a *different* edition's *purchase*. A
+"collection-aware bijection"
+(link only when exactly one residual album and exactly one item share a key) can
+make it *safe*, but it's a large, fragile apparatus that still refuses the
+genuinely ambiguous cases (the six editions) and rescues only a handful of
+clean-but-stale ones. The cost/benefit doesn't clear the bar. **Slug is signal;
+artist/title is noise.**
+
 **Edge case — bandcamp `©cmt` but no matching purchase:**
-After sync runs, an album may remain `NEEDS_SYNC` (still `bandcamp.item_id=None`). This means we have evidence the user got it from Bandcamp (©cmt) but couldn't link it to a current purchase (URL renames, ownership transfer, removed from collection, etc.). The inbox surfaces these albums with two affordances:
-- **Try a different URL** — user supplies the correct/current Bandcamp URL; written into the sidecar; next sync re-attempts the match.
-- **Mark purchased elsewhere** — clears the `store_url` and drops the bandcamp block. Album becomes Complete.
+After sync runs, an album may remain `NEEDS_SYNC` (still `bandcamp.item_id=None`)
+for one of two reasons:
+- **Stale / divergent slug.** The stored `store_url` slug genuinely differs from
+  any current purchase — the MusicBrainz relationship URL is out of date, or the
+  artist re-slugged the page (e.g. disk `…/album/the-record` vs purchase
+  `…/album/the-record-24bit`). This is a *wrong-URL* problem, not a matching
+  gap; the fix is to correct the URL, not to match more loosely.
+- **Below the collection checkpoint.** A normal sync stops at bandcampsync's
+  checkpoint (`.bandcampsync-state.json`) and never revisits older purchases, so
+  "still `NEEDS_SYNC`" can simply mean "not looked at this pass" (a planned
+  Settings control surfaces the checkpoint's last-seen date and resets it).
+
+Either way the inbox surfaces these albums with two affordances:
+- **Try a different URL** — user supplies the correct/current Bandcamp URL;
+  written into the sidecar; next sync re-attempts the match (now via the slug
+  rung too).
+- **Mark purchased elsewhere** — clears the `store_url` and drops the bandcamp
+  block. Album becomes Complete.
 
 Bandcamp credentials remain optional throughout: the tool is fully usable for a non-Bandcamp library (per use case 2.2). Reconciliation works without cookies — it just leaves bandcamp-sourced albums in `NEEDS_SYNC` indefinitely (which is fine if the user never plans to add cookies).
 
