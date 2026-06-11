@@ -558,30 +558,48 @@ def test_needs_sync_bulk_button_enabled_when_idle(client, cfg):
     assert "disabled title=" not in button
 
 
-def test_report_unmatched_after_sync_warns_in_activity(cfg):
-    """After a sync, an album still in NEEDS_SYNC is surfaced as a WARNING in
-    the Activity feed (which mirrors to the app log) with the manual-fix hint."""
+def test_tasks_shows_reconcile_progress_when_running(client, cfg):
+    """While reconcile runs (e.g. straight after a nuke), the inbox shows
+    progress instead of the transient 'N need attention' count."""
+    _make_album(cfg, "Fresh")  # a NEW album so the inbox isn't empty
+    runner = client.app.state.reconcile_runner
+    runner._status.state = "running"
+    runner._status.completed = 143
+    runner._status.total = 346
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    assert "Reconciling" in r.text
+    assert "143 / 346" in r.text
+    assert "need attention" not in r.text
+
+
+def test_report_unmatched_after_sync_warns_per_album(cfg):
+    """After a sync, each album still in NEEDS_SYNC gets its OWN WARNING in the
+    Activity feed (which mirrors to the app log) — one entry per album, not a
+    single wall-of-text line — with the manual-fix hint."""
     from harmonist import activity
     from harmonist.web.main import _report_unmatched_after_sync
 
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
-    d = _make_album(cfg, "Stranded", mbid="rel-x")
-    sc.write(
-        d,
-        Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
-            store_url="https://label.bandcamp.com/album/stranded",
-            bandcamp=BandcampInfo(item_id=None),
-            mb_release_id="rel-x",
-            tagged_at=datetime.now(UTC),
-        ),
-    )
+    for name in ("Stranded", "Adrift"):
+        d = _make_album(cfg, name, mbid=f"rel-{name}")
+        sc.write(
+            d,
+            Sidecar(
+                schema_version=CURRENT_SCHEMA_VERSION,
+                store_url=f"https://label.bandcamp.com/album/{name.lower()}",
+                bandcamp=BandcampInfo(item_id=None),
+                mb_release_id=f"rel-{name}",
+                tagged_at=datetime.now(UTC),
+            ),
+        )
     activity.clear()
     _report_unmatched_after_sync(cfg)
     warnings = [e for e in activity.recent(10) if e.level == "warning"]
-    assert len(warnings) == 1
-    assert "1 album(s)" in warnings[0].message
-    assert "Try a different URL" in warnings[0].message
+    # One warning PER unmatched album (two here), not a single combined line.
+    assert len(warnings) == 2
+    assert all("Not linked to a Bandcamp purchase" in w.message for w in warnings)
+    assert all("Try a different URL" in w.message for w in warnings)
 
 
 def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):

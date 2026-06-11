@@ -414,14 +414,20 @@ def _report_unmatched_after_sync(cfg: config_mod.Config) -> None:
     if not unmatched:
         log.info("Sync: all Bandcamp-sourced albums are linked")
         return
-    listed = "; ".join(f"{a.artist} — {a.title}" for a in unmatched[:20])
-    suffix = "" if len(unmatched) <= 20 else f" (+{len(unmatched) - 20} more)"
-    activity.record(
-        f"Sync finished: {len(unmatched)} album(s) still aren't linked to a "
-        f"Bandcamp purchase: {listed}{suffix}. "
-        f"Open each and use 'Try a different URL' to link it manually.",
-        level="warning",
+    # One entry PER album, not a single wall-of-text line — so each is its own
+    # timestamped, greppable Activity/log record the user can act on (and so a
+    # long list doesn't get truncated into one unreadable blob). The count line
+    # is INFO (app log only) so the Activity feed shows just the per-album rows.
+    log.info(
+        "Sync: %d album(s) still aren't linked to a Bandcamp purchase (listed individually below)",
+        len(unmatched),
     )
+    for a in unmatched:
+        activity.record(
+            f"Not linked to a Bandcamp purchase: {a.artist} — {a.title} "
+            f"(use 'Try a different URL' to link it)",
+            level="warning",
+        )
 
 
 def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
@@ -658,6 +664,12 @@ def _register_routes(app: FastAPI) -> None:
     @app.get("/tasks", response_class=HTMLResponse)
     def tasks(request: Request) -> Response:
         albums = _albums(request)
+        # Capture reconcile status BEFORE (maybe) kicking a new pass, so THIS
+        # render reflects only a genuinely in-flight reconcile. A pass this very
+        # request starts shouldn't flip the inbox to "Reconciling…" on the same
+        # response — it surfaces on the next poll. (Otherwise opening the inbox
+        # with any NEW album would always flash "Reconciling".)
+        reconcile_status = request.app.state.reconcile_runner.status()
         # Auto-kick the reconciler if there are Orphans waiting and the
         # debounce window has elapsed. The runner internally handles the
         # "no MBID, skip" case — cost is cheap for non-reconcilable orphans.
@@ -668,7 +680,7 @@ def _register_routes(app: FastAPI) -> None:
             albums=_inbox_albums(albums),
             total_albums=len(albums),
             scan=request.app.state.scan_runner.status(),
-            reconcile=request.app.state.reconcile_runner.status(),
+            reconcile=reconcile_status,
         )
         return _templates(request).TemplateResponse(request, "tasks.html", ctx)
 

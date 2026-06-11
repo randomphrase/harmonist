@@ -1,7 +1,20 @@
 <div class="flex justify-between items-baseline mb-3 text-sm flex-wrap gap-2">
+    {% if reconcile and reconcile.state == 'running' %}
+    {# A reconcile pass (e.g. straight after a nuke) is reclassifying NEW
+       albums — the raw count is transient and shrinking, so show progress
+       instead of an alarming "N need attention". The inbox polls every 1.5s
+       while reconcile runs, so this updates live and the real inbox lands
+       when the pass finishes. #}
+    <p class="text-mb-purple">
+        <span class="font-bold">Reconciling…</span>
+        {% if reconcile.total %}<span class="text-muted">{{ reconcile.completed }} / {{ reconcile.total }}</span>{% endif %}
+        <span class="text-muted">— albums leave the inbox as they resolve</span>
+    </p>
+    {% else %}
     <p class="text-muted">
         <span class="font-bold text-ink">{{ albums|length }}</span> need attention
     </p>
+    {% endif %}
 </div>
 
 {% if not albums and scan and scan.state == 'scanning' %}
