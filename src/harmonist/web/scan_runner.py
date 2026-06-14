@@ -47,6 +47,11 @@ class ScanStatus:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     last_error: str | None = None
+    # Monotonic count of completed scans. The client watches this to know a
+    # fresh snapshot exists and refresh the inbox — robust even when a scan is
+    # so fast (mtime-cache hit) that it starts AND finishes between two status
+    # polls, which the old scanning→done state edge would miss.
+    seq: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -56,6 +61,7 @@ class ScanStatus:
             "started_at": _iso(self.started_at),
             "finished_at": _iso(self.finished_at),
             "last_error": self.last_error,
+            "seq": self.seq,
         }
 
 
@@ -71,6 +77,7 @@ class ScanRunner:
         self._cache: scanner.AlbumCache = {}
         self._albums: list[Album] = []
         self._completed_once = False
+        self._scan_seq = 0  # monotonic; stamped onto status at each completion
         self._status = ScanStatus()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[None] | None = None
@@ -148,7 +155,9 @@ class ScanRunner:
 
         started = time.monotonic()
         log.info("Library scan started: %s", self._music_dir)
-        status = ScanStatus(state="scanning", started_at=datetime.now(UTC))
+        # Carry the last completed seq while scanning; bump it only on completion
+        # so the client refreshes when a NEW snapshot is actually ready.
+        status = ScanStatus(state="scanning", started_at=datetime.now(UTC), seq=self._scan_seq)
         self._status = status
         results: list[Album] = []
         last_log = started
@@ -194,6 +203,8 @@ class ScanRunner:
         scanner.prune_cache(self._cache, {a.path for a in results})
         self._albums = results
         self._completed_once = True
+        self._scan_seq += 1
+        status.seq = self._scan_seq
         status.state = "done"
         status.finished_at = datetime.now(UTC)
         log.info(
