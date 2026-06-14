@@ -573,6 +573,43 @@ def test_tasks_shows_reconcile_progress_when_running(client, cfg):
     assert "need attention" not in r.text
 
 
+def test_tasks_kicks_reconcile_only_for_reconcilable_orphan(client, cfg):
+    """A NEW album with an MBID atom (reconcilable) kicks reconcile; an
+    untagged orphan does not — so incidental inbox refreshes don't churn."""
+    started: list[bool] = []
+
+    def fake_start() -> bool:
+        started.append(True)
+        return True
+
+    client.app.state.reconcile_runner.start = fake_start
+
+    _make_album(cfg, "Untagged")  # NEW, no MBID atom → not reconcilable
+    client.get("/tasks")
+    assert started == []  # untagged orphan must NOT kick reconcile
+
+    _make_album(cfg, "Tagged", mbid="rel-z")  # NEW + MBID atom → reconcilable
+    client.get("/tasks")
+    assert started == [True]  # now there's something reconcile can resolve
+
+
+def test_tasks_skips_reconcile_for_forgotten_orphan(client, cfg):
+    """A Forgotten (exempt) MBID-tagged orphan must not kick reconcile — the
+    runner would skip it anyway, so kicking would loop forever."""
+    started: list[bool] = []
+
+    def fake_start() -> bool:
+        started.append(True)
+        return True
+
+    client.app.state.reconcile_runner.start = fake_start
+
+    d = _make_album(cfg, "Forgotten", mbid="rel-f")  # NEW + MBID atom
+    client.app.state.forgotten_paths.add(d)
+    client.get("/tasks")
+    assert started == []
+
+
 def test_report_unmatched_after_sync_warns_per_album(cfg):
     """After a sync, each album still in NEEDS_SYNC gets its OWN WARNING in the
     Activity feed (which mirrors to the app log) — one entry per album, not a
