@@ -166,6 +166,11 @@ class Album:
     # tracks. Drives whether the UI requests /cover (avoids 404 floods) and
     # lets /cover serve the embedded art without writing it to disk.
     has_cover: bool = False
+    # True if the tracks carry a MusicBrainz Album Id atom. For a NEW album
+    # (no sidecar) this is what makes it *reconcilable* — reconcile derives a
+    # sidecar from the tag MBID. Untagged orphans (no MBID) are never
+    # reconcilable, so the inbox uses this to avoid kicking reconcile for them.
+    has_tag_mbid: bool = False
 
 
 # ---------------------------------------------------------------------------

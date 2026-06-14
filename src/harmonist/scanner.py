@@ -179,6 +179,10 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         # A cover exists if there's a folder cover.* OR the first track has
         # embedded art (album art is on every track; first is representative).
         has_cover=io.cover_path is not None or (bool(fields) and fields[0].has_cover),
+        # Reconcilable iff some track carries an MB Album Id atom (matches what
+        # reconcile.reconcile_album reads). Lets the inbox skip kicking
+        # reconcile for untagged orphans it could never resolve.
+        has_tag_mbid=any(sf.album_id for sf in fields),
     )
 
 

@@ -670,10 +670,16 @@ def _register_routes(app: FastAPI) -> None:
         # response — it surfaces on the next poll. (Otherwise opening the inbox
         # with any NEW album would always flash "Reconciling".)
         reconcile_status = request.app.state.reconcile_runner.status()
-        # Auto-kick the reconciler if there are Orphans waiting and the
-        # debounce window has elapsed. The runner internally handles the
-        # "no MBID, skip" case — cost is cheap for non-reconcilable orphans.
-        if any(a.state == AlbumState.NEW for a in albums):
+        # Auto-kick the reconciler ONLY when there's an orphan it can actually
+        # resolve: a NEW album whose tags carry an MBID, and which the user
+        # hasn't Forgotten. Reconcile writes a sidecar for every such album, so
+        # it leaves NEW — meaning a finished pass clears its own trigger and we
+        # don't re-fire on incidental inbox refreshes (after a Recheck, a tag,
+        # etc.). Untagged orphans are never reconcilable, so they never kick it.
+        forgotten: set[Path] = request.app.state.forgotten_paths
+        if any(
+            a.state == AlbumState.NEW and a.has_tag_mbid and a.path not in forgotten for a in albums
+        ):
             request.app.state.reconcile_runner.start()
         ctx = _ctx(
             request,

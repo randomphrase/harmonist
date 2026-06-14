@@ -266,6 +266,18 @@ def test_scanner_audio_format_single(tmp_path):
     assert scan(tmp_path)[0].audio_format == "FLAC"
 
 
+def test_scanner_sets_has_tag_mbid(tmp_path):
+    """has_tag_mbid reflects whether the tracks carry an MB Album Id atom —
+    the signal the inbox uses to decide an orphan is reconcilable."""
+    from harmonist.scanner import scan
+
+    d = _make_album(tmp_path, "sine.m4a")
+    assert scan(tmp_path)[0].has_tag_mbid is False  # fresh fixture: no MBID atom
+
+    tag_album(d, _release_one_track())  # writes the MB Album Id atom
+    assert scan(tmp_path)[0].has_tag_mbid is True
+
+
 def test_scanner_audio_format_mixed(tmp_path):
     """A dir with files of differing formats reports 'Mixed'."""
     from harmonist.scanner import scan
