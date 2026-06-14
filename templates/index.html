@@ -166,6 +166,7 @@ window.addEventListener('resize', function () {
     let lastSyncState = 'idle';
     let lastReconcileState = 'idle';
     let lastScanState = 'idle';
+    let lastScanSeq;  // last completed-scan counter we've seen (undefined until first poll)
     let syncDisplay = null;       // current running-sync HTML, or null
     let reconcileDisplay = null;  // current running-reconcile HTML, or null
     let scanDisplay = null;       // current library-scan HTML, or null
@@ -248,10 +249,17 @@ window.addEventListener('resize', function () {
         }
 
         // ----- Library scan -----
-        // On the scanning→done edge, swap the real inbox + library in.
-        if (lastScanState === 'scanning' && scan.state === 'done') {
+        // Refresh the inbox/library whenever a NEW snapshot is ready — keyed on
+        // the completed-scan counter, NOT the scanning→done state edge. A scan
+        // can start and finish between two 1.5s polls (mtime-cache hit → ~0.1s),
+        // so the edge is unobservable; the counter still increments. Without
+        // this, a post-action rescan (e.g. after Recheck tags an album) can land
+        // without the inbox ever refreshing — leaving a stale card whose cover
+        // 404s because the album's id has moved on.
+        if (lastScanSeq !== undefined && scan.seq !== lastScanSeq) {
             document.body.dispatchEvent(new Event('tasks-changed'));
         }
+        lastScanSeq = scan.seq;
         lastScanState = scan.state;
         if (scan.state === 'scanning') {
             const prog = `${scan.dirs_scanned} dirs · ${scan.albums_found} albums`;

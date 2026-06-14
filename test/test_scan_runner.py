@@ -55,6 +55,25 @@ def test_scan_runner_scans_and_reports(tmp_path):
     assert status["dirs_scanned"] >= 2
 
 
+def test_scan_runner_seq_increments_each_completed_scan(tmp_path):
+    """The completed-scan counter advances on every scan — the signal the
+    client uses to refresh even when a scan is too fast to observe mid-flight."""
+    music = tmp_path / "music"
+    _album(music, "A")
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(runner.has_completed)
+        first = runner.status()["seq"]
+        assert first >= 1
+        runner.request_scan()  # even with no disk change, a scan still completes
+        await _wait(lambda: runner.status()["seq"] > first)
+
+    asyncio.run(go())
+    assert runner.status()["seq"] >= 2
+
+
 def test_scan_runner_rescan_picks_up_new_album(tmp_path):
     music = tmp_path / "music"
     _album(music, "A")
