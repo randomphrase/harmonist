@@ -631,39 +631,62 @@ def test_tasks_new_group_shows_cards_when_idle(client, cfg):
     assert "FreshTwo" in r.text
 
 
-def test_report_unmatched_after_sync_warns_per_album(cfg):
-    """After a sync, each album still in NEEDS_SYNC gets its OWN WARNING in the
-    Activity feed (which mirrors to the app log) — one entry per album, not a
-    single wall-of-text line — with the manual-fix hint."""
+def _needs_sync_album(cfg, name: str, mbid: str) -> Path:
+    """A tagged, on-disk album with a Bandcamp store_url but no item_id →
+    scans as NEEDS_SYNC (the post-sync audit's input set)."""
+    d = _make_album(cfg, name, mbid=mbid)
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url=f"https://label.bandcamp.com/album/{name.lower()}",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id=mbid,
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+    return d
+
+
+def _mb_release(mbid: str, n_tracks: int = 1) -> dict:
+    """Minimal MB release dict (what fetch_release returns) for best_match."""
+    tracks = [
+        {
+            "id": f"rt-{i}",
+            "position": str(i),
+            "title": f"Track {i}",
+            "recording": {"id": f"rec-{i}", "title": f"Track {i}", "length": "1000"},
+        }
+        for i in range(1, n_tracks + 1)
+    ]
+    return {
+        "id": mbid,
+        "title": "Test Album",
+        "medium-list": [{"position": "1", "track-list": tracks}],
+    }
+
+
+def test_audit_unmatched_warns_per_album_when_not_mistagged(cfg):
+    """When the store URL isn't known to MB (empty lookup → unverifiable), the
+    album is just unlinked: one WARNING per album with the manual-fix hint."""
     from harmonist import activity
-    from harmonist.web.main import _report_unmatched_after_sync
+    from harmonist.web.main import _audit_unmatched_after_sync
 
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("Stranded", "Adrift"):
-        d = _make_album(cfg, name, mbid=f"rel-{name}")
-        sc.write(
-            d,
-            Sidecar(
-                schema_version=CURRENT_SCHEMA_VERSION,
-                store_url=f"https://label.bandcamp.com/album/{name.lower()}",
-                bandcamp=BandcampInfo(item_id=None),
-                mb_release_id=f"rel-{name}",
-                tagged_at=datetime.now(UTC),
-            ),
-        )
+    _needs_sync_album(cfg, "Stranded", "rel-Stranded")
+    _needs_sync_album(cfg, "Adrift", "rel-Adrift")
     activity.clear()
-    _report_unmatched_after_sync(cfg)
+    _audit_unmatched_after_sync(cfg, lookup=lambda url: [])  # MB knows no URL
     warnings = [e for e in activity.recent(10) if e.level == "warning"]
-    # One warning PER unmatched album (two here), not a single combined line.
     assert len(warnings) == 2
     assert all("Not linked to a Bandcamp purchase" in w.message for w in warnings)
     assert all("Try a different URL" in w.message for w in warnings)
 
 
-def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):
+def test_audit_quiet_when_all_linked(cfg):
     """A linked album (item_id set) is COMPLETE, not NEEDS_SYNC — no warning."""
     from harmonist import activity
-    from harmonist.web.main import _report_unmatched_after_sync
+    from harmonist.web.main import _audit_unmatched_after_sync
 
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     d = _make_album(cfg, "Linked", mbid="rel-y")
@@ -678,8 +701,69 @@ def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):
         ),
     )
     activity.clear()
-    _report_unmatched_after_sync(cfg)
+    _audit_unmatched_after_sync(cfg, lookup=lambda url: [])
     assert [e for e in activity.recent(10) if e.level == "warning"] == []
+
+
+def test_audit_consistent_album_stays_needs_sync(cfg):
+    """Store URL maps to the SAME MBID it's tagged with → consistent, not a
+    mis-tag: left as NEEDS_SYNC, surfaced as merely unlinked."""
+    from harmonist import activity
+    from harmonist.web.main import _audit_unmatched_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Consistent", "rel-ok")
+    activity.clear()
+    _audit_unmatched_after_sync(cfg, lookup=lambda url: ["rel-ok"])  # URL → same MBID
+    loaded = sc.read(d)
+    assert loaded.mb_release_id == "rel-ok"  # untouched
+    assert loaded.mb_match_candidate is None
+    warnings = [e for e in activity.recent(10) if e.level == "warning"]
+    assert any("Not linked to a Bandcamp purchase" in w.message for w in warnings)
+
+
+def test_audit_demotes_mistag_to_needs_mbid_with_suggestion(cfg):
+    """Store URL maps to a DIFFERENT MBID than the tag → mis-tag: demote to
+    NEEDS_MBID with the URL-matched release pre-loaded as the suggestion."""
+    from harmonist import activity, scanner
+    from harmonist.models import AlbumState
+    from harmonist.web.main import _audit_unmatched_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Mistagged", "rel-WRONG")
+    activity.clear()
+    _audit_unmatched_after_sync(
+        cfg,
+        lookup=lambda url: ["rel-correct"],  # URL points at a different release
+        fetch_release=lambda mbid: _mb_release(mbid, n_tracks=1),
+    )
+
+    loaded = sc.read(d)
+    assert loaded.mb_release_id is None  # wrong tag cleared
+    assert loaded.mb_match_candidate is not None
+    assert loaded.mb_match_candidate.mb_release_id == "rel-correct"  # suggested fix
+    assert loaded.store_url  # store URL kept
+    assert any("mis-tag" in n for n in loaded.mb_match_candidate.notes)
+    # ...and the album now scans as NEEDS_MBID (ready for one-click Confirm).
+    album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert album.state == AlbumState.NEEDS_MBID
+    assert any("Possible mis-tag" in e.message for e in activity.recent(10))
+
+
+def test_store_url_mistag_detection():
+    from harmonist.web.main import store_url_mistag
+
+    # consistent: tagged MBID is among the URL's releases
+    assert store_url_mistag("https://x.bc.com/album/a", "rel-1", lookup=lambda u: ["rel-1"]) is None
+    # mismatch: tagged MBID absent → returns the URL's releases
+    assert store_url_mistag("https://x.bc.com/album/a", "rel-1", lookup=lambda u: ["rel-2"]) == [
+        "rel-2"
+    ]
+    # unverifiable: MB doesn't know the URL (empty) → None, NOT a mis-tag
+    assert store_url_mistag("https://x.bc.com/album/a", "rel-1", lookup=lambda u: []) is None
+    # missing inputs → None (no lookup attempted)
+    assert store_url_mistag(None, "rel-1", lookup=lambda u: ["x"]) is None
+    assert store_url_mistag("https://x.bc.com/album/a", None, lookup=lambda u: ["x"]) is None
 
 
 def test_reject_clears_candidate(client, cfg):

@@ -36,7 +36,15 @@ from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
 from harmonist.bandcamp_hook import HarmonistSyncer
 from harmonist.match import assess_match, best_match
-from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar, store_name
+from harmonist.models import (
+    Album,
+    AlbumState,
+    BandcampInfo,
+    MatchCandidate,
+    Release,
+    Sidecar,
+    store_name,
+)
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
@@ -156,8 +164,9 @@ def create_app(
                 progress_callback=sync_runner.set_current_item,
                 post_download_callback=resolve_after_download,
             )
-            # Tell the user (log + Activity) which albums sync couldn't link.
-            _report_unmatched_after_sync(cfg)
+            # Audit the albums sync couldn't link: flag mis-tags (→ Needs MBID
+            # with a suggested fix) and surface the rest. Log + Activity.
+            _audit_unmatched_after_sync(cfg)
             scan_runner.request_scan()  # downloads landed → refresh the snapshot
             return result
 
@@ -392,42 +401,126 @@ def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
     return False
 
 
-def _report_unmatched_after_sync(cfg: config_mod.Config) -> None:
-    """After a sync, surface albums still lacking a Bandcamp link so the user
-    sees what needs manual attention — in BOTH the app log and the Activity
-    feed (via `activity.record`, which mirrors to the log).
+def store_url_mistag(
+    store_url: str | None,
+    mb_release_id: str | None,
+    *,
+    lookup: Callable[[str], list[str]],
+) -> list[str] | None:
+    """Detect a mis-tag: a tagged album whose Bandcamp `store_url` maps (via MB's
+    URL relationships) to release(s) that DON'T include its current
+    `mb_release_id`. Returns those MBIDs on a mismatch; `None` if consistent or
+    unverifiable.
 
-    An album reaches `NEEDS_SYNC` with `bandcamp.item_id` still unset when the
-    sync's store_url + slug match couldn't tie it to a purchase (e.g. the MB
-    relationship URL is stale, or — with the collection checkpoint in play —
-    the item simply wasn't revisited this pass). Either way the fix is the
-    per-album "Try a different URL" affordance, so we point at it.
+    Empty lookup result is deliberately treated as *unverifiable*, not a
+    mismatch — most Bandcamp URLs simply aren't related on MB, and we must
+    never flag those as mis-tags.
+    """
+    if not store_url or not mb_release_id:
+        return None
+    try:
+        mbids = lookup(store_url)
+    except mb_lookup.MBError:
+        return None
+    if not mbids or mb_release_id in mbids:
+        return None
+    return mbids
+
+
+def _demote_to_needs_mbid(
+    album_path: Path, sc: Sidecar, *, candidate: MatchCandidate | None
+) -> None:
+    """Drop a mis-tagged album back to NEEDS_MBID so the user can re-match it:
+    clear the wrong MBID but KEEP the store_url, and pre-load the release the
+    store URL actually points to as `mb_match_candidate` — the NEEDS_MBID card
+    then shows the side-by-side and a one-click Confirm."""
+    sidecar_mod.write(
+        album_path,
+        Sidecar(
+            schema_version=sc.schema_version,
+            store_url=sc.store_url,
+            bandcamp=sc.bandcamp,
+            downloaded_at=sc.downloaded_at,
+            added_at=sc.added_at,
+            mb_release_id=None,
+            mb_match_candidate=candidate,
+            tagged_at=None,
+            track_count_expected=None,
+            notes=sc.notes,
+        ),
+    )
+
+
+def _url_match_candidate(
+    album_path: Path, mbids: list[str], fetch_release: Callable[[str], Release]
+) -> MatchCandidate | None:
+    """Fetch the given MB releases and return the one that best fits the files
+    on disk (or None). Shared shape with Recheck's URL→release matching."""
+    try:
+        releases = [fetch_release(m) for m in mbids]
+    except mb_lookup.MBError:
+        return None
+    return best_match(album_path, releases)
+
+
+def _audit_unmatched_after_sync(
+    cfg: config_mod.Config,
+    *,
+    lookup: Callable[[str], list[str]] = mb_lookup.lookup_by_bandcamp_url,
+    fetch_release: Callable[[str], Release] = mb_lookup.fetch_release,
+) -> None:
+    """After a sync, examine the albums that didn't link to a purchase
+    (`NEEDS_SYNC`) and decide, per album, whether it's a mis-tag or just
+    unlinked — surfacing each in BOTH the app log and the Activity feed.
+
+    The mis-tag check (`store_url_mistag`) costs one MB lookup per album, so it
+    runs ONLY on this already-failed set — never the whole library. When the
+    store_url points at a different MB release than the tag, the album is a
+    mis-tag: demote it to NEEDS_MBID with that release pre-loaded as a
+    suggestion (so the user just Confirms). Otherwise it's genuinely unlinked
+    (stale slug, below-checkpoint, …) — point at the manual "Try a different
+    URL" fix.
 
     Best-effort: never raises into the sync runner.
     """
     try:
         albums = scanner.scan(cfg.paths.music_dir)
     except Exception:
-        log.exception("post-sync unmatched scan failed")
+        log.exception("post-sync audit scan failed")
         return
     unmatched = [a for a in albums if a.state == AlbumState.NEEDS_SYNC]
     if not unmatched:
         log.info("Sync: all Bandcamp-sourced albums are linked")
         return
-    # One entry PER album, not a single wall-of-text line — so each is its own
-    # timestamped, greppable Activity/log record the user can act on (and so a
-    # long list doesn't get truncated into one unreadable blob). The count line
-    # is INFO (app log only) so the Activity feed shows just the per-album rows.
-    log.info(
-        "Sync: %d album(s) still aren't linked to a Bandcamp purchase (listed individually below)",
-        len(unmatched),
-    )
+    log.info("Sync: auditing %d still-unlinked album(s) for mis-tags", len(unmatched))
     for a in unmatched:
-        activity.record(
-            f"Not linked to a Bandcamp purchase: {a.artist} — {a.title} "
-            f"(use 'Try a different URL' to link it)",
-            level="warning",
+        sc = a.sidecar
+        mistag = store_url_mistag(
+            sc.store_url if sc else None,
+            sc.mb_release_id if sc else None,
+            lookup=lookup,
         )
+        if mistag and sc is not None:
+            candidate = _url_match_candidate(a.path, mistag, fetch_release)
+            if candidate is not None:
+                # Note the mis-tag provenance on the suggestion so the card
+                # explains WHY it's being asked to re-confirm.
+                candidate.notes.append(
+                    f"store URL points here; was tagged {sc.mb_release_id} — likely a mis-tag"
+                )
+            _demote_to_needs_mbid(a.path, sc, candidate=candidate)
+            activity.record(
+                f"Possible mis-tag: {a.artist} — {a.title} — the store URL points to a "
+                f"different MusicBrainz release ({mistag[0]}). Moved to Needs MBID with a "
+                f"suggested match to confirm.",
+                level="warning",
+            )
+        else:
+            activity.record(
+                f"Not linked to a Bandcamp purchase: {a.artist} — {a.title} "
+                f"(use 'Try a different URL' to link it)",
+                level="warning",
+            )
 
 
 def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
