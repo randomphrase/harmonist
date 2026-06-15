@@ -29,6 +29,32 @@ gets mislabeled.
 The UI is a single page with **Inbox / Library / Activity** tabs, built with
 HTMX — no SPA, no build step at runtime.
 
+## Where Harmonist fits
+
+Harmonist sits between your **purchases** (Bandcamp) and your **media server**
+(Plex, Navidrome) — it automates the *tagging* step for music you already own.
+It's deliberately narrow, and complements rather than replaces the usual tools:
+
+- **[MusicBrainz Picard](https://picard.musicbrainz.org)** is the gold-standard
+  *manual* desktop tagger — you cluster and match files by hand. Harmonist
+  automates that for the Bandcamp→library flow and writes the **same
+  Picard-compatible tags**, so your files stay fully Picard-editable. Reach for
+  Picard on a gnarly one-off; let Harmonist handle the routine purchases.
+- **[Lidarr](https://lidarr.audio)** (the \*arr suite) is a broad collection
+  manager — it monitors artists and pulls releases from various indexers to
+  grow a library. Harmonist is narrower and purchase-oriented: it syncs and
+  tags the music you've **bought on Bandcamp** (with other stores possibly to
+  follow). Lidarr automates *growing* a collection; Harmonist focuses on
+  cleanly tagging what you've purchased.
+- **[beets](https://beets.io)** is a powerful CLI library manager and
+  autotagger. Harmonist trades the command line for a self-hosted web UI built
+  around the Bandcamp purchase flow, and keeps a human in the loop — it asks
+  before it guesses rather than auto-applying a best match.
+
+In short: if you buy music on Bandcamp and want it correctly tagged and dropped
+into Plex or Navidrome without hand-tagging every album, that's the gap
+Harmonist fills.
+
 ## Screenshots
 
 <!-- TODO: drop images in docs/screenshots/ and reference them here, e.g.
