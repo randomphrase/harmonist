@@ -87,7 +87,7 @@
             </h3>
             <p class="text-xs text-muted mt-0.5">
                 {% if state == AlbumState.INCONSISTENT %}Files in one directory disagree on album title or MBID. Harmonist won't guess — use <a href="https://picard.musicbrainz.org/" target="_blank" rel="noopener" class="text-mb-purple hover:underline">Picard</a> to sort into separate folders, then refresh.
-                {% elif state == AlbumState.NEW %}No <code class="text-ink">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.
+                {% elif state == AlbumState.NEW %}{% if reconcile and reconcile.state == 'running' %}Reconciling against MusicBrainz — tagged albums are sorting into place; only the rest will remain here when it finishes.{% else %}No <code class="text-ink">.harmonist.json</code> sidecar yet. Auto-reconcile catches MBID-tagged albums; the rest need manual MBID assignment.{% endif %}
                 {% elif state == AlbumState.NEEDS_MBID %}No confirmed MusicBrainz release yet. Where a suggestion was found, review the side-by-side and confirm; otherwise seed via Harmony and recheck, paste an <abbr title="MusicBrainz Identifier — the unique ID of a specific release in the MusicBrainz database" class="cursor-help underline decoration-dotted underline-offset-2">MBID</abbr>, or search by artist + title.
                 {% elif state == AlbumState.NEEDS_SYNC %}Tagged from MusicBrainz but Bandcamp purchase isn't linked yet. <span class="font-bold text-accent">Click Sync</span> to confirm — that's the common case.
                 {% elif state == AlbumState.TAGGING %}Files being written…
@@ -107,6 +107,13 @@
             </button>
             {% endif %}
         </div>
+        {% if state == AlbumState.NEW and reconcile and reconcile.state == 'running' %}
+        {# Reconcile is actively reclassifying these NEW albums. Don't render
+           the list: the inbox re-polls every 1.5s while reconcile runs, so a
+           <details> disclosure would reset to collapsed on every swap (it
+           "doesn't open"), and the items are churning anyway. The header note
+           says what's happening; the real list returns when the pass ends. #}
+        {% else %}
         {# Render the cards once, then place them inline or inside a collapsed
            disclosure depending on group size. #}
         {% set cards %}
@@ -129,6 +136,7 @@
         </details>
         {% else %}
         {{ cards }}
+        {% endif %}
         {% endif %}
     </section>
     {% endif %}

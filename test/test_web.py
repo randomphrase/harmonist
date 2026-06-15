@@ -610,6 +610,27 @@ def test_tasks_skips_reconcile_for_forgotten_orphan(client, cfg):
     assert started == []
 
 
+def test_tasks_new_group_hidden_while_reconciling(client, cfg):
+    """While reconcile runs, the NEW group says so and does NOT render its
+    (churning, re-polled) card list — the disclosure would just reset on every
+    1.5s swap, and the albums are reclassifying anyway."""
+    _make_album(cfg, "FreshOne")  # NEW (no sidecar, no MBID → won't auto-kick)
+    client.app.state.reconcile_runner._status.state = "running"
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    assert "Reconciling against MusicBrainz" in r.text  # header says what's happening
+    assert "FreshOne" not in r.text  # the album card is suppressed
+    assert "Show all" not in r.text  # ...and so is the disclosure
+
+
+def test_tasks_new_group_shows_cards_when_idle(client, cfg):
+    """Sanity counterpart: with no reconcile running the NEW card renders."""
+    _make_album(cfg, "FreshTwo")
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    assert "FreshTwo" in r.text
+
+
 def test_report_unmatched_after_sync_warns_per_album(cfg):
     """After a sync, each album still in NEEDS_SYNC gets its OWN WARNING in the
     Activity feed (which mirrors to the app log) — one entry per album, not a
