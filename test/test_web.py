@@ -1236,6 +1236,42 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
     assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=UTC)
 
 
+def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg, monkeypatch):
+    """When MB over-counts (e.g. a phantom album-mix track) an album lands as a
+    spurious INCOMPLETE. After the user fixes MB upstream, Re-tag from MB
+    recomputes track_count_expected from the corrected release and the state
+    self-corrects to COMPLETE — no explicit override needed."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+
+    d = _make_album(cfg, "OverCounted", mbid="rel-1")  # 1 file, tagged rel-1
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-1",
+            track_count_expected=2,  # MB wrongly said 2 → 1 file < 2 → INCOMPLETE
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+    before = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert before.state == AlbumState.INCOMPLETE  # precondition
+
+    # MB corrected upstream: the release now has 1 track, matching the 1 file.
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: _release_for_match(mbid, n_tracks=1),
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}")
+    assert r.status_code == 200
+
+    assert sc.read(d).track_count_expected == 1  # recomputed from corrected MB
+    after = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert after.state == AlbumState.COMPLETE  # self-corrected
+
+
 def test_retag_400_when_no_mbid_on_sidecar(client, cfg):
     d = _make_album(cfg, "NoMBID")
     sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
