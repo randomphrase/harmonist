@@ -1,6 +1,7 @@
 # Harmonist
 
-Semi-automated music metadata tool: Bandcamp purchases → MusicBrainz → Plex / Navidrome.
+A self-hosted music tagger that turns your Bandcamp purchases into an organized
+library, with metadata from MusicBrainz (destinations: Plex / Navidrome).
 
 ## What it does
 

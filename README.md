@@ -1,12 +1,11 @@
 # Harmonist
 
-Semi-automated music metadata tool: **Bandcamp purchases → MusicBrainz → Plex / Navidrome**.
+**A self-hosted music tagger that turns your Bandcamp purchases into an organized
+library, with metadata from [MusicBrainz](https://musicbrainz.org).**
 
-Harmonist bridges the gap between fresh Bandcamp downloads and a cleanly-tagged
-self-hosted music library. It syncs your Bandcamp purchases, matches each album
-against [MusicBrainz](https://musicbrainz.org) (the source of truth), and writes
-[Picard](https://picard.musicbrainz.org)-compatible tags — surfacing only the
-albums that actually need a human decision.
+Complete [Picard](https://picard.musicbrainz.org)-compatible tags and cover art,
+ready for Plex and Navidrome — and it **asks before it guesses**, so nothing
+gets mislabeled.
 
 > **Status:** early but usable; actively dogfooded. Feedback welcome — please
 > open an issue.
