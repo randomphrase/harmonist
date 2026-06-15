@@ -97,12 +97,13 @@
             </button>
             {% endif %}
         </div>
-        {% if state == AlbumState.NEW and reconcile and reconcile.state == 'running' %}
-        {# Reconcile is actively reclassifying these NEW albums. Don't render
-           the list: the inbox re-polls every 1.5s while reconcile runs, so a
-           <details> disclosure would reset to collapsed on every swap (it
-           "doesn't open"), and the items are churning anyway. The header note
-           says what's happening; the real list returns when the pass ends. #}
+        {% if reconcile and reconcile.state == 'running' %}
+        {# While a reconcile pass runs the whole inbox is in flux — albums move
+           between states as they resolve. Suppress EVERY group's card list (not
+           just NEW): the inbox re-polls every 1.5s, so a <details> "Show all"
+           disclosure would reset to collapsed on every swap (it "doesn't open"),
+           and the items are churning anyway. The per-group header + count stay
+           and update live; the real lists return when the pass ends. #}
         {% else %}
         {# Render the cards once, then place them inline or inside a collapsed
            disclosure depending on group size. #}
