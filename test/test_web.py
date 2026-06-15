@@ -558,9 +558,10 @@ def test_needs_sync_bulk_button_enabled_when_idle(client, cfg):
     assert "disabled title=" not in button
 
 
-def test_tasks_shows_reconcile_progress_when_running(client, cfg):
-    """While reconcile runs (e.g. straight after a nuke), the inbox shows
-    progress instead of the transient 'N need attention' count."""
+def test_tasks_shows_count_not_a_reconcile_banner(client, cfg):
+    """During reconcile the inbox keeps the normal need-attention count (which
+    decrements live as albums resolve) rather than a banner duplicating the
+    status bar's 'Reconciling X/Y'."""
     _make_album(cfg, "Fresh")  # a NEW album so the inbox isn't empty
     runner = client.app.state.reconcile_runner
     runner._status.state = "running"
@@ -568,9 +569,9 @@ def test_tasks_shows_reconcile_progress_when_running(client, cfg):
     runner._status.total = 346
     r = client.get("/tasks")
     assert r.status_code == 200
-    assert "Reconciling" in r.text
-    assert "143 / 346" in r.text
-    assert "need attention" not in r.text
+    assert "need attention" in r.text
+    assert "albums leave the inbox as they resolve" not in r.text  # banner gone
+    assert "143 / 346" not in r.text  # progress lives in the status bar, not here
 
 
 def test_tasks_kicks_reconcile_only_for_reconcilable_orphan(client, cfg):
