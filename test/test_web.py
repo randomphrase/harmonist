@@ -632,6 +632,25 @@ def test_tasks_new_group_shows_cards_when_idle(client, cfg):
     assert "FreshTwo" in r.text
 
 
+def test_tasks_suppresses_all_group_cards_while_reconciling(client, cfg):
+    """Card suppression during reconcile applies to EVERY group, not just NEW —
+    the Needs Sync card list is hidden too (its count header stays)."""
+    _needs_sync_album(cfg, "Linkme", "rel-q")
+    client.app.state.reconcile_runner._status.state = "running"
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    assert "Needs Sync" in r.text  # header + count still rendered
+    assert "Mark purchased elsewhere" not in r.text  # ...but the card is gone
+
+
+def test_tasks_needs_sync_card_shown_when_idle(client, cfg):
+    """Sanity counterpart: idle → the Needs Sync card renders normally."""
+    _needs_sync_album(cfg, "Linkme2", "rel-r")
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    assert "Mark purchased elsewhere" in r.text
+
+
 def _needs_sync_album(cfg, name: str, mbid: str) -> Path:
     """A tagged, on-disk album with a Bandcamp store_url but no item_id →
     scans as NEEDS_SYNC (the post-sync audit's input set)."""
