@@ -1,3 +1,7 @@
+{# Carries the real inbox count for the tab badge, so it's correct even when
+   the card lists are suppressed during reconcile (the badge can't just count
+   rendered cards). Always present, regardless of which branch renders below. #}
+<span id="inbox-total" data-count="{{ albums|length }}" hidden></span>
 <div class="flex justify-between items-baseline mb-3 text-sm flex-wrap gap-2">
     {# The count decrements live during a reconcile pass — the inbox re-polls
        every 1.5s while reconcile runs — so it reflects progress without a
