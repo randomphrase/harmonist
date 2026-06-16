@@ -651,6 +651,22 @@ def test_tasks_needs_sync_card_shown_when_idle(client, cfg):
     assert "Mark purchased elsewhere" in r.text
 
 
+def test_tasks_inbox_count_marker_survives_card_suppression(client, cfg):
+    """The tab-badge count comes from the #inbox-total marker (= the real inbox
+    album count), so it stays correct even while reconcile suppresses the cards
+    — counting rendered cards would wrongly zero it."""
+    _make_album(cfg, "InboxA")
+    _make_album(cfg, "InboxB")
+    r = client.get("/tasks")
+    assert 'id="inbox-total"' in r.text
+    assert 'data-count="2"' in r.text
+
+    client.app.state.reconcile_runner._status.state = "running"  # suppress cards
+    r = client.get("/tasks")
+    assert 'data-count="2"' in r.text  # marker still carries the real count
+    assert "InboxA" not in r.text  # ...even though the card is gone
+
+
 def _needs_sync_album(cfg, name: str, mbid: str) -> Path:
     """A tagged, on-disk album with a Bandcamp store_url but no item_id →
     scans as NEEDS_SYNC (the post-sync audit's input set)."""

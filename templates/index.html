@@ -83,7 +83,12 @@ function harmonistTab(name) {
 document.body.addEventListener('htmx:afterSwap', function (evt) {
     const id = evt.detail.target.id;
     if (id === 'task-list') {
-        const n = evt.detail.target.querySelectorAll('[id^="task-"]').length;
+        // Read the real inbox count from the marker, not by counting rendered
+        // cards — they're suppressed during reconcile, which would wrongly
+        // zero the badge.
+        const marker = evt.detail.target.querySelector('#inbox-total');
+        const n = marker ? marker.dataset.count
+                         : evt.detail.target.querySelectorAll('[id^="task-"]').length;
         const el = document.getElementById('inbox-count');
         if (el) el.textContent = n;
     } else if (id === 'library-rows') {
