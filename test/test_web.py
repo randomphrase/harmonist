@@ -708,6 +708,113 @@ def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):
     assert [e for e in activity.recent(10) if e.level == "warning"] == []
 
 
+# ---------- mis-tag detection via release-group join ----------
+
+
+def _release_with_rg(mbid: str, rg: str, n_tracks: int = 1) -> dict:
+    tracks = [
+        {
+            "id": f"rt-{i}",
+            "position": str(i),
+            "title": f"T{i}",
+            "recording": {"id": f"rec-{i}", "title": f"T{i}", "length": "1000"},
+        }
+        for i in range(1, n_tracks + 1)
+    ]
+    return {
+        "id": mbid,
+        "title": "Album",
+        "release-group": {"id": rg, "title": "RG"},
+        "medium-list": [{"position": "1", "track-list": tracks}],
+    }
+
+
+class _FakeSyncer:
+    def __init__(self, unmatched):
+        self._unmatched = unmatched
+
+    def unmatched_purchases(self):
+        return self._unmatched
+
+
+def test_detect_mistag_by_release_group_demotes_with_suggestion(cfg):
+    """An on-disk NEEDS_SYNC album and an unlinked purchase that share a release
+    group but differ in MBID → mis-tag: demote to NEEDS_MBID with the purchase's
+    release suggested, and a message naming the owned purchase."""
+    from harmonist import activity, scanner
+    from harmonist.models import AlbumState
+    from harmonist.web.main import _detect_mistags_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Mistag", "rel-wrong")
+    syncer = _FakeSyncer([("https://ultimae.bandcamp.com/album/x-24bit", "Cell / Live in Corfu")])
+    activity.clear()
+    _detect_mistags_after_sync(
+        cfg,
+        syncer,
+        lookup=lambda url: ["rel-correct"],
+        fetch_release=lambda m: _release_with_rg(m, "rg-1"),  # both editions share rg-1
+    )
+    loaded = sc.read(d)
+    assert loaded.mb_release_id is None  # wrong tag cleared
+    assert loaded.mb_match_candidate.mb_release_id == "rel-correct"  # the suggestion
+    assert any("release group" in n for n in loaded.mb_match_candidate.notes)
+    album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert album.state == AlbumState.NEEDS_MBID
+    msgs = [e.message for e in activity.recent(10)]
+    assert any("Possible mis-tag" in m and "Cell / Live in Corfu" in m for m in msgs)
+
+
+def test_detect_mistag_no_action_for_different_release_group(cfg):
+    """Different release groups → not the same album → left as NEEDS_SYNC."""
+    from harmonist.web.main import _detect_mistags_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Solo", "rel-a")
+    syncer = _FakeSyncer([("https://x.bandcamp.com/album/y", "X / Other")])
+    _detect_mistags_after_sync(
+        cfg,
+        syncer,
+        lookup=lambda url: ["rel-b"],
+        fetch_release=lambda m: _release_with_rg(m, "rg-a" if m == "rel-a" else "rg-b"),
+    )
+    assert sc.read(d).mb_release_id == "rel-a"  # untouched
+
+
+def test_detect_mistag_skips_ambiguous_release_group(cfg):
+    """Two unlinked purchases in the same RG → ambiguous → don't guess."""
+    from harmonist.web.main import _detect_mistags_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Amb", "rel-wrong")
+    syncer = _FakeSyncer(
+        [("https://x.bandcamp.com/album/a", "X / A"), ("https://x.bandcamp.com/album/b", "X / B")]
+    )
+    _detect_mistags_after_sync(
+        cfg,
+        syncer,
+        lookup=lambda url: ["rel-a"] if url.endswith("/a") else ["rel-b"],
+        fetch_release=lambda m: _release_with_rg(m, "rg-1"),  # everything shares rg-1
+    )
+    assert sc.read(d).mb_release_id == "rel-wrong"  # ambiguous → untouched
+
+
+def test_detect_mistag_bails_over_cap(cfg):
+    """If either leftover set exceeds the cap, bail without acting."""
+    from harmonist.web.main import _detect_mistags_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Capped", "rel-x")
+    syncer = _FakeSyncer([(f"https://x.bc.com/album/{i}", f"X / {i}") for i in range(51)])
+    _detect_mistags_after_sync(
+        cfg,
+        syncer,
+        lookup=lambda url: ["rel-y"],
+        fetch_release=lambda m: _release_with_rg(m, "rg-1"),
+    )
+    assert sc.read(d).mb_release_id == "rel-x"  # over cap → untouched
+
+
 def test_reject_clears_candidate(client, cfg):
     d = _make_album(cfg, "RC")
     sc.write(
