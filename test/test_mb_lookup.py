@@ -8,7 +8,13 @@ import musicbrainzngs
 import pytest
 
 from harmonist import mb_lookup
-from harmonist.mb_lookup import MBError, fetch_release, fetch_release_urls, lookup_by_bandcamp_url
+from harmonist.mb_lookup import (
+    MBError,
+    browse_release_group_releases,
+    fetch_release,
+    fetch_release_urls,
+    lookup_by_bandcamp_url,
+)
 
 # ---------- configure ----------
 
@@ -68,6 +74,48 @@ def test_lookup_returns_all_releases_when_multiple_linked(monkeypatch):
     }
     monkeypatch.setattr(musicbrainzngs, "browse_urls", lambda **kw: response)
     assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") == ["rel-aaa", "rel-bbb"]
+
+
+def test_browse_release_group_releases(monkeypatch):
+    """Returns each sibling release in the group as (mbid, [url targets])."""
+    response = {
+        "release-list": [
+            {
+                "id": "rel-standard",
+                "url-relation-list": [{"target": "https://x.bandcamp.com/album/y"}],
+            },
+            {
+                "id": "rel-24bit",
+                "url-relation-list": [{"target": "https://x.bandcamp.com/album/y-24bit"}],
+            },
+            {"id": "rel-no-urls"},  # tolerated: no url-relation-list
+        ]
+    }
+    captured = {}
+
+    def fake_browse(**kw):
+        captured.update(kw)
+        return response
+
+    monkeypatch.setattr(musicbrainzngs, "browse_releases", fake_browse)
+
+    out = browse_release_group_releases("rg-1")
+    assert captured["release_group"] == "rg-1"
+    assert "url-rels" in captured["includes"]
+    assert out == [
+        ("rel-standard", ["https://x.bandcamp.com/album/y"]),
+        ("rel-24bit", ["https://x.bandcamp.com/album/y-24bit"]),
+        ("rel-no-urls", []),
+    ]
+
+
+def test_browse_release_group_releases_raises_on_error(monkeypatch):
+    def boom(**kw):
+        raise musicbrainzngs.NetworkError("down")
+
+    monkeypatch.setattr(musicbrainzngs, "browse_releases", boom)
+    with pytest.raises(MBError):
+        browse_release_group_releases("rg-1")
 
 
 def test_lookup_returns_empty_when_no_relations(monkeypatch):

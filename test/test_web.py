@@ -754,22 +754,36 @@ class _FakeSyncer:
 
 
 def test_detect_mistag_by_release_group_demotes_with_suggestion(cfg):
-    """An on-disk NEEDS_SYNC album and an unlinked purchase that share a release
-    group but differ in MBID → mis-tag: demote to NEEDS_MBID with the purchase's
-    release suggested, and a message naming the owned purchase."""
+    """An unmatched-after-sync album whose release group contains a *different*
+    edition the user OWNS (a purchase that linked to no album) → mis-tag: demote
+    to NEEDS_MBID with that owned edition suggested, naming the purchase.
+
+    Critically: the 270-style noise (purchases NOT in the album's release group)
+    costs nothing — detection is driven by the album + one release-group browse."""
     from harmonist import activity, scanner
     from harmonist.models import AlbumState
     from harmonist.web.main import _detect_mistags_after_sync
 
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     d = _needs_sync_album(cfg, "Mistag", "rel-wrong")
-    syncer = _FakeSyncer([("https://ultimae.bandcamp.com/album/x-24bit", "Cell / Live in Corfu")])
+    # One relevant purchase (the owned 24-bit edition) buried in lots of noise.
+    owned = [(f"https://noise.bandcamp.com/album/n{i}", f"Noise / {i}") for i in range(250)]
+    owned.append(("https://ultimae.bandcamp.com/album/live-in-corfu-24bit", "Cell / Live in Corfu"))
+    syncer = _FakeSyncer(owned)
+    # rel-wrong's release group rg-1 contains the tagged edition and the owned one.
+    def browse_rg(rg):
+        assert rg == "rg-1"
+        return [
+            ("rel-wrong", ["https://ultimae.bandcamp.com/album/live-in-corfu"]),
+            ("rel-correct", ["https://ultimae.bandcamp.com/album/live-in-corfu-24bit"]),
+        ]
+
     activity.clear()
     _detect_mistags_after_sync(
         cfg,
         syncer,
-        lookup=lambda url: ["rel-correct"],
-        fetch_release=lambda m: _release_with_rg(m, "rg-1"),  # both editions share rg-1
+        browse_rg=browse_rg,
+        fetch_release=lambda m: _release_with_rg(m, "rg-1"),
     )
     loaded = sc.read(d)
     assert loaded.mb_release_id is None  # wrong tag cleared
@@ -781,24 +795,25 @@ def test_detect_mistag_by_release_group_demotes_with_suggestion(cfg):
     assert any("Possible mis-tag" in m and "Cell / Live in Corfu" in m for m in msgs)
 
 
-def test_detect_mistag_no_action_for_different_release_group(cfg):
-    """Different release groups → not the same album → left as NEEDS_SYNC."""
+def test_detect_mistag_no_action_when_no_owned_sibling(cfg):
+    """No edition in the album's release group is owned → not a mis-tag."""
     from harmonist.web.main import _detect_mistags_after_sync
 
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     d = _needs_sync_album(cfg, "Solo", "rel-a")
-    syncer = _FakeSyncer([("https://x.bandcamp.com/album/y", "X / Other")])
+    syncer = _FakeSyncer([("https://x.bandcamp.com/album/unrelated", "X / Other")])
     _detect_mistags_after_sync(
         cfg,
         syncer,
-        lookup=lambda url: ["rel-b"],
-        fetch_release=lambda m: _release_with_rg(m, "rg-a" if m == "rel-a" else "rg-b"),
+        # The group's only other edition isn't among the owned purchases.
+        browse_rg=lambda rg: [("rel-b", ["https://x.bandcamp.com/album/different"])],
+        fetch_release=lambda m: _release_with_rg(m, "rg-a"),
     )
     assert sc.read(d).mb_release_id == "rel-a"  # untouched
 
 
-def test_detect_mistag_skips_ambiguous_release_group(cfg):
-    """Two unlinked purchases in the same RG → ambiguous → don't guess."""
+def test_detect_mistag_skips_when_multiple_owned_editions(cfg):
+    """You own two editions in the album's release group → ambiguous → skip."""
     from harmonist.web.main import _detect_mistags_after_sync
 
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
@@ -809,26 +824,39 @@ def test_detect_mistag_skips_ambiguous_release_group(cfg):
     _detect_mistags_after_sync(
         cfg,
         syncer,
-        lookup=lambda url: ["rel-a"] if url.endswith("/a") else ["rel-b"],
-        fetch_release=lambda m: _release_with_rg(m, "rg-1"),  # everything shares rg-1
+        browse_rg=lambda rg: [
+            ("rel-a", ["https://x.bandcamp.com/album/a"]),
+            ("rel-b", ["https://x.bandcamp.com/album/b"]),  # both owned → ambiguous
+        ],
+        fetch_release=lambda m: _release_with_rg(m, "rg-1"),
     )
     assert sc.read(d).mb_release_id == "rel-wrong"  # ambiguous → untouched
 
 
-def test_detect_mistag_bails_over_cap(cfg):
-    """If either leftover set exceeds the cap, bail without acting."""
-    from harmonist.web.main import _detect_mistags_after_sync
+def test_detect_mistag_bails_over_album_cap(cfg, monkeypatch):
+    """If the unmatched-album set exceeds the cap, bail with an Activity warning
+    (the cap is on Set A now, not on the owned-purchase count)."""
+    from harmonist import activity
+    from harmonist.web import main as main_mod
 
+    monkeypatch.setattr(main_mod, "_MISTAG_DETECTION_MAX_ALBUMS", 1)
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
-    d = _needs_sync_album(cfg, "Capped", "rel-x")
-    syncer = _FakeSyncer([(f"https://x.bc.com/album/{i}", f"X / {i}") for i in range(51)])
-    _detect_mistags_after_sync(
+    _needs_sync_album(cfg, "A1", "rel-1")
+    _needs_sync_album(cfg, "A2", "rel-2")  # 2 albums > cap of 1
+    syncer = _FakeSyncer([("https://x.bandcamp.com/album/owned", "X / Owned")])
+    called: list[str] = []
+    activity.clear()
+    main_mod._detect_mistags_after_sync(
         cfg,
         syncer,
-        lookup=lambda url: ["rel-y"],
-        fetch_release=lambda m: _release_with_rg(m, "rg-1"),
+        browse_rg=lambda rg: called.append(rg) or [],
+        fetch_release=lambda m: _release_with_rg(m, "rg"),
     )
-    assert sc.read(d).mb_release_id == "rel-x"  # over cap → untouched
+    assert called == []  # bailed before any browse
+    assert any(
+        "Mis-tag detection skipped" in e.message and e.level == "warning"
+        for e in activity.recent(10)
+    )
 
 
 def test_reject_clears_candidate(client, cfg):
