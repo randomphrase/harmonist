@@ -9,7 +9,6 @@ import logging
 # out of the production import path entirely.
 import re
 import sys
-import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -81,10 +80,6 @@ HARMONY_BASE = "https://harmony.pulsewidth.org.uk"
 
 # Terminal states — hidden from the inbox, shown in the library.
 _TERMINAL_STATES = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
-
-# How often reconcile asks for a snapshot refresh mid-pass, so inbox/library
-# counts update live. Coalesced by the ScanRunner, so this is a floor.
-_RECONCILE_RESCAN_INTERVAL_S = 3.0
 
 
 _logging_configured = False
@@ -185,27 +180,18 @@ def create_app(
     forgotten_paths: set[Path] = set()
 
     def reconcile_runner_fn(status_updater: Callable[..., None]) -> None:
-        # Refresh the album snapshot periodically DURING the pass (not only at
-        # the end) so the inbox/library counts move live as orphans resolve —
-        # otherwise the snapshot is frozen and only the status bar (which reads
-        # reconcile.status directly) updates. The ScanRunner coalesces, so
-        # over-requesting is harmless; throttle keeps the fs walk off the path.
-        last_rescan = [0.0]
-
-        def progress(**kwargs: Any) -> None:
-            status_updater(**kwargs)
-            now = time.monotonic()
-            if now - last_rescan[0] >= _RECONCILE_RESCAN_INTERVAL_S:
-                last_rescan[0] = now
-                scan_runner.request_scan()
-
+        # Scan ONCE, when the whole pass is done — not mid-pass. Rebuilding the
+        # snapshot repeatedly while reconcile runs means a full filesystem walk
+        # every few seconds, which is punishing on a network mount. The status
+        # bar (reading reconcile.status directly) carries live progress
+        # meanwhile; the inbox/library counts snap to correct on completion.
         reconcile_pending_orphans(
             cfg.paths.music_dir,
             fetch_urls=mb_lookup.fetch_release_urls,
-            status_updater=progress,
+            status_updater=status_updater,
             exempt_paths=forgotten_paths,
         )
-        scan_runner.request_scan()  # final refresh
+        scan_runner.request_scan()  # sidecars written → refresh the snapshot
 
     reconcile_runner = ReconcileRunner(runner_fn=reconcile_runner_fn)
 
