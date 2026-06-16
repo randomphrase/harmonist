@@ -114,6 +114,40 @@ def fetch_release_urls(mbid: str) -> list[str]:
     return [r["target"] for r in rels if isinstance(r, dict) and r.get("target")]
 
 
+def browse_release_group_releases(release_group_mbid: str) -> list[tuple[str, list[str]]]:
+    """Return the sibling releases in a release group, each as
+    ``(release_mbid, [url targets])``.
+
+    One request (`browse_releases` with `url-rels`) yields every edition in the
+    group plus its URL relationships — used to spot a mis-tag: an on-disk album
+    tagged as one edition while the user owns a *different* edition (a Bandcamp
+    URL) from the same group. Release groups hold a handful of editions, so the
+    default page size is plenty.
+    """
+    try:
+        result = musicbrainzngs.browse_releases(
+            release_group=release_group_mbid, includes=["url-rels"], limit=100
+        )
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.ResponseError,
+        musicbrainzngs.AuthenticationError,
+    ) as e:
+        raise MBError(f"MB request failed: {e}") from e
+
+    out: list[tuple[str, list[str]]] = []
+    for rel in result.get("release-list") or []:
+        if not isinstance(rel, dict) or not rel.get("id"):
+            continue
+        urls = [
+            r["target"]
+            for r in (rel.get("url-relation-list") or [])
+            if isinstance(r, dict) and r.get("target")
+        ]
+        out.append((str(rel["id"]), urls))
+    return out
+
+
 def _is_not_found(exc: musicbrainzngs.ResponseError) -> bool:
     """Detect 404 from a musicbrainzngs ResponseError.
 
