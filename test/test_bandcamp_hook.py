@@ -184,6 +184,35 @@ def _bare_syncer(max_downloads: int = 5) -> HarmonistSyncer:
     return s
 
 
+def test_unmatched_purchases_returns_only_unlinked(tmp_path):
+    """unmatched_purchases() = collection items whose item_id is in NO sidecar
+    (the candidates for mis-tag cross-referencing)."""
+    linked = tmp_path / "Linked"
+    linked.mkdir()
+    sc.write(
+        linked,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/linked",
+            bandcamp=BandcampInfo(item_id=111),
+        ),
+    )
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.bandcamp.purchases = [
+        _StubItem(
+            item_id=111, band_name="X", item_title="Linked",
+            url_hints={"subdomain": "x", "slug": "linked"},
+        ),
+        _StubItem(
+            item_id=222, band_name="X", item_title="Orphan",
+            url_hints={"subdomain": "x", "slug": "orphan"},
+        ),
+    ]
+    # Only item 222 (no sidecar carries it) is returned, as (url, label).
+    assert s.unmatched_purchases() == [("https://x.bandcamp.com/album/orphan", "X / Orphan")]
+
+
 def test_sync_items_raises_when_over_cap(monkeypatch):
     s = _bare_syncer(max_downloads=2)
     s.bandcamp.purchases = [_StubItem(item_id=i) for i in range(5)]

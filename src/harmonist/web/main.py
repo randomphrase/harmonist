@@ -36,7 +36,15 @@ from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
 from harmonist.bandcamp_hook import HarmonistSyncer
 from harmonist.match import assess_match, best_match
-from harmonist.models import Album, AlbumState, BandcampInfo, Sidecar, store_name
+from harmonist.models import (
+    Album,
+    AlbumState,
+    BandcampInfo,
+    MatchCandidate,
+    Release,
+    Sidecar,
+    store_name,
+)
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
@@ -156,7 +164,10 @@ def create_app(
                 progress_callback=sync_runner.set_current_item,
                 post_download_callback=resolve_after_download,
             )
-            # Tell the user (log + Activity) which albums sync couldn't link.
+            # Spot mis-tags first (release-group join → demote to Needs MBID
+            # with a suggestion), then report whatever's genuinely still
+            # unlinked. Both write to the log + Activity.
+            _detect_mistags_after_sync(cfg, result)
             _report_unmatched_after_sync(cfg)
             scan_runner.request_scan()  # downloads landed → refresh the snapshot
             return result
@@ -390,6 +401,137 @@ def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
     except OSError as e:
         log.warning("could not remove bandcampsync checkpoint %s: %s", state_file, e)
     return False
+
+
+# If either leftover set is bigger than this, something is wrong with the sync
+# (e.g. a botched run left the whole library unlinked) — bail rather than fire
+# a storm of MB lookups.
+_MISTAG_DETECTION_CAP = 50
+
+
+def _release_group_id(release: Release) -> str | None:
+    g = release.get("release-group") or {}
+    rg = g.get("id")
+    return str(rg) if rg else None
+
+
+def _demote_to_needs_mbid(
+    album_path: Path, sc: Sidecar, *, candidate: MatchCandidate | None
+) -> None:
+    """Drop a mis-tagged album back to NEEDS_MBID so the user can re-match it:
+    clear the wrong MBID but KEEP the store_url, and pre-load the correct
+    release as `mb_match_candidate` — the NEEDS_MBID card then shows the
+    side-by-side and a one-click Confirm."""
+    sidecar_mod.write(
+        album_path,
+        Sidecar(
+            schema_version=sc.schema_version,
+            store_url=sc.store_url,
+            bandcamp=sc.bandcamp,
+            downloaded_at=sc.downloaded_at,
+            added_at=sc.added_at,
+            mb_release_id=None,
+            mb_match_candidate=candidate,
+            tagged_at=None,
+            track_count_expected=None,
+            notes=sc.notes,
+        ),
+    )
+
+
+def _detect_mistags_after_sync(
+    cfg: config_mod.Config,
+    syncer: HarmonistSyncer,
+    *,
+    lookup: Callable[[str], list[str]] = mb_lookup.lookup_by_bandcamp_url,
+    fetch_release: Callable[[str], Release] = mb_lookup.fetch_release,
+) -> None:
+    """Spot mis-tags by a MusicBrainz **release-group** join between the two
+    leftover sets after a sync:
+
+    - **A** — on-disk NEEDS_SYNC albums (tagged, but no purchase linked).
+    - **B** — purchases that linked to no album (`unmatched_purchases`).
+
+    Editions of one album (24-bit vs standard, …) share a release group, so an
+    A-album and a B-purchase in the *same* RG with *different* MBIDs are the
+    same record, mis-tagged. On an unambiguous 1:1 RG match we demote the album
+    to NEEDS_MBID with the purchase's release suggested — the user confirms.
+
+    Capped: if either set exceeds the cap something is wrong; log and bail.
+    Best-effort; never raises into the sync runner.
+    """
+    try:
+        unmatched = syncer.unmatched_purchases()
+        albums = [
+            a
+            for a in scanner.scan(cfg.paths.music_dir)
+            if a.state == AlbumState.NEEDS_SYNC and a.sidecar and a.sidecar.mb_release_id
+        ]
+    except Exception:
+        log.exception("mis-tag detection: setup failed")
+        return
+    if not albums or not unmatched:
+        return
+    if len(albums) > _MISTAG_DETECTION_CAP or len(unmatched) > _MISTAG_DETECTION_CAP:
+        log.error(
+            "Mis-tag detection skipped: %d unlinked album(s) / %d unmatched purchase(s) "
+            "exceeds cap of %d — something looks wrong with this sync",
+            len(albums),
+            len(unmatched),
+            _MISTAG_DETECTION_CAP,
+        )
+        return
+
+    # Set A: release-group id → [albums]
+    rg_albums: dict[str, list[Album]] = {}
+    for a in albums:
+        assert a.sidecar is not None  # guaranteed by the comprehension filter
+        assert a.sidecar.mb_release_id is not None
+        try:
+            rg = _release_group_id(fetch_release(a.sidecar.mb_release_id))
+        except mb_lookup.MBError:
+            continue
+        if rg:
+            rg_albums.setdefault(rg, []).append(a)
+
+    # Set B: release-group id → {url: (label, mbid, release)} (deduped per URL)
+    rg_purchases: dict[str, dict[str, tuple[str, str, Release]]] = {}
+    for url, label in unmatched:
+        try:
+            mbids = lookup(url)
+        except mb_lookup.MBError:
+            continue
+        for mbid in dict.fromkeys(mbids):  # dedupe MB's duplicate rel rows
+            try:
+                rel = fetch_release(mbid)
+            except mb_lookup.MBError:
+                continue
+            rg = _release_group_id(rel)
+            if rg:
+                rg_purchases.setdefault(rg, {})[url] = (label, mbid, rel)
+
+    for rg, albs in rg_albums.items():
+        purch = rg_purchases.get(rg, {})
+        if len(albs) != 1 or len(purch) != 1:
+            continue  # unambiguous 1:1 only
+        album = albs[0]
+        assert album.sidecar is not None
+        url, (label, mbid, rel) = next(iter(purch.items()))
+        if album.sidecar.mb_release_id == mbid:
+            continue  # same release after all — not a mis-tag
+        candidate = best_match(album.path, [rel])
+        if candidate is not None:
+            candidate.notes.append(
+                f"you own “{label}” ({url}) — same MusicBrainz release group, different "
+                f"release; was tagged {album.sidecar.mb_release_id}"
+            )
+        _demote_to_needs_mbid(album.path, album.sidecar, candidate=candidate)
+        activity.record(
+            f"Possible mis-tag: {album.artist} — {album.title}. You own “{label}” on "
+            f"Bandcamp ({url}) — the same release group but a different release than it's "
+            f"tagged as. Moved to Needs MBID with {mbid} suggested; confirm to re-tag.",
+            level="warning",
+        )
 
 
 def _report_unmatched_after_sync(cfg: config_mod.Config) -> None:
