@@ -249,6 +249,14 @@ window.addEventListener('resize', function () {
             const details = [item, prog].filter(Boolean).join(' · ');
             const pill = `<span class="px-3 py-0.5 bg-mb-purple/15 text-mb-purple border border-mb-purple/40 rounded-full font-bold text-xs">Reconciling</span>`;
             reconcileDisplay = pill + (details ? `<span class="ml-2 text-slate-300">${details}</span>` : '');
+            // Drive the tab counts off reconcile's live base+tallies while the
+            // pass runs — the snapshot is frozen, and /library doesn't re-fetch
+            // mid-pass. (The inbox badge also gets this via #inbox-total, but
+            // set it here too so it tracks even between /tasks swaps.)
+            const ib = document.getElementById('inbox-count');
+            const lb = document.getElementById('library-count');
+            if (ib) ib.textContent = reconcile.inbox;
+            if (lb) lb.textContent = reconcile.library;
         } else {
             reconcileDisplay = null;
         }

@@ -508,9 +508,9 @@ def test_post_sync_409_while_reconciling(client):
     assert "reconciling" in r.text.lower()
 
 
-def test_needs_sync_bulk_button_disabled_while_reconciling(client, cfg):
-    # The inline NEEDS_SYNC bulk-sync button renders disabled when a reconcile
-    # pass is running, so the page doesn't offer an action that would race it.
+def test_needs_sync_bulk_button_absent_while_reconciling(client, cfg):
+    # During reconcile the inbox renders the live-count panel, not the groups —
+    # so the bulk-sync button isn't offered at all (can't race the pass).
     d = _make_album(cfg, "BulkSync")
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-bulk-1"]
@@ -528,12 +528,8 @@ def test_needs_sync_bulk_button_disabled_while_reconciling(client, cfg):
     client.app.state.reconcile_runner._status.state = "running"
     r = client.get("/tasks")
     assert r.status_code == 200
-    assert "sync-trigger" in r.text
-    # The button carries the disabled attribute (+ explanatory title) while
-    # reconciling. (Note the class list always contains `disabled:` Tailwind
-    # variants, so key on the title rather than a bare "disabled" substring.)
-    button = r.text[r.text.index("sync-trigger") : r.text.index("sync-trigger") + 400]
-    assert 'disabled title="Reconciling' in button
+    assert "Sorting your library" in r.text  # the reconcile panel
+    assert "sync-trigger" not in r.text  # ...no bulk-sync button
 
 
 def test_needs_sync_bulk_button_enabled_when_idle(client, cfg):
@@ -558,20 +554,29 @@ def test_needs_sync_bulk_button_enabled_when_idle(client, cfg):
     assert "disabled title=" not in button
 
 
-def test_tasks_shows_count_not_a_reconcile_banner(client, cfg):
-    """During reconcile the inbox keeps the normal need-attention count (which
-    decrements live as albums resolve) rather than a banner duplicating the
-    status bar's 'Reconciling X/Y'."""
-    _make_album(cfg, "Fresh")  # a NEW album so the inbox isn't empty
+def test_tasks_shows_live_reconcile_counts(client, cfg):
+    """During reconcile the inbox shows the live base+tally counts (need
+    attention = reconcile.inbox, and a New/Needs-Sync/Library split building
+    up) rather than the frozen snapshot — and NOT the status bar's X/Y."""
+    _make_album(cfg, "Fresh")  # a NEW orphan (frozen snapshot would say 1)
     runner = client.app.state.reconcile_runner
     runner._status.state = "running"
     runner._status.completed = 143
     runner._status.total = 346
+    runner._status.inbox = 60
+    runner._status.new = 5
+    runner._status.needs_sync = 55
+    runner._status.library = 78
     r = client.get("/tasks")
     assert r.status_code == 200
+    assert "Sorting your library" in r.text  # the live-count panel
+    assert 'data-count="60"' in r.text  # tab badge = reconcile.inbox, not the snapshot
     assert "need attention" in r.text
-    assert "albums leave the inbox as they resolve" not in r.text  # banner gone
-    assert "143 / 346" not in r.text  # progress lives in the status bar, not here
+    assert ">5</span> New" in r.text  # the building split
+    assert ">55</span> Needs Sync" in r.text
+    assert ">78</span> to Library" in r.text
+    assert "143 / 346" not in r.text  # progress lives in the status bar
+    assert "Fresh" not in r.text  # frozen card list not rendered
 
 
 def test_tasks_kicks_reconcile_only_for_reconcilable_orphan(client, cfg):
@@ -611,17 +616,19 @@ def test_tasks_skips_reconcile_for_forgotten_orphan(client, cfg):
     assert started == []
 
 
-def test_tasks_new_group_hidden_while_reconciling(client, cfg):
-    """While reconcile runs, the NEW group says so and does NOT render its
-    (churning, re-polled) card list — the disclosure would just reset on every
-    1.5s swap, and the albums are reclassifying anyway."""
-    _make_album(cfg, "FreshOne")  # NEW (no sidecar, no MBID → won't auto-kick)
-    client.app.state.reconcile_runner._status.state = "running"
+def test_tasks_hides_groups_and_shows_panel_while_reconciling(client, cfg):
+    """While reconcile runs, the inbox shows the live-count panel instead of the
+    (frozen, re-polled) group card lists."""
+    _make_album(cfg, "FreshOne")  # NEW orphan; frozen snapshot would render it
+    runner = client.app.state.reconcile_runner
+    runner._status.state = "running"
+    runner._status.new = 3
     r = client.get("/tasks")
     assert r.status_code == 200
-    assert "Reconciling against MusicBrainz" in r.text  # header says what's happening
-    assert "FreshOne" not in r.text  # the album card is suppressed
-    assert "Show all" not in r.text  # ...and so is the disclosure
+    assert "Sorting your library" in r.text  # the live-count panel
+    assert ">3</span> New" in r.text  # the building split
+    assert "FreshOne" not in r.text  # no card rendered
+    assert "Show all" not in r.text  # ...and no disclosure
 
 
 def test_tasks_new_group_shows_cards_when_idle(client, cfg):
@@ -632,15 +639,15 @@ def test_tasks_new_group_shows_cards_when_idle(client, cfg):
     assert "FreshTwo" in r.text
 
 
-def test_tasks_suppresses_all_group_cards_while_reconciling(client, cfg):
-    """Card suppression during reconcile applies to EVERY group, not just NEW —
-    the Needs Sync card list is hidden too (its count header stays)."""
+def test_tasks_no_group_cards_while_reconciling(client, cfg):
+    """No group cards render during reconcile (the panel replaces them) — e.g.
+    the Needs Sync card's actions are gone."""
     _needs_sync_album(cfg, "Linkme", "rel-q")
     client.app.state.reconcile_runner._status.state = "running"
     r = client.get("/tasks")
     assert r.status_code == 200
-    assert "Needs Sync" in r.text  # header + count still rendered
-    assert "Mark purchased elsewhere" not in r.text  # ...but the card is gone
+    assert "Sorting your library" in r.text  # the panel
+    assert "Mark purchased elsewhere" not in r.text  # ...not the needs-sync card
 
 
 def test_tasks_needs_sync_card_shown_when_idle(client, cfg):
@@ -651,20 +658,21 @@ def test_tasks_needs_sync_card_shown_when_idle(client, cfg):
     assert "Mark purchased elsewhere" in r.text
 
 
-def test_tasks_inbox_count_marker_survives_card_suppression(client, cfg):
-    """The tab-badge count comes from the #inbox-total marker (= the real inbox
-    album count), so it stays correct even while reconcile suppresses the cards
-    — counting rendered cards would wrongly zero it."""
+def test_tasks_inbox_count_marker_uses_snapshot_when_idle_reconcile_when_running(client, cfg):
+    """The tab-badge count (the #inbox-total marker) is the live snapshot count
+    when idle, but the reconcile base+tally count while a pass runs."""
     _make_album(cfg, "InboxA")
     _make_album(cfg, "InboxB")
     r = client.get("/tasks")
     assert 'id="inbox-total"' in r.text
-    assert 'data-count="2"' in r.text
+    assert 'data-count="2"' in r.text  # idle → snapshot count
 
-    client.app.state.reconcile_runner._status.state = "running"  # suppress cards
+    runner = client.app.state.reconcile_runner
+    runner._status.state = "running"
+    runner._status.inbox = 7  # base + tallies so far
     r = client.get("/tasks")
-    assert 'data-count="2"' in r.text  # marker still carries the real count
-    assert "InboxA" not in r.text  # ...even though the card is gone
+    assert 'data-count="7"' in r.text  # running → reconcile.inbox, not the snapshot
+    assert "InboxA" not in r.text  # ...and no cards
 
 
 def _needs_sync_album(cfg, name: str, mbid: str) -> Path:
