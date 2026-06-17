@@ -192,6 +192,29 @@ def test_reconcile_pending_walks_only_orphans(tmp_path):
     assert stats["skipped"] == 1
 
 
+def test_reconcile_reports_live_inbox_library_counts(tmp_path):
+    """As it files each orphan, reconcile reports live counts = base (0 here,
+    all orphans) + the running tallies: → Library, → Needs Sync, → stuck New."""
+    music = tmp_path / "music"
+    _make_album(music, "BC", mbid="rel-bc", comment="Visit https://x.bandcamp.com")
+    _make_album(music, "Manual", mbid="rel-man")  # no bandcamp comment → Library
+    _make_album(music, "NoMBID")  # no MBID → stays New
+
+    seen: list[dict] = []
+    reconcile_pending_orphans(
+        music,
+        fetch_urls=lambda mbid: ["https://x.bandcamp.com/album/y"] if mbid == "rel-bc" else [],
+        rate_limit_seconds=0,
+        status_updater=lambda **kw: seen.append(kw),
+    )
+    final: dict[str, int] = {}
+    for kw in seen:
+        for k in ("inbox", "library", "new", "needs_sync"):
+            if k in kw:
+                final[k] = kw[k]
+    assert final == {"library": 1, "needs_sync": 1, "new": 1, "inbox": 2}
+
+
 def sc_for_held():
     from harmonist.models import Sidecar
 

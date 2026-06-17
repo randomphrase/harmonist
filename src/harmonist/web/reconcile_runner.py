@@ -42,6 +42,15 @@ class ReconcileStatus:
     completed: int = 0
     total: int = 0
     last_error: str | None = None
+    # Live inbox/library counts DURING a pass: the already-sidecar'd base
+    # (captured at start, excluding the orphans being reconciled) plus the
+    # running outcome tallies. An un-reconciled orphan isn't in any count yet;
+    # reconcile is what files it into one. Lets the UI show the counts move
+    # without a mid-pass rescan. Only meaningful while state == "running".
+    inbox: int = 0
+    library: int = 0
+    new: int = 0
+    needs_sync: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -52,6 +61,10 @@ class ReconcileStatus:
             "completed": self.completed,
             "total": self.total,
             "last_error": self.last_error,
+            "inbox": self.inbox,
+            "library": self.library,
+            "new": self.new,
+            "needs_sync": self.needs_sync,
         }
 
 
@@ -137,6 +150,10 @@ class ReconcileRunner:
         current_item: str = "",
         completed: int | None = None,
         total: int | None = None,
+        inbox: int | None = None,
+        library: int | None = None,
+        new: int | None = None,
+        needs_sync: int | None = None,
     ) -> None:
         """Callback handed to the runner_fn so it can report progress."""
         with self._lock:
@@ -146,6 +163,14 @@ class ReconcileRunner:
                 self._status.completed = completed
             if total is not None:
                 self._status.total = total
+            if inbox is not None:
+                self._status.inbox = inbox
+            if library is not None:
+                self._status.library = library
+            if new is not None:
+                self._status.new = new
+            if needs_sync is not None:
+                self._status.needs_sync = needs_sync
 
 
 def reconcile_pending_orphans(
@@ -168,13 +193,24 @@ def reconcile_pending_orphans(
     from harmonist import reconcile, scanner
     from harmonist.models import AlbumState
 
+    terminal = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
+
     exempt = exempt_paths or set()
     albums = scanner.scan(music_dir)
     pending = [a for a in albums if a.state == AlbumState.NEW and a.path not in exempt]
     total = len(pending)
-    if status_updater:
-        status_updater(total=total, completed=0)
-    log.info("Reconcile: %d orphan album(s) to check for a MusicBrainz Id", total)
+
+    # Base counts at start, EXCLUDING the orphans we're about to reconcile — an
+    # un-reconciled orphan isn't in any count yet. The live counts below are
+    # base + the running outcome tallies, so the UI shows the inbox/library
+    # numbers move as reconcile files each orphan (no mid-pass rescan needed).
+    pending_paths = {a.path for a in pending}
+    base_library = sum(1 for a in albums if a.state in terminal)
+    base_needs_sync = sum(1 for a in albums if a.state == AlbumState.NEEDS_SYNC)
+    base_new = sum(
+        1 for a in albums if a.state == AlbumState.NEW and a.path not in pending_paths
+    )
+    base_inbox = sum(1 for a in albums if a.state not in terminal and a.path not in pending_paths)
 
     completed = 0
     reconciled_bandcamp = 0
@@ -182,15 +218,32 @@ def reconcile_pending_orphans(
     skipped = 0
     errors = 0
 
+    def _report() -> None:
+        if status_updater:
+            stuck = skipped + errors
+            status_updater(
+                completed=completed,
+                library=base_library + reconciled_manual,
+                needs_sync=base_needs_sync + reconciled_bandcamp,
+                new=base_new + stuck,
+                inbox=base_inbox + reconciled_bandcamp + stuck,
+            )
+
+    if status_updater:
+        status_updater(total=total)
+    _report()  # publish the base (all-zero deltas) before the first album
+    log.info("Reconcile: %d orphan album(s) to check for a MusicBrainz Id", total)
+
     for idx, album in enumerate(pending, start=1):
         label = f"{album.artist} / {album.title}"
         if status_updater:
-            status_updater(current_item=label, completed=completed)
+            status_updater(current_item=label)
         try:
             sc = reconcile.reconcile_album(album.path, fetch_urls=fetch_urls)
         except Exception as e:
             log.warning("Reconcile failed for %s: %s", label, e)
             errors += 1
+            _report()
             continue
         if sc is None:
             skipped += 1
@@ -202,8 +255,7 @@ def reconcile_pending_orphans(
             reconciled_manual += 1
             log.info("Reconciled %s → MBID %s", label, sc.mb_release_id)
         completed += 1
-        if status_updater:
-            status_updater(completed=completed)
+        _report()
         # Rate-limit MB queries — but ONLY when a lookup actually happened.
         # reconcile_album hits the network only when the tags carry an MBID;
         # a skip (no MBID, sc is None) makes no call, so don't pace it.
