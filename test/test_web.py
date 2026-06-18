@@ -474,8 +474,10 @@ def test_mistag_card_renders_open_panel_with_sibling_explanation(client, cfg):
     # prose, and is flagged with a "Note:" prefix.
     assert "Note:" in r.text
     assert "file count 10 does not match MB track count 11" in r.text
-    # Still confirmable.
-    assert "Confirm" in r.text
+    # File count (10) < track count (11): the only valid tag is incomplete, so
+    # that's the primary action — no misleading highlighted "Confirm & Tag".
+    assert "Confirm as Incomplete (10 of 11)" in r.text
+    assert "Confirm &amp; Tag" not in r.text
 
 
 def test_inconsistent_card_renders(client, cfg):

@@ -56,6 +56,7 @@
     {# ---- (b) Match quality: how the suggested release lines up with the files
          on disk. Independent of (a) — applies to any candidate, mis-tag or not.
          Holds the Confirm action and the technical notes (file/track count). ---- #}
+    {% set exact_count = candidate.file_count == candidate.track_count %}
     {% set incomplete_offered = candidate.file_count < candidate.track_count %}
     <div class="rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
         {% if is_mistag %}
@@ -80,18 +81,29 @@
         <div class="mb-3">{% include 'partials/_track_comparison.html' %}</div>
 
         <div class="flex gap-2 flex-wrap">
+            {% if exact_count %}
+            {# File count matches the release exactly — a plain tag is valid. #}
             <button hx-post="/confirm/{{ album.id }}"
                     hx-swap="none" hx-disabled-elt="this"
                     class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
                 Confirm &amp; Tag
             </button>
-            {% if incomplete_offered %}
+            {% elif incomplete_offered %}
+            {# Fewer files than the release has tracks: a plain tag would fail
+               the exact-count check, so the incomplete tag IS the (highlighted)
+               primary action — no misleading "Confirm & Tag" button here. #}
             <button hx-post="/confirm/{{ album.id }}/incomplete"
                     hx-swap="none" hx-disabled-elt="this"
-                    title="On-disk file count is less than MB's track count. Tag what's here and accept this as an intentionally incomplete album."
-                    class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 rounded text-xs font-bold uppercase tracking-widest transition">
-                Confirm as Incomplete
+                    title="Your {{ candidate.file_count }} files are fewer than this release's {{ candidate.track_count }} tracks. Tag what's here and mark the album incomplete."
+                    class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+                Confirm as Incomplete ({{ candidate.file_count }} of {{ candidate.track_count }})
             </button>
+            {% else %}
+            {# More files than the release has tracks — can't tag against this
+               release at all (extra files are out of scope). Point at the picker. #}
+            <span class="text-xs text-amber-700 self-center">
+                {{ candidate.file_count }} files exceed this release's {{ candidate.track_count }} tracks — choose a different release below.
+            </span>
             {% endif %}
             {# Re-fetch this same release from MB and re-compare. Use after
                correcting the release on MusicBrainz — a now-fixed track
