@@ -207,9 +207,7 @@ def reconcile_pending_orphans(
     pending_paths = {a.path for a in pending}
     base_library = sum(1 for a in albums if a.state in terminal)
     base_needs_sync = sum(1 for a in albums if a.state == AlbumState.NEEDS_SYNC)
-    base_new = sum(
-        1 for a in albums if a.state == AlbumState.NEW and a.path not in pending_paths
-    )
+    base_new = sum(1 for a in albums if a.state == AlbumState.NEW and a.path not in pending_paths)
     base_inbox = sum(1 for a in albums if a.state not in terminal and a.path not in pending_paths)
 
     completed = 0

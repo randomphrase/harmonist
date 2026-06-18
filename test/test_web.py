@@ -554,6 +554,32 @@ def test_needs_sync_bulk_button_enabled_when_idle(client, cfg):
     assert "disabled title=" not in button
 
 
+def test_needs_sync_bulk_button_disabled_while_syncing(client, cfg):
+    # A sync in flight disables the bulk button at RENDER time, so a
+    # tasks-changed re-render mid-sync can't briefly offer a live button
+    # before the next #app-status poll re-disables it.
+    d = _make_album(cfg, "BulkSyncBusy")
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-bulk-3"]
+    audio.save()
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-bulk-3",
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+    client.app.state.sync_runner._status.state = "running"
+    r = client.get("/tasks")
+    assert r.status_code == 200
+    # The disabled attribute renders before the class, so anchor on hx-post.
+    button = r.text[r.text.index('hx-post="/sync"') : r.text.index('hx-post="/sync"') + 400]
+    assert 'disabled title="Sync in progress"' in button
+
+
 def test_tasks_shows_live_reconcile_counts(client, cfg):
     """During reconcile the inbox shows the live base+tally counts (need
     attention = reconcile.inbox, and a New/Needs-Sync/Library split building
@@ -778,6 +804,7 @@ def test_detect_mistag_by_release_group_demotes_with_suggestion(cfg):
     owned = [(f"https://noise.bandcamp.com/album/n{i}", f"Noise / {i}") for i in range(250)]
     owned.append(("https://ultimae.bandcamp.com/album/live-in-corfu-24bit", "Cell / Live in Corfu"))
     syncer = _FakeSyncer(owned)
+
     # rel-wrong's release group rg-1 contains the tagged edition and the owned one.
     def browse_rg(rg):
         assert rg == "rg-1"
@@ -853,11 +880,16 @@ def test_detect_mistag_bails_over_album_cap(cfg, monkeypatch):
     _needs_sync_album(cfg, "A2", "rel-2")  # 2 albums > cap of 1
     syncer = _FakeSyncer([("https://x.bandcamp.com/album/owned", "X / Owned")])
     called: list[str] = []
+
+    def browse_rg(rg: str) -> list[tuple[str, list[str]]]:
+        called.append(rg)
+        return []
+
     activity.clear()
     main_mod._detect_mistags_after_sync(
         cfg,
         syncer,
-        browse_rg=lambda rg: called.append(rg) or [],
+        browse_rg=browse_rg,
         fetch_release=lambda m: _release_with_rg(m, "rg"),
     )
     assert called == []  # bailed before any browse
