@@ -208,6 +208,14 @@ def create_app(
     # Evaluated per-render (callable, not a constant) so the header's
     # Sync/Set-up button flips the moment cookies are saved.
     templates.env.globals["bandcamp_configured"] = lambda: _bandcamp_configured(cfg)
+    # Cache-bust the CSS link by the bundle's mtime, so a rebuilt stylesheet is
+    # always re-fetched — a newly-added utility class can't be missed because
+    # the browser served a stale bundle. Re-read per render (cheap stat) so a
+    # `make css` during dev takes effect without a server restart.
+    css_file = static_dir / "harmonist.css"
+    templates.env.globals["css_version"] = lambda: (
+        int(css_file.stat().st_mtime) if css_file.exists() else 0
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
