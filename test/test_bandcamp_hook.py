@@ -17,6 +17,7 @@ from harmonist.bandcamp_hook import (
     construct_bandcamp_url,
     find_existing_album_by_slug,
     find_existing_album_by_url,
+    unlinked_albums_by_slug,
     write_sidecar_for_item,
 )
 from harmonist.models import BandcampInfo, Sidecar
@@ -662,6 +663,135 @@ def test_sync_item_short_circuit_does_not_re_add_already_ignored(monkeypatch, tm
     item = _StubItem(item_id=12345, url_hints={"subdomain": "x", "slug": "y"})
     assert s.sync_item(item) is False  # still short-circuits
     s.ignores.add.assert_not_called()  # but does NOT re-add
+
+
+# ---------- ignored-purchase backfill (#47) ----------
+
+
+_WUS_URL = "https://quietdetails.bandcamp.com/album/while-the-universe-sleeps"
+
+
+def _wus_item(item_id: int) -> _StubItem:
+    return _StubItem(
+        item_id=item_id,
+        band_name="Variant",
+        item_title="While the Universe Sleeps",
+        url_hints={"subdomain": "quietdetails", "slug": "while-the-universe-sleeps"},
+    )
+
+
+def test_unlinked_albums_by_slug_excludes_linked(tmp_path):
+    linked = tmp_path / "Linked"
+    linked.mkdir()
+    sc.write(
+        linked,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url=_WUS_URL,
+            bandcamp=BandcampInfo(item_id=631669900),
+        ),
+    )
+    unlinked = tmp_path / "Unlinked"
+    unlinked.mkdir()
+    sc.write(
+        unlinked,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-x"),
+    )
+    by_slug = unlinked_albums_by_slug(tmp_path)
+    assert by_slug == {"album/while-the-universe-sleeps": [unlinked]}
+
+
+def test_backfill_links_ignored_purchase_to_unlinked_album(tmp_path):
+    """The #47 fix: a purchase already in ignores.txt whose on-disk album is
+    unlinked gets its item_id filled in (never reachable via sync_item, which
+    bandcampsync skips for ignored items)."""
+    album = tmp_path / "Variant" / "Long-Form"
+    album.mkdir(parents=True)
+    sc.write(
+        album,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url=_WUS_URL,
+            mb_release_id="8954fdcc-long-form",
+        ),
+    )
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.bandcamp.purchases = [_wus_item(3417563775)]
+    s.ignores.is_ignored = lambda item: True  # already downloaded → ignored
+
+    s._backfill_ignored_purchases()
+
+    loaded = sc.read(album)
+    assert loaded.bandcamp.item_id == 3417563775
+    assert loaded.mb_release_id == "8954fdcc-long-form"  # MB identity preserved
+
+
+def test_backfill_does_not_touch_linked_sibling_sharing_slug(tmp_path):
+    """Regular + long-form editions share the store-URL slug. The regular is
+    already linked; the long-form is not. Backfill links ONLY the long-form and
+    leaves the linked regular edition untouched."""
+    regular = tmp_path / "Variant" / "Regular"
+    regular.mkdir(parents=True)
+    sc.write(
+        regular,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url=_WUS_URL,
+            bandcamp=BandcampInfo(item_id=631669900),
+        ),
+    )
+    longform = tmp_path / "Variant" / "Long-Form"
+    longform.mkdir(parents=True)
+    sc.write(
+        longform,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
+    )
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.bandcamp.purchases = [_wus_item(3417563775)]
+    s.ignores.is_ignored = lambda item: True
+
+    s._backfill_ignored_purchases()
+
+    assert sc.read(longform).bandcamp.item_id == 3417563775  # linked
+    assert sc.read(regular).bandcamp.item_id == 631669900  # untouched
+
+
+def test_backfill_skips_when_two_unlinked_share_slug(tmp_path):
+    """Two UNLINKED albums share the slug → ambiguous, link neither."""
+    for name in ("A", "B"):
+        d = tmp_path / name
+        d.mkdir()
+        sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL))
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.bandcamp.purchases = [_wus_item(3417563775)]
+    s.ignores.is_ignored = lambda item: True
+
+    s._backfill_ignored_purchases()
+
+    assert sc.read(tmp_path / "A").bandcamp is None
+    assert sc.read(tmp_path / "B").bandcamp is None
+
+
+def test_backfill_skips_non_ignored_items(tmp_path):
+    """Non-ignored purchases are left to sync_item's own backfill — the ignored
+    pass must not touch them."""
+    album = tmp_path / "Unlinked"
+    album.mkdir()
+    sc.write(
+        album,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-x"),
+    )
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.bandcamp.purchases = [_wus_item(3417563775)]
+    s.ignores.is_ignored = lambda item: False  # NOT ignored
+
+    s._backfill_ignored_purchases()
+
+    assert sc.read(album).bandcamp is None  # untouched
 
 
 class _StubBandcamp:
