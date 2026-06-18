@@ -3,6 +3,10 @@
    isn't in any count yet; reconcile files it as it goes. Otherwise it's the
    live snapshot count. #}
 {% set reconciling = reconcile and reconcile.state == 'running' %}
+{# A sync in flight must disable the inline "Sync to link all" button at render
+   time — not just via the #app-status poll, which only re-disables on its next
+   tick and so leaves a gap each time tasks-changed re-renders this button. #}
+{% set syncing = sync and sync.state == 'running' %}
 {% set inbox_n = reconcile.inbox if reconciling else albums|length %}
 {# Carries the inbox count for the tab badge, so it's correct regardless of
    what's rendered below. Always present. #}
@@ -107,6 +111,7 @@
                the #app-status poll disable it if a reconcile starts while this
                render is still on screen. #}
             <button hx-post="/sync" hx-swap="none" hx-disabled-elt="this"
+                    {% if syncing %}disabled title="Sync in progress"{% endif %}
                     class="sync-trigger mt-2 inline-flex items-center px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition disabled:opacity-40 disabled:cursor-not-allowed">
                 Sync to link {% if group|length > 1 %}all {{ group|length }}{% else %}it{% endif %}
             </button>

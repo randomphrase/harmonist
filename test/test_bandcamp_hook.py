@@ -201,11 +201,15 @@ def test_unmatched_purchases_returns_only_unlinked(tmp_path):
     s.local_media.media_dir = str(tmp_path)
     s.bandcamp.purchases = [
         _StubItem(
-            item_id=111, band_name="X", item_title="Linked",
+            item_id=111,
+            band_name="X",
+            item_title="Linked",
             url_hints={"subdomain": "x", "slug": "linked"},
         ),
         _StubItem(
-            item_id=222, band_name="X", item_title="Orphan",
+            item_id=222,
+            band_name="X",
+            item_title="Orphan",
             url_hints={"subdomain": "x", "slug": "orphan"},
         ),
     ]

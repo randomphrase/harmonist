@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -414,6 +414,14 @@ def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
 _MISTAG_DETECTION_MAX_ALBUMS = 200
 
 
+class _UnmatchedSource(Protocol):
+    """Structural type for mis-tag detection's only dependency on the syncer:
+    the list of owned purchases that linked to no album. A real
+    `HarmonistSyncer` satisfies it, as does any test double."""
+
+    def unmatched_purchases(self) -> list[tuple[str, str]]: ...
+
+
 def _release_group_id(release: Release) -> str | None:
     g = release.get("release-group") or {}
     rg = g.get("id")
@@ -446,7 +454,7 @@ def _demote_to_needs_mbid(
 
 def _detect_mistags_after_sync(
     cfg: config_mod.Config,
-    syncer: HarmonistSyncer,
+    syncer: _UnmatchedSource,
     *,
     browse_rg: Callable[[str], list[tuple[str, list[str]]]] = (
         mb_lookup.browse_release_group_releases
@@ -848,6 +856,7 @@ def _register_routes(app: FastAPI) -> None:
             total_albums=len(albums),
             scan=request.app.state.scan_runner.status(),
             reconcile=reconcile_status,
+            sync=request.app.state.sync_runner.status(),
         )
         return _templates(request).TemplateResponse(request, "tasks.html", ctx)
 
