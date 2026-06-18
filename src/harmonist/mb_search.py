@@ -14,6 +14,7 @@ from typing import Any
 
 import musicbrainzngs
 
+from . import mb_lookup
 from .models import Release
 
 log = logging.getLogger(__name__)
@@ -56,11 +57,13 @@ def search_releases(artist: str, title: str, limit: int = 10) -> list[dict[str, 
             {
                 "id": rel.get("id"),
                 "title": rel.get("title"),
+                "disambiguation": (rel.get("disambiguation") or "").strip(),
                 "artist": rel.get("artist-credit-phrase") or _extract_artist(rel),
                 "date": rel.get("date"),
                 "country": rel.get("country"),
                 "status": rel.get("status"),
                 "track_count": rel.get("medium-track-count"),
+                "media": mb_lookup._media_summary(rel.get("medium-list") or []),
                 "label": _first_label(rel),
                 "catalog_number": _first_catalog(rel),
             }

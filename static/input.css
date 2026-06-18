@@ -61,3 +61,14 @@ button[disabled],
 .lib-tile-active img {
   box-shadow: 0 0 0 2px var(--color-accent);
 }
+
+/* Needs-MBID "find a different release": a radio picks the search method
+   (store URL vs name). Only the selected method's controls show; both feed the
+   one results box below, so the two searches no longer swap places in place. */
+.find-mode__panel {
+  display: none;
+}
+.find-mode:has(input[value="url"]:checked) .find-mode__panel--url,
+.find-mode:has(input[value="name"]:checked) .find-mode__panel--name {
+  display: block;
+}

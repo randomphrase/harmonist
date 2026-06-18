@@ -1,17 +1,12 @@
-{# Find/assign tools for the Needs MBID card: Harmony seed + recheck (when a
-   store URL is known) plus the manual MBID paste / MB search form. Used both
-   as the primary affordance (no suggestion) and inside the "wrong release?"
-   disclosure (suggestion present). #}
+{# Find/assign tools for the Needs MBID card. ONE "find a different release"
+   area: a radio picks the search method (store URL vs name) and only the
+   chosen method's controls show — both feed the shared #mbid-results box,
+   whose heading names the search that ran. Plus a direct MBID-paste fallback.
+   The whole thing sits inside the card's hx-preserve wrapper, so a background
+   re-render can't wipe the selected mode or the results. #}
 {% set sc = album.sidecar %}
 {% set _private = sc and sc.bandcamp and sc.bandcamp.is_private %}
-{% if sc and sc.store_url and _private %}
-{# Private/unlisted Bandcamp release: its public URL 404s, so neither Harmony
-   seeding nor a by-URL recheck can work — and the URL shouldn't go to MB. #}
-<p class="text-xs text-muted mb-3 italic">
-    Private Bandcamp release — not eligible for MB import. Assign a MusicBrainz
-    ID manually below.
-</p>
-{% elif sc and sc.store_url %}
+{% if sc and sc.store_url and not _private %}
 <div class="flex gap-2 flex-wrap mb-3">
     <a href="{{ harmony_base }}/release?url={{ sc.store_url|urlencode }}"
        target="_blank" rel="noopener"
@@ -20,9 +15,49 @@
     </a>
     <button hx-post="/recheck/{{ album.id }}"
             hx-swap="none" hx-disabled-elt="this"
+            title="Re-query MusicBrainz for this store URL. Tags automatically on a single exact match; lists the options if several releases share the URL."
             class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
         Recheck
     </button>
 </div>
+<div class="find-mode mb-2">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs">
+        <span class="text-muted font-bold uppercase tracking-widest text-2xs">Find a different release</span>
+        <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" name="find-{{ album.id }}" value="url" checked class="accent-mb-purple">
+            <span>Releases at this store URL</span>
+        </label>
+        <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" name="find-{{ album.id }}" value="name" class="accent-mb-purple">
+            <span>Search by name</span>
+        </label>
+    </div>
+    {# Only the selected mode's panel shows (find-mode :has() rule in input.css). #}
+    <div class="find-mode__panel find-mode__panel--url">
+        <button hx-post="/manual/{{ album.id }}/candidates"
+                hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML" hx-disabled-elt="this"
+                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+            Look up releases at this URL
+        </button>
+    </div>
+    <div class="find-mode__panel find-mode__panel--name">
+        {% include 'partials/_name_search.html' %}
+    </div>
+</div>
+{% else %}
+{% if _private %}
+<p class="text-xs text-muted mb-2 italic">
+    Private Bandcamp release — its public URL won't resolve on MusicBrainz.
+    Search by name or paste an MBID.
+</p>
 {% endif %}
-{% include 'partials/_manual_form.html' %}
+<p class="text-muted font-bold uppercase tracking-widest text-2xs mb-1">Search MusicBrainz by name</p>
+{% include 'partials/_name_search.html' %}
+{% endif %}
+{# Shared results target. #}
+<div id="mbid-results-{{ album.id }}" class="mt-2"></div>
+{# Direct entry fallback. #}
+<div class="mt-3">
+    <p class="text-muted font-bold uppercase tracking-widest text-2xs mb-1">Or paste a MusicBrainz ID</p>
+    {% include 'partials/_mbid_paste.html' %}
+</div>

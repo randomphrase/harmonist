@@ -131,7 +131,12 @@
     {# ---- Always available: find / assign a different MBID. Primary when there's
          no suggestion; collapsed under a disclosure when a suggestion is shown.
          (For a mis-tag the explanatory panel above already says "Wrong release?",
-         so phrase this one as the manual fallback.) ---- #}
+         so phrase this one as the manual fallback.)
+
+         The whole tools area is hx-preserve'd so a background poll re-rendering
+         this card can't wipe an open disclosure or in-progress search/picker
+         results (which live only in the DOM). ---- #}
+    <div id="mbid-tools-{{ album.id }}" hx-preserve="true">
     {% if candidate %}
     <details class="text-xs">
         <summary class="cursor-pointer text-muted hover:text-ink select-none">
@@ -152,4 +157,5 @@
     {% endif %}
     {% include 'partials/_needs_mbid_tools.html' %}
     {% endif %}
+    </div>
 </div>

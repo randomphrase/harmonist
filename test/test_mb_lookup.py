@@ -10,10 +10,13 @@ import pytest
 from harmonist import mb_lookup
 from harmonist.mb_lookup import (
     MBError,
+    _media_summary,
     browse_release_group_releases,
+    candidate_summaries_for_url,
     fetch_release,
     fetch_release_urls,
     lookup_by_bandcamp_url,
+    release_summary,
 )
 
 # ---------- configure ----------
@@ -116,6 +119,61 @@ def test_browse_release_group_releases_raises_on_error(monkeypatch):
     monkeypatch.setattr(musicbrainzngs, "browse_releases", boom)
     with pytest.raises(MBError):
         browse_release_group_releases("rg-1")
+
+
+# ---------- release summaries / store-URL picker ----------
+
+
+def test_media_summary_groups_and_counts_formats():
+    cross = "\N{MULTIPLICATION SIGN}"
+    assert _media_summary([]) == ""
+    assert _media_summary([{"format": "CD"}]) == "CD"
+    assert _media_summary([{"format": "CD"}, {"format": "CD"}]) == f"2{cross}CD"
+    assert _media_summary([{"format": "CD"}, {"format": "Digital Media"}]) == "CD + Digital Media"
+    assert _media_summary([{}]) == "Media"  # missing format tolerated
+
+
+def test_release_summary_shape():
+    release = {
+        "id": "rel-1",
+        "title": "Life²",
+        "disambiguation": "24-bit",
+        "artist-credit-phrase": "Asura",
+        "status": "Official",
+        "date": "2010",
+        "country": "FR",
+        "medium-list": [
+            {"format": "CD", "track-count": 6},
+            {"format": "CD", "track-list": [{}, {}, {}, {}, {}]},
+        ],
+        "label-info-list": [{"label": {"name": "Ultimae"}, "catalog-number": "ULT-1"}],
+    }
+    s = release_summary(release)
+    cross = "\N{MULTIPLICATION SIGN}"
+    assert s["id"] == "rel-1"
+    assert s["title"] == "Life²"
+    assert s["disambiguation"] == "24-bit"
+    assert s["artist"] == "Asura"
+    assert s["track_count"] == 11  # 6 + 5
+    assert s["media"] == f"2{cross}CD"
+    assert s["label"] == "Ultimae"
+    assert s["catalog_number"] == "ULT-1"
+
+
+def test_candidate_summaries_for_url_caps_and_reports_total(monkeypatch):
+    # 7 linked releases; the picker caps at MAX_URL_CANDIDATES (5) but reports
+    # the true total so the UI can say "showing 5 of 7".
+    mbids = [f"rel-{i}" for i in range(7)]
+    monkeypatch.setattr(mb_lookup, "lookup_by_bandcamp_url", lambda url: mbids)
+    monkeypatch.setattr(
+        mb_lookup,
+        "fetch_release",
+        lambda m: {"id": m, "title": "T", "medium-list": [{"format": "CD"}]},
+    )
+    summaries, total = candidate_summaries_for_url("https://x.bandcamp.com/album/y")
+    assert total == 7
+    assert len(summaries) == mb_lookup.MAX_URL_CANDIDATES
+    assert [s["id"] for s in summaries] == mbids[:5]
 
 
 def test_lookup_returns_empty_when_no_relations(monkeypatch):

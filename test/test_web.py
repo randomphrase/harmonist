@@ -360,8 +360,11 @@ def test_needs_mbid_private_release_suppresses_harmony_and_recheck(client, cfg):
     assert ">MBID</abbr>" in r.text  # still a Needs MBID card
     assert "Open in Harmony" not in r.text
     assert "/recheck/" not in r.text
-    assert "not eligible for MB import" in r.text
+    assert "won't resolve on MusicBrainz" in r.text
     assert "Bandcamp (private)" in r.text
+    # No store-URL search mode for a private release — only name search.
+    assert "Look up releases at this URL" not in r.text
+    assert "Search MusicBrainz by name" in r.text
     # The manual resolution path remains.
     assert 'name="mbid"' in r.text
 
@@ -1157,6 +1160,155 @@ def test_manual_search_handles_mb_error(client, cfg, monkeypatch):
     r = client.post(f"/manual/{aid}/search", data={"artist": "X", "title": "Y"})
     assert r.status_code == 200
     assert "MB search failed" in r.text
+
+
+def _needs_mbid_with_store_url(cfg, name: str, store_url: str):
+    """A NEEDS_MBID album (store URL on file, no MBID yet) for picker tests."""
+    d = _make_album(cfg, name)
+    sc.write(
+        d,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=store_url),
+    )
+    return d
+
+
+def test_needs_mbid_store_url_offers_both_search_modes(client, cfg):
+    """A Needs-MBID card with a store URL renders ONE find-a-release area with
+    a radio to pick the search method (store URL vs name) — both controls
+    present, mutually exclusive via the .find-mode :has() rule."""
+    d = _needs_mbid_with_store_url(cfg, "Modes", "https://x.bandcamp.com/album/y")
+    aid = _id_for(cfg, d)
+    r = client.get("/tasks")
+    assert "Find a different release" in r.text
+    # Both radio options + their controls render (one results box for both).
+    assert 'value="url"' in r.text
+    assert 'value="name"' in r.text
+    assert "Look up releases at this URL" in r.text  # store-URL mode action
+    assert f"/manual/{aid}/search" in r.text  # name-mode form
+    assert r.text.count('id="mbid-results-') == 1  # single shared results box
+    # No nested "search by name" disclosure anymore.
+    assert "Or search MusicBrainz by name" not in r.text
+
+
+def test_manual_search_results_carry_heading(client, cfg, monkeypatch):
+    """Name-search results are headed so it's clear which search ran."""
+    d = _make_album(cfg, "Headed")
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_search.search_releases",
+        lambda artist, title, limit=10: [
+            {"id": "rel-h", "title": "H", "artist": "X", "track_count": 1}
+        ],
+    )
+    r = client.post(f"/manual/{aid}/search", data={"artist": "X", "title": "Y"})
+    assert "MusicBrainz search results" in r.text
+
+
+def test_manual_candidates_lists_store_url_releases(client, cfg, monkeypatch):
+    """The Choose-release picker lists the MB releases linked to the store URL,
+    with disambiguation + media, each with a Use button and MB link."""
+    cross = "\N{MULTIPLICATION SIGN}"
+    d = _needs_mbid_with_store_url(cfg, "PickMe", "https://x.bandcamp.com/album/y")
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.candidate_summaries_for_url",
+        lambda url: (
+            [
+                {
+                    "id": "rel-std",
+                    "title": "Life²",
+                    "disambiguation": "",
+                    "artist": "Asura",
+                    "track_count": 11,
+                    "media": "CD",
+                    "date": "2010",
+                    "country": "FR",
+                    "status": "Official",
+                    "label": "Ultimae",
+                    "catalog_number": "ULT-1",
+                },
+                {
+                    "id": "rel-24",
+                    "title": "Life²",
+                    "disambiguation": "24-bit",
+                    "artist": "Asura",
+                    "track_count": 11,
+                    "media": f"2{cross}CD",
+                    "date": "2010",
+                    "country": "FR",
+                    "status": "Official",
+                    "label": "Ultimae",
+                    "catalog_number": "ULT-2",
+                },
+            ],
+            2,
+        ),
+    )
+    r = client.post(f"/manual/{aid}/candidates")
+    assert r.status_code == 200
+    assert "Releases linked to this store URL" in r.text
+    assert "musicbrainz.org/release/rel-std" in r.text
+    assert "musicbrainz.org/release/rel-24" in r.text
+    assert "(24-bit)" in r.text  # disambiguation rendered distinctly
+    assert f"2{cross}CD" in r.text  # media summary
+    assert r.text.count('name="mbid"') == 2  # a Use button per release
+
+
+def test_recheck_multiple_matches_shows_picker_not_autopick(client, cfg, monkeypatch):
+    """When a store URL maps to several MB releases, Recheck stops guessing —
+    it retargets the picker into the card's results box and leaves the album
+    untagged for the user to choose."""
+    d = _needs_mbid_with_store_url(cfg, "Ambiguous", "https://x.bandcamp.com/album/y")
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.lookup_by_bandcamp_url",
+        lambda url: ["rel-a", "rel-b"],
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.candidate_summaries_for_url",
+        lambda url: (
+            [
+                {
+                    "id": "rel-a",
+                    "title": "A",
+                    "disambiguation": "",
+                    "artist": "X",
+                    "track_count": 9,
+                    "media": "CD",
+                    "date": None,
+                    "country": None,
+                    "status": None,
+                    "label": None,
+                    "catalog_number": None,
+                },
+                {
+                    "id": "rel-b",
+                    "title": "B",
+                    "disambiguation": "",
+                    "artist": "X",
+                    "track_count": 10,
+                    "media": "Digital Media",
+                    "date": None,
+                    "country": None,
+                    "status": None,
+                    "label": None,
+                    "catalog_number": None,
+                },
+            ],
+            2,
+        ),
+    )
+    r = client.post(f"/recheck/{aid}")
+    assert r.status_code == 200
+    # The button posts with hx-swap=none, so the response retargets the picker.
+    assert r.headers.get("HX-Retarget") == f"#mbid-results-{aid}"
+    assert r.headers.get("HX-Reswap") == "innerHTML"
+    assert "pick the right one" in r.text
+    assert "musicbrainz.org/release/rel-a" in r.text
+    # No silent auto-pick: the album stays untagged.
+    loaded = sc.read(d)
+    assert loaded.mb_release_id is None
+    assert loaded.mb_match_candidate is None
 
 
 def test_manual_assign_with_full_url(client, cfg, monkeypatch):

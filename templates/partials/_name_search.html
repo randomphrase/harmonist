@@ -1,0 +1,17 @@
+{# Artist + title search of MusicBrainz. Results render into the shared
+   #mbid-results-{id} box (kept outside any <details> and inside the card's
+   hx-preserve wrapper, so a background poll can't wipe them).
+   Expects: album (album.id, album.artist, album.title). #}
+<form hx-post="/manual/{{ album.id }}/search"
+      hx-target="#mbid-results-{{ album.id }}"
+      hx-swap="innerHTML"
+      class="flex gap-2">
+    <input type="text" name="artist" value="{{ album.artist }}" placeholder="Artist"
+           class="flex-1 min-w-0 bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-mb-purple outline-none">
+    <input type="text" name="title" value="{{ album.title }}" placeholder="Album"
+           class="flex-1 min-w-0 bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-mb-purple outline-none">
+    <button type="submit"
+            class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">
+        Search
+    </button>
+</form>
