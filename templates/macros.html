@@ -1,0 +1,11 @@
+{# Reusable Jinja rendering helpers.
+   Import in a template with:  {% from 'macros.html' import release_name %} #}
+
+{# An MB release name with its disambiguation rendered visually distinct —
+   muted and parenthesised, the way MusicBrainz itself shows it. Pass the title
+   and the (possibly empty) disambiguation separately. Wrap the call in an <a>
+   at the call site to make it a link; the muted styling still reads inside a
+   coloured link. #}
+{% macro release_name(name, disambiguation) -%}
+{{ name }}{% if disambiguation %} <span class="text-muted font-normal">({{ disambiguation }})</span>{% endif %}
+{%- endmacro %}

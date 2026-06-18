@@ -430,6 +430,54 @@ def test_needs_review_card_renders_side_by_side(client, cfg):
     assert "Refresh from MB" in r.text
 
 
+def test_mistag_card_renders_open_panel_with_sibling_explanation(client, cfg):
+    """A mis-tag candidate renders the 'Wrong release?' panel OPEN with a
+    store-URL-based sibling explanation, kept separate from the track-count
+    match-quality note."""
+    d = _make_album(cfg, "Mistag Card")
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://ultimae.bandcamp.com/album/life",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-correct",
+                confidence="no_match",
+                file_count=10,
+                track_count=11,
+                notes=["file count 10 does not match MB track count 11"],
+                mistag_owned_url="https://ultimae.bandcamp.com/album/life",
+                mistag_owned_label="ASURA / Life²",
+                mistag_owned_disambig="24-bit",
+                mistag_tagged_mbid="rel-wrong",
+                mistag_tagged_label="ASURA / Life²",
+                mistag_tagged_disambig="",
+                mistag_release_group_mbid="rg-life",
+            ),
+        ),
+    )
+    r = client.get("/tasks")
+    # The wrong-release panel is rendered OPEN and names both releases.
+    assert "<details open" in r.text
+    assert "Wrong release?" in r.text
+    assert "ASURA / Life²" in r.text
+    # Both releases link to MusicBrainz (tagged + owned/suggested), and the
+    # shared release group links too.
+    assert "https://musicbrainz.org/release/rel-wrong" in r.text
+    assert "https://musicbrainz.org/release/rel-correct" in r.text
+    assert "https://musicbrainz.org/release-group/rg-life" in r.text
+    # The store URL is hidden behind the word "Bandcamp", not shown raw.
+    assert ">Bandcamp</a>" in r.text
+    # Disambiguation is rendered in parentheses, visually distinct (muted span).
+    assert ">(24-bit)</span>" in r.text
+    # The track-count note stays in the match-quality box, NOT in the mis-tag
+    # prose, and is flagged with a "Note:" prefix.
+    assert "Note:" in r.text
+    assert "file count 10 does not match MB track count 11" in r.text
+    # Still confirmable.
+    assert "Confirm" in r.text
+
+
 def test_inconsistent_card_renders(client, cfg):
     """A dir with conflicting album tags surfaces an INCONSISTENT card,
     showing the per-file table and the Picard nudge."""
@@ -554,10 +602,10 @@ def test_needs_sync_bulk_button_enabled_when_idle(client, cfg):
     assert "disabled title=" not in button
 
 
-def test_needs_sync_bulk_button_disabled_while_syncing(client, cfg):
-    # A sync in flight disables the bulk button at RENDER time, so a
-    # tasks-changed re-render mid-sync can't briefly offer a live button
-    # before the next #app-status poll re-disables it.
+def test_needs_sync_group_collapses_to_progress_note_while_syncing(client, cfg):
+    # While a sync is in flight the NEEDS_SYNC group hides its bulk button and
+    # its "Show all N albums" card list, showing a progress note instead — the
+    # albums are being linked right now and clear when the sync finishes.
     d = _make_album(cfg, "BulkSyncBusy")
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-bulk-3"]
@@ -575,9 +623,9 @@ def test_needs_sync_bulk_button_disabled_while_syncing(client, cfg):
     client.app.state.sync_runner._status.state = "running"
     r = client.get("/tasks")
     assert r.status_code == 200
-    # The disabled attribute renders before the class, so anchor on hx-post.
-    button = r.text[r.text.index('hx-post="/sync"') : r.text.index('hx-post="/sync"') + 400]
-    assert 'disabled title="Sync in progress"' in button
+    assert "Linking these to your Bandcamp purchases" in r.text
+    assert "sync-trigger" not in r.text  # bulk button gone while syncing
+    assert "Show all" not in r.text  # no expandable card list either
 
 
 def test_tasks_shows_live_reconcile_counts(client, cfg):
@@ -761,7 +809,15 @@ def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):
 # ---------- mis-tag detection via release-group join ----------
 
 
-def _release_with_rg(mbid: str, rg: str, n_tracks: int = 1) -> dict:
+def _release_with_rg(
+    mbid: str,
+    rg: str,
+    n_tracks: int = 1,
+    *,
+    artist: str = "",
+    title: str = "Album",
+    disambiguation: str = "",
+) -> dict:
     tracks = [
         {
             "id": f"rt-{i}",
@@ -771,12 +827,17 @@ def _release_with_rg(mbid: str, rg: str, n_tracks: int = 1) -> dict:
         }
         for i in range(1, n_tracks + 1)
     ]
-    return {
+    rel: dict = {
         "id": mbid,
-        "title": "Album",
+        "title": title,
         "release-group": {"id": rg, "title": "RG"},
         "medium-list": [{"position": "1", "track-list": tracks}],
     }
+    if artist:
+        rel["artist-credit-phrase"] = artist
+    if disambiguation:
+        rel["disambiguation"] = disambiguation
+    return rel
 
 
 class _FakeSyncer:
@@ -813,17 +874,35 @@ def test_detect_mistag_by_release_group_demotes_with_suggestion(cfg):
             ("rel-correct", ["https://ultimae.bandcamp.com/album/live-in-corfu-24bit"]),
         ]
 
+    # Distinct MB releases for the tagged (standard) vs owned (24-bit) editions
+    # so we can assert both names AND the disambiguation are captured.
+    def fetch_release(m):
+        disambig = "24-bit" if m == "rel-correct" else ""
+        return _release_with_rg(
+            m, "rg-1", artist="Cell", title="Live in Corfu", disambiguation=disambig
+        )
+
     activity.clear()
     _detect_mistags_after_sync(
         cfg,
         syncer,
         browse_rg=browse_rg,
-        fetch_release=lambda m: _release_with_rg(m, "rg-1"),
+        fetch_release=fetch_release,
     )
     loaded = sc.read(d)
     assert loaded.mb_release_id is None  # wrong tag cleared
-    assert loaded.mb_match_candidate.mb_release_id == "rel-correct"  # the suggestion
-    assert any("release group" in n for n in loaded.mb_match_candidate.notes)
+    cand = loaded.mb_match_candidate
+    assert cand.mb_release_id == "rel-correct"  # the suggestion
+    # Mis-tag provenance is structured, NOT crammed into the matcher's notes —
+    # both releases named, with disambiguation kept separate from the title.
+    assert cand.mistag_tagged_mbid == "rel-wrong"
+    assert cand.mistag_tagged_label == "Cell / Live in Corfu"
+    assert not cand.mistag_tagged_disambig  # standard edition has none
+    assert cand.mistag_owned_label == "Cell / Live in Corfu"
+    assert cand.mistag_owned_disambig == "24-bit"
+    assert cand.mistag_owned_url == "https://ultimae.bandcamp.com/album/live-in-corfu-24bit"
+    assert cand.mistag_release_group_mbid == "rg-1"
+    assert not any("release group" in n for n in cand.notes)
     album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
     assert album.state == AlbumState.NEEDS_MBID
     msgs = [e.message for e in activity.recent(10)]

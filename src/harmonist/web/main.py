@@ -428,6 +428,22 @@ def _release_group_id(release: Release) -> str | None:
     return str(rg) if rg else None
 
 
+def _release_name_parts(release: Release) -> tuple[str, str]:
+    """Split an MB release into ('Artist / Title', 'disambiguation') so the UI
+    can render the disambiguation visually distinct from the title (as MB does).
+    The disambiguation is "" when the release has none."""
+    artist = (release.get("artist-credit-phrase") or "").strip()
+    if not artist:
+        parts = []
+        for ac in release.get("artist-credit") or []:
+            if isinstance(ac, dict):
+                parts.append(ac.get("name") or ac.get("artist", {}).get("name", ""))
+        artist = "".join(parts).strip()
+    title = (release.get("title") or "").strip()
+    name = f"{artist} / {title}" if artist else title
+    return name, (release.get("disambiguation") or "").strip()
+
+
 def _demote_to_needs_mbid(
     album_path: Path, sc: Sidecar, *, candidate: MatchCandidate | None
 ) -> None:
@@ -504,29 +520,32 @@ def _detect_mistags_after_sync(
         return
 
     # Only act on release groups with exactly one unmatched album — otherwise we
-    # can't tell which album an owned edition pairs with.
-    rg_albums: dict[str, list[Album]] = {}
+    # can't tell which album an owned release pairs with. Keep each album's
+    # currently-tagged (wrong) release so we can name it in the UI without a
+    # second fetch.
+    rg_albums: dict[str, list[tuple[Album, Release]]] = {}
     for a in albums:
         assert a.sidecar is not None  # guaranteed by the comprehension filter
         assert a.sidecar.mb_release_id is not None
         try:
-            rg = _release_group_id(fetch_release(a.sidecar.mb_release_id))
+            tagged_release = fetch_release(a.sidecar.mb_release_id)
         except mb_lookup.MBError:
             continue
+        rg = _release_group_id(tagged_release)
         if rg:
-            rg_albums.setdefault(rg, []).append(a)
+            rg_albums.setdefault(rg, []).append((a, tagged_release))
 
     for rg, albs in rg_albums.items():
         if len(albs) != 1:
             continue  # ambiguous: multiple unmatched albums in this group
-        album = albs[0]
+        album, tagged_release = albs[0]
         assert album.sidecar is not None
         tagged = album.sidecar.mb_release_id
         try:
             siblings = browse_rg(rg)
         except mb_lookup.MBError:
             continue
-        # Editions in this group the user OWNS (Bandcamp URL slug in `owned`),
+        # Releases in this group the user OWNS (Bandcamp URL slug in `owned`),
         # other than the one it's currently tagged as.
         owned_siblings = {
             mbid: s
@@ -536,7 +555,7 @@ def _detect_mistags_after_sync(
             if (s := album_slug(u)) in owned
         }
         if len(owned_siblings) != 1:
-            continue  # 0 = not a mis-tag; ≥2 = you own several editions, ambiguous
+            continue  # 0 = not a mis-tag; ≥2 = you own several releases, ambiguous
         owned_mbid, owned_slug = next(iter(owned_siblings.items()))
         url, label = owned[owned_slug]
         try:
@@ -545,10 +564,19 @@ def _detect_mistags_after_sync(
             continue
         candidate = best_match(album.path, [rel])
         if candidate is not None:
-            candidate.notes.append(
-                f"you own “{label}” ({url}) — same MusicBrainz release group, different "
-                f"release; was tagged {tagged}"
-            )
+            # Mis-tag provenance as STRUCTURED fields, not a free-text note — so
+            # the UI can name both releases (each linked to MB, disambiguation
+            # rendered distinctly) and the purchase URL, separate from the
+            # matcher's technical notes (file/track count).
+            owned_name, owned_disambig = _release_name_parts(rel)
+            tagged_name, tagged_disambig = _release_name_parts(tagged_release)
+            candidate.mistag_owned_url = url
+            candidate.mistag_owned_label = owned_name
+            candidate.mistag_owned_disambig = owned_disambig
+            candidate.mistag_tagged_mbid = tagged
+            candidate.mistag_tagged_label = tagged_name
+            candidate.mistag_tagged_disambig = tagged_disambig
+            candidate.mistag_release_group_mbid = rg
         _demote_to_needs_mbid(album.path, album.sidecar, candidate=candidate)
         activity.record(
             f"Possible mis-tag: {album.artist} — {album.title}. You own “{label}” on "

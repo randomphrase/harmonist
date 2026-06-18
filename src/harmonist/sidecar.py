@@ -157,6 +157,20 @@ def _candidate_to_dict(c: MatchCandidate) -> dict[str, Any]:
         out["proposed_at"] = _iso(c.proposed_at)
     if c.notes:
         out["notes"] = list(c.notes)
+    if c.mistag_owned_url:
+        out["mistag_owned_url"] = c.mistag_owned_url
+    if c.mistag_owned_label:
+        out["mistag_owned_label"] = c.mistag_owned_label
+    if c.mistag_owned_disambig:
+        out["mistag_owned_disambig"] = c.mistag_owned_disambig
+    if c.mistag_tagged_mbid:
+        out["mistag_tagged_mbid"] = c.mistag_tagged_mbid
+    if c.mistag_tagged_label:
+        out["mistag_tagged_label"] = c.mistag_tagged_label
+    if c.mistag_tagged_disambig:
+        out["mistag_tagged_disambig"] = c.mistag_tagged_disambig
+    if c.mistag_release_group_mbid:
+        out["mistag_release_group_mbid"] = c.mistag_release_group_mbid
     return out
 
 
@@ -196,6 +210,13 @@ def _candidate_from_dict(d: dict[str, Any]) -> MatchCandidate:
         ],
         proposed_at=_parse_iso(d.get("proposed_at")),
         notes=list(d.get("notes", [])),
+        mistag_owned_url=d.get("mistag_owned_url"),
+        mistag_owned_label=d.get("mistag_owned_label"),
+        mistag_owned_disambig=d.get("mistag_owned_disambig"),
+        mistag_tagged_mbid=d.get("mistag_tagged_mbid"),
+        mistag_tagged_label=d.get("mistag_tagged_label"),
+        mistag_tagged_disambig=d.get("mistag_tagged_disambig"),
+        mistag_release_group_mbid=d.get("mistag_release_group_mbid"),
     )
 
 

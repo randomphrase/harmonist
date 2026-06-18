@@ -98,6 +98,20 @@ class MatchCandidate:
     track_comparisons: list[TrackComparison] = field(default_factory=list)
     proposed_at: datetime | None = None
     notes: list[str] = field(default_factory=list)
+    # Set ONLY when this candidate was proposed because the album looks
+    # mis-tagged: it's tagged as one release but the user owns a *different*
+    # release in the same MusicBrainz release group (matched by store URL).
+    # These let the UI name both sides of the swap (each linked to MB) and the
+    # purchase URL. None for an ordinary suggestion. Store-URL driven —
+    # independent of the track-count match quality (`confidence` / `notes`).
+    # The owned (suggested) release is this candidate's `mb_release_id`.
+    mistag_owned_url: str | None = None  # Bandcamp purchase URL
+    mistag_owned_label: str | None = None  # owned release "Artist / Title"
+    mistag_owned_disambig: str | None = None  # owned release MB disambiguation, if any
+    mistag_tagged_mbid: str | None = None  # the release it's currently (wrongly) tagged as
+    mistag_tagged_label: str | None = None  # that release's "Artist / Title"
+    mistag_tagged_disambig: str | None = None  # that release's MB disambiguation, if any
+    mistag_release_group_mbid: str | None = None  # the shared release group (for an MB link)
 
 
 @dataclass
