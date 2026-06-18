@@ -323,15 +323,20 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         if not media_dir:
             return
         by_slug = unlinked_albums_by_slug(Path(media_dir))
+        stuck_total = sum(len(v) for v in by_slug.values())
         if not by_slug:
             return
         linked = 0
+        ignored_total = 0
+        ignored_slugs: set[str] = set()
         for item in self.bandcamp.purchases:
             if not self.ignores.is_ignored(item):
                 continue  # non-ignored items are handled by sync_item's own backfill
+            ignored_total += 1
             slug = album_slug(construct_bandcamp_url(item))
             if not slug:
                 continue
+            ignored_slugs.add(slug)
             dirs = by_slug.get(slug)
             if not dirs or len(dirs) != 1:
                 continue  # 0 = not on disk / already linked; >1 = ambiguous, skip
@@ -355,8 +360,27 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                     getattr(item, "item_id", "?"),
                     e,
                 )
-        if linked:
-            log.info("Backfilled %d already-downloaded purchase(s) into existing albums", linked)
+        # Diagnostics: why did stuck albums NOT link? The summary tells us
+        # whether the collection was even paged (loaded count) and how many
+        # unlinked albums remain; the per-slug lines show whether ANY ignored
+        # purchase carried that slug (absent → purchase not loaded or different
+        # subdomain-stable slug; this is the store_url-vs-purchase-URL fork).
+        log.info(
+            "Backfill: %d purchase(s) loaded (%d ignored); %d unlinked album(s) on disk; "
+            "linked %d already-downloaded album(s)",
+            len(self.bandcamp.purchases),
+            ignored_total,
+            stuck_total,
+            linked,
+        )
+        for slug, dirs in by_slug.items():
+            log.info(
+                "Backfill: unlinked album slug %r matched no loaded purchase "
+                "(%d album(s); ignored purchase carried this slug: %s)",
+                slug,
+                len(dirs),
+                slug in ignored_slugs,
+            )
 
     def sync_item(self, item: Any, encoding: str | None = None) -> bool:
         if self._progress_callback:
