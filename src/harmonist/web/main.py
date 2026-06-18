@@ -148,6 +148,9 @@ def create_app(
             result = demo.run_demo_sync(
                 cfg.paths.music_dir, progress_callback=sync_runner.set_current_item
             )
+            # Downloads done; the status bar shouldn't stay pinned to the last
+            # album's name while we wrap up.
+            sync_runner.set_current_item("finishing up…")
             scan_runner.request_scan()  # downloads landed → refresh the snapshot
             return result
     else:
@@ -164,6 +167,10 @@ def create_app(
                 progress_callback=sync_runner.set_current_item,
                 post_download_callback=resolve_after_download,
             )
+            # Downloads are done; the remaining work (mis-tag detection, the
+            # unmatched report, the rescan) can take a few seconds. Re-label the
+            # status so it doesn't sit pinned to the last album's name.
+            sync_runner.set_current_item("finishing up — checking matches…")
             # Spot mis-tags first (release-group join → demote to Needs MBID
             # with a suggestion), then report whatever's genuinely still
             # unlinked. Both write to the log + Activity.
