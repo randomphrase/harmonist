@@ -944,3 +944,17 @@ the state model and UI don't preclude them.
   the user un-ignore them to re-download — the same mechanism as
   **Re-download from Bandcamp** above (drop the entry from `ignores.txt`),
   so the two should share UI.
+- **Live count updating during the sync phase** *(nice to have)* — the
+  reconcile pass already publishes live inbox/library/New/Needs Sync
+  counts as it files each orphan (base captured at start + running
+  outcome tallies, no mid-pass rescan — see `reconcile_runner.py`'s
+  `ReconcileStatus` and `reconcile_pending_orphans`, and the live-count
+  panel in `tasks.html`). The **sync** phase does not: `_detect_mistags`,
+  `_report_unmatched`, and the closing `request_scan` all run at the *end*
+  of the sync `runner_fn`, so the inbox/library numbers only refresh once
+  sync completes (snap-at-end). Extend the same base + tallies approach to
+  sync — as each purchase links its `item_id` and an album moves
+  NEEDS_SYNC → COMPLETE, decrement Needs Sync / increment Library live —
+  without a full mid-sync rescan (which would hammer the network mount).
+  Low priority: the end-of-sync snap is functionally correct; this is
+  purely a responsiveness polish.
