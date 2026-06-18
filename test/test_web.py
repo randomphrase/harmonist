@@ -787,6 +787,10 @@ def test_report_unmatched_after_sync_warns_per_album(cfg):
     assert len(warnings) == 2
     assert all("Not linked to a Bandcamp purchase" in w.message for w in warnings)
     assert all("Try a different URL" in w.message for w in warnings)
+    # The unmatched store_url is included to help diagnose why it didn't link.
+    msgs = " ".join(w.message for w in warnings)
+    assert "https://label.bandcamp.com/album/stranded" in msgs
+    assert "https://label.bandcamp.com/album/adrift" in msgs
 
 
 def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):

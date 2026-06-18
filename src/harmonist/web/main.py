@@ -635,9 +635,13 @@ def _report_unmatched_after_sync(cfg: config_mod.Config) -> None:
         len(unmatched),
     )
     for a in unmatched:
+        # Include the unmatched store_url — when an album won't link, the usual
+        # cause is its store_url slug not matching any loaded purchase, so the
+        # URL is the first thing to check.
+        store_url = a.sidecar.store_url if a.sidecar else None
         activity.record(
             f"Not linked to a Bandcamp purchase: {a.artist} — {a.title} "
-            f"(use 'Try a different URL' to link it)",
+            f"[{store_url or 'no store URL'}] (use 'Try a different URL' to link it)",
             level="warning",
         )
 
