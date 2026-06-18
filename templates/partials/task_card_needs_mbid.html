@@ -1,6 +1,11 @@
+{% from 'macros.html' import release_name %}
 {% set sc = album.sidecar %}
 {% set candidate = sc.mb_match_candidate if sc else None %}
 {% set has_store_url = sc and sc.store_url %}
+{# A mis-tag candidate carries the owned sibling release (store-URL match). It
+   gets its own explanatory panel, independent of the track-count match quality
+   below. #}
+{% set is_mistag = candidate and candidate.mistag_owned_url %}
 <div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border {% if candidate %}border-amber-300{% elif has_store_url %}border-bc-teal/40{% else %}border-line{% endif %}">
     {# Header shows the MB + store badges top-right. Before confirmation the MB
        badge should point at the *candidate* release, so override mb_release_id
@@ -9,15 +14,68 @@
         {% include 'partials/_album_header.html' %}
     {% endwith %}
 
+    {% if is_mistag %}
+    {# ---- (a) Possible mis-tag: the "wrong release?" panel, opened. Explains
+         WHY we're suggesting a different release — strictly store-URL based, so
+         no track-count talk here (that's the match-quality box below). ---- #}
+    <details open class="rounded-lg border border-amber-300 bg-amber-50/60 p-3 mb-3">
+        <summary class="cursor-pointer select-none text-sm font-bold text-amber-800">
+            Wrong release?
+        </summary>
+        <div class="mt-2 text-xs text-ink/80 leading-relaxed">
+            <p>
+                This album is tagged as
+                {% if candidate.mistag_tagged_mbid and candidate.mistag_tagged_label %}
+                <a href="https://musicbrainz.org/release/{{ candidate.mistag_tagged_mbid }}"
+                   target="_blank" rel="noopener"
+                   class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_tagged_label, candidate.mistag_tagged_disambig) }}</a>,
+                {% else %}
+                a different release,
+                {% endif %}
+                but you purchased
+                <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}"
+                   target="_blank" rel="noopener"
+                   class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_owned_label, candidate.mistag_owned_disambig) }}</a>
+                on <a href="{{ candidate.mistag_owned_url }}" target="_blank" rel="noopener"
+                   class="text-bc-teal hover:underline">Bandcamp</a>.
+                These are sibling releases in the same
+                {% if candidate.mistag_release_group_mbid %}
+                <a href="https://musicbrainz.org/release-group/{{ candidate.mistag_release_group_mbid }}"
+                   target="_blank" rel="noopener"
+                   class="text-mb-purple hover:underline">MusicBrainz release group</a>.
+                {% else %}
+                MusicBrainz release group.
+                {% endif %}
+                Confirm below to re-tag.
+            </p>
+        </div>
+    </details>
+    {% endif %}
+
     {% if candidate %}
-    {# ---- A suggestion exists: show the side-by-side + confirm ---- #}
+    {# ---- (b) Match quality: how the suggested release lines up with the files
+         on disk. Independent of (a) — applies to any candidate, mis-tag or not.
+         Holds the Confirm action and the technical notes (file/track count). ---- #}
     {% set incomplete_offered = candidate.file_count < candidate.track_count %}
     <div class="rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
+        {% if is_mistag %}
+        {# The mis-tag panel above already explains the suggestion; here just
+           flag the technical track-fit notes (if any) as a warning. #}
+        {% if candidate.notes %}
+        <div class="text-xs text-amber-700 mb-2 flex items-start gap-1.5">
+            <svg class="w-3.5 h-3.5 mt-px shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+            </svg>
+            <span><span class="font-bold">Note:</span> {% for note in candidate.notes %}{{ note }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+        </div>
+        {% endif %}
+        {% else %}
         <div class="text-xs text-muted mb-2">
             MusicBrainz suggests a release —
             <span class="font-bold text-amber-700">{{ candidate.confidence }}</span> match.
             {% for note in candidate.notes %}<span> · {{ note }}</span>{% endfor %}
         </div>
+        {% endif %}
 
         <div class="mb-3">{% include 'partials/_track_comparison.html' %}</div>
 
@@ -58,11 +116,15 @@
     </div>
     {% endif %}
 
-    {# ---- Always available: find / assign an MBID. Primary when there's no
-         suggestion; collapsed under a disclosure when a suggestion is shown. ---- #}
+    {# ---- Always available: find / assign a different MBID. Primary when there's
+         no suggestion; collapsed under a disclosure when a suggestion is shown.
+         (For a mis-tag the explanatory panel above already says "Wrong release?",
+         so phrase this one as the manual fallback.) ---- #}
     {% if candidate %}
     <details class="text-xs">
-        <summary class="cursor-pointer text-muted hover:text-ink select-none">Wrong release? Find or assign a different one</summary>
+        <summary class="cursor-pointer text-muted hover:text-ink select-none">
+            {% if is_mistag %}Not that either? Find or assign a different release{% else %}Wrong release? Find or assign a different one{% endif %}
+        </summary>
         <div class="mt-2 space-y-3">
             {% include 'partials/_needs_mbid_tools.html' %}
         </div>
