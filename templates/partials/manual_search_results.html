@@ -1,3 +1,12 @@
+{# Unified candidate-release list. Shared by the artist/title search AND the
+   store-URL picker — both pass `results` (mb_lookup.release_summary-shaped
+   dicts), `album_id`, and the local facts for mismatch cues. Optional:
+   `heading` (a label above the list) and `more_count` (total found when the
+   list was truncated). #}
+{% from 'macros.html' import release_name %}
+{% if heading %}
+<p class="text-2xs uppercase tracking-widest text-muted font-bold mb-1 px-1">{{ heading }}</p>
+{% endif %}
 {% if not results %}
 <p class="text-muted text-xs italic px-2 py-1">No matches.</p>
 {% else %}
@@ -12,17 +21,16 @@
     <div class="flex items-center justify-between gap-2 p-2 rounded bg-surface border border-line hover:border-mb-purple/40 transition">
         <div class="min-w-0 flex-grow">
             <div class="text-sm text-ink truncate">
-                <span class="font-bold">{{ r.title }}</span>
+                <span class="font-bold">{{ release_name(r.title, r.disambiguation) }}</span>
                 <span class="text-muted{% if artist_mismatch %} text-amber-600{% endif %}"
                       {% if artist_mismatch %}title="Differs from your tag: {{ local_artist }}"{% endif %}>
                     — {{ r.artist }}</span>
             </div>
             <div class="text-2xs text-muted">
-                {{ r.date or '?' }} · {{ r.country or '?' }} · {{ r.status or '?' }}
-                {% if r.track_count %} ·
-                <span class="{% if tc_mismatch %}line-through text-red-600 decoration-red-600{% endif %}"
-                      {% if tc_mismatch %}title="MusicBrainz lists {{ r.track_count }} tracks; your album has {{ local_track_count }} file{{ 's' if local_track_count != 1 else '' }}"{% endif %}>{{ r.track_count }} tracks</span>
-                {% endif %}
+                {% if r.track_count %}<span class="{% if tc_mismatch %}line-through text-red-600 decoration-red-600{% endif %}"
+                      {% if tc_mismatch %}title="MusicBrainz lists {{ r.track_count }} tracks; your album has {{ local_track_count }} file{{ 's' if local_track_count != 1 else '' }}"{% endif %}>{{ r.track_count }} tracks</span>{% else %}? tracks{% endif %}
+                {% if r.media %} · {{ r.media }}{% endif %}
+                · {{ r.date or '?' }} · {{ r.country or '?' }} · {{ r.status or '?' }}
                 {% if r.label %} · {{ r.label }}{% endif %}
                 {% if r.catalog_number %} · {{ r.catalog_number }}{% endif %}
             </div>
@@ -47,4 +55,9 @@
     </div>
     {% endfor %}
 </div>
+{% if more_count and more_count > results | length %}
+<p class="text-2xs text-muted italic px-2 mt-1">
+    Showing {{ results | length }} of {{ more_count }} — if the right one isn't here, refine on MusicBrainz.
+</p>
+{% endif %}
 {% endif %}

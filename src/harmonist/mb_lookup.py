@@ -9,10 +9,17 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import Counter
+from typing import Any
 
 import musicbrainzngs
 
 from .models import Release
+
+# The picker lists at most this many candidate releases for a store URL — beyond
+# a handful, MusicBrainz's own search is the better tool. (A single store URL
+# rarely maps to more than a few releases anyway.)
+MAX_URL_CANDIDATES = 5
 
 log = logging.getLogger(__name__)
 
@@ -146,6 +153,67 @@ def browse_release_group_releases(release_group_mbid: str) -> list[tuple[str, li
         ]
         out.append((str(rel["id"]), urls))
     return out
+
+
+def _media_summary(media: list[dict[str, Any]]) -> str:
+    """Summarise a release's media/format the way MusicBrainz does: 'CD',
+    a 2-disc CD as '2{cross}CD', 'CD + Digital Media'. Empty when no format
+    info is available. ({cross} = U+00D7 multiplication sign at runtime.)"""
+    formats = [str(m.get("format") or "Media") for m in media]
+    if not formats:
+        return ""
+    cross = "\N{MULTIPLICATION SIGN}"  # ASCII-safe source, real glyph at runtime
+    # Counter keeps first-seen (disc) order in 3.7+.
+    return " + ".join(f"{n}{cross}{fmt}" if n > 1 else fmt for fmt, n in Counter(formats).items())
+
+
+def release_summary(release: Release) -> dict[str, Any]:
+    """A compact, UI-ready summary of a full MB release (from `fetch_release`).
+
+    The shape matches `mb_search.search_releases` rows so one results partial
+    renders both the store-URL picker and the artist/title search.
+    """
+    media = release.get("medium-list") or []
+    track_count = 0
+    for m in media:
+        tc = m.get("track-count")
+        track_count += int(tc) if tc is not None else len(m.get("track-list") or [])
+    label = None
+    catalog = None
+    for li in release.get("label-info-list") or []:
+        if label is None and (name := (li.get("label") or {}).get("name")):
+            label = str(name)
+        if catalog is None and (cn := li.get("catalog-number")):
+            catalog = str(cn)
+    return {
+        "id": release.get("id"),
+        "title": release.get("title") or "",
+        "disambiguation": (release.get("disambiguation") or "").strip(),
+        "artist": (release.get("artist-credit-phrase") or "").strip(),
+        "track_count": track_count or None,
+        "media": _media_summary(media),
+        "date": release.get("date"),
+        "country": release.get("country"),
+        "status": release.get("status"),
+        "label": label,
+        "catalog_number": catalog,
+    }
+
+
+def candidate_summaries_for_url(bandcamp_url: str) -> tuple[list[dict[str, Any]], int]:
+    """Fresh lookup of the MB releases linked to a store URL, summarised for the
+    picker. Returns (summaries capped at MAX_URL_CANDIDATES, total found) so the
+    UI can note when it truncated. Re-queried on demand — never cached — so an
+    edit the user made on MusicBrainz is picked up the next time they look.
+    """
+    mbids = lookup_by_bandcamp_url(bandcamp_url)
+    summaries: list[dict[str, Any]] = []
+    for mbid in mbids[:MAX_URL_CANDIDATES]:
+        try:
+            summaries.append(release_summary(fetch_release(mbid)))
+        except MBError:
+            continue
+    return summaries, len(mbids)
 
 
 def _is_not_found(exc: musicbrainzngs.ResponseError) -> bool:

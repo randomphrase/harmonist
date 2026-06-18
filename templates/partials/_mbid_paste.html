@@ -1,0 +1,14 @@
+{# Direct entry: paste a MusicBrainz release URL or 36-char MBID. The exact,
+   no-search path — shared by the New and Needs MBID cards.
+   Expects: album (album.id). #}
+<form hx-post="/manual/{{ album.id }}/assign"
+      hx-swap="none" hx-disabled-elt="this"
+      class="flex gap-2">
+    <input type="text" name="mbid" required
+           placeholder="MB release URL or 36-char MBID"
+           class="flex-grow bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-mb-purple outline-none font-mono">
+    <button type="submit"
+            class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
+        Assign &amp; Tag
+    </button>
+</form>

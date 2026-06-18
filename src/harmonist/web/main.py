@@ -1278,12 +1278,29 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
             )
 
+        # A URL can map to several MB releases (e.g. a long digital edition plus
+        # a shorter CD mix). Don't guess which one — surface them all and let the
+        # user pick (into the card's shared, preserved results box).
+        if len(mbids) > 1:
+            try:
+                results, total = mb_lookup.candidate_summaries_for_url(sc.store_url)
+            except mb_lookup.MBError as e:
+                return _flash_response(
+                    "MB lookup failed", str(e), level="error", tasks_changed=False
+                )
+            return _render_release_picker(
+                request,
+                album,
+                results,
+                total,
+                heading="Several releases share this store URL — pick the right one",
+                retarget=True,
+            )
+
         try:
             releases = [mb_lookup.fetch_release(m) for m in mbids]
         except mb_lookup.MBError as e:
             return _flash_response("MB fetch failed", str(e), level="error", tasks_changed=False)
-        # A URL can map to several MB releases (e.g. a long digital edition
-        # plus a shorter CD mix); pick the one that fits the files on disk.
         candidate = best_match(album.path, releases)
         assert candidate is not None  # releases is non-empty (mbids guarded)
         mbid = candidate.mb_release_id
@@ -1412,19 +1429,25 @@ def _register_routes(app: FastAPI) -> None:
             results = mb_search.search_releases(artist, title, limit=5)
         except mb_search.MBSearchError as e:
             return _flash_response("MB search failed", str(e), level="error", tasks_changed=False)
-        return _templates(request).TemplateResponse(
-            request,
-            "partials/manual_search_results.html",
-            {
-                "request": request,
-                "results": results,
-                "album_id": album.id,
-                "query": {"artist": artist, "title": title},
-                # Local album facts so the template can flag obvious mismatches
-                # (track count, artist) inline against each candidate.
-                "local_track_count": album.track_count,
-                "local_artist": album.artist,
-            },
+        return _render_release_picker(
+            request, album, results, len(results), heading="MusicBrainz search results"
+        )
+
+    @app.post("/manual/{album_id}/candidates", response_class=HTMLResponse)
+    def manual_candidates(request: Request, album_id: str) -> Response:
+        """List the MB releases linked to this album's store URL so the user can
+        pick the right one. Fresh lookup each call — no caching — so a fix made
+        on MusicBrainz shows up immediately."""
+        album = _find_album(request, album_id)
+        sc = album.sidecar
+        if sc is None or not sc.store_url:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no store URL on sidecar")
+        try:
+            results, total = mb_lookup.candidate_summaries_for_url(sc.store_url)
+        except mb_lookup.MBError as e:
+            return _flash_response("MB lookup failed", str(e), level="error", tasks_changed=False)
+        return _render_release_picker(
+            request, album, results, total, heading="Releases linked to this store URL"
         )
 
     @app.post("/manual/{album_id}/assign", response_class=HTMLResponse)
@@ -1580,6 +1603,40 @@ def _flash_response(
         _flash(message, level=level),
         status_code=status_code,
         headers={"HX-Trigger": json.dumps(triggers)},
+    )
+
+
+def _render_release_picker(
+    request: Request,
+    album: Album,
+    results: list[dict[str, Any]],
+    total: int,
+    *,
+    heading: str | None,
+    retarget: bool = False,
+) -> Response:
+    """Render the shared candidate-release list (store-URL picker or name
+    search). `retarget` rewrites the swap to the card's preserved results box —
+    needed when the trigger (e.g. the Recheck button) posts with hx-swap=none.
+    """
+    headers: dict[str, str] = {}
+    if retarget:
+        headers["HX-Retarget"] = f"#mbid-results-{album.id}"
+        headers["HX-Reswap"] = "innerHTML"
+    return _templates(request).TemplateResponse(
+        request,
+        "partials/manual_search_results.html",
+        {
+            "request": request,
+            "results": results,
+            "album_id": album.id,
+            "heading": heading,
+            "more_count": total,
+            # Local facts so the rows can flag obvious mismatches inline.
+            "local_track_count": album.track_count,
+            "local_artist": album.artist,
+        },
+        headers=headers,
     )
 
 
