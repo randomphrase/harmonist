@@ -240,6 +240,23 @@ def test_sidecar_round_trip_bandcamp(tmp_path):
     assert loaded.downloaded_at == s.downloaded_at
 
 
+def test_sidecar_round_trip_ambiguous_candidate_ids(tmp_path):
+    """An ambiguous Bandcamp link (no item_id, a set of candidate ids) survives
+    a write/read round-trip."""
+    album_dir = tmp_path / "Artist" / "Album"
+    album_dir.mkdir(parents=True)
+    s = Sidecar(
+        schema_version=CURRENT_SCHEMA_VERSION,
+        store_url="https://x.bandcamp.com/album/y",
+        bandcamp=BandcampInfo(item_id=None, candidate_item_ids=[222, 111]),
+        mb_release_id="rel-x",
+    )
+    sc.write(album_dir, s)
+    loaded = sc.read(album_dir)
+    assert loaded.bandcamp.item_id is None
+    assert loaded.bandcamp.candidate_item_ids == [222, 111]
+
+
 def test_sidecar_round_trip_manual(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()

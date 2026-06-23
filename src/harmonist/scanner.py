@@ -256,8 +256,14 @@ def _derive_state(sidecar: Sidecar | None, fields: list[formats.ScanFields]) -> 
             return AlbumState.INCOMPLETE
         # NEEDS_SYNC: Bandcamp-sourced album, MB release known, files tagged,
         # but Bandcamp item_id not yet linked (a Sync run resolves this).
-        if is_bandcamp_url(sidecar.store_url) and (
-            sidecar.bandcamp is None or sidecar.bandcamp.item_id is None
+        # An *ambiguous* link (candidate_item_ids set — several editions share a
+        # store URL and a title tiebreak couldn't separate them) is as resolved
+        # as we can get, so it's NOT NEEDS_SYNC: fall through to COMPLETE.
+        bc = sidecar.bandcamp
+        if (
+            is_bandcamp_url(sidecar.store_url)
+            and (bc is None or bc.item_id is None)
+            and not (bc is not None and bc.candidate_item_ids)
         ):
             return AlbumState.NEEDS_SYNC
         return AlbumState.COMPLETE

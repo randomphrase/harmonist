@@ -63,6 +63,14 @@ class BandcampInfo:
     # URL 404s). Load-bearing: suppresses the "Open in Harmony" + Recheck
     # affordances, since a private URL should not be added to MusicBrainz.
     is_private: bool = False
+    # Set ONLY when the album couldn't be pinned to a single purchase: several
+    # editions share one store URL (so one purchase per edition, all on the same
+    # Bandcamp page) and a title tiebreak couldn't separate them. Holds the
+    # purchase ids it could be — narrowed but not resolved. Load-bearing: it
+    # takes the album OUT of NEEDS_SYNC (an ambiguous link is as resolved as we
+    # can get without per-item track data), and a future re-download must refuse
+    # while it's set (no single id to fetch). Empty/None once `item_id` is set.
+    candidate_item_ids: list[int] | None = None
 
 
 @dataclass

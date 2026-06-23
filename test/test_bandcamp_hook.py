@@ -795,21 +795,82 @@ def test_backfill_does_not_mislink_linked_purchase_to_unlinked_sibling(tmp_path)
     assert sc.read(regular).bandcamp.item_id == 631669900  # untouched
 
 
-def test_backfill_skips_when_two_unlinked_share_slug(tmp_path):
-    """Two UNLINKED albums share the slug → ambiguous, link neither."""
-    for name in ("A", "B"):
-        d = tmp_path / name
-        d.mkdir()
-        sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL))
+def test_backfill_title_tiebreak_pairs_editions(tmp_path):
+    """Two editions share ONE store URL slug, with one purchase each. A title
+    match (folder name vs purchase title) pairs them correctly — the long-form
+    folder to the long-form purchase, the standard to the standard."""
+    standard = tmp_path / "Variant" / "While the Universe Sleeps"
+    standard.mkdir(parents=True)
+    sc.write(
+        standard,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-std"),
+    )
+    longform = tmp_path / "Variant" / "While the Universe Sleeps (Long-Form Edition)"
+    longform.mkdir(parents=True)
+    sc.write(
+        longform,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
+    )
+    p_std = _StubItem(
+        item_id=631669900,
+        band_name="Variant",
+        item_title="While the Universe Sleeps",
+        url_hints={"subdomain": "quietdetails", "slug": "while-the-universe-sleeps"},
+    )
+    p_lf = _StubItem(
+        item_id=3417563775,
+        band_name="Variant",
+        item_title="While the Universe Sleeps (Long-Form Edition)",
+        url_hints={"subdomain": "quietdetails", "slug": "while-the-universe-sleeps"},
+    )
     s = _bare_syncer()
     s.local_media.media_dir = str(tmp_path)
-    s.bandcamp.purchases = [_wus_item(3417563775)]
+    s.bandcamp.purchases = [p_std, p_lf]
     s.ignores.is_ignored = lambda item: True
 
     s._backfill_ignored_purchases()
 
-    assert sc.read(tmp_path / "A").bandcamp is None
-    assert sc.read(tmp_path / "B").bandcamp is None
+    assert sc.read(standard).bandcamp.item_id == 631669900
+    assert sc.read(longform).bandcamp.item_id == 3417563775
+
+
+def test_backfill_marks_ambiguous_when_title_cannot_separate(tmp_path):
+    """Two editions share a slug but neither folder name matches a purchase
+    title (can't pick) → each album records the candidate ids and leaves
+    NEEDS_SYNC (no nag), rather than guessing."""
+    a = tmp_path / "Variant" / "Edition A"
+    a.mkdir(parents=True)
+    sc.write(
+        a, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="ra")
+    )
+    b = tmp_path / "Variant" / "Edition B"
+    b.mkdir(parents=True)
+    sc.write(
+        b, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rb")
+    )
+    # Purchase titles match neither folder.
+    p1 = _StubItem(
+        item_id=111,
+        item_title="Totally Different One",
+        url_hints={"subdomain": "quietdetails", "slug": "while-the-universe-sleeps"},
+    )
+    p2 = _StubItem(
+        item_id=222,
+        item_title="Totally Different Two",
+        url_hints={"subdomain": "quietdetails", "slug": "while-the-universe-sleeps"},
+    )
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.bandcamp.purchases = [p1, p2]
+    s.ignores.is_ignored = lambda item: True
+
+    s._backfill_ignored_purchases()
+
+    # Both albums carry the full candidate set, no single item_id.
+    for d in (a, b):
+        bc = sc.read(d).bandcamp
+        assert bc.item_id is None
+        assert bc.candidate_item_ids == [111, 222]
 
 
 def test_backfill_skips_non_ignored_items(tmp_path):

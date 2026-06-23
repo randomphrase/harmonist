@@ -133,6 +133,48 @@ def write_sidecar_for_item(item: Any, album_dir: Path, *, prefer_item_url: bool 
     return True
 
 
+def write_ambiguous_candidates(album_dir: Path, item_ids: list[int]) -> bool:
+    """Record the set of purchase ids this album *could* be — when several
+    editions share one store URL and a title tiebreak couldn't separate them.
+
+    Leaves `item_id` unset (we don't know which) but stores the candidates, so
+    the scanner treats the album as resolved-enough (out of NEEDS_SYNC) rather
+    than nagging forever. Only annotates an existing (reconciled) sidecar.
+    """
+    existing = sidecar_mod.read(album_dir)
+    if existing is None:
+        return False
+    bc = existing.bandcamp
+    merged_bc = BandcampInfo(
+        item_id=None,
+        band_id=bc.band_id if bc else None,
+        is_private=bc.is_private if bc else False,
+        candidate_item_ids=sorted({int(i) for i in item_ids}),
+    )
+    merged = Sidecar(
+        schema_version=existing.schema_version,
+        store_url=existing.store_url,
+        bandcamp=merged_bc,
+        downloaded_at=existing.downloaded_at,
+        added_at=existing.added_at,
+        mb_release_id=existing.mb_release_id,
+        mb_match_candidate=existing.mb_match_candidate,
+        tagged_at=existing.tagged_at,
+        notes=existing.notes,
+        track_count_expected=existing.track_count_expected,
+    )
+    sidecar_mod.write(album_dir, merged)
+    return True
+
+
+def _norm_title(s: str) -> str:
+    """Lowercase + keep only alphanumerics — for an exact (not fuzzy) title
+    compare between an album folder name and a purchase title. Exact-only keeps
+    the tiebreak safe: a near-but-not-equal title falls through to ambiguous
+    rather than risking a mis-link."""
+    return "".join(ch for ch in s.lower() if ch.isalnum())
+
+
 def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
     """Scan music_dir for a sidecar whose store_url matches target_url.
 
@@ -315,18 +357,18 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         await super().sync_items()
 
     def _backfill_ignored_purchases(self) -> None:
-        """Fill in `item_id` for purchases already in `ignores.txt` whose
-        on-disk album is still unlinked.
+        """Link already-downloaded (ignored) purchases to their on-disk albums.
 
         bandcampsync's loop skips ignored items before `sync_item` runs, so an
         album downloaded once (now ignored) can otherwise never get its item_id
         — it stays stuck in NEEDS_SYNC forever. Linking metadata is independent
-        of downloading, so we do it here for every ignored purchase.
+        of downloading, so we do it here.
 
-        Slug-matched against the *unlinked* on-disk albums only (a single pass),
-        and only when exactly one unlinked album shares the slug — so we never
-        hijack a correctly-linked edition that happens to share the store URL
-        (e.g. a standard + long-form edition on the same Bandcamp page).
+        Works per store-URL slug (resolved as a group, see `_resolve_slug_group`):
+        a clean 1:1 links directly; several editions sharing one store URL are
+        separated by a title tiebreak; whatever can't be pinned is recorded as
+        an *ambiguous* link (the candidate purchase ids) so it leaves NEEDS_SYNC
+        rather than nagging forever.
         """
         media_dir = getattr(self.local_media, "media_dir", None)
         if not media_dir:
@@ -335,66 +377,125 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         stuck_total = sum(len(v) for v in by_slug.values())
         if not by_slug:
             return
-        linked = 0
+
+        # Group candidate purchases by slug: ignored (so sync_item skips them)
+        # and not already linked to some album (the guard against attaching a
+        # standard edition's purchase to an unlinked sibling that shares a slug).
+        purchases_by_slug: dict[str, list[Any]] = {}
         ignored_total = 0
-        ignored_slugs: set[str] = set()
         for item in self.bandcamp.purchases:
             if not self.ignores.is_ignored(item):
-                continue  # non-ignored items are handled by sync_item's own backfill
+                continue  # non-ignored items are handled by sync_item's own path
             ignored_total += 1
-            # Skip a purchase that's already linked to an album — otherwise two
-            # editions sharing a store_url slug (e.g. standard + long-form) would
-            # let the standard's purchase attach to the unlinked long-form album.
             item_id_raw = getattr(item, "item_id", None)
             if item_id_raw is not None and int(item_id_raw) in linked_ids:
                 continue
             slug = album_slug(construct_bandcamp_url(item))
-            if not slug:
+            if slug:
+                purchases_by_slug.setdefault(slug, []).append(item)
+
+        linked = 0
+        ambiguous = 0
+        unresolved: list[tuple[str, int]] = []
+        for slug, albums in by_slug.items():
+            purchases = purchases_by_slug.get(slug, [])
+            if not purchases:
+                unresolved.append((slug, len(albums)))
                 continue
-            ignored_slugs.add(slug)
-            dirs = by_slug.get(slug)
-            if not dirs or len(dirs) != 1:
-                continue  # 0 = not on disk / already linked; >1 = ambiguous, skip
-            album_dir = dirs[0]
-            try:
-                if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
-                    linked += 1
-                    # Don't let a second ignored item with the same slug relink
-                    # the (now linked) dir.
-                    del by_slug[slug]
-                    log.info(
-                        "Linked already-downloaded purchase by slug: %s / %s → %s (item_id=%s)",
-                        getattr(item, "band_name", "?"),
-                        getattr(item, "item_title", "?"),
-                        album_dir.name,
-                        getattr(item, "item_id", "?"),
-                    )
-            except Exception as e:
-                log.warning(
-                    "could not backfill ignored purchase %s: %s",
-                    getattr(item, "item_id", "?"),
-                    e,
-                )
-        # Diagnostics: why did stuck albums NOT link? The summary tells us
-        # whether the collection was even paged (loaded count) and how many
-        # unlinked albums remain; the per-slug lines show whether ANY ignored
-        # purchase carried that slug (absent → purchase not loaded or different
-        # subdomain-stable slug; this is the store_url-vs-purchase-URL fork).
+            g_linked, g_ambiguous = self._resolve_slug_group(albums, purchases)
+            linked += g_linked
+            ambiguous += g_ambiguous
+
         log.info(
             "Backfill: %d purchase(s) loaded (%d ignored); %d unlinked album(s) on disk; "
-            "linked %d already-downloaded album(s)",
+            "linked %d, marked %d ambiguous",
             len(self.bandcamp.purchases),
             ignored_total,
             stuck_total,
             linked,
+            ambiguous,
         )
-        for slug, dirs in by_slug.items():
+        for slug, n in unresolved:
             log.info(
-                "Backfill: unlinked album slug %r matched no loaded purchase "
-                "(%d album(s); ignored purchase carried this slug: %s)",
+                "Backfill: unlinked album slug %r matched no loaded purchase (%d album(s))",
                 slug,
-                len(dirs),
-                slug in ignored_slugs,
+                n,
+            )
+
+    def _resolve_slug_group(self, albums: list[Path], purchases: list[Any]) -> tuple[int, int]:
+        """Link the on-disk `albums` and `purchases` that all share one store-URL
+        slug. Returns (linked, ambiguous).
+
+        - 1 album + 1 purchase → link directly (unambiguous).
+        - otherwise → pair by an exact normalized title match (folder name vs
+          purchase title); link unique winners, then link a final 1-album/
+          1-purchase remainder by elimination.
+        - anything still unpaired → ambiguous: store the remaining candidate ids
+          so the album leaves NEEDS_SYNC without us guessing.
+        """
+        purchases = list(purchases)
+        if len(albums) == 1 and len(purchases) == 1:
+            self._link(albums[0], purchases[0])
+            return (1, 0)
+
+        linked = 0
+        unpaired: list[Path] = []
+        for album_dir in albums:
+            key = _norm_title(album_dir.name)
+            matches = [p for p in purchases if _norm_title(getattr(p, "item_title", "")) == key]
+            if len(matches) == 1:
+                self._link(album_dir, matches[0])
+                purchases.remove(matches[0])
+                linked += 1
+            else:
+                unpaired.append(album_dir)
+
+        # Elimination: a lone album + lone purchase left over must be each other.
+        if len(unpaired) == 1 and len(purchases) == 1:
+            self._link(unpaired[0], purchases[0])
+            return (linked + 1, 0)
+
+        # Genuinely ambiguous: record the candidate ids on each leftover album.
+        # The candidates, with their titles, so the log fully explains the tie.
+        candidates = [p for p in purchases if getattr(p, "item_id", None) is not None]
+        cand_ids = [int(p.item_id) for p in candidates]
+        cand_desc = ", ".join(
+            f"{int(p.item_id)} ({getattr(p, 'item_title', '?')})" for p in candidates
+        )
+        ambiguous = 0
+        for album_dir in unpaired:
+            if not cand_ids:
+                continue
+            try:
+                if write_ambiguous_candidates(album_dir, cand_ids):
+                    ambiguous += 1
+                    log.warning(
+                        "Ambiguous Bandcamp link for %r: could be item_id %s — "
+                        "%d editions share this store URL and the title didn't "
+                        "single one out. Stored all candidates; left out of Needs Sync.",
+                        album_dir.name,
+                        cand_desc,
+                        len(cand_ids),
+                    )
+            except Exception as e:
+                log.warning("could not mark %s ambiguous: %s", album_dir.name, e)
+        return (linked, ambiguous)
+
+    def _link(self, album_dir: Path, item: Any) -> None:
+        try:
+            if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
+                log.info(
+                    "Linked already-downloaded purchase: %s / %s → %s (item_id=%s)",
+                    getattr(item, "band_name", "?"),
+                    getattr(item, "item_title", "?"),
+                    album_dir.name,
+                    getattr(item, "item_id", "?"),
+                )
+        except Exception as e:
+            log.warning(
+                "could not backfill ignored purchase %s: %s",
+                getattr(item, "item_id", "?"),
+                e,
             )
 
     def sync_item(self, item: Any, encoding: str | None = None) -> bool:
