@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
+from . import activity
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar
 from .sidecar import CURRENT_SCHEMA_VERSION
@@ -484,12 +485,12 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
     def _link(self, album_dir: Path, item: Any) -> None:
         try:
             if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
-                log.info(
-                    "Linked already-downloaded purchase: %s / %s → %s (item_id=%s)",
-                    getattr(item, "band_name", "?"),
-                    getattr(item, "item_title", "?"),
-                    album_dir.name,
-                    getattr(item, "item_id", "?"),
+                # A linked album leaves Needs Sync for the Library. Record the
+                # transition in the Activity feed (and server log).
+                activity.record(
+                    f"{getattr(item, 'band_name', '?')} — {getattr(item, 'item_title', '?')}: "
+                    f"Needs Sync → Library (linked to Bandcamp purchase "
+                    f"{getattr(item, 'item_id', '?')})"
                 )
         except Exception as e:
             log.warning(

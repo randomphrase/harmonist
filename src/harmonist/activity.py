@@ -17,8 +17,11 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-# Keep this modest — it's a glanceable feed, not an audit trail.
-_MAX_EVENTS = 200
+# Sized so a bulk pass (e.g. a ~130-album reconcile, which now records a
+# per-album transition each) doesn't evict the notable events — mis-tags,
+# surrenders, sync results — that share the feed. The server log keeps
+# everything regardless; this is the in-memory glance.
+_MAX_EVENTS = 1000
 
 _Level = str  # "info" | "warning" | "error"
 
