@@ -120,6 +120,14 @@ class MatchCandidate:
     mistag_tagged_label: str | None = None  # that release's "Artist / Title"
     mistag_tagged_disambig: str | None = None  # that release's MB disambiguation, if any
     mistag_release_group_mbid: str | None = None  # the shared release group (for an MB link)
+    # Set when a full sync couldn't find ANY matching Bandcamp purchase for an
+    # album, so it was dropped back to NEEDS_MBID for the user to seed/fix. The
+    # candidate IS the album's existing (correct) release, kept as a read-only
+    # suggestion — the card shows it as context + a "couldn't link" note, with
+    # NO Confirm (re-confirming would just loop straight back to NEEDS_SYNC).
+    # Load-bearing: drives that read-only render. Distinct from a mis-tag (where
+    # the candidate is a *different*, confirmable release).
+    unmatched_purchase: bool = False
 
 
 @dataclass

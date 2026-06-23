@@ -6,6 +6,10 @@
    gets its own explanatory panel, independent of the track-count match quality
    below. #}
 {% set is_mistag = candidate and candidate.mistag_owned_url %}
+{# A surrender candidate is the album's OWN (correct) release, kept read-only
+   after a full sync found no matching Bandcamp purchase. No Confirm — the user
+   seeds/fixes via the tools below. #}
+{% set is_surrender = candidate and candidate.unmatched_purchase %}
 <div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border {% if candidate %}border-amber-300{% elif has_store_url %}border-bc-teal/40{% else %}border-line{% endif %}">
     {# Header shows the MB + store badges top-right. Before confirmation the MB
        badge should point at the *candidate* release, so override mb_release_id
@@ -52,10 +56,30 @@
     </details>
     {% endif %}
 
-    {% if candidate %}
+    {% if is_surrender %}
+    {# ---- Surrender: a full sync found no matching Bandcamp purchase. The
+         album's current release is kept as read-only context (no Confirm —
+         re-confirming would loop straight back to Needs Sync); the user resolves
+         it via the tools below (seed on Harmony, or fix the store URL). ---- #}
+    <div class="rounded-lg border border-amber-300 bg-amber-50/60 p-3 mb-3 text-xs text-ink/80 leading-relaxed">
+        <p class="font-bold text-amber-800 mb-1">No Bandcamp purchase found</p>
+        <p>
+            A full sync couldn't match this album to any purchase in your Bandcamp
+            collection — its store URL and title matched nothing. It stays tagged as
+            <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}"
+               target="_blank" rel="noopener"
+               class="font-semibold text-mb-purple hover:underline">this MusicBrainz release</a>;
+            to link a purchase, <span class="font-semibold">seed the release on Harmony</span>
+            (if it's missing or its Bandcamp URL is wrong) or fix the store URL below.
+        </p>
+    </div>
+    {% endif %}
+
+    {% if candidate and not is_surrender %}
     {# ---- (b) Match quality: how the suggested release lines up with the files
          on disk. Independent of (a) — applies to any candidate, mis-tag or not.
-         Holds the Confirm action and the technical notes (file/track count). ---- #}
+         Holds the Confirm action and the technical notes (file/track count).
+         Skipped for a surrender candidate (read-only — no Confirm). ---- #}
     {% set exact_count = candidate.file_count == candidate.track_count %}
     {% set incomplete_offered = candidate.file_count < candidate.track_count %}
     <div class="rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
@@ -137,7 +161,13 @@
          this card can't wipe an open disclosure or in-progress search/picker
          results (which live only in the DOM). ---- #}
     <div id="mbid-tools-{{ album.id }}" hx-preserve="true">
-    {% if candidate %}
+    {% if is_surrender %}
+    {# Surrender: the tools ARE the action (seed/fix), so show them open, not
+       collapsed under a "wrong release?" disclosure. #}
+    <div class="space-y-3">
+        {% include 'partials/_needs_mbid_tools.html' %}
+    </div>
+    {% elif candidate %}
     <details class="text-xs">
         <summary class="cursor-pointer text-muted hover:text-ink select-none">
             {% if is_mistag %}Not that either? Find or assign a different release{% else %}Wrong release? Find or assign a different one{% endif %}

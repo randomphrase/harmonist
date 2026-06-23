@@ -483,6 +483,34 @@ def test_mistag_card_renders_open_panel_with_sibling_explanation(client, cfg):
     assert "Confirm &amp; Tag" not in r.text
 
 
+def test_surrender_card_renders_readonly_with_tools(client, cfg):
+    """A surrender candidate (unmatched_purchase) renders read-only: the
+    'No Bandcamp purchase found' note + the seed/fix tools, and NO Confirm."""
+    d = _make_album(cfg, "Surrendered")
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/surrendered",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-surr",
+                confidence="exact",
+                file_count=10,
+                track_count=10,
+                unmatched_purchase=True,
+            ),
+        ),
+    )
+    r = client.get("/tasks")
+    assert "No Bandcamp purchase found" in r.text
+    assert "https://musicbrainz.org/release/rel-surr" in r.text
+    # Read-only: no Confirm action at all.
+    assert "Confirm &amp; Tag" not in r.text
+    assert "/confirm/" not in r.text
+    # The resolution tools are present (Harmony seed + recheck/fix).
+    assert "Open in Harmony" in r.text
+
+
 def test_inconsistent_card_renders(client, cfg):
     """A dir with conflicting album tags surfaces an INCONSISTENT card,
     showing the per-file table and the Picard nudge."""
@@ -771,26 +799,50 @@ def _needs_sync_album(cfg, name: str, mbid: str) -> Path:
     return d
 
 
-def test_report_unmatched_after_sync_warns_per_album(cfg):
-    """Each album still in NEEDS_SYNC gets its own WARNING in the Activity feed
-    (which mirrors to the app log) — one entry per album, with the manual-fix
-    hint."""
-    from harmonist import activity
+def test_report_unmatched_partial_sync_warns_but_does_not_demote(cfg):
+    """On a PARTIAL sync (checkpoint-limited) we only warn — the purchase may be
+    below the checkpoint. The album stays NEEDS_SYNC; nothing is demoted."""
+    from harmonist import activity, scanner
+    from harmonist.models import AlbumState
     from harmonist.web.main import _report_unmatched_after_sync
 
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
-    _needs_sync_album(cfg, "Stranded", "rel-Stranded")
+    d1 = _needs_sync_album(cfg, "Stranded", "rel-Stranded")
     _needs_sync_album(cfg, "Adrift", "rel-Adrift")
     activity.clear()
-    _report_unmatched_after_sync(cfg)
+    _report_unmatched_after_sync(cfg, full_sync=False)
     warnings = [e for e in activity.recent(10) if e.level == "warning"]
     assert len(warnings) == 2
     assert all("Not linked to a Bandcamp purchase" in w.message for w in warnings)
     assert all("Try a different URL" in w.message for w in warnings)
-    # The unmatched store_url is included to help diagnose why it didn't link.
     msgs = " ".join(w.message for w in warnings)
     assert "https://label.bandcamp.com/album/stranded" in msgs
-    assert "https://label.bandcamp.com/album/adrift" in msgs
+    # Still NEEDS_SYNC — not demoted.
+    album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d1)
+    assert album.state == AlbumState.NEEDS_SYNC
+
+
+def test_report_unmatched_full_sync_surrenders_to_needs_mbid(cfg):
+    """On a FULL sync, an album with no matching purchase is dropped back to
+    NEEDS_MBID with its current release kept as a read-only suggestion."""
+    from harmonist import activity, scanner
+    from harmonist.models import AlbumState
+    from harmonist.web.main import _report_unmatched_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Orphan", "rel-orphan")
+    activity.clear()
+    _report_unmatched_after_sync(cfg, full_sync=True)
+    loaded = sc.read(d)
+    assert loaded.mb_release_id is None  # demoted out of NEEDS_SYNC
+    cand = loaded.mb_match_candidate
+    assert cand is not None
+    assert cand.mb_release_id == "rel-orphan"  # current release kept as suggestion
+    assert cand.unmatched_purchase is True
+    album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert album.state == AlbumState.NEEDS_MBID
+    msgs = [e.message for e in activity.recent(10)]
+    assert any("No Bandcamp purchase found" in m and "Harmony" in m for m in msgs)
 
 
 def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):
@@ -811,7 +863,7 @@ def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):
         ),
     )
     activity.clear()
-    _report_unmatched_after_sync(cfg)
+    _report_unmatched_after_sync(cfg, full_sync=True)
     assert [e for e in activity.recent(10) if e.level == "warning"] == []
 
 
