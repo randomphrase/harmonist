@@ -867,6 +867,30 @@ def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):
     assert [e for e in activity.recent(10) if e.level == "warning"] == []
 
 
+def test_force_full_sync_clears_checkpoint_when_pending_links(cfg, client):
+    """A NEEDS_SYNC album means a purchase still needs linking — clear the
+    checkpoint so the next sync re-pages the whole collection."""
+    from harmonist.web.main import _BANDCAMPSYNC_STATE_FILE, _force_full_sync_if_pending_links
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    _needs_sync_album(cfg, "Pending", "rel-pending")
+    state = cfg.paths.music_dir / _BANDCAMPSYNC_STATE_FILE
+    state.write_text("{}")
+    _force_full_sync_if_pending_links(cfg, client.app.state.scan_runner)
+    assert not state.exists()  # cleared → next sync is full
+
+
+def test_force_full_sync_keeps_checkpoint_when_nothing_pending(cfg, client):
+    """No NEEDS_SYNC albums → the checkpoint is left intact (fast incremental)."""
+    from harmonist.web.main import _BANDCAMPSYNC_STATE_FILE, _force_full_sync_if_pending_links
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)  # empty library
+    state = cfg.paths.music_dir / _BANDCAMPSYNC_STATE_FILE
+    state.write_text("{}")
+    _force_full_sync_if_pending_links(cfg, client.app.state.scan_runner)
+    assert state.exists()  # untouched
+
+
 # ---------- mis-tag detection via release-group join ----------
 
 

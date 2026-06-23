@@ -162,6 +162,13 @@ def create_app(
             _resolve_by_store_url(album_dir, cfg, tagger)
 
         def runner_fn() -> Any:
+            # Albums waiting to link to a purchase (NEEDS_SYNC) usually need an
+            # OLD purchase that an incremental sync wouldn't re-page — so the
+            # backfill could never see it. Force a full collection re-page when
+            # any exist (clear the checkpoint; bandcampsync rewrites a fresh one
+            # at the end, so later syncs go back to incremental). Self-limiting:
+            # a full sync resolves every NEEDS_SYNC album (link OR surrender).
+            _force_full_sync_if_pending_links(cfg, scan_runner)
             result = _run_bandcamp_sync(
                 cfg,
                 progress_callback=sync_runner.set_current_item,
@@ -425,6 +432,31 @@ def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
     except OSError as e:
         log.warning("could not remove bandcampsync checkpoint %s: %s", state_file, e)
     return False
+
+
+def _force_full_sync_if_pending_links(cfg: config_mod.Config, scan_runner: ScanRunner) -> None:
+    """If any album is waiting to link to a Bandcamp purchase (NEEDS_SYNC),
+    clear the collection checkpoint so the upcoming sync re-pages the WHOLE
+    collection. Their purchase is usually an old one that an incremental sync
+    wouldn't load, so the backfill could never see it. A full sync resolves
+    every NEEDS_SYNC album (links it, or surrenders it to NEEDS_MBID), so this
+    is self-limiting — once they're cleared, syncs return to incremental.
+
+    Uses the scanner's existing snapshot (no fresh walk) when available.
+    Best-effort: never raises into the sync runner.
+    """
+    try:
+        albums = (
+            scan_runner.albums() if scan_runner.is_engaged() else scanner.scan(cfg.paths.music_dir)
+        )
+        pending = sum(1 for a in albums if a.state == AlbumState.NEEDS_SYNC)
+        if pending and _clear_bandcampsync_checkpoint(cfg.paths.music_dir):
+            log.info(
+                "Forcing a full Bandcamp sync: %d album(s) await a purchase link",
+                pending,
+            )
+    except Exception:
+        log.exception("force-full-sync check failed")
 
 
 # Mis-tag detection does ~1 MB browse per still-unlinked album, so it's bounded
