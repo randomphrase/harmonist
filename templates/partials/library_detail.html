@@ -34,7 +34,8 @@
                 {% set store_tip %}
                     {%- if store == 'bandcamp' -%}
                         View on Bandcamp · {{ sc.store_url }}
-                        {%- if bc and bc.item_id is not none %} · item #{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}{% endif -%}
+                        {%- if bc and bc.item_id is not none %} · item #{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}
+                        {%- elif bc and bc.candidate_item_ids %} · ambiguous: item #{{ bc.candidate_item_ids | join(' or #') }} (several editions share this URL){% endif -%}
                     {%- else -%}
                         View on {{ store|title if store else 'store' }} · {{ sc.store_url }}
                     {%- endif -%}

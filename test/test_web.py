@@ -2304,6 +2304,27 @@ def test_library_detail_offers_verify_tagging(client, cfg):
     assert "Verify tagging vs MusicBrainz" in r.text
 
 
+def test_library_detail_shows_ambiguous_bandcamp_ids(client, cfg):
+    """An ambiguously-linked album (COMPLETE, candidate ids but no single id)
+    shows the candidate item ids in the store badge tooltip."""
+    d = _make_album(cfg, "Ambi")
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_MB_ALBUM_ID] = [b"rel-ambi"]
+    audio.save()
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/ambi",
+            bandcamp=BandcampInfo(item_id=None, candidate_item_ids=[111, 222]),
+            mb_release_id="rel-ambi",
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+    r = client.get("/library")
+    assert "ambiguous: item #111 or #222" in r.text
+
+
 def test_about_page_renders(client):
     r = client.get("/about")
     assert r.status_code == 200
