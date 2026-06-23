@@ -17,7 +17,7 @@ from harmonist.bandcamp_hook import (
     construct_bandcamp_url,
     find_existing_album_by_slug,
     find_existing_album_by_url,
-    unlinked_albums_by_slug,
+    survey_album_links,
     write_sidecar_for_item,
 )
 from harmonist.models import BandcampInfo, Sidecar
@@ -680,7 +680,7 @@ def _wus_item(item_id: int) -> _StubItem:
     )
 
 
-def test_unlinked_albums_by_slug_excludes_linked(tmp_path):
+def test_survey_album_links_splits_unlinked_and_linked(tmp_path):
     linked = tmp_path / "Linked"
     linked.mkdir()
     sc.write(
@@ -697,8 +697,9 @@ def test_unlinked_albums_by_slug_excludes_linked(tmp_path):
         unlinked,
         Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-x"),
     )
-    by_slug = unlinked_albums_by_slug(tmp_path)
+    by_slug, linked_ids = survey_album_links(tmp_path)
     assert by_slug == {"album/while-the-universe-sleeps": [unlinked]}
+    assert linked_ids == {631669900}
 
 
 def test_backfill_links_ignored_purchase_to_unlinked_album(tmp_path):
@@ -755,6 +756,42 @@ def test_backfill_does_not_touch_linked_sibling_sharing_slug(tmp_path):
     s._backfill_ignored_purchases()
 
     assert sc.read(longform).bandcamp.item_id == 3417563775  # linked
+    assert sc.read(regular).bandcamp.item_id == 631669900  # untouched
+
+
+def test_backfill_does_not_mislink_linked_purchase_to_unlinked_sibling(tmp_path):
+    """The real "While the Universe Sleeps" trap: a standard + long-form edition
+    share ONE store_url slug. The standard is linked (item 631669900); the
+    long-form is unlinked but carries the *same* store_url (its MB release only
+    has the public page URL). The standard's purchase must NOT be attached to
+    the unlinked long-form album just because the slug matches."""
+    regular = tmp_path / "Variant" / "Regular"
+    regular.mkdir(parents=True)
+    sc.write(
+        regular,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url=_WUS_URL,
+            bandcamp=BandcampInfo(item_id=631669900),
+        ),
+    )
+    longform = tmp_path / "Variant" / "Long-Form"
+    longform.mkdir(parents=True)
+    sc.write(
+        longform,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
+    )
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    # Both purchases are ignored (already downloaded). The standard's URL slug
+    # matches the long-form album's store_url slug — the mis-link trap.
+    s.bandcamp.purchases = [_wus_item(631669900)]
+    s.ignores.is_ignored = lambda item: True
+
+    s._backfill_ignored_purchases()
+
+    # The long-form stays unlinked — we did NOT attach the standard's item_id.
+    assert sc.read(longform).bandcamp is None
     assert sc.read(regular).bandcamp.item_id == 631669900  # untouched
 
 
