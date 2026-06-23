@@ -173,6 +173,8 @@ def _candidate_to_dict(c: MatchCandidate) -> dict[str, Any]:
         out["mistag_tagged_disambig"] = c.mistag_tagged_disambig
     if c.mistag_release_group_mbid:
         out["mistag_release_group_mbid"] = c.mistag_release_group_mbid
+    if c.unmatched_purchase:
+        out["unmatched_purchase"] = True
     return out
 
 
@@ -219,6 +221,7 @@ def _candidate_from_dict(d: dict[str, Any]) -> MatchCandidate:
         mistag_tagged_label=d.get("mistag_tagged_label"),
         mistag_tagged_disambig=d.get("mistag_tagged_disambig"),
         mistag_release_group_mbid=d.get("mistag_release_group_mbid"),
+        unmatched_purchase=bool(d.get("unmatched_purchase", False)),
     )
 
 

@@ -172,10 +172,14 @@ def create_app(
             # status so it doesn't sit pinned to the last album's name.
             sync_runner.set_current_item("finishing up — checking matches…")
             # Spot mis-tags first (release-group join → demote to Needs MBID
-            # with a suggestion), then report whatever's genuinely still
+            # with a suggestion), then handle whatever's genuinely still
             # unlinked. Both write to the log + Activity.
             _detect_mistags_after_sync(cfg, result)
-            _report_unmatched_after_sync(cfg)
+            # `collection_checkpoint_token is None` means bandcampsync paged the
+            # WHOLE collection (no checkpoint applied) — only then is "no matching
+            # purchase" conclusive enough to surrender an album to NEEDS_MBID.
+            full_sync = getattr(result, "collection_checkpoint_token", None) is None
+            _report_unmatched_after_sync(cfg, full_sync=full_sync)
             scan_runner.request_scan()  # downloads landed → refresh the snapshot
             return result
 
@@ -601,20 +605,23 @@ def _detect_mistags_after_sync(
         )
 
 
-def _report_unmatched_after_sync(cfg: config_mod.Config) -> None:
-    """After a sync, surface albums still lacking a Bandcamp link so the user
-    sees what needs manual attention — in BOTH the app log and the Activity
-    feed (via `activity.record`, which mirrors to the log).
+def _report_unmatched_after_sync(cfg: config_mod.Config, *, full_sync: bool) -> None:
+    """After a sync, handle albums still lacking a Bandcamp link.
 
     An album reaches `NEEDS_SYNC` with `bandcamp.item_id` still unset when the
-    sync's store_url + slug match couldn't tie it to a purchase (stale slug,
-    below the collection checkpoint, …). The fix is the per-album "Try a
-    different URL" affordance, so we point at it.
+    sync's store_url + slug + title match couldn't tie it to a purchase.
 
-    (We deliberately do NOT try to auto-detect mis-tags here. The store_url is
-    derived from the tagged release, so it can't independently disagree with
-    the tag — see the design notes / the fuzzy purchase-to-album join planned
-    for a future pass.)
+    What we do depends on whether the WHOLE collection was paged:
+
+    - **Full sync** (`full_sync=True`, no collection checkpoint applied): we've
+      genuinely seen every purchase and still can't link it, so we stop nagging
+      and hand control to the user — drop the album back to NEEDS_MBID, keeping
+      its current release as a *read-only* suggestion (`unmatched_purchase`) plus
+      a "couldn't find a purchase" note. From there they can seed the release on
+      Harmony or fix the store URL.
+    - **Partial sync** (checkpoint-limited): the purchase may simply not have
+      been paged this run, so we must NOT demote — just warn, pointing at the
+      manual fix. A later full sync resolves or surrenders it.
 
     Best-effort: never raises into the sync runner.
     """
@@ -627,21 +634,41 @@ def _report_unmatched_after_sync(cfg: config_mod.Config) -> None:
     if not unmatched:
         log.info("Sync: all Bandcamp-sourced albums are linked")
         return
-    # One entry PER album (its own timestamped, greppable record), not a single
-    # wall-of-text line. The count line is INFO (app log only) so the Activity
-    # feed shows just the per-album rows.
-    log.info(
-        "Sync: %d album(s) still aren't linked to a Bandcamp purchase (listed individually below)",
-        len(unmatched),
-    )
+
+    if not full_sync:
+        # Partial sync — only warn; the purchase may be below the checkpoint.
+        log.info(
+            "Sync: %d album(s) not linked to a Bandcamp purchase (partial sync — "
+            "not demoting; a full sync will resolve or surrender them)",
+            len(unmatched),
+        )
+        for a in unmatched:
+            store_url = a.sidecar.store_url if a.sidecar else None
+            activity.record(
+                f"Not linked to a Bandcamp purchase: {a.artist} — {a.title} "
+                f"[{store_url or 'no store URL'}] (use 'Try a different URL' to link it)",
+                level="warning",
+            )
+        return
+
+    # Full sync: surrender — the whole collection was paged and these still have
+    # no matching purchase. Drop each back to NEEDS_MBID for manual resolution.
     for a in unmatched:
-        # Include the unmatched store_url — when an album won't link, the usual
-        # cause is its store_url slug not matching any loaded purchase, so the
-        # URL is the first thing to check.
-        store_url = a.sidecar.store_url if a.sidecar else None
+        sc = a.sidecar
+        if sc is None or not sc.mb_release_id:
+            continue  # nothing to keep as a suggestion
+        candidate = MatchCandidate(
+            mb_release_id=sc.mb_release_id,
+            confidence="exact",  # the files are already tagged with this release
+            file_count=a.track_count,
+            track_count=a.track_count,
+            unmatched_purchase=True,
+        )
+        _demote_to_needs_mbid(a.path, sc, candidate=candidate)
         activity.record(
-            f"Not linked to a Bandcamp purchase: {a.artist} — {a.title} "
-            f"[{store_url or 'no store URL'}] (use 'Try a different URL' to link it)",
+            f"No Bandcamp purchase found for {a.artist} — {a.title} "
+            f"[{sc.store_url or 'no store URL'}]. Moved to Needs MBID — seed the "
+            f"release on Harmony or fix the store URL.",
             level="warning",
         )
 
