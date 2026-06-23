@@ -64,13 +64,15 @@
     <div class="rounded-lg border border-amber-300 bg-amber-50/60 p-3 mb-3 text-xs text-ink/80 leading-relaxed">
         <p class="font-bold text-amber-800 mb-1">No Bandcamp purchase found</p>
         <p>
-            A full sync couldn't match this album to any purchase in your Bandcamp
-            collection — its store URL and title matched nothing. It stays tagged as
+            A full sync couldn't link this album to an available Bandcamp purchase —
+            none in your collection matched. It stays <span class="font-semibold">correctly
+            tagged</span> as
             <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}"
                target="_blank" rel="noopener"
                class="font-semibold text-mb-purple hover:underline">this MusicBrainz release</a>;
-            to link a purchase, <span class="font-semibold">seed the release on Harmony</span>
-            (if it's missing or its Bandcamp URL is wrong) or fix the store URL below.
+            it just has no Bandcamp link (used for re-downloads). If the purchase exists
+            under a different URL, or the release is missing from MusicBrainz, use Harmony
+            or the tools below.
         </p>
     </div>
     {% endif %}

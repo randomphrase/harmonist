@@ -683,12 +683,23 @@ def _report_unmatched_after_sync(cfg: config_mod.Config, *, full_sync: bool) -> 
             )
         return
 
+    # Albums already LINKED to a purchase, keyed by release — used to flag a
+    # surrendered album that's tagged as the SAME release as a linked one (a
+    # likely duplicate copy, OR a legitimate release split across directories —
+    # we don't try to tell them apart here, just surface it).
+    linked_by_release: dict[str, list[Album]] = {}
+    for a in albums:
+        s = a.sidecar
+        if s and s.mb_release_id and s.bandcamp and s.bandcamp.item_id is not None:
+            linked_by_release.setdefault(s.mb_release_id, []).append(a)
+
     # Full sync: surrender — the whole collection was paged and these still have
     # no matching purchase. Drop each back to NEEDS_MBID for manual resolution.
     for a in unmatched:
         sc = a.sidecar
         if sc is None or not sc.mb_release_id:
             continue  # nothing to keep as a suggestion
+        twins = linked_by_release.get(sc.mb_release_id, [])
         candidate = MatchCandidate(
             mb_release_id=sc.mb_release_id,
             confidence="exact",  # the files are already tagged with this release
@@ -698,11 +709,19 @@ def _report_unmatched_after_sync(cfg: config_mod.Config, *, full_sync: bool) -> 
         )
         _demote_to_needs_mbid(a.path, sc, candidate=candidate)
         activity.record(
-            f"No Bandcamp purchase found for {a.artist} — {a.title} "
-            f"[{sc.store_url or 'no store URL'}]. Moved to Needs MBID — seed the "
-            f"release on Harmony or fix the store URL.",
+            f"No Bandcamp purchase matched {a.artist} — {a.title} "
+            f"[{sc.store_url or 'no store URL'}]. Moved to Needs MBID (still tagged "
+            f"correctly) — seed/fix the release on Harmony or assign a different one.",
             level="warning",
         )
+        if twins:
+            activity.record(
+                f"Heads up: {a.artist} — {a.title} is tagged as the same MusicBrainz "
+                f"release as “{twins[0].title}” ({twins[0].path.name}), which already "
+                f"linked to a purchase — possibly a duplicate copy, or a release split "
+                f"across directories. Review.",
+                level="warning",
+            )
 
 
 def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:

@@ -79,6 +79,22 @@ def test_lookup_returns_all_releases_when_multiple_linked(monkeypatch):
     assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") == ["rel-aaa", "rel-bbb"]
 
 
+def test_lookup_dedupes_release_listed_via_multiple_relationships(monkeypatch):
+    """A release linked to the URL via more than one relationship comes back
+    repeatedly — dedupe (order-preserving) so the picker doesn't show dupes."""
+    response = {
+        "url": {
+            "release-relation-list": [
+                {"release": {"id": "rel-aaa"}},
+                {"release": {"id": "rel-bbb"}},
+                {"release": {"id": "rel-aaa"}},  # same release, second relationship
+            ],
+        }
+    }
+    monkeypatch.setattr(musicbrainzngs, "browse_urls", lambda **kw: response)
+    assert lookup_by_bandcamp_url("https://x.bandcamp.com/album/y") == ["rel-aaa", "rel-bbb"]
+
+
 def test_browse_release_group_releases(monkeypatch):
     """Returns each sibling release in the group as (mbid, [url targets])."""
     response = {

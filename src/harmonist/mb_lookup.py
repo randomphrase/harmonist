@@ -69,10 +69,17 @@ def lookup_by_bandcamp_url(bandcamp_url: str) -> list[str]:
 
     url_data = result.get("url") or {}
     rels = url_data.get("release-relation-list") or []
+    # Dedupe (order-preserving): MB lists a release once per URL relationship,
+    # so a release linked via several relationship types comes back repeatedly —
+    # which otherwise shows up as duplicate rows in the picker and makes a single
+    # release look like "multiple matches" to the Recheck auto-resolve.
     mbids: list[str] = []
+    seen: set[str] = set()
     for rel in rels:
         release = rel.get("release") or {}
-        if mbid := release.get("id"):
+        mbid = release.get("id")
+        if mbid and str(mbid) not in seen:
+            seen.add(str(mbid))
             mbids.append(str(mbid))
     return mbids
 
