@@ -842,7 +842,35 @@ def test_report_unmatched_full_sync_surrenders_to_needs_mbid(cfg):
     album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
     assert album.state == AlbumState.NEEDS_MBID
     msgs = [e.message for e in activity.recent(10)]
-    assert any("No Bandcamp purchase found" in m and "Harmony" in m for m in msgs)
+    assert any("No Bandcamp purchase matched" in m and "Harmony" in m for m in msgs)
+
+
+def test_surrender_flags_possible_duplicate_of_linked_album(cfg):
+    """When a surrendered album is tagged as the SAME release as one already
+    linked to a purchase, log a non-committal 'possible duplicate / split'
+    warning (we don't auto-resolve — a release can legitimately span dirs)."""
+    from harmonist import activity
+    from harmonist.web.main import _report_unmatched_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    # The linked copy (has an item_id) — COMPLETE.
+    linked = _make_album(cfg, "LinkedCopy", mbid="rel-dup")
+    sc.write(
+        linked,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/dup",
+            bandcamp=BandcampInfo(item_id=999),
+            mb_release_id="rel-dup",
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+    # The unlinked twin tagged as the same release → NEEDS_SYNC → surrenders.
+    _needs_sync_album(cfg, "DupCopy", "rel-dup")
+    activity.clear()
+    _report_unmatched_after_sync(cfg, full_sync=True)
+    msgs = [e.message for e in activity.recent(10)]
+    assert any("possibly a duplicate copy" in m or "duplicate copy" in m for m in msgs)
 
 
 def test_report_unmatched_after_sync_quiet_when_all_linked(cfg):
