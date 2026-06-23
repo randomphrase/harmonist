@@ -365,11 +365,16 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         — it stays stuck in NEEDS_SYNC forever. Linking metadata is independent
         of downloading, so we do it here.
 
-        Works per store-URL slug (resolved as a group, see `_resolve_slug_group`):
-        a clean 1:1 links directly; several editions sharing one store URL are
-        separated by a title tiebreak; whatever can't be pinned is recorded as
-        an *ambiguous* link (the candidate purchase ids) so it leaves NEEDS_SYNC
-        rather than nagging forever.
+        Two phases:
+          1. per store-URL slug (`_resolve_slug_group`): a clean 1:1 links
+             directly; several editions sharing one store URL are separated by a
+             title tiebreak; an unbreakable tie is recorded as an *ambiguous*
+             link (candidate ids) so it leaves NEEDS_SYNC rather than nagging.
+          2. title fallback: an album still unlinked (its store_url matched no
+             purchase, e.g. the long-form edition whose MB-recorded URL is the
+             *public* page but whose actual purchase has its own URL) is linked
+             by a unique exact-title match against the remaining unmatched
+             purchases — across the URL mismatch.
         """
         media_dir = getattr(self.local_media, "media_dir", None)
         if not media_dir:
@@ -379,10 +384,10 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         if not by_slug:
             return
 
-        # Group candidate purchases by slug: ignored (so sync_item skips them)
-        # and not already linked to some album (the guard against attaching a
-        # standard edition's purchase to an unlinked sibling that shares a slug).
-        purchases_by_slug: dict[str, list[Any]] = {}
+        # Candidate purchases: ignored (so sync_item skips them) and not already
+        # linked to some album (the guard against attaching a standard edition's
+        # purchase to an unlinked sibling that shares a slug).
+        candidates: list[Any] = []
         ignored_total = 0
         for item in self.bandcamp.purchases:
             if not self.ignores.is_ignored(item):
@@ -391,53 +396,92 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             item_id_raw = getattr(item, "item_id", None)
             if item_id_raw is not None and int(item_id_raw) in linked_ids:
                 continue
+            candidates.append(item)
+
+        purchases_by_slug: dict[str, list[Any]] = {}
+        for item in candidates:
             slug = album_slug(construct_bandcamp_url(item))
             if slug:
                 purchases_by_slug.setdefault(slug, []).append(item)
 
+        # Phase 1: per store-URL slug.
+        consumed: set[int] = set()
         linked = 0
         ambiguous = 0
-        unresolved: list[tuple[str, int]] = []
+        unlinked: list[Path] = []  # albums to try by title in phase 2
         for slug, albums in by_slug.items():
             purchases = purchases_by_slug.get(slug, [])
             if not purchases:
-                unresolved.append((slug, len(albums)))
+                unlinked.extend(albums)  # slug matched no purchase
                 continue
-            g_linked, g_ambiguous = self._resolve_slug_group(albums, purchases)
+            g_linked, g_ambiguous, g_unlinked = self._resolve_slug_group(
+                albums, purchases, consumed
+            )
             linked += g_linked
             ambiguous += g_ambiguous
+            unlinked.extend(g_unlinked)
+
+        # Phase 2: title fallback across the URL mismatch. Index the still-
+        # unmatched purchases by normalized title; link an album to the one
+        # whose title uniquely matches its folder name.
+        title_index: dict[str, list[Any]] = {}
+        for p in candidates:
+            if int(p.item_id) in consumed:
+                continue
+            title_index.setdefault(_norm_title(getattr(p, "item_title", "")), []).append(p)
+        title_linked = 0
+        for album_dir in unlinked:
+            avail = [
+                p
+                for p in title_index.get(_norm_title(album_dir.name), [])
+                if int(p.item_id) not in consumed
+            ]
+            if len(avail) == 1:
+                self._link(album_dir, avail[0])
+                consumed.add(int(avail[0].item_id))
+                title_linked += 1
+                log.info(
+                    "Backfill: linked %r by title across a store-URL mismatch (item_id=%s)",
+                    album_dir.name,
+                    getattr(avail[0], "item_id", "?"),
+                )
 
         log.info(
             "Backfill: %d purchase(s) loaded (%d ignored); %d unlinked album(s) on disk; "
-            "linked %d, marked %d ambiguous",
+            "linked %d by URL + %d by title, marked %d ambiguous",
             len(self.bandcamp.purchases),
             ignored_total,
             stuck_total,
             linked,
+            title_linked,
             ambiguous,
         )
-        for slug, n in unresolved:
-            log.info(
-                "Backfill: unlinked album slug %r matched no loaded purchase (%d album(s))",
-                slug,
-                n,
-            )
 
-    def _resolve_slug_group(self, albums: list[Path], purchases: list[Any]) -> tuple[int, int]:
+    def _resolve_slug_group(
+        self, albums: list[Path], purchases: list[Any], consumed: set[int]
+    ) -> tuple[int, int, list[Path]]:
         """Link the on-disk `albums` and `purchases` that all share one store-URL
-        slug. Returns (linked, ambiguous).
+        slug. Records linked purchase ids into `consumed`. Returns
+        (linked, ambiguous, still_unlinked) — the last being albums that couldn't
+        be resolved AND had no leftover purchase to mark ambiguous, so the caller
+        retries them by title.
 
         - 1 album + 1 purchase → link directly (unambiguous).
         - otherwise → pair by an exact normalized title match (folder name vs
-          purchase title); link unique winners, then link a final 1-album/
-          1-purchase remainder by elimination.
-        - anything still unpaired → ambiguous: store the remaining candidate ids
-          so the album leaves NEEDS_SYNC without us guessing.
+          purchase title); link unique winners, then a final 1-album/1-purchase
+          remainder by elimination.
+        - leftover purchases the title couldn't separate → ambiguous (store the
+          candidate ids). No leftover purchase → return the album for phase 2.
         """
         purchases = list(purchases)
+
+        def _take(album_dir: Path, item: Any) -> None:
+            self._link(album_dir, item)
+            consumed.add(int(item.item_id))
+
         if len(albums) == 1 and len(purchases) == 1:
-            self._link(albums[0], purchases[0])
-            return (1, 0)
+            _take(albums[0], purchases[0])
+            return (1, 0, [])
 
         linked = 0
         unpaired: list[Path] = []
@@ -445,7 +489,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             key = _norm_title(album_dir.name)
             matches = [p for p in purchases if _norm_title(getattr(p, "item_title", "")) == key]
             if len(matches) == 1:
-                self._link(album_dir, matches[0])
+                _take(album_dir, matches[0])
                 purchases.remove(matches[0])
                 linked += 1
             else:
@@ -453,20 +497,21 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
 
         # Elimination: a lone album + lone purchase left over must be each other.
         if len(unpaired) == 1 and len(purchases) == 1:
-            self._link(unpaired[0], purchases[0])
-            return (linked + 1, 0)
+            _take(unpaired[0], purchases[0])
+            return (linked + 1, 0, [])
 
-        # Genuinely ambiguous: record the candidate ids on each leftover album.
-        # The candidates, with their titles, so the log fully explains the tie.
+        # No purchase left for this slug → hand the unpaired albums to phase 2.
         candidates = [p for p in purchases if getattr(p, "item_id", None) is not None]
         cand_ids = [int(p.item_id) for p in candidates]
+        if not cand_ids:
+            return (linked, 0, unpaired)
+
+        # Leftover purchases the title couldn't separate → ambiguous.
         cand_desc = ", ".join(
             f"{int(p.item_id)} ({getattr(p, 'item_title', '?')})" for p in candidates
         )
         ambiguous = 0
         for album_dir in unpaired:
-            if not cand_ids:
-                continue
             try:
                 if write_ambiguous_candidates(album_dir, cand_ids):
                     ambiguous += 1
@@ -480,7 +525,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                     )
             except Exception as e:
                 log.warning("could not mark %s ambiguous: %s", album_dir.name, e)
-        return (linked, ambiguous)
+        return (linked, ambiguous, [])
 
     def _link(self, album_dir: Path, item: Any) -> None:
         try:

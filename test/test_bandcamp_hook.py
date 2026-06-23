@@ -873,6 +873,51 @@ def test_backfill_marks_ambiguous_when_title_cannot_separate(tmp_path):
         assert bc.candidate_item_ids == [111, 222]
 
 
+def test_backfill_cross_slug_title_fallback_links_longform(tmp_path):
+    """The real WTUS case: the long-form album's store_url is the PUBLIC page
+    (shared with the standard), but the long-form's own purchase has a DIFFERENT
+    URL. Phase 1 links the standard by URL; phase 2 links the long-form by a
+    unique title match across the URL mismatch."""
+    standard = tmp_path / "Variant" / "While the Universe Sleeps"
+    standard.mkdir(parents=True)
+    sc.write(
+        standard,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-std"),
+    )
+    longform = tmp_path / "Variant" / "While the Universe Sleeps (Long-Form Edition)"
+    longform.mkdir(parents=True)
+    sc.write(
+        longform,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
+    )
+    # Standard purchase shares the album's public URL; the long-form purchase
+    # has its OWN distinct URL (so slug matching can't tie it to the album).
+    p_std = _StubItem(
+        item_id=631669900,
+        band_name="Variant",
+        item_title="While the Universe Sleeps",
+        url_hints={"subdomain": "quietdetails", "slug": "while-the-universe-sleeps"},
+    )
+    p_lf = _StubItem(
+        item_id=3417563775,
+        band_name="Variant",
+        item_title="While the Universe Sleeps (Long-Form Edition)",
+        url_hints={
+            "subdomain": "quietdetails",
+            "slug": "while-the-universe-sleeps-long-form-edition",
+        },
+    )
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.bandcamp.purchases = [p_std, p_lf]
+    s.ignores.is_ignored = lambda item: True
+
+    s._backfill_ignored_purchases()
+
+    assert sc.read(standard).bandcamp.item_id == 631669900  # by URL slug
+    assert sc.read(longform).bandcamp.item_id == 3417563775  # by title across mismatch
+
+
 def test_backfill_skips_non_ignored_items(tmp_path):
     """Non-ignored purchases are left to sync_item's own backfill — the ignored
     pass must not touch them."""
