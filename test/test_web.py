@@ -1951,6 +1951,70 @@ def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkey
     assert a.state == AlbumState.INCOMPLETE
 
 
+def test_confirm_mistag_adopts_owned_store_url(client, cfg, monkeypatch):
+    """Confirming a mis-tag re-tags the MBID AND adopts the owned edition's
+    purchase URL as store_url — otherwise the album keeps the wrong-edition URL,
+    matches no purchase on the next sync, and falls through to surrender."""
+    d = _make_album(cfg, "Mistagged")
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            # The WRONG edition's URL the album currently carries.
+            store_url="https://ultimae.bandcamp.com/album/life-24bits-2",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-standard",
+                confidence="exact",
+                file_count=1,
+                track_count=1,
+                # Mis-tag provenance: the owned edition + the URL it was bought at.
+                mistag_owned_url="https://ultimae.bandcamp.com/album/life",
+                mistag_owned_label="ASURA / Life²",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: _release_for_match(mbid, n_tracks=1),
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    aid = _id_for(cfg, d)
+    r = client.post(f"/confirm/{aid}")
+    assert r.status_code == 200
+    loaded = sc.read(d)
+    assert loaded.mb_release_id == "rel-standard"
+    # store_url now points at the edition the user actually purchased.
+    assert loaded.store_url == "https://ultimae.bandcamp.com/album/life"
+
+
+def test_confirm_normal_candidate_keeps_store_url(client, cfg, monkeypatch):
+    """A non-mis-tag candidate has no owned URL, so confirming keeps the
+    existing store_url unchanged."""
+    d = _make_album(cfg, "NormalConfirm")
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/keep-me",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-keep",
+                confidence="exact",
+                file_count=1,
+                track_count=1,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: _release_for_match(mbid, n_tracks=1),
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    aid = _id_for(cfg, d)
+    client.post(f"/confirm/{aid}")
+    assert sc.read(d).store_url == "https://x.bandcamp.com/album/keep-me"
+
+
 def test_confirm_incomplete_400_without_candidate(client, cfg):
     d = _make_album(cfg, "NoCandidate")
     sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))

@@ -822,12 +822,19 @@ def _tag_with_release(
     tagger: Tagger,
     *,
     incomplete: bool = False,
+    store_url_override: str | None = None,
 ) -> None:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
     `incomplete=True` runs the tagger in incomplete mode (file_count <
     MB track count allowed) and persists track_count_expected on the
     sidecar so the scanner can derive INCOMPLETE on future scans.
+
+    `store_url_override` replaces the sidecar's store_url. Used when confirming
+    a mis-tag: the album is actually the *owned* edition, so its store_url must
+    become the URL where the user purchased it (the candidate's
+    `mistag_owned_url`) — otherwise the old (wrong-edition) URL matches no
+    purchase and the album can never link, falling through to surrender.
     """
     release = mb_lookup.fetch_release(mbid)
     rg = release.get("release-group") or {}
@@ -844,7 +851,7 @@ def _tag_with_release(
     sc = sidecar_mod.read(album_path)
     new = Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
-        store_url=sc.store_url if sc else None,
+        store_url=store_url_override or (sc.store_url if sc else None),
         bandcamp=sc.bandcamp if sc else None,
         downloaded_at=sc.downloaded_at if sc else None,
         added_at=(sc.added_at if sc else None) or datetime.now(UTC),
@@ -1378,6 +1385,9 @@ def _register_routes(app: FastAPI) -> None:
                 sc.mb_match_candidate.mb_release_id,
                 request.app.state.cfg,
                 request.app.state.tagger,
+                # Mis-tag confirm: adopt the owned edition's purchase URL so the
+                # album can link to that purchase on the next sync.
+                store_url_override=sc.mb_match_candidate.mistag_owned_url,
             )
         except Exception as e:
             log.exception("tag failed")
@@ -1402,6 +1412,7 @@ def _register_routes(app: FastAPI) -> None:
                 request.app.state.cfg,
                 request.app.state.tagger,
                 incomplete=True,
+                store_url_override=sc.mb_match_candidate.mistag_owned_url,
             )
         except Exception as e:
             log.exception("incomplete tag failed")
