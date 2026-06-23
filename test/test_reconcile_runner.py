@@ -192,6 +192,28 @@ def test_reconcile_pending_walks_only_orphans(tmp_path):
     assert stats["skipped"] == 1
 
 
+def test_reconcile_records_transitions_to_activity(tmp_path):
+    """Each reconcile outcome posts a transition to the Activity feed (not just
+    the server log): → Needs Sync, → Library, and a stays-New skip."""
+    from harmonist import activity
+
+    music = tmp_path / "music"
+    _make_album(music, "BandcampOrphan", mbid="rel-bc", comment="https://x.bandcamp.com")
+    _make_album(music, "ManualOrphan", mbid="rel-man")  # no bandcamp comment → Library
+    _make_album(music, "NoMBID")  # no MBID → stays New
+
+    activity.clear()
+    reconcile_pending_orphans(
+        music,
+        fetch_urls=lambda mbid: ["https://x.bandcamp.com/album/y"] if mbid == "rel-bc" else [],
+        rate_limit_seconds=0,
+    )
+    msgs = [e.message for e in activity.recent(20)]
+    assert any("Needs Sync (reconciled" in m for m in msgs)
+    assert any("Library (reconciled" in m for m in msgs)
+    assert any("New (no MusicBrainz Id" in m for m in msgs)
+
+
 def test_reconcile_reports_live_inbox_library_counts(tmp_path):
     """As it files each orphan, reconcile reports live counts = base (0 here,
     all orphans) + the running tallies: → Library, → Needs Sync, → stuck New."""

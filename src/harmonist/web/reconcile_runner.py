@@ -20,6 +20,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from harmonist import activity
+
 log = logging.getLogger(__name__)
 
 
@@ -243,15 +245,19 @@ def reconcile_pending_orphans(
             errors += 1
             _report()
             continue
+        # Record the resulting transition in the Activity feed (and server log).
+        # Reconcile writes a sidecar; the scanner derives the state, but we know
+        # the outcome here: a store_url → Needs Sync, MBID-only → Library, a
+        # skip → stays New.
         if sc is None:
             skipped += 1
-            log.debug("Reconcile skipped (no MusicBrainz Id in tags): %s", label)
+            activity.record(f"{label}: New (no MusicBrainz Id in tags to reconcile)")
         elif sc.store_url:
             reconciled_bandcamp += 1
-            log.info("Reconciled %s → %s", label, sc.store_url)
+            activity.record(f"{label}: New → Needs Sync (reconciled from tags)")
         else:
             reconciled_manual += 1
-            log.info("Reconciled %s → MBID %s", label, sc.mb_release_id)
+            activity.record(f"{label}: New → Library (reconciled from tags)")
         completed += 1
         _report()
         # Rate-limit MB queries — but ONLY when a lookup actually happened.
