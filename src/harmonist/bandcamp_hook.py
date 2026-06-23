@@ -149,16 +149,24 @@ def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
     return None
 
 
-def unlinked_albums_by_slug(music_dir: Path) -> dict[str, list[Path]]:
-    """One pass over music_dir → `{release slug: [album dirs]}` for albums that
-    have a store_url but NO Bandcamp item_id yet (still unlinked).
+def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], set[int]]:
+    """One pass over music_dir → `({release slug: [unlinked album dirs]},
+    {item_ids already linked to some album})`.
 
     Built once per sync so the ignored-purchase backfill is O(albums + ignored)
-    rather than re-scanning the whole library for every purchase. Only unlinked
-    albums are included, so a backfill can only ever *fill in* a missing id —
-    never hijack a correctly-linked album that happens to share a slug.
+    rather than re-scanning the whole library for every purchase.
+
+    - The slug map holds only *unlinked* albums, so a backfill can only ever
+      *fill in* a missing id — never hijack a correctly-linked album.
+    - The linked-id set lets the backfill skip a purchase that's already tied to
+      a different album: two editions can share a store_url slug (a standard +
+      a long-form edition whose MB release only carries the public page URL), so
+      slug alone would otherwise attach the standard edition's purchase to the
+      still-unlinked long-form album. Skipping already-linked purchases prevents
+      that mis-link.
     """
-    out: dict[str, list[Path]] = {}
+    by_slug: dict[str, list[Path]] = {}
+    linked_ids: set[int] = set()
     for f in music_dir.rglob(".harmonist.json"):
         try:
             sc = sidecar_mod.read(f.parent)
@@ -167,10 +175,11 @@ def unlinked_albums_by_slug(music_dir: Path) -> dict[str, list[Path]]:
         if sc is None or not sc.store_url:
             continue
         if sc.bandcamp is not None and sc.bandcamp.item_id is not None:
+            linked_ids.add(int(sc.bandcamp.item_id))
             continue  # already linked
         if slug := album_slug(sc.store_url):
-            out.setdefault(slug, []).append(f.parent)
-    return out
+            by_slug.setdefault(slug, []).append(f.parent)
+    return by_slug, linked_ids
 
 
 def album_slug(url: str | None) -> str | None:
@@ -322,7 +331,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         media_dir = getattr(self.local_media, "media_dir", None)
         if not media_dir:
             return
-        by_slug = unlinked_albums_by_slug(Path(media_dir))
+        by_slug, linked_ids = survey_album_links(Path(media_dir))
         stuck_total = sum(len(v) for v in by_slug.values())
         if not by_slug:
             return
@@ -333,6 +342,12 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             if not self.ignores.is_ignored(item):
                 continue  # non-ignored items are handled by sync_item's own backfill
             ignored_total += 1
+            # Skip a purchase that's already linked to an album — otherwise two
+            # editions sharing a store_url slug (e.g. standard + long-form) would
+            # let the standard's purchase attach to the unlinked long-form album.
+            item_id_raw = getattr(item, "item_id", None)
+            if item_id_raw is not None and int(item_id_raw) in linked_ids:
+                continue
             slug = album_slug(construct_bandcamp_url(item))
             if not slug:
                 continue
