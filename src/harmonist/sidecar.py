@@ -123,6 +123,8 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
             bd["band_id"] = s.bandcamp.band_id
         if s.bandcamp.is_private:  # omit the default (False) to keep sidecars lean
             bd["is_private"] = True
+        if s.bandcamp.candidate_item_ids:
+            bd["candidate_item_ids"] = list(s.bandcamp.candidate_item_ids)
         if bd:  # only include the block when it has content
             d["bandcamp"] = bd
     if s.downloaded_at:
@@ -234,10 +236,13 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
         try:
             item_id_raw = bd.get("item_id")
             item_id = int(item_id_raw) if item_id_raw is not None else None
+            cand_raw = bd.get("candidate_item_ids")
+            candidate_item_ids = [int(x) for x in cand_raw] if cand_raw else None
             bandcamp = BandcampInfo(
                 item_id=item_id,
                 band_id=bd.get("band_id"),
                 is_private=bool(bd.get("is_private", False)),
+                candidate_item_ids=candidate_item_ids,
             )
         except (KeyError, TypeError, ValueError) as e:
             raise InvalidSidecarError(
