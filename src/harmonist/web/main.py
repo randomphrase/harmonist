@@ -719,7 +719,7 @@ def _report_unmatched_after_sync(cfg: config_mod.Config, *, full_sync: bool) -> 
                 f"Heads up: {a.artist} — {a.title} is tagged as the same MusicBrainz "
                 f"release as “{twins[0].title}” ({twins[0].path.name}), which already "
                 f"linked to a purchase — possibly a duplicate copy, or a release split "
-                f"across directories. Review.",
+                f"across directories.",
                 level="warning",
             )
 

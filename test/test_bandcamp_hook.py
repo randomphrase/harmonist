@@ -920,11 +920,36 @@ def test_backfill_cross_slug_title_fallback_links_longform(tmp_path, caplog):
     assert sc.read(standard).bandcamp.item_id == 631669900  # by URL slug
     assert sc.read(longform).bandcamp.item_id == 3417563775  # by title across mismatch
     # A title link warns it could be a mis-tag (URL mismatch is inherent), naming
-    # both URLs so the user can review.
+    # both URLs so the user can see it.
     warn = " ".join(r.message for r in caplog.records if r.levelno >= logging.WARNING)
     assert "Possible mis-tag" in warn
     assert "while-the-universe-sleeps-long-form-edition" in warn  # the purchase URL
     assert "while-the-universe-sleeps" in warn  # the album's store URL
+
+
+def test_backfill_slug_match_does_not_warn_mistag(tmp_path, caplog):
+    """A normal URL-slug link (the album's store URL matches the purchase) is NOT
+    a possible mis-tag — only the cross-slug title fallback warns."""
+    import logging
+
+    album = tmp_path / "Artist" / "Album"
+    album.mkdir(parents=True)
+    url = "https://x.bandcamp.com/album/album"
+    sc.write(
+        album,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=url, mb_release_id="rel-a"),
+    )
+    item = _StubItem(item_id=42, item_title="Album", url_hints={"subdomain": "x", "slug": "album"})
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.bandcamp.purchases = [item]
+    s.ignores.is_ignored = lambda i: True
+
+    with caplog.at_level(logging.WARNING, logger="harmonist.bandcamp_hook"):
+        s._backfill_ignored_purchases()
+
+    assert sc.read(album).bandcamp.item_id == 42  # linked by URL slug
+    assert "Possible mis-tag" not in " ".join(r.message for r in caplog.records)
 
 
 def test_backfill_skips_non_ignored_items(tmp_path):
