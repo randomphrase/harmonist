@@ -3,8 +3,8 @@
 # The CSS bundle (static/harmonist.css) is pre-built and committed, so the
 # image needs no Node/Tailwind toolchain — just Python + the runtime deps.
 #
-# Multi-arch build (amd64 for most Synology NAS, arm64 for Pi / newer NAS):
-#   docker buildx build --platform linux/amd64,linux/arm64 -t harmonist:latest .
+# Built for linux/amd64 (Synology NAS); published to GHCR by CI. To build
+# locally: docker build -t harmonist:latest .
 FROM python:3.14-slim
 
 ENV HARMONIST_MUSIC_DIR=/music \
