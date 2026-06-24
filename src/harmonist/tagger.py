@@ -19,7 +19,10 @@ from .formats import TagSet
 from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_ALBUM,
     ATOM_ALBUM_ARTIST,
+    ATOM_ALBUM_ARTIST_SORT,
     ATOM_ARTIST,
+    ATOM_ARTIST_SORT,
+    ATOM_ARTISTS,
     ATOM_ASIN,
     ATOM_BARCODE,
     ATOM_CATALOG,
@@ -39,7 +42,10 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_MB_RELEASE_TRACK_ID,
     ATOM_MB_TRACK_ID,
     ATOM_MEDIA,
+    ATOM_ORIGINAL_DATE,
+    ATOM_ORIGINAL_YEAR,
     ATOM_PREFIX,
+    ATOM_SCRIPT,
     ATOM_TITLE,
     ATOM_TRACK_NUM,
     LEGACY_RELEASE_ID,
@@ -169,6 +175,11 @@ def _build_tagset(
         artist=_artist_phrase(track_artist_credit),
         track_num=track_pos + 1,
         track_total=track_total,
+        album_artist_sort=_artist_sort_phrase(release.get("artist-credit")) or None,
+        artist_sort=_artist_sort_phrase(track_artist_credit) or None,
+        artists=_artist_names(track_artist_credit),
+        original_date=rg.get("first-release-date") or None,
+        script=(release.get("text-representation") or {}).get("script") or None,
         mb_album_artist_ids=_artist_ids(release.get("artist-credit")),
         mb_release_group_id=rg.get("id"),
         mb_album_type=rg.get("primary-type"),
@@ -276,3 +287,35 @@ def _artist_phrase(artist_credit: list[Any] | None) -> str:
             if jp := ac.get("joinphrase"):
                 parts.append(jp)
     return "".join(parts).strip()
+
+
+def _artist_sort_phrase(artist_credit: list[Any] | None) -> str:
+    """Like `_artist_phrase` but using each artist's MB **sort-name** (e.g.
+    'Beatles, The'), keeping join phrases. Empty when no sort-names are present."""
+    if not artist_credit:
+        return ""
+    parts: list[str] = []
+    any_sort = False
+    for ac in artist_credit:
+        if isinstance(ac, dict):
+            sort = (ac.get("artist") or {}).get("sort-name")
+            if sort:
+                any_sort = True
+            parts.append(sort or ac.get("name") or (ac.get("artist") or {}).get("name", ""))
+            if jp := ac.get("joinphrase"):
+                parts.append(jp)
+    return "".join(parts).strip() if any_sort else ""
+
+
+def _artist_names(artist_credit: list[Any] | None) -> list[str]:
+    """The individual artist display names (no join phrases) — Picard's
+    multi-value `artists` / ARTISTS tag."""
+    if not artist_credit:
+        return []
+    names: list[str] = []
+    for ac in artist_credit:
+        if isinstance(ac, dict):
+            name = ac.get("name") or (ac.get("artist") or {}).get("name", "")
+            if name:
+                names.append(name)
+    return names

@@ -38,6 +38,12 @@ ATOM_BARCODE = f"{ATOM_PREFIX}BARCODE"
 ATOM_MEDIA = f"{ATOM_PREFIX}MEDIA"
 ATOM_ASIN = f"{ATOM_PREFIX}ASIN"
 
+# Multi-value artists, original date, and script (freeform; Picard naming).
+ATOM_ARTISTS = f"{ATOM_PREFIX}ARTISTS"
+ATOM_ORIGINAL_DATE = f"{ATOM_PREFIX}ORIGINALDATE"
+ATOM_ORIGINAL_YEAR = f"{ATOM_PREFIX}ORIGINALYEAR"
+ATOM_SCRIPT = f"{ATOM_PREFIX}SCRIPT"
+
 # Legacy (non-Picard) atom written by older versions; removed on retag.
 LEGACY_RELEASE_ID = f"{ATOM_PREFIX}MUSICBRAINZ_RELEASEID"
 
@@ -49,6 +55,10 @@ ATOM_ALBUM_ARTIST = "aART"
 ATOM_DATE = "\xa9day"
 ATOM_GENRE = "\xa9gen"
 ATOM_COMMENT = "\xa9cmt"
+
+# Native sort-name atoms (Picard maps artistsort/albumartistsort here).
+ATOM_ARTIST_SORT = "soar"
+ATOM_ALBUM_ARTIST_SORT = "soaa"
 
 # Numeric / binary
 ATOM_TRACK_NUM = "trkn"
@@ -204,6 +214,12 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     audio[ATOM_ALBUM_ARTIST] = [tagset.album_artist]
     if tagset.date:
         audio[ATOM_DATE] = [tagset.date]
+    if tagset.artist_sort:
+        audio[ATOM_ARTIST_SORT] = [tagset.artist_sort]
+    if tagset.album_artist_sort:
+        audio[ATOM_ALBUM_ARTIST_SORT] = [tagset.album_artist_sort]
+    if tagset.artists:
+        audio[ATOM_ARTISTS] = [a.encode("utf-8") for a in tagset.artists]
 
     # ---- Numeric position ----
     audio[ATOM_TRACK_NUM] = [(tagset.track_num, tagset.track_total)]
@@ -220,6 +236,11 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
         audio[ATOM_ASIN] = [tagset.asin.encode("utf-8")]
     if tagset.media:
         audio[ATOM_MEDIA] = [tagset.media.encode("utf-8")]
+    if tagset.original_date:
+        audio[ATOM_ORIGINAL_DATE] = [tagset.original_date.encode("utf-8")]
+        audio[ATOM_ORIGINAL_YEAR] = [tagset.original_date[:4].encode("utf-8")]
+    if tagset.script:
+        audio[ATOM_SCRIPT] = [tagset.script.encode("utf-8")]
 
     # ---- Cover art ----
     if cover is not None:

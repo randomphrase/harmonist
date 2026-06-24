@@ -9,7 +9,10 @@ from harmonist import tagger
 from harmonist.tagger import (
     ATOM_ALBUM,
     ATOM_ALBUM_ARTIST,
+    ATOM_ALBUM_ARTIST_SORT,
     ATOM_ARTIST,
+    ATOM_ARTIST_SORT,
+    ATOM_ARTISTS,
     ATOM_ASIN,
     ATOM_BARCODE,
     ATOM_CATALOG,
@@ -28,6 +31,9 @@ from harmonist.tagger import (
     ATOM_MB_RELEASE_TRACK_ID,
     ATOM_MB_TRACK_ID,
     ATOM_MEDIA,
+    ATOM_ORIGINAL_DATE,
+    ATOM_ORIGINAL_YEAR,
+    ATOM_SCRIPT,
     ATOM_TITLE,
     ATOM_TRACK_NUM,
     LEGACY_RELEASE_ID,
@@ -45,10 +51,22 @@ def _release_2_tracks() -> dict:
         "date": "2021-06-15",
         "barcode": "0123456789012",
         "asin": "B00ASIN1234",
+        "text-representation": {"language": "eng", "script": "Latn"},
         "artist-credit": [
-            {"artist": {"id": "art-aaa", "name": "Test Artist"}, "name": "Test Artist"},
+            {
+                "artist": {
+                    "id": "art-aaa",
+                    "name": "Test Artist",
+                    "sort-name": "Test Artist, The",
+                },
+                "name": "Test Artist",
+            },
         ],
-        "release-group": {"id": "rg-aaa", "primary-type": "Album"},
+        "release-group": {
+            "id": "rg-aaa",
+            "primary-type": "Album",
+            "first-release-date": "2019-01-01",
+        },
         "label-info-list": [
             {"label": {"name": "Test Label"}, "catalog-number": "CAT-001"},
         ],
@@ -70,11 +88,22 @@ def _release_2_tracks() -> dict:
                         "recording": {"id": "rec-002", "title": "Track 2"},
                         "artist-credit": [
                             {
-                                "artist": {"id": "art-bbb", "name": "Featured Artist"},
+                                "artist": {
+                                    "id": "art-bbb",
+                                    "name": "Featured Artist",
+                                    "sort-name": "Featured Artist",
+                                },
                                 "name": "Featured Artist",
                                 "joinphrase": " feat. ",
                             },
-                            {"artist": {"id": "art-ccc", "name": "Other"}, "name": "Other"},
+                            {
+                                "artist": {
+                                    "id": "art-ccc",
+                                    "name": "Other",
+                                    "sort-name": "Other, The",
+                                },
+                                "name": "Other",
+                            },
                         ],
                     },
                 ],
@@ -134,6 +163,28 @@ def test_tag_album_writes_standard_text_tags(album_with_tracks):
     assert track1[ATOM_DATE] == ["2021-06-15"]
     assert track1[ATOM_TRACK_NUM] == [(1, 2)]
     assert track1[ATOM_DISC_NUM] == [(1, 1)]
+
+
+def test_tag_album_writes_sort_artists_original_date_script(album_with_tracks):
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+
+    track1 = MP4(album_dir / "01 Track 1.m4a")
+    # Native sort atoms (Picard: soaa / soar)
+    assert track1[ATOM_ALBUM_ARTIST_SORT] == ["Test Artist, The"]
+    assert track1[ATOM_ARTIST_SORT] == ["Test Artist, The"]
+    # Multi-value artists (freeform, no join phrases)
+    assert _atom_strs(track1, ATOM_ARTISTS) == ["Test Artist"]
+    # Original (release-group) date + derived year
+    assert _atom_str(track1, ATOM_ORIGINAL_DATE) == "2019-01-01"
+    assert _atom_str(track1, ATOM_ORIGINAL_YEAR) == "2019"
+    # Script from text-representation
+    assert _atom_str(track1, ATOM_SCRIPT) == "Latn"
+
+    # Track 2's own artist-credit drives its sort + artists tags.
+    track2 = MP4(album_dir / "02 Track 2.m4a")
+    assert track2[ATOM_ARTIST_SORT] == ["Featured Artist feat. Other, The"]
+    assert _atom_strs(track2, ATOM_ARTISTS) == ["Featured Artist", "Other"]
 
 
 def test_tag_album_track_artist_credit_overrides_release(album_with_tracks):

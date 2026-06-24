@@ -19,6 +19,9 @@ from pathlib import Path
 from mutagen.mp4 import MP4
 
 from harmonist.tagger import (
+    ATOM_ALBUM_ARTIST_SORT,
+    ATOM_ARTIST_SORT,
+    ATOM_ARTISTS,
     ATOM_ASIN,
     ATOM_BARCODE,
     ATOM_CATALOG,
@@ -33,6 +36,9 @@ from harmonist.tagger import (
     ATOM_MB_RELEASE_TRACK_ID,
     ATOM_MB_TRACK_ID,
     ATOM_MEDIA,
+    ATOM_ORIGINAL_DATE,
+    ATOM_ORIGINAL_YEAR,
+    ATOM_SCRIPT,
     PicardCompatibleTagger,
 )
 
@@ -55,11 +61,13 @@ def _fully_populated_release() -> dict:
         "date": "1992-08-17",
         "barcode": "5051083012345",
         "asin": "B00REFERNC",
+        "text-representation": {"language": "eng", "script": "Latn"},
         "artist-credit": [
             {
                 "artist": {
                     "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
                     "name": "Reference Artist",
+                    "sort-name": "Reference Artist, The",
                 },
                 "name": "Reference Artist",
             },
@@ -67,6 +75,7 @@ def _fully_populated_release() -> dict:
         "release-group": {
             "id": "abcdef01-2345-6789-abcd-ef0123456789",
             "primary-type": "Album",
+            "first-release-date": "1990-01-01",
         },
         "label-info-list": [
             {
@@ -98,6 +107,7 @@ def _fully_populated_release() -> dict:
                                 "artist": {
                                     "id": "guest1111-1111-1111-1111-111111111111",
                                     "name": "Guest",
+                                    "sort-name": "Guest",
                                 },
                                 "name": "Guest",
                                 "joinphrase": " feat. ",
@@ -106,6 +116,7 @@ def _fully_populated_release() -> dict:
                                 "artist": {
                                     "id": "host11111-1111-1111-1111-111111111111",
                                     "name": "Host",
+                                    "sort-name": "Host",
                                 },
                                 "name": "Host",
                             },
@@ -234,6 +245,26 @@ def test_disc_number_atom(tmp_path):
     assert audio["disk"] == [(1, 1)]
 
 
+def test_sort_artists_original_date_script_atoms(tmp_path):
+    """Picard: soaa/soar (sort names), ARTISTS (multi-value), ORIGINALDATE +
+    ORIGINALYEAR (release-group first release), SCRIPT (text-representation)."""
+    album_dir = _setup_album(tmp_path, 2)
+    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
+
+    t1 = MP4(album_dir / "01 Track 1.m4a")
+    assert t1["soaa"] == ["Reference Artist, The"]
+    assert t1["soar"] == ["Reference Artist, The"]
+    assert _atom_strs(t1, ATOM_ARTISTS) == ["Reference Artist"]
+    assert _atom_str(t1, ATOM_ORIGINAL_DATE) == "1990-01-01"
+    assert _atom_str(t1, ATOM_ORIGINAL_YEAR) == "1990"
+    assert _atom_str(t1, ATOM_SCRIPT) == "Latn"
+
+    # Track 2's per-track credit drives its sort phrase + artists list.
+    t2 = MP4(album_dir / "02 Track 2.m4a")
+    assert t2["soar"] == ["Guest feat. Host"]
+    assert _atom_strs(t2, ATOM_ARTISTS) == ["Guest", "Host"]
+
+
 # ---------- exhaustive atom inventory ----------
 
 EXPECTED_PICARD_ATOMS_WE_WRITE = {
@@ -254,6 +285,13 @@ EXPECTED_PICARD_ATOMS_WE_WRITE = {
     ATOM_BARCODE,
     ATOM_ASIN,
     ATOM_MEDIA,
+    # Sort names, multi-value artists, original date, script
+    ATOM_ALBUM_ARTIST_SORT,
+    ATOM_ARTIST_SORT,
+    ATOM_ARTISTS,
+    ATOM_ORIGINAL_DATE,
+    ATOM_ORIGINAL_YEAR,
+    ATOM_SCRIPT,
     # Standard text tags
     "\xa9alb",
     "\xa9nam",
@@ -298,10 +336,7 @@ def test_complete_inventory_against_picard_spec(tmp_path):
 # update and the tagger's coverage needs to expand.
 
 KNOWN_GAPS = {
-    "----:com.apple.iTunes:SCRIPT",
     "----:com.apple.iTunes:LANGUAGE",
-    "----:com.apple.iTunes:ORIGINALDATE",
-    "----:com.apple.iTunes:ORIGINALYEAR",
     "----:com.apple.iTunes:ISRC",
     "----:com.apple.iTunes:DISCSUBTITLE",
     "----:com.apple.iTunes:WORK",

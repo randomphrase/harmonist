@@ -429,6 +429,8 @@ fields don't go here.
 
 The tagger writes the full set of MBID atoms on MP4/M4A files plus a refresh of standard text tags from the MB release payload. This is what makes Plex and Navidrome treat the album as MB-tagged.
 
+The format-agnostic `TagSet` (in `formats/types.py`) is the single source of truth for what gets written; each per-format backend (`formats/m4a.py`, `formats/mp3.py`, `formats/_vorbis.py`) serialises it to that format's native tag layer. To add a tag, add a `TagSet` field, populate it in `tagger._build_tagset`, and map it in each backend.
+
 ### MP4 atom names (Picard convention — note: spaces, not underscores)
 
 Per-album (same on every track):
@@ -452,6 +454,19 @@ Standard text tags refreshed from MB:
 - `©day` (date), `©gen` (genre — first MB tag), `cprt` (copyright if present)
 - `trkn` (track / total), `disk` (disc / total)
 - `----:com.apple.iTunes:LABEL`, `----:com.apple.iTunes:CATALOGNUMBER`, `----:com.apple.iTunes:BARCODE`, `----:com.apple.iTunes:MEDIA`, `----:com.apple.iTunes:ASIN` when present
+
+Sort names, multi-value artists, original date, and script (Picard parity — these drive correct alphabetisation and "original year" columns in Plex/Navidrome). The per-format mapping:
+
+| TagSet field        | Source                                           | MP4                                    | ID3v2.4         | Vorbis            |
+| ------------------- | ------------------------------------------------ | -------------------------------------- | --------------- | ----------------- |
+| `album_artist_sort` | release artist-credit `sort-name`s               | `soaa`                                 | `TSO2`          | `ALBUMARTISTSORT` |
+| `artist_sort`       | track artist-credit `sort-name`s                 | `soar`                                 | `TSOP`          | `ARTISTSORT`      |
+| `artists`           | per-artist names, no join phrases                | `----:com.apple.iTunes:ARTISTS`        | `TXXX:ARTISTS`  | `ARTISTS`         |
+| `original_date`     | release-group `first-release-date`               | `----:com.apple.iTunes:originaldate`   | `TDOR`          | `ORIGINALDATE`    |
+| `original_date[:4]` | year derived from the above                      | `----:com.apple.iTunes:originalyear`   | — (in `TDOR`)   | `ORIGINALYEAR`    |
+| `script`            | release `text-representation.script` (e.g. Latn) | `----:com.apple.iTunes:SCRIPT`         | `TXXX:SCRIPT`   | `SCRIPT`          |
+
+Sort phrases keep the artist-credit join phrases (`A feat. B` → `A feat. B, The`); each `artists` value is a bare name. Every field is written only when present, so a release missing (say) a release-group date or sort-names just omits those tags. ID3v2.4 has no separate "original year" frame — `TDOR` carries the full original date and consumers derive the year.
 
 The existing `©cmt` (Bandcamp comment) is **preserved** if present — it's the fallback URL recovery path and other tools may rely on it. We never strip user data.
 
