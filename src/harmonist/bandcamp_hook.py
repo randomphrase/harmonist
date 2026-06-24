@@ -437,13 +437,21 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 if int(p.item_id) not in consumed
             ]
             if len(avail) == 1:
+                # Capture the album's store_url BEFORE linking — _link adopts the
+                # purchase's URL (prefer_item_url=True), so we'd otherwise lose
+                # the original. Log BOTH so the mismatch is visible, not inferred.
+                existing = sidecar_mod.read(album_dir)
+                store_url = existing.store_url if existing else None
                 self._link(album_dir, avail[0])
                 consumed.add(int(avail[0].item_id))
                 title_linked += 1
                 log.info(
-                    "Backfill: linked %r by title across a store-URL mismatch (item_id=%s)",
+                    "Backfill: linked %r by title (item_id=%s) — purchase URL %s "
+                    "differs from the album's store_url %s",
                     album_dir.name,
                     getattr(avail[0], "item_id", "?"),
+                    construct_bandcamp_url(avail[0]) or "?",
+                    store_url or "?",
                 )
 
         log.info(
