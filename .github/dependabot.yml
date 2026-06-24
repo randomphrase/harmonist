@@ -1,0 +1,30 @@
+# Dependabot keeps our dependencies current across the three ecosystems this
+# repo actually uses. Weekly cadence with grouped PRs keeps the noise low for a
+# solo-maintained project — minor/patch bumps land as one PR per ecosystem,
+# while majors (more likely to break) come through individually for review.
+version: 2
+updates:
+  # GitHub Actions pinned in .github/workflows/*.yml (checkout, setup-python, …).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  # Python deps declared in pyproject.toml ([project].dependencies + dev extras).
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+
+  # The Dockerfile base image (python:3.12-slim) for the NAS container build.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
