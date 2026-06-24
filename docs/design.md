@@ -198,6 +198,32 @@ as the *same* MB release as one already linked to a purchase, a non-committal
 WARNING flags a possible duplicate copy — or a release legitimately split across
 directories (§15.3), which we don't try to tell apart.
 
+After a **full** sync, an album reaches surrender for exactly one of three
+reasons — its `store_url` slug matched no purchase slug *and* its folder title
+matched no unique purchase title:
+
+1. **No purchase exists.** Acquired outside Bandcamp (CD rip, promo, gift, or a
+   free/name-your-price download that isn't in the *purchase* collection) but
+   carrying a bandcamp-ish `store_url`. Benign — there is genuinely nothing to
+   link.
+2. **Wrong/stale `store_url` *and* a non-matching title.** A wrong-edition URL,
+   or a renamed folder that `_norm_title` can't bridge. Here the **tag itself
+   may be wrong**.
+3. **An uncaught mis-tag.** The post-sync mis-tag pass only fires when the user
+   owns a *sibling edition in the same MB release group*, and exactly one. A
+   wrong release in a *different* release group, ≥2 owned editions (ambiguous),
+   or not owning the correct edition's purchase all slip past it — and the album
+   really is mis-tagged, just unprovably.
+
+This is precisely why surrender **defers to the user instead of silently marking
+the album Complete.** "Not a *detectable* mis-tag" is a far weaker claim than
+"proven correctly tagged": cases 2 and 3 put the tag itself in doubt, and case 3
+would bury a real mis-tag in the Library where it would never be seen again. The
+only thing definitely missing is the Bandcamp `item_id` (a re-download handle),
+but the *tag's* correctness is exactly what we can't assert — so the album stays
+in the inbox until the user resolves it. (Auto-marking these Complete was
+considered and rejected for this reason.)
+
 The inbox also surfaces a Needs Sync album with two manual affordances:
 **Try a different URL** (supply the correct Bandcamp URL → next sync re-matches)
 and **Mark purchased elsewhere** (clear `store_url`, drop the bandcamp block →
