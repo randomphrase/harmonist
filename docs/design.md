@@ -481,7 +481,8 @@ Plex with the MusicBrainz agent can fetch its own artwork from external sources,
 1. Fetches the front cover from the [Cover Art Archive](https://coverartarchive.org) using the MB release ID:
    - `GET https://coverartarchive.org/release/{mbid}/front` (follows redirects to the actual image)
    - If unavailable, falls back to `release-group/{mbgid}/front` (release-group-level art).
-   - If still unavailable, the album is tagged but with no cover; logged as a warning, surfaced in the inbox.
+   - If CAA has nothing (common for a fresh / private Bandcamp release not yet in CAA), falls back to art **already embedded** in one of the album's audio files — Bandcamp downloads ship with cover art baked in, so this guarantees a folder `cover.*` even off-CAA.
+   - If still nothing (no CAA match, no embedded art), the album is tagged but with no cover; logged, surfaced in the inbox.
 2. Embeds the image in every track's `covr` atom (`mutagen.mp4.MP4Cover` with `FORMAT_JPEG` or `FORMAT_PNG`).
 3. Writes the same image to `<album_dir>/cover.jpg` (or `.png`, matching format) for tools that prefer the sidecar (Navidrome, MPD, foobar2000, etc.).
 

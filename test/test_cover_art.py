@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 import httpx
 import pytest
 
 from harmonist.cover_art import CoverArtError, cached_cover, ensure_cover
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+_TINY_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00" + b"\x00" * 40
 
 
 def _client(handler) -> httpx.Client:
@@ -14,6 +20,22 @@ def _client(handler) -> httpx.Client:
         follow_redirects=True,
         timeout=10,
     )
+
+
+def _flac_with_embedded_art(dirpath: Path, art: bytes) -> Path:
+    """Copy the FLAC fixture into dirpath and embed `art` as its front cover."""
+    from mutagen.flac import FLAC, Picture
+
+    dst = dirpath / "01 track.flac"
+    shutil.copy(FIXTURES_DIR / "sine.flac", dst)
+    audio = FLAC(dst)
+    pic = Picture()
+    pic.type = 3  # front cover
+    pic.mime = "image/jpeg"
+    pic.data = art
+    audio.add_picture(pic)
+    audio.save()
+    return dst
 
 
 # ---------- cache hits ----------
@@ -117,6 +139,47 @@ def test_ensure_cover_returns_none_when_release_404_and_no_release_group(tmp_pat
 
     result = ensure_cover(tmp_path, "rel-123", client=_client(handler))
     assert result is None
+
+
+# ---------- fallback to embedded art ----------
+
+
+def test_ensure_cover_extracts_embedded_art_when_caa_misses(tmp_path):
+    """When CAA has no cover (fresh/private release) but an audio file carries
+    embedded art, a folder cover.jpg is written from that art."""
+    _flac_with_embedded_art(tmp_path, _TINY_JPEG)
+
+    def handler(req):
+        return httpx.Response(404)
+
+    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
+    assert result == tmp_path / "cover.jpg"
+    assert result.read_bytes() == _TINY_JPEG
+
+
+def test_ensure_cover_prefers_caa_over_embedded(tmp_path):
+    """CAA art wins over embedded — it's the authoritative match for the
+    tagged release and typically higher resolution."""
+    _flac_with_embedded_art(tmp_path, _TINY_JPEG)
+
+    def handler(req):
+        return httpx.Response(200, content=b"CAA_JPEG", headers={"content-type": "image/jpeg"})
+
+    result = ensure_cover(tmp_path, "rel-123", client=_client(handler))
+    assert result == tmp_path / "cover.jpg"
+    assert result.read_bytes() == b"CAA_JPEG"
+
+
+def test_ensure_cover_none_when_caa_misses_and_audio_has_no_art(tmp_path):
+    """An audio file with no embedded art and no CAA match → no cover written."""
+    shutil.copy(FIXTURES_DIR / "sine.flac", tmp_path / "01 track.flac")  # plain, no art
+
+    def handler(req):
+        return httpx.Response(404)
+
+    result = ensure_cover(tmp_path, "rel-123", client=_client(handler))
+    assert result is None
+    assert not list(tmp_path.glob("cover.*"))
 
 
 # ---------- error path ----------
