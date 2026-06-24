@@ -873,7 +873,7 @@ def test_backfill_marks_ambiguous_when_title_cannot_separate(tmp_path):
         assert bc.candidate_item_ids == [111, 222]
 
 
-def test_backfill_cross_slug_title_fallback_links_longform(tmp_path):
+def test_backfill_cross_slug_title_fallback_links_longform(tmp_path, caplog):
     """The real WTUS case: the long-form album's store_url is the PUBLIC page
     (shared with the standard), but the long-form's own purchase has a DIFFERENT
     URL. Phase 1 links the standard by URL; phase 2 links the long-form by a
@@ -912,10 +912,19 @@ def test_backfill_cross_slug_title_fallback_links_longform(tmp_path):
     s.bandcamp.purchases = [p_std, p_lf]
     s.ignores.is_ignored = lambda item: True
 
-    s._backfill_ignored_purchases()
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="harmonist.bandcamp_hook"):
+        s._backfill_ignored_purchases()
 
     assert sc.read(standard).bandcamp.item_id == 631669900  # by URL slug
     assert sc.read(longform).bandcamp.item_id == 3417563775  # by title across mismatch
+    # A title link warns it could be a mis-tag (URL mismatch is inherent), naming
+    # both URLs so the user can review.
+    warn = " ".join(r.message for r in caplog.records if r.levelno >= logging.WARNING)
+    assert "Possible mis-tag" in warn
+    assert "while-the-universe-sleeps-long-form-edition" in warn  # the purchase URL
+    assert "while-the-universe-sleeps" in warn  # the album's store URL
 
 
 def test_backfill_skips_non_ignored_items(tmp_path):
