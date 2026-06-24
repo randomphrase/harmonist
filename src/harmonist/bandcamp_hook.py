@@ -454,8 +454,8 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 log.warning(
                     "Linked %r to a purchase by title (item_id=%s). Possible mis-tag: "
                     "the tagged release's store URL (%s) differs from the matched "
-                    "purchase URL (%s) — could be a correctly-tagged edition whose MB "
-                    "URL is the shared public page, or the wrong release. Review.",
+                    "purchase URL (%s) — this can be a correctly-tagged edition whose "
+                    "MB URL is the shared public page, or the wrong release.",
                     album_dir.name,
                     getattr(avail[0], "item_id", "?"),
                     store_url or "?",
