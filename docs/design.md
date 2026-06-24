@@ -682,9 +682,11 @@ services:
     volumes:
       - /volume1/docker/harmonist/config:/config
       - /volume1/music:/music
-    environment:
-      PUID: 1026
-      PGID: 100
+    # Run as a host uid:gid so sidecars/files written into /music and /config
+    # are owned correctly. Docker-native — the image needs no PUID/PGID
+    # entrypoint plumbing. Use your own user's ids (`id -u` / `id -g`); 100 is
+    # the Synology `users` group. Omit to run as root (root-owned files).
+    user: "1026:100"
 ```
 
 **macOS local dev:**
