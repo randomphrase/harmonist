@@ -566,6 +566,41 @@ def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
     assert loaded.bandcamp.item_id == 12345
 
 
+def test_sync_item_short_circuit_records_transition_to_activity(monkeypatch, tmp_path):
+    """Linking an on-disk album during the download loop is a Needs Sync →
+    Library transition — it should hit the Activity feed (not just the server
+    log), like the ignored-purchase backfill."""
+    from harmonist import activity
+
+    existing_dir = tmp_path / "Artist" / "Album"
+    existing_dir.mkdir(parents=True)
+    sc.write(
+        existing_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            mb_release_id="rel-a",
+        ),
+    )
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.ignores.is_ignored = MagicMock(return_value=False)
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item, encoding=None: True,
+    )
+    item = _StubItem(
+        item_id=12345,
+        band_name="Artist",
+        item_title="Album",
+        url_hints={"subdomain": "x", "slug": "y"},
+    )
+    activity.clear()
+    s.sync_item(item)
+    msgs = [e.message for e in activity.recent(5)]
+    assert any("Needs Sync → Library" in m and "12345" in m for m in msgs)
+
+
 def test_sync_item_slug_fallback_links_and_adopts_url(monkeypatch, tmp_path):
     """Exact URL misses (different subdomain) but the slug matches → link the
     item_id WITHOUT downloading, and adopt the item's URL as store_url."""

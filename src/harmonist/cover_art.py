@@ -76,12 +76,12 @@ def _fetch_to_disk(
                 raise CoverArtError(f"CAA request failed for {url}: {e}") from e
 
             if resp.status_code == 404:
-                log.info("CAA: no cover for %s/%s (404)", kind, mbid)
+                log.debug("CAA: no cover for %s/%s (404)", kind, mbid)
                 continue
             if resp.is_success:
                 target = album_dir / _filename_for(resp)
                 target.write_bytes(resp.content)
-                log.info("CAA: wrote %s (%d bytes)", target, len(resp.content))
+                log.debug("CAA: wrote %s (%d bytes)", target, len(resp.content))
                 return target
             raise CoverArtError(f"CAA returned status {resp.status_code} for {url}")
         return None
