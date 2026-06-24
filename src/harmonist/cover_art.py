@@ -1,8 +1,10 @@
 """Cover Art Archive fetcher with album-dir caching.
 
 Tries the release endpoint first, falls back to the release-group endpoint
-if no front cover is linked at the release level. Caches the result as
-`cover.jpg` (or `.png`) inside the album directory.
+if no front cover is linked at the release level, and finally to art already
+embedded in the album's audio files. Caches the result as `cover.jpg` (or
+`.png`) inside the album directory so there is always a folder cover for
+tools (notably Plex) that read art from disk.
 """
 
 from __future__ import annotations
@@ -11,6 +13,8 @@ import logging
 from pathlib import Path
 
 import httpx
+
+from . import formats
 
 CAA_BASE = "https://coverartarchive.org"
 DEFAULT_TIMEOUT = 30.0
@@ -42,13 +46,35 @@ def ensure_cover(
 
     If `cover.{jpg,png}` already exists in album_dir, it's returned as-is
     (treated as a manual override / cache hit). Otherwise, fetch from CAA:
-    release first, then release-group fallback. Returns None if no cover
-    is available at either source.
+    release first, then release-group fallback. If CAA has nothing (common
+    for fresh / private Bandcamp releases not yet in CAA), fall back to art
+    already embedded in the album's audio files. Returns None only when no
+    cover is available from any source.
     """
     if cached := cached_cover(album_dir):
         return cached
 
-    return _fetch_to_disk(album_dir, release_mbid, release_group_mbid, size, client=client)
+    fetched = _fetch_to_disk(album_dir, release_mbid, release_group_mbid, size, client=client)
+    if fetched is not None:
+        return fetched
+
+    return _extract_embedded_cover(album_dir)
+
+
+def _extract_embedded_cover(album_dir: Path) -> Path | None:
+    """Write a folder cover from the first audio file that carries embedded
+    art. Ensures a `cover.*` exists on disk even when CAA has no match."""
+    for path in sorted(p for p in album_dir.iterdir() if formats.is_supported(p)):
+        result = formats.read_cover(path)
+        if result is None:
+            continue
+        data, mime = result
+        name = "cover.png" if "png" in mime.lower() else "cover.jpg"
+        target = album_dir / name
+        target.write_bytes(data)
+        log.debug("cover: extracted embedded art from %s -> %s", path.name, target.name)
+        return target
+    return None
 
 
 def _fetch_to_disk(
