@@ -44,6 +44,19 @@ class TagSet:
     track_num: int
     track_total: int
 
+    # Sort names + multi-value artists (Picard: albumartistsort, artistsort,
+    # artists). Sort names drive correct alphabetisation in Plex/Navidrome
+    # ("The Beatles" under B); `artists` is the unjoined per-artist list.
+    album_artist_sort: str | None = None
+    artist_sort: str | None = None
+    artists: list[str] = field(default_factory=list)
+
+    # Original release date of the *work* (release-group first-release-date),
+    # distinct from this edition's `date`. The MB script of the title text
+    # (e.g. "Latn").
+    original_date: str | None = None
+    script: str | None = None
+
     mb_album_artist_ids: list[str] = field(default_factory=list)
     mb_release_group_id: str | None = None
     mb_album_type: str | None = None

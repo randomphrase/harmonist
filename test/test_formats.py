@@ -39,10 +39,22 @@ def _release_one_track() -> dict:
         "date": "2022-03-04",
         "barcode": "5051234567890",
         "asin": "B00FMT0001",
+        "text-representation": {"language": "eng", "script": "Latn"},
         "artist-credit": [
-            {"artist": {"id": "art-1", "name": "Format Artist"}, "name": "Format Artist"},
+            {
+                "artist": {
+                    "id": "art-1",
+                    "name": "Format Artist",
+                    "sort-name": "Format Artist, The",
+                },
+                "name": "Format Artist",
+            },
         ],
-        "release-group": {"id": "rg-1", "primary-type": "Album"},
+        "release-group": {
+            "id": "rg-1",
+            "primary-type": "Album",
+            "first-release-date": "2018-07-09",
+        },
         "label-info-list": [
             {"label": {"name": "Test Label"}, "catalog-number": "CAT-9"},
         ],
@@ -219,6 +231,85 @@ def _seed_comment(path: Path, value: str) -> None:
         audio.save()
     else:
         raise AssertionError(f"no comment-seeder for {ext}")
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_sort_artists_original_date_script_written(tmp_path, ext, fixture):
+    """The Picard sort/artists/original-date/script tags round-trip in each
+    format's native representation."""
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+    sort, artists, orig_date, orig_year, script = _read_new_tags(f)
+
+    assert sort == "Format Artist, The"
+    assert artists == ["Format Artist"]
+    assert orig_date == "2018-07-09"
+    assert orig_year == "2018"
+    assert script == "Latn"
+
+
+def _first(values: list[str]) -> str | None:
+    return values[0] if values else None
+
+
+def _read_new_tags(path: Path) -> tuple[str | None, list[str], str | None, str | None, str | None]:
+    """Read (artistsort, artists, originaldate, originalyear, script) using the
+    native tag layer for the file's format."""
+    ext = path.suffix.lower()
+    if ext in (".m4a", ".mp4"):
+        from mutagen.mp4 import MP4
+
+        a = MP4(path)
+        pre = "----:com.apple.iTunes:"
+
+        def ff(name: str) -> str | None:
+            v = a.get(f"{pre}{name}")
+            return v[0].decode("utf-8") if v else None
+
+        return (
+            _first([str(v) for v in a.get("soar", [])]),
+            [b.decode("utf-8") for b in a.get(f"{pre}ARTISTS", [])],
+            ff("ORIGINALDATE"),
+            ff("ORIGINALYEAR"),
+            ff("SCRIPT"),
+        )
+    if ext == ".mp3":
+        from mutagen.mp3 import MP3
+
+        tags = MP3(path).tags
+
+        def txxx(desc: str) -> list[str]:
+            frame = tags.get(f"TXXX:{desc}")
+            return [str(t) for t in frame.text] if frame else []
+
+        def text(fid: str) -> str | None:
+            frame = tags.get(fid)
+            return str(frame.text[0]) if frame and frame.text else None
+
+        orig = text("TDOR")
+        return (
+            text("TSOP"),
+            txxx("ARTISTS"),
+            orig,
+            (orig[:4] if orig else None),
+            _first(txxx("SCRIPT")),
+        )
+    # Vorbis-comment formats (.flac, .opus, .ogg)
+    from mutagen import File as MutagenFile
+
+    tags = MutagenFile(path).tags
+
+    def vc(key: str) -> list[str]:
+        return [str(v) for v in (tags.get(key) or [])]
+
+    return (
+        _first(vc("ARTISTSORT")),
+        vc("ARTISTS"),
+        _first(vc("ORIGINALDATE")),
+        _first(vc("ORIGINALYEAR")),
+        _first(vc("SCRIPT")),
+    )
 
 
 # ---------- describe / format label ----------

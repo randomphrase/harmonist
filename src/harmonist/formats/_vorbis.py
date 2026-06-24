@@ -36,7 +36,13 @@ KEY_TITLE = "TITLE"
 KEY_ALBUM = "ALBUM"
 KEY_ARTIST = "ARTIST"
 KEY_ALBUM_ARTIST = "ALBUMARTIST"
+KEY_ARTIST_SORT = "ARTISTSORT"
+KEY_ALBUM_ARTIST_SORT = "ALBUMARTISTSORT"
+KEY_ARTISTS = "ARTISTS"
 KEY_DATE = "DATE"
+KEY_ORIGINAL_DATE = "ORIGINALDATE"
+KEY_ORIGINAL_YEAR = "ORIGINALYEAR"
+KEY_SCRIPT = "SCRIPT"
 KEY_TRACK_NUMBER = "TRACKNUMBER"
 KEY_TRACK_TOTAL = "TOTALTRACKS"
 KEY_DISC_NUMBER = "DISCNUMBER"
@@ -65,7 +71,13 @@ _MANAGED_KEYS = (
     KEY_ALBUM,
     KEY_ARTIST,
     KEY_ALBUM_ARTIST,
+    KEY_ARTIST_SORT,
+    KEY_ALBUM_ARTIST_SORT,
+    KEY_ARTISTS,
     KEY_DATE,
+    KEY_ORIGINAL_DATE,
+    KEY_ORIGINAL_YEAR,
+    KEY_SCRIPT,
     KEY_TRACK_NUMBER,
     KEY_TRACK_TOTAL,
     KEY_DISC_NUMBER,
@@ -227,8 +239,19 @@ class VorbisTagger:
         tags[KEY_ALBUM] = [tagset.album]
         tags[KEY_ARTIST] = [tagset.artist]
         tags[KEY_ALBUM_ARTIST] = [tagset.album_artist]
+        if tagset.artist_sort:
+            tags[KEY_ARTIST_SORT] = [tagset.artist_sort]
+        if tagset.album_artist_sort:
+            tags[KEY_ALBUM_ARTIST_SORT] = [tagset.album_artist_sort]
+        if tagset.artists:
+            tags[KEY_ARTISTS] = list(tagset.artists)
         if tagset.date:
             tags[KEY_DATE] = [tagset.date]
+        if tagset.original_date:
+            tags[KEY_ORIGINAL_DATE] = [tagset.original_date]
+            tags[KEY_ORIGINAL_YEAR] = [tagset.original_date[:4]]
+        if tagset.script:
+            tags[KEY_SCRIPT] = [tagset.script]
 
         tags[KEY_TRACK_NUMBER] = [str(tagset.track_num)]
         tags[KEY_TRACK_TOTAL] = [str(tagset.track_total)]

@@ -22,6 +22,7 @@ from mutagen.id3 import (
     APIC,
     ID3,
     TALB,
+    TDOR,
     TDRC,
     TIT2,
     TMED,
@@ -30,6 +31,8 @@ from mutagen.id3 import (
     TPOS,
     TPUB,
     TRCK,
+    TSO2,
+    TSOP,
     TXXX,
     UFID,
     Encoding,
@@ -55,6 +58,8 @@ TXXX_ARTIST_ID = "MusicBrainz Artist Id"
 TXXX_CATALOG = "CATALOGNUMBER"
 TXXX_BARCODE = "BARCODE"
 TXXX_ASIN = "ASIN"
+TXXX_ARTISTS = "ARTISTS"
+TXXX_SCRIPT = "SCRIPT"
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +207,16 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     tags.setall("TPE2", [TPE2(encoding=Encoding.UTF8, text=[tagset.album_artist])])
     if tagset.date:
         tags.setall("TDRC", [TDRC(encoding=Encoding.UTF8, text=[tagset.date])])
+    if tagset.artist_sort:
+        tags.setall("TSOP", [TSOP(encoding=Encoding.UTF8, text=[tagset.artist_sort])])
+    if tagset.album_artist_sort:
+        tags.setall("TSO2", [TSO2(encoding=Encoding.UTF8, text=[tagset.album_artist_sort])])
+    if tagset.artists:
+        _set_txxx(tags, TXXX_ARTISTS, tagset.artists)
+    if tagset.original_date:
+        tags.setall("TDOR", [TDOR(encoding=Encoding.UTF8, text=[tagset.original_date])])
+    if tagset.script:
+        _set_txxx(tags, TXXX_SCRIPT, [tagset.script])
 
     # ---- Numeric position ("n/total") ----
     tags.setall(
