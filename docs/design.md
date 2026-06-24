@@ -643,13 +643,23 @@ Album IDs remain MD5-of-path (matches existing convention; survives across runs 
 
 ## 10. Deployment
 
-### 10.1 Dockerfile (sketch)
+### 10.1 Image build & distribution
 
-- Base: `python:3.12-slim` (slim, glibc, multi-arch).
-- Two-stage build: build wheels in stage 1, copy into runtime in stage 2.
-- Entrypoint: small shell script that handles `PUID`/`PGID` and `exec uvicorn`.
-- Healthcheck: `CMD curl -fsS http://127.0.0.1:${HARMONIST_PORT}/healthz || exit 1`.
-- Multi-arch via `docker buildx --platform linux/amd64,linux/arm64`.
+- Base: `python:3.14-slim` (slim, glibc, multi-arch). The CSS bundle is
+  pre-built and committed, so the image needs no Node/Tailwind toolchain — just
+  Python + the runtime deps (`pip install -e .`).
+- Healthcheck: `python -c "... urlopen('http://127.0.0.1:8000/healthz')"` (slim
+  has no `curl`).
+- **Published to GHCR by CI** (`.github/workflows/publish.yml`) — never built on
+  the NAS. Multi-arch `linux/amd64,linux/arm64` via Buildx + QEMU:
+  - push to `main` → `ghcr.io/randomphrase/harmonist:edge` (rolling dev image)
+  - tag `vX.Y.Z` → `:X.Y.Z`, `:X.Y`, `:X`, and `:latest` (stable release)
+- The GHCR package is **public**, so the NAS pulls with no login. (One-time:
+  after the first publish, set the package visibility to Public in the repo's
+  Packages settings — new GHCR packages start private.) The `github-actions`
+  Dependabot ecosystem keeps the workflow's actions current.
+- Releasing is just `git tag vX.Y.Z && git push --tags`; the NAS then pulls the
+  new tag.
 
 ### 10.2 Volume layout (the contract)
 
@@ -666,7 +676,7 @@ Sidecars live next to music inside `/music`. Config dir holds `ignores.txt`, `co
 ```yaml
 services:
   harmonist:
-    image: harmonist:latest
+    image: ghcr.io/randomphrase/harmonist:latest
     restart: unless-stopped
     ports: ["8000:8000"]
     volumes:
@@ -688,7 +698,7 @@ uvicorn harmonist.web.main:app --reload
 ```yaml
 services:
   harmonist:
-    image: harmonist:latest
+    image: ghcr.io/randomphrase/harmonist:latest
     volumes:
       - ./config:/config
       - /mnt/synology-music:/music   # mounted via /etc/fstab

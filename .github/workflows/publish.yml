@@ -1,0 +1,71 @@
+# Build the container image and publish it to the GitHub Container Registry.
+#
+#   - push to main      -> ghcr.io/<owner>/harmonist:edge  (rolling dev image)
+#   - push a tag v1.2.3 -> :1.2.3, :1.2, :1, :latest        (stable release)
+#
+# Multi-arch (amd64 for the Synology NAS, arm64 for the Pi). The NAS just pulls
+# a published tag — it never builds. See docs/design.md §10.
+name: Publish image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to GHCR using the built-in GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up QEMU (cross-arch emulation for arm64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags + labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # Semver tags get :X.Y.Z / :X.Y / :X and (newest) :latest; pushes to
+          # the default branch get the rolling :edge tag.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=edge,branch=main
+            type=sha
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Cache layers between runs to keep the (emulated) arm64 build quick.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Single clean manifest per arch — skip the extra provenance entry
+          # that otherwise shows as an "unknown/unknown" platform in the UI.
+          provenance: false
