@@ -103,6 +103,20 @@ def _configure_logging(cfg: config_mod.Config) -> None:
     level = getattr(logging, cfg.log_level.upper(), logging.INFO)
     logger = logging.getLogger("harmonist")
     logger.setLevel(level)
+
+    # Quiet bandcampsync's own loggers (named "ignores", "sync", … — see its
+    # logger.py). They flood every sync with one line per purchase: a
+    # "Syncing item N of M" (INFO) and, worse, a "Skipping item … present in
+    # the ignore file" (WARNING — for a perfectly NORMAL already-downloaded
+    # item) for all ~400. Raise their thresholds so genuine third-party
+    # problems still surface but the per-item normal-operation chatter doesn't.
+    # Honour DEBUG: if the operator asked for DEBUG, leave them verbose.
+    # (Left "bandcamp" at INFO — its "Found item …" lines are per-item but
+    # have been useful for diagnosing matching; revisit in the log audit, #53.)
+    if level > logging.DEBUG:
+        logging.getLogger("ignores").setLevel(logging.ERROR)
+        logging.getLogger("sync").setLevel(logging.WARNING)
+
     if not _logging_configured:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
