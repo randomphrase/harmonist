@@ -908,6 +908,33 @@ def test_force_full_sync_clears_checkpoint_when_pending_links(cfg, client):
     assert not state.exists()  # cleared → next sync is full
 
 
+def test_configure_logging_quiets_noisy_bandcampsync_loggers(cfg):
+    """bandcampsync floods every sync with per-item lines on its own loggers —
+    'ignores' (WARNING, normal already-downloaded) and 'sync' (INFO, progress).
+    At INFO we raise their thresholds; genuine third-party errors still surface."""
+    import logging
+
+    from harmonist.web.main import _configure_logging
+
+    for name in ("ignores", "sync"):
+        logging.getLogger(name).setLevel(logging.NOTSET)
+    _configure_logging(cfg)  # default log_level == "info"
+    assert logging.getLogger("ignores").level == logging.ERROR
+    assert logging.getLogger("sync").level == logging.WARNING
+
+
+def test_configure_logging_leaves_thirdparty_verbose_at_debug(cfg):
+    """At DEBUG we leave the third-party loggers verbose for deep debugging."""
+    import logging
+
+    from harmonist.web.main import _configure_logging
+
+    logging.getLogger("ignores").setLevel(logging.NOTSET)
+    cfg.log_level = "debug"
+    _configure_logging(cfg)
+    assert logging.getLogger("ignores").level != logging.ERROR
+
+
 def test_force_full_sync_keeps_checkpoint_when_nothing_pending(cfg, client):
     """No NEEDS_SYNC albums → the checkpoint is left intact (fast incremental)."""
     from harmonist.web.main import _BANDCAMPSYNC_STATE_FILE, _force_full_sync_if_pending_links
