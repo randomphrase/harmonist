@@ -3,8 +3,8 @@
 #   - push to main      -> ghcr.io/<owner>/harmonist:edge  (rolling dev image)
 #   - push a tag v1.2.3 -> :1.2.3, :1.2, :1, :latest        (stable release)
 #
-# Multi-arch (amd64 for the Synology NAS, arm64 for the Pi). The NAS just pulls
-# a published tag — it never builds. See docs/design.md §10.
+# Built for linux/amd64 (the Synology NAS). The NAS just pulls a published tag —
+# it never builds. See docs/design.md §10.
 name: Publish image
 
 on:
@@ -27,9 +27,6 @@ jobs:
       packages: write # push to GHCR using the built-in GITHUB_TOKEN
     steps:
       - uses: actions/checkout@v7
-
-      - name: Set up QEMU (cross-arch emulation for arm64)
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -59,13 +56,13 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Cache layers between runs to keep the (emulated) arm64 build quick.
+          # Cache layers between runs to keep builds quick.
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Single clean manifest per arch — skip the extra provenance entry
-          # that otherwise shows as an "unknown/unknown" platform in the UI.
+          # Skip the extra provenance entry that otherwise shows as an
+          # "unknown/unknown" platform in the registry UI.
           provenance: false

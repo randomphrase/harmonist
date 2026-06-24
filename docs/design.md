@@ -651,7 +651,7 @@ Album IDs remain MD5-of-path (matches existing convention; survives across runs 
 - Healthcheck: `python -c "... urlopen('http://127.0.0.1:8000/healthz')"` (slim
   has no `curl`).
 - **Published to GHCR by CI** (`.github/workflows/publish.yml`) — never built on
-  the NAS. Multi-arch `linux/amd64,linux/arm64` via Buildx + QEMU:
+  the NAS. Built for `linux/amd64` (the Synology target) via Buildx:
   - push to `main` → `ghcr.io/randomphrase/harmonist:edge` (rolling dev image)
   - tag `vX.Y.Z` → `:X.Y.Z`, `:X.Y`, `:X`, and `:latest` (stable release)
 - The GHCR package is **public**, so the NAS pulls with no login. (One-time:
