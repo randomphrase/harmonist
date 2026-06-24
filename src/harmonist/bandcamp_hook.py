@@ -584,14 +584,14 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             if existing_dir is not None:
                 try:
                     write_sidecar_for_item(item, existing_dir, prefer_item_url=by_slug)
-                    if by_slug:
-                        log.info(
-                            "Linked by slug: %s / %s → %s (item_id=%s)",
-                            getattr(item, "band_name", "?"),
-                            getattr(item, "item_title", "?"),
-                            existing_dir.name,
-                            getattr(item, "item_id", "?"),
-                        )
+                    # Record the transition in the Activity feed (+ server log),
+                    # same as the ignored-purchase backfill's _link.
+                    activity.record(
+                        f"{getattr(item, 'band_name', '?')} — "
+                        f"{getattr(item, 'item_title', '?')}: Needs Sync → Library "
+                        f"(linked to Bandcamp purchase {getattr(item, 'item_id', '?')}"
+                        f"{' by slug' if by_slug else ''})"
+                    )
                     # Guard the add: this short-circuit runs every sync for an
                     # on-disk album, and bandcampsync's Ignores.add appends a
                     # line unconditionally (no dedup) — so re-adding bloats
