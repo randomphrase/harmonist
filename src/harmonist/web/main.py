@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -10,7 +11,7 @@ import logging
 import re
 import sys
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -47,6 +48,7 @@ from harmonist.models import (
 )
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
+from harmonist.web import dir_watcher
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.scan_runner import ScanRunner
 from harmonist.web.security import BasicAuthMiddleware, CSRFMiddleware
@@ -254,7 +256,24 @@ def create_app(
         # Engage the background scanner once the event loop is running, kicking
         # the initial library scan off the request path.
         scan_runner.attach_loop()
-        yield
+        # Watch the music dir so files added/removed outside the app (manual
+        # copies) trigger a rescan. Fires only on local mounts (see dir_watcher).
+        watch_stop = asyncio.Event()
+        watch_task = asyncio.create_task(
+            dir_watcher.watch_music_dir(
+                cfg.paths.music_dir,
+                scan_runner.request_scan,
+                settle_seconds=cfg.library.watch_settle_seconds,
+                stop_event=watch_stop,
+            )
+        )
+        try:
+            yield
+        finally:
+            watch_stop.set()
+            watch_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await watch_task
 
     app = FastAPI(title="Harmonist", lifespan=lifespan)
     app.state.cfg = cfg

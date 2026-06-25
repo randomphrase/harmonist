@@ -57,6 +57,14 @@ class CoverArtConfig(BaseModel):
     size: CoverArtSize = "original"
 
 
+class LibraryConfig(BaseModel):
+    # Seconds the music dir must stay quiet after a change before the file
+    # watcher triggers a rescan — long enough that a manual copy of many files
+    # settles into a single scan instead of one mid-copy. Only relevant on local
+    # mounts where inotify fires (see web/dir_watcher.py).
+    watch_settle_seconds: float = 5.0
+
+
 class TestConfig(BaseModel):
     mode: TestMode = "fixture"
     unignore_item_ids: list[int] = Field(default_factory=list)
@@ -69,6 +77,7 @@ class Config(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     cover_art: CoverArtConfig = Field(default_factory=CoverArtConfig)
+    library: LibraryConfig = Field(default_factory=LibraryConfig)
     test: TestConfig = Field(default_factory=TestConfig)
     log_level: str = "info"
     demo_mode: bool = False
@@ -114,6 +123,7 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     server = data.setdefault("server", {})
     auth = data.setdefault("auth", {})
     cover_art = data.setdefault("cover_art", {})
+    library = data.setdefault("library", {})
     test = data.setdefault("test", {})
 
     if v := env.get("HARMONIST_MUSIC_DIR"):
@@ -141,6 +151,8 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         data["log_level"] = v
     if v := env.get("HARMONIST_COVER_ART_SIZE"):
         cover_art["size"] = v
+    if v := env.get("HARMONIST_WATCH_SETTLE_SECONDS"):
+        library["watch_settle_seconds"] = float(v)
     if v := env.get("HARMONIST_DEMO_MODE"):
         data["demo_mode"] = v.strip() not in ("", "0", "false", "False", "no")
     return data
