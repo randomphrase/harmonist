@@ -253,6 +253,22 @@ but the *tag's* correctness is exactly what we can't assert — so the album sta
 in the inbox until the user resolves it. (Auto-marking these Complete was
 considered and rejected for this reason.)
 
+**Surrender is non-destructive.** `_demote_to_needs_mbid` only rewrites the
+**sidecar** — it clears `mb_release_id` but stashes the original release in
+`mb_match_candidate` (`unmatched_purchase=true`), and it **never touches the
+on-disk file tags**. So the album stays correctly tagged on disk; it just
+re-appears in the inbox as Needs MBID with its release pre-loaded as a read-only
+suggestion and a one-click Confirm.
+
+**Known limitation (deferred).** Surrender can't tell a *machine-derived* tag
+from one the **user manually assigned** — both are cleared from the sidecar and
+re-inboxed. So a user-assigned, correctly-tagged manual download whose purchase
+can't be found on a full sync re-appears in Needs MBID, costing a re-confirm
+click. We accept this for now because it's non-destructive (nothing is erased;
+one click restores it). A future refinement would record tag provenance and
+skip surrender for user-assigned tags; until then this behavior is pinned by
+`test_surrender_leaves_on_disk_file_tags_intact`.
+
 The inbox also surfaces a Needs Sync album with two manual affordances:
 **Try a different URL** (supply the correct Bandcamp URL → next sync re-matches)
 and **Mark purchased elsewhere** (clear `store_url`, drop the bandcamp block →

@@ -846,6 +846,27 @@ def test_report_unmatched_full_sync_surrenders_to_needs_mbid(cfg):
     assert any("No Bandcamp purchase matched" in m and "Harmony" in m for m in msgs)
 
 
+def test_surrender_leaves_on_disk_file_tags_intact(cfg):
+    """Surrender only rewrites the sidecar — it must NOT untag the audio files.
+    This is what makes it non-destructive: the release is still written on disk
+    and is offered as a one-click re-confirm suggestion. (Pins the deferred
+    user-assigned-MBID behavior: a manually-assigned tag is re-inboxed, never
+    erased — see design.md §3.)"""
+    from harmonist import formats
+    from harmonist.web.main import _report_unmatched_after_sync
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Orphan", "rel-orphan")
+    track = d / "01 Track.m4a"
+    assert formats.read_album_id(track) == "rel-orphan"  # tagged before surrender
+
+    _report_unmatched_after_sync(cfg, full_sync=True)
+
+    # Sidecar demoted, but the file's MB Album Id atom is untouched.
+    assert sc.read(d).mb_release_id is None
+    assert formats.read_album_id(track) == "rel-orphan"
+
+
 def test_surrender_flags_possible_duplicate_of_linked_album(cfg):
     """When a surrendered album is tagged as the SAME release as one already
     linked to a purchase, log a non-committal 'possible duplicate / split'
@@ -1488,6 +1509,102 @@ def test_manual_assign_with_bare_mbid(client, cfg, monkeypatch):
     assert r.status_code == 200
     loaded = sc.read(d)
     assert loaded.mb_release_id == "abc12345-1234-1234-1234-1234567890ab"
+
+
+_ASSIGN_MBID = "abc12345-1234-1234-1234-1234567890ab"
+
+
+def _state_of(cfg, album_dir):
+    from harmonist import scanner
+
+    for a in scanner.scan(cfg.paths.music_dir):
+        if a.path == album_dir:
+            return a.state
+    raise AssertionError(f"no album at {album_dir}")
+
+
+def test_manual_assign_derives_store_url_from_embedded_comment(client, cfg, monkeypatch):
+    """A manual download with a precise /album/ URL in ©cmt → store_url recorded
+    from the comment (no MB url-rel lookup) → album lands in Needs Sync."""
+    from harmonist.models import AlbumState
+
+    d = _make_album(cfg, "EmbeddedURL", comment="https://artist.bandcamp.com/album/x")
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda m: _release_for_match(m, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    def no_urls(_m):
+        raise AssertionError("MB url-rels must not be queried when ©cmt has a precise URL")
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release_urls", no_urls)
+
+    r = client.post(f"/manual/{aid}/assign", data={"mbid": _ASSIGN_MBID})
+    assert r.status_code == 200
+    assert sc.read(d).store_url == "https://artist.bandcamp.com/album/x"
+    assert _state_of(cfg, d) == AlbumState.NEEDS_SYNC
+
+
+def test_manual_assign_falls_back_to_mb_url_when_comment_is_root(client, cfg, monkeypatch):
+    """Artist-root ©cmt + MB has a Bandcamp url-rel → MB's canonical URL recorded."""
+    from harmonist.models import AlbumState
+
+    d = _make_album(cfg, "RootURL", comment="Visit https://artist.bandcamp.com")
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda m: _release_for_match(m, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release_urls",
+        lambda _m: ["https://artist.bandcamp.com/album/canonical"],
+    )
+
+    r = client.post(f"/manual/{aid}/assign", data={"mbid": _ASSIGN_MBID})
+    assert r.status_code == 200
+    assert sc.read(d).store_url == "https://artist.bandcamp.com/album/canonical"
+    assert _state_of(cfg, d) == AlbumState.NEEDS_SYNC
+
+
+def test_manual_assign_uses_artist_root_placeholder_when_no_mb_url(client, cfg, monkeypatch):
+    """Artist-root ©cmt + MB has no Bandcamp url-rel → keep the artist-root as a
+    placeholder store_url so it's still recognised as a Bandcamp purchase."""
+    from harmonist.models import AlbumState
+
+    d = _make_album(cfg, "Placeholder", comment="Visit https://artist.bandcamp.com")
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda m: _release_for_match(m, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release_urls", lambda _m: [])
+
+    r = client.post(f"/manual/{aid}/assign", data={"mbid": _ASSIGN_MBID})
+    assert r.status_code == 200
+    assert sc.read(d).store_url == "https://artist.bandcamp.com"
+    assert _state_of(cfg, d) == AlbumState.NEEDS_SYNC
+
+
+def test_manual_assign_store_url_derivation_error_is_swallowed(client, cfg, monkeypatch):
+    """If store_url derivation raises, tagging still succeeds (store_url stays None)."""
+    d = _make_album(cfg, "BoomURL")
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda m: _release_for_match(m, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    def boom(*a, **kw):
+        raise RuntimeError("derivation failed")
+
+    monkeypatch.setattr("harmonist.reconcile.store_url_for_tagging", boom)
+
+    r = client.post(f"/manual/{aid}/assign", data={"mbid": _ASSIGN_MBID})
+    assert r.status_code == 200
+    loaded = sc.read(d)
+    assert loaded.mb_release_id == _ASSIGN_MBID  # tagged despite the derivation error
+    assert loaded.store_url is None
 
 
 def test_manual_assign_invalid_input(client, cfg):

@@ -242,3 +242,11 @@ def test_reconcile_pending_classifies_each_album(tmp_path):
         "skipped": 1,
         "errors": 0,
     }
+
+
+def test_reconcile_pending_counts_errors(tmp_path):
+    """A dir that makes reconcile_album raise (here: it doesn't exist, so
+    iterdir fails) is counted as an error, not a crash."""
+    missing = tmp_path / "does-not-exist"
+    stats = reconcile_pending([missing], fetch_urls=_no_urls)
+    assert stats["errors"] == 1

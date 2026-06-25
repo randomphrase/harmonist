@@ -445,7 +445,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
 
         # Phase 2: title fallback across the URL mismatch. Index the still-
         # unmatched purchases by normalized title; link an album to the one
-        # whose title uniquely matches its folder name.
+        # whose title uniquely matches its tagged ©alb title (not the folder).
         title_index: dict[str, list[Any]] = {}
         for p in candidates:
             if int(p.item_id) in consumed:
