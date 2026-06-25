@@ -67,7 +67,11 @@ def _release_one_track() -> dict:
                         "id": "rt-1",
                         "position": "1",
                         "title": "The Track",
-                        "recording": {"id": "rec-1", "title": "The Track"},
+                        "recording": {
+                            "id": "rec-1",
+                            "title": "The Track",
+                            "isrc-list": ["GBFMT2100001"],
+                        },
                     },
                 ],
             },
@@ -251,6 +255,33 @@ def test_sort_artists_original_date_script_written(tmp_path, ext, fixture):
 
 def _first(values: list[str]) -> str | None:
     return values[0] if values else None
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_isrc_written(tmp_path, ext, fixture):
+    """The track recording's ISRC round-trips in each format's native tag."""
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+    assert _read_isrcs(f) == ["GBFMT2100001"]
+
+
+def _read_isrcs(path: Path) -> list[str]:
+    ext = path.suffix.lower()
+    if ext in (".m4a", ".mp4"):
+        from mutagen.mp4 import MP4
+
+        a = MP4(path)
+        return [b.decode("utf-8") for b in a.get("----:com.apple.iTunes:ISRC", [])]
+    if ext == ".mp3":
+        from mutagen.mp3 import MP3
+
+        frame = MP3(path).tags.get("TSRC")
+        return [str(t) for t in frame.text] if frame else []
+    from mutagen import File as MutagenFile
+
+    tags = MutagenFile(path).tags
+    return [str(v) for v in (tags.get("ISRC") or [])]
 
 
 def _read_new_tags(path: Path) -> tuple[str | None, list[str], str | None, str | None, str | None]:

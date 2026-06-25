@@ -33,6 +33,7 @@ from mutagen.id3 import (
     TRCK,
     TSO2,
     TSOP,
+    TSRC,
     TXXX,
     UFID,
     Encoding,
@@ -199,6 +200,8 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
         _set_txxx(tags, TXXX_RELEASE_TRACK_ID, [tagset.mb_release_track_id])
     if tagset.mb_artist_ids:
         _set_txxx(tags, TXXX_ARTIST_ID, tagset.mb_artist_ids)
+    if tagset.isrcs:
+        tags.setall("TSRC", [TSRC(encoding=Encoding.UTF8, text=tagset.isrcs)])
 
     # ---- Standard text frames ----
     tags.setall("TIT2", [TIT2(encoding=Encoding.UTF8, text=[tagset.title])])

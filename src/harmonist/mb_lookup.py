@@ -95,6 +95,7 @@ def fetch_release(mbid: str) -> Release:
                 "release-groups",
                 "labels",
                 "media",
+                "isrcs",
             ],
         )
     except (

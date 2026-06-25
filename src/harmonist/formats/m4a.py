@@ -38,7 +38,8 @@ ATOM_BARCODE = f"{ATOM_PREFIX}BARCODE"
 ATOM_MEDIA = f"{ATOM_PREFIX}MEDIA"
 ATOM_ASIN = f"{ATOM_PREFIX}ASIN"
 
-# Multi-value artists, original date, and script (freeform; Picard naming).
+# Per-track ISRC(s) and multi-value artists, original date, script (freeform).
+ATOM_ISRC = f"{ATOM_PREFIX}ISRC"
 ATOM_ARTISTS = f"{ATOM_PREFIX}ARTISTS"
 ATOM_ORIGINAL_DATE = f"{ATOM_PREFIX}ORIGINALDATE"
 ATOM_ORIGINAL_YEAR = f"{ATOM_PREFIX}ORIGINALYEAR"
@@ -206,6 +207,8 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
         audio[ATOM_MB_RELEASE_TRACK_ID] = [tagset.mb_release_track_id.encode("utf-8")]
     if tagset.mb_artist_ids:
         audio[ATOM_MB_ARTIST_ID] = [a.encode("utf-8") for a in tagset.mb_artist_ids]
+    if tagset.isrcs:
+        audio[ATOM_ISRC] = [code.encode("utf-8") for code in tagset.isrcs]
 
     # ---- Standard text tags ----
     audio[ATOM_TITLE] = [tagset.title]
