@@ -708,6 +708,28 @@ services:
     ports: ["8000:8000"]
 ```
 
+### 10.4 Picking up manual changes (file watcher)
+
+Files added or removed outside the app — copied straight into the music dir,
+or deleted by hand — don't pass through the in-app rescan path. A background
+watcher (`web/dir_watcher.py`, built on `watchfiles`) closes that gap: it
+watches the music dir and triggers a rescan once activity **settles** (the dir
+is quiet for `library.watch_settle_seconds`, default 5s — long enough that
+copying many files in lands as one scan, not a scan mid-copy). The per-album
+mtime cache keeps the rescan cheap. Configure via `[library]
+watch_settle_seconds` in `harmonist.toml` or `HARMONIST_WATCH_SETTLE_SECONDS`.
+
+**Caveat — local mounts only.** The watcher relies on the kernel's inotify,
+which fires for changes to a *local* filesystem (the Synology bind-mount of
+`/volume1/music` — including writes that arrive there over SMB from another
+machine). It does **not** fire when the *container itself* mounts a network
+share (the Pi-dev SMB recipe above, or any NFS/SMB `/music`): inotify events
+don't cross the network, so the watcher silently sees nothing and the watcher
+fails soft (logs, no crash). **Workaround for network-mounted libraries:
+restart the container** — the initial scan on startup re-reads the whole tree,
+so a quick bounce (`docker compose restart harmonist`) is a reliable way to
+force a rescan there.
+
 ---
 
 ## 11. Testing strategy
