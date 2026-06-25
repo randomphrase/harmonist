@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from mutagen.mp4 import MP4
 
 from harmonist import sidecar as sc
 from harmonist.bandcamp_hook import (
@@ -22,6 +24,20 @@ from harmonist.bandcamp_hook import (
 )
 from harmonist.models import BandcampInfo, Sidecar
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
+from harmonist.tagger import ATOM_ALBUM
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+SINE_M4A = FIXTURES_DIR / "sine.m4a"
+
+
+def _tag_album_title(album_dir: Path, title: str) -> None:
+    """Give the album a tagged ©alb title — the backfill's title-match key
+    (folder name is ignored). Drops a sine fixture and sets its album tag."""
+    f = album_dir / "01 Track.m4a"
+    shutil.copy(SINE_M4A, f)
+    audio = MP4(f)
+    audio[ATOM_ALBUM] = [title]
+    audio.save()
 
 
 class _StubItem:
@@ -778,7 +794,7 @@ def test_backfill_links_ignored_purchase_to_unlinked_album(tmp_path):
 def test_backfill_links_slugless_album_by_title(tmp_path):
     """A manual download whose only Bandcamp URL is the artist root (no /album/
     slug) links to its purchase via the phase-2 title fallback."""
-    album = tmp_path / "While the Universe Sleeps"  # folder name == purchase title
+    album = tmp_path / "anything"  # folder name is ignored; the ©alb tag is the key
     album.mkdir()
     sc.write(
         album,
@@ -788,6 +804,7 @@ def test_backfill_links_slugless_album_by_title(tmp_path):
             mb_release_id="rel-manual",
         ),
     )
+    _tag_album_title(album, "While the Universe Sleeps")
     s = _bare_syncer()
     s.local_media.media_dir = str(tmp_path)
     s.bandcamp.purchases = [_wus_item(3417563775)]
@@ -869,20 +886,22 @@ def test_backfill_does_not_mislink_linked_purchase_to_unlinked_sibling(tmp_path)
 
 def test_backfill_title_tiebreak_pairs_editions(tmp_path):
     """Two editions share ONE store URL slug, with one purchase each. A title
-    match (folder name vs purchase title) pairs them correctly — the long-form
-    folder to the long-form purchase, the standard to the standard."""
-    standard = tmp_path / "Variant" / "While the Universe Sleeps"
+    match (tagged ©alb vs purchase title) pairs them correctly — the long-form
+    album to the long-form purchase, the standard to the standard."""
+    standard = tmp_path / "Variant" / "std"
     standard.mkdir(parents=True)
     sc.write(
         standard,
         Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-std"),
     )
-    longform = tmp_path / "Variant" / "While the Universe Sleeps (Long-Form Edition)"
+    _tag_album_title(standard, "While the Universe Sleeps")
+    longform = tmp_path / "Variant" / "lf"
     longform.mkdir(parents=True)
     sc.write(
         longform,
         Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
     )
+    _tag_album_title(longform, "While the Universe Sleeps (Long-Form Edition)")
     p_std = _StubItem(
         item_id=631669900,
         band_name="Variant",
@@ -907,19 +926,21 @@ def test_backfill_title_tiebreak_pairs_editions(tmp_path):
 
 
 def test_backfill_marks_ambiguous_when_title_cannot_separate(tmp_path):
-    """Two editions share a slug but neither folder name matches a purchase
-    title (can't pick) → each album records the candidate ids and leaves
-    NEEDS_SYNC (no nag), rather than guessing."""
-    a = tmp_path / "Variant" / "Edition A"
+    """Two editions share a slug but neither album's tagged title matches a
+    purchase title (can't pick) → each album records the candidate ids and
+    leaves NEEDS_SYNC (no nag), rather than guessing."""
+    a = tmp_path / "Variant" / "a"
     a.mkdir(parents=True)
     sc.write(
         a, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="ra")
     )
-    b = tmp_path / "Variant" / "Edition B"
+    _tag_album_title(a, "Edition A")
+    b = tmp_path / "Variant" / "b"
     b.mkdir(parents=True)
     sc.write(
         b, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rb")
     )
+    _tag_album_title(b, "Edition B")
     # Purchase titles match neither folder.
     p1 = _StubItem(
         item_id=111,
@@ -950,18 +971,20 @@ def test_backfill_cross_slug_title_fallback_links_longform(tmp_path, caplog):
     (shared with the standard), but the long-form's own purchase has a DIFFERENT
     URL. Phase 1 links the standard by URL; phase 2 links the long-form by a
     unique title match across the URL mismatch."""
-    standard = tmp_path / "Variant" / "While the Universe Sleeps"
+    standard = tmp_path / "Variant" / "std"
     standard.mkdir(parents=True)
     sc.write(
         standard,
         Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-std"),
     )
-    longform = tmp_path / "Variant" / "While the Universe Sleeps (Long-Form Edition)"
+    _tag_album_title(standard, "While the Universe Sleeps")
+    longform = tmp_path / "Variant" / "lf"
     longform.mkdir(parents=True)
     sc.write(
         longform,
         Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
     )
+    _tag_album_title(longform, "While the Universe Sleeps (Long-Form Edition)")
     # Standard purchase shares the album's public URL; the long-form purchase
     # has its OWN distinct URL (so slug matching can't tie it to the album).
     p_std = _StubItem(
