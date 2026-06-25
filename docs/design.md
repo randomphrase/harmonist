@@ -105,7 +105,7 @@ Because tagging records the `store_url`, a manually-assigned download lands in
 **Needs Sync** (not Complete), and the next sync fills in `item_id`. When the
 placeholder is only an artist-root URL (no `/album/` slug), the sync can't match
 it by slug, so the backfill links it in its **title-fallback** pass instead (see
-below) — folder name ⟷ purchase title, the same exact-match rule used for
+below) — tagged `©alb` title ⟷ purchase title, the same exact-match rule used for
 edition mismatches.
 
 #### Linking purchases to on-disk albums
@@ -152,9 +152,10 @@ unlinked albums and the candidate purchases whose URL carries that slug.
 1. One album + one purchase → **link directly**.
 2. Several editions share the page (so several albums and/or purchases share the
    slug) → separate them by an **exact normalized title match**: the album's
-   folder name vs the purchase's item title, lowercased and reduced to
-   alphanumerics. Link only a **unique** match; then link a lone
-   1-album/1-purchase remainder by elimination.
+   tagged `©alb` title vs the purchase's item title, lowercased and reduced to
+   alphanumerics. (The album is tagged, so its title is authoritative; the
+   enclosing **folder name is ignored** — it's arbitrary user naming.) Link only
+   a **unique** match; then link a lone 1-album/1-purchase remainder by elimination.
 3. Purchases the title couldn't pin to an album → record them as an **ambiguous
    link**: store the candidate item_ids on the album (`bandcamp.candidate_item_ids`)
    with no single `item_id`. The album leaves Needs Sync for **Complete** — it's
@@ -169,7 +170,7 @@ yet the long-form purchase resolves to a different slug. Phase 1 links the
 standard (its purchase URL matches the album's store_url); the long-form album
 matches no purchase by slug and falls to phase 2. Here, an album still unlinked
 is matched to the one **remaining** purchase whose title uniquely equals its
-folder name (same normalization), **ignoring the URL**. A unique match links it;
+tagged `©alb` title (same normalization), **ignoring the URL**. A unique match links it;
 ambiguous or absent → left for surrender. **Slug-less** albums (an artist-root
 placeholder `store_url`, e.g. a manual download with no precise URL anywhere — §2.4)
 have no slug to match in phase 1, so they're added directly to this title pass.
@@ -227,7 +228,7 @@ WARNING flags a possible duplicate copy — or a release legitimately split acro
 directories (§15.3), which we don't try to tell apart.
 
 After a **full** sync, an album reaches surrender for exactly one of three
-reasons — its `store_url` slug matched no purchase slug *and* its folder title
+reasons — its `store_url` slug matched no purchase slug *and* its tagged title
 matched no unique purchase title:
 
 1. **No purchase exists.** Acquired outside Bandcamp (CD rip, promo, gift, or a

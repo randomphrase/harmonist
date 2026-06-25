@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
-from . import activity
+from . import activity, formats
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url
 from .sidecar import CURRENT_SCHEMA_VERSION
@@ -169,11 +169,22 @@ def write_ambiguous_candidates(album_dir: Path, item_ids: list[int]) -> bool:
 
 
 def _norm_title(s: str) -> str:
-    """Lowercase + keep only alphanumerics — for an exact (not fuzzy) title
-    compare between an album folder name and a purchase title. Exact-only keeps
-    the tiebreak safe: a near-but-not-equal title falls through to ambiguous
-    rather than risking a mis-link."""
+    """Lowercase + keep only alphanumerics — for an exact (not fuzzy) compare
+    between an album's title and a purchase title. Exact-only keeps the tiebreak
+    safe: a near-but-not-equal title falls through to ambiguous rather than
+    risking a mis-link."""
     return "".join(ch for ch in s.lower() if ch.isalnum())
+
+
+def _album_title(album_dir: Path) -> str:
+    """The album's tagged title (©alb) — the reliable title-match key for a
+    tagged NEEDS_SYNC album. The enclosing folder name is deliberately ignored
+    (arbitrary user naming, e.g. "Artist - Album"). Empty when there's no audio
+    or no title tag, which simply matches no purchase."""
+    for f in sorted(album_dir.iterdir()):
+        if formats.is_supported(f):
+            return formats.read_album_title(f) or ""
+    return ""
 
 
 def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
@@ -444,7 +455,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         for album_dir in unlinked:
             avail = [
                 p
-                for p in title_index.get(_norm_title(album_dir.name), [])
+                for p in title_index.get(_norm_title(_album_title(album_dir)), [])
                 if int(p.item_id) not in consumed
             ]
             if len(avail) == 1:
@@ -495,9 +506,9 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         retries them by title.
 
         - 1 album + 1 purchase → link directly (unambiguous).
-        - otherwise → pair by an exact normalized title match (folder name vs
-          purchase title); link unique winners, then a final 1-album/1-purchase
-          remainder by elimination.
+        - otherwise → pair by an exact normalized title match (the album's
+          tagged ©alb title vs the purchase title); link unique winners, then a
+          final 1-album/1-purchase remainder by elimination.
         - leftover purchases the title couldn't separate → ambiguous (store the
           candidate ids). No leftover purchase → return the album for phase 2.
         """
@@ -514,7 +525,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         linked = 0
         unpaired: list[Path] = []
         for album_dir in albums:
-            key = _norm_title(album_dir.name)
+            key = _norm_title(_album_title(album_dir))
             matches = [p for p in purchases if _norm_title(getattr(p, "item_title", "")) == key]
             if len(matches) == 1:
                 _take(album_dir, matches[0])
