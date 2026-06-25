@@ -29,6 +29,7 @@ KEY_RELEASE_GROUP_ID = "MUSICBRAINZ_RELEASEGROUPID"
 KEY_TRACK_ID = "MUSICBRAINZ_TRACKID"  # the recording MBID
 KEY_RELEASE_TRACK_ID = "MUSICBRAINZ_RELEASETRACKID"
 KEY_ARTIST_ID = "MUSICBRAINZ_ARTISTID"
+KEY_ISRC = "ISRC"
 KEY_RELEASE_TYPE = "RELEASETYPE"
 KEY_RELEASE_STATUS = "RELEASESTATUS"
 KEY_RELEASE_COUNTRY = "RELEASECOUNTRY"
@@ -64,6 +65,7 @@ _MANAGED_KEYS = (
     KEY_TRACK_ID,
     KEY_RELEASE_TRACK_ID,
     KEY_ARTIST_ID,
+    KEY_ISRC,
     KEY_RELEASE_TYPE,
     KEY_RELEASE_STATUS,
     KEY_RELEASE_COUNTRY,
@@ -234,6 +236,8 @@ class VorbisTagger:
             tags[KEY_RELEASE_TRACK_ID] = [tagset.mb_release_track_id]
         if tagset.mb_artist_ids:
             tags[KEY_ARTIST_ID] = list(tagset.mb_artist_ids)
+        if tagset.isrcs:
+            tags[KEY_ISRC] = list(tagset.isrcs)
 
         tags[KEY_TITLE] = [tagset.title]
         tags[KEY_ALBUM] = [tagset.album]

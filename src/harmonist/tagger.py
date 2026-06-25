@@ -31,6 +31,7 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_DATE,
     ATOM_DISC_NUM,
     ATOM_GENRE,
+    ATOM_ISRC,
     ATOM_LABEL,
     ATOM_MB_ALBUM_ARTIST_ID,
     ATOM_MB_ALBUM_COUNTRY,
@@ -189,6 +190,7 @@ def _build_tagset(
         mb_track_id=(track.get("recording") or {}).get("id"),
         mb_release_track_id=track.get("id"),
         mb_artist_ids=_artist_ids(track_artist_credit),
+        isrcs=_isrcs(track),
         date=release.get("date") or None,
         disc_num=disc_num,
         disc_total=media_total,
@@ -258,6 +260,13 @@ def _track_title(track: Track) -> str:
     if (recording := track.get("recording")) and (title := recording.get("title")):
         return str(title)
     return str(track.get("title", ""))
+
+
+def _isrcs(track: Track) -> list[str]:
+    """The ISRC code(s) of the track's recording (MB returns `isrc-list` when
+    the release is fetched with the `isrcs` include)."""
+    recording = track.get("recording") or {}
+    return [str(code) for code in (recording.get("isrc-list") or [])]
 
 
 def _artist_ids(artist_credit: list[Any] | None) -> list[str]:

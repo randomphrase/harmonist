@@ -20,6 +20,7 @@ from harmonist.tagger import (
     ATOM_COVER,
     ATOM_DATE,
     ATOM_DISC_NUM,
+    ATOM_ISRC,
     ATOM_LABEL,
     ATOM_MB_ALBUM_ARTIST_ID,
     ATOM_MB_ALBUM_COUNTRY,
@@ -79,7 +80,11 @@ def _release_2_tracks() -> dict:
                         "id": "rt-001",
                         "position": "1",
                         "title": "Track 1",
-                        "recording": {"id": "rec-001", "title": "Track 1"},
+                        "recording": {
+                            "id": "rec-001",
+                            "title": "Track 1",
+                            "isrc-list": ["GBTEST2100001"],
+                        },
                     },
                     {
                         "id": "rt-002",
@@ -147,8 +152,11 @@ def test_tag_album_writes_per_track_atoms(album_with_tracks):
 
     assert _atom_str(track1, ATOM_MB_TRACK_ID) == "rec-001"
     assert _atom_str(track1, ATOM_MB_RELEASE_TRACK_ID) == "rt-001"
+    assert _atom_strs(track1, ATOM_ISRC) == ["GBTEST2100001"]
     assert _atom_str(track2, ATOM_MB_TRACK_ID) == "rec-002"
     assert _atom_str(track2, ATOM_MB_RELEASE_TRACK_ID) == "rt-002"
+    # Track 2's recording has no ISRC → the atom is omitted.
+    assert ATOM_ISRC not in track2
 
 
 def test_tag_album_writes_standard_text_tags(album_with_tracks):

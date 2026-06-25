@@ -473,6 +473,7 @@ Per-track:
 - `----:com.apple.iTunes:MusicBrainz Track Id` — recording MBID
 - `----:com.apple.iTunes:MusicBrainz Release Track Id` — release-track MBID
 - `----:com.apple.iTunes:MusicBrainz Artist Id` — track-artist MBID(s)
+- `----:com.apple.iTunes:ISRC` — the recording's ISRC(s) (`TSRC` / `ISRC` for ID3 / Vorbis); fetched via the `isrcs` MB include, written only when present
 
 Standard text tags refreshed from MB:
 

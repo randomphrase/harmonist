@@ -67,6 +67,9 @@ class TagSet:
     mb_release_track_id: str | None = None
     mb_artist_ids: list[str] = field(default_factory=list)
 
+    # ISRC(s) of the track's recording (a recording can carry several).
+    isrcs: list[str] = field(default_factory=list)
+
     date: str | None = None
     disc_num: int = 1
     disc_total: int = 1

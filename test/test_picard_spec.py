@@ -25,6 +25,7 @@ from harmonist.tagger import (
     ATOM_ASIN,
     ATOM_BARCODE,
     ATOM_CATALOG,
+    ATOM_ISRC,
     ATOM_LABEL,
     ATOM_MB_ALBUM_ARTIST_ID,
     ATOM_MB_ALBUM_COUNTRY,
@@ -96,6 +97,7 @@ def _fully_populated_release() -> dict:
                             "id": "rec01111-1111-1111-1111-111111111111",
                             "title": "Side A Track",
                             "length": "180000",
+                            "isrc-list": ["GBREF2100001"],
                         },
                     },
                     {
@@ -207,6 +209,7 @@ def test_per_track_mbid_atoms_use_picard_convention(tmp_path):
     t1 = MP4(album_dir / "01 Track 1.m4a")
     assert _atom_str(t1, ATOM_MB_TRACK_ID) == "rec01111-1111-1111-1111-111111111111"
     assert _atom_str(t1, ATOM_MB_RELEASE_TRACK_ID) == "track1111-1111-1111-1111-111111111111"
+    assert _atom_strs(t1, ATOM_ISRC) == ["GBREF2100001"]
     # Track 1 has no track-level artist credit → falls back to release credit
     assert _atom_strs(t1, ATOM_MB_ARTIST_ID) == ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
 
@@ -279,6 +282,7 @@ EXPECTED_PICARD_ATOMS_WE_WRITE = {
     ATOM_MB_TRACK_ID,
     ATOM_MB_RELEASE_TRACK_ID,
     ATOM_MB_ARTIST_ID,
+    ATOM_ISRC,
     # Album metadata
     ATOM_LABEL,
     ATOM_CATALOG,
@@ -337,7 +341,6 @@ def test_complete_inventory_against_picard_spec(tmp_path):
 
 KNOWN_GAPS = {
     "----:com.apple.iTunes:LANGUAGE",
-    "----:com.apple.iTunes:ISRC",
     "----:com.apple.iTunes:DISCSUBTITLE",
     "----:com.apple.iTunes:WORK",
     "----:com.apple.iTunes:MOVEMENT",
