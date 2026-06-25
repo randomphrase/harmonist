@@ -85,18 +85,28 @@ For each such album (`harmonist.reconcile.reconcile_album`):
 The `©cmt` evidence rule prevents false-positive "purchased on Bandcamp" classifications when a user happens to own an album that's *also* available on Bandcamp but they bought it elsewhere (Beatport, CD rip, etc.).
 
 **Untagged Bandcamp downloads (no MBID atom).** A purchase the user downloaded
-by hand and copied in has no MusicBrainz tags at all, so steps 1–5 don't apply
-and it would otherwise sit in **New** forever. For these, reconcile instead runs
-**URL recovery** (`url_recovery.recover_album_url`) over the `©cmt` comment; if a
-Bandcamp URL is recovered, it writes a sidecar with that `store_url` and **no**
-MBID, advancing the album **New → Needs MBID**. The user then confirms the MB
-match (or it auto-resolves by store URL), and because `_tag_with_release`
-preserves `store_url`, tagging lands it in **Needs Sync** — where the next sync
-fills in the Bandcamp `item_id`. The same recovery is a safety net in
-`manual_assign`: assigning an MBID to such an album first recovers and persists
-the `store_url`, so a direct assign can't drop it and tag straight to Complete
-(which would never pick up the item_id). This makes the manual-download path
-reach the same end state as a synced one.
+by hand and copied in has no MusicBrainz tags at all, so steps 1–5 don't apply.
+The Bandcamp `store_url` is recovered from two sources, **no guessing** (no
+artist-page scraping):
+
+- **At reconcile** (`url_recovery.recover_album_url`): if the `©cmt` carries a
+  fully-formed `/album/` (or `/track/`) URL — the actual purchase URL — write a
+  sidecar with that `store_url` and no MBID, advancing **New → Needs MBID**.
+  (A bare artist-root URL recovers nothing here; the album stays New.)
+- **At tag time** (`reconcile.store_url_for_tagging`, called from
+  `_tag_with_release`): when the album is being tagged to an MBID and has no
+  `store_url` yet, derive one in preference order — embedded `/album/` URL →
+  MB's canonical Bandcamp url-rel for that release → the artist-root `©cmt` URL
+  as a last-resort placeholder. All three are gated by `©cmt` Bandcamp evidence,
+  so a CD rip (or a release MB has no Bandcamp link for) doesn't get a spurious
+  `store_url`.
+
+Because tagging records the `store_url`, a manually-assigned download lands in
+**Needs Sync** (not Complete), and the next sync fills in `item_id`. When the
+placeholder is only an artist-root URL (no `/album/` slug), the sync can't match
+it by slug, so the backfill links it in its **title-fallback** pass instead (see
+below) — folder name ⟷ purchase title, the same exact-match rule used for
+edition mismatches.
 
 #### Linking purchases to on-disk albums
 
@@ -160,16 +170,20 @@ standard (its purchase URL matches the album's store_url); the long-form album
 matches no purchase by slug and falls to phase 2. Here, an album still unlinked
 is matched to the one **remaining** purchase whose title uniquely equals its
 folder name (same normalization), **ignoring the URL**. A unique match links it;
-ambiguous or absent → left for surrender.
+ambiguous or absent → left for surrender. **Slug-less** albums (an artist-root
+placeholder `store_url`, e.g. a manual download with no precise URL anywhere — §2.4)
+have no slug to match in phase 1, so they're added directly to this title pass.
 
-A phase-2 link **always** has a URL mismatch by construction (that's why it fell
-out of phase 1), so the tagged release's store_url differs from the matched
-purchase's URL. That can mean the tag is the wrong edition (a mis-tag), OR a
-correctly-tagged edition whose MB URL is the shared public page — indistinguishable
+A phase-2 link of a **slug-bearing** album **always** has a URL mismatch by
+construction (that's why it fell out of phase 1), so the tagged release's
+store_url differs from the matched purchase's URL. That can mean the tag is the
+wrong edition (a mis-tag), OR a correctly-tagged edition whose MB URL is the
+shared public page — indistinguishable
 without comparing tracklists. So we **link and log a WARNING** ("possible mis-tag",
-naming both URLs) into the Activity feed for the user to judge. This is the
-*one place* matching crosses the no-guessing line: we act on strong unique-title
-evidence but never claim certainty.
+naming both URLs) into the Activity feed for the user to judge. (A slug-less album
+has no precise URL to disagree with the purchase, so no such warning is logged.)
+This is the *one place* matching crosses the no-guessing line: we act on strong
+unique-title evidence but never claim certainty.
 
 **Why title matching is allowed here (a deliberate reversal).** An earlier design
 forbade *any* artist/title fallback as "noise", and broad fuzzy artist+title
@@ -299,7 +313,7 @@ Every album in the music dir is in exactly one state, derived from the presence/
 
 | Sidecar | `mb_release_id` | `mb_match_candidate` | Files tagged | File count vs MB tracks | State | Inbox? | UI affordances |
 |---|---|---|---|---|---|---|---|
-| absent | — | — | — | — | **New** | yes | "Reconcile from tags" / "Recover store URL" / manual MBID form |
+| absent | — | — | — | — | **New** | yes | "Reconcile from tags" / search-by-name / manual MBID form |
 | present | null | null | n/a | — | **Needs MBID** | yes | If `store_url`: "Open in Harmony" + "Recheck"; always: manual MBID form |
 | present | null | set | n/a | — | **Needs MBID** (with suggestion) | yes | Adaptive card: side-by-side files vs MB release (per-track green/amber length deltas) + "Confirm" / "Confirm as Incomplete" / "Dismiss suggestion", with the find/assign tools available under a disclosure. Sorted first in the group. |
 | present | set | n/a | no | — | **Tagging** (transient) | yes (briefly) | spinner |
@@ -348,13 +362,14 @@ stateDiagram-v2
 
     NEW --> NEEDS_SYNC: reconcile<br/>(MBID + bandcamp ©cmt)
     NEW --> COMPLETE: reconcile<br/>(MBID, non-bandcamp)
-    NEW --> NEEDS_MBID: recover store URL<br/>from ©cmt (auto/manual)
+    NEW --> NEEDS_MBID: reconcile recovers<br/>embedded ©cmt /album/ URL
     NEW --> NEEDS_MBID: manual MBID<br/>(approximate → suggestion)
     NEW --> COMPLETE: manual MBID<br/>(exact)
 
     NEEDS_MBID --> NEEDS_MBID: recheck / paste MBID<br/>(approximate → suggestion)
     NEEDS_MBID --> NEEDS_MBID: dismiss suggestion / recheck (no match)
-    NEEDS_MBID --> COMPLETE: Confirm suggestion<br/>or exact recheck / paste MBID
+    NEEDS_MBID --> COMPLETE: Confirm / recheck / paste MBID<br/>(non-bandcamp store_url → tagged)
+    NEEDS_MBID --> NEEDS_SYNC: Confirm / recheck / paste MBID<br/>(bandcamp store_url → awaits item_id)
     NEEDS_MBID --> INCOMPLETE: Confirm as Incomplete
 
     NEEDS_SYNC --> COMPLETE: Sync matches<br/>purchase (item_id filled)
@@ -548,7 +563,7 @@ src/harmonist/
   reconcile.py         NEW   per-album reconciliation: derive sidecar from MBID tag + ©cmt + MB url-rels
   cover_art.py         NEW   Cover Art Archive fetch, resize, cache, write to album dir
   tagger.py            NEW   Picard-compatible tag writer (incl. embedded covr atom)
-  url_recovery.py      NEW   fallback: reconstruct Bandcamp album URL from ©cmt artist URL
+  url_recovery.py      NEW   extract the embedded Bandcamp /album/ URL from ©cmt (no scraping)
   web/
     main.py            REWRITE  FastAPI routes
     sync_runner.py     NEW   in-process job runner with status polling
@@ -625,7 +640,6 @@ All routes return HTML fragments unless noted. JSON only for `/healthz`, `/sync/
 | POST | `/recheck` | Recheck all held | HTML fragment |
 | POST | `/manual/{album_id}` | Open manual MBID entry/search | HTML fragment |
 | POST | `/manual/{album_id}/search` | Run name-based MB search helper | HTML fragment |
-| POST | `/recover/{album_id}` | Try to recover store URL for a New album | HTML fragment |
 | GET  | `/healthz` | Health for Docker | JSON |
 | GET  | `/static/...` | Static assets (cover art via symlink to music dir is one option) | binary |
 
@@ -650,9 +664,11 @@ Album IDs remain MD5-of-path (matches existing convention; survives across runs 
 
 ### 9.3 Manual ingest
 
-- New card includes a manual MBID form alongside "Reconcile from tags" and "Recover store URL".
+- New card includes a manual MBID form alongside "Reconcile from tags".
 - Form takes either a full MB release URL/MBID *or* runs the search helper (`/manual/{id}/search?artist=...&title=...`) and presents matches to pick.
-- On selection, POST to `/manual/{id}/assign`.
+- On selection, POST to `/manual/{id}/assign`. The assign tags the album and
+  derives its Bandcamp `store_url` from the MBID + `©cmt` (see §2.5), so a manual
+  download reaches Needs Sync rather than Complete.
 
 ---
 
@@ -839,7 +855,7 @@ Each step ends with green tests at its level. No agent moves on until QA signs o
 6. **Web layer** — FastAPI routes, `sync_runner.py`, templates. Integration tests via `TestClient` covering each route × each state.
 7. **UX live updates** — HTMX polling, status indicator, sync button states. Browser-tested manually.
 8. **Manual + recheck flows** — `mb_search.py`, manual-entry templates, recheck routes.
-9. **URL recovery fallback** — `url_recovery.py` for New albums with only a `©cmt` artist URL. Lower priority.
+9. **URL recovery fallback** — `url_recovery.py` extracts an embedded Bandcamp `/album/` URL from `©cmt` (no scraping). Lower priority.
 10. **Containerise** — Dockerfile, multi-arch buildx, healthcheck, PUID/PGID entrypoint, compose recipes.
 11. **Flagship E2E test** — cassette-mode test of the full sync flow. Becomes the gate for "prototype done".
 12. **Manual test pass** — QA runs through `docs/manual-tests.md` on macOS and Pi.

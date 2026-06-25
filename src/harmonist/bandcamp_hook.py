@@ -25,7 +25,7 @@ from bandcampsync.sync import Syncer as _BCSyncer
 
 from . import activity
 from . import sidecar as sidecar_mod
-from .models import BandcampInfo, Sidecar
+from .models import BandcampInfo, Sidecar, is_bandcamp_url
 from .sidecar import CURRENT_SCHEMA_VERSION
 
 log = logging.getLogger(__name__)
@@ -192,15 +192,19 @@ def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
     return None
 
 
-def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], set[int]]:
+def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], list[Path], set[int]]:
     """One pass over music_dir → `({release slug: [unlinked album dirs]},
-    {item_ids already linked to some album})`.
+    [unlinked Bandcamp albums with no slug], {item_ids already linked})`.
 
     Built once per sync so the ignored-purchase backfill is O(albums + ignored)
     rather than re-scanning the whole library for every purchase.
 
     - The slug map holds only *unlinked* albums, so a backfill can only ever
       *fill in* a missing id — never hijack a correctly-linked album.
+    - The slug-less list holds unlinked albums whose `store_url` is a Bandcamp
+      URL but carries no `/album/` slug (an artist-root placeholder, e.g. a
+      manual download with no precise URL anywhere). They can't match by slug,
+      so the backfill links them in the title-fallback pass only.
     - The linked-id set lets the backfill skip a purchase that's already tied to
       a different album: two editions can share a store_url slug (a standard +
       a long-form edition whose MB release only carries the public page URL), so
@@ -209,6 +213,7 @@ def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], set[int]
       that mis-link.
     """
     by_slug: dict[str, list[Path]] = {}
+    slugless: list[Path] = []
     linked_ids: set[int] = set()
     for f in music_dir.rglob(".harmonist.json"):
         try:
@@ -222,7 +227,9 @@ def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], set[int]
             continue  # already linked
         if slug := album_slug(sc.store_url):
             by_slug.setdefault(slug, []).append(f.parent)
-    return by_slug, linked_ids
+        elif is_bandcamp_url(sc.store_url):
+            slugless.append(f.parent)
+    return by_slug, slugless, linked_ids
 
 
 def album_slug(url: str | None) -> str | None:
@@ -379,9 +386,9 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         media_dir = getattr(self.local_media, "media_dir", None)
         if not media_dir:
             return
-        by_slug, linked_ids = survey_album_links(Path(media_dir))
-        stuck_total = sum(len(v) for v in by_slug.values())
-        if not by_slug:
+        by_slug, slugless, linked_ids = survey_album_links(Path(media_dir))
+        stuck_total = sum(len(v) for v in by_slug.values()) + len(slugless)
+        if not by_slug and not slugless:
             return
 
         # Candidate purchases: ignored (so sync_item skips them) and not already
@@ -421,6 +428,10 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             ambiguous += g_ambiguous
             unlinked.extend(g_unlinked)
 
+        # Slug-less albums (artist-root placeholder store_url) can't match by
+        # slug — they only ever link by title, so add them straight to phase 2.
+        unlinked.extend(slugless)
+
         # Phase 2: title fallback across the URL mismatch. Index the still-
         # unmatched purchases by normalized title; link an album to the one
         # whose title uniquely matches its folder name.
@@ -445,22 +456,23 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 self._link(album_dir, avail[0])
                 consumed.add(int(avail[0].item_id))
                 title_linked += 1
-                # A title link ALWAYS has a URL mismatch (that's why it fell out
-                # of the slug pass). The tagged release's store URL not matching
-                # the purchase is a possible mis-tag — but it can also be a
-                # correctly-tagged edition whose MB URL is the shared public page
-                # (we can't tell apart without comparing tracklists). Warn so it's
-                # reviewable; it links regardless. WARNING → also the Activity feed.
-                log.warning(
-                    "Linked %r to a purchase by title (item_id=%s). Possible mis-tag: "
-                    "the tagged release's store URL (%s) differs from the matched "
-                    "purchase URL (%s) — this can be a correctly-tagged edition whose "
-                    "MB URL is the shared public page, or the wrong release.",
-                    album_dir.name,
-                    getattr(avail[0], "item_id", "?"),
-                    store_url or "?",
-                    purchase_url or "?",
-                )
+                # A slug-bearing store_url that fell to the title pass had a real
+                # /album/ URL that didn't match the purchase — a possible mis-tag
+                # (or a correctly-tagged edition whose MB URL is the shared public
+                # page; we can't tell without comparing tracklists). Warn so it's
+                # reviewable. A slug-LESS store_url (artist-root placeholder) has
+                # no precise URL to disagree with, so there's nothing to flag.
+                if store_url and album_slug(store_url):
+                    log.warning(
+                        "Linked %r to a purchase by title (item_id=%s). Possible mis-tag: "
+                        "the tagged release's store URL (%s) differs from the matched "
+                        "purchase URL (%s) — this can be a correctly-tagged edition whose "
+                        "MB URL is the shared public page, or the wrong release.",
+                        album_dir.name,
+                        getattr(avail[0], "item_id", "?"),
+                        store_url or "?",
+                        purchase_url or "?",
+                    )
 
         log.info(
             "Backfill: %d purchase(s) loaded (%d ignored); %d unlinked album(s) on disk; "

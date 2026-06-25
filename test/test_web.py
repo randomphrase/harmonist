@@ -379,12 +379,13 @@ def test_needs_mbid_card_without_store_url_rendered(client, cfg):
     assert "/manual/" in r.text
 
 
-def test_new_card_offers_three_paths(client, cfg):
+def test_new_card_offers_reconcile_and_assign(client, cfg):
     _make_album(cfg, "New Album")
     r = client.get("/tasks")
     assert "Reconcile from tags" in r.text
-    assert "Recover store URL" in r.text
     assert "Assign &amp; Tag" in r.text or "Assign & Tag" in r.text
+    # URL recovery is automatic now (in reconcile) — no manual button.
+    assert "Recover store URL" not in r.text
 
 
 def test_needs_review_card_renders_side_by_side(client, cfg):
@@ -1523,35 +1524,6 @@ def test_manual_assign_with_approximate_match_stores_candidate(client, cfg, monk
 
 
 # ---------- URL recovery ----------
-
-
-def test_recover_url_writes_partial_sidecar(client, cfg):
-    d = _make_album(cfg, "RecoverMe", comment="https://artist.bandcamp.com/album/the-album")
-    aid = _id_for(cfg, d)
-    r = client.post(f"/recover/{aid}")
-    assert r.status_code == 200
-    loaded = sc.read(d)
-    assert loaded is not None
-    assert loaded.store_url == "https://artist.bandcamp.com/album/the-album"
-    assert loaded.bandcamp is None
-    assert loaded.mb_release_id is None
-
-
-def test_recover_url_warning_when_no_evidence(client, cfg):
-    d = _make_album(cfg, "NoEvidence")  # no ©cmt
-    aid = _id_for(cfg, d)
-    r = client.post(f"/recover/{aid}")
-    assert r.status_code == 200
-    assert "no usable store URL" in r.text
-    assert not sc.has_sidecar(d)
-
-
-def test_recover_url_400_when_not_new(client, cfg):
-    d = _make_album(cfg, "NotNew")
-    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
-    aid = _id_for(cfg, d)
-    r = client.post(f"/recover/{aid}")
-    assert r.status_code == 400
 
 
 def _release_for_match(mbid: str, *, n_tracks: int, length_ms: int = 1000) -> dict:

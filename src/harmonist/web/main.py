@@ -12,7 +12,6 @@ import re
 import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, suppress
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -32,7 +31,6 @@ from harmonist import (
     mb_search,
     reconcile,
     scanner,
-    url_recovery,
 )
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
@@ -404,7 +402,6 @@ _CREDITS: list[tuple[str, str | None, str, str]] = [
     ),
     ("bandcampsync", "bandcampsync", "https://github.com/meeb/bandcampsync", "BSD-3-Clause"),
     ("HTTPX", "httpx", "https://www.python-httpx.org", "BSD-3-Clause"),
-    ("BeautifulSoup", "beautifulsoup4", "https://www.crummy.com/software/BeautifulSoup/", "MIT"),
     ("tomlkit", "tomlkit", "https://github.com/python-poetry/tomlkit", "MIT"),
 ]
 
@@ -861,33 +858,6 @@ def _run_bandcamp_sync(
     )
 
 
-def _recover_store_url_if_missing(album_path: Path) -> None:
-    """If the album has no Bandcamp store_url yet, try to recover one from the
-    file's embedded comment and persist it. Lets a manually-added download reach
-    Needs Sync after tagging instead of going straight to Complete. Best-effort."""
-    existing = sidecar_mod.read(album_path)
-    if existing is not None and existing.store_url:
-        return
-    try:
-        recovered = url_recovery.recover_album_url(album_path)
-    except Exception:
-        log.exception("URL recovery during manual assign failed")
-        return
-    if not recovered:
-        return
-    if existing is None:
-        sidecar_mod.write(
-            album_path,
-            Sidecar(
-                schema_version=CURRENT_SCHEMA_VERSION,
-                store_url=recovered,
-                added_at=datetime.now(UTC),
-            ),
-        )
-    else:
-        sidecar_mod.write(album_path, replace(existing, store_url=recovered))
-
-
 def _apply_best_match(
     album_path: Path, mbids: list[str], cfg: config_mod.Config, tagger: Tagger
 ) -> tuple[str, str]:
@@ -961,9 +931,21 @@ def _tag_with_release(
     track_count_expected = sum(len(m.get("track-list", [])) for m in release.get("medium-list", []))
 
     sc = sidecar_mod.read(album_path)
+    store_url = store_url_override or (sc.store_url if sc else None)
+    if store_url is None:
+        # No store_url yet (e.g. a manual download assigned an MBID directly).
+        # Derive the Bandcamp store URL so a purchase lands in Needs Sync rather
+        # than Complete: embedded ©cmt URL → MB url-rel → artist-root placeholder,
+        # all gated by ©cmt Bandcamp evidence. Best-effort — never blocks tagging.
+        try:
+            store_url = reconcile.store_url_for_tagging(
+                album_path, mbid, fetch_urls=mb_lookup.fetch_release_urls
+            )
+        except Exception:
+            log.exception("store_url derivation during tagging failed")
     new = Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
-        store_url=store_url_override or (sc.store_url if sc else None),
+        store_url=store_url,
         bandcamp=sc.bandcamp if sc else None,
         downloaded_at=sc.downloaded_at if sc else None,
         added_at=(sc.added_at if sc else None) or datetime.now(UTC),
@@ -1615,11 +1597,6 @@ def _register_routes(app: FastAPI) -> None:
                 level="error",
                 tasks_changed=False,
             )
-        # Safety net: a manually-added Bandcamp download has no store_url yet, so
-        # assigning an MBID directly would tag it straight to Complete and it
-        # would never pick up its Bandcamp item_id. Recover the store URL from
-        # the file's comment first so the tagged album lands in Needs Sync.
-        _recover_store_url_if_missing(album.path)
         try:
             status_str, msg = _apply_best_match(
                 album.path, [extracted], request.app.state.cfg, request.app.state.tagger
@@ -1633,41 +1610,6 @@ def _register_routes(app: FastAPI) -> None:
         # verb from msg's first clause.
         verb = "Tagged" if status_str == "tagged" else "Needs review"
         return _flash_response(verb, f"{album.title}: {msg}")
-
-    @app.post("/recover/{album_id}", response_class=HTMLResponse)
-    def recover_url(request: Request, album_id: str) -> Response:
-        album = _find_album(request, album_id)
-        if album.state != AlbumState.NEW:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "URL recovery only applies to new albums"
-            )
-        try:
-            url = url_recovery.recover_album_url(album.path)
-        except Exception as e:
-            log.exception("URL recovery failed")
-            return _flash_response(
-                "URL recovery failed", str(e), level="error", tasks_changed=False
-            )
-        if not url:
-            return _flash_response(
-                "No URL recovered",
-                f"{album.title}: no usable store URL in the file's comment tag",
-                level="warning",
-                tasks_changed=False,
-            )
-        # Write a partial sidecar with just the URL; user can run Recheck.
-        sidecar_mod.write(
-            album.path,
-            Sidecar(
-                schema_version=CURRENT_SCHEMA_VERSION,
-                store_url=url,
-                added_at=datetime.now(UTC),
-            ),
-        )
-        return _flash_response(
-            "URL recovered",
-            f"{album.title}: {url} — click Recheck for MB lookup",
-        )
 
     @app.post("/unconfirmed/{album_id}/manual", response_class=HTMLResponse)
     def mark_unconfirmed_manual(request: Request, album_id: str) -> Response:

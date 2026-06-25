@@ -64,7 +64,7 @@ def reconcile_album(
         # so the album can advance NEW → NEEDS_MBID instead of stalling in NEW.
         return _reconcile_untagged(album_dir, recover_url, now)
 
-    bandcamp_url = _matching_bandcamp_url(mbid, comment, fetch_urls)
+    bandcamp_url = matching_bandcamp_url(mbid, comment, fetch_urls)
     sc = Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
         store_url=bandcamp_url or None,
@@ -132,19 +132,57 @@ def _read_album_id_and_comment(files: list[Path]) -> tuple[str | None, str]:
     return None, ""
 
 
-def _matching_bandcamp_url(
+def store_url_for_tagging(
+    album_dir: Path,
+    mbid: str,
+    *,
+    fetch_urls: Callable[[str], list[str]],
+) -> str | None:
+    """The best deterministic Bandcamp store URL for an album being tagged to
+    `mbid`, or None — used at tag time so a manually-assigned download reaches
+    Needs Sync (not Complete) when it's a Bandcamp purchase.
+
+    No guessing, three sources in preference order (precise first):
+      1. The fully-formed `/album/` (or `/track/`) URL embedded in the file's
+         `©cmt` — the actual purchase URL.
+      2. MB's canonical Bandcamp URL for the release (a precise `/album/` URL).
+      3. Last resort: the artist-root Bandcamp URL from the `©cmt` (e.g.
+         `artist.bandcamp.com`) as a placeholder — enough to mark the album a
+         Bandcamp purchase; the sync then links it to a purchase by title.
+
+    Everything is gated by Bandcamp evidence in the `©cmt`: with no Bandcamp URL
+    in the comment at all, returns None (a CD rip stays Complete, not Needs Sync).
+    """
+    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
+    if not files:
+        return None
+    comment = formats.read_comment(files[0]) or ""
+    url = url_recovery.extract_bandcamp_url(comment)
+    if url is None:
+        return None  # no Bandcamp evidence → not a Bandcamp purchase
+    # 1. A precise release URL embedded in the comment is the real purchase URL.
+    if "/album/" in url or "/track/" in url:
+        return url
+    # 2. Otherwise prefer MB's canonical /album/ URL when it has one.
+    if mb_url := matching_bandcamp_url(mbid, comment, fetch_urls):
+        return mb_url
+    # 3. Fall back to the artist-root URL as a placeholder (→ title-linked on sync).
+    return url
+
+
+def matching_bandcamp_url(
     mbid: str,
     comment: str,
     fetch_urls: Callable[[str], list[str]],
 ) -> str | None:
-    """Return the Bandcamp URL to record on the sidecar, or None.
+    """Return MB's canonical Bandcamp URL for the release, or None.
 
     Requires BOTH:
       - The file's ©cmt tag mentions a bandcamp.com URL (evidence of purchase).
       - MB has at least one Bandcamp URL relationship for the release.
 
-    The sidecar's recorded URL is MB's canonical one (not whatever was in the
-    comment) so subsequent sync match-by-URL is consistent.
+    Used as the fallback when no fully-formed Bandcamp URL is embedded in the
+    comment; the recorded URL is MB's canonical one.
     """
     if not _comment_mentions_bandcamp(comment):
         return None
