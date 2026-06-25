@@ -70,7 +70,7 @@ files = ["src", "test"]
 # following them entirely so their symbols are treated as Any — the honest
 # stance for a dependency we can't type-check anyway.
 [[tool.mypy.overrides]]
-module = ["mutagen.*", "bandcampsync.*", "musicbrainzngs.*", "bs4.*"]
+module = ["mutagen.*", "bandcampsync.*", "musicbrainzngs.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 follow_imports_for_stubs = true

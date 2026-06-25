@@ -270,10 +270,11 @@ def reconcile_pending_orphans(
             activity.record(f"{label}: New → Needs MBID (recovered Bandcamp URL from tags)")
         completed += 1
         _report()
-        # Rate-limit network calls — but ONLY when one actually happened.
-        # reconcile_album hits the network when the tags carry an MBID (MB
-        # url-rels) or when recovering a Bandcamp URL by scraping; both return a
-        # non-None sidecar. A skip (sc is None) made no call, so don't pace it.
+        # Rate-limit MB queries. reconcile_album hits the network only on the
+        # MBID path (MB url-rels); recovering an embedded ©cmt URL is a local
+        # regex (no network). We pace any non-None outcome — pacing the rare
+        # embedded-recovery case too is a harmless over-conservatism. A skip
+        # (sc is None) made no call, so don't pace it.
         if sc is not None and idx < total and rate_limit_seconds > 0:
             time.sleep(rate_limit_seconds)
 
