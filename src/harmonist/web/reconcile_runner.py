@@ -179,6 +179,7 @@ def reconcile_pending_orphans(
     music_dir: Path,
     *,
     fetch_urls: Callable[[str], list[str]],
+    recover_url: Callable[[Path], str | None] | None = None,
     status_updater: Callable[..., None] | None = None,
     rate_limit_seconds: float = MB_RATE_LIMIT_SECONDS,
     exempt_paths: set[Path] | None = None,
@@ -192,9 +193,10 @@ def reconcile_pending_orphans(
 
     Yielded progress goes through status_updater. Returns final stats.
     """
-    from harmonist import reconcile, scanner
+    from harmonist import reconcile, scanner, url_recovery
     from harmonist.models import AlbumState
 
+    recover = recover_url or url_recovery.recover_album_url
     terminal = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
 
     exempt = exempt_paths or set()
@@ -215,6 +217,7 @@ def reconcile_pending_orphans(
     completed = 0
     reconciled_bandcamp = 0
     reconciled_manual = 0
+    recovered_url = 0  # store URL recovered but no MBID yet → NEEDS_MBID
     skipped = 0
     errors = 0
 
@@ -226,7 +229,8 @@ def reconcile_pending_orphans(
                 library=base_library + reconciled_manual,
                 needs_sync=base_needs_sync + reconciled_bandcamp,
                 new=base_new + stuck,
-                inbox=base_inbox + reconciled_bandcamp + stuck,
+                # NEEDS_MBID (recovered URL) is inbox but not new/needs_sync/library.
+                inbox=base_inbox + reconciled_bandcamp + recovered_url + stuck,
             )
 
     if status_updater:
@@ -239,7 +243,7 @@ def reconcile_pending_orphans(
         if status_updater:
             status_updater(current_item=label)
         try:
-            sc = reconcile.reconcile_album(album.path, fetch_urls=fetch_urls)
+            sc = reconcile.reconcile_album(album.path, fetch_urls=fetch_urls, recover_url=recover)
         except Exception as e:
             log.warning("Reconcile failed for %s: %s", label, e)
             errors += 1
@@ -247,30 +251,39 @@ def reconcile_pending_orphans(
             continue
         # Record the resulting transition in the Activity feed (and server log).
         # Reconcile writes a sidecar; the scanner derives the state, but we know
-        # the outcome here: a store_url → Needs Sync, MBID-only → Library, a
-        # skip → stays New.
+        # the outcome here from the sidecar shape:
+        #   MBID + store_url  → Needs Sync   (tagged Bandcamp album)
+        #   MBID, no store_url→ Library      (tagged, non-Bandcamp)
+        #   store_url, no MBID→ Needs MBID   (recovered URL on an untagged album)
+        #   None              → stays New    (nothing to reconcile)
         if sc is None:
             skipped += 1
-            activity.record(f"{label}: New (no MusicBrainz Id in tags to reconcile)")
-        elif sc.store_url:
+            activity.record(f"{label}: New (no MusicBrainz Id or Bandcamp URL to reconcile)")
+        elif sc.mb_release_id and sc.store_url:
             reconciled_bandcamp += 1
             activity.record(f"{label}: New → Needs Sync (reconciled from tags)")
-        else:
+        elif sc.mb_release_id:
             reconciled_manual += 1
             activity.record(f"{label}: New → Library (reconciled from tags)")
+        else:
+            recovered_url += 1
+            activity.record(f"{label}: New → Needs MBID (recovered Bandcamp URL from tags)")
         completed += 1
         _report()
-        # Rate-limit MB queries — but ONLY when a lookup actually happened.
-        # reconcile_album hits the network only when the tags carry an MBID;
-        # a skip (no MBID, sc is None) makes no call, so don't pace it.
+        # Rate-limit network calls — but ONLY when one actually happened.
+        # reconcile_album hits the network when the tags carry an MBID (MB
+        # url-rels) or when recovering a Bandcamp URL by scraping; both return a
+        # non-None sidecar. A skip (sc is None) made no call, so don't pace it.
         if sc is not None and idx < total and rate_limit_seconds > 0:
             time.sleep(rate_limit_seconds)
 
     log.info(
-        "Reconcile done: %d reconciled (%d bandcamp, %d manual), %d skipped (no MBID), %d failed",
-        reconciled_bandcamp + reconciled_manual,
+        "Reconcile done: %d reconciled (%d bandcamp, %d manual, %d recovered URL), "
+        "%d skipped (nothing to reconcile), %d failed",
+        reconciled_bandcamp + reconciled_manual + recovered_url,
         reconciled_bandcamp,
         reconciled_manual,
+        recovered_url,
         skipped,
         errors,
     )
@@ -278,6 +291,7 @@ def reconcile_pending_orphans(
         "total": total,
         "reconciled_bandcamp": reconciled_bandcamp,
         "reconciled_manual": reconciled_manual,
+        "recovered_url": recovered_url,
         "skipped": skipped,
         "errors": errors,
     }

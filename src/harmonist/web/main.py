@@ -12,6 +12,7 @@ import re
 import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, suppress
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -860,6 +861,33 @@ def _run_bandcamp_sync(
     )
 
 
+def _recover_store_url_if_missing(album_path: Path) -> None:
+    """If the album has no Bandcamp store_url yet, try to recover one from the
+    file's embedded comment and persist it. Lets a manually-added download reach
+    Needs Sync after tagging instead of going straight to Complete. Best-effort."""
+    existing = sidecar_mod.read(album_path)
+    if existing is not None and existing.store_url:
+        return
+    try:
+        recovered = url_recovery.recover_album_url(album_path)
+    except Exception:
+        log.exception("URL recovery during manual assign failed")
+        return
+    if not recovered:
+        return
+    if existing is None:
+        sidecar_mod.write(
+            album_path,
+            Sidecar(
+                schema_version=CURRENT_SCHEMA_VERSION,
+                store_url=recovered,
+                added_at=datetime.now(UTC),
+            ),
+        )
+    else:
+        sidecar_mod.write(album_path, replace(existing, store_url=recovered))
+
+
 def _apply_best_match(
     album_path: Path, mbids: list[str], cfg: config_mod.Config, tagger: Tagger
 ) -> tuple[str, str]:
@@ -1587,6 +1615,11 @@ def _register_routes(app: FastAPI) -> None:
                 level="error",
                 tasks_changed=False,
             )
+        # Safety net: a manually-added Bandcamp download has no store_url yet, so
+        # assigning an MBID directly would tag it straight to Complete and it
+        # would never pick up its Bandcamp item_id. Recover the store URL from
+        # the file's comment first so the tagged album lands in Needs Sync.
+        _recover_store_url_if_missing(album.path)
         try:
             status_str, msg = _apply_best_match(
                 album.path, [extracted], request.app.state.cfg, request.app.state.tagger

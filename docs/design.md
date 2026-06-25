@@ -84,6 +84,20 @@ For each such album (`harmonist.reconcile.reconcile_album`):
 
 The `©cmt` evidence rule prevents false-positive "purchased on Bandcamp" classifications when a user happens to own an album that's *also* available on Bandcamp but they bought it elsewhere (Beatport, CD rip, etc.).
 
+**Untagged Bandcamp downloads (no MBID atom).** A purchase the user downloaded
+by hand and copied in has no MusicBrainz tags at all, so steps 1–5 don't apply
+and it would otherwise sit in **New** forever. For these, reconcile instead runs
+**URL recovery** (`url_recovery.recover_album_url`) over the `©cmt` comment; if a
+Bandcamp URL is recovered, it writes a sidecar with that `store_url` and **no**
+MBID, advancing the album **New → Needs MBID**. The user then confirms the MB
+match (or it auto-resolves by store URL), and because `_tag_with_release`
+preserves `store_url`, tagging lands it in **Needs Sync** — where the next sync
+fills in the Bandcamp `item_id`. The same recovery is a safety net in
+`manual_assign`: assigning an MBID to such an album first recovers and persists
+the `store_url`, so a direct assign can't drop it and tag straight to Complete
+(which would never pick up the item_id). This makes the manual-download path
+reach the same end state as a synced one.
+
 #### Linking purchases to on-disk albums
 
 When the user runs Sync (cookies present), `bandcamp_hook.HarmonistSyncer`
@@ -334,7 +348,7 @@ stateDiagram-v2
 
     NEW --> NEEDS_SYNC: reconcile<br/>(MBID + bandcamp ©cmt)
     NEW --> COMPLETE: reconcile<br/>(MBID, non-bandcamp)
-    NEW --> NEEDS_MBID: recover store URL<br/>from ©cmt
+    NEW --> NEEDS_MBID: recover store URL<br/>from ©cmt (auto/manual)
     NEW --> NEEDS_MBID: manual MBID<br/>(approximate → suggestion)
     NEW --> COMPLETE: manual MBID<br/>(exact)
 

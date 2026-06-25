@@ -66,8 +66,45 @@ def test_skips_album_without_m4a_files(tmp_path):
 
 
 def test_skips_album_without_mbid_tag(tmp_path):
-    album_dir = _make_album(tmp_path)  # no MBID
-    assert reconcile_album(album_dir, fetch_urls=_no_urls) is None
+    album_dir = _make_album(tmp_path)  # no MBID, no recoverable URL
+    result = reconcile_album(album_dir, fetch_urls=_no_urls, recover_url=lambda _p: None)
+    assert result is None
+    assert not sc.has_sidecar(album_dir)
+
+
+# ---------- URL recovery for untagged (no-MBID) downloads ----------
+
+
+def test_recovers_store_url_when_no_mbid(tmp_path):
+    """A manually-added Bandcamp download (no MBID atom) gets a sidecar with the
+    recovered store_url and no MBID → NEEDS_MBID, not stuck in NEW."""
+    album_dir = _make_album(tmp_path, comment="Visit https://myartist.bandcamp.com")
+    url = "https://myartist.bandcamp.com/album/manual-add"
+    result = reconcile_album(album_dir, fetch_urls=_no_urls, recover_url=lambda _p: url)
+    assert result is not None
+    assert result.store_url == url
+    assert result.mb_release_id is None  # untagged → NEEDS_MBID
+    assert result.tagged_at is None
+    loaded = sc.read(album_dir)
+    assert loaded.store_url == url
+
+
+def test_no_sidecar_when_no_mbid_and_no_recoverable_url(tmp_path):
+    album_dir = _make_album(tmp_path)
+    result = reconcile_album(album_dir, fetch_urls=_no_urls, recover_url=lambda _p: None)
+    assert result is None
+    assert not sc.has_sidecar(album_dir)
+
+
+def test_recovery_failure_leaves_orphan(tmp_path):
+    """A recover_url that raises is swallowed; the album stays an Orphan."""
+    album_dir = _make_album(tmp_path, comment="Visit https://myartist.bandcamp.com")
+
+    def boom(_path):
+        raise RuntimeError("scrape failed")
+
+    result = reconcile_album(album_dir, fetch_urls=_no_urls, recover_url=boom)
+    assert result is None
     assert not sc.has_sidecar(album_dir)
 
 
