@@ -1,69 +1,88 @@
-"""Tests for `_recover_store_url_if_missing` — the manual-assign safety net that
-captures a Bandcamp store_url before tagging so a manually-added download reaches
-Needs Sync instead of Complete."""
+"""Tests for reconcile.store_url_for_tagging — the tag-time derivation of a
+Bandcamp store_url so a manually-assigned download reaches Needs Sync.
+
+Sources in preference order: embedded ©cmt /album/ URL → MB url-rel → artist-root
+placeholder; all gated by ©cmt Bandcamp evidence."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import shutil
+from pathlib import Path
 
-from harmonist import sidecar as sidecar_mod
-from harmonist import url_recovery
-from harmonist.models import Sidecar
-from harmonist.sidecar import CURRENT_SCHEMA_VERSION
-from harmonist.web.main import _recover_store_url_if_missing
+from mutagen.mp4 import MP4
 
-URL = "https://myartist.bandcamp.com/album/manual-add"
+from harmonist.reconcile import store_url_for_tagging
+from harmonist.tagger import ATOM_COMMENT
 
-
-def test_recovers_and_persists_when_no_sidecar(tmp_path, monkeypatch):
-    monkeypatch.setattr(url_recovery, "recover_album_url", lambda _p: URL)
-    _recover_store_url_if_missing(tmp_path)
-    loaded = sidecar_mod.read(tmp_path)
-    assert loaded is not None
-    assert loaded.store_url == URL
-    assert loaded.mb_release_id is None  # untagged still — assign will tag it
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+SINE_M4A = FIXTURES_DIR / "sine.m4a"
 
 
-def test_preserves_existing_fields_when_recovering(tmp_path, monkeypatch):
-    sidecar_mod.write(
-        tmp_path,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, added_at=datetime.now(UTC), notes="keep me"),
+def _make_album(tmp_path: Path, *, comment: str | None = None) -> Path:
+    d = tmp_path / "Artist" / "Album"
+    d.mkdir(parents=True)
+    f = d / "01 Track.m4a"
+    shutil.copy(SINE_M4A, f)
+    if comment is not None:
+        audio = MP4(f)
+        audio[ATOM_COMMENT] = [comment]
+        audio.save()
+    return d
+
+
+def _no_urls(_mbid):
+    return []
+
+
+def _mb_urls(*urls):
+    return lambda _mbid: list(urls)
+
+
+def test_prefers_embedded_album_url(tmp_path):
+    """A precise /album/ URL in the comment wins — no MB lookup needed."""
+    d = _make_album(tmp_path, comment="https://artist.bandcamp.com/album/real")
+
+    def boom(_mbid):
+        raise AssertionError("MB should not be queried when a precise URL is embedded")
+
+    assert (
+        store_url_for_tagging(d, "rel-1", fetch_urls=boom)
+        == "https://artist.bandcamp.com/album/real"
     )
-    monkeypatch.setattr(url_recovery, "recover_album_url", lambda _p: URL)
-    _recover_store_url_if_missing(tmp_path)
-    loaded = sidecar_mod.read(tmp_path)
-    assert loaded.store_url == URL
-    assert loaded.notes == "keep me"
 
 
-def test_noop_when_store_url_already_present(tmp_path, monkeypatch):
-    sidecar_mod.write(
-        tmp_path,
-        Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
-            store_url="https://existing.bandcamp.com/album/x",
-            added_at=datetime.now(UTC),
-        ),
+def test_falls_back_to_mb_url_when_comment_has_only_root(tmp_path):
+    """Artist-root comment + MB has a canonical Bandcamp URL → use MB's."""
+    d = _make_album(tmp_path, comment="Visit https://artist.bandcamp.com")
+    fetch = _mb_urls("https://other.com/x", "https://artist.bandcamp.com/album/canonical")
+    assert (
+        store_url_for_tagging(d, "rel-1", fetch_urls=fetch)
+        == "https://artist.bandcamp.com/album/canonical"
     )
 
-    def boom(_p):
-        raise AssertionError("recovery must not run when a store_url already exists")
 
-    monkeypatch.setattr(url_recovery, "recover_album_url", boom)
-    _recover_store_url_if_missing(tmp_path)
-    assert sidecar_mod.read(tmp_path).store_url == "https://existing.bandcamp.com/album/x"
-
-
-def test_noop_when_nothing_recoverable(tmp_path, monkeypatch):
-    monkeypatch.setattr(url_recovery, "recover_album_url", lambda _p: None)
-    _recover_store_url_if_missing(tmp_path)
-    assert not sidecar_mod.has_sidecar(tmp_path)
+def test_falls_back_to_artist_root_when_mb_has_no_bandcamp(tmp_path):
+    """Artist-root comment + MB has no Bandcamp URL → keep the artist-root as a
+    placeholder so the album is still recognised as a Bandcamp purchase."""
+    d = _make_album(tmp_path, comment="Visit https://artist.bandcamp.com")
+    assert store_url_for_tagging(d, "rel-1", fetch_urls=_no_urls) == "https://artist.bandcamp.com"
 
 
-def test_swallows_recovery_errors(tmp_path, monkeypatch):
-    def boom(_p):
-        raise RuntimeError("scrape failed")
+def test_none_when_no_bandcamp_evidence(tmp_path):
+    """No Bandcamp URL in the comment at all → None (a CD rip stays Complete)."""
+    d = _make_album(tmp_path, comment="ripped from CD")
+    assert (
+        store_url_for_tagging(d, "rel-1", fetch_urls=_mb_urls("https://x.bandcamp.com/album/y"))
+        is None
+    )
 
-    monkeypatch.setattr(url_recovery, "recover_album_url", boom)
-    _recover_store_url_if_missing(tmp_path)  # must not raise
-    assert not sidecar_mod.has_sidecar(tmp_path)
+
+def test_none_when_no_comment(tmp_path):
+    d = _make_album(tmp_path)
+    assert store_url_for_tagging(d, "rel-1", fetch_urls=_no_urls) is None
+
+
+def test_none_when_no_audio_files(tmp_path):
+    d = tmp_path / "Empty"
+    d.mkdir()
+    assert store_url_for_tagging(d, "rel-1", fetch_urls=_no_urls) is None

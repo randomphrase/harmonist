@@ -732,8 +732,20 @@ def test_survey_album_links_splits_unlinked_and_linked(tmp_path):
         unlinked,
         Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-x"),
     )
-    by_slug, linked_ids = survey_album_links(tmp_path)
+    # An unlinked album with an artist-root (slug-less) Bandcamp store_url.
+    slugless = tmp_path / "Slugless"
+    slugless.mkdir()
+    sc.write(
+        slugless,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://quietdetails.bandcamp.com",
+            mb_release_id="rel-y",
+        ),
+    )
+    by_slug, slugless_dirs, linked_ids = survey_album_links(tmp_path)
     assert by_slug == {"album/while-the-universe-sleeps": [unlinked]}
+    assert slugless_dirs == [slugless]
     assert linked_ids == {631669900}
 
 
@@ -761,6 +773,31 @@ def test_backfill_links_ignored_purchase_to_unlinked_album(tmp_path):
     loaded = sc.read(album)
     assert loaded.bandcamp.item_id == 3417563775
     assert loaded.mb_release_id == "8954fdcc-long-form"  # MB identity preserved
+
+
+def test_backfill_links_slugless_album_by_title(tmp_path):
+    """A manual download whose only Bandcamp URL is the artist root (no /album/
+    slug) links to its purchase via the phase-2 title fallback."""
+    album = tmp_path / "While the Universe Sleeps"  # folder name == purchase title
+    album.mkdir()
+    sc.write(
+        album,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://quietdetails.bandcamp.com",  # artist-root placeholder
+            mb_release_id="rel-manual",
+        ),
+    )
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.bandcamp.purchases = [_wus_item(3417563775)]
+    s.ignores.is_ignored = lambda item: True
+
+    s._backfill_ignored_purchases()
+
+    loaded = sc.read(album)
+    assert loaded.bandcamp.item_id == 3417563775  # linked by title
+    assert loaded.mb_release_id == "rel-manual"
 
 
 def test_backfill_does_not_touch_linked_sibling_sharing_slug(tmp_path):

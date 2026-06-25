@@ -1,11 +1,15 @@
 """Fallback Bandcamp URL recovery for orphan albums.
 
-Used when an album has no `.harmonist.json` sidecar but has a Bandcamp
-artist URL embedded in its `©cmt` comment tag. We scrape the artist's
-Bandcamp page to find the album link by name match.
+When an album has no `.harmonist.json` sidecar but carries a Bandcamp
+**album/track** URL in its `©cmt` comment tag, we recover that URL directly.
 
-Tertiary fallback per design §2.1 — primary path is the bandcampsync hook
-that captures URLs at download time; secondary is manual entry via the UI.
+No guessing: if the comment holds only an artist/label-root URL (no specific
+release path), we recover nothing rather than scrape the artist page and
+name-match a release — that's exactly the kind of guess Harmonist avoids. The
+user can still set the URL by hand in the UI.
+
+Tertiary fallback per design §2.1 — the primary path is the bandcampsync hook
+that captures URLs at download time; the secondary is manual entry via the UI.
 """
 
 from __future__ import annotations
@@ -14,45 +18,34 @@ import logging
 import re
 from pathlib import Path
 
-import httpx
-from bs4 import BeautifulSoup
-
 from . import formats
 
 log = logging.getLogger(__name__)
 
 # Bandcamp embeds the link as prose in the comment tag, e.g.
-# "Visit https://artist.bandcamp.com" — so we extract the URL rather than
-# treating the whole comment as one.
+# "Visit https://artist.bandcamp.com/album/x" — so we extract the URL rather
+# than treating the whole comment as one.
 _URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
 
-def recover_album_url(album_dir: Path, *, client: httpx.Client | None = None) -> str | None:
-    """Try to recover the public Bandcamp album URL for an orphan album.
+def recover_album_url(album_dir: Path) -> str | None:
+    """Recover the Bandcamp album/track URL embedded in the album's `©cmt`.
 
-    Returns the URL on success, None if recovery isn't possible.
+    Returns the URL only when it points at a specific release (`/album/…` or
+    `/track/…`). An artist/label-root URL — or no Bandcamp URL at all — yields
+    None; we don't guess which release a bare artist page refers to.
     """
     files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
     if not files:
         return None
 
-    cmt, album_name = _read_comment_and_album(files[0])
-    url = _extract_bandcamp_url(cmt)
-    if url is None:
-        return None
-
-    # If the comment URL is already a /album/ or /track/ URL, use it directly.
-    if "/album/" in url or "/track/" in url:
+    url = extract_bandcamp_url(formats.read_comment(files[0]) or "")
+    if url and ("/album/" in url or "/track/" in url):
         return url
-
-    # Otherwise it's an artist/label root URL — scrape it to find the album link.
-    if not album_name:
-        album_name = album_dir.name
-
-    return _scrape_artist_for_album(url, album_name, client=client)
+    return None
 
 
-def _extract_bandcamp_url(comment: str) -> str | None:
+def extract_bandcamp_url(comment: str) -> str | None:
     """Pull the first bandcamp.com URL out of a comment tag, stripping any
     surrounding prose ("Visit …") and trailing punctuation. Returns None when
     the comment has no Bandcamp link.
@@ -62,50 +55,3 @@ def _extract_bandcamp_url(comment: str) -> str | None:
         if "bandcamp.com" in url.lower():
             return url
     return None
-
-
-def _read_comment_and_album(file_path: Path) -> tuple[str, str]:
-    return formats.read_comment(file_path) or "", formats.read_album_title(file_path) or ""
-
-
-def _scrape_artist_for_album(
-    artist_url: str, album_name: str, *, client: httpx.Client | None
-) -> str | None:
-    owns_client = client is None
-    http = client or httpx.Client(follow_redirects=True, timeout=30.0)
-
-    try:
-        try:
-            resp = http.get(artist_url)
-            resp.raise_for_status()
-        except httpx.HTTPError as e:
-            log.warning("URL recovery: failed to fetch %s: %s", artist_url, e)
-            return None
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        target = album_name.strip().lower()
-        base = httpx.URL(str(resp.url))
-
-        for a in soup.find_all("a"):
-            href = a.get("href")
-            if not href or "/album/" not in href:
-                continue
-            text = (a.get_text() or "").strip().lower()
-            title = (a.get("title") or "").strip().lower()
-            if target and target in (text, title):
-                return str(base.join(href))
-
-        # Fallback: substring match
-        for a in soup.find_all("a"):
-            href = a.get("href")
-            if not href or "/album/" not in href:
-                continue
-            text = (a.get_text() or "").strip().lower()
-            title = (a.get("title") or "").strip().lower()
-            if target and (target in text or target in title):
-                return str(base.join(href))
-
-        return None
-    finally:
-        if owns_client:
-            http.close()

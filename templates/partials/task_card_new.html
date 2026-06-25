@@ -9,12 +9,6 @@
                 title="Derive a sidecar from existing MB tags + ©cmt evidence">
             Reconcile from tags
         </button>
-        <button hx-post="/recover/{{ album.id }}"
-                hx-swap="none" hx-disabled-elt="this"
-                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition"
-                title="Read the file's ©cmt for a store URL">
-            Recover store URL
-        </button>
     </div>
 
     {# Search-by-name or paste an MBID. hx-preserve'd so a background re-render
