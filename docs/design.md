@@ -873,7 +873,7 @@ Each step ends with green tests at its level. No agent moves on until QA signs o
 7. **UX live updates** — HTMX polling, status indicator, sync button states. Browser-tested manually.
 8. **Manual + recheck flows** — `mb_search.py`, manual-entry templates, recheck routes.
 9. **URL recovery fallback** — `url_recovery.py` extracts an embedded Bandcamp `/album/` URL from `©cmt` (no scraping). Lower priority.
-10. **Containerise** — Dockerfile, multi-arch buildx, healthcheck, PUID/PGID entrypoint, compose recipes.
+10. **Containerise** — Dockerfile (amd64), GHCR publish workflow, healthcheck, Docker-native `user:` for ownership, compose recipes.
 11. **Flagship E2E test** — cassette-mode test of the full sync flow. Becomes the gate for "prototype done".
 12. **Manual test pass** — QA runs through `docs/manual-tests.md` on macOS and Pi.
 
