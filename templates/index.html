@@ -214,14 +214,32 @@ window.addEventListener('resize', function () {
         // the inline NEEDS_SYNC bulk button) on both. The inline button is
         // re-rendered on tasks-changed, so re-apply here on every poll.
         const syncBusy = sync.state === 'running' || reconcile.state === 'running';
-        const reason = sync.state === 'running' ? 'Sync in progress'
+        // The cold-start library scan: state 'scanning' with seq still 0 (the
+        // counter only increments on a completed scan, so this is the FIRST
+        // scan and won't fire on later rescans). The inbox/library aren't
+        // populated yet, so the header's actions would be confusing.
+        const initialScan = scan.state === 'scanning' && scan.seq === 0;
+        const actionOff = syncBusy || initialScan;
+        const reason = initialScan ? 'Scanning your library…'
+            : sync.state === 'running' ? 'Sync in progress'
             : 'Reconciling — finishing up before sync';
-        document.querySelectorAll('#sync-button, .sync-trigger').forEach(function (b) {
-            b.disabled = syncBusy;
-            b.classList.toggle('opacity-40', syncBusy);
-            b.classList.toggle('cursor-not-allowed', syncBusy);
-            if (syncBusy) { b.title = reason; } else { b.removeAttribute('title'); }
+        document.querySelectorAll('#sync-button, #bandcamp-setup-button, .sync-trigger').forEach(function (b) {
+            b.disabled = actionOff;
+            b.classList.toggle('opacity-40', actionOff);
+            b.classList.toggle('cursor-not-allowed', actionOff);
+            if (actionOff) { b.title = reason; } else { b.removeAttribute('title'); }
         });
+        // Settings is a link, not a button — disable via pointer-events. Off
+        // during the initial scan AND a reconcile pass (both churn the inbox).
+        const navOff = initialScan || reconcile.state === 'running';
+        const settings = document.getElementById('settings-link');
+        if (settings) {
+            settings.classList.toggle('opacity-40', navOff);
+            settings.classList.toggle('pointer-events-none', navOff);
+            settings.setAttribute('aria-disabled', navOff ? 'true' : 'false');
+            if (navOff) { settings.title = initialScan ? 'Scanning your library…' : 'Reconciling…'; }
+            else { settings.removeAttribute('title'); }
+        }
 
         // ----- Sync -----
         if (lastSyncState === 'running' && sync.state === 'idle') refreshLibrary();
