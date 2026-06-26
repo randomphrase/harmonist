@@ -68,21 +68,24 @@ _Screenshots coming soon — the Inbox task list, the Library grid, and the Acti
 
 ### Docker (recommended)
 
-A pre-baked Compose file lives at `docker-compose.yml`. Bind-mount your music
-library at `/music` and a persistent config dir at `/config` (holds
-`harmonist.toml`, `cookies.txt`, `ignores.txt`, and the album-id registry).
+A pre-baked Compose file lives at `docker-compose.yml`. It pulls the
+CI-published image from GHCR (`ghcr.io/randomphrase/harmonist`, `linux/amd64`).
+Bind-mount your music library at `/music` and a persistent config dir at
+`/config` (holds `harmonist.toml`, `cookies.txt`, `ignores.txt`, and the
+album-id registry).
 
 ```bash
-docker compose up -d --build       # then visit http://<host>:8000
+docker compose up -d       # pulls the image, then visit http://<host>:8000
 ```
 
 For machine-specific paths (NAS share locations, etc.), use a gitignored
 `docker-compose.override.yml` rather than editing the tracked file.
 
-**Multi-arch build** (amd64 for most Synology NAS, arm64 for Pi / newer NAS):
+**Building locally** (instead of pulling the published image) — swap the
+`image:` line in `docker-compose.yml` for `build: .`, or:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -t harmonist:latest .
+docker build -t harmonist:local .
 ```
 
 #### File ownership: setting UID / GID

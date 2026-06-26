@@ -1,5 +1,5 @@
 # Example compose for running Harmonist on a NAS / server.
-#   docker compose up -d --build
+#   docker compose up -d        # pulls the published image
 #
 # Bind-mount your real music library at /music and a persistent config dir at
 # /config (holds harmonist.toml, cookies.txt, ignores.txt, the id registry).
@@ -7,9 +7,9 @@
 # rather than editing this file.
 services:
   harmonist:
-    build: .
-    # Or, once you've built/pushed an image:
-    # image: harmonist:latest
+    image: ghcr.io/randomphrase/harmonist:latest
+    # Or build locally instead of pulling the published image:
+    # build: .
     container_name: harmonist
     ports:
       - "8000:8000"
@@ -17,6 +17,8 @@ services:
       - ./music:/music
       - ./config:/config
     restart: unless-stopped
-    # Synology bind-mount permissions: if the container can't write to the
-    # mounts, set user to your NAS uid:gid, e.g.
+    # Run as the OWNER of /music and /config on the host so written sidecars,
+    # tags and cover.* land with the right ownership — Docker-native, the image
+    # needs no PUID/PGID plumbing. `id -u`/`id -g`; on Synology 100 is the
+    # `users` group. Omit to run as root (root-owned files). E.g.
     # user: "1026:100"
