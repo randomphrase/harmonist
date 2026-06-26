@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 
 # Demo mode is conditionally imported in create_app() — keeps demo-only code
 # out of the production import path entirely.
@@ -126,6 +127,35 @@ def _configure_logging(cfg: config_mod.Config) -> None:
         # logger (avoids duplicate lines if anything ever configures root).
         logger.propagate = False
         _logging_configured = True
+
+
+def _validate_runtime_paths(cfg: config_mod.Config) -> None:
+    """Log the process uid/gid and verify the music + config dirs are writable.
+
+    A bind-mount permission problem otherwise surfaces as a silent "jam" — the
+    scan/reconcile runs but every sidecar/config write fails — so fail fast at
+    startup with an actionable message. Gates startup from the lifespan.
+    """
+    ids = ""
+    if hasattr(os, "getuid"):
+        ids = f"uid={os.getuid()} gid={os.getgid()} groups={sorted(os.getgroups())}"
+    log.info("Harmonist starting (%s)", ids or "user id unavailable on this platform")
+    for label, d in (("music", cfg.paths.music_dir), ("config", cfg.paths.config_dir)):
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            probe = d / f".harmonist-write-test-{os.getpid()}"
+            probe.touch()
+            probe.unlink()
+        except OSError as e:
+            raise RuntimeError(
+                f"The {label} directory {d} is not writable by this process "
+                f"({ids or 'current user'}): {e}. Harmonist must write "
+                f"{'sidecars + cover art' if label == 'music' else 'config + the id registry'} "
+                f"there. Fix the bind-mount's ownership/permissions — set the container's "
+                f"`user:` to the directory's owner (`id -u`/`id -g`), or chown the directory "
+                f"— and restart."
+            ) from e
+    log.info("Path check OK — %s and %s are writable", cfg.paths.music_dir, cfg.paths.config_dir)
 
 
 def create_app(
@@ -252,6 +282,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Fail fast on a bind-mount permission problem (otherwise it looks like
+        # a silent scan/reconcile jam) and log the process uid/gid.
+        _validate_runtime_paths(cfg)
         # Engage the background scanner once the event loop is running, kicking
         # the initial library scan off the request path.
         scan_runner.attach_loop()

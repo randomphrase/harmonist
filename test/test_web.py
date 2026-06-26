@@ -2617,3 +2617,31 @@ def test_about_page_renders(client):
     assert "mutagen" in r.text
     assert "MusicBrainz" in r.text
     assert "github.com/randomphrase/harmonist" in r.text
+
+
+# ---------- startup permission gate ----------
+
+
+def test_validate_runtime_paths_ok_and_creates_dirs(cfg):
+    from harmonist.web.main import _validate_runtime_paths
+
+    _validate_runtime_paths(cfg)  # must not raise
+    assert cfg.paths.music_dir.is_dir()
+    assert cfg.paths.config_dir.is_dir()
+    assert not list(cfg.paths.music_dir.glob(".harmonist-write-test-*"))  # probe cleaned up
+
+
+def test_validate_runtime_paths_raises_when_unwritable(tmp_path):
+    from harmonist.web.main import _validate_runtime_paths
+
+    # A file where the music dir should be → mkdir/touch fails → fail fast.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("i am a file, not a directory")
+    bad = Config(
+        paths=PathsConfig(config_dir=tmp_path / "config", music_dir=blocker / "music"),
+        bandcamp=BandcampConfig(),
+        server=ServerConfig(),
+        test=TestConfig(mode="fixture"),
+    )
+    with pytest.raises(RuntimeError, match="not writable"):
+        _validate_runtime_paths(bad)
