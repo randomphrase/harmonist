@@ -124,8 +124,21 @@ mkdir -p ./config ./music
 sudo chown -R 1000:1000 ./config ./music   # or the UID/GID you picked
 ```
 
-If Harmonist starts and immediately logs `PermissionError` on `cookies.txt` or
-the album registry, this is the cause.
+On startup Harmonist logs its `uid/gid/groups` and probe-writes `/music` and
+`/config`, failing fast with a clear message if either isn't writable — so a
+permission problem announces itself instead of looking like a stuck scan.
+
+**Synology / ACL shares (the gotcha that bites everyone):** `user:` sets the
+uid and *primary* gid only — it does **not** carry your supplementary groups.
+So a process started as `1026:100` has `groups=[100]` even though your SSH login
+is also in `administrators` (101). If the share grants write via the
+`administrators` group (or a DSM ACL — note "owner" in File Station is an ACL
+concept, *not* the POSIX owner), the container is denied despite the "right"
+uid. The clean fix is to grant **Authenticated Users** (or the `users` group)
+Read/Write **recursively** on the music + config shared folders — that matches
+the container's credentials across the whole tree, regardless of who owns each
+album subfolder. (`group_add: ["101"]` in compose is the alternative, but
+granting `users`/Authenticated-Users is safer.)
 
 ### From source (dev)
 

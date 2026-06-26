@@ -718,6 +718,18 @@ host:/volume1/music                     →  container:/music
 
 Sidecars live next to music inside `/music`. Config dir holds `ignores.txt`, `cookies.txt`, optional `harmonist.toml`.
 
+**Permissions.** Startup (`_validate_runtime_paths` in the lifespan) logs the
+process `uid/gid/groups` and probe-writes both dirs, failing fast if either
+isn't writable — a permission problem otherwise looks like a stuck scan
+(reconcile runs but every sidecar write fails). The Synology gotcha: `user:`
+sets uid + *primary* gid only, **not** supplementary groups, so a `1026:100`
+process has `groups=[100]` and lacks `administrators` (101) that the host login
+carries; if the share grants write via that group or a DSM ACL ("owner" in File
+Station is an ACL concept, not the POSIX owner), the container is denied. Fix:
+grant **Authenticated Users** / the `users` group Read+Write recursively on the
+shares (matches the container's gid across the whole tree), or `group_add` the
+granting gid.
+
 ### 10.3 Run recipes
 
 **Synology (compose):**
