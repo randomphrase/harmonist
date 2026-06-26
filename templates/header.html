@@ -7,7 +7,7 @@
 
         <nav class="flex items-center gap-5 text-sm">
             <a href="/about" class="font-semibold text-muted hover:text-ink transition">About</a>
-            <a href="/settings" class="font-semibold text-muted hover:text-ink transition">Settings</a>
+            <a href="/settings" id="settings-link" class="font-semibold text-muted hover:text-ink transition">Settings</a>
             {% if bandcamp_configured() %}
             <button id="sync-button"
                     hx-post="/sync"
