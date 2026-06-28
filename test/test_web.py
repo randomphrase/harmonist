@@ -2653,3 +2653,22 @@ def test_validate_runtime_paths_raises_when_unwritable(tmp_path):
     )
     with pytest.raises(RuntimeError, match="not writable"):
         _validate_runtime_paths(bad)
+
+
+def test_run_bandcamp_sync_precreates_ignores_file(cfg, monkeypatch):
+    """bandcampsync seeds a missing ignores file from a template that only
+    exists in its own Docker image (/ignores.template.txt). We pre-create the
+    file so its copy is skipped — no 'No such file' on first sync."""
+    from harmonist.web import main as main_mod
+
+    cfg.paths.config_dir.mkdir(parents=True, exist_ok=True)
+    cfg.cookies_file.write_text("cookie", encoding="utf-8")  # get past the cookies check
+    assert not cfg.ignores_file.exists()
+
+    called: dict[str, bool] = {}
+    monkeypatch.setattr(main_mod, "HarmonistSyncer", lambda *a, **k: called.setdefault("yes", True))
+
+    main_mod._run_bandcamp_sync(cfg)
+
+    assert cfg.ignores_file.exists()  # pre-created → bandcampsync won't copy the template
+    assert called.get("yes")
