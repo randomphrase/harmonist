@@ -74,6 +74,27 @@ def test_scan_runner_seq_increments_each_completed_scan(tmp_path):
     assert runner.status()["seq"] >= 2
 
 
+def test_scan_runner_fires_on_first_complete_once(tmp_path):
+    """The on-first-complete hook (used to kick reconcile on startup) fires
+    exactly once — after the first scan, not on subsequent rescans."""
+    music = tmp_path / "music"
+    _album(music, "A")
+    runner = ScanRunner(music)
+    calls: list[int] = []
+    runner.set_on_first_complete(lambda: calls.append(1))
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(runner.has_completed)
+        first = runner.status()["seq"]
+        runner.request_scan()  # a second scan must NOT re-fire the hook
+        await _wait(lambda: runner.status()["seq"] > first)
+        await asyncio.sleep(0.02)
+
+    asyncio.run(go())
+    assert calls == [1]
+
+
 def test_scan_runner_rescan_picks_up_new_album(tmp_path):
     music = tmp_path / "music"
     _album(music, "A")

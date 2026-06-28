@@ -263,6 +263,10 @@ def create_app(
         scan_runner.request_scan()  # sidecars written → refresh the snapshot
 
     reconcile_runner = ReconcileRunner(runner_fn=reconcile_runner_fn)
+    # Auto-run reconcile once the initial library scan finishes — so MBID-tagged
+    # (and ©cmt-URL-recoverable) orphans get sidecars on startup without needing
+    # someone to open the inbox first.
+    scan_runner.set_on_first_complete(reconcile_runner.start)
 
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     templates_dir = project_root / "templates"
