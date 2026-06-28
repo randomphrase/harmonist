@@ -7,18 +7,18 @@
 # rather than editing this file.
 services:
   harmonist:
-    image: ghcr.io/randomphrase/harmonist:latest
+    image: ghcr.io/randomphrase/harmonist:edge
     # Or build locally instead of pulling the published image:
     # build: .
     container_name: harmonist
     ports:
-      - "8000:8000"
+      - "8023:8000"
     volumes:
-      - ./music:/music
-      - ./config:/config
+      - /volume1/media/music:/music
+      - /volume1/docker/harmonist:/config
     restart: unless-stopped
     # Run as the OWNER of /music and /config on the host so written sidecars,
     # tags and cover.* land with the right ownership — Docker-native, the image
     # needs no PUID/PGID plumbing. `id -u`/`id -g`; on Synology 100 is the
     # `users` group. Omit to run as root (root-owned files). E.g.
-    # user: "1026:100"
+    user: "1026:100"

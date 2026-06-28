@@ -12,10 +12,8 @@ from mutagen.mp4 import MP4
 
 from harmonist import sidecar as sc
 from harmonist.bandcamp_hook import (
-    CapExceededError,
     HarmonistSyncer,
     album_slug,
-    check_download_cap,
     construct_bandcamp_url,
     find_existing_album_by_slug,
     find_existing_album_by_url,
@@ -101,29 +99,6 @@ def test_url_returns_none_with_garbage_hints():
     assert construct_bandcamp_url(item) is None
 
 
-# ---------- check_download_cap ----------
-
-
-def test_cap_under():
-    check_download_cap(3, 5)  # no raise
-
-
-def test_cap_equal_ok():
-    check_download_cap(5, 5)  # cap is inclusive — 5 is OK
-
-
-def test_cap_exceeds_raises():
-    with pytest.raises(CapExceededError) as exc_info:
-        check_download_cap(6, 5)
-    assert "6" in str(exc_info.value)
-    assert "5" in str(exc_info.value)
-
-
-def test_cap_zero():
-    with pytest.raises(CapExceededError):
-        check_download_cap(1, 0)
-
-
 # ---------- write_sidecar_for_item ----------
 
 
@@ -195,6 +170,7 @@ def _bare_syncer(max_downloads: int = 5) -> HarmonistSyncer:
     s._progress_callback = None
     s._post_download_callback = None
     s.new_items = 0
+    s.skipped_for_limit = 0
     s.bandcamp = MagicMock()
     s.ignores = MagicMock()
     s.local_media = MagicMock()
@@ -234,55 +210,61 @@ def test_unmatched_purchases_returns_only_unlinked(tmp_path):
     assert s.unmatched_purchases() == [("https://x.bandcamp.com/album/orphan", "X / Orphan")]
 
 
-def test_sync_items_raises_when_over_cap(monkeypatch):
+def test_sync_items_runs_parent_without_aborting(monkeypatch):
+    """sync_items no longer aborts on a large would-download set — the per-sync
+    download limit is enforced per item in sync_item instead."""
     s = _bare_syncer(max_downloads=2)
-    s.bandcamp.purchases = [_StubItem(item_id=i) for i in range(5)]
+    s.bandcamp.purchases = [_StubItem(item_id=i) for i in range(20)]
     s.ignores.is_ignored = lambda item: False
-    # Stub the parent's sync_items so we can verify it's NOT called when cap raises
     parent_called = []
 
     async def parent_sync_items(self):
         parent_called.append(True)
 
     monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_items", parent_sync_items)
-
-    with pytest.raises(CapExceededError):
-        asyncio.run(s.sync_items())
-    assert parent_called == []
-
-
-def test_sync_items_excludes_ignored_from_cap_count(monkeypatch):
-    s = _bare_syncer(max_downloads=2)
-    items = [_StubItem(item_id=i) for i in range(5)]
-    s.bandcamp.purchases = items
-    # 4 of 5 ignored — only 1 candidate, well under cap of 2
-    s.ignores.is_ignored = lambda item: item.item_id != 0
-    parent_called = []
-
-    async def parent_sync_items(self):
-        parent_called.append(True)
-
-    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_items", parent_sync_items)
-
-    asyncio.run(s.sync_items())  # should NOT raise
+    asyncio.run(s.sync_items())  # must not raise
     assert parent_called == [True]
 
 
-def test_sync_items_excludes_preorders_from_cap_count(monkeypatch):
-    s = _bare_syncer(max_downloads=1)
-    items = [
-        _StubItem(item_id=0),
-        _StubItem(item_id=1, is_preorder=True),
-        _StubItem(item_id=2, is_preorder=True),
-    ]
-    s.bandcamp.purchases = items
+def test_sync_item_caps_downloads_and_defers_rest(tmp_path, monkeypatch):
+    """sync_item downloads up to the per-sync limit, then defers genuinely-new
+    items to the next sync (counted in skipped_for_limit, not marked ignored)."""
+    s = _bare_syncer(max_downloads=2)
+    s.local_media = MagicMock()
+    s.local_media.get_path_for_purchase = lambda item: tmp_path / str(item.item_id)
+    s.local_media.is_locally_downloaded = lambda item, path: False
     s.ignores.is_ignored = lambda item: False
+    # Parent "download" always succeeds; skip the post-download sidecar write.
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item, encoding=None: True,
+    )
+    monkeypatch.setattr("harmonist.bandcamp_hook.write_sidecar_for_item", lambda *a, **k: True)
 
-    async def parent_sync_items(self):
-        pass
+    for i in range(5):  # 5 genuinely-new items, cap 2
+        s.sync_item(_StubItem(item_id=i))
 
-    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_items", parent_sync_items)
-    asyncio.run(s.sync_items())  # 1 real candidate, cap is 1 — OK
+    assert s.new_items == 2  # only 2 downloaded this run
+    assert s.skipped_for_limit == 3  # the other 3 deferred to the next sync
+
+
+def test_sync_item_limit_does_not_count_ignored_or_local(tmp_path, monkeypatch):
+    """Past the limit, ignored / already-local items aren't counted as deferred
+    (they wouldn't download anyway) — only genuinely-new ones inflate the tally."""
+    s = _bare_syncer(max_downloads=0)  # download nothing → everything is "past the limit"
+    s.local_media = MagicMock()
+    s.local_media.get_path_for_purchase = lambda item: tmp_path / str(item.item_id)
+    s.local_media.is_locally_downloaded = lambda item, path: item.item_id == 1
+    s.ignores.is_ignored = lambda item: item.item_id == 2
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item, encoding=None: False,
+    )
+
+    for i in range(4):  # 0=new, 1=local, 2=ignored, 3=new
+        s.sync_item(_StubItem(item_id=i))
+
+    assert s.skipped_for_limit == 2  # only items 0 and 3
 
 
 def test_sync_item_writes_sidecar_on_successful_download(monkeypatch, tmp_path):

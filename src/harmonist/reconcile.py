@@ -43,7 +43,7 @@ def reconcile_album(
     album_dir: Path,
     *,
     fetch_urls: Callable[[str], list[str]],
-    recover_url: Callable[[Path], str | None] = url_recovery.recover_album_url,
+    recover_url: Callable[[Path], str | None] = url_recovery.recover_store_url,
 ) -> Sidecar | None:
     """Inspect the album, write a sidecar, return it. None if nothing to do.
 
@@ -103,7 +103,7 @@ def reconcile_pending(
     album_dirs: list[Path],
     *,
     fetch_urls: Callable[[str], list[str]],
-    recover_url: Callable[[Path], str | None] = url_recovery.recover_album_url,
+    recover_url: Callable[[Path], str | None] = url_recovery.recover_store_url,
 ) -> dict[str, int]:
     """Reconcile a batch of album dirs. Returns a stats summary."""
     stats = {"reconciled_bandcamp": 0, "reconciled_manual": 0, "skipped": 0, "errors": 0}

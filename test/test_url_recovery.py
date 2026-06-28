@@ -8,7 +8,7 @@ from pathlib import Path
 from mutagen.mp4 import MP4
 
 from harmonist.tagger import ATOM_COMMENT
-from harmonist.url_recovery import extract_bandcamp_url, recover_album_url
+from harmonist.url_recovery import extract_bandcamp_url, recover_store_url
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -26,45 +26,45 @@ def _make_album(tmp_path: Path, *, comment: str | None = None) -> Path:
     return d
 
 
-# ---------- recover_album_url: only a precise /album/ or /track/ URL ----------
+# ---------- recover_store_url: any embedded Bandcamp URL ----------
 
 
 def test_recovers_embedded_album_url(tmp_path):
     d = _make_album(tmp_path, comment="https://myartist.bandcamp.com/album/my-album")
-    assert recover_album_url(d) == "https://myartist.bandcamp.com/album/my-album"
+    assert recover_store_url(d) == "https://myartist.bandcamp.com/album/my-album"
 
 
 def test_recovers_embedded_album_url_behind_visit_prose(tmp_path):
     d = _make_album(tmp_path, comment="Visit https://myartist.bandcamp.com/album/my-album")
-    assert recover_album_url(d) == "https://myartist.bandcamp.com/album/my-album"
+    assert recover_store_url(d) == "https://myartist.bandcamp.com/album/my-album"
 
 
 def test_recovers_embedded_track_url(tmp_path):
     d = _make_album(tmp_path, comment="https://myartist.bandcamp.com/track/single")
-    assert recover_album_url(d) == "https://myartist.bandcamp.com/track/single"
+    assert recover_store_url(d) == "https://myartist.bandcamp.com/track/single"
 
 
-def test_artist_root_url_recovers_nothing(tmp_path):
-    """No scraping/guessing: a bare artist-root URL yields None from
-    recover_album_url (it isn't a specific release)."""
+def test_recovers_artist_root_url(tmp_path):
+    """A bare artist-root URL IS recovered (no scraping) — it's evidence the
+    album is a Bandcamp purchase; the sync links it by title later."""
     d = _make_album(tmp_path, comment="Visit https://myartist.bandcamp.com")
-    assert recover_album_url(d) is None
+    assert recover_store_url(d) == "https://myartist.bandcamp.com"
 
 
 def test_non_bandcamp_url_recovers_nothing(tmp_path):
     d = _make_album(tmp_path, comment="https://example.com/album/x")
-    assert recover_album_url(d) is None
+    assert recover_store_url(d) is None
 
 
 def test_no_comment_recovers_nothing(tmp_path):
     d = _make_album(tmp_path)
-    assert recover_album_url(d) is None
+    assert recover_store_url(d) is None
 
 
 def test_no_audio_files_recovers_nothing(tmp_path):
     d = tmp_path / "Empty"
     d.mkdir()
-    assert recover_album_url(d) is None
+    assert recover_store_url(d) is None
 
 
 # ---------- extract_bandcamp_url: any Bandcamp URL (album or artist-root) ----------

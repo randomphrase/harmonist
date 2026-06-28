@@ -206,7 +206,7 @@ def reconcile_pending_orphans(
     from harmonist import reconcile, scanner, url_recovery
     from harmonist.models import AlbumState
 
-    recover = recover_url or url_recovery.recover_album_url
+    recover = recover_url or url_recovery.recover_store_url
     terminal = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
 
     exempt = exempt_paths or set()

@@ -89,6 +89,18 @@ def test_recovers_store_url_when_no_mbid(tmp_path):
     assert loaded.store_url == url
 
 
+def test_reconcile_records_artist_root_url_no_mbid(tmp_path):
+    """The Asura case: an untagged download whose ©cmt has only an ARTIST-ROOT
+    Bandcamp URL is still recorded (store_url, no MBID) → NEEDS_MBID. Uses the
+    real default recovery (no injected stub)."""
+    album_dir = _make_album(tmp_path, comment="Visit https://asura.bandcamp.com")
+    result = reconcile_album(album_dir, fetch_urls=_no_urls)  # default recover_store_url
+    assert result is not None
+    assert result.store_url == "https://asura.bandcamp.com"
+    assert result.mb_release_id is None  # untagged → NEEDS_MBID
+    assert result.tagged_at is None
+
+
 def test_no_sidecar_when_no_mbid_and_no_recoverable_url(tmp_path):
     album_dir = _make_album(tmp_path)
     result = reconcile_album(album_dir, fetch_urls=_no_urls, recover_url=lambda _p: None)
