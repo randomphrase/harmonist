@@ -1032,8 +1032,10 @@ def test_detect_mistag_by_release_group_demotes_with_suggestion(cfg):
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     d = _needs_sync_album(cfg, "Mistag", "rel-wrong")
     # One relevant purchase (the owned 24-bit edition) buried in lots of noise.
-    owned = [(f"https://noise.bandcamp.com/album/n{i}", f"Noise / {i}") for i in range(250)]
-    owned.append(("https://ultimae.bandcamp.com/album/live-in-corfu-24bit", "Cell / Live in Corfu"))
+    owned = [(i, f"https://noise.bandcamp.com/album/n{i}", f"Noise / {i}") for i in range(250)]
+    owned.append(
+        (9999, "https://ultimae.bandcamp.com/album/live-in-corfu-24bit", "Cell / Live in Corfu")
+    )
     syncer = _FakeSyncer(owned)
 
     # rel-wrong's release group rg-1 contains the tagged edition and the owned one.
@@ -1085,7 +1087,7 @@ def test_detect_mistag_no_action_when_no_owned_sibling(cfg):
 
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     d = _needs_sync_album(cfg, "Solo", "rel-a")
-    syncer = _FakeSyncer([("https://x.bandcamp.com/album/unrelated", "X / Other")])
+    syncer = _FakeSyncer([(1, "https://x.bandcamp.com/album/unrelated", "X / Other")])
     _detect_mistags_after_sync(
         cfg,
         syncer,
@@ -1103,7 +1105,10 @@ def test_detect_mistag_skips_when_multiple_owned_editions(cfg):
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     d = _needs_sync_album(cfg, "Amb", "rel-wrong")
     syncer = _FakeSyncer(
-        [("https://x.bandcamp.com/album/a", "X / A"), ("https://x.bandcamp.com/album/b", "X / B")]
+        [
+            (1, "https://x.bandcamp.com/album/a", "X / A"),
+            (2, "https://x.bandcamp.com/album/b", "X / B"),
+        ]
     )
     _detect_mistags_after_sync(
         cfg,
@@ -1127,7 +1132,7 @@ def test_detect_mistag_bails_over_album_cap(cfg, monkeypatch):
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     _needs_sync_album(cfg, "A1", "rel-1")
     _needs_sync_album(cfg, "A2", "rel-2")  # 2 albums > cap of 1
-    syncer = _FakeSyncer([("https://x.bandcamp.com/album/owned", "X / Owned")])
+    syncer = _FakeSyncer([(1, "https://x.bandcamp.com/album/owned", "X / Owned")])
     called: list[str] = []
 
     def browse_rg(rg: str) -> list[tuple[str, list[str]]]:
@@ -1146,6 +1151,50 @@ def test_detect_mistag_bails_over_album_cap(cfg, monkeypatch):
         "Mis-tag detection skipped" in e.message and e.level == "warning"
         for e in activity.recent(10)
     )
+
+
+def test_link_unmatched_by_release_urls_links_via_alternate_slug(cfg):
+    """A release with two Bandcamp URLs (…/idleness and …/idleness-2): the album
+    is tagged with one slug but the purchase used the other → the plain slug
+    match misses it. Linking via the release's *full* URL set fills item_id."""
+    from harmonist.web.main import _link_unmatched_by_release_urls
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Idleness", "rel-x")  # store_url slug 'idleness'
+    syncer = _FakeSyncer([(555, "https://yann.bandcamp.com/album/idleness-2", "Yann / Idleness")])
+    _link_unmatched_by_release_urls(
+        cfg,
+        syncer,
+        fetch_urls=lambda m: [
+            "https://yann.bandcamp.com/album/idleness",
+            "https://yann.bandcamp.com/album/idleness-2",  # the purchase's slug
+        ],
+    )
+    linked = sc.read(d)
+    assert linked.bandcamp.item_id == 555  # Needs Sync → Library
+    assert linked.mb_release_id == "rel-x"  # tag preserved
+    assert linked.store_url == "https://yann.bandcamp.com/album/idleness-2"  # purchase URL adopted
+
+
+def test_link_unmatched_by_release_urls_no_match_leaves_album(cfg):
+    """No owned purchase among the release's URLs → album untouched (it goes on
+    to mis-tag detection / surrender)."""
+    from harmonist.web.main import _link_unmatched_by_release_urls
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Solo", "rel-y")
+    syncer = _FakeSyncer([(7, "https://x.bandcamp.com/album/unrelated", "X / Other")])
+    _link_unmatched_by_release_urls(
+        cfg,
+        syncer,
+        fetch_urls=lambda m: [
+            "https://x.bandcamp.com/album/solo",
+            "https://x.bandcamp.com/album/solo-2",
+        ],
+    )
+    r = sc.read(d)  # still Needs Sync: no item_id, store_url not adopted
+    assert r.bandcamp is None or r.bandcamp.item_id is None
+    assert r.store_url == "https://label.bandcamp.com/album/solo"
 
 
 def test_reject_clears_candidate(client, cfg):
