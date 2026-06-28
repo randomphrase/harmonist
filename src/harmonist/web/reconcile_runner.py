@@ -18,9 +18,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from harmonist import activity
+
+if TYPE_CHECKING:
+    from harmonist.models import Album
 
 log = logging.getLogger(__name__)
 
@@ -183,8 +186,15 @@ def reconcile_pending_orphans(
     status_updater: Callable[..., None] | None = None,
     rate_limit_seconds: float = MB_RATE_LIMIT_SECONDS,
     exempt_paths: set[Path] | None = None,
+    albums: list[Album] | None = None,
 ) -> dict[str, int]:
-    """Walk music_dir; reconcile every NEW album with an MBID atom.
+    """Reconcile every NEW album with an MBID atom.
+
+    `albums` is the already-scanned library snapshot (from the background
+    scanner). When given, we reuse it instead of re-walking `music_dir` — the
+    scanner just finished, so a second full scan is pure wasted minutes (and a
+    second copy of the snapshot in memory). Only falls back to scanning when no
+    snapshot is supplied (e.g. direct callers / tests).
 
     Albums whose path is in `exempt_paths` are skipped. This is the
     mechanism that respects user intent after a Forget — without it, the
@@ -200,7 +210,13 @@ def reconcile_pending_orphans(
     terminal = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
 
     exempt = exempt_paths or set()
-    albums = scanner.scan(music_dir)
+    if albums is None:
+        # No snapshot handed in — walk the library ourselves. This can take a
+        # while on a large tree, so announce it (the feed would be silent).
+        activity.record("Reconcile started — scanning the library for albums to reconcile…")
+        albums = scanner.scan(music_dir)
+    else:
+        activity.record("Reconcile started")
     pending = [a for a in albums if a.state == AlbumState.NEW and a.path not in exempt]
     total = len(pending)
 
@@ -236,7 +252,11 @@ def reconcile_pending_orphans(
     if status_updater:
         status_updater(total=total)
     _report()  # publish the base (all-zero deltas) before the first album
-    log.info("Reconcile: %d orphan album(s) to check for a MusicBrainz Id", total)
+    activity.record(
+        f"Reconcile: {total} album(s) to check"
+        if total
+        else "Reconcile: nothing to reconcile (no new albums on disk)"
+    )
 
     for idx, album in enumerate(pending, start=1):
         label = f"{album.artist} / {album.title}"
@@ -258,7 +278,10 @@ def reconcile_pending_orphans(
         #   None              → stays New    (nothing to reconcile)
         if sc is None:
             skipped += 1
-            activity.record(f"{label}: New (no MusicBrainz Id or Bandcamp URL to reconcile)")
+            # Nothing to do (no MBID, no recoverable URL). Kept out of the feed —
+            # it floods on a large untagged library; the status bar shows each
+            # album as it's checked, and the closing summary reports the count.
+            log.debug("%s: nothing to reconcile (no MBID or Bandcamp URL)", label)
         elif sc.mb_release_id and sc.store_url:
             reconciled_bandcamp += 1
             activity.record(f"{label}: New → Needs Sync (reconciled from tags)")
@@ -278,15 +301,10 @@ def reconcile_pending_orphans(
         if sc is not None and idx < total and rate_limit_seconds > 0:
             time.sleep(rate_limit_seconds)
 
-    log.info(
-        "Reconcile done: %d reconciled (%d bandcamp, %d manual, %d recovered URL), "
-        "%d skipped (nothing to reconcile), %d failed",
-        reconciled_bandcamp + reconciled_manual + recovered_url,
-        reconciled_bandcamp,
-        reconciled_manual,
-        recovered_url,
-        skipped,
-        errors,
+    activity.record(
+        f"Reconcile done: {reconciled_bandcamp + reconciled_manual + recovered_url} reconciled "
+        f"({reconciled_bandcamp} → Needs Sync, {reconciled_manual} → Library, "
+        f"{recovered_url} → Needs MBID), {skipped} unchanged, {errors} failed"
     )
     return {
         "total": total,

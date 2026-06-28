@@ -193,14 +193,16 @@ def test_reconcile_pending_walks_only_orphans(tmp_path):
 
 
 def test_reconcile_records_transitions_to_activity(tmp_path):
-    """Each reconcile outcome posts a transition to the Activity feed (not just
-    the server log): → Needs Sync, → Library, and a stays-New skip."""
+    """Reconcile narrates to the Activity feed: a start line, a per-album line
+    for each real transition (→ Needs Sync, → Library), and a closing summary.
+    Skips are NOT posted per-album (they'd flood a large untagged library) —
+    they show up in the summary's 'unchanged' count."""
     from harmonist import activity
 
     music = tmp_path / "music"
     _make_album(music, "BandcampOrphan", mbid="rel-bc", comment="https://x.bandcamp.com")
     _make_album(music, "ManualOrphan", mbid="rel-man")  # no bandcamp comment → Library
-    _make_album(music, "NoMBID")  # no MBID → stays New
+    _make_album(music, "NoMBID")  # no MBID → stays New (skipped)
 
     activity.clear()
     reconcile_pending_orphans(
@@ -209,9 +211,31 @@ def test_reconcile_records_transitions_to_activity(tmp_path):
         rate_limit_seconds=0,
     )
     msgs = [e.message for e in activity.recent(20)]
+    assert any("Reconcile started" in m for m in msgs)
     assert any("Needs Sync (reconciled" in m for m in msgs)
     assert any("Library (reconciled" in m for m in msgs)
-    assert any("New (no MusicBrainz Id" in m for m in msgs)
+    # The skipped (no-MBID) album is in the summary, not a per-album feed line.
+    assert not any("New (no MusicBrainz Id" in m for m in msgs)
+    assert any("Reconcile done" in m and "1 unchanged" in m for m in msgs)
+
+
+def test_reconcile_reuses_snapshot_without_rescanning(tmp_path, monkeypatch):
+    """When handed an album snapshot, reconcile must NOT re-walk the library —
+    that second scan was the multi-minute silent gap on a large tree."""
+    from harmonist import scanner
+
+    music = tmp_path / "music"
+    _make_album(music, "ManualOrphan", mbid="rel-man")  # → Library
+    snapshot = scanner.scan(music)  # build it once, up front
+
+    def _boom(*a, **k):
+        raise AssertionError("reconcile must not re-scan when given a snapshot")
+
+    monkeypatch.setattr(scanner, "scan", _boom)
+    stats = reconcile_pending_orphans(
+        music, fetch_urls=lambda m: [], albums=snapshot, rate_limit_seconds=0
+    )
+    assert stats["reconciled_manual"] == 1  # reconciled from the snapshot, no scan
 
 
 def test_reconcile_reports_live_inbox_library_counts(tmp_path):
