@@ -94,6 +94,7 @@ class SyncRunner:
     def _run(self) -> None:
         activity.record("Bandcamp sync started", "info")
         new_items = 0
+        remaining = 0
         error: str | None = None
         try:
             result = self._runner_fn()
@@ -102,6 +103,8 @@ class SyncRunner:
             new_items = int(
                 getattr(result, "new_items", getattr(result, "new_items_downloaded", 0))
             )
+            # Albums deferred because the per-sync download limit was reached.
+            remaining = int(getattr(result, "skipped_for_limit", 0))
         except Exception as e:
             log.exception("sync failed")
             error = str(e)
@@ -116,4 +119,7 @@ class SyncRunner:
             activity.record(f"Bandcamp sync failed — {error}", "error")
         else:
             plural = "" if new_items == 1 else "s"
-            activity.record(f"Bandcamp sync finished — {new_items} new item{plural}", "info")
+            msg = f"Bandcamp sync finished — {new_items} new item{plural}"
+            if remaining:
+                msg += f"; {remaining} more reached the per-sync limit — run Sync again"
+            activity.record(msg, "info")

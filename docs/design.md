@@ -89,10 +89,13 @@ by hand and copied in has no MusicBrainz tags at all, so steps 1–5 don't apply
 The Bandcamp `store_url` is recovered from two sources, **no guessing** (no
 artist-page scraping):
 
-- **At reconcile** (`url_recovery.recover_album_url`): if the `©cmt` carries a
-  fully-formed `/album/` (or `/track/`) URL — the actual purchase URL — write a
-  sidecar with that `store_url` and no MBID, advancing **New → Needs MBID**.
-  (A bare artist-root URL recovers nothing here; the album stays New.)
+- **At reconcile** (`url_recovery.recover_store_url`): if the `©cmt` carries
+  **any** Bandcamp URL — a precise `/album/` (or `/track/`) URL if present,
+  else the bare artist-root form — write a sidecar with that `store_url` and no
+  MBID, advancing **New → Needs MBID**. An artist-root URL is still recorded:
+  it's evidence the album is a Bandcamp purchase, and the sync links it by title
+  later. (No Bandcamp URL at all → stays New. No scraping — we never invent an
+  `/album/` slug we don't have.)
 - **At tag time** (`reconcile.store_url_for_tagging`, called from
   `_tag_with_release`): when the album is being tagged to an MBID and has no
   `store_url` yet, derive one in preference order — embedded `/album/` URL →
@@ -379,7 +382,7 @@ stateDiagram-v2
 
     NEW --> NEEDS_SYNC: reconcile<br/>(MBID + bandcamp ©cmt)
     NEW --> COMPLETE: reconcile<br/>(MBID, non-bandcamp)
-    NEW --> NEEDS_MBID: reconcile recovers<br/>embedded ©cmt /album/ URL
+    NEW --> NEEDS_MBID: reconcile recovers<br/>embedded ©cmt Bandcamp URL
     NEW --> NEEDS_MBID: manual MBID<br/>(approximate → suggestion)
     NEW --> COMPLETE: manual MBID<br/>(exact)
 
@@ -580,7 +583,7 @@ src/harmonist/
   reconcile.py         NEW   per-album reconciliation: derive sidecar from MBID tag + ©cmt + MB url-rels
   cover_art.py         NEW   Cover Art Archive fetch, resize, cache, write to album dir
   tagger.py            NEW   Picard-compatible tag writer (incl. embedded covr atom)
-  url_recovery.py      NEW   extract the embedded Bandcamp /album/ URL from ©cmt (no scraping)
+  url_recovery.py      NEW   extract any embedded Bandcamp URL from ©cmt (precise or artist-root; no scraping)
   web/
     main.py            REWRITE  FastAPI routes
     sync_runner.py     NEW   in-process job runner with status polling
@@ -672,7 +675,7 @@ Album IDs remain MD5-of-path (matches existing convention; survives across runs 
 - Server returns a "Sync running…" fragment with `hx-trigger="every 1500ms"` polling `/sync/status` and a sibling polling `/tasks`.
 - Each /tasks fetch re-renders the inbox; albums appear as bandcampsync writes them and the per-album MB lookup runs.
 - When `/sync/status` returns `state == "idle"` post-run, the polling stops and the button re-enables.
-- Cap: `max_downloads_per_sync` aborts the sync with a visible error if the would-download set exceeds it.
+- Per-sync limit: `max_downloads_per_sync` downloads at most N **new** albums per run (enforced per item in `sync_item`); the rest are deferred to the next sync (not marked ignored, so they retry). The finish message reports "N more reached the per-sync limit — run Sync again". Already-on-disk albums are skipped by `sync_item` and never count toward the limit.
 
 ### 9.2 Needs MBID → Recheck
 
@@ -830,7 +833,7 @@ The live mode workflow:
 3. Remove the entries listed in `[test].unignore_item_ids` from the temp copy.
 4. Point bandcampsync at the temp copy and a sandbox music dir.
 5. Run sync, assert state, clean up.
-6. **Hard cap:** if the would-download count exceeds `HARMONIST_MAX_DOWNLOADS_PER_SYNC`, abort with a clear error before any download starts.
+6. **Per-sync download limit:** download at most `HARMONIST_MAX_DOWNLOADS_PER_SYNC` new albums per run; defer the rest to the next sync (a large first sync trickles in N at a time rather than failing). Enforced per item in `sync_item`, not as a pre-sync abort.
 
 ### 11.4 Fixtures
 
@@ -884,7 +887,7 @@ Each step ends with green tests at its level. No agent moves on until QA signs o
 6. **Web layer** — FastAPI routes, `sync_runner.py`, templates. Integration tests via `TestClient` covering each route × each state.
 7. **UX live updates** — HTMX polling, status indicator, sync button states. Browser-tested manually.
 8. **Manual + recheck flows** — `mb_search.py`, manual-entry templates, recheck routes.
-9. **URL recovery fallback** — `url_recovery.py` extracts an embedded Bandcamp `/album/` URL from `©cmt` (no scraping). Lower priority.
+9. **URL recovery fallback** — `url_recovery.py` extracts any embedded Bandcamp URL from `©cmt` (precise `/album/` or artist-root; no scraping). Lower priority.
 10. **Containerise** — Dockerfile (amd64), GHCR publish workflow, healthcheck, Docker-native `user:` for ownership, compose recipes.
 11. **Flagship E2E test** — cassette-mode test of the full sync flow. Becomes the gate for "prototype done".
 12. **Manual test pass** — QA runs through `docs/manual-tests.md` on macOS and Pi.

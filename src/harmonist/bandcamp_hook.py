@@ -31,10 +31,6 @@ from .sidecar import CURRENT_SCHEMA_VERSION
 log = logging.getLogger(__name__)
 
 
-class CapExceededError(Exception):
-    """Raised when a sync would download more items than the configured cap."""
-
-
 def construct_bandcamp_url(item: Any) -> str | None:
     """Construct the public Bandcamp album URL from a BandcampItem.
 
@@ -59,15 +55,6 @@ def construct_bandcamp_url(item: Any) -> str | None:
     if subdomain := hints.get("subdomain"):
         return f"https://{subdomain}.bandcamp.com/{item_type}/{slug}"
     return None
-
-
-def check_download_cap(would_download_count: int, cap: int) -> None:
-    """Raise CapExceededError if the count exceeds the cap. Equal is OK."""
-    if would_download_count > cap:
-        raise CapExceededError(
-            f"sync would download {would_download_count} items, "
-            f"exceeds cap of {cap} — refusing to proceed"
-        )
 
 
 def write_sidecar_for_item(item: Any, album_dir: Path, *, prefer_item_url: bool = False) -> bool:
@@ -348,6 +335,9 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # it). Set before super().__init__ because bandcampsync runs the whole
         # sync eagerly inside __init__.
         self.new_items = 0
+        # Genuinely-new albums NOT downloaded this run because the per-sync
+        # download limit was reached — i.e. how many remain for the next sync.
+        self.skipped_for_limit = 0
         options = BandcampSyncOptions(
             cookies=cookies,
             dir_path=Path(dir_path),
@@ -364,15 +354,8 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # BEFORE the parent loop — bandcampsync skips ignored items, so their
         # sidecar would otherwise never get its item_id filled in.
         self._backfill_ignored_purchases()
-        # Count items that would actually download (i.e. not ignored, not preorder).
-        candidates = []
-        for item in self.bandcamp.purchases:
-            if self.ignores.is_ignored(item):
-                continue
-            if getattr(item, "is_preorder", False):
-                continue
-            candidates.append(item)
-        check_download_cap(len(candidates), self._max_downloads_per_sync)
+        # The download limit is enforced per item in sync_item (download up to
+        # the cap, defer the rest to the next sync) rather than aborting here.
         await super().sync_items()
 
     def _backfill_ignored_purchases(self) -> None:
@@ -628,6 +611,22 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                         e,
                     )
                 return False  # didn't download (already on disk)
+
+        # Per-sync download limit: once we've downloaded the cap this run, defer
+        # the rest to the next sync (don't mark them ignored, so they retry).
+        # Only a genuinely-new item counts as "deferred" — ignored / preorder /
+        # hidden / already-local items wouldn't download anyway, so let super()
+        # skip them normally and don't inflate the "remaining" tally.
+        if self.new_items >= self._max_downloads_per_sync:
+            local_path = self.local_media.get_path_for_purchase(item)
+            if (
+                not self.ignores.is_ignored(item)
+                and not getattr(item, "is_preorder", False)
+                and not getattr(item, "hidden", False)
+                and not self.local_media.is_locally_downloaded(item, local_path)
+            ):
+                self.skipped_for_limit += 1
+                return False
 
         result = bool(super().sync_item(item, encoding))
         if result:
