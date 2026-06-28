@@ -2390,6 +2390,22 @@ def test_settings_page_renders(client, cfg):
     assert 'name="download_format"' in r.text
     assert 'name="max_downloads_per_sync"' in r.text
     assert 'name="user_agent"' in r.text
+    # The preferences form must submit via HTMX (hx-boost) so the CSRF
+    # middleware's required HX-Request header is sent — a plain POST 403s.
+    assert 'action="/settings" hx-boost="true"' in r.text
+
+
+def test_debug_memory_endpoint(client):
+    r = client.get("/debug/memory")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rss_mb" in data
+    assert "albums_in_snapshot" in data
+    assert "scan_cache_entries" in data
+    assert "gc_counts" in data
+    # tracemalloc off by default → null payload + the enable hint.
+    assert data["tracemalloc"] is None
+    assert "tracemalloc_hint" in data
 
 
 def test_settings_save_persists_and_applies_live(client, cfg):
