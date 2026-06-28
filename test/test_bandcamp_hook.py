@@ -206,8 +206,8 @@ def test_unmatched_purchases_returns_only_unlinked(tmp_path):
             url_hints={"subdomain": "x", "slug": "orphan"},
         ),
     ]
-    # Only item 222 (no sidecar carries it) is returned, as (url, label).
-    assert s.unmatched_purchases() == [("https://x.bandcamp.com/album/orphan", "X / Orphan")]
+    # Only item 222 (no sidecar carries it) is returned, as (item_id, url, label).
+    assert s.unmatched_purchases() == [(222, "https://x.bandcamp.com/album/orphan", "X / Orphan")]
 
 
 def test_sync_items_runs_parent_without_aborting(monkeypatch):

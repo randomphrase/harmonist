@@ -223,9 +223,12 @@ def create_app(
             # unmatched report, the rescan) can take a few seconds. Re-label the
             # status so it doesn't sit pinned to the last album's name.
             sync_runner.set_current_item("finishing up — checking matches…")
-            # Spot mis-tags first (release-group join → demote to Needs MBID
-            # with a suggestion), then handle whatever's genuinely still
-            # unlinked. Both write to the log + Activity.
+            # First link albums whose purchase used a DIFFERENT one of the
+            # release's several Bandcamp URLs than the slug they were tagged with
+            # (else they'd wrongly surrender). Then spot mis-tags (release-group
+            # join → demote to Needs MBID with a suggestion), then handle whatever
+            # is genuinely still unlinked. All write to the log + Activity.
+            _link_unmatched_by_release_urls(cfg, result)
             _detect_mistags_after_sync(cfg, result)
             # `collection_checkpoint_token is None` means bandcampsync paged the
             # WHOLE collection (no checkpoint applied) — only then is "no matching
@@ -552,7 +555,7 @@ class _UnmatchedSource(Protocol):
     the list of owned purchases that linked to no album. A real
     `HarmonistSyncer` satisfies it, as does any test double."""
 
-    def unmatched_purchases(self) -> list[tuple[str, str]]: ...
+    def unmatched_purchases(self) -> list[tuple[int, str, str]]: ...
 
 
 def _release_group_id(release: Release) -> str | None:
@@ -601,6 +604,86 @@ def _demote_to_needs_mbid(
     )
 
 
+def _link_album_to_purchase(album_path: Path, sc: Sidecar, *, item_id: int, store_url: str) -> None:
+    """Fill in the Bandcamp item_id on an already-tagged album's sidecar (Needs
+    Sync → Library), adopting the matched purchase URL as the store_url."""
+    sidecar_mod.write(
+        album_path,
+        Sidecar(
+            schema_version=sc.schema_version,
+            store_url=store_url,
+            bandcamp=BandcampInfo(
+                item_id=item_id,
+                band_id=sc.bandcamp.band_id if sc.bandcamp else None,
+                is_private=sc.bandcamp.is_private if sc.bandcamp else False,
+            ),
+            downloaded_at=sc.downloaded_at,
+            added_at=sc.added_at,
+            mb_release_id=sc.mb_release_id,
+            mb_match_candidate=sc.mb_match_candidate,
+            tagged_at=sc.tagged_at,
+            track_count_expected=sc.track_count_expected,
+            notes=sc.notes,
+        ),
+    )
+
+
+def _link_unmatched_by_release_urls(
+    cfg: config_mod.Config,
+    syncer: _UnmatchedSource,
+    *,
+    fetch_urls: Callable[[str], list[str]] = mb_lookup.fetch_release_urls,
+) -> None:
+    """Link an unmatched NEEDS_SYNC album to an unmatched purchase when the
+    purchase's slug is ANY of the album's MB release's Bandcamp URLs — not just
+    the single store_url it was tagged with.
+
+    A release often exposes several Bandcamp URLs (e.g. ``/album/x`` and
+    ``/album/x-2``, or an artist page plus a label page). The purchase frequently
+    uses a different slug than the one the album was tagged with, so the plain
+    slug match misses it and the album would needlessly surrender to NEEDS_MBID.
+    Runs BEFORE mis-tag detection/surrender. Cost is one MB url-rels call per
+    unmatched album — bounded by the (small) failed set. Best-effort; never
+    raises into the sync runner."""
+    try:
+        owned: dict[str, tuple[int, str]] = {}  # slug -> (item_id, url)
+        for item_id, url, _label in syncer.unmatched_purchases():
+            if slug := album_slug(url):
+                owned.setdefault(slug, (item_id, url))
+        albums = [
+            a
+            for a in scanner.scan(cfg.paths.music_dir)
+            if a.state == AlbumState.NEEDS_SYNC and a.sidecar and a.sidecar.mb_release_id
+        ]
+    except Exception:
+        log.exception("relink-by-release-urls: setup failed")
+        return
+    if not albums or not owned:
+        return
+    if len(albums) > _MISTAG_DETECTION_MAX_ALBUMS:
+        return  # the mis-tag step reports the over-cap warning; don't double-report
+
+    for a in albums:
+        assert a.sidecar is not None  # guaranteed by the comprehension filter
+        assert a.sidecar.mb_release_id is not None
+        try:
+            urls = fetch_urls(a.sidecar.mb_release_id)
+        except mb_lookup.MBError:
+            continue
+        release_slugs = {s for u in urls if (s := album_slug(u))}
+        matches = {s: owned[s] for s in release_slugs if s in owned}
+        if len(matches) != 1:
+            continue  # 0 = no owned purchase for this release; ≥2 = ambiguous
+        item_id, purchase_url = next(iter(matches.values()))
+        _link_album_to_purchase(a.path, a.sidecar, item_id=item_id, store_url=purchase_url)
+        # Don't let a second album claim the same purchase this pass.
+        owned = {s: v for s, v in owned.items() if v[0] != item_id}
+        activity.record(
+            f"{a.artist} — {a.title}: Needs Sync → Library "
+            f"(linked to Bandcamp purchase {item_id} via the release's MB URL)"
+        )
+
+
 def _detect_mistags_after_sync(
     cfg: config_mod.Config,
     syncer: _UnmatchedSource,
@@ -629,7 +712,7 @@ def _detect_mistags_after_sync(
         # subdomain-agnostic, so a label vs artist page for the same edition
         # still matches.
         owned: dict[str, tuple[str, str]] = {}  # slug -> (url, label)
-        for url, label in syncer.unmatched_purchases():
+        for _item_id, url, label in syncer.unmatched_purchases():
             slug = album_slug(url)
             if slug:
                 owned.setdefault(slug, (url, label))

@@ -216,6 +216,19 @@ for that run, forcing a full re-page (bandcampsync writes a fresh checkpoint at
 the end, so subsequent syncs return to incremental). Self-limiting: a full sync
 resolves every Needs Sync album — it either links it, or surrenders it.
 
+##### Linking via a release's other Bandcamp URLs
+
+Bandcamp linking keys on the album **slug** (`/album/<slug>`), but an MB release
+often lists *several* Bandcamp URLs (e.g. `/album/x` and `/album/x-2`, or an
+artist page plus a label page), and the purchase frequently uses a different one
+than the slug the album was tagged with — so the plain slug match misses and the
+album would wrongly surrender. After downloads, before mis-tag detection,
+`_link_unmatched_by_release_urls` fetches each unmatched Needs-Sync album's MB
+`url-rels` and links it to an unmatched purchase whose slug is **any** of the
+release's Bandcamp URLs (only when exactly one matches). Cost is one MB call per
+unmatched album — bounded by the small failed set, same budget as mis-tag
+detection.
+
 ##### Surrender — when nothing matches
 
 After the backfill and the post-sync mis-tag pass, an album still in Needs Sync

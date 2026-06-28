@@ -651,11 +651,12 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         with contextlib.suppress(Exception):
             self._post_download_callback(album_dir)
 
-    def unmatched_purchases(self) -> list[tuple[str, str]]:
+    def unmatched_purchases(self) -> list[tuple[int, str, str]]:
         """Purchases that linked to NO on-disk album this sync — their item_id
-        appears in no sidecar. Returns ``(url, label)`` pairs; the caller cross-
-        references these against unlinked on-disk albums (by MusicBrainz release
-        group) to spot mis-tags. Best-effort: returns [] on any trouble."""
+        appears in no sidecar. Returns ``(item_id, url, label)`` triples; callers
+        cross-reference these against unlinked on-disk albums (to link via a
+        release's MB Bandcamp URLs, or spot mis-tags by release group).
+        Best-effort: returns [] on any trouble."""
         media_dir = getattr(self.local_media, "media_dir", None)
         if not media_dir:
             return []
@@ -667,7 +668,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 continue
             if sc and sc.bandcamp and sc.bandcamp.item_id is not None:
                 linked.add(int(sc.bandcamp.item_id))
-        out: list[tuple[str, str]] = []
+        out: list[tuple[int, str, str]] = []
         for item in self.bandcamp.purchases:
             try:
                 iid = int(item.item_id)
@@ -678,5 +679,5 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             url = construct_bandcamp_url(item)
             if url:
                 label = f"{getattr(item, 'band_name', '?')} / {getattr(item, 'item_title', '?')}"
-                out.append((url, label))
+                out.append((iid, url, label))
         return out
