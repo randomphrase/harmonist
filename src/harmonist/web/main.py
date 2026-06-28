@@ -295,6 +295,14 @@ def create_app(
         # Fail fast on a bind-mount permission problem (otherwise it looks like
         # a silent scan/reconcile jam) and log the process uid/gid.
         _validate_runtime_paths(cfg)
+        # Opt-in allocation tracing for memory diagnosis (off by default — it
+        # roughly doubles per-object overhead). Set HARMONIST_TRACEMALLOC=1, then
+        # read the top allocations from GET /debug/memory.
+        if os.environ.get("HARMONIST_TRACEMALLOC"):
+            import tracemalloc
+
+            tracemalloc.start(int(os.environ.get("HARMONIST_TRACEMALLOC_FRAMES", "1")))
+            log.info("tracemalloc enabled — GET /debug/memory for top allocations")
         # Engage the background scanner once the event loop is running, kicking
         # the initial library scan off the request path.
         scan_runner.attach_loop()
@@ -1408,6 +1416,44 @@ def _register_routes(app: FastAPI) -> None:
             }
         )
 
+    @app.get("/debug/memory")
+    def debug_memory(request: Request) -> Response:
+        """Live memory snapshot for diagnosis: process RSS, the size of the
+        in-memory scan snapshot + cache, GC generation counts, and (when
+        HARMONIST_TRACEMALLOC=1) the top allocation sites."""
+        import gc
+        import tracemalloc
+
+        scan_runner = request.app.state.scan_runner
+        rss = _process_rss_bytes()
+        payload: dict[str, Any] = {
+            "rss_mb": round(rss / 1e6, 1) if rss is not None else None,
+            "albums_in_snapshot": len(scan_runner.albums()),
+            "scan_cache_entries": scan_runner.cache_size(),
+            "gc_counts": gc.get_count(),
+            "tracemalloc": None,
+        }
+        if tracemalloc.is_tracing():
+            current, peak = tracemalloc.get_traced_memory()
+            top = tracemalloc.take_snapshot().statistics("lineno")[:15]
+            payload["tracemalloc"] = {
+                "current_mb": round(current / 1e6, 1),
+                "peak_mb": round(peak / 1e6, 1),
+                "top": [
+                    {
+                        "source": str(stat.traceback),
+                        "size_mb": round(stat.size / 1e6, 2),
+                        "blocks": stat.count,
+                    }
+                    for stat in top
+                ],
+            }
+        else:
+            payload["tracemalloc_hint"] = (
+                "set HARMONIST_TRACEMALLOC=1 and restart for top allocations"
+            )
+        return JSONResponse(payload)
+
     @app.get("/cover/{album_id}")
     def cover(request: Request, album_id: str) -> Response:
         # Sync route → FastAPI runs it in its threadpool, so the (blocking)
@@ -1720,6 +1766,27 @@ def _is_writable(path: Path) -> bool:
         return path.exists() and (path.is_dir() or path.parent.is_dir())
     except OSError:
         return False
+
+
+def _process_rss_bytes() -> int | None:
+    """Resident set size of this process, in bytes — None if unavailable.
+
+    Reads /proc/self/status on Linux (where Harmonist runs in Docker); falls
+    back to getrusage for dev on macOS (ru_maxrss is bytes there, kB on Linux)."""
+    try:
+        with open("/proc/self/status", encoding="ascii") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024  # value is in kB
+    except OSError:
+        pass
+    try:
+        import resource
+
+        maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return maxrss if sys.platform == "darwin" else maxrss * 1024
+    except (ImportError, OSError):
+        return None
 
 
 def _flash(message: str, *, level: str) -> str:

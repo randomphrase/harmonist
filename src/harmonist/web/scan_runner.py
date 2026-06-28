@@ -124,6 +124,11 @@ class ScanRunner:
     def has_completed(self) -> bool:
         return self._completed_once
 
+    def cache_size(self) -> int:
+        """Number of albums held in the mtime cache (one entry per album dir
+        carrying its signature + built Album). Exposed for memory diagnostics."""
+        return len(self._cache)
+
     def status(self) -> dict[str, Any]:
         return self._status.to_dict()
 
