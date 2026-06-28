@@ -260,9 +260,9 @@ def test_tasks_state_group_omitted_when_empty(client, cfg):
     _make_album(cfg, "Only New")
     r = client.get("/tasks")
     assert "New" in r.text
-    # No NEEDS_MBID / NEEDS_REVIEW / NEEDS_SYNC headers ("MBID" alone also
-    # appears in the manual form, so match the header's <abbr> fragment).
-    assert ">MBID</abbr>" not in r.text
+    # No NEEDS_MBID / NEEDS_REVIEW / NEEDS_SYNC headers. Match a fragment unique
+    # to the NEEDS_MBID header (the New header now also mentions MBID).
+    assert "No confirmed MusicBrainz release" not in r.text
     assert "Needs Review" not in r.text
     assert "Needs Sync" not in r.text
 
@@ -323,7 +323,7 @@ def test_new_card_rendered(client, cfg):
     _make_album(cfg, "New Album")  # untagged
     r = client.get("/tasks")
     assert "New" in r.text
-    assert "No MusicBrainz tags" in r.text  # explains why it's New
+    assert "need a MusicBrainz release" in r.text  # group header states what's needed
     assert 'id="newtools-' in r.text  # search/paste tools present
 
 
@@ -379,12 +379,12 @@ def test_needs_mbid_card_without_store_url_rendered(client, cfg):
     assert "/manual/" in r.text
 
 
-def test_new_card_untagged_explains_and_offers_search(client, cfg):
+def test_new_card_untagged_offers_search_no_reconcile(client, cfg):
     _make_album(cfg, "New Album")  # untagged: no MB Album Id atom
     r = client.get("/tasks")
-    # No tags to reconcile from → explain that, offer search/paste, and DON'T
-    # show the (useless here) "Reconcile from tags" button.
-    assert "No MusicBrainz tags" in r.text
+    # The group header states what's needed; the card is just the search/paste
+    # tools — no per-card blurb, and no (useless here) "Reconcile from tags".
+    assert "need a MusicBrainz release" in r.text
     assert "Reconcile from tags" not in r.text
     assert "Assign &amp; Tag" in r.text or "Assign & Tag" in r.text
     assert "Recover store URL" not in r.text  # URL recovery is automatic now
