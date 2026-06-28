@@ -59,7 +59,11 @@
     </section>
 
     {# ---- Editable settings (take effect immediately, persisted to toml) ---- #}
-    <form method="post" action="/settings" class="border border-line rounded-lg p-4 space-y-4">
+    {# hx-boost: submit via HTMX so the CSRF middleware's required HX-Request
+       header is sent (a plain form POST omits it → 403). The handler returns
+       the full settings page; the boosted body-swap re-renders it in place. #}
+    <form method="post" action="/settings" hx-boost="true"
+          class="border border-line rounded-lg p-4 space-y-4">
         <div>
             <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Preferences</h2>
             <p class="text-2xs text-muted">Saved to <code>harmonist.toml</code> and applied right away.</p>
