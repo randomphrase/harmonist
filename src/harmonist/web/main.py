@@ -871,6 +871,25 @@ def _bandcamp_configured(cfg: config_mod.Config) -> bool:
         return False
 
 
+# bandcampsync's own ignores template, verbatim. It ships this ONLY inside its
+# Docker image (at the hard-coded path "/ignores.template.txt"), not in the pip
+# package, so we vendor it here. The auto-managed id section + delimiter is
+# written by bandcampsync itself on first add, so this is just the documented
+# header; pre-writing it means bandcampsync's broken `copyfile` is skipped.
+_IGNORES_TEMPLATE = """\
+# This file allows you to exclude releases from downloads.
+#
+# Add one bandcamp item id per line, optionally followed by a comment.
+# For example:
+# 1546934218  # Chrome Sparks / Sparks EP
+# 1418240212  # Chrome Sparks / Goddess EP
+#
+# To get an item id, you can click on Share/Embed on the release page, click
+# "Embed this album", choose an embed size, and within the embed code, look for
+# the album=<...> portion of the link.
+"""
+
+
 def _run_bandcamp_sync(
     cfg: config_mod.Config,
     *,
@@ -885,13 +904,10 @@ def _run_bandcamp_sync(
     cookies = cfg.cookies_file.read_text(encoding="utf-8")
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     cfg.ignores_file.parent.mkdir(parents=True, exist_ok=True)
-    # bandcampsync seeds a missing ignores file by copying a template at the
-    # hard-coded path "/ignores.template.txt" — which exists only in *its* Docker
-    # image, so the copy fails for us. Pre-create an empty ignores file (a blank
-    # one is valid; bandcampsync writes the delimiter section itself on first
-    # add) so its `if not exists` guard skips that broken copy.
+    # Seed a missing ignores file from the vendored template (see above), so
+    # bandcampsync's first-run `copyfile` of its image-only template is skipped.
     if not cfg.ignores_file.exists():
-        cfg.ignores_file.touch()
+        cfg.ignores_file.write_text(_IGNORES_TEMPLATE, encoding="utf-8")
     return HarmonistSyncer(
         cookies=cookies,
         # bandcampsync's LocalMedia uses .iterdir() / Path arithmetic on
