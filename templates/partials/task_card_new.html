@@ -1,4 +1,5 @@
-<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border border-line">
+<div id="task-{{ album.id }}" class="relative p-4 rounded-lg bg-white border border-line">
+    {% include 'partials/_tagging_overlay.html' %}
     {% include 'partials/_album_header.html' %}
 
     {% if album.has_tag_mbid %}

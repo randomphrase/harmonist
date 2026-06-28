@@ -1,0 +1,12 @@
+{# In-flight "Tagging…" overlay. Hidden until a tag/confirm control on this card
+   points its hx-indicator here — HTMX then toggles .htmx-request on it and the
+   .tagging-overlay rule (static/input.css) shows it. Covers the card so its
+   buttons can't be used while the multi-second tag request is in flight. #}
+<div id="tagging-{{ album.id }}"
+     class="tagging-overlay absolute inset-0 z-20 items-center justify-center gap-2 rounded-lg bg-white/85 backdrop-blur-sm">
+    <svg class="animate-spin h-4 w-4 text-mb-purple" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path>
+    </svg>
+    <span class="text-mb-purple font-bold uppercase tracking-widest text-xs">Tagging…</span>
+</div>
