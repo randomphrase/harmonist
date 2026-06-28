@@ -13,11 +13,6 @@
             Reconcile from tags
         </button>
     </div>
-    {% else %}
-    <p class="text-muted text-xs mb-3">
-        No MusicBrainz tags on these files — nothing to auto-reconcile from.
-        Search for the release or paste its MBID below to tag it.
-    </p>
     {% endif %}
 
     {# Search-by-name or paste an MBID. hx-preserve'd so a background re-render
