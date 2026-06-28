@@ -320,11 +320,11 @@ def test_tasks_empty_state_message_distinguishes_zero_vs_all_done(client, cfg):
 
 
 def test_new_card_rendered(client, cfg):
-    _make_album(cfg, "New Album")
+    _make_album(cfg, "New Album")  # untagged
     r = client.get("/tasks")
     assert "New" in r.text
-    assert "Reconcile" in r.text
-    assert 'hx-post="/reconcile/' in r.text
+    assert "No MusicBrainz tags" in r.text  # explains why it's New
+    assert 'id="newtools-' in r.text  # search/paste tools present
 
 
 def test_needs_mbid_card_with_store_url_rendered(client, cfg):
@@ -379,13 +379,21 @@ def test_needs_mbid_card_without_store_url_rendered(client, cfg):
     assert "/manual/" in r.text
 
 
-def test_new_card_offers_reconcile_and_assign(client, cfg):
-    _make_album(cfg, "New Album")
+def test_new_card_untagged_explains_and_offers_search(client, cfg):
+    _make_album(cfg, "New Album")  # untagged: no MB Album Id atom
+    r = client.get("/tasks")
+    # No tags to reconcile from → explain that, offer search/paste, and DON'T
+    # show the (useless here) "Reconcile from tags" button.
+    assert "No MusicBrainz tags" in r.text
+    assert "Reconcile from tags" not in r.text
+    assert "Assign &amp; Tag" in r.text or "Assign & Tag" in r.text
+    assert "Recover store URL" not in r.text  # URL recovery is automatic now
+
+
+def test_new_card_tagged_orphan_offers_reconcile(client, cfg):
+    _make_album(cfg, "Orphan", mbid="rel-xyz")  # MB Album Id atom, no sidecar
     r = client.get("/tasks")
     assert "Reconcile from tags" in r.text
-    assert "Assign &amp; Tag" in r.text or "Assign & Tag" in r.text
-    # URL recovery is automatic now (in reconcile) — no manual button.
-    assert "Recover store URL" not in r.text
 
 
 def test_needs_review_card_renders_side_by_side(client, cfg):

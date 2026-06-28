@@ -1,7 +1,10 @@
 <div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border border-line">
     {% include 'partials/_album_header.html' %}
-    <p class="text-muted text-xs mb-3">No <code>.harmonist.json</code> sidecar yet. Pick one:</p>
 
+    {% if album.has_tag_mbid %}
+    {# Files carry a MusicBrainz Album Id but have no sidecar — reconcile derives
+       one from the existing tags. (Auto-reconcile normally handles these; this
+       is the manual retry.) #}
     <div class="flex gap-2 flex-wrap mb-3">
         <button hx-post="/reconcile/{{ album.id }}"
                 hx-swap="none" hx-disabled-elt="this"
@@ -10,6 +13,12 @@
             Reconcile from tags
         </button>
     </div>
+    {% else %}
+    <p class="text-muted text-xs mb-3">
+        No MusicBrainz tags on these files — nothing to auto-reconcile from.
+        Search for the release or paste its MBID below to tag it.
+    </p>
+    {% endif %}
 
     {# Search-by-name or paste an MBID. hx-preserve'd so a background re-render
        (New albums kick auto-reconcile, which polls) can't wipe in-progress
