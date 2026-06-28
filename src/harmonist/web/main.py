@@ -248,11 +248,17 @@ def create_app(
         # every few seconds, which is punishing on a network mount. The status
         # bar (reading reconcile.status directly) carries live progress
         # meanwhile; the inbox/library counts snap to correct on completion.
+        # Reuse the scanner's just-completed snapshot instead of re-walking the
+        # whole library again (that second scan was minutes of silent, wasted
+        # work + a second copy of the snapshot in RAM). Fall back to an internal
+        # scan only if the background scanner hasn't produced one yet.
+        snapshot = scan_runner.albums() if scan_runner.has_completed() else None
         reconcile_pending_orphans(
             cfg.paths.music_dir,
             fetch_urls=mb_lookup.fetch_release_urls,
             status_updater=status_updater,
             exempt_paths=forgotten_paths,
+            albums=snapshot,
         )
         scan_runner.request_scan()  # sidecars written → refresh the snapshot
 
