@@ -885,6 +885,13 @@ def _run_bandcamp_sync(
     cookies = cfg.cookies_file.read_text(encoding="utf-8")
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
     cfg.ignores_file.parent.mkdir(parents=True, exist_ok=True)
+    # bandcampsync seeds a missing ignores file by copying a template at the
+    # hard-coded path "/ignores.template.txt" — which exists only in *its* Docker
+    # image, so the copy fails for us. Pre-create an empty ignores file (a blank
+    # one is valid; bandcampsync writes the delimiter section itself on first
+    # add) so its `if not exists` guard skips that broken copy.
+    if not cfg.ignores_file.exists():
+        cfg.ignores_file.touch()
     return HarmonistSyncer(
         cookies=cookies,
         # bandcampsync's LocalMedia uses .iterdir() / Path arithmetic on
