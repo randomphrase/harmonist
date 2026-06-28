@@ -44,7 +44,8 @@
                class="inline-flex items-center gap-1 px-2 py-1 rounded text-2xs font-bold uppercase tracking-widest text-mb-purple border border-mb-purple/30 hover:bg-mb-purple/10 transition whitespace-nowrap">
                 MB ↗
             </a>
-            <form hx-post="/manual/{{ album_id }}/assign" hx-swap="none" hx-disabled-elt="this">
+            <form hx-post="/manual/{{ album_id }}/assign" hx-swap="none" hx-disabled-elt="this"
+                  hx-indicator="#tagging-{{ album_id }}">
                 <input type="hidden" name="mbid" value="{{ r.id }}">
                 <button type="submit"
                         class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-2xs font-bold uppercase tracking-widest transition whitespace-nowrap">

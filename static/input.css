@@ -57,6 +57,19 @@ button[disabled],
   cursor: progress;
 }
 
+/* Tagging in-flight overlay: covers an album card while its tag/confirm request
+   is in flight. The control points hx-indicator at this element, so HTMX toggles
+   .htmx-request on it. Hidden until then; opacity:1 overrides the global
+   .htmx-request dim above so the "Tagging…" label stays legible. */
+.tagging-overlay {
+  display: none;
+}
+.tagging-overlay.htmx-request {
+  display: flex;
+  opacity: 1;
+  cursor: progress;
+}
+
 /* The library tile whose detail panel is currently open. */
 .lib-tile-active img {
   box-shadow: 0 0 0 2px var(--color-accent);

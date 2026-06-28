@@ -2,7 +2,7 @@
    no-search path — shared by the New and Needs MBID cards.
    Expects: album (album.id). #}
 <form hx-post="/manual/{{ album.id }}/assign"
-      hx-swap="none" hx-disabled-elt="this"
+      hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
       class="flex gap-2">
     <input type="text" name="mbid" required
            placeholder="MB release URL or 36-char MBID"

@@ -10,7 +10,8 @@
    after a full sync found no matching Bandcamp purchase. No Confirm — the user
    seeds/fixes via the tools below. #}
 {% set is_surrender = candidate and candidate.unmatched_purchase %}
-<div id="task-{{ album.id }}" class="p-4 rounded-lg bg-white border {% if candidate %}border-amber-300{% elif has_store_url %}border-bc-teal/40{% else %}border-line{% endif %}">
+<div id="task-{{ album.id }}" class="relative p-4 rounded-lg bg-white border {% if candidate %}border-amber-300{% elif has_store_url %}border-bc-teal/40{% else %}border-line{% endif %}">
+    {% include 'partials/_tagging_overlay.html' %}
     {# Header shows the MB + store badges top-right. Before confirmation the MB
        badge should point at the *candidate* release, so override mb_release_id
        (store_url defaults from the sidecar inside the header). #}
@@ -110,7 +111,7 @@
             {% if exact_count %}
             {# File count matches the release exactly — a plain tag is valid. #}
             <button hx-post="/confirm/{{ album.id }}"
-                    hx-swap="none" hx-disabled-elt="this"
+                    hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
                     class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
                 Confirm &amp; Tag
             </button>
@@ -119,7 +120,7 @@
                the exact-count check, so the incomplete tag IS the (highlighted)
                primary action — no misleading "Confirm & Tag" button here. #}
             <button hx-post="/confirm/{{ album.id }}/incomplete"
-                    hx-swap="none" hx-disabled-elt="this"
+                    hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
                     title="Your {{ candidate.file_count }} files are fewer than this release's {{ candidate.track_count }} tracks. Tag what's here and mark the album incomplete."
                     class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
                 Confirm as Incomplete ({{ candidate.file_count }} of {{ candidate.track_count }})
@@ -136,7 +137,8 @@
                length may turn an approximate match into an exact one. Works
                whether or not there's a store URL (re-assigns the candidate
                MBID rather than re-looking-up the URL). #}
-            <form hx-post="/manual/{{ album.id }}/assign" hx-swap="none" hx-disabled-elt="this">
+            <form hx-post="/manual/{{ album.id }}/assign" hx-swap="none" hx-disabled-elt="this"
+                  hx-indicator="#tagging-{{ album.id }}">
                 <input type="hidden" name="mbid" value="{{ candidate.mb_release_id }}">
                 <button type="submit"
                         title="Re-fetch this release from MusicBrainz and re-compare — use after fixing the release on MB."
