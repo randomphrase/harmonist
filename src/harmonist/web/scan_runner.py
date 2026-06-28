@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -82,6 +83,9 @@ class ScanRunner:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[None] | None = None
         self._dirty = True  # a (re)scan is wanted
+        # Fired once, after the FIRST scan completes — used to kick reconcile
+        # backend-side so it runs without waiting for the frontend /tasks poll.
+        self._on_first_complete: Callable[[], object] | None = None
         # A SINGLE worker thread runs all the scan's blocking filesystem I/O
         # (walk/stat + tag reads), so the event loop never blocks on syscalls.
         # One worker keeps reads serial → no parallel-I/O concurrency, and the
@@ -98,6 +102,12 @@ class ScanRunner:
         self._loop = asyncio.get_running_loop()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="harmonist-scan")
         self._kick()
+
+    def set_on_first_complete(self, callback: Callable[[], object]) -> None:
+        """Register a callback fired (on the loop thread) once the FIRST scan
+        completes. Set before `attach_loop`. Used to kick reconcile so it runs
+        on startup without the frontend `/tasks` poll."""
+        self._on_first_complete = callback
 
     def is_engaged(self) -> bool:
         """True once the background runner is driving scans (lifespan ran).
@@ -213,3 +223,11 @@ class ScanRunner:
             status.dirs_scanned,
             time.monotonic() - started,
         )
+        # Kick reconcile once the first snapshot is ready (backend-side, so it
+        # runs even with no browser open). Only on the first scan — later scans
+        # are covered by the /tasks kick, and re-firing here would churn.
+        if self._scan_seq == 1 and self._on_first_complete is not None:
+            try:
+                self._on_first_complete()
+            except Exception:
+                log.exception("on-first-scan-complete callback failed")
