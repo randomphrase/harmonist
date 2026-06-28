@@ -2671,4 +2671,20 @@ def test_run_bandcamp_sync_precreates_ignores_file(cfg, monkeypatch):
     main_mod._run_bandcamp_sync(cfg)
 
     assert cfg.ignores_file.exists()  # pre-created → bandcampsync won't copy the template
+    # Seeded from the vendored template, not left blank.
+    assert "exclude releases from downloads" in cfg.ignores_file.read_text()
     assert called.get("yes")
+
+
+def test_run_bandcamp_sync_keeps_existing_ignores_file(cfg, monkeypatch):
+    """An existing ignores file (with the user's ids) is never overwritten."""
+    from harmonist.web import main as main_mod
+
+    cfg.paths.config_dir.mkdir(parents=True, exist_ok=True)
+    cfg.cookies_file.write_text("cookie", encoding="utf-8")
+    cfg.ignores_file.write_text("12345  # keep me\n", encoding="utf-8")
+    monkeypatch.setattr(main_mod, "HarmonistSyncer", lambda *a, **k: None)
+
+    main_mod._run_bandcamp_sync(cfg)
+
+    assert cfg.ignores_file.read_text() == "12345  # keep me\n"
