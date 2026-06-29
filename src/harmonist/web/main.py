@@ -26,6 +26,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from harmonist import (
     activity,
+    audit,
     cover_art,
     formats,
     mb_lookup,
@@ -512,6 +513,7 @@ def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
     state_file = music_dir / _BANDCAMPSYNC_STATE_FILE
     try:
         if state_file.is_file():
+            audit.record("checkpoint.clear", path=state_file, reason="pending Needs-Sync links")
             state_file.unlink()
             return True
     except OSError as e:
