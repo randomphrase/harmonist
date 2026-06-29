@@ -217,7 +217,13 @@ def reconcile_pending_orphans(
         albums = scanner.scan(music_dir)
     else:
         activity.record("Reconcile started")
-    pending = [a for a in albums if a.state == AlbumState.NEW and a.path not in exempt]
+    # NEW: derive a sidecar. TAGGING: the sidecar's MBID disagrees with the file
+    # tags (an external Picard re-tag) — adopt the files. Both are reconcile's job.
+    pending = [
+        a
+        for a in albums
+        if a.state in (AlbumState.NEW, AlbumState.TAGGING) and a.path not in exempt
+    ]
     total = len(pending)
 
     # Base counts at start, EXCLUDING the orphans we're about to reconcile — an
@@ -234,6 +240,7 @@ def reconcile_pending_orphans(
     reconciled_bandcamp = 0
     reconciled_manual = 0
     recovered_url = 0  # store URL recovered but no MBID yet → NEEDS_MBID
+    adopted = 0  # TAGGING album whose sidecar adopted an external file re-tag
     skipped = 0
     errors = 0
 
@@ -282,6 +289,14 @@ def reconcile_pending_orphans(
             # it floods on a large untagged library; the status bar shows each
             # album as it's checked, and the closing summary reports the count.
             log.debug("%s: nothing to reconcile (no MBID or Bandcamp URL)", label)
+        elif album.state == AlbumState.TAGGING:
+            # The sidecar adopted the file tags (external Picard re-tag). The new
+            # state (Library / Needs Sync) settles on the post-reconcile rescan.
+            adopted += 1
+            activity.record(
+                f"{label}: adopted external re-tag — sidecar now {sc.mb_release_id}",
+                "warning",
+            )
         elif sc.mb_release_id and sc.store_url:
             reconciled_bandcamp += 1
             live_counts.move(AlbumState.NEW, AlbumState.NEEDS_SYNC)
@@ -306,16 +321,18 @@ def reconcile_pending_orphans(
         if sc is not None and idx < total and rate_limit_seconds > 0:
             time.sleep(rate_limit_seconds)
 
+    adopted_note = f", {adopted} re-tag(s) adopted" if adopted else ""
     activity.record(
         f"Reconcile done: {reconciled_bandcamp + reconciled_manual + recovered_url} reconciled "
         f"({reconciled_bandcamp} → Needs Sync, {reconciled_manual} → Library, "
-        f"{recovered_url} → Needs MBID), {skipped} unchanged, {errors} failed"
+        f"{recovered_url} → Needs MBID){adopted_note}, {skipped} unchanged, {errors} failed"
     )
     return {
         "total": total,
         "reconciled_bandcamp": reconciled_bandcamp,
         "reconciled_manual": reconciled_manual,
         "recovered_url": recovered_url,
+        "adopted": adopted,
         "skipped": skipped,
         "errors": errors,
     }

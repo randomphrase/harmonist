@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -47,14 +48,41 @@ def reconcile_album(
 ) -> Sidecar | None:
     """Inspect the album, write a sidecar, return it. None if nothing to do.
 
-    Idempotent: if the sidecar already exists, we don't touch it.
+    Two jobs:
+      * No sidecar → derive one from the file tags (or recover a Bandcamp URL).
+      * Sidecar present but its `mb_release_id` disagrees with a *consistent*
+        file MBID → **adopt the file tags** (the user re-tagged in Picard, as we
+        ask them to). Otherwise leave an existing sidecar untouched.
     """
-    if sidecar_mod.has_sidecar(album_dir):
-        return None
-
     files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
     if not files:
         return None
+
+    existing: Sidecar | None = None
+    if sidecar_mod.has_sidecar(album_dir):
+        try:
+            existing = sidecar_mod.read(album_dir)
+        except Exception:
+            return None  # unreadable sidecar — don't touch it
+    if existing is not None:
+        # Adopt an external re-tag: the files now carry a different consistent
+        # MBID than the sidecar records (the TAGGING-state mismatch). Files win —
+        # re-point the sidecar, keeping store_url / item_id (same purchase), and
+        # clear the now-stale candidate + expected-track-count. Scoped to a
+        # sidecar that HAS an MBID, so a surrendered album (no MBID, but files
+        # still carry the old one) is NOT re-promoted.
+        file_mbid = _consistent_file_mbid(files)
+        if existing.mb_release_id and file_mbid and file_mbid != existing.mb_release_id:
+            adopted = replace(
+                existing,
+                mb_release_id=file_mbid,
+                mb_match_candidate=None,
+                track_count_expected=None,
+                tagged_at=datetime.now(UTC),
+            )
+            sidecar_mod.write(album_dir, adopted)
+            return adopted
+        return None  # sidecar present + consistent (or files untagged) → leave it
 
     mbid, comment = _read_album_id_and_comment(files)
     now = datetime.now(UTC)
@@ -121,6 +149,14 @@ def reconcile_pending(
         else:
             stats["reconciled_manual"] += 1
     return stats
+
+
+def _consistent_file_mbid(files: list[Path]) -> str | None:
+    """The single MB Album Id shared by all tagged files, or None if no file is
+    tagged or they disagree (we don't pick a winner among inconsistent tags —
+    those are surfaced as INCONSISTENT for the user to split into folders)."""
+    ids = {mid for f in files if (mid := formats.read_album_id(f))}
+    return next(iter(ids)) if len(ids) == 1 else None
 
 
 def _read_album_id_and_comment(files: list[Path]) -> tuple[str | None, str]:
