@@ -640,6 +640,9 @@ def _demote_to_needs_mbid(
             notes=sc.notes,
         ),
     )
+    # Surrender / mis-tag demote: the album was an unlinked NEEDS_SYNC, now back
+    # to NEEDS_MBID. Keep the live counts moving between scans.
+    live_counts.move(AlbumState.NEEDS_SYNC, AlbumState.NEEDS_MBID)
 
 
 def _link_album_to_purchase(album_path: Path, sc: Sidecar, *, item_id: int, store_url: str) -> None:
@@ -664,6 +667,9 @@ def _link_album_to_purchase(album_path: Path, sc: Sidecar, *, item_id: int, stor
             notes=sc.notes,
         ),
     )
+    # NEEDS_SYNC → Library (COMPLETE proxy; the scan reset splits the library
+    # total into COMPLETE/INCOMPLETE exactly).
+    live_counts.move(AlbumState.NEEDS_SYNC, AlbumState.COMPLETE)
 
 
 def _link_unmatched_by_release_urls(
