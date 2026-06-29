@@ -34,6 +34,19 @@ def test_scan_runner_not_engaged_before_attach(tmp_path):
     runner.request_scan()  # no-op without a loop, must not raise
 
 
+def test_scan_now_is_synchronous_and_cache_backed(tmp_path):
+    """scan_now() works off the loop (the sync runner's post-sync matching uses
+    it) and populates/reuses the mtime cache so repeat scans are cheap."""
+    music = tmp_path / "music"
+    _album(music, "A")
+    _album(music, "B")
+    runner = ScanRunner(music)
+    albums = runner.scan_now()  # no attach_loop needed
+    assert {a.path.name for a in albums} == {"A", "B"}
+    assert runner.cache_size() == 2  # cache populated
+    assert len(runner.scan_now()) == 2  # second call (cache hits) still correct
+
+
 def test_scan_runner_scans_and_reports(tmp_path):
     music = tmp_path / "music"
     _album(music, "A")

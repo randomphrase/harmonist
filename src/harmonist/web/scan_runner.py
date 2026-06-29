@@ -129,6 +129,18 @@ class ScanRunner:
         carrying its signature + built Album). Exposed for memory diagnostics."""
         return len(self._cache)
 
+    def scan_now(self) -> list[Album]:
+        """A synchronous, cache-backed scan for a worker thread (the sync
+        runner's post-sync matching). Reuses the background scanner's mtime cache,
+        so it's FAST even right after a sync — only the albums whose sidecar just
+        changed re-read tags; the rest are cache hits. (A cold ``scanner.scan``
+        re-reads every album's tags — ~80s on a large NAS library, twice, which
+        is the post-sync hang we're killing.)
+
+        The cache is a dict, GIL-atomic per entry, so sharing it with an in-flight
+        background scan is safe — worst case a redundant re-read of one album."""
+        return scanner.scan(self._music_dir, album_cache=self._cache)
+
     def status(self) -> dict[str, Any]:
         return self._status.to_dict()
 
