@@ -236,19 +236,36 @@ def create_app(
             # unmatched report, the rescan) can take a few seconds. Re-label the
             # status so it doesn't sit pinned to the last album's name.
             sync_runner.set_current_item("finishing up — checking matches…")
-            # First link albums whose purchase used a DIFFERENT one of the
-            # release's several Bandcamp URLs than the slug they were tagged with
-            # (else they'd wrongly surrender). Then spot mis-tags (release-group
-            # join → demote to Needs MBID with a suggestion), then handle whatever
-            # is genuinely still unlinked. All write to the log + Activity.
-            _link_unmatched_by_release_urls(cfg, result)
-            _detect_mistags_after_sync(cfg, result)
+            # Post-sync matching used to cold-scan the whole library TWICE (~80s
+            # each on a big NAS) for a silent multi-minute hang. Now: each pass
+            # gets a FAST cache-backed scan_now() (only just-changed albums re-read
+            # tags), runs in pipeline order so each sees the prior pass's links/
+            # demotes (a shared stale snapshot would re-surrender a just-linked
+            # album), shows progress, and the relink + mis-tag passes are SKIPPED
+            # entirely when no purchase linked to nothing (the common case).
+            #   1. relink albums whose purchase used a DIFFERENT one of the
+            #      release's Bandcamp URLs than the tagged slug,
+            #   2. spot mis-tags (release-group join → demote with a suggestion),
+            #   3. surrender whatever's genuinely still unlinked.
+            if result.unmatched_purchases():
+                _link_unmatched_by_release_urls(
+                    cfg,
+                    result,
+                    albums=scan_runner.scan_now(),
+                    progress=sync_runner.set_current_item,
+                )
+                _detect_mistags_after_sync(
+                    cfg,
+                    result,
+                    albums=scan_runner.scan_now(),
+                    progress=sync_runner.set_current_item,
+                )
             # `collection_checkpoint_token is None` means bandcampsync paged the
             # WHOLE collection (no checkpoint applied) — only then is "no matching
             # purchase" conclusive enough to surrender an album to NEEDS_MBID.
             full_sync = getattr(result, "collection_checkpoint_token", None) is None
-            _report_unmatched_after_sync(cfg, full_sync=full_sync)
-            scan_runner.request_scan()  # downloads landed → refresh the snapshot
+            _report_unmatched_after_sync(cfg, full_sync=full_sync, albums=scan_runner.scan_now())
+            scan_runner.request_scan()  # downloads/links landed → refresh the snapshot
             return result
 
     sync_runner._runner_fn = runner_fn
@@ -653,6 +670,8 @@ def _link_unmatched_by_release_urls(
     syncer: _UnmatchedSource,
     *,
     fetch_urls: Callable[[str], list[str]] = mb_lookup.fetch_release_urls,
+    albums: list[Album] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> None:
     """Link an unmatched NEEDS_SYNC album to an unmatched purchase when the
     purchase's slug is ANY of the album's MB release's Bandcamp URLs — not just
@@ -670,20 +689,23 @@ def _link_unmatched_by_release_urls(
         for item_id, url, _label in syncer.unmatched_purchases():
             if slug := album_slug(url):
                 owned.setdefault(slug, (item_id, url))
-        albums = [
+        scanned = albums if albums is not None else scanner.scan(cfg.paths.music_dir)
+        unmatched = [
             a
-            for a in scanner.scan(cfg.paths.music_dir)
+            for a in scanned
             if a.state == AlbumState.NEEDS_SYNC and a.sidecar and a.sidecar.mb_release_id
         ]
     except Exception:
         log.exception("relink-by-release-urls: setup failed")
         return
-    if not albums or not owned:
+    if not unmatched or not owned:
         return
-    if len(albums) > _MISTAG_DETECTION_MAX_ALBUMS:
+    if len(unmatched) > _MISTAG_DETECTION_MAX_ALBUMS:
         return  # the mis-tag step reports the over-cap warning; don't double-report
 
-    for a in albums:
+    for i, a in enumerate(unmatched, 1):
+        if progress:
+            progress(f"checking matches… linking {i}/{len(unmatched)}")
         assert a.sidecar is not None  # guaranteed by the comprehension filter
         assert a.sidecar.mb_release_id is not None
         try:
@@ -712,6 +734,8 @@ def _detect_mistags_after_sync(
         mb_lookup.browse_release_group_releases
     ),
     fetch_release: Callable[[str], Release] = mb_lookup.fetch_release,
+    albums: list[Album] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> None:
     """Spot mis-tags driven by the "unmatched after sync" albums.
 
@@ -737,9 +761,10 @@ def _detect_mistags_after_sync(
             if slug:
                 owned.setdefault(slug, (url, label))
 
+        scanned = albums if albums is not None else scanner.scan(cfg.paths.music_dir)
         albums = [
             a
-            for a in scanner.scan(cfg.paths.music_dir)
+            for a in scanned
             if a.state == AlbumState.NEEDS_SYNC and a.sidecar and a.sidecar.mb_release_id
         ]
     except Exception:
@@ -760,7 +785,9 @@ def _detect_mistags_after_sync(
     # currently-tagged (wrong) release so we can name it in the UI without a
     # second fetch.
     rg_albums: dict[str, list[tuple[Album, Release]]] = {}
-    for a in albums:
+    for i, a in enumerate(albums, 1):
+        if progress:
+            progress(f"checking matches… mis-tags {i}/{len(albums)}")
         assert a.sidecar is not None  # guaranteed by the comprehension filter
         assert a.sidecar.mb_release_id is not None
         try:
@@ -822,7 +849,9 @@ def _detect_mistags_after_sync(
         )
 
 
-def _report_unmatched_after_sync(cfg: config_mod.Config, *, full_sync: bool) -> None:
+def _report_unmatched_after_sync(
+    cfg: config_mod.Config, *, full_sync: bool, albums: list[Album] | None = None
+) -> None:
     """After a sync, handle albums still lacking a Bandcamp link.
 
     An album reaches `NEEDS_SYNC` with `bandcamp.item_id` still unset when the
@@ -843,11 +872,11 @@ def _report_unmatched_after_sync(cfg: config_mod.Config, *, full_sync: bool) -> 
     Best-effort: never raises into the sync runner.
     """
     try:
-        albums = scanner.scan(cfg.paths.music_dir)
+        scanned = albums if albums is not None else scanner.scan(cfg.paths.music_dir)
     except Exception:
         log.exception("post-sync unmatched scan failed")
         return
-    unmatched = [a for a in albums if a.state == AlbumState.NEEDS_SYNC]
+    unmatched = [a for a in scanned if a.state == AlbumState.NEEDS_SYNC]
     if not unmatched:
         log.info("Sync: all Bandcamp-sourced albums are linked")
         return
@@ -873,7 +902,7 @@ def _report_unmatched_after_sync(cfg: config_mod.Config, *, full_sync: bool) -> 
     # likely duplicate copy, OR a legitimate release split across directories —
     # we don't try to tell them apart here, just surface it).
     linked_by_release: dict[str, list[Album]] = {}
-    for a in albums:
+    for a in scanned:
         s = a.sidecar
         if s and s.mb_release_id and s.bandcamp and s.bandcamp.item_id is not None:
             linked_by_release.setdefault(s.mb_release_id, []).append(a)
