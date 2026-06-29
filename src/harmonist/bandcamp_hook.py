@@ -323,9 +323,14 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         notify_url: str | None = None,
         progress_callback: Callable[[str], None] | None = None,
         post_download_callback: Callable[[Path], None] | None = None,
+        link_only: bool = False,
         auto_run: bool = True,
     ):
         self._max_downloads_per_sync = max_downloads_per_sync
+        # Adopt mode: link on-disk matches + surrender the rest, download NOTHING.
+        # Set while any album is still Needs Sync, so we never re-download a copy
+        # of an album already on disk; downloads resume next sync (Needs Sync 0).
+        self._link_only = link_only
         self._progress_callback = progress_callback
         # Called with the album dir after each successful download + sidecar
         # write. Used to auto-resolve the store URL against MusicBrainz so an
@@ -611,6 +616,13 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                         e,
                     )
                 return False  # didn't download (already on disk)
+
+        # Adopt mode: this sync links the existing library (the short-circuit
+        # above) and surrenders the rest, but downloads NOTHING — so we never
+        # re-download a copy of an album that's already on disk but not yet
+        # linked. Downloads resume next sync, once Needs Sync is clear.
+        if self._link_only:
+            return False
 
         # Per-sync download limit: once we've downloaded the cap this run, defer
         # the rest to the next sync (don't mark them ignored, so they retry).

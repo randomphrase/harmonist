@@ -934,8 +934,9 @@ def test_force_full_sync_clears_checkpoint_when_pending_links(cfg, client):
     _needs_sync_album(cfg, "Pending", "rel-pending")
     state = cfg.paths.music_dir / _BANDCAMPSYNC_STATE_FILE
     state.write_text("{}")
-    _force_full_sync_if_pending_links(cfg, client.app.state.scan_runner)
+    pending = _force_full_sync_if_pending_links(cfg, client.app.state.scan_runner)
     assert not state.exists()  # cleared → next sync is full
+    assert pending == 1  # the gate signal: >0 → run the sync link-only
 
 
 def test_configure_logging_quiets_noisy_bandcampsync_loggers(cfg):
@@ -972,8 +973,9 @@ def test_force_full_sync_keeps_checkpoint_when_nothing_pending(cfg, client):
     cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)  # empty library
     state = cfg.paths.music_dir / _BANDCAMPSYNC_STATE_FILE
     state.write_text("{}")
-    _force_full_sync_if_pending_links(cfg, client.app.state.scan_runner)
+    pending = _force_full_sync_if_pending_links(cfg, client.app.state.scan_runner)
     assert state.exists()  # untouched
+    assert pending == 0  # nothing pending → downloads enabled (not link-only)
 
 
 # ---------- mis-tag detection via release-group join ----------
