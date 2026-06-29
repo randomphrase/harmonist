@@ -199,14 +199,17 @@ def test_inbox_card_lazy_loads_cover_when_present(client, cfg):
 
 
 def test_consolidated_status_endpoint(client):
-    """One poll returns sync + reconcile + scan, replacing three separate polls."""
+    """One poll returns sync + reconcile + scan + counts, replacing separate polls."""
     r = client.get("/status")
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"sync", "reconcile", "scan"}
+    assert set(body) == {"sync", "reconcile", "scan", "counts"}
     assert body["sync"]["state"] == "idle"
     assert body["reconcile"]["state"] == "idle"
     assert "state" in body["scan"]
+    # Single source of truth for the inbox/library numbers.
+    for key in ("inbox", "library", "new", "needs_sync"):
+        assert key in body["counts"]
 
 
 def test_tasks_renders_inbox_count(client, cfg):
