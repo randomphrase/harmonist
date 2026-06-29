@@ -84,7 +84,7 @@ def reconcile_album(
             return adopted
         return None  # sidecar present + consistent (or files untagged) → leave it
 
-    mbid, comment = _read_album_id_and_comment(files)
+    mbid, _comment = _read_album_id_and_comment(files)
     now = datetime.now(UTC)
 
     if not mbid:
@@ -92,10 +92,15 @@ def reconcile_album(
         # so the album can advance NEW → NEEDS_MBID instead of stalling in NEW.
         return _reconcile_untagged(album_dir, recover_url, now)
 
-    bandcamp_url = matching_bandcamp_url(mbid, comment, fetch_urls)
+    # Derive the store_url EMBEDDED-FIRST (the ©cmt's precise /album/ URL — the
+    # actual purchase URL), falling back to an MB url-rel only when there's no
+    # precise embedded URL. The MB-first path made one rate-limited MB call PER
+    # album (~16 min to reconcile a 960-album library after a nuke); the embedded
+    # URL needs no network and is a better match key (it's what the user bought).
+    bandcamp_url = store_url_for_tagging(album_dir, mbid, fetch_urls=fetch_urls)
     sc = Sidecar(
         schema_version=CURRENT_SCHEMA_VERSION,
-        store_url=bandcamp_url or None,
+        store_url=bandcamp_url,
         mb_release_id=mbid,
         added_at=now,
         tagged_at=now,
