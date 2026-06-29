@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -265,7 +264,7 @@ def reconcile_pending_orphans(
         else "Reconcile: nothing to reconcile (no new albums on disk)"
     )
 
-    for idx, album in enumerate(pending, start=1):
+    for album in pending:
         label = f"{album.artist} / {album.title}"
         if status_updater:
             status_updater(current_item=label)
@@ -313,13 +312,11 @@ def reconcile_pending_orphans(
             activity.record(f"{label}: New → Needs MBID (recovered Bandcamp URL from tags)")
         completed += 1
         _report()
-        # Rate-limit MB queries. reconcile_album hits the network only on the
-        # MBID path (MB url-rels); recovering an embedded ©cmt URL is a local
-        # regex (no network). We pace any non-None outcome — pacing the rare
-        # embedded-recovery case too is a harmless over-conservatism. A skip
-        # (sc is None) made no call, so don't pace it.
-        if sc is not None and idx < total and rate_limit_seconds > 0:
-            time.sleep(rate_limit_seconds)
+        # No explicit pacing: reconcile_album now derives the store_url from the
+        # embedded ©cmt URL (no network) for the common case, and the rare MB
+        # url-rel lookups are already paced to 1/sec by musicbrainzngs's built-in
+        # rate limiter (do_rate_limit=True). The old per-album sleep made a nuke
+        # reconcile take ~16 min even though almost no album hit the network.
 
     adopted_note = f", {adopted} re-tag(s) adopted" if adopted else ""
     activity.record(
