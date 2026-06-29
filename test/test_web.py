@@ -689,8 +689,9 @@ def test_tasks_shows_live_reconcile_counts(client, cfg):
     r = client.get("/tasks")
     assert r.status_code == 200
     assert "Sorting your library" in r.text  # the live-count panel
-    assert 'data-count="60"' in r.text  # tab badge = reconcile.inbox, not the snapshot
-    assert "need attention" in r.text
+    # In-page "need attention" tracks reconcile.inbox (the tab badge itself now
+    # comes from /status `counts`, tested separately).
+    assert ">60</span> need attention" in r.text
     assert ">5</span> New" in r.text  # the building split
     assert ">55</span> Needs Sync" in r.text
     assert ">78</span> to Library" in r.text
@@ -777,20 +778,20 @@ def test_tasks_needs_sync_card_shown_when_idle(client, cfg):
     assert "Mark purchased elsewhere" in r.text
 
 
-def test_tasks_inbox_count_marker_uses_snapshot_when_idle_reconcile_when_running(client, cfg):
-    """The tab-badge count (the #inbox-total marker) is the live snapshot count
-    when idle, but the reconcile base+tally count while a pass runs."""
+def test_tasks_in_page_attention_line_counts_inbox(client, cfg):
+    """The in-page 'N need attention' line reflects the snapshot when idle.
+    (The tab badges themselves come from /status `counts` — tested separately.)"""
     _make_album(cfg, "InboxA")
     _make_album(cfg, "InboxB")
     r = client.get("/tasks")
-    assert 'id="inbox-total"' in r.text
-    assert 'data-count="2"' in r.text  # idle → snapshot count
+    assert "need attention" in r.text
+    assert "2" in r.text
 
     runner = client.app.state.reconcile_runner
     runner._status.state = "running"
     runner._status.inbox = 7  # base + tallies so far
     r = client.get("/tasks")
-    assert 'data-count="7"' in r.text  # running → reconcile.inbox, not the snapshot
+    assert "7" in r.text  # running → reconcile.inbox
     assert "InboxA" not in r.text  # ...and no cards
 
 
