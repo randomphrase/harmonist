@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harmonist import activity
+from harmonist import activity, live_counts
 
 if TYPE_CHECKING:
     from harmonist.models import Album
@@ -284,12 +284,17 @@ def reconcile_pending_orphans(
             log.debug("%s: nothing to reconcile (no MBID or Bandcamp URL)", label)
         elif sc.mb_release_id and sc.store_url:
             reconciled_bandcamp += 1
+            live_counts.move(AlbumState.NEW, AlbumState.NEEDS_SYNC)
             activity.record(f"{label}: New → Needs Sync (reconciled from tags)")
         elif sc.mb_release_id:
             reconciled_manual += 1
+            # → Library; COMPLETE is the proxy bucket (the scan reset splits
+            # COMPLETE/INCOMPLETE exactly — only the library *total* matters here).
+            live_counts.move(AlbumState.NEW, AlbumState.COMPLETE)
             activity.record(f"{label}: New → Library (reconciled from tags)")
         else:
             recovered_url += 1
+            live_counts.move(AlbumState.NEW, AlbumState.NEEDS_MBID)
             activity.record(f"{label}: New → Needs MBID (recovered Bandcamp URL from tags)")
         completed += 1
         _report()
