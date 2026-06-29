@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
-from . import activity, formats
+from . import activity, audit, formats
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url
 from .sidecar import CURRENT_SCHEMA_VERSION
@@ -632,6 +632,12 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         if result:
             self.new_items += 1
             local_path = self.local_media.get_path_for_purchase(item)
+            audit.record(
+                "download",
+                item_id=getattr(item, "item_id", "?"),
+                fmt=encoding or getattr(self, "media_format", "?"),
+                path=local_path,
+            )
             try:
                 write_sidecar_for_item(item, local_path)
             except Exception as e:

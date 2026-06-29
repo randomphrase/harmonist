@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import id_registry
+from . import audit, id_registry
 from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 
 SIDECAR_FILENAME = ".harmonist.json"
@@ -79,6 +79,10 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
     non-null on disk, and the URL stays the same across the NEW →
     sidecar'd transition.
     """
+    try:
+        old = read(album_dir)  # for the audit diff — best-effort, never blocks the write
+    except Exception:
+        old = None
     sidecar = _normalise_identity(sidecar, album_dir)
     assert bool(sidecar.mb_release_id) ^ bool(sidecar.temp_uid), (
         f"sidecar identity invariant violated: mb_release_id="
@@ -92,6 +96,32 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, target)
+    _audit_identity_change(album_dir, old, sidecar)
+
+
+def _audit_identity_change(album_dir: Path, old: Sidecar | None, new: Sidecar) -> None:
+    """Audit a sidecar write that creates a sidecar or changes its load-bearing
+    identity (MBID / Bandcamp item_id / store_url). No-op re-writes don't log."""
+    new_item = new.bandcamp.item_id if new.bandcamp else None
+    if old is None:
+        audit.record(
+            "sidecar.create",
+            album=album_dir,
+            mbid=new.mb_release_id,
+            item_id=new_item,
+            store_url=new.store_url,
+        )
+        return
+    old_item = old.bandcamp.item_id if old.bandcamp else None
+    changes: dict[str, object] = {}
+    if old.mb_release_id != new.mb_release_id:
+        changes["mbid"] = f"{old.mb_release_id}->{new.mb_release_id}"
+    if old_item != new_item:
+        changes["item_id"] = f"{old_item}->{new_item}"
+    if old.store_url != new.store_url:
+        changes["store_url"] = f"{old.store_url}->{new.store_url}"
+    if changes:
+        audit.record("sidecar.update", album=album_dir, **changes)
 
 
 def _normalise_identity(s: Sidecar, album_dir: Path) -> Sidecar:
