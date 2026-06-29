@@ -214,11 +214,23 @@ def create_app(
             # any exist (clear the checkpoint; bandcampsync rewrites a fresh one
             # at the end, so later syncs go back to incremental). Self-limiting:
             # a full sync resolves every NEEDS_SYNC album (link OR surrender).
-            _force_full_sync_if_pending_links(cfg, scan_runner)
+            pending_links = _force_full_sync_if_pending_links(cfg, scan_runner)
+            # Adopt the existing library before fetching anything new: while any
+            # album is unlinked (Needs Sync), this sync runs LINK-ONLY — it links
+            # every on-disk match and surrenders the rest, but downloads nothing,
+            # so we never re-download a copy of an album already on disk. Downloads
+            # resume on the next sync (Needs Sync now 0).
+            link_only = pending_links > 0
+            if link_only:
+                activity.record(
+                    f"Linking your library — {pending_links} album(s) to match. "
+                    "Downloads are paused this sync and resume on the next one.",
+                )
             result = _run_bandcamp_sync(
                 cfg,
                 progress_callback=sync_runner.set_current_item,
                 post_download_callback=resolve_after_download,
+                link_only=link_only,
             )
             # Downloads are done; the remaining work (mis-tag detection, the
             # unmatched report, the rescan) can take a few seconds. Re-label the
@@ -521,16 +533,20 @@ def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
     return False
 
 
-def _force_full_sync_if_pending_links(cfg: config_mod.Config, scan_runner: ScanRunner) -> None:
-    """If any album is waiting to link to a Bandcamp purchase (NEEDS_SYNC),
-    clear the collection checkpoint so the upcoming sync re-pages the WHOLE
-    collection. Their purchase is usually an old one that an incremental sync
-    wouldn't load, so the backfill could never see it. A full sync resolves
-    every NEEDS_SYNC album (links it, or surrenders it to NEEDS_MBID), so this
-    is self-limiting — once they're cleared, syncs return to incremental.
+def _force_full_sync_if_pending_links(cfg: config_mod.Config, scan_runner: ScanRunner) -> int:
+    """Count albums waiting to link to a Bandcamp purchase (NEEDS_SYNC) at sync
+    start, and if any, clear the collection checkpoint so the upcoming sync
+    re-pages the WHOLE collection (their purchase is usually an old one an
+    incremental sync wouldn't load). Returns that count.
+
+    The caller uses ``>0`` to run the sync **link-only** — adopt the existing
+    library (link every match, surrender the rest) and download nothing — so we
+    never re-download a copy of an album that's sitting on disk unlinked. A full
+    link-only pass drains NEEDS_SYNC to 0; downloads resume on the next sync.
+    Self-limiting and self-correcting.
 
     Uses the scanner's existing snapshot (no fresh walk) when available.
-    Best-effort: never raises into the sync runner.
+    Best-effort: never raises into the sync runner (returns 0 on error).
     """
     try:
         albums = (
@@ -542,8 +558,10 @@ def _force_full_sync_if_pending_links(cfg: config_mod.Config, scan_runner: ScanR
                 "Forcing a full Bandcamp sync: %d album(s) await a purchase link",
                 pending,
             )
+        return pending
     except Exception:
         log.exception("force-full-sync check failed")
+        return 0
 
 
 # Mis-tag detection does ~1 MB browse per still-unlinked album, so it's bounded
@@ -988,8 +1006,13 @@ def _run_bandcamp_sync(
     *,
     progress_callback: Callable[[str], None] | None = None,
     post_download_callback: Callable[[Path], None] | None = None,
+    link_only: bool = False,
 ) -> HarmonistSyncer:
-    """Build a HarmonistSyncer and let it run end-to-end."""
+    """Build a HarmonistSyncer and let it run end-to-end.
+
+    ``link_only`` runs the sync in adopt mode: link on-disk matches + surrender
+    the rest, download nothing (used while any album is still Needs Sync).
+    """
     if not cfg.cookies_file.exists():
         raise FileNotFoundError(
             f"cookies file not found at {cfg.cookies_file} — Bandcamp sync requires a cookies.txt"
@@ -1014,6 +1037,7 @@ def _run_bandcamp_sync(
         max_downloads_per_sync=cfg.bandcamp.max_downloads_per_sync,
         progress_callback=progress_callback,
         post_download_callback=post_download_callback,
+        link_only=link_only,
     )
 
 

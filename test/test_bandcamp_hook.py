@@ -169,6 +169,7 @@ def _bare_syncer(max_downloads: int = 5) -> HarmonistSyncer:
     s._max_downloads_per_sync = max_downloads
     s._progress_callback = None
     s._post_download_callback = None
+    s._link_only = False
     s.new_items = 0
     s.skipped_for_limit = 0
     s.bandcamp = MagicMock()
@@ -265,6 +266,27 @@ def test_sync_item_limit_does_not_count_ignored_or_local(tmp_path, monkeypatch):
         s.sync_item(_StubItem(item_id=i))
 
     assert s.skipped_for_limit == 2  # only items 0 and 3
+
+
+def test_sync_item_link_only_skips_downloads(tmp_path, monkeypatch):
+    """Adopt mode: a genuinely-new item does NOT download (the parent's real
+    sync_item is never reached). On-disk matches still link via the short-circuit
+    (which returns before this gate), so this only blocks new fetches."""
+    s = _bare_syncer()
+    s._link_only = True
+    s.local_media = MagicMock()
+    s.local_media.media_dir = str(tmp_path)
+    s.ignores.is_ignored = lambda item: False
+    downloaded: list[int] = []
+
+    def fake_download(self, item, encoding=None):
+        downloaded.append(item.item_id)
+        return True
+
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_item", fake_download)
+    # No url_hints → no on-disk match → would normally download; link-only blocks it.
+    assert s.sync_item(_StubItem(item_id=42)) is False
+    assert downloaded == []  # the real download was never invoked
 
 
 def test_sync_item_writes_sidecar_on_successful_download(monkeypatch, tmp_path):
