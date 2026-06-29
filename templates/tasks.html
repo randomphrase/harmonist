@@ -7,10 +7,9 @@
    time — not just via the #app-status poll, which only re-disables on its next
    tick and so leaves a gap each time tasks-changed re-renders this button. #}
 {% set syncing = sync and sync.state == 'running' %}
+{# The tab badges come from /status `counts` (live_counts) now, not from a marker
+   here. This `inbox_n` only feeds the in-page "N need attention" line below. #}
 {% set inbox_n = reconcile.inbox if reconciling else albums|length %}
-{# Carries the inbox count for the tab badge, so it's correct regardless of
-   what's rendered below. Always present. #}
-<span id="inbox-total" data-count="{{ inbox_n }}" hidden></span>
 <div class="flex justify-between items-baseline mb-3 text-sm flex-wrap gap-2">
     <p class="text-muted">
         <span class="font-bold text-ink">{{ inbox_n }}</span> need attention

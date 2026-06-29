@@ -85,29 +85,9 @@ function harmonistTab(name) {
     try { localStorage.setItem('harmonist-tab', name); } catch (e) {}
 }
 
-// Keep the tab counts in sync after each panel loads. Inbox = number of task
-// cards rendered; Library = number of library rows.
-document.body.addEventListener('htmx:afterSwap', function (evt) {
-    const id = evt.detail.target.id;
-    if (id === 'task-list') {
-        // Read the real inbox count from the marker, not by counting rendered
-        // cards — they're suppressed during reconcile, which would wrongly
-        // zero the badge.
-        const marker = evt.detail.target.querySelector('#inbox-total');
-        const n = marker ? marker.dataset.count
-                         : evt.detail.target.querySelectorAll('[id^="task-"]').length;
-        const el = document.getElementById('inbox-count');
-        if (el) el.textContent = n;
-    } else if (id === 'library-rows') {
-        // The grid is paginated — show the full terminal-album total carried on
-        // the page header, not the count of rows rendered on this first page.
-        const header = evt.detail.target.querySelector('#library-total');
-        const n = header ? header.dataset.totalDone
-                         : evt.detail.target.querySelectorAll('[id^="lib-"]').length;
-        const el = document.getElementById('library-count');
-        if (el) el.textContent = n;
-    }
-});
+// Tab counts (Inbox / Library) are driven from the consolidated /status poll's
+// `counts` block — the single source of truth (live_counts), reset from each
+// scan and kept live by transitions. See the /status handler below.
 
 // Restore last tab (default Inbox) on load.
 document.addEventListener('DOMContentLoaded', function () {
@@ -215,6 +195,15 @@ window.addEventListener('resize', function () {
         el.dataset.reconcile = reconcile.state;
         el.dataset.scan = scan.state;
 
+        // Tab badges from the single source of truth (live_counts): reset from
+        // each scan, kept live by transitions during sync/reconcile.
+        if (data.counts) {
+            const ib = document.getElementById('inbox-count');
+            const lb = document.getElementById('library-count');
+            if (ib) ib.textContent = data.counts.inbox;
+            if (lb) lb.textContent = data.counts.library;
+        }
+
         // A sync must not be kicked while either a sync OR a reconcile is in
         // flight — reconcile mutates sidecars and shifts the inbox, so a sync
         // started now would race it. Gate every sync trigger (header button +
@@ -274,14 +263,8 @@ window.addEventListener('resize', function () {
             const details = [item, prog].filter(Boolean).join(' · ');
             const pill = `<span class="px-3 py-0.5 bg-mb-purple/15 text-mb-purple border border-mb-purple/40 rounded-full font-bold text-xs">Reconciling</span>`;
             reconcileDisplay = pill + (details ? `<span class="ml-2 text-slate-300">${details}</span>` : '');
-            // Drive the tab counts off reconcile's live base+tallies while the
-            // pass runs — the snapshot is frozen, and /library doesn't re-fetch
-            // mid-pass. (The inbox badge also gets this via #inbox-total, but
-            // set it here too so it tracks even between /tasks swaps.)
-            const ib = document.getElementById('inbox-count');
-            const lb = document.getElementById('library-count');
-            if (ib) ib.textContent = reconcile.inbox;
-            if (lb) lb.textContent = reconcile.library;
+            // (Tab badges come from data.counts above — live_counts now moves
+            // as reconcile files each album, so no reconcile-specific path here.)
         } else {
             reconcileDisplay = null;
         }
