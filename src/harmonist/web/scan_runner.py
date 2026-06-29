@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from harmonist import scanner
+from harmonist import live_counts, scanner
 from harmonist.models import Album
 
 log = logging.getLogger(__name__)
@@ -229,6 +229,10 @@ class ScanRunner:
 
         scanner.prune_cache(self._cache, {a.path for a in results})
         self._albums = results
+        # Reset the authoritative live counts from this fresh snapshot — the
+        # self-healing baseline that transitions (live_counts.move) adjust between
+        # scans. This snapshot IS what the UI reads, so the counts now match it.
+        live_counts.reset_from(results)
         self._completed_once = True
         self._scan_seq += 1
         status.seq = self._scan_seq

@@ -29,6 +29,7 @@ from harmonist import (
     audit,
     cover_art,
     formats,
+    live_counts,
     mb_lookup,
     mb_search,
     reconcile,
@@ -1372,6 +1373,9 @@ def _register_routes(app: FastAPI) -> None:
                 "sync": state.sync_runner.status(),
                 "reconcile": state.reconcile_runner.status(),
                 "scan": state.scan_runner.status(),
+                # Single source of truth for the inbox/library counts — kept live
+                # by transitions (live_counts.move) and reset from each scan.
+                "counts": live_counts.to_status(),
             }
         )
 
