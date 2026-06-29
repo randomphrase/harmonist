@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import bandcampsync.sync as _bcsync
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
@@ -29,6 +30,43 @@ from .models import BandcampInfo, Sidecar, is_bandcamp_url
 from .sidecar import CURRENT_SCHEMA_VERSION
 
 log = logging.getLogger(__name__)
+
+
+# Capture bandcampsync's per-file extract moves in the audit log — every file
+# written/overwritten into the library is then recorded (transparency: the data-
+# safety concern). bandcampsync's own "Moving extracted file …" lines ride its
+# silenced `sync` logger, so we wrap the `move_file` it calls. Patched once (the
+# wrapper just records then delegates); guarded against a module reload.
+if not getattr(_bcsync.move_file, "__harmonist_audited__", False):
+    _orig_move_file = _bcsync.move_file
+
+    def _audited_move_file(src: Any, dst: Any) -> Any:
+        with contextlib.suppress(Exception):
+            audit.record("move", src=src, dst=dst, overwrite=Path(dst).exists())
+        return _orig_move_file(src, dst)
+
+    _audited_move_file.__harmonist_audited__ = True  # type: ignore[attr-defined]
+    _bcsync.move_file = _audited_move_file
+
+
+def _case_collision(band_dir: Path) -> Path | None:
+    """If `band_dir` doesn't exist but a sibling differs only by **case**, return
+    that sibling — a download about to create a case-variant of an existing
+    artist folder (e.g. `variant/` next to `Variant/`). Read-only: callers only
+    log it. We don't consolidate (the user tidies folders by hand)."""
+    try:
+        if band_dir.exists():
+            return None
+        parent = band_dir.parent
+        if not parent.is_dir():
+            return None
+        lower = band_dir.name.lower()
+        for sib in parent.iterdir():
+            if sib.is_dir() and sib.name != band_dir.name and sib.name.lower() == lower:
+                return sib
+    except OSError:
+        pass
+    return None
 
 
 def construct_bandcamp_url(item: Any) -> str | None:
@@ -640,10 +678,21 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 self.skipped_for_limit += 1
                 return False
 
+        # Detect a case-collision BEFORE the download creates the folder (after,
+        # the dir exists and the check can't see it). Only logged if we actually
+        # download — see below.
+        local_path = self.local_media.get_path_for_purchase(item)
+        collided = _case_collision(local_path.parent)
         result = bool(super().sync_item(item, encoding))
         if result:
             self.new_items += 1
-            local_path = self.local_media.get_path_for_purchase(item)
+            if collided is not None:
+                audit.record(
+                    "case_collision",
+                    item_id=getattr(item, "item_id", "?"),
+                    created=local_path.parent,
+                    existing=collided,
+                )
             audit.record(
                 "download",
                 item_id=getattr(item, "item_id", "?"),
