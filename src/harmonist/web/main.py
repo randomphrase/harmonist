@@ -249,6 +249,13 @@ def create_app(
             #   2. spot mis-tags (release-group join → demote with a suggestion),
             #   3. surrender whatever's genuinely still unlinked.
             if result.unmatched_purchases():
+                # The relink + mis-tag passes do one MB lookup per still-unlinked
+                # album, and MusicBrainz caps us at ~1/sec — so tell the user why
+                # "finishing up" can sit for minutes, rather than looking hung.
+                activity.record(
+                    "Cross-checking unmatched albums against MusicBrainz — limited to "
+                    "~1 lookup/sec, so this can take a few minutes on a large sync.",
+                )
                 _link_unmatched_by_release_urls(
                     cfg,
                     result,
@@ -712,7 +719,7 @@ def _link_unmatched_by_release_urls(
 
     for i, a in enumerate(unmatched, 1):
         if progress:
-            progress(f"checking matches… linking {i}/{len(unmatched)}")
+            progress(f"checking matches on MusicBrainz (~1/sec)… linking {i}/{len(unmatched)}")
         assert a.sidecar is not None  # guaranteed by the comprehension filter
         assert a.sidecar.mb_release_id is not None
         try:
@@ -794,7 +801,7 @@ def _detect_mistags_after_sync(
     rg_albums: dict[str, list[tuple[Album, Release]]] = {}
     for i, a in enumerate(albums, 1):
         if progress:
-            progress(f"checking matches… mis-tags {i}/{len(albums)}")
+            progress(f"checking matches on MusicBrainz (~1/sec)… mis-tags {i}/{len(albums)}")
         assert a.sidecar is not None  # guaranteed by the comprehension filter
         assert a.sidecar.mb_release_id is not None
         try:
