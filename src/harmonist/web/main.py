@@ -1240,8 +1240,13 @@ def _register_routes(app: FastAPI) -> None:
         # don't re-fire on incidental inbox refreshes (after a Recheck, a tag,
         # etc.). Untagged orphans are never reconcilable, so they never kick it.
         forgotten: set[Path] = request.app.state.forgotten_paths
+        # NEW (MBID-tagged) orphans get a sidecar; TAGGING albums (sidecar MBID
+        # disagrees with the file tags — an external re-tag) get the file tags
+        # adopted. Both are reconcile's job, so either kicks it.
         if any(
-            a.state == AlbumState.NEW and a.has_tag_mbid and a.path not in forgotten for a in albums
+            a.path not in forgotten
+            and ((a.state == AlbumState.NEW and a.has_tag_mbid) or a.state == AlbumState.TAGGING)
+            for a in albums
         ):
             request.app.state.reconcile_runner.start()
         ctx = _ctx(

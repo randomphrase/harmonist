@@ -8,7 +8,7 @@ from pathlib import Path
 from mutagen.mp4 import MP4
 
 from harmonist import sidecar as sc
-from harmonist.models import Sidecar
+from harmonist.models import BandcampInfo, Sidecar
 from harmonist.reconcile import reconcile_album, reconcile_pending
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
@@ -43,26 +43,67 @@ def _bandcamp_urls(*urls):
 # ---------- skip cases ----------
 
 
-def test_skips_album_with_existing_sidecar(tmp_path):
+def test_skips_album_with_consistent_existing_sidecar(tmp_path):
+    """Sidecar already agrees with the file tags → no-op, and no MB query."""
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="Visit https://x.bandcamp.com")
-    sc.write(
-        album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="pre-existing")
-    )
+    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-aaa"))
 
     def boom(_mbid):
-        raise AssertionError("should not query MB when sidecar already exists")
+        raise AssertionError("should not query MB when sidecar already matches the files")
 
     result = reconcile_album(album_dir, fetch_urls=boom)
     assert result is None
-    # Existing sidecar untouched
     loaded = sc.read(album_dir)
-    assert loaded.mb_release_id == "pre-existing"
+    assert loaded.mb_release_id == "rel-aaa"  # untouched
 
 
 def test_skips_album_without_m4a_files(tmp_path):
     album_dir = tmp_path / "Empty"
     album_dir.mkdir()
     assert reconcile_album(album_dir, fetch_urls=_no_urls) is None
+
+
+def test_adopts_external_file_retag(tmp_path):
+    """Sidecar MBID disagrees with a consistent file re-tag (Picard) → adopt the
+    file's MBID, keeping store_url + item_id (same purchase)."""
+    album_dir = _make_album(tmp_path, mbid="rel-NEW")  # files now tagged rel-NEW
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/a",
+            mb_release_id="rel-OLD",  # stale
+            bandcamp=BandcampInfo(item_id=99),
+        ),
+    )
+    result = reconcile_album(album_dir, fetch_urls=_no_urls)
+    assert result is not None
+    assert result.mb_release_id == "rel-NEW"  # adopted the file tag
+    assert result.store_url == "https://x.bandcamp.com/album/a"  # kept
+    assert result.bandcamp is not None
+    assert result.bandcamp.item_id == 99  # kept (same purchase)
+
+
+def test_leaves_consistent_sidecar_untouched(tmp_path):
+    """Sidecar MBID == file MBID → idempotent no-op."""
+    album_dir = _make_album(tmp_path, mbid="rel-1")
+    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-1"))
+    assert reconcile_album(album_dir, fetch_urls=_no_urls) is None
+
+
+def test_does_not_re_promote_surrendered_album(tmp_path):
+    """A surrendered album (sidecar MBID None) whose files still carry the old
+    MBID must NOT be re-promoted to it."""
+    album_dir = _make_album(tmp_path, mbid="rel-OLD")  # files still tagged rel-OLD
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/a",
+            mb_release_id=None,  # surrendered → Needs MBID
+        ),
+    )
+    assert reconcile_album(album_dir, fetch_urls=_no_urls) is None  # untouched
 
 
 def test_skips_album_without_mbid_tag(tmp_path):
