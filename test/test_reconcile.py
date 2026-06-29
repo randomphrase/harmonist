@@ -225,29 +225,43 @@ def test_writes_no_store_url_when_no_comment(tmp_path):
     assert result.store_url is None
 
 
-def test_writes_no_store_url_when_mb_has_no_bandcamp_url(tmp_path):
-    """User has Bandcamp ©cmt but MB doesn't actually link this release to Bandcamp."""
+def test_precise_cmt_url_used_without_mb_call(tmp_path):
+    """The embedded precise /album/ URL is used directly — NO MB call (the
+    reconcile speed fix: one MB call per album made a nuke reconcile take ~16
+    minutes). fetch_urls must never be invoked."""
+    album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com/album/foo")
+
+    def boom(_mbid):
+        raise AssertionError("MB should not be queried when ©cmt has a precise URL")
+
+    result = reconcile_album(album_dir, fetch_urls=boom)
+    assert result.store_url == "https://x.bandcamp.com/album/foo"
+
+
+def test_records_artist_root_url_when_mb_has_no_bandcamp_link(tmp_path):
+    """Artist-root ©cmt + MB has no Bandcamp url-rel → record the artist-root URL
+    from the comment (it's still a Bandcamp purchase → Needs Sync), not None."""
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com")
     fetch = _bandcamp_urls("https://example.com/somewhere-else")  # no bandcamp URL
     result = reconcile_album(album_dir, fetch_urls=fetch)
-    assert result.store_url is None
+    assert result.store_url == "https://x.bandcamp.com"
 
 
-def test_writes_no_store_url_when_mb_has_no_url_relationships(tmp_path):
+def test_records_artist_root_url_when_mb_has_no_url_relationships(tmp_path):
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com")
     result = reconcile_album(album_dir, fetch_urls=_no_urls)
-    assert result.store_url is None
+    assert result.store_url == "https://x.bandcamp.com"
 
 
-def test_writes_no_store_url_when_mb_lookup_fails(tmp_path):
-    """If MB lookup throws, fall back to no store_url rather than abort the whole scan."""
+def test_records_artist_root_url_when_mb_lookup_fails(tmp_path):
+    """MB lookup throws → fall back to the embedded artist-root URL, never abort."""
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com")
 
     def explode(_mbid):
         raise RuntimeError("MB down")
 
     result = reconcile_album(album_dir, fetch_urls=explode)
-    assert result.store_url is None
+    assert result.store_url == "https://x.bandcamp.com"
 
 
 # ---------- comment matching ----------
