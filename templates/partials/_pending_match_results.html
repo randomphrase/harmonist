@@ -1,0 +1,21 @@
+{# Local album search results for a Match panel. `results` is a list of Albums,
+   `item_id` the pending purchase, `q` the query. #}
+{% if results %}
+<ul class="divide-y divide-line border border-line rounded bg-white/60 max-h-64 overflow-auto">
+    {% for a in results %}
+    <li class="flex items-center justify-between gap-2 px-2 py-1.5">
+        <div class="min-w-0">
+            <div class="text-sm text-ink truncate">{{ a.artist or '?' }} — {{ a.title }}</div>
+            <div class="text-2xs text-muted truncate" title="{{ a.path }}">{{ a.rel_path }}</div>
+        </div>
+        <button hx-post="/pending/{{ item_id }}/match" hx-vals='{"album_id": "{{ a.id }}"}'
+                hx-target="#pending-section" hx-swap="outerHTML"
+                class="px-2 py-0.5 text-xs font-bold rounded bg-accent text-white hover:bg-accent-dark shrink-0 transition">Link</button>
+    </li>
+    {% endfor %}
+</ul>
+{% elif q %}
+<p class="text-xs text-muted italic">No album in your library matches “{{ q }}”.</p>
+{% else %}
+<p class="text-xs text-muted italic">Type to search your library by artist, title or folder.</p>
+{% endif %}

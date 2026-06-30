@@ -636,12 +636,16 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 self.ignores.add(item)
                 return False
 
+        item_id_int = int(getattr(item, "item_id", 0) or 0)
+        approved = pending_downloads.is_approved(item_id_int)
+
         # Adopt mode: this purchase is genuinely unmatched (none of item_id / exact
         # URL / slug found it on disk). Don't auto-download — that's the duplicate
         # risk by construction. Record it as a POTENTIAL DOWNLOAD for the user to
         # resolve (Download / Match to an existing album / Don't download), and
-        # download nothing this run.
-        if self._link_only:
+        # download nothing this run — UNLESS the user already chose Download for it
+        # (approved), in which case fall through and fetch it.
+        if self._link_only and not approved:
             self._pending_this_run.append(
                 PendingPurchase(
                     item_id=int(getattr(item, "item_id", 0) or 0),
@@ -657,8 +661,9 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # the rest to the next sync (don't mark them ignored, so they retry).
         # Only a genuinely-new item counts as "deferred" — ignored / preorder /
         # hidden / already-local items wouldn't download anyway, so let super()
-        # skip them normally and don't inflate the "remaining" tally.
-        if self.new_items >= self._max_downloads_per_sync:
+        # skip them normally and don't inflate the "remaining" tally. An explicitly
+        # approved (user clicked Download) item bypasses the cap.
+        if not approved and self.new_items >= self._max_downloads_per_sync:
             local_path = self.local_media.get_path_for_purchase(item)
             if (
                 not self.ignores.is_ignored(item)

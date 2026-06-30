@@ -1,0 +1,21 @@
+{# The "Potential downloads" section. Always renders the #pending-section element
+   (even when empty) so an action's HTMX swap can replace it cleanly. #}
+<section id="pending-section" class="space-y-3 mb-6">
+    {% if pending %}
+    <div class="rounded-md border-l-4 border-sky-400 bg-sky-50 px-3 py-2">
+        <h3 class="text-sm font-bold text-sky-700">
+            Potential downloads
+            <span class="text-muted font-normal ml-1">· {{ pending|length }}</span>
+        </h3>
+        <p class="text-xs text-muted mt-0.5">
+            These purchases aren't matched to anything on disk. Nothing was downloaded —
+            <span class="font-semibold">Match</span> if you already have it,
+            <span class="font-semibold">Download</span> to fetch it, or
+            <span class="font-semibold">Don't download</span> to skip it.
+        </p>
+    </div>
+    <div class="grid grid-cols-1 gap-3">
+        {% for p in pending %}{% include 'partials/_pending_card.html' %}{% endfor %}
+    </div>
+    {% endif %}
+</section>

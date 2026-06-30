@@ -1,0 +1,22 @@
+{# One potential-download card: band/title, URL, and the three decisions.
+   `p` is a PendingPurchase. Match opens an inline search (replaces this card);
+   Download / Don't-download re-render the whole #pending-section. #}
+<div id="pending-{{ p.item_id }}" class="rounded-lg border border-line bg-surface px-4 py-3">
+    <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+            <div class="font-semibold text-ink truncate">{{ p.band }} — {{ p.title }}</div>
+            <div class="text-xs text-muted truncate">
+                <a href="{{ p.url }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">{{ p.url }}</a>
+                · {{ p.fmt|upper }}
+            </div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+            <button hx-get="/pending/{{ p.item_id }}/match" hx-target="#pending-{{ p.item_id }}" hx-swap="outerHTML"
+                    class="px-2.5 py-1 text-xs font-bold rounded border border-accent text-accent hover:bg-accent-soft transition">Match</button>
+            <button hx-post="/pending/{{ p.item_id }}/download" hx-target="#pending-section" hx-swap="outerHTML"
+                    class="px-2.5 py-1 text-xs font-bold rounded bg-accent text-white hover:bg-accent-dark transition">Download</button>
+            <button hx-post="/pending/{{ p.item_id }}/skip" hx-target="#pending-section" hx-swap="outerHTML"
+                    class="px-2.5 py-1 text-xs font-bold rounded border border-line text-muted hover:text-ink transition">Don't&nbsp;download</button>
+        </div>
+    </div>
+</div>
