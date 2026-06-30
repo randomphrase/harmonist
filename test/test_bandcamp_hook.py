@@ -289,6 +289,34 @@ def test_sync_item_link_only_skips_downloads(tmp_path, monkeypatch):
     assert downloaded == []  # the real download was never invoked
 
 
+def test_ondisk_item_ids_collects_linked_sidecars_only(tmp_path):
+    """Every on-disk sidecar's bandcamp.item_id (the durable dedup seed); unlinked
+    sidecars contribute nothing."""
+    from harmonist.bandcamp_hook import ondisk_item_ids
+
+    linked = tmp_path / "A"
+    linked.mkdir()
+    sc.write(
+        linked,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-a",
+            bandcamp=BandcampInfo(item_id=111),
+        ),
+    )
+    unlinked = tmp_path / "B"
+    unlinked.mkdir()
+    sc.write(
+        unlinked,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/b",
+            mb_release_id="rel-b",
+        ),
+    )
+    assert ondisk_item_ids(tmp_path) == {111}
+
+
 def test_sync_item_skips_download_when_release_on_disk_by_slug(tmp_path, monkeypatch):
     """Dedup backstop: a release already on disk under a DIFFERENT subdomain (same
     slug) and linked to a DIFFERENT purchase-id must NOT re-download — by_url is
