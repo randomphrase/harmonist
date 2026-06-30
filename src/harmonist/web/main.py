@@ -1304,6 +1304,11 @@ def _register_routes(app: FastAPI) -> None:
         # alone — clearing it would re-download audio, which nuke is not about.
         state_cleared = _clear_bandcampsync_checkpoint(cfg.paths.music_dir)
         suffix = " · sync checkpoint reset" if state_cleared else ""
+        # Drop the now-stale snapshot + counts and kick a fresh scan, so the inbox
+        # shows the "Scanning…" screen (then the rebuilt inbox) when the user
+        # returns to the main page — not the pre-erase cards lingering.
+        live_counts.reset_from([])
+        request.app.state.scan_runner.reset_and_rescan()
         activity.record(
             f"Erased {removed} sidecar(s) — albums revert to tag-derived state{suffix}", "warning"
         )

@@ -155,6 +155,26 @@ class ScanRunner:
             return
         loop.call_soon_threadsafe(self._kick)
 
+    def reset_and_rescan(self) -> None:
+        """Drop the current snapshot, then kick a fresh scan. Used after a nuke
+        (erase-sidecars): the old snapshot is now stale, so clear it so the inbox
+        shows the 'Scanning…' screen straight away instead of lingering on the
+        now-wrong cards until the rescan lands. Thread-safe; no-op until engaged.
+
+        (The rescan itself is cheap now — erasing sidecars leaves the audio
+        unchanged, so the cache reuses the tag fields and only re-reads the absent
+        sidecars.)"""
+        loop = self._loop
+        if loop is None:
+            return
+        loop.call_soon_threadsafe(self._reset_and_kick)
+
+    def _reset_and_kick(self) -> None:
+        # On the loop thread: clear the snapshot before the scan task starts so a
+        # /tasks render in between sees an empty inbox + (imminent) scanning.
+        self._albums = []
+        self._kick()
+
     def _kick(self) -> None:
         # Always runs in the event loop thread.
         self._dirty = True
