@@ -273,12 +273,16 @@ def create_app(
             # purchase" conclusive enough to surrender an album to NEEDS_MBID.
             full_sync = getattr(result, "collection_checkpoint_token", None) is None
             _report_unmatched_after_sync(cfg, full_sync=full_sync, albums=scan_runner.scan_now())
-            # Observability: log every purchase that linked to NO album, WITH its
-            # URL. The surrender line carries the album's store_url; pairing it
-            # with the purchase URLs here makes "why didn't X link?" answerable
-            # from the log (slug compare) instead of a black box.
-            for pid, purl, plabel in result.unmatched_purchases():
-                audit.record("unmatched_purchase", item_id=pid, url=purl, label=plabel)
+            # Observability for failed links: pair the surrender line's store_url
+            # with the purchase URLs to answer "why didn't X link?". A subset
+            # library has hundreds of owned-but-not-downloaded purchases, so log a
+            # one-line INFO summary and push the per-purchase URLs to DEBUG (still
+            # there when diagnosing, not flooding the log every sync).
+            unmatched = result.unmatched_purchases()
+            if unmatched:
+                audit.record("unmatched_purchases", count=len(unmatched))
+                for pid, purl, plabel in unmatched:
+                    log.debug("unmatched purchase: item_id=%s url=%s label=%s", pid, purl, plabel)
             scan_runner.request_scan()  # downloads/links landed → refresh the snapshot
             return result
 
