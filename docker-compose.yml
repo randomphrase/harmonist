@@ -17,6 +17,15 @@ services:
       - /volume1/media/music:/music
       - /volume1/docker/harmonist:/config
     restart: unless-stopped
+    # Config normally lives in /config/harmonist.toml, but any setting can be set
+    # via the environment too (env wins over the TOML). The one you most likely
+    # need when exposing Harmonist beyond localhost is the allowed-hosts list
+    # (DNS-rebinding protection — Starlette's TrustedHostMiddleware): set it to
+    # your real hostname(s), comma-separated. Loopback is always allowed
+    # regardless, so healthchecks/local curl keep working. Default is "*"
+    # (permissive). E.g.
+    # environment:
+    #   - HARMONIST_ALLOWED_HOSTS=harmonist.example.com,nas.local
     # Run as the OWNER of /music and /config on the host so written sidecars,
     # tags and cover.* land with the right ownership — Docker-native, the image
     # needs no PUID/PGID plumbing. `id -u`/`id -g`; on Synology 100 is the
