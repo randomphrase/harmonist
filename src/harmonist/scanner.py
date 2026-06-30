@@ -23,11 +23,18 @@ log = logging.getLogger(__name__)
 
 # A cheap per-album fingerprint: (audio file name+mtime_ns+size tuples, sidecar
 # mtime_ns, cover mtime_ns). Changes whenever anything that affects an album's
-# derived state could change, so it drives the re-scan cache below.
+# derived state could change, so it drives the re-scan cache below. The FIRST
+# element (the audio tuples) is the "audio signature": it changes only when the
+# tracks themselves change — used to skip the expensive tag reads when just the
+# sidecar/cover moved (see resolve_album / the scan runner).
 AlbumSignature = tuple[tuple[tuple[str, int, int], ...], int | None, int | None]
-# Persistent {album_dir: (signature, Album)} the caller threads across scans so
-# unchanged albums skip all tag reads on a re-scan.
-AlbumCache = dict[Path, tuple[AlbumSignature, Album]]
+# Persistent {album_dir: (full_signature, Album, fields)} threaded across scans.
+# Two-level: a FULL-signature hit returns the cached Album with zero I/O; when
+# only the sidecar/cover changed (audio signature == cached audio signature) the
+# cached `fields` (the mutagen tag reads) are REUSED and only the cheap sidecar +
+# cover are re-read. So a sidecar-only change (a sync link, a reconcile) no longer
+# forces a full tag re-read of the album.
+AlbumCache = dict[Path, tuple[AlbumSignature, Album, list["formats.ScanFields"]]]
 
 
 def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Album]:
@@ -104,12 +111,16 @@ def resolve_album(
     is unchanged, else freshly built (reading tags). Returns None — logging a
     warning — when the album can't be built (bad sidecar, I/O error).
     """
-    if album_cache is not None:
-        cached = album_cache.get(album_dir)
-        if cached is not None and cached[0] == signature:
-            return cached[1]
+    cached = album_cache.get(album_dir) if album_cache is not None else None
+    if cached is not None and cached[0] == signature:
+        return cached[1]  # nothing changed → cached Album, zero I/O
+    # Audio unchanged (only the sidecar/cover moved)? Reuse the cached tag fields
+    # so we skip the per-track mutagen reads — only the cheap sidecar + cover are
+    # re-read below.
+    reuse = cached[2] if (cached is not None and cached[0][0] == signature[0]) else None
     try:
-        album = _build_album(album_dir, audio_files)
+        io = read_album_io(album_dir, audio_files, reuse)
+        album = build_album(album_dir, audio_files, io)
     except (InvalidSidecarError, UnsupportedSchemaVersionError) as e:
         log.warning("skipping %s: %s", album_dir, e)
         return None
@@ -117,7 +128,7 @@ def resolve_album(
         log.warning("error scanning %s: %s", album_dir, e)
         return None
     if album_cache is not None:
-        album_cache[album_dir] = (signature, album)
+        album_cache[album_dir] = (signature, album, io.fields)
     return album
 
 
@@ -138,14 +149,24 @@ class AlbumIO(NamedTuple):
     cover_path: Path | None
 
 
-def read_album_io(album_dir: Path, audio_files: list[Path]) -> AlbumIO:
-    """Do ALL of an album's blocking reads in one place: the sidecar, each
-    track's tags (one open per file), and the cover lookup. Touches no shared
-    state, so the async scan runner can hand this to a worker thread.
+def read_album_io(
+    album_dir: Path,
+    audio_files: list[Path],
+    reuse_fields: list[formats.ScanFields] | None = None,
+) -> AlbumIO:
+    """Do an album's blocking reads in one place: the sidecar, each track's tags
+    (one open per file), and the cover lookup. Touches no shared state, so the
+    async scan runner can hand this to a worker thread.
+
+    `reuse_fields`: when the audio files are unchanged since the last scan, the
+    caller passes the previously-read tag fields so we SKIP the per-track mutagen
+    reads (the expensive part) and only re-read the cheap sidecar + cover.
     """
     return AlbumIO(
         sidecar=read_sidecar(album_dir),
-        fields=[formats.read_scan_fields(f) for f in audio_files],
+        fields=reuse_fields
+        if reuse_fields is not None
+        else [formats.read_scan_fields(f) for f in audio_files],
         cover_path=_find_cover(album_dir),
     )
 
@@ -184,11 +205,6 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         # reconcile for untagged orphans it could never resolve.
         has_tag_mbid=any(sf.album_id for sf in fields),
     )
-
-
-def _build_album(album_dir: Path, audio_files: list[Path]) -> Album:
-    """Synchronous read + build, used by the non-async scan() path (tests)."""
-    return build_album(album_dir, audio_files, read_album_io(album_dir, audio_files))
 
 
 def _audio_format(fields: list[formats.ScanFields]) -> str | None:

@@ -204,14 +204,21 @@ class ScanRunner:
             try:
                 cached = self._cache.get(album_dir)
                 if cached is not None and cached[0] == signature:
-                    album = cached[1]  # mtime-cache hit → no tag reads
+                    album = cached[1]  # full-signature hit → zero I/O
                 else:
-                    # Blocking sidecar + tag reads → worker; loop stays free.
+                    # Audio unchanged (only the sidecar/cover moved)? Reuse the
+                    # cached tag fields so the worker skips the per-track mutagen
+                    # reads (the expensive part) and re-reads only the cheap
+                    # sidecar + cover. This is what keeps a post-sync/reconcile
+                    # rescan fast even though every linked album's sidecar changed.
+                    reuse = None
+                    if cached is not None and cached[0][0] == signature[0]:
+                        reuse = cached[2]  # audio unchanged → skip the tag reads
                     io = await loop.run_in_executor(
-                        executor, scanner.read_album_io, album_dir, files
+                        executor, scanner.read_album_io, album_dir, files, reuse
                     )
                     album = scanner.build_album(album_dir, files, io)  # CPU, on loop
-                    self._cache[album_dir] = (signature, album)
+                    self._cache[album_dir] = (signature, album, io.fields)
                 results.append(album)
                 status.albums_found = len(results)
             except Exception as e:  # one bad album must not abort the scan
