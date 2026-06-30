@@ -172,6 +172,7 @@ def _bare_syncer(max_downloads: int = 5) -> HarmonistSyncer:
     s._link_only = False
     s.new_items = 0
     s.skipped_for_limit = 0
+    s._pending_this_run = []
     s.bandcamp = MagicMock()
     s.ignores = MagicMock()
     s.local_media = MagicMock()
@@ -287,6 +288,31 @@ def test_sync_item_link_only_skips_downloads(tmp_path, monkeypatch):
     # No url_hints → no on-disk match → would normally download; link-only blocks it.
     assert s.sync_item(_StubItem(item_id=42)) is False
     assert downloaded == []  # the real download was never invoked
+
+
+def test_link_only_records_unmatched_purchase_as_pending(tmp_path):
+    """Adopt mode: an unmatched purchase isn't auto-downloaded — it's recorded as a
+    potential download (item_id, band/title, url, format) for the user to resolve."""
+    s = _bare_syncer()
+    s._link_only = True
+    s.local_media = MagicMock()
+    s.local_media.media_dir = str(tmp_path)
+    s.media_format = "alac"
+    s.ignores.is_ignored = lambda item: False
+    item = _StubItem(
+        item_id=42,
+        band_name="Variant",
+        item_title="Sequential Sleep",
+        url_hints={"subdomain": "echospace313", "slug": "sequential-sleep"},
+    )
+    assert s.sync_item(item) is False
+    assert len(s._pending_this_run) == 1
+    p = s._pending_this_run[0]
+    assert p.item_id == 42
+    assert p.band == "Variant"
+    assert p.title == "Sequential Sleep"
+    assert p.url == "https://echospace313.bandcamp.com/album/sequential-sleep"
+    assert p.fmt == "alac"
 
 
 def test_ondisk_item_ids_collects_linked_sidecars_only(tmp_path):
