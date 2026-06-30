@@ -23,7 +23,7 @@ import bandcampsync.sync as _bcsync
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
-from . import activity, audit, formats, pending_downloads
+from . import activity, audit, formats, library_index, pending_downloads
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url
 from .pending_downloads import PendingPurchase
@@ -213,22 +213,6 @@ def _album_title(album_dir: Path) -> str:
     return ""
 
 
-def find_existing_album_by_url(music_dir: Path, target_url: str) -> Path | None:
-    """Scan music_dir for a sidecar whose store_url matches target_url.
-
-    Used at sync time to short-circuit re-downloading albums that already
-    exist on disk (post-reconciliation).
-    """
-    for f in music_dir.rglob(".harmonist.json"):
-        try:
-            sc = sidecar_mod.read(f.parent)
-        except Exception:
-            continue
-        if sc and sc.store_url == target_url:
-            return f.parent
-    return None
-
-
 def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], list[Path], set[int]]:
     """One pass over music_dir → `({release slug: [unlinked album dirs]},
     [unlinked Bandcamp albums with no slug], {item_ids already linked})`.
@@ -267,83 +251,6 @@ def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], list[Pat
         elif is_bandcamp_url(sc.store_url):
             slugless.append(f.parent)
     return by_slug, slugless, linked_ids
-
-
-def find_existing_album_by_slug(music_dir: Path, target_url: str) -> Path | None:
-    """Slug-match fallback for `find_existing_album_by_url`.
-
-    Find an on-disk album whose `store_url` shares `target_url`'s release slug
-    (subdomain ignored) AND which isn't already linked to a Bandcamp item.
-    Restricting to unlinked albums (no `bandcamp.item_id`) means we only ever
-    *fill in* a missing id, never hijack a correctly-linked album.
-
-    Guards against ambiguity: if two or more unlinked albums share the slug we
-    return `None` and leave them for manual linking rather than guess. Returns
-    `None` when `target_url` has no slug (see `album_slug`).
-    """
-    target = album_slug(target_url)
-    if target is None:
-        return None
-    matches: list[Path] = []
-    for f in music_dir.rglob(".harmonist.json"):
-        try:
-            sc = sidecar_mod.read(f.parent)
-        except Exception:
-            continue
-        if sc is None or not sc.store_url:
-            continue
-        if sc.bandcamp is not None and sc.bandcamp.item_id is not None:
-            continue  # already linked — don't touch
-        if album_slug(sc.store_url) == target:
-            matches.append(f.parent)
-    return matches[0] if len(matches) == 1 else None
-
-
-def ondisk_copies_of_release(music_dir: Path, target_url: str) -> list[tuple[Path, bool, str]]:
-    """Every on-disk album whose store_url shares `target_url`'s release slug,
-    as `(album_dir, linked, store_url)` — subdomain-insensitive and INCLUSIVE of
-    already-linked albums.
-
-    This is the dedup backstop the two narrower matchers miss:
-    `find_existing_album_by_url` needs an exact (subdomain-sensitive) URL, and
-    `find_existing_album_by_slug` skips linked albums. A non-empty result means
-    the release is already on disk (a different Bandcamp subdomain — label vs
-    artist page — or linked to a different purchase-id for a cross-listing), so it
-    must NOT be re-downloaded.
-    """
-    slug = album_slug(target_url)
-    if slug is None:
-        return []
-    out: list[tuple[Path, bool, str]] = []
-    for f in music_dir.rglob(".harmonist.json"):
-        try:
-            sc = sidecar_mod.read(f.parent)
-        except Exception:
-            continue
-        if sc and sc.store_url and album_slug(sc.store_url) == slug:
-            linked = sc.bandcamp is not None and sc.bandcamp.item_id is not None
-            out.append((f.parent, linked, sc.store_url))
-    return out
-
-
-def ondisk_item_ids(music_dir: Path) -> set[int]:
-    """Every Bandcamp `item_id` recorded in an on-disk sidecar.
-
-    Seeding bandcampsync's in-memory ignores with these is the most reliable dedup:
-    a purchase whose item_id is already on disk has, by definition, been downloaded,
-    so it must never be re-fetched — even if `ignores.txt` is incomplete or lost
-    (the durable record is the sidecar, not `ignores.txt`). Exact id match, no
-    dependence on store_url/subdomain or folder name.
-    """
-    ids: set[int] = set()
-    for f in music_dir.rglob(".harmonist.json"):
-        try:
-            sc = sidecar_mod.read(f.parent)
-        except Exception:
-            continue
-        if sc and sc.bandcamp is not None and sc.bandcamp.item_id is not None:
-            ids.add(int(sc.bandcamp.item_id))
-    return ids
 
 
 # bandcampsync ships no types, so _BCSyncer is Any; subclassing it is the
@@ -426,14 +333,11 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         super()._save_collection_checkpoint()
 
     async def sync_items(self) -> None:
-        # Seed dedup from our sidecars FIRST: any purchase whose item_id is already
-        # recorded on disk has been downloaded, so it must never be re-fetched —
-        # even if ignores.txt is stale/lost. Exact id match, independent of
-        # store_url/subdomain or folder name. In-memory only (we don't write
-        # ignores.txt). This is the durable backstop the 67 re-downloads needed.
-        media_dir = getattr(self.local_media, "media_dir", None)
-        if media_dir:
-            self.ignores.ids |= ondisk_item_ids(Path(media_dir))
+        # Seed dedup from the in-memory library index FIRST: any purchase whose
+        # item_id is already recorded on disk has been downloaded, so never
+        # re-fetch it — even if ignores.txt is stale/lost. Exact id match, no disk
+        # reads (the scan already read every sidecar). In-memory only.
+        self.ignores.ids |= library_index.item_ids()
         # Link already-downloaded (ignored) purchases to their on-disk albums
         # BEFORE the parent loop — bandcampsync skips ignored items, so their
         # sidecar would otherwise never get its item_id filled in.
@@ -661,19 +565,19 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             with contextlib.suppress(Exception):
                 self._progress_callback(label)
 
-        # Short-circuit: if reconciliation has already created a sidecar
-        # for this Bandcamp URL elsewhere on disk, don't re-download. Just
-        # fill in the item_id and append to ignores.txt.
+        # Short-circuit: if an on-disk album already carries this Bandcamp URL,
+        # don't re-download — fill in the item_id and ignore the purchase. Reads
+        # the in-memory library_index (built from the scan), so ZERO disk reads
+        # here even on a fully-paged collection.
         url = construct_bandcamp_url(item)
-        media_dir = getattr(self.local_media, "media_dir", None)
-        if url and media_dir:
-            # Exact-URL match first; fall back to a subdomain-agnostic slug
-            # match (same release cross-listed under a different subdomain).
-            # The slug fallback adopts the item's URL as the new store_url.
-            existing_dir = find_existing_album_by_url(Path(media_dir), url)
+        if url:
+            # Exact-URL match first; fall back to a subdomain-agnostic slug match
+            # (same release cross-listed under a different subdomain). The slug
+            # fallback adopts the item's URL as the new store_url.
+            existing_dir = library_index.dir_for_url(url)
             by_slug = False
             if existing_dir is None:
-                existing_dir = find_existing_album_by_slug(Path(media_dir), url)
+                existing_dir = library_index.unlinked_slug_match(url)
                 by_slug = existing_dir is not None
             if existing_dir is not None:
                 # This runs EVERY sync for every on-disk album whose purchase is
@@ -715,21 +619,19 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # Dedup backstop (BOTH modes): this item wasn't matched by the narrow
         # short-circuit (exact-URL, or unlinked slug), but the release may still be
         # on disk under a different subdomain (label vs artist page, same slug) or
-        # linked to a different purchase-id (a cross-listing). Match
-        # subdomain-insensitively and inclusive of linked albums; if found, do NOT
-        # re-download — ignore this purchase so it doesn't churn every sync.
-        if url and media_dir and not self.ignores.is_ignored(item):
-            on_disk = ondisk_copies_of_release(Path(media_dir), url)
+        # linked to a different purchase-id (a cross-listing). slug_copies matches
+        # subdomain-insensitively and inclusive of linked albums (in-memory, no
+        # disk); if found, do NOT re-download — ignore so it doesn't churn.
+        if url and not self.ignores.is_ignored(item):
+            on_disk = library_index.slug_copies(url)
             if on_disk:
-                for path, linked, store in on_disk:
+                for path, linked in on_disk:
                     log.info(
-                        "already on disk: item_id=%s url=%s at %s "
-                        "(linked=%s store_url=%s) — skipping download",
+                        "already on disk: item_id=%s url=%s at %s (linked=%s) — skipping download",
                         getattr(item, "item_id", "?"),
                         url,
                         path,
                         linked,
-                        store,
                     )
                 self.ignores.add(item)
                 return False
