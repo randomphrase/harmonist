@@ -943,9 +943,11 @@ def _report_unmatched_after_sync(
         )
         _demote_to_needs_mbid(a.path, sc, candidate=candidate)
         activity.record(
-            f"No Bandcamp purchase matched {a.artist} — {a.title} "
-            f"[{sc.store_url or 'no store URL'}]. Moved to Needs MBID (still tagged "
-            f"correctly) — seed/fix the release on Harmony or assign a different one.",
+            f"No Bandcamp purchase matched {a.artist} — {a.title} (its store URL "
+            f"{sc.store_url or 'none'}). Still tagged correctly. If you own it, the "
+            "purchase is at a different URL (see the 'unmatched_purchase' log lines) — "
+            "it'll be re-downloaded on the next full sync, so fix the release's Bandcamp "
+            "URL on MusicBrainz or assign a different release to avoid a duplicate.",
             level="warning",
         )
         if twins:

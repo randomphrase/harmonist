@@ -855,7 +855,10 @@ def test_report_unmatched_full_sync_surrenders_to_needs_mbid(cfg):
     album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
     assert album.state == AlbumState.NEEDS_MBID
     msgs = [e.message for e in activity.recent(10)]
-    assert any("No Bandcamp purchase matched" in m and "Harmony" in m for m in msgs)
+    assert any(
+        "No Bandcamp purchase matched" in m and "store URL" in m and "next full sync" in m
+        for m in msgs
+    )
 
 
 def test_surrender_leaves_on_disk_file_tags_intact(cfg):
