@@ -330,6 +330,31 @@ def find_existing_album_by_slug(music_dir: Path, target_url: str) -> Path | None
     return matches[0] if len(matches) == 1 else None
 
 
+def diagnose_redownload(music_dir: Path, target_url: str) -> list[tuple[Path, bool, str]]:
+    """For a purchase about to be downloaded, find every on-disk album that
+    shares its release slug, as `(album_dir, linked, store_url)`.
+
+    Empty → the release genuinely isn't on disk (a real new download). Non-empty
+    → the short-circuit MISSED an existing copy, and the tuple shows why: an
+    already-linked album (`find_existing_album_by_slug` skips linked albums) or a
+    different subdomain (`find_existing_album_by_url` needs an exact match). Used
+    only to log a spurious re-download, never to change behaviour.
+    """
+    slug = album_slug(target_url)
+    if slug is None:
+        return []
+    out: list[tuple[Path, bool, str]] = []
+    for f in music_dir.rglob(".harmonist.json"):
+        try:
+            sc = sidecar_mod.read(f.parent)
+        except Exception:
+            continue
+        if sc and sc.store_url and album_slug(sc.store_url) == slug:
+            linked = sc.bandcamp is not None and sc.bandcamp.item_id is not None
+            out.append((f.parent, linked, sc.store_url))
+    return out
+
+
 # bandcampsync ships no types, so _BCSyncer is Any; subclassing it is the
 # whole point of this module.
 class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
@@ -686,6 +711,24 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # linked. Downloads resume next sync, once Needs Sync is clear.
         if self._link_only:
             return False
+
+        # Diagnostic: this item is genuinely new (not on disk per the short-circuit,
+        # not ignored) so it WILL download/defer. If an on-disk album already shares
+        # its release slug, the short-circuit missed an existing copy — surface why
+        # (linked album → by_slug skips it; different subdomain → by_url miss) so a
+        # spurious re-download isn't a black box. Runs before the limit check, so a
+        # paused sync (cap 0) diagnoses every pending re-download without downloading.
+        if url and media_dir and not self.ignores.is_ignored(item):
+            for path, linked, store in diagnose_redownload(Path(media_dir), url):
+                log.warning(
+                    "RE-DOWNLOAD: item_id=%s url=%s already on disk at %s "
+                    "(linked=%s store_url=%s) — short-circuit missed it",
+                    getattr(item, "item_id", "?"),
+                    url,
+                    path,
+                    linked,
+                    store,
+                )
 
         # Per-sync download limit: once we've downloaded the cap this run, defer
         # the rest to the next sync (don't mark them ignored, so they retry).

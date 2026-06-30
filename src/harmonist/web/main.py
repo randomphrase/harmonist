@@ -274,15 +274,14 @@ def create_app(
             full_sync = getattr(result, "collection_checkpoint_token", None) is None
             _report_unmatched_after_sync(cfg, full_sync=full_sync, albums=scan_runner.scan_now())
             # Observability for failed links: pair the surrender line's store_url
-            # with the purchase URLs to answer "why didn't X link?". A subset
-            # library has hundreds of owned-but-not-downloaded purchases, so log a
-            # one-line INFO summary and push the per-purchase URLs to DEBUG (still
-            # there when diagnosing, not flooding the log every sync).
+            # with the purchase URLs to answer "why didn't X link?". On a full
+            # library these are few and meaningful (a real mismatch / re-download),
+            # so log the count summary AND each purchase URL at INFO.
             unmatched = result.unmatched_purchases()
             if unmatched:
                 audit.record("unmatched_purchases", count=len(unmatched))
                 for pid, purl, plabel in unmatched:
-                    log.debug("unmatched purchase: item_id=%s url=%s label=%s", pid, purl, plabel)
+                    audit.record("unmatched_purchase", item_id=pid, url=purl, label=plabel)
             scan_runner.request_scan()  # downloads/links landed → refresh the snapshot
             return result
 
