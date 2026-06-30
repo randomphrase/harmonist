@@ -32,6 +32,7 @@ from harmonist import (
     live_counts,
     mb_lookup,
     mb_search,
+    pending_downloads,
     reconcile,
     scanner,
 )
@@ -1278,6 +1279,7 @@ def _register_routes(app: FastAPI) -> None:
             request,
             albums=_inbox_albums(albums),
             total_albums=len(albums),
+            pending=pending_downloads.all_pending(),
             scan=request.app.state.scan_runner.status(),
             reconcile=reconcile_status,
             sync=request.app.state.sync_runner.status(),
@@ -1417,6 +1419,9 @@ def _register_routes(app: FastAPI) -> None:
                 # Single source of truth for the inbox/library counts — kept live
                 # by transitions (live_counts.move) and reset from each scan.
                 "counts": live_counts.to_status(),
+                # Potential downloads awaiting a decision (in-memory, from the last
+                # link-only sync). They need attention, so they count toward inbox.
+                "pending": pending_downloads.count(),
             }
         )
 
