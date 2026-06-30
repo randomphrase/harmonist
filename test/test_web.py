@@ -203,7 +203,7 @@ def test_consolidated_status_endpoint(client):
     r = client.get("/status")
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"sync", "reconcile", "scan", "counts"}
+    assert set(body) == {"sync", "reconcile", "scan", "counts", "pending"}
     assert body["sync"]["state"] == "idle"
     assert body["reconcile"]["state"] == "idle"
     assert "state" in body["scan"]
