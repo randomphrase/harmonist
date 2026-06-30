@@ -289,6 +289,46 @@ def test_sync_item_link_only_skips_downloads(tmp_path, monkeypatch):
     assert downloaded == []  # the real download was never invoked
 
 
+def test_sync_item_skips_download_when_release_on_disk_by_slug(tmp_path, monkeypatch):
+    """Dedup backstop: a release already on disk under a DIFFERENT subdomain (same
+    slug) and linked to a DIFFERENT purchase-id must NOT re-download — by_url is
+    exact and by_slug skips linked albums, so only the slug-inclusive check sees it.
+    This is the fix for the ~72 spurious re-downloads on a full-library sync."""
+    album = tmp_path / "variant" / "sequential sleep"
+    album.mkdir(parents=True)
+    sc.write(
+        album,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://variant.bandcamp.com/album/sequential-sleep",  # artist page
+            mb_release_id="rel-1",
+            bandcamp=BandcampInfo(item_id=999),  # linked to a DIFFERENT purchase
+        ),
+    )
+    s = _bare_syncer()
+    s.local_media = MagicMock()
+    s.local_media.media_dir = str(tmp_path)
+    s.ignores.is_ignored = lambda item: False
+    added: list[object] = []
+    s.ignores.add = lambda item: added.append(getattr(item, "item_id", None))
+
+    downloaded: list[int] = []
+
+    def fake_download(self, item, encoding=None):
+        downloaded.append(1)
+        return True
+
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_item", fake_download)
+    # Purchase: LABEL subdomain, SAME slug.
+    item = _StubItem(
+        item_id=4032507453,
+        url_hints={"subdomain": "echospace313", "slug": "sequential-sleep"},
+    )
+    assert s.sync_item(item) is False
+    assert downloaded == []  # did NOT re-download the existing release
+    assert 4032507453 in added  # ignored so it doesn't churn every sync
+
+
 def test_link_only_does_not_advance_checkpoint(monkeypatch):
     """A link-only sync downloads nothing, so it must NOT write bandcampsync's
     collection checkpoint — else the next full sync starts past purchases it only
@@ -718,9 +758,11 @@ def test_sync_item_slug_fallback_links_and_adopts_url(monkeypatch, tmp_path):
     s.ignores.add.assert_called_once_with(item)
 
 
-def test_sync_item_slug_fallback_skips_when_ambiguous(monkeypatch, tmp_path):
-    """Two unlinked albums share the slug → don't guess; fall through to the
-    normal download path rather than mislink."""
+def test_sync_item_ambiguous_slug_skips_download_no_dupe(monkeypatch, tmp_path):
+    """Two unlinked albums share the slug → we can't tell which to LINK, but the
+    release is plainly already on disk, so we must NOT download a third copy. (The
+    old behaviour fell through and downloaded a duplicate.) Picking which copy to
+    link is deferred to Phase 5's potential-download Match flow."""
     for sub in ("One", "Two"):
         d = tmp_path / sub / "Home"
         d.mkdir(parents=True)
@@ -736,8 +778,6 @@ def test_sync_item_slug_fallback_skips_when_ambiguous(monkeypatch, tmp_path):
     s = _bare_syncer()
     s.local_media.media_dir = str(tmp_path)
     s.ignores.is_ignored = MagicMock(return_value=False)
-    s.local_media.get_path_for_purchase = MagicMock(return_value=tmp_path / "New" / "Dir")
-    (tmp_path / "New" / "Dir").mkdir(parents=True)
     parent_called = []
 
     def parent_sync_item(self, item, encoding=None):
@@ -747,8 +787,8 @@ def test_sync_item_slug_fallback_skips_when_ambiguous(monkeypatch, tmp_path):
     monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_item", parent_sync_item)
 
     item = _StubItem(item_id=5, url_hints={"subdomain": "artist", "slug": "home"})
-    s.sync_item(item)
-    assert parent_called == [True]  # ambiguous → fell through, did not short-circuit
+    assert s.sync_item(item) is False
+    assert parent_called == []  # ambiguous but on-disk → NO download (no duplicate)
 
 
 def test_sync_item_short_circuit_does_not_re_add_already_ignored(monkeypatch, tmp_path):

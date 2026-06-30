@@ -330,15 +330,17 @@ def find_existing_album_by_slug(music_dir: Path, target_url: str) -> Path | None
     return matches[0] if len(matches) == 1 else None
 
 
-def diagnose_redownload(music_dir: Path, target_url: str) -> list[tuple[Path, bool, str]]:
-    """For a purchase about to be downloaded, find every on-disk album that
-    shares its release slug, as `(album_dir, linked, store_url)`.
+def ondisk_copies_of_release(music_dir: Path, target_url: str) -> list[tuple[Path, bool, str]]:
+    """Every on-disk album whose store_url shares `target_url`'s release slug,
+    as `(album_dir, linked, store_url)` — subdomain-insensitive and INCLUSIVE of
+    already-linked albums.
 
-    Empty → the release genuinely isn't on disk (a real new download). Non-empty
-    → the short-circuit MISSED an existing copy, and the tuple shows why: an
-    already-linked album (`find_existing_album_by_slug` skips linked albums) or a
-    different subdomain (`find_existing_album_by_url` needs an exact match). Used
-    only to log a spurious re-download, never to change behaviour.
+    This is the dedup backstop the two narrower matchers miss:
+    `find_existing_album_by_url` needs an exact (subdomain-sensitive) URL, and
+    `find_existing_album_by_slug` skips linked albums. A non-empty result means
+    the release is already on disk (a different Bandcamp subdomain — label vs
+    artist page — or linked to a different purchase-id for a cross-listing), so it
+    must NOT be re-downloaded.
     """
     slug = album_slug(target_url)
     if slug is None:
@@ -712,23 +714,28 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         if self._link_only:
             return False
 
-        # Diagnostic: this item is genuinely new (not on disk per the short-circuit,
-        # not ignored) so it WILL download/defer. If an on-disk album already shares
-        # its release slug, the short-circuit missed an existing copy — surface why
-        # (linked album → by_slug skips it; different subdomain → by_url miss) so a
-        # spurious re-download isn't a black box. Runs before the limit check, so a
-        # paused sync (cap 0) diagnoses every pending re-download without downloading.
+        # Dedup backstop: this item wasn't matched by the narrow short-circuit
+        # (exact-URL, or unlinked slug), but the release may still be on disk under
+        # a different subdomain (label vs artist page, same slug) or linked to a
+        # different purchase-id (a cross-listing). Match subdomain-insensitively and
+        # inclusive of linked albums; if found, do NOT re-download — ignore this
+        # purchase so it doesn't churn every sync. (Proper purchase↔album linking
+        # for the ambiguous/uncertain cases is Phase 5's potential-download review.)
         if url and media_dir and not self.ignores.is_ignored(item):
-            for path, linked, store in diagnose_redownload(Path(media_dir), url):
-                log.warning(
-                    "RE-DOWNLOAD: item_id=%s url=%s already on disk at %s "
-                    "(linked=%s store_url=%s) — short-circuit missed it",
-                    getattr(item, "item_id", "?"),
-                    url,
-                    path,
-                    linked,
-                    store,
-                )
+            on_disk = ondisk_copies_of_release(Path(media_dir), url)
+            if on_disk:
+                for path, linked, store in on_disk:
+                    log.info(
+                        "already on disk: item_id=%s url=%s at %s "
+                        "(linked=%s store_url=%s) — skipping download",
+                        getattr(item, "item_id", "?"),
+                        url,
+                        path,
+                        linked,
+                        store,
+                    )
+                self.ignores.add(item)
+                return False
 
         # Per-sync download limit: once we've downloaded the cap this run, defer
         # the rest to the next sync (don't mark them ignored, so they retry).
