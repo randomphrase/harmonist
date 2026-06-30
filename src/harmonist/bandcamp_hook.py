@@ -357,6 +357,26 @@ def ondisk_copies_of_release(music_dir: Path, target_url: str) -> list[tuple[Pat
     return out
 
 
+def ondisk_item_ids(music_dir: Path) -> set[int]:
+    """Every Bandcamp `item_id` recorded in an on-disk sidecar.
+
+    Seeding bandcampsync's in-memory ignores with these is the most reliable dedup:
+    a purchase whose item_id is already on disk has, by definition, been downloaded,
+    so it must never be re-fetched — even if `ignores.txt` is incomplete or lost
+    (the durable record is the sidecar, not `ignores.txt`). Exact id match, no
+    dependence on store_url/subdomain or folder name.
+    """
+    ids: set[int] = set()
+    for f in music_dir.rglob(".harmonist.json"):
+        try:
+            sc = sidecar_mod.read(f.parent)
+        except Exception:
+            continue
+        if sc and sc.bandcamp is not None and sc.bandcamp.item_id is not None:
+            ids.add(int(sc.bandcamp.item_id))
+    return ids
+
+
 # bandcampsync ships no types, so _BCSyncer is Any; subclassing it is the
 # whole point of this module.
 class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
@@ -433,6 +453,14 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         super()._save_collection_checkpoint()
 
     async def sync_items(self) -> None:
+        # Seed dedup from our sidecars FIRST: any purchase whose item_id is already
+        # recorded on disk has been downloaded, so it must never be re-fetched —
+        # even if ignores.txt is stale/lost. Exact id match, independent of
+        # store_url/subdomain or folder name. In-memory only (we don't write
+        # ignores.txt). This is the durable backstop the 67 re-downloads needed.
+        media_dir = getattr(self.local_media, "media_dir", None)
+        if media_dir:
+            self.ignores.ids |= ondisk_item_ids(Path(media_dir))
         # Link already-downloaded (ignored) purchases to their on-disk albums
         # BEFORE the parent loop — bandcampsync skips ignored items, so their
         # sidecar would otherwise never get its item_id filled in.
