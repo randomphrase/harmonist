@@ -289,6 +289,33 @@ def test_sync_item_link_only_skips_downloads(tmp_path, monkeypatch):
     assert downloaded == []  # the real download was never invoked
 
 
+def test_link_only_does_not_advance_checkpoint(monkeypatch):
+    """A link-only sync downloads nothing, so it must NOT write bandcampsync's
+    collection checkpoint — else the next full sync starts past purchases it only
+    saw (e.g. a new purchase) and skips them forever."""
+    s = _bare_syncer()
+    s._link_only = True
+    saved: list[int] = []
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer._save_collection_checkpoint",
+        lambda self: saved.append(1),
+    )
+    s._save_collection_checkpoint()
+    assert saved == []  # parent never reached → checkpoint left as-is
+
+
+def test_normal_sync_advances_checkpoint(monkeypatch):
+    s = _bare_syncer()
+    s._link_only = False
+    saved: list[int] = []
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer._save_collection_checkpoint",
+        lambda self: saved.append(1),
+    )
+    s._save_collection_checkpoint()
+    assert saved == [1]  # parent called → checkpoint advances normally
+
+
 def test_sync_item_skips_relink_for_already_linked_album(tmp_path, monkeypatch):
     """The on-disk short-circuit runs every sync (a link-only full re-page pages
     the WHOLE collection), but an album already linked must NOT be re-written —

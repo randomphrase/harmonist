@@ -392,6 +392,19 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         )
         super().__init__(options, auto_run=auto_run)
 
+    def _save_collection_checkpoint(self) -> None:
+        # A link-only sync downloads NOTHING, so it must not advance bandcampsync's
+        # collection checkpoint. That checkpoint is the newest item's token, saved
+        # regardless of what was downloaded — advancing it past purchases this sync
+        # only *saw* (e.g. a brand-new purchase that arrived while the library
+        # still had Needs-Sync links) makes the next full sync start past them and
+        # skip them forever. Leave the state file as-is so the next sync starts
+        # afresh and downloads them (obeying the per-sync cap).
+        if self._link_only:
+            log.info("link-only sync: not advancing the collection checkpoint")
+            return
+        super()._save_collection_checkpoint()
+
     async def sync_items(self) -> None:
         # Link already-downloaded (ignored) purchases to their on-disk albums
         # BEFORE the parent loop — bandcampsync skips ignored items, so their
