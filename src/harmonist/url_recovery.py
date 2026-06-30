@@ -20,10 +20,44 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from . import formats
 
 log = logging.getLogger(__name__)
+
+
+def album_slug(url: str | None) -> str | None:
+    """Extract the Bandcamp release slug from a URL, ignoring the subdomain.
+
+    `https://echospace313.bandcamp.com/album/dimensional-space-remastered-by-pole`
+    → `album/dimensional-space-remastered-by-pole`
+
+    The slug is Bandcamp's stable per-release handle: minted once at release
+    and effectively immutable, even when the artist renames the band or
+    re-letters the title. The *subdomain*, by contrast, varies — the same
+    release is often cross-listed under both a label page and an artist page
+    (e.g. `echospacedetroit` vs the artist's own subdomain), which defeats a
+    whole-URL compare. Matching on the slug bridges that.
+
+    Returns `None` for URLs that aren't an `/album/<slug>` or `/track/<slug>`
+    shape (e.g. a bare `artist.bandcamp.com` landing page embedded in tags) —
+    those carry no release identity and must never match.
+
+    The item-type segment (`album`/`track`) is kept in the key so an album and
+    a track that happen to share a slug don't collide.
+    """
+    if not url:
+        return None
+    try:
+        path = urlparse(url).path
+    except ValueError:
+        return None
+    parts = [seg for seg in path.split("/") if seg]
+    if len(parts) >= 2 and parts[-2] in ("album", "track"):
+        return f"{parts[-2]}/{parts[-1].lower()}"
+    return None
+
 
 # Bandcamp embeds the link as prose in the comment tag, e.g.
 # "Visit https://artist.bandcamp.com/album/x" — so we extract the URL rather
