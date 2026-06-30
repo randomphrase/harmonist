@@ -18,7 +18,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import bandcampsync.sync as _bcsync
 from bandcampsync.options import BandcampSyncOptions
@@ -29,6 +28,7 @@ from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url
 from .pending_downloads import PendingPurchase
 from .sidecar import CURRENT_SCHEMA_VERSION
+from .url_recovery import album_slug as album_slug  # re-export; canonical home is url_recovery
 
 log = logging.getLogger(__name__)
 
@@ -267,38 +267,6 @@ def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], list[Pat
         elif is_bandcamp_url(sc.store_url):
             slugless.append(f.parent)
     return by_slug, slugless, linked_ids
-
-
-def album_slug(url: str | None) -> str | None:
-    """Extract the Bandcamp release slug from a URL, ignoring the subdomain.
-
-    `https://echospace313.bandcamp.com/album/dimensional-space-remastered-by-pole`
-    → `album/dimensional-space-remastered-by-pole`
-
-    The slug is Bandcamp's stable per-release handle: minted once at release
-    and effectively immutable, even when the artist renames the band or
-    re-letters the title. The *subdomain*, by contrast, varies — the same
-    release is often cross-listed under both a label page and an artist page
-    (e.g. `echospacedetroit` vs the artist's own subdomain), which defeats a
-    whole-URL compare. Matching on the slug bridges that.
-
-    Returns `None` for URLs that aren't an `/album/<slug>` or `/track/<slug>`
-    shape (e.g. a bare `artist.bandcamp.com` landing page embedded in tags) —
-    those carry no release identity and must never match.
-
-    The item-type segment (`album`/`track`) is kept in the key so an album and
-    a track that happen to share a slug don't collide.
-    """
-    if not url:
-        return None
-    try:
-        path = urlparse(url).path
-    except ValueError:
-        return None
-    parts = [seg for seg in path.split("/") if seg]
-    if len(parts) >= 2 and parts[-2] in ("album", "track"):
-        return f"{parts[-2]}/{parts[-1].lower()}"
-    return None
 
 
 def find_existing_album_by_slug(music_dir: Path, target_url: str) -> Path | None:

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import audit, id_registry
+from . import audit, id_registry, library_index
 from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 
 SIDECAR_FILENAME = ".harmonist.json"
@@ -54,6 +54,7 @@ def delete_all(music_dir: Path) -> int:
             removed += 1
         except OSError:
             continue
+    library_index.clear()  # the sidecars are gone; the rescan refills the index
     return removed
 
 
@@ -97,6 +98,9 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
         os.fsync(f.fileno())
     os.replace(tmp, target)
     _audit_identity_change(album_dir, old, sidecar)
+    # The ONE place the in-memory index learns of a sidecar change (link, demote,
+    # tag, download, reconcile all land here) — so sync-time dedup never re-reads.
+    library_index.upsert(album_dir, sidecar)
 
 
 def _audit_identity_change(album_dir: Path, old: Sidecar | None, new: Sidecar) -> None:

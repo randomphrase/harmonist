@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from harmonist import live_counts, scanner
+from harmonist import library_index, live_counts, scanner
 from harmonist.models import Album
 
 log = logging.getLogger(__name__)
@@ -260,6 +260,9 @@ class ScanRunner:
         # self-healing baseline that transitions (live_counts.move) adjust between
         # scans. This snapshot IS what the UI reads, so the counts now match it.
         live_counts.reset_from(results)
+        # Same self-healing baseline for the sidecar/dedup index — rebuilt from the
+        # fresh snapshot, then kept current by sidecar writes between scans.
+        library_index.reset_from(results)
         self._completed_once = True
         self._scan_seq += 1
         status.seq = self._scan_seq
