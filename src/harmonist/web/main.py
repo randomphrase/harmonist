@@ -1023,6 +1023,64 @@ def _find_album(request: Request, album_id: str) -> Album:
     raise HTTPException(status.HTTP_404_NOT_FOUND, f"album {album_id} not found")
 
 
+def _render_pending_section(request: Request) -> Response:
+    """Re-render the #pending-section partial (the target of every action swap)."""
+    ctx = _ctx(request, pending=pending_downloads.all_pending())
+    return _templates(request).TemplateResponse(request, "partials/_pending.html", ctx)
+
+
+def _append_ignore(ignores_file: Path, item_id: int, label: str) -> None:
+    """Append a purchase to bandcampsync's ignores.txt so it's never downloaded.
+    The next sync reads it; best-effort (a failed write just means it may re-surface)."""
+    try:
+        ignores_file.parent.mkdir(parents=True, exist_ok=True)
+        with ignores_file.open("a", encoding="utf-8") as f:
+            f.write(f"{item_id}  # {label}\n")
+    except OSError as e:
+        log.warning("could not append %s to ignores %s: %s", item_id, ignores_file, e)
+
+
+def _search_albums(request: Request, q: str, *, limit: int = 25) -> list[dict[str, str]]:
+    """On-disk albums whose artist/title/folder matches `q` — the Match picker's
+    candidates, each carrying its display path for disambiguation."""
+    ql = q.strip().lower()
+    if not ql:
+        return []
+    base = request.app.state.cfg.paths.music_dir
+    out: list[dict[str, str]] = []
+    for a in _albums(request):
+        if ql in f"{a.artist} {a.title} {a.path.name}".lower():
+            out.append(
+                {
+                    "id": a.id,
+                    "artist": a.artist,
+                    "title": a.title,
+                    "path": str(a.path),
+                    "rel_path": _rel_path(a.path, base),
+                }
+            )
+            if len(out) >= limit:
+                break
+    return out
+
+
+def _link_pending_to_album(album: Album, p: pending_downloads.PendingPurchase) -> None:
+    """Link a potential download to an existing on-disk album: fill the purchase's
+    item_id (+ store_url) onto its sidecar, creating a minimal one if untagged."""
+    sc = album.sidecar
+    if sc is not None:
+        _link_album_to_purchase(album.path, sc, item_id=p.item_id, store_url=p.url)
+    else:
+        sidecar_mod.write(
+            album.path,
+            Sidecar(
+                schema_version=CURRENT_SCHEMA_VERSION,
+                store_url=p.url,
+                bandcamp=BandcampInfo(item_id=p.item_id),
+            ),
+        )
+
+
 def _inbox_albums(albums: list[Album]) -> list[Album]:
     """Albums that warrant attention in the inbox (terminal states excluded)."""
     return [a for a in albums if a.state not in _TERMINAL_STATES]
@@ -1285,6 +1343,63 @@ def _register_routes(app: FastAPI) -> None:
             sync=request.app.state.sync_runner.status(),
         )
         return _templates(request).TemplateResponse(request, "tasks.html", ctx)
+
+    # ----- Potential-download actions (in-memory; see pending_downloads) -----
+
+    @app.post("/pending/{item_id}/skip", response_class=HTMLResponse)
+    def pending_skip(request: Request, item_id: int) -> Response:
+        cfg: config_mod.Config = request.app.state.cfg
+        p = pending_downloads.get(item_id)
+        label = f"{p.band} — {p.title}" if p else str(item_id)
+        _append_ignore(cfg.ignores_file, item_id, label)
+        pending_downloads.remove(item_id)
+        activity.record(f"Won't download {label} — added to your Bandcamp ignores")
+        return _render_pending_section(request)
+
+    @app.post("/pending/{item_id}/download", response_class=HTMLResponse)
+    def pending_download(request: Request, item_id: int) -> Response:
+        p = pending_downloads.get(item_id)
+        label = f"{p.band} — {p.title}" if p else str(item_id)
+        pending_downloads.approve(item_id)
+        activity.record(f"Will download {label} on the next sync — click Sync")
+        return _render_pending_section(request)
+
+    @app.get("/pending/{item_id}/match", response_class=HTMLResponse)
+    def pending_match_panel(request: Request, item_id: int) -> Response:
+        p = pending_downloads.get(item_id)
+        if p is None:  # decided elsewhere meanwhile — just refresh the section
+            return _render_pending_section(request)
+        ctx = _ctx(request, p=p, results=[], item_id=item_id, q="")
+        return _templates(request).TemplateResponse(request, "partials/_pending_match.html", ctx)
+
+    @app.get("/pending/{item_id}/match/results", response_class=HTMLResponse)
+    def pending_match_results(request: Request, item_id: int, q: str = "") -> Response:
+        ctx = _ctx(request, results=_search_albums(request, q), item_id=item_id, q=q)
+        return _templates(request).TemplateResponse(
+            request, "partials/_pending_match_results.html", ctx
+        )
+
+    @app.get("/pending/{item_id}/cancel", response_class=HTMLResponse)
+    def pending_cancel(request: Request, item_id: int) -> Response:
+        p = pending_downloads.get(item_id)
+        if p is None:
+            return _render_pending_section(request)
+        ctx = _ctx(request, p=p)
+        return _templates(request).TemplateResponse(request, "partials/_pending_card.html", ctx)
+
+    @app.post("/pending/{item_id}/match", response_class=HTMLResponse)
+    def pending_match_link(request: Request, item_id: int, album_id: str = Form(...)) -> Response:
+        cfg: config_mod.Config = request.app.state.cfg
+        p = pending_downloads.get(item_id)
+        if p is None:
+            return _render_pending_section(request)
+        album = _find_album(request, album_id)
+        _link_pending_to_album(album, p)
+        _append_ignore(cfg.ignores_file, item_id, f"{p.band} — {p.title}")
+        pending_downloads.remove(item_id)
+        activity.record(f"Linked {p.band} — {p.title} → {album.artist} — {album.title}")
+        request.app.state.scan_runner.request_scan()
+        return _render_pending_section(request)
 
     @app.get("/activity", response_class=HTMLResponse)
     def activity_feed(request: Request) -> Response:

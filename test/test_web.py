@@ -2762,3 +2762,62 @@ def test_run_bandcamp_sync_keeps_existing_ignores_file(cfg, monkeypatch):
     main_mod._run_bandcamp_sync(cfg)
 
     assert cfg.ignores_file.read_text() == "12345  # keep me\n"
+
+
+# ---------- Potential-download actions (Phase 5) ----------
+
+
+def _pp(item_id, *, band="B", title="T", url="https://x.bandcamp.com/album/y", fmt="alac"):
+    from harmonist.pending_downloads import PendingPurchase
+
+    return PendingPurchase(item_id=item_id, band=band, title=title, url=url, fmt=fmt)
+
+
+def test_pending_skip_ignores_and_removes(client, cfg):
+    from harmonist import pending_downloads as pd
+
+    pd.replace_all([_pp(42)])
+    r = client.post("/pending/42/skip")
+    assert r.status_code == 200
+    assert pd.get(42) is None  # dropped from the store
+    assert "42" in cfg.ignores_file.read_text()  # appended to ignores.txt
+
+
+def test_pending_download_approves_and_removes(client):
+    from harmonist import pending_downloads as pd
+
+    pd.replace_all([_pp(43)])
+    r = client.post("/pending/43/download")
+    assert r.status_code == 200
+    assert pd.get(43) is None
+    assert pd.is_approved(43)  # the next sync will fetch it
+
+
+def test_pending_match_panel_renders_search(client):
+    from harmonist import pending_downloads as pd
+
+    pd.replace_all([_pp(44, band="Variant", title="Sequential Sleep")])
+    r = client.get("/pending/44/match")
+    assert r.status_code == 200
+    assert "Variant" in r.text
+    assert 'name="q"' in r.text  # the library search input
+
+
+def test_pending_match_link_fills_item_id(client, cfg):
+    """Linking a potential download to an on-disk album writes the purchase's
+    item_id + store_url onto that album's sidecar, and drops it from pending."""
+    from harmonist import pending_downloads as pd
+    from harmonist import sidecar as scmod
+
+    d = _make_album(cfg, "Existing", mbid="rel-xyz")
+    scmod.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-xyz"))
+    album_id = _id_for(cfg, d)
+
+    pd.replace_all([_pp(45, url="https://x.bandcamp.com/album/y")])
+    r = client.post("/pending/45/match", data={"album_id": album_id})
+    assert r.status_code == 200
+    assert pd.get(45) is None
+    sc = scmod.read(d)
+    assert sc.bandcamp is not None
+    assert sc.bandcamp.item_id == 45
+    assert sc.store_url == "https://x.bandcamp.com/album/y"

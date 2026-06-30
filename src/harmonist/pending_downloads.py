@@ -33,6 +33,10 @@ class PendingPurchase:
 
 _lock = threading.Lock()
 _pending: dict[int, PendingPurchase] = {}
+# Purchases the user explicitly chose to Download: the next link-only sync fetches
+# them (bypassing the "record as pending instead of downloading" rule and the
+# per-sync cap — an explicit ask). In-memory; harmless if a stale id lingers.
+_approved: set[int] = set()
 
 
 def replace_all(items: list[PendingPurchase]) -> None:
@@ -49,6 +53,18 @@ def remove(item_id: int) -> None:
     """Drop one purchase once the user has decided on it."""
     with _lock:
         _pending.pop(item_id, None)
+
+
+def approve(item_id: int) -> None:
+    """User chose Download: drop it from pending and mark it for the next sync."""
+    with _lock:
+        _pending.pop(item_id, None)
+        _approved.add(item_id)
+
+
+def is_approved(item_id: int) -> bool:
+    with _lock:
+        return item_id in _approved
 
 
 def get(item_id: int) -> PendingPurchase | None:
