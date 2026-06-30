@@ -631,28 +631,40 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 existing_dir = find_existing_album_by_slug(Path(media_dir), url)
                 by_slug = existing_dir is not None
             if existing_dir is not None:
+                # This runs EVERY sync for every on-disk album whose purchase is
+                # re-paged (a link-only full sync pages the WHOLE collection). Only
+                # actually LINK — write the sidecar AND log the transition — when
+                # the album isn't already linked. Otherwise we'd rewrite every
+                # sidecar each sync (bumping mtimes → the next scan re-reads every
+                # album's tags, the slow "finishing up") and spam the feed with
+                # "Needs Sync → Library" for albums long since in the Library.
                 try:
-                    write_sidecar_for_item(item, existing_dir, prefer_item_url=by_slug)
-                    # Record the transition in the Activity feed (+ server log),
-                    # same as the ignored-purchase backfill's _link.
-                    activity.record(
-                        f"{getattr(item, 'band_name', '?')} — "
-                        f"{getattr(item, 'item_title', '?')}: Needs Sync → Library "
-                        f"(linked to Bandcamp purchase {getattr(item, 'item_id', '?')}"
-                        f"{' by slug' if by_slug else ''})"
-                    )
-                    # Guard the add: this short-circuit runs every sync for an
-                    # on-disk album, and bandcampsync's Ignores.add appends a
-                    # line unconditionally (no dedup) — so re-adding bloats
-                    # ignores.txt with duplicates. Only mark it once.
-                    if not self.ignores.is_ignored(item):
-                        self.ignores.add(item)
-                except Exception as e:
-                    log.warning(
-                        "could not fill in pre-existing sidecar for %s: %s",
-                        getattr(item, "item_id", "?"),
-                        e,
-                    )
+                    existing = sidecar_mod.read(existing_dir)
+                except Exception:
+                    existing = None
+                already_linked = bool(
+                    existing and existing.bandcamp and existing.bandcamp.item_id is not None
+                )
+                if not already_linked:
+                    try:
+                        write_sidecar_for_item(item, existing_dir, prefer_item_url=by_slug)
+                        activity.record(
+                            f"{getattr(item, 'band_name', '?')} — "
+                            f"{getattr(item, 'item_title', '?')}: Needs Sync → Library "
+                            f"(linked to Bandcamp purchase {getattr(item, 'item_id', '?')}"
+                            f"{' by slug' if by_slug else ''})"
+                        )
+                    except Exception as e:
+                        log.warning(
+                            "could not fill in pre-existing sidecar for %s: %s",
+                            getattr(item, "item_id", "?"),
+                            e,
+                        )
+                # Keep the purchase in ignores.txt regardless (cheap, idempotent —
+                # bandcampsync's Ignores.add appends with no dedup, so guard it) so
+                # bandcampsync never re-downloads it.
+                if not self.ignores.is_ignored(item):
+                    self.ignores.add(item)
                 return False  # didn't download (already on disk)
 
         # Adopt mode: this sync links the existing library (the short-circuit

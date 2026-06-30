@@ -289,6 +289,39 @@ def test_sync_item_link_only_skips_downloads(tmp_path, monkeypatch):
     assert downloaded == []  # the real download was never invoked
 
 
+def test_sync_item_skips_relink_for_already_linked_album(tmp_path, monkeypatch):
+    """The on-disk short-circuit runs every sync (a link-only full re-page pages
+    the WHOLE collection), but an album already linked must NOT be re-written —
+    else every sidecar's mtime bumps (slow rescan) and the feed is spammed."""
+    album = tmp_path / "Artist" / "Album"
+    album.mkdir(parents=True)
+    sc.write(
+        album,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/a",
+            mb_release_id="rel-1",
+            bandcamp=BandcampInfo(item_id=555),  # already linked
+        ),
+    )
+    s = _bare_syncer()
+    s.local_media = MagicMock()
+    s.local_media.media_dir = str(tmp_path)
+    s.ignores.is_ignored = lambda item: True
+
+    wrote: list[int] = []
+
+    def fake_write(*a, **k):
+        wrote.append(1)
+        return True
+
+    monkeypatch.setattr("harmonist.bandcamp_hook.write_sidecar_for_item", fake_write)
+    # Purchase URL matches the album's store_url → short-circuit finds it.
+    item = _StubItem(item_id=555, url_hints={"subdomain": "x", "slug": "a"})
+    assert s.sync_item(item) is False
+    assert wrote == []  # already linked → no rewrite (no mtime bump, no spam)
+
+
 def test_sync_item_writes_sidecar_on_successful_download(monkeypatch, tmp_path):
     """When parent sync_item returns True, our override should write a sidecar."""
     album_dir = tmp_path / "Artist" / "Album"
