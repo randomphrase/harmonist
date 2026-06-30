@@ -34,6 +34,37 @@ def test_scan_runner_not_engaged_before_attach(tmp_path):
     runner.request_scan()  # no-op without a loop, must not raise
 
 
+def test_reset_and_rescan_no_loop_is_noop(tmp_path):
+    """Before the runner is engaged, reset_and_rescan must be a safe no-op (the
+    erase-sidecars handler may run before/without the background loop)."""
+    runner = ScanRunner(tmp_path)
+    runner._albums = ["stale"]  # type: ignore[list-item]
+    runner.reset_and_rescan()  # no loop → must not raise, must not clear
+    assert len(runner.albums()) == 1
+
+
+def test_reset_and_rescan_drops_snapshot_and_reruns(tmp_path):
+    """After a nuke: reset_and_rescan clears the stale snapshot and runs a fresh
+    scan, so the inbox shows 'Scanning…' then the rebuilt library."""
+    music = tmp_path / "music"
+    _album(music, "A")
+    _album(music, "B")
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(runner.has_completed)
+        assert len(runner.albums()) == 2
+        first = runner.status()["seq"]
+        runner.reset_and_rescan()
+        # The snapshot is dropped promptly (the rescan then refills it).
+        await _wait(lambda: runner.albums() == [])
+        await _wait(lambda: runner.status()["seq"] > first)
+
+    asyncio.run(go())
+    assert len(runner.albums()) == 2  # repopulated by the fresh scan
+
+
 def test_scan_now_is_synchronous_and_cache_backed(tmp_path):
     """scan_now() works off the loop (the sync runner's post-sync matching uses
     it) and populates/reuses the mtime cache so repeat scans are cheap."""
