@@ -655,48 +655,49 @@ def test_scan_skips_album_with_invalid_sidecar(tmp_path, caplog):
 # ---------- per-album mtime cache (opt-in) ----------
 
 
-def _build_album_spy(monkeypatch):
-    """Wrap scanner._build_album to record which dirs get (re)read."""
-    from harmonist import scanner
+def _tag_read_spy(monkeypatch):
+    """Count per-track tag reads (formats.read_scan_fields) — the expensive work
+    the re-scan cache exists to skip."""
+    from harmonist import formats
 
-    calls: list[Path] = []
-    real = scanner._build_album
+    reads: list[Path] = []
+    real = formats.read_scan_fields
 
-    def spy(album_dir, audio_files):
-        calls.append(album_dir)
-        return real(album_dir, audio_files)
+    def spy(f):
+        reads.append(f)
+        return real(f)
 
-    monkeypatch.setattr(scanner, "_build_album", spy)
-    return calls
+    monkeypatch.setattr("harmonist.formats.read_scan_fields", spy)
+    return reads
 
 
-def test_scan_without_cache_rebuilds_every_time(tmp_path, monkeypatch):
+def test_scan_without_cache_reads_tags_every_time(tmp_path, monkeypatch):
     from harmonist import scanner
 
     _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
-    calls = _build_album_spy(monkeypatch)
+    reads = _tag_read_spy(monkeypatch)
     scanner.scan(tmp_path)
     scanner.scan(tmp_path)
-    assert len(calls) == 2  # no cache → read both times
+    assert len(reads) == 4  # no cache → both tracks re-read on both scans
 
 
 def test_scan_cache_reuses_unchanged_album(tmp_path, monkeypatch):
     from harmonist import scanner
 
     _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
-    calls = _build_album_spy(monkeypatch)
+    reads = _tag_read_spy(monkeypatch)
     cache: scanner.AlbumCache = {}
     first = scanner.scan(tmp_path, album_cache=cache)
     second = scanner.scan(tmp_path, album_cache=cache)
     assert len(first) == len(second) == 1
-    assert len(calls) == 1  # second scan served the unchanged album from cache
+    assert len(reads) == 2  # full-signature hit → second scan reads no tags
 
 
-def test_scan_cache_rebuilds_on_file_change(tmp_path, monkeypatch):
+def test_scan_cache_rereads_tags_on_file_change(tmp_path, monkeypatch):
     from harmonist import scanner
 
     d = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=1)
-    calls = _build_album_spy(monkeypatch)
+    reads = _tag_read_spy(monkeypatch)
     cache: scanner.AlbumCache = {}
     scanner.scan(tmp_path, album_cache=cache)
     # Bump the track's mtime to a distinct value (simulates a Picard re-tag).
@@ -704,19 +705,23 @@ def test_scan_cache_rebuilds_on_file_change(tmp_path, monkeypatch):
     future = time.time() + 10
     os.utime(track, (future, future))
     scanner.scan(tmp_path, album_cache=cache)
-    assert len(calls) == 2  # signature changed → re-read
+    assert len(reads) == 2  # audio signature changed → tags re-read
 
 
-def test_scan_cache_rebuilds_on_sidecar_write(tmp_path, monkeypatch):
+def test_scan_cache_skips_tag_reads_on_sidecar_write(tmp_path, monkeypatch):
+    """The cache split: a sidecar-only change reuses the cached tag fields (no
+    mutagen re-read) yet STILL re-derives the Album from the new sidecar."""
     from harmonist import scanner
 
     d = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=1)
-    calls = _build_album_spy(monkeypatch)
+    reads = _tag_read_spy(monkeypatch)
     cache: scanner.AlbumCache = {}
     scanner.scan(tmp_path, album_cache=cache)
     sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-x"))
-    scanner.scan(tmp_path, album_cache=cache)
-    assert len(calls) == 2  # new sidecar → signature changed → re-read
+    second = scanner.scan(tmp_path, album_cache=cache)
+    assert len(reads) == 1  # audio unchanged → tags NOT re-read (the win)
+    assert second[0].sidecar is not None
+    assert second[0].sidecar.mb_release_id == "rel-x"  # new sidecar still reflected
 
 
 def test_scan_cache_prunes_removed_album(tmp_path):
