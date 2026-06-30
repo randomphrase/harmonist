@@ -24,9 +24,10 @@ import bandcampsync.sync as _bcsync
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
-from . import activity, audit, formats
+from . import activity, audit, formats, pending_downloads
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url
+from .pending_downloads import PendingPurchase
 from .sidecar import CURRENT_SCHEMA_VERSION
 
 log = logging.getLogger(__name__)
@@ -428,6 +429,10 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # Genuinely-new albums NOT downloaded this run because the per-sync
         # download limit was reached — i.e. how many remain for the next sync.
         self.skipped_for_limit = 0
+        # Potential downloads accumulated this run (link mode: purchases we
+        # couldn't confidently match and so didn't download). Swapped into the
+        # module-level in-memory store at the end of the sync.
+        self._pending_this_run: list[PendingPurchase] = []
         options = BandcampSyncOptions(
             cookies=cookies,
             dir_path=Path(dir_path),
@@ -468,6 +473,10 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # The download limit is enforced per item in sync_item (download up to
         # the cap, defer the rest to the next sync) rather than aborting here.
         await super().sync_items()
+        # Swap this run's potential downloads into the in-memory store atomically
+        # (a full/non-link sync accumulates none → replaces with an empty set,
+        # which is correct: steady state has no pending downloads).
+        pending_downloads.replace_all(self._pending_this_run)
 
     def _backfill_ignored_purchases(self) -> None:
         """Link already-downloaded (ignored) purchases to their on-disk albums.
@@ -735,20 +744,12 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                     self.ignores.add(item)
                 return False  # didn't download (already on disk)
 
-        # Adopt mode: this sync links the existing library (the short-circuit
-        # above) and surrenders the rest, but downloads NOTHING — so we never
-        # re-download a copy of an album that's already on disk but not yet
-        # linked. Downloads resume next sync, once Needs Sync is clear.
-        if self._link_only:
-            return False
-
-        # Dedup backstop: this item wasn't matched by the narrow short-circuit
-        # (exact-URL, or unlinked slug), but the release may still be on disk under
-        # a different subdomain (label vs artist page, same slug) or linked to a
-        # different purchase-id (a cross-listing). Match subdomain-insensitively and
-        # inclusive of linked albums; if found, do NOT re-download — ignore this
-        # purchase so it doesn't churn every sync. (Proper purchase↔album linking
-        # for the ambiguous/uncertain cases is Phase 5's potential-download review.)
+        # Dedup backstop (BOTH modes): this item wasn't matched by the narrow
+        # short-circuit (exact-URL, or unlinked slug), but the release may still be
+        # on disk under a different subdomain (label vs artist page, same slug) or
+        # linked to a different purchase-id (a cross-listing). Match
+        # subdomain-insensitively and inclusive of linked albums; if found, do NOT
+        # re-download — ignore this purchase so it doesn't churn every sync.
         if url and media_dir and not self.ignores.is_ignored(item):
             on_disk = ondisk_copies_of_release(Path(media_dir), url)
             if on_disk:
@@ -764,6 +765,23 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                     )
                 self.ignores.add(item)
                 return False
+
+        # Adopt mode: this purchase is genuinely unmatched (none of item_id / exact
+        # URL / slug found it on disk). Don't auto-download — that's the duplicate
+        # risk by construction. Record it as a POTENTIAL DOWNLOAD for the user to
+        # resolve (Download / Match to an existing album / Don't download), and
+        # download nothing this run.
+        if self._link_only:
+            self._pending_this_run.append(
+                PendingPurchase(
+                    item_id=int(getattr(item, "item_id", 0) or 0),
+                    band=str(getattr(item, "band_name", "") or "?"),
+                    title=str(getattr(item, "item_title", "") or "?"),
+                    url=url or "",
+                    fmt=encoding or str(getattr(self, "media_format", "?")),
+                )
+            )
+            return False
 
         # Per-sync download limit: once we've downloaded the cap this run, defer
         # the rest to the next sync (don't mark them ignored, so they retry).
