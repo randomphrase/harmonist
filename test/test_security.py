@@ -292,6 +292,20 @@ def test_create_app_trusted_host_accepts_allowed(tmp_path):
     assert r.status_code == 200
 
 
+def test_create_app_trusted_host_allows_loopback_when_tightened(tmp_path):
+    """The Docker HEALTHCHECK hits http://127.0.0.1:8000/healthz — loopback must
+    stay allowed even when allowed_hosts is tightened to a real hostname, else the
+    container is perpetually unhealthy (400 Invalid host header)."""
+    cfg = _full_cfg(tmp_path, server={"allowed_hosts": ["harmonist.example.com"]})
+    client = TestClient(
+        create_app(cfg),
+        headers={"HX-Request": "true", "Host": "127.0.0.1:8000"},
+        base_url="http://127.0.0.1:8000",
+    )
+    r = client.get("/healthz")
+    assert r.status_code == 200
+
+
 def test_create_app_basic_auth_when_enabled(tmp_path):
     cfg = _full_cfg(
         tmp_path,

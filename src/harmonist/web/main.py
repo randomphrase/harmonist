@@ -431,7 +431,14 @@ def _install_security_middleware(app: FastAPI, cfg: config_mod.Config) -> None:
         )
 
     app.add_middleware(CSRFMiddleware)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=cfg.server.allowed_hosts)
+    # Always allow loopback so the container healthcheck (Host: 127.0.0.1) and
+    # local curl keep working when the list is tightened to real hostnames —
+    # TrustedHostMiddleware strips the port, so bare loopback names suffice.
+    # (Skip when "*" is present; the list is already permissive.)
+    allowed_hosts = list(cfg.server.allowed_hosts)
+    if "*" not in allowed_hosts:
+        allowed_hosts += ["127.0.0.1", "localhost", "::1"]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
     # Best-effort warning: a non-loopback bind with a permissive host
     # allow-list is the configuration that hands the worst-case DNS-
