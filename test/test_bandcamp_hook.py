@@ -10,13 +10,12 @@ from unittest.mock import MagicMock
 import pytest
 from mutagen.mp4 import MP4
 
+from harmonist import library_index
 from harmonist import sidecar as sc
 from harmonist.bandcamp_hook import (
     HarmonistSyncer,
     album_slug,
     construct_bandcamp_url,
-    find_existing_album_by_slug,
-    find_existing_album_by_url,
     survey_album_links,
     write_sidecar_for_item,
 )
@@ -26,6 +25,16 @@ from harmonist.tagger import ATOM_ALBUM
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_library_index():
+    """sync_item / sync_items now read the global library_index (populated via the
+    sidecar.write hook). Clear it around each test so cases don't bleed into one
+    another."""
+    library_index.clear()
+    yield
+    library_index.clear()
 
 
 def _tag_album_title(album_dir: Path, title: str) -> None:
@@ -315,34 +324,6 @@ def test_link_only_records_unmatched_purchase_as_pending(tmp_path):
     assert p.fmt == "alac"
 
 
-def test_ondisk_item_ids_collects_linked_sidecars_only(tmp_path):
-    """Every on-disk sidecar's bandcamp.item_id (the durable dedup seed); unlinked
-    sidecars contribute nothing."""
-    from harmonist.bandcamp_hook import ondisk_item_ids
-
-    linked = tmp_path / "A"
-    linked.mkdir()
-    sc.write(
-        linked,
-        Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
-            mb_release_id="rel-a",
-            bandcamp=BandcampInfo(item_id=111),
-        ),
-    )
-    unlinked = tmp_path / "B"
-    unlinked.mkdir()
-    sc.write(
-        unlinked,
-        Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
-            store_url="https://x.bandcamp.com/album/b",
-            mb_release_id="rel-b",
-        ),
-    )
-    assert ondisk_item_ids(tmp_path) == {111}
-
-
 def test_sync_item_skips_download_when_release_on_disk_by_slug(tmp_path, monkeypatch):
     """Dedup backstop: a release already on disk under a DIFFERENT subdomain (same
     slug) and linked to a DIFFERENT purchase-id must NOT re-download — by_url is
@@ -570,31 +551,8 @@ def test_write_sidecar_prefer_item_url_adopts_item_url(tmp_path):
     assert loaded.mb_release_id == "rel-aaa"
 
 
-def test_find_existing_album_by_url_returns_match(tmp_path):
-    a = tmp_path / "Artist" / "Album"
-    a.mkdir(parents=True)
-    sc.write(
-        a,
-        Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
-            store_url="https://x.bandcamp.com/album/y",
-        ),
-    )
-    other = tmp_path / "Artist2" / "Other"
-    other.mkdir(parents=True)
-    sc.write(
-        other,
-        Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
-            store_url="https://x.bandcamp.com/album/different",
-        ),
-    )
-    found = find_existing_album_by_url(tmp_path, "https://x.bandcamp.com/album/y")
-    assert found == a
-
-
-def test_find_existing_album_by_url_returns_none_if_no_match(tmp_path):
-    assert find_existing_album_by_url(tmp_path, "https://x.bandcamp.com/album/y") is None
+# (find_existing_album_by_url/by_slug removed — replaced by library_index lookups,
+#  covered by test_library_index.)
 
 
 # ---------- album_slug ----------
@@ -662,47 +620,6 @@ def _write_sidecar(album_dir: Path, store_url: str, *, item_id: int | None = Non
             bandcamp=BandcampInfo(item_id=item_id) if item_id is not None else None,
         ),
     )
-
-
-def test_find_by_slug_matches_across_subdomains(tmp_path):
-    """On-disk store_url is the label page; the item URL is the artist page —
-    same slug, so it matches (the 'Home' case)."""
-    a = tmp_path / "Brock Van Wey" / "Home"
-    _write_sidecar(a, "https://echospacedetroit.bandcamp.com/album/home")
-    found = find_existing_album_by_slug(tmp_path, "https://brockvanwey.bandcamp.com/album/home")
-    assert found == a
-
-
-def test_find_by_slug_skips_already_linked(tmp_path):
-    """An album that already has an item_id is never re-matched."""
-    a = tmp_path / "A" / "Album"
-    _write_sidecar(a, "https://label.bandcamp.com/album/home", item_id=999)
-    assert find_existing_album_by_slug(tmp_path, "https://artist.bandcamp.com/album/home") is None
-
-
-def test_find_by_slug_ambiguous_returns_none(tmp_path):
-    """Two unlinked albums share the slug → refuse to guess."""
-    _write_sidecar(tmp_path / "One" / "Home", "https://label.bandcamp.com/album/home")
-    _write_sidecar(tmp_path / "Two" / "Home", "https://artist.bandcamp.com/album/home")
-    assert find_existing_album_by_slug(tmp_path, "https://x.bandcamp.com/album/home") is None
-
-
-def test_find_by_slug_distinguishes_editions(tmp_path):
-    """A disk album for the pole remaster must not match the EP item, even
-    though both 'Dimensional Space' titles normalize the same."""
-    ep = tmp_path / "cv313" / "Dimensional Space EP"
-    _write_sidecar(ep, "https://cv313.bandcamp.com/album/dimensional-space-ep")
-    pole = tmp_path / "cv313" / "Dimensional Space Pole"
-    _write_sidecar(pole, "https://cv313.bandcamp.com/album/dimensional-space-remastered-by-pole")
-    found = find_existing_album_by_slug(
-        tmp_path, "https://cv313.bandcamp.com/album/dimensional-space-remastered-by-pole"
-    )
-    assert found == pole
-
-
-def test_find_by_slug_none_for_bare_url(tmp_path):
-    _write_sidecar(tmp_path / "A" / "B", "https://x.bandcamp.com/album/home")
-    assert find_existing_album_by_slug(tmp_path, "https://x.bandcamp.com") is None
 
 
 def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
