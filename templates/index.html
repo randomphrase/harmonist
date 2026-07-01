@@ -195,7 +195,11 @@ window.addEventListener('resize', function () {
         }
     }, true);
     document.body.addEventListener('htmx:afterSwap', function (evt) {
-        if (evt.detail.target.id !== 'task-list') return;
+        // Restore after a full inbox re-swap, and after a Potential-downloads
+        // action re-swaps just #pending-section (so triaging a card doesn't
+        // re-collapse the — deliberately collapsed-by-default — list mid-scroll).
+        const tid = evt.detail.target.id;
+        if (tid !== 'task-list' && tid !== 'pending-section') return;
         _openGroups.forEach(function (id) {
             const d = document.getElementById(id);
             if (d) d.open = true;

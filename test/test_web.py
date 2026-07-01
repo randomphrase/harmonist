@@ -495,6 +495,46 @@ def test_mistag_card_renders_open_panel_with_sibling_explanation(client, cfg):
     assert "Confirm &amp; Tag" not in r.text
 
 
+def test_mistag_renders_in_own_top_level_section(client, cfg):
+    """A mis-tag (candidate carries mistag_owned_url) is lifted into its own
+    top-level 'Likely mis-tagged' section ABOVE Needs MBID, while a plain
+    NEEDS_MBID album stays under the Needs MBID header. Both remain
+    AlbumState.NEEDS_MBID — this is a rendering split, not a new state."""
+    mt = _make_album(cfg, "Mistagged One")
+    sc.write(
+        mt,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://ultimae.bandcamp.com/album/life",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-correct",
+                confidence="no_match",
+                file_count=10,
+                track_count=10,
+                mistag_owned_url="https://ultimae.bandcamp.com/album/life",
+                mistag_owned_label="ASURA / Life²",
+                mistag_tagged_mbid="rel-wrong",
+                mistag_tagged_label="ASURA / Life²",
+                mistag_release_group_mbid="rg-life",
+            ),
+        ),
+    )
+    # A plain NEEDS_MBID album (sidecar, no MBID, no candidate).
+    plain = _make_album(cfg, "Plain Needs Mbid")
+    sc.write(plain, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
+
+    r = client.get("/tasks")
+    body = r.text
+    assert "Possibly mis-tagged" in body
+    header = body.index("Needs <abbr")  # the Needs MBID group header
+    # The mis-tag section is above the Needs MBID group.
+    assert body.index("Possibly mis-tagged") < header
+    # The mis-tagged album sits in the mis-tag section (before Needs MBID); the
+    # plain one sits under Needs MBID (after it).
+    assert body.index("Mistagged One") < header
+    assert body.index("Plain Needs Mbid") > header
+
+
 def test_surrender_card_renders_readonly_with_tools(client, cfg):
     """A surrender candidate (unmatched_purchase) renders read-only: the
     'No Bandcamp purchase found' note + the seed/fix tools, and NO Confirm."""
@@ -2821,6 +2861,22 @@ def test_pending_match_link_fills_item_id(client, cfg):
     assert sc.bandcamp is not None
     assert sc.bandcamp.item_id == 45
     assert sc.store_url == "https://x.bandcamp.com/album/y"
+
+
+def test_pending_section_collapsed_by_default_with_summary(client):
+    """The potential-downloads list is a collapsed <details> (no `open`) with a
+    one-line summary — a subset library's list is large, so we lead with the small
+    mis-tag/surrender sets and keep this behind an expander."""
+    from harmonist import pending_downloads as pd
+
+    pd.replace_all([_pp(50), _pp(51)])
+    body = client.get("/tasks").text
+    assert 'id="group-PENDING"' in body
+    # Collapsed: a <details> without the open attribute.
+    assert '<details id="group-PENDING"' in body
+    assert '<details open id="group-PENDING"' not in body
+    assert "you own but" in body  # the summary line
+    assert "· 2" in body  # the count
 
 
 # ---------- Sync popover (link-only override + max-downloads) ----------

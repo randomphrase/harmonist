@@ -72,11 +72,53 @@
 {% set collapse_threshold = 12 %}
 
 <div class="space-y-6">
+{# Likely mis-tagged: NEEDS_MBID albums whose candidate carries an owned Bandcamp
+   sibling (mistag_* provenance from _detect_mistags_after_sync). A quick, distinct
+   "confirm to re-tag" workflow, split into its own top-level section so it isn't
+   buried in the Needs MBID long tail. They stay in AlbumState.NEEDS_MBID — this is
+   a rendering split, not a state. #}
+{% set mistag_albums = albums
+    | selectattr('state', 'equalto', AlbumState.NEEDS_MBID)
+    | selectattr('sidecar.mb_match_candidate.mistag_owned_url') | list %}
+{% if mistag_albums %}
+<section class="space-y-3">
+    <div class="rounded-md border-l-4 border-amber-500 bg-amber-50 px-3 py-2">
+        <h3 class="text-sm font-bold text-amber-800">
+            Possibly mis-tagged
+            <span class="text-muted font-normal ml-1">· {{ mistag_albums|length }}</span>
+        </h3>
+        <p class="text-xs text-muted mt-0.5">
+            Tagged to a different release than the edition you own on Bandcamp — same
+            release group. Review the side-by-side and
+            <span class="font-bold text-amber-700">confirm to re-tag</span>; that also
+            clears the matching potential download.
+        </p>
+    </div>
+    {% set cards %}
+    <div class="grid grid-cols-1 gap-3">
+        {% for album in mistag_albums %}{% include 'partials/task_card_needs_mbid.html' %}{% endfor %}
+    </div>
+    {% endset %}
+    {% if mistag_albums|length > collapse_threshold %}
+    <details id="group-MISTAG" class="hmt-group rounded-md border border-line bg-white/40 px-3 py-2">
+        <summary class="cursor-pointer select-none text-xs font-bold uppercase tracking-widest text-muted hover:text-ink">
+            Show all {{ mistag_albums|length }} mis-tagged albums
+        </summary>
+        <div class="mt-3">{{ cards }}</div>
+    </details>
+    {% else %}
+    {{ cards }}
+    {% endif %}
+</section>
+{% endif %}
 {% for state in state_order %}
     {% set group = albums | selectattr('state', 'equalto', state) | list %}
     {# Within Needs MBID, surface albums that already have a suggestion first —
        confirming one is quicker than hunting for an MBID. #}
     {% if state == AlbumState.NEEDS_MBID %}
+    {# Mis-tags render in their own top-level section above; here show only the
+       rest, suggestion-carrying first (quicker to confirm than hunting an MBID). #}
+    {% set group = group | rejectattr('sidecar.mb_match_candidate.mistag_owned_url') | list %}
     {% set group = (group | selectattr('sidecar.mb_match_candidate') | list)
                  + (group | rejectattr('sidecar.mb_match_candidate') | list) %}
     {% endif %}
