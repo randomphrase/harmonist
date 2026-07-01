@@ -1103,6 +1103,17 @@ def test_detect_mistag_by_release_group_demotes_with_suggestion(cfg):
             m, "rg-1", artist="Cell", title="Live in Corfu", disambiguation=disambig
         )
 
+    # The sync already recorded these as potential downloads (replace_all runs
+    # during the sync, before detection): the owned edition + unrelated noise.
+    from harmonist import pending_downloads as pd
+
+    pd.replace_all(
+        [
+            _pp(9999, url="https://ultimae.bandcamp.com/album/live-in-corfu-24bit"),
+            _pp(9998, url="https://noise.bandcamp.com/album/n1"),
+        ]
+    )
+
     activity.clear()
     _detect_mistags_after_sync(
         cfg,
@@ -1110,6 +1121,10 @@ def test_detect_mistag_by_release_group_demotes_with_suggestion(cfg):
         browse_rg=browse_rg,
         fetch_release=fetch_release,
     )
+    # The mis-tag claims its purchase out of the potential-downloads list (it's
+    # now represented by the mis-tag card); unrelated pending is untouched.
+    assert pd.get(9999) is None
+    assert pd.get(9998) is not None
     loaded = sc.read(d)
     assert loaded.mb_release_id is None  # wrong tag cleared
     cand = loaded.mb_match_candidate
@@ -2861,6 +2876,30 @@ def test_pending_match_link_fills_item_id(client, cfg):
     assert sc.bandcamp is not None
     assert sc.bandcamp.item_id == 45
     assert sc.store_url == "https://x.bandcamp.com/album/y"
+
+
+def test_claim_pending_by_store_url_is_subdomain_insensitive(client):
+    """Tagging an album whose store_url matches a pending purchase claims it out of
+    the list (the purchase is now on disk) — matched by slug, so a label vs artist
+    subdomain for the same edition still resolves. Unrelated pending is untouched.
+    This is the belt-and-braces behind confirming a mis-tag."""
+    from harmonist import pending_downloads as pd
+    from harmonist.web.main import _claim_pending_by_store_url
+
+    pd.replace_all(
+        [
+            _pp(60, url="https://label.bandcamp.com/album/x"),
+            _pp(61, url="https://other.bandcamp.com/album/z"),
+        ]
+    )
+    # Same slug, DIFFERENT subdomain (artist page vs label page).
+    _claim_pending_by_store_url("https://artist.bandcamp.com/album/x")
+    assert pd.get(60) is None
+    assert pd.get(61) is not None
+    # No-op on empty / non-matching input.
+    _claim_pending_by_store_url(None)
+    _claim_pending_by_store_url("https://nope.bandcamp.com/album/nomatch")
+    assert pd.get(61) is not None
 
 
 def test_pending_section_collapsed_by_default_with_summary(client):

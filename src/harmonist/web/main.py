@@ -805,11 +805,11 @@ def _detect_mistags_after_sync(
         # Owned-but-unlinked purchases → a slug set (no MB calls). album_slug is
         # subdomain-agnostic, so a label vs artist page for the same edition
         # still matches.
-        owned: dict[str, tuple[str, str]] = {}  # slug -> (url, label)
-        for _item_id, url, label in syncer.unmatched_purchases():
+        owned: dict[str, tuple[int, str, str]] = {}  # slug -> (item_id, url, label)
+        for item_id, url, label in syncer.unmatched_purchases():
             slug = album_slug(url)
             if slug:
-                owned.setdefault(slug, (url, label))
+                owned.setdefault(slug, (item_id, url, label))
 
         scanned = albums if albums is not None else scanner.scan(cfg.paths.music_dir)
         albums = [
@@ -870,7 +870,7 @@ def _detect_mistags_after_sync(
         if len(owned_siblings) != 1:
             continue  # 0 = not a mis-tag; ≥2 = you own several releases, ambiguous
         owned_mbid, owned_slug = next(iter(owned_siblings.items()))
-        url, label = owned[owned_slug]
+        owned_item_id, url, label = owned[owned_slug]
         try:
             rel = fetch_release(owned_mbid)
         except mb_lookup.MBError:
@@ -891,6 +891,11 @@ def _detect_mistags_after_sync(
             candidate.mistag_tagged_disambig = tagged_disambig
             candidate.mistag_release_group_mbid = rg
         _demote_to_needs_mbid(album.path, album.sidecar, candidate=candidate)
+        # Claim the purchase out of the potential-downloads list: it's now
+        # represented by this mis-tag card (confirming re-tags + links it), so it
+        # must NOT also show as a potential download. `replace_all` already ran
+        # during the sync, so remove the now-claimed id.
+        pending_downloads.remove(owned_item_id)
         activity.record(
             f"Possible mis-tag: {album.artist} — {album.title}. You own “{label}” on "
             f"Bandcamp ({url}) — the same release group but a different release than it's "
@@ -1232,6 +1237,22 @@ def _apply_best_match(
     )
 
 
+def _claim_pending_by_store_url(store_url: str | None) -> None:
+    """Drop any potential download whose Bandcamp slug matches `store_url` — the
+    purchase is now represented on disk (just tagged), so it mustn't linger as a
+    pending download. Subdomain-insensitive via `album_slug`. Covers confirming a
+    mis-tag (store_url set to the owned edition's URL) and any tag that resolves a
+    pending purchase."""
+    if not store_url:
+        return
+    slug = album_slug(store_url)
+    if not slug:
+        return
+    for p in pending_downloads.all_pending():
+        if album_slug(p.url) == slug:
+            pending_downloads.remove(p.item_id)
+
+
 def _tag_with_release(
     album_path: Path,
     mbid: str,
@@ -1291,6 +1312,7 @@ def _tag_with_release(
         notes=sc.notes if sc else None,
     )
     sidecar_mod.write(album_path, new)
+    _claim_pending_by_store_url(store_url)
 
 
 def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagger) -> str:
