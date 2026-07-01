@@ -182,6 +182,26 @@ window.addEventListener('resize', function () {
         el.innerHTML = '';
     }
 
+    // Preserve <details> group open-state across inbox re-swaps. A rescan (e.g.
+    // the dir-watcher settling after a confirm, mid-scroll) fires tasks-changed →
+    // #task-list re-renders → an opened group would collapse, forcing the user to
+    // re-open + re-scroll while working through a list (mis-tags especially).
+    // Track toggles; re-open remembered groups after each inbox swap.
+    const _openGroups = new Set();
+    document.body.addEventListener('toggle', function (e) {
+        const d = e.target;
+        if (d.tagName === 'DETAILS' && d.classList && d.classList.contains('hmt-group') && d.id) {
+            if (d.open) _openGroups.add(d.id); else _openGroups.delete(d.id);
+        }
+    }, true);
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+        if (evt.detail.target.id !== 'task-list') return;
+        _openGroups.forEach(function (id) {
+            const d = document.getElementById(id);
+            if (d) d.open = true;
+        });
+    });
+
     // One consolidated /status poll → all three runner displays. Each runner's
     // current state is stashed on #app-status.dataset for the inbox poll-gate.
     document.body.addEventListener('htmx:afterSwap', function (evt) {

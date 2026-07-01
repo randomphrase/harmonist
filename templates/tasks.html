@@ -146,7 +146,9 @@
         </div>
         {% endset %}
         {% if group|length > collapse_threshold %}
-        <details class="rounded-md border border-line bg-white/40 px-3 py-2">
+        {# Stable id so JS can restore the open state after an inbox re-swap (a
+           rescan re-renders this and would otherwise collapse a group mid-task). #}
+        <details id="group-{{ state.name }}" class="hmt-group rounded-md border border-line bg-white/40 px-3 py-2">
             <summary class="cursor-pointer select-none text-xs font-bold uppercase tracking-widest text-muted hover:text-ink">
                 Show all {{ group|length }} albums
             </summary>
