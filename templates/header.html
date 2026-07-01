@@ -13,7 +13,7 @@
                Link-only (adopt the on-disk library, download nothing) and the
                per-sync download cap. The plain button syncs with auto-detected
                defaults; the popover form forces an explicit choice. #}
-            <div class="relative group">
+            <div id="sync-control" class="relative group">
                 <button id="sync-button"
                         hx-post="/sync"
                         hx-target="#sync-flash"
@@ -25,16 +25,20 @@
                     <form hx-post="/sync" hx-target="#sync-flash" hx-swap="innerHTML" class="space-y-2.5 text-sm text-ink">
                         <input type="hidden" name="from_popover" value="true">
                         <label class="flex items-start gap-2 cursor-pointer">
-                            <input type="checkbox" name="link_only" value="true" class="mt-0.5"
+                            <input type="checkbox" id="sync-link-only" name="link_only" value="true" class="mt-0.5"
                                    {% if sync_link_only_default %}checked{% endif %}>
                             <span>
                                 <span class="font-semibold">Link-only</span>
                                 <span class="block text-2xs text-muted">Adopt your on-disk library — link albums to purchases, download nothing.</span>
                             </span>
                         </label>
-                        <label class="flex items-center justify-between gap-2">
+                        {# Greyed + disabled while Link-only is on (it downloads nothing, so the
+                           cap is moot). A disabled input isn't submitted, so the cap is left
+                           untouched — correct for a link-only run. Poll JS keeps this and the
+                           checkbox default in sync with the live count (see index.html). #}
+                        <label id="sync-max-row" class="flex items-center justify-between gap-2 transition">
                             <span>Max downloads / sync</span>
-                            <input type="number" name="max_downloads" min="0" value="{{ sync_max_downloads }}"
+                            <input type="number" id="sync-max-downloads" name="max_downloads" min="0" value="{{ sync_max_downloads }}"
                                    class="w-16 border border-line rounded px-1.5 py-0.5 text-right">
                         </label>
                         <button type="submit"

@@ -3032,3 +3032,16 @@ def test_plain_sync_button_leaves_link_only_auto(client, monkeypatch):
     r = client.post("/sync")
     assert r.status_code == 200
     assert runner.link_only_override is None
+
+
+def test_sync_popover_exposes_ids_for_live_default_js(client, cfg):
+    """The popover renders the ids the /status poll binds to — the JS derives the
+    link-only default from the live count and greys max-downloads. Guards the
+    contract so a template rename can't silently break the wiring."""
+    body = "# Netscape HTTP Cookie File\n.bandcamp.com\tTRUE\t/\tFALSE\t0\tident\tabc\n"
+    client.post("/bandcamp/cookies", data={"cookies_text": body})
+    home = client.get("/").text
+    assert 'id="sync-control"' in home
+    assert 'id="sync-link-only"' in home
+    assert 'id="sync-max-row"' in home
+    assert 'id="sync-max-downloads"' in home

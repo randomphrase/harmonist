@@ -206,6 +206,41 @@ window.addEventListener('resize', function () {
         });
     });
 
+    // ----- Sync popover: link-only default + max-downloads greying -----
+    // Link-only's default is DERIVED from the live inbox (never persisted): ON
+    // while there are on-disk albums to link (needs_sync) or potential downloads
+    // to resolve. The /status poll refreshes it every tick, so it's correct even
+    // right after startup/nuke — when the server render saw a still-empty
+    // live_counts and drew it unchecked. A manual toggle wins until the popover
+    // closes, then it re-derives. Max-downloads greys out (and, being disabled,
+    // is left untouched) while link-only, since that run downloads nothing.
+    let syncLinkOnlyTouched = false;
+    function syncMaxDownloadsState() {
+        const cb = document.getElementById('sync-link-only');
+        const row = document.getElementById('sync-max-row');
+        const inp = document.getElementById('sync-max-downloads');
+        if (!cb || !row || !inp) return;
+        const off = cb.checked;
+        inp.disabled = off;
+        row.classList.toggle('opacity-40', off);
+        row.classList.toggle('pointer-events-none', off);
+    }
+    document.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'sync-link-only') {
+            syncLinkOnlyTouched = true;
+            syncMaxDownloadsState();
+        }
+    });
+    (function () {
+        const ctl = document.getElementById('sync-control');
+        if (!ctl) return;
+        const reset = function () { syncLinkOnlyTouched = false; };
+        ctl.addEventListener('mouseleave', reset);
+        ctl.addEventListener('focusout', function (e) {
+            if (!ctl.contains(e.relatedTarget)) reset();
+        });
+    })();
+
     // One consolidated /status poll → all three runner displays. Each runner's
     // current state is stashed on #app-status.dataset for the inbox poll-gate.
     document.body.addEventListener('htmx:afterSwap', function (evt) {
@@ -226,6 +261,12 @@ window.addEventListener('resize', function () {
             const lb = document.getElementById('library-count');
             if (ib) ib.textContent = data.counts.inbox;
             if (lb) lb.textContent = data.counts.library;
+            // Link-only default derives from the live inbox (see the popover block).
+            const cb = document.getElementById('sync-link-only');
+            if (cb && !syncLinkOnlyTouched) {
+                cb.checked = data.counts.needs_sync > 0 || (data.pending || 0) > 0;
+            }
+            syncMaxDownloadsState();
         }
 
         // A sync must not be kicked while either a sync OR a reconcile is in
