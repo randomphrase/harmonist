@@ -5,6 +5,22 @@
         <span class="font-bold text-accent">Click Sync</span> to confirm (the common case),
         or mark it as purchased elsewhere.
     </p>
+    {# Case-B suggestion (surrender side): an unambiguous potential download this
+       album probably IS (approx artist+title). Link satisfies the purchase without
+       a download and clears both surfaces — the primary adoption entry point when
+       working the small surrender list rather than the large downloads list. #}
+    {% set sugg = (surrender_suggestions | default({})).get(album.id) %}
+    {% if sugg %}
+    <div class="mb-3 flex items-center justify-between gap-2 rounded border border-accent/40 bg-accent-soft px-2 py-1.5">
+        <div class="min-w-0 text-xs">
+            <span class="text-muted">You may have already downloaded this purchase:</span>
+            <span class="font-semibold text-ink">{{ sugg.band }} — {{ sugg.title }}</span>
+        </div>
+        <button hx-post="/pending/{{ sugg.item_id }}/match" hx-vals='{"album_id": "{{ album.id }}"}'
+                hx-target="#pending-section" hx-swap="outerHTML"
+                class="px-2 py-0.5 text-xs font-bold rounded bg-accent text-white hover:bg-accent-dark shrink-0 transition">Link</button>
+    </div>
+    {% endif %}
     <div class="flex gap-2 flex-wrap">
         <button hx-post="/unconfirmed/{{ album.id }}/manual"
                 hx-swap="none" hx-disabled-elt="this"

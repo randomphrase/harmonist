@@ -1047,9 +1047,88 @@ def _find_album(request: Request, album_id: str) -> Album:
     raise HTTPException(status.HTTP_404_NOT_FOUND, f"album {album_id} not found")
 
 
+def _norm_name(s: str) -> str:
+    """Casefold + strip to alphanumerics for approximate artist/title matching:
+    '&' → 'and', drop punctuation, collapse whitespace. Deliberately strict — we
+    require an exact *normalized* match AND a unique candidate, so the safety comes
+    from uniqueness, not fuzziness. Loosen later if it misses (e.g. compilations)."""
+    s = (s or "").casefold().replace("&", " and ")
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", s).split())
+
+
+def _reconcile_suggestions(
+    albums: list[Album],
+    pending: list[pending_downloads.PendingPurchase],
+    base: Path,
+) -> tuple[dict[int, dict[str, str]], dict[str, pending_downloads.PendingPurchase]]:
+    """Best-effort case-B pairing between potential downloads and on-disk albums by
+    approximate (normalized) artist+title — the store_url join having failed
+    (re-slug, or a pre-existing CD rip). Returns:
+
+    - ``pending_suggestions``: ``item_id`` → the on-disk album a potential download
+      probably already IS (shown on the potential-download card), and
+    - ``surrender_suggestions``: ``album.id`` → the potential download a NEEDS_SYNC
+      album probably IS (shown on the surrender card).
+
+    Only **unambiguous** pairs: exactly one candidate on that side, non-empty name,
+    and (for the album side) not already ``item_id``-linked. Otherwise no suggestion
+    — the manual search box is the fallback. Both directions call the same
+    ``/pending/{id}/match`` link, which clears both surfaces."""
+    by_name: dict[tuple[str, str], list[Album]] = {}
+    for a in albums:
+        linked = bool(a.sidecar and a.sidecar.bandcamp and a.sidecar.bandcamp.item_id)
+        key = (_norm_name(a.artist), _norm_name(a.title))
+        if linked or not key[1]:
+            continue
+        by_name.setdefault(key, []).append(a)
+
+    pend_by_name: dict[tuple[str, str], list[pending_downloads.PendingPurchase]] = {}
+    for p in pending:
+        key = (_norm_name(p.band), _norm_name(p.title))
+        if not key[1]:
+            continue
+        pend_by_name.setdefault(key, []).append(p)
+
+    pending_suggestions: dict[int, dict[str, str]] = {}
+    for p in pending:
+        cands = by_name.get((_norm_name(p.band), _norm_name(p.title)), [])
+        if len(cands) == 1:
+            a = cands[0]
+            pending_suggestions[p.item_id] = {
+                "id": a.id,
+                "artist": a.artist,
+                "title": a.title,
+                "rel_path": _rel_path(a.path, base),
+            }
+
+    surrender_suggestions: dict[str, pending_downloads.PendingPurchase] = {}
+    for a in albums:
+        if a.state != AlbumState.NEEDS_SYNC:
+            continue
+        pcands = pend_by_name.get((_norm_name(a.artist), _norm_name(a.title)), [])
+        if len(pcands) == 1:
+            surrender_suggestions[a.id] = pcands[0]
+
+    return pending_suggestions, surrender_suggestions
+
+
+def _pending_suggestions(request: Request) -> dict[int, dict[str, str]]:
+    """The potential-download → on-disk-album suggestions for the current state —
+    used when re-rendering the pending section/card outside the full inbox."""
+    cfg: config_mod.Config = request.app.state.cfg
+    ps, _ = _reconcile_suggestions(
+        _albums(request), pending_downloads.all_pending(), cfg.paths.music_dir
+    )
+    return ps
+
+
 def _render_pending_section(request: Request) -> Response:
     """Re-render the #pending-section partial (the target of every action swap)."""
-    ctx = _ctx(request, pending=pending_downloads.all_pending())
+    ctx = _ctx(
+        request,
+        pending=pending_downloads.all_pending(),
+        pending_suggestions=_pending_suggestions(request),
+    )
     return _templates(request).TemplateResponse(request, "partials/_pending.html", ctx)
 
 
@@ -1387,11 +1466,17 @@ def _register_routes(app: FastAPI) -> None:
             for a in albums
         ):
             request.app.state.reconcile_runner.start()
+        pending = pending_downloads.all_pending()
+        pending_suggestions, surrender_suggestions = _reconcile_suggestions(
+            albums, pending, request.app.state.cfg.paths.music_dir
+        )
         ctx = _ctx(
             request,
             albums=_inbox_albums(albums),
             total_albums=len(albums),
-            pending=pending_downloads.all_pending(),
+            pending=pending,
+            pending_suggestions=pending_suggestions,
+            surrender_suggestions=surrender_suggestions,
             scan=request.app.state.scan_runner.status(),
             reconcile=reconcile_status,
             sync=request.app.state.sync_runner.status(),
@@ -1438,7 +1523,7 @@ def _register_routes(app: FastAPI) -> None:
         p = pending_downloads.get(item_id)
         if p is None:
             return _render_pending_section(request)
-        ctx = _ctx(request, p=p)
+        ctx = _ctx(request, p=p, pending_suggestions=_pending_suggestions(request))
         return _templates(request).TemplateResponse(request, "partials/_pending_card.html", ctx)
 
     @app.post("/pending/{item_id}/match", response_class=HTMLResponse)

@@ -2902,6 +2902,88 @@ def test_claim_pending_by_store_url_is_subdomain_insensitive(client):
     assert pd.get(61) is not None
 
 
+def test_reconcile_suggestions_unambiguous_both_directions(cfg):
+    """Case-B pairing by approximate artist+title (store_url join failed): the
+    potential download points at the on-disk album, and the surrender album points
+    back at the potential download — both unambiguous."""
+    from harmonist import scanner
+    from harmonist.web.main import _reconcile_suggestions
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Reunion", "rel-r")
+    albums = scanner.scan(cfg.paths.music_dir)
+    a = next(x for x in albums if x.path == d)
+    # Same name, DIFFERENT slug (the realistic case B — a re-slug / rip).
+    pend = [_pp(70, band=a.artist, title=a.title, url="https://x.bandcamp.com/album/reunited")]
+    ps, ss = _reconcile_suggestions(albums, pend, cfg.paths.music_dir)
+    assert ps[70]["id"] == a.id  # P→A
+    assert ss[a.id].item_id == 70  # A→P
+
+
+def test_reconcile_suggestions_ambiguous_is_skipped(cfg):
+    """Two potential downloads with the same normalized name → the album can't tell
+    which it is → no surrender suggestion (safety via uniqueness). Each pending
+    still uniquely points at the one album."""
+    from harmonist import scanner
+    from harmonist.web.main import _reconcile_suggestions
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _needs_sync_album(cfg, "Reunion", "rel-r")
+    albums = scanner.scan(cfg.paths.music_dir)
+    a = next(x for x in albums if x.path == d)
+    pend = [
+        _pp(70, band=a.artist, title=a.title, url="https://x.bandcamp.com/album/a"),
+        _pp(71, band=a.artist, title=a.title, url="https://y.bandcamp.com/album/b"),
+    ]
+    ps, ss = _reconcile_suggestions(albums, pend, cfg.paths.music_dir)
+    assert a.id not in ss  # ambiguous on the album side
+    assert ps[70]["id"] == a.id  # each pending still uniquely points at the album
+    assert ps[71]["id"] == a.id
+
+
+def test_reconcile_suggestions_skips_already_linked_album(cfg):
+    """An album already linked to a purchase (item_id set) is not a case-B
+    candidate — it's done, so no suggestion points at it."""
+    from harmonist import scanner
+    from harmonist.web.main import _reconcile_suggestions
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _make_album(cfg, "Linked")
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-l",
+            store_url="https://x.bandcamp.com/album/linked",
+            bandcamp=BandcampInfo(item_id=123),
+        ),
+    )
+    albums = scanner.scan(cfg.paths.music_dir)
+    a = next(x for x in albums if x.path == d)
+    pend = [_pp(80, band=a.artist, title=a.title, url="https://x.bandcamp.com/album/other")]
+    ps, _ = _reconcile_suggestions(albums, pend, cfg.paths.music_dir)
+    assert 80 not in ps
+
+
+def test_case_b_suggestions_render_on_both_cards(client, cfg):
+    """The potential-download card shows 'Already in your library?' with a Link-these
+    button to the matched album, and the surrender card shows the reverse — both
+    posting to the same /pending/{id}/match link."""
+    from harmonist import pending_downloads as pd
+    from harmonist import scanner
+
+    d = _needs_sync_album(cfg, "Reunion", "rel-r")
+    a = next(x for x in scanner.scan(cfg.paths.music_dir) if x.path == d)
+    pd.replace_all(
+        [_pp(90, band=a.artist, title=a.title, url="https://x.bandcamp.com/album/reunited")]
+    )
+    body = client.get("/tasks").text
+    assert "Already in your library?" in body  # potential-download card suggestion
+    assert "You may have already downloaded this purchase:" in body  # surrender card
+    assert f'"album_id": "{a.id}"' in body  # both Links target this album
+    assert "/pending/90/match" in body
+
+
 def test_pending_section_collapsed_by_default_with_summary(client):
     """The potential-downloads list is a collapsed <details> (no `open`) with a
     one-line summary — a subset library's list is large, so we lead with the small

@@ -19,4 +19,25 @@
                     class="px-2.5 py-1 text-xs font-bold rounded border border-line text-muted hover:text-ink transition">Don't&nbsp;download</button>
         </div>
     </div>
+    {# Case-B suggestion: an unambiguous on-disk album this purchase probably already
+       IS (approx artist+title; the store_url join failed — re-slug / pre-existing
+       rip). One click Links them (no download). "Not a match" just hides the banner,
+       dropping back to the plain Download/Match choices (client-side, ephemeral). #}
+    {% set sugg = (pending_suggestions | default({})).get(p.item_id) %}
+    {% if sugg %}
+    <div data-suggestion class="mt-2 flex items-center justify-between gap-2 rounded border border-accent/40 bg-accent-soft px-2 py-1.5">
+        <div class="min-w-0 text-xs">
+            <span class="text-muted">Already in your library?</span>
+            <span class="font-semibold text-ink">{{ sugg.artist or '?' }} — {{ sugg.title }}</span>
+            <span class="block text-2xs text-muted truncate" title="{{ sugg.rel_path }}">{{ sugg.rel_path }}</span>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+            <button hx-post="/pending/{{ p.item_id }}/match" hx-vals='{"album_id": "{{ sugg.id }}"}'
+                    hx-target="#pending-section" hx-swap="outerHTML"
+                    class="px-2 py-0.5 text-xs font-bold rounded bg-accent text-white hover:bg-accent-dark transition">Link&nbsp;these</button>
+            <button type="button" onclick="this.closest('[data-suggestion]').remove()"
+                    class="text-2xs text-muted hover:text-ink transition">Not&nbsp;a&nbsp;match</button>
+        </div>
+    </div>
+    {% endif %}
 </div>
