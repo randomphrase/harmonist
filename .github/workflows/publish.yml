@@ -40,7 +40,7 @@ jobs:
 
       - name: Derive image tags + labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           # Semver tags get :X.Y.Z / :X.Y / :X and (newest) :latest; pushes to
