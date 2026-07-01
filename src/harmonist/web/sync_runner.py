@@ -59,6 +59,14 @@ class SyncRunner:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._status = SyncStatus()
+        # One-shot override for the NEXT sync, set by the Sync popover: None =
+        # auto-detect link-only mode (the default), True/False = force it. The
+        # runner consumes and clears it. GIL-atomic; start() prevents overlap.
+        self.link_only_override: bool | None = None
+        # The FastAPI app, set in create_app — lets the runner read app.state.cfg
+        # FRESH each run (config is created after this runner, so a captured cfg
+        # would go stale on a Settings change).
+        self.app: Any = None
 
     @property
     def is_running(self) -> bool:

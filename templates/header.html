@@ -9,13 +9,42 @@
             <a href="/about" class="font-semibold text-muted hover:text-ink transition">About</a>
             <a href="/settings" id="settings-link" class="font-semibold text-muted hover:text-ink transition">Settings</a>
             {% if bandcamp_configured() %}
-            <button id="sync-button"
-                    hx-post="/sync"
-                    hx-target="#sync-flash"
-                    hx-swap="innerHTML"
-                    class="px-4 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-semibold transition">
-                Sync Bandcamp
-            </button>
+            {# Sync control + a hover/focus popover exposing the two per-run knobs:
+               Link-only (adopt the on-disk library, download nothing) and the
+               per-sync download cap. The plain button syncs with auto-detected
+               defaults; the popover form forces an explicit choice. #}
+            <div class="relative group">
+                <button id="sync-button"
+                        hx-post="/sync"
+                        hx-target="#sync-flash"
+                        hx-swap="innerHTML"
+                        class="px-4 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-semibold transition">
+                    Sync Bandcamp
+                </button>
+                <div class="hidden group-hover:block group-focus-within:block absolute right-0 mt-1 w-72 bg-white border border-line rounded-lg shadow-lg p-3 z-50 text-left cursor-default">
+                    <form hx-post="/sync" hx-target="#sync-flash" hx-swap="innerHTML" class="space-y-2.5 text-sm text-ink">
+                        <input type="hidden" name="from_popover" value="true">
+                        <label class="flex items-start gap-2 cursor-pointer">
+                            <input type="checkbox" name="link_only" value="true" class="mt-0.5"
+                                   {% if sync_link_only_default %}checked{% endif %}>
+                            <span>
+                                <span class="font-semibold">Link-only</span>
+                                <span class="block text-2xs text-muted">Adopt your on-disk library — link albums to purchases, download nothing.</span>
+                            </span>
+                        </label>
+                        <label class="flex items-center justify-between gap-2">
+                            <span>Max downloads / sync</span>
+                            <input type="number" name="max_downloads" min="0" value="{{ sync_max_downloads }}"
+                                   class="w-16 border border-line rounded px-1.5 py-0.5 text-right">
+                        </label>
+                        <button type="submit"
+                                class="w-full px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-bold text-xs uppercase tracking-widest transition">
+                            Sync with these options
+                        </button>
+                        <p class="text-2xs text-muted"><span class="font-semibold">0</span> = pause downloads.</p>
+                    </form>
+                </div>
+            </div>
             {% else %}
             {# Cookies not configured yet — prompt setup instead of syncing.
                Doubles as a visible reminder that onboarding is incomplete. #}

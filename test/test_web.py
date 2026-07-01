@@ -2821,3 +2821,37 @@ def test_pending_match_link_fills_item_id(client, cfg):
     assert sc.bandcamp is not None
     assert sc.bandcamp.item_id == 45
     assert sc.store_url == "https://x.bandcamp.com/album/y"
+
+
+# ---------- Sync popover (link-only override + max-downloads) ----------
+
+
+def test_sync_popover_forces_link_only_and_persists_cap(client, monkeypatch):
+    """The popover posts from_popover + link_only + max_downloads → the runner gets
+    an explicit link-only override, and the per-sync cap persists to config."""
+    runner = client.app.state.sync_runner
+    monkeypatch.setattr(runner, "start", lambda: None)  # don't spawn a real sync
+    r = client.post(
+        "/sync", data={"from_popover": "true", "link_only": "true", "max_downloads": "0"}
+    )
+    assert r.status_code == 200
+    assert runner.link_only_override is True
+    assert client.app.state.cfg.bandcamp.max_downloads_per_sync == 0
+
+
+def test_sync_popover_unchecked_forces_download_mode(client, monkeypatch):
+    """from_popover with the link-only checkbox absent → explicit False (not auto)."""
+    runner = client.app.state.sync_runner
+    monkeypatch.setattr(runner, "start", lambda: None)
+    r = client.post("/sync", data={"from_popover": "true", "max_downloads": "5"})
+    assert r.status_code == 200
+    assert runner.link_only_override is False
+
+
+def test_plain_sync_button_leaves_link_only_auto(client, monkeypatch):
+    """The plain Sync button (no popover fields) → None → auto-detect link-only."""
+    runner = client.app.state.sync_runner
+    monkeypatch.setattr(runner, "start", lambda: None)
+    r = client.post("/sync")
+    assert r.status_code == 200
+    assert runner.link_only_override is None

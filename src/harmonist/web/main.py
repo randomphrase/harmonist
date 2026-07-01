@@ -210,6 +210,10 @@ def create_app(
             _resolve_by_store_url(album_dir, cfg, tagger)
 
         def runner_fn() -> Any:
+            # Read config FRESH each run (app.state.cfg, set just below) so Settings
+            # / Sync-popover changes — e.g. max-downloads — take effect without a
+            # restart, rather than using a value captured at create_app time.
+            cfg = sync_runner.app.state.cfg
             # Albums waiting to link to a purchase (NEEDS_SYNC) usually need an
             # OLD purchase that an incremental sync wouldn't re-page — so the
             # backfill could never see it. Force a full collection re-page when
@@ -220,9 +224,15 @@ def create_app(
             # Adopt the existing library before fetching anything new: while any
             # album is unlinked (Needs Sync), this sync runs LINK-ONLY — it links
             # every on-disk match and surrenders the rest, but downloads nothing,
-            # so we never re-download a copy of an album already on disk. Downloads
-            # resume on the next sync (Needs Sync now 0).
-            link_only = pending_links > 0
+            # so we never re-download a copy of an album already on disk. The Sync
+            # popover can force link-only either way (e.g. adopt a fully-reconciled
+            # library); a forced link-only with nothing pending still needs the
+            # full re-page that _force_full_sync only does when pending > 0.
+            override = sync_runner.link_only_override
+            sync_runner.link_only_override = None
+            link_only = override if override is not None else pending_links > 0
+            if link_only and pending_links == 0:
+                _clear_bandcampsync_checkpoint(cfg.paths.music_dir)
             if link_only:
                 activity.record(
                     f"Linking your library — {pending_links} album(s) to match. "
@@ -378,6 +388,7 @@ def create_app(
 
     app = FastAPI(title="Harmonist", lifespan=lifespan)
     app.state.cfg = cfg
+    sync_runner.app = app  # lets runner_fn read app.state.cfg fresh each sync
     app.state.templates = templates
     app.state.sync_runner = sync_runner
     app.state.reconcile_runner = reconcile_runner
@@ -547,10 +558,18 @@ def _templates(request: Request) -> Jinja2Templates:
 
 
 def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
+    cfg: config_mod.Config = request.app.state.cfg
     base: dict[str, Any] = {
         "request": request,
-        "cfg": request.app.state.cfg,
+        "cfg": cfg,
         "now": datetime.now(UTC),
+        # Sync-popover state (header renders on every page): the current per-sync
+        # cap, and whether link-only should default ON (unlinked albums or pending
+        # downloads exist → the user is mid-adoption).
+        "sync_max_downloads": cfg.bandcamp.max_downloads_per_sync,
+        "sync_link_only_default": (
+            live_counts.to_status()["needs_sync"] > 0 or pending_downloads.count() > 0
+        ),
     }
     base.update(extra)
     return base
@@ -1081,6 +1100,19 @@ def _link_pending_to_album(album: Album, p: pending_downloads.PendingPurchase) -
         )
 
 
+def _persist_max_downloads(request: Request, value: int) -> None:
+    """Update + persist the per-sync download cap (the SAME setting as the Settings
+    page — the Sync popover just exposes it inline). The runner reads app.state.cfg
+    fresh each sync, so it takes effect immediately."""
+    cfg: config_mod.Config = request.app.state.cfg
+    if value == cfg.bandcamp.max_downloads_per_sync:
+        return
+    new_bandcamp = cfg.bandcamp.model_copy(update={"max_downloads_per_sync": value})
+    new_cfg = cfg.model_copy(update={"bandcamp": new_bandcamp})
+    config_mod.write_settings(cfg.paths.config_dir, {"bandcamp.max_downloads_per_sync": value})
+    request.app.state.cfg = new_cfg
+
+
 def _inbox_albums(albums: list[Album]) -> list[Album]:
     """Albums that warrant attention in the inbox (terminal states excluded)."""
     return [a for a in albums if a.state not in _TERMINAL_STATES]
@@ -1555,7 +1587,12 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/sync", response_class=HTMLResponse)
-    def start_sync(request: Request) -> Response:
+    def start_sync(
+        request: Request,
+        link_only: bool | None = Form(None),
+        max_downloads: int | None = Form(None),
+        from_popover: bool = Form(False),
+    ) -> Response:
         # Backstop the UI gating: don't kick a sync while a reconcile pass is
         # in flight (it's mutating sidecars / the inbox). The button is
         # disabled client-side, but a stale page or the race window before the
@@ -1568,8 +1605,16 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
                 status_code=status.HTTP_409_CONFLICT,
             )
+        # Sync-popover knobs. max-downloads persists (it's the same setting as the
+        # Settings page); link-only is a one-shot override for THIS sync.
+        if max_downloads is not None and max_downloads >= 0:
+            _persist_max_downloads(request, max_downloads)
+        runner = request.app.state.sync_runner
+        # Only the popover sends an explicit link-only choice (its checkbox, present
+        # or absent). The plain Sync button sends nothing → None → auto-detect.
+        runner.link_only_override = bool(link_only) if from_popover else None
         try:
-            request.app.state.sync_runner.start()
+            runner.start()
         except AlreadyRunningError:
             return _flash_response(
                 "Sync busy",
