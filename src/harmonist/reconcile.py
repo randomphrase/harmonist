@@ -200,7 +200,19 @@ def store_url_for_tagging(
     comment = formats.read_comment(files[0]) or ""
     url = url_recovery.extract_bandcamp_url(comment)
     if url is None:
-        return None  # no Bandcamp evidence → not a Bandcamp purchase
+        # No Bandcamp evidence → not treated as a Bandcamp purchase (→ Complete,
+        # not Needs Sync). Observability: when there IS a comment but no
+        # bandcamp.com URL (e.g. "Visit https://3six.net", or a Picard-stripped
+        # tag), log it so a genuinely-purchased album silently landing in Library
+        # is explainable from the logs — the fuzzy potential-download match is the
+        # recovery path for these. Empty comments (plain CD rips) aren't logged.
+        if comment.strip():
+            log.info(
+                'no Bandcamp store URL for "%s": ©cmt has no bandcamp.com URL: %r',
+                album_dir.name,
+                comment[:160],
+            )
+        return None
     # 1. A precise release URL embedded in the comment is the real purchase URL.
     if "/album/" in url or "/track/" in url:
         return url

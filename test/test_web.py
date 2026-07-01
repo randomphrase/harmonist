@@ -2965,6 +2965,27 @@ def test_reconcile_suggestions_skips_already_linked_album(cfg):
     assert 80 not in ps
 
 
+def test_reconcile_suggestions_includes_library_albums(cfg):
+    """A COMPLETE (Library) album that's unlinked (no item_id) is still a match
+    candidate — the "36" case: a real Bandcamp purchase whose files lost the
+    Bandcamp comment, so it landed in Library. The potential-download match must
+    reach into the library, not just the inbox, to recover it."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+    from harmonist.web.main import _reconcile_suggestions
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    # Tagged (files carry the MBID), no Bandcamp store_url, no item_id → COMPLETE.
+    d = _make_album(cfg, "Black Soma", mbid="rel-bs")
+    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-bs"))
+    albums = scanner.scan(cfg.paths.music_dir)
+    a = next(x for x in albums if x.path == d)
+    assert a.state == AlbumState.COMPLETE  # it's in the Library, not the inbox
+    pend = [_pp(81, band=a.artist, title=a.title, url="https://3six.bandcamp.com/album/black-soma")]
+    ps, _ = _reconcile_suggestions(albums, pend, cfg.paths.music_dir)
+    assert ps[81]["id"] == a.id  # the library album is offered as the match
+
+
 def test_case_b_suggestions_render_on_both_cards(client, cfg):
     """The potential-download card shows 'Already in your library?' with a Link-these
     button to the matched album, and the surrender card shows the reverse — both

@@ -82,6 +82,29 @@ def test_none_when_no_comment(tmp_path):
     assert store_url_for_tagging(d, "rel-1", fetch_urls=_no_urls) is None
 
 
+def test_logs_the_comment_when_present_but_not_bandcamp(tmp_path, caplog):
+    """Observability: a non-empty comment with no bandcamp.com URL (e.g. the "36"
+    albums' "Visit https://3six.net") is logged, so a genuinely-purchased album
+    silently landing in Library is explainable from the logs."""
+    import logging
+
+    d = _make_album(tmp_path, comment="Visit https://3six.net")
+    with caplog.at_level(logging.INFO, logger="harmonist.reconcile"):
+        assert store_url_for_tagging(d, "rel-1", fetch_urls=_no_urls) is None
+    assert any("3six.net" in r.getMessage() for r in caplog.records)
+
+
+def test_no_log_when_comment_empty(tmp_path, caplog):
+    """A plain CD rip (no comment) isn't logged — only the surprising 'has a
+    comment but no bandcamp URL' case is worth the line."""
+    import logging
+
+    d = _make_album(tmp_path)  # no comment
+    with caplog.at_level(logging.INFO, logger="harmonist.reconcile"):
+        assert store_url_for_tagging(d, "rel-1", fetch_urls=_no_urls) is None
+    assert not any("no Bandcamp store URL" in r.getMessage() for r in caplog.records)
+
+
 def test_none_when_no_audio_files(tmp_path):
     d = tmp_path / "Empty"
     d.mkdir()
