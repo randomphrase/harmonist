@@ -158,6 +158,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         artist=_text_atom(audio, ATOM_ARTIST),
         codec=_codec_label(audio),
         has_cover=bool(audio.get(ATOM_COVER)),
+        album_artist=_text_atom(audio, ATOM_ALBUM_ARTIST),
     )
 
 

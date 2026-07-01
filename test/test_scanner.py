@@ -36,8 +36,50 @@ def _make_album_dir(root: Path, artist: str, album: str, n_tracks: int = 1) -> P
     return d
 
 
+def _tag_tracks(
+    album_dir: Path, *, album: str, artists: list[str], album_artist: str | None
+) -> None:
+    """Set per-track artist (and optional album-artist) atoms on an album's files,
+    one artist per track in order."""
+    from mutagen.mp4 import MP4
+
+    files = sorted(album_dir.glob("*.m4a"))
+    for f, art in zip(files, artists, strict=True):
+        audio = MP4(f)
+        audio["\xa9alb"] = [album]
+        audio["\xa9ART"] = [art]
+        if album_artist is not None:
+            audio["aART"] = [album_artist]
+        audio.save()
+
+
 def test_scan_empty_dir_returns_nothing(tmp_path):
     assert scan(tmp_path) == []
+
+
+def test_compilation_without_album_artist_shows_various_artists(tmp_path):
+    """A compilation (tracks disagree on artist, no album-artist tag) displays
+    'Various Artists', not the first track's artist."""
+    d = _make_album_dir(tmp_path, "Comps", "Mixtape", n_tracks=3)
+    _tag_tracks(d, album="Mixtape", artists=["Alice", "Bob", "Carol"], album_artist=None)
+    a = scan(tmp_path)[0]
+    assert a.artist == "Various Artists"
+
+
+def test_album_artist_tag_is_authoritative(tmp_path):
+    """When present, the album-artist tag wins (a Picard-tagged compilation carries
+    'Various Artists' there even though track artists vary)."""
+    d = _make_album_dir(tmp_path, "Comps", "Curated", n_tracks=2)
+    _tag_tracks(d, album="Curated", artists=["Alice", "Bob"], album_artist="Various Artists")
+    assert scan(tmp_path)[0].artist == "Various Artists"
+
+
+def test_single_artist_album_unaffected(tmp_path):
+    """A normal album (consistent track artist, no album-artist tag) still shows
+    that artist — the compilation handling doesn't regress the common case."""
+    d = _make_album_dir(tmp_path, "Solo", "Record", n_tracks=2)
+    _tag_tracks(d, album="Record", artists=["Solo Act", "Solo Act"], album_artist=None)
+    assert scan(tmp_path)[0].artist == "Solo Act"
 
 
 def test_scan_missing_dir_returns_nothing(tmp_path):

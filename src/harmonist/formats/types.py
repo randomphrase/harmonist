@@ -22,6 +22,9 @@ class ScanFields(NamedTuple):
     artist: str | None
     codec: str | None
     has_cover: bool = False
+    # Album-level artist (Picard: aART / TPE2 / ALBUMARTIST). Authoritative for
+    # display; "Various Artists" on a compilation. None when the tag is absent.
+    album_artist: str | None = None
 
 
 @dataclass

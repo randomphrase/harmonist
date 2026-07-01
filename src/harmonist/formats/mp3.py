@@ -148,6 +148,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         artist=_text(tags, "TPE1"),
         codec="MP3",
         has_cover=bool(tags and tags.getall("APIC")),
+        album_artist=_text(tags, "TPE2"),
     )
 
 

@@ -171,13 +171,29 @@ def read_album_io(
     )
 
 
+def _display_artist(fields: list[formats.ScanFields]) -> str:
+    """The album-level artist to show. Prefer the album-artist tag (aART / TPE2 /
+    ALBUMARTIST — authoritative, and "Various Artists" on a Picard-tagged
+    compilation). When it's absent, fall back to "Various Artists" if the tracks
+    disagree on artist (an untagged compilation), else the single track artist."""
+    if not fields:
+        return ""
+    album_artist = (fields[0].album_artist or "").strip()
+    if album_artist:
+        return album_artist
+    distinct = {(f.artist or "").strip() for f in fields if (f.artist or "").strip()}
+    if len(distinct) > 1:
+        return "Various Artists"
+    return (fields[0].artist or "").strip()
+
+
 def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
     """Assemble the Album from pre-read I/O. CPU + id-registry only (no file
     I/O), so it runs on the event-loop thread where the shared registry lives."""
     sidecar = io.sidecar
     fields = io.fields
     title = (fields[0].album_title if fields else None) or album_dir.name
-    artist = (fields[0].artist if fields else None) or ""
+    artist = _display_artist(fields)
 
     # Inconsistency trumps sidecar-driven state — see design §15.2.
     # The sidecar is kept on disk; once the user fixes the on-disk tags

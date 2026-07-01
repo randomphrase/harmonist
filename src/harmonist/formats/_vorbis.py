@@ -180,6 +180,7 @@ class VorbisTagger:
             artist=first(KEY_ARTIST),
             codec=codec,
             has_cover=has_cover,
+            album_artist=first(KEY_ALBUM_ARTIST),
         )
 
     def read_cover(self, path: Path) -> tuple[bytes, str] | None:
