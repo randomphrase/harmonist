@@ -110,6 +110,16 @@
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Forget
                 </button>
+                {# Undo a wrong Bandcamp link → back to Needs Sync (keeps tags + URL). #}
+                {% if bc and bc.item_id is not none %}
+                <button hx-post="/library/{{ album.id }}/unlink"
+                        hx-swap="none" hx-disabled-elt="this"
+                        onclick="harmonistCloseModal()"
+                        hx-confirm="Unlink this album from its Bandcamp purchase? It reverts to Needs Sync — tags and store URL are kept."
+                        class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+                    Unlink
+                </button>
+                {% endif %}
             </div>
         </div>
     </div>

@@ -872,8 +872,7 @@ def test_report_unmatched_full_sync_surrenders_to_needs_mbid(cfg):
     assert album.state == AlbumState.NEEDS_MBID
     msgs = [e.message for e in activity.recent(10)]
     assert any(
-        "No Bandcamp purchase matched" in m and "store URL" in m and "next full sync" in m
-        for m in msgs
+        "No Bandcamp purchase matched" in m and "Needs MBID" in m and "duplicate" in m for m in msgs
     )
 
 
@@ -1909,6 +1908,42 @@ def test_library_detail_shows_store_url_and_item_id(client, cfg):
     assert "42" in r.text  # item_id
 
 
+def test_library_detail_shows_unlink_only_when_linked(client, cfg):
+    from datetime import datetime
+
+    linked = _make_tagged_album(
+        cfg, "IsLinked", mbid="rel-l", tagged_at=datetime.now(UTC), item_id=7
+    )
+    lid = _id_for(cfg, linked)
+    assert f"/library/{lid}/unlink" in client.get(f"/library/{lid}/detail").text
+    # An unlinked album (no item_id) offers no Unlink button.
+    plain = _make_tagged_album(cfg, "NoLink", mbid="rel-n", tagged_at=datetime.now(UTC))
+    assert "/unlink" not in client.get(f"/library/{_id_for(cfg, plain)}/detail").text
+
+
+def test_unlink_reverts_complete_album_to_needs_sync(client, cfg):
+    """Unlinking clears the purchase item_id (keeps tags + store_url), so the album
+    reverts from Library/COMPLETE to NEEDS_SYNC and can be re-linked."""
+    from datetime import datetime
+
+    from harmonist import activity
+    from harmonist.models import AlbumState
+    from harmonist.scanner import scan
+
+    d = _make_tagged_album(cfg, "Undo Me", mbid="rel-u", tagged_at=datetime.now(UTC), item_id=99)
+    assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.COMPLETE
+
+    activity.clear()
+    r = client.post(f"/library/{_id_for(cfg, d)}/unlink")
+    assert r.status_code == 200
+    loaded = sc.read(d)
+    # Link cleared (an all-None bandcamp block is dropped on write).
+    assert loaded.bandcamp is None or loaded.bandcamp.item_id is None
+    assert loaded.store_url == "https://x.bandcamp.com/album/undo-me"  # kept
+    assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.NEEDS_SYNC
+    assert any("Unlinked" in e.message and "99" in e.message for e in activity.recent(5))
+
+
 # ---------- retag / forget ----------
 
 
@@ -2905,6 +2940,9 @@ def test_pending_match_link_fills_item_id(client, cfg):
     album_id = _id_for(cfg, d)
 
     pd.replace_all([_pp(45, url="https://x.bandcamp.com/album/y")])
+    from harmonist import activity
+
+    activity.clear()
     r = client.post("/pending/45/match", data={"album_id": album_id})
     assert r.status_code == 200
     assert pd.get(45) is None
@@ -2912,6 +2950,8 @@ def test_pending_match_link_fills_item_id(client, cfg):
     assert sc.bandcamp is not None
     assert sc.bandcamp.item_id == 45
     assert sc.store_url == "https://x.bandcamp.com/album/y"
+    # A manual link is logged like an auto-link: "Linked <purchase> → <album>".
+    assert any(m.message.startswith("Linked ") for m in activity.recent(5))
 
 
 def test_claim_pending_by_store_url_is_subdomain_insensitive(client):

@@ -13,6 +13,7 @@ import re
 import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, suppress
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -987,11 +988,9 @@ def _report_unmatched_after_sync(
         )
         _demote_to_needs_mbid(a.path, sc, candidate=candidate)
         activity.record(
-            f"No Bandcamp purchase matched {a.artist} — {a.title} (its store URL "
-            f"{sc.store_url or 'none'}). Still tagged correctly. If you own it, the "
-            "purchase is at a different URL (see the 'unmatched_purchase' log lines) — "
-            "it'll be re-downloaded on the next full sync, so fix the release's Bandcamp "
-            "URL on MusicBrainz or assign a different release to avoid a duplicate.",
+            f"No Bandcamp purchase matched {a.artist} — {a.title} — kept its tags, moved "
+            "to Needs MBID. Add its Bandcamp URL to the MusicBrainz release (or match it "
+            "manually) so it links instead of risking a duplicate download.",
             level="warning",
         )
         if twins:
@@ -1836,6 +1835,27 @@ def _register_routes(app: FastAPI) -> None:
         candidate = assess_match(album.path, release)
         ctx = _ctx(request, candidate=candidate)
         return _templates(request).TemplateResponse(request, "partials/library_compare.html", ctx)
+
+    @app.post("/library/{album_id}/unlink", response_class=HTMLResponse)
+    def library_unlink(request: Request, album_id: str) -> Response:
+        """Undo a Bandcamp link: clear the purchase item_id so the album reverts
+        from the Library (COMPLETE) to Needs Sync. Tags + store_url are kept, so a
+        later sync or manual match can re-link it. Reversible by design."""
+        album = _find_album(request, album_id)
+        sc = album.sidecar
+        if sc is None or sc.bandcamp is None or sc.bandcamp.item_id is None:
+            return _flash_response(
+                "Nothing to unlink", f"{album.title} isn't linked", level="warning"
+            )
+        old_id = sc.bandcamp.item_id
+        new_sc = replace(sc, bandcamp=BandcampInfo(item_id=None, band_id=sc.bandcamp.band_id))
+        sidecar_mod.write(album.path, new_sc)
+        activity.record(
+            f"Unlinked {album.artist} — {album.title} "
+            f"(was Bandcamp purchase {old_id}): Library → Needs Sync"
+        )
+        request.app.state.scan_runner.request_scan()
+        return _flash_response("Unlinked", f"{album.title} → Needs Sync")
 
     @app.post("/retag/{album_id}", response_class=HTMLResponse)
     def retag(request: Request, album_id: str) -> Response:
