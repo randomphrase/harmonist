@@ -182,6 +182,8 @@ def _bare_syncer(max_downloads: int = 5) -> HarmonistSyncer:
     s.new_items = 0
     s.skipped_for_limit = 0
     s._pending_this_run = []
+    s._adopt_index = {}
+    s._adopt_consumed = set()
     s.bandcamp = MagicMock()
     s.ignores = MagicMock()
     s.local_media = MagicMock()
@@ -859,7 +861,7 @@ def test_backfill_links_ignored_purchase_to_unlinked_album(tmp_path):
     s.bandcamp.purchases = [_wus_item(3417563775)]
     s.ignores.is_ignored = lambda item: True  # already downloaded → ignored
 
-    s._backfill_ignored_purchases()
+    s._backfill_ignored_purchases(survey_album_links(Path(s.local_media.media_dir)))
 
     loaded = sc.read(album)
     assert loaded.bandcamp.item_id == 3417563775
@@ -885,7 +887,7 @@ def test_backfill_links_slugless_album_by_title(tmp_path):
     s.bandcamp.purchases = [_wus_item(3417563775)]
     s.ignores.is_ignored = lambda item: True
 
-    s._backfill_ignored_purchases()
+    s._backfill_ignored_purchases(survey_album_links(Path(s.local_media.media_dir)))
 
     loaded = sc.read(album)
     assert loaded.bandcamp.item_id == 3417563775  # linked by title
@@ -917,7 +919,7 @@ def test_backfill_does_not_touch_linked_sibling_sharing_slug(tmp_path):
     s.bandcamp.purchases = [_wus_item(3417563775)]
     s.ignores.is_ignored = lambda item: True
 
-    s._backfill_ignored_purchases()
+    s._backfill_ignored_purchases(survey_album_links(Path(s.local_media.media_dir)))
 
     assert sc.read(longform).bandcamp.item_id == 3417563775  # linked
     assert sc.read(regular).bandcamp.item_id == 631669900  # untouched
@@ -952,7 +954,7 @@ def test_backfill_does_not_mislink_linked_purchase_to_unlinked_sibling(tmp_path)
     s.bandcamp.purchases = [_wus_item(631669900)]
     s.ignores.is_ignored = lambda item: True
 
-    s._backfill_ignored_purchases()
+    s._backfill_ignored_purchases(survey_album_links(Path(s.local_media.media_dir)))
 
     # The long-form stays unlinked — we did NOT attach the standard's item_id.
     assert sc.read(longform).bandcamp is None
@@ -994,7 +996,7 @@ def test_backfill_title_tiebreak_pairs_editions(tmp_path):
     s.bandcamp.purchases = [p_std, p_lf]
     s.ignores.is_ignored = lambda item: True
 
-    s._backfill_ignored_purchases()
+    s._backfill_ignored_purchases(survey_album_links(Path(s.local_media.media_dir)))
 
     assert sc.read(standard).bandcamp.item_id == 631669900
     assert sc.read(longform).bandcamp.item_id == 3417563775
@@ -1032,7 +1034,7 @@ def test_backfill_marks_ambiguous_when_title_cannot_separate(tmp_path):
     s.bandcamp.purchases = [p1, p2]
     s.ignores.is_ignored = lambda item: True
 
-    s._backfill_ignored_purchases()
+    s._backfill_ignored_purchases(survey_album_links(Path(s.local_media.media_dir)))
 
     # Both albums carry the full candidate set, no single item_id.
     for d in (a, b):
@@ -1085,7 +1087,7 @@ def test_backfill_cross_slug_title_fallback_links_longform(tmp_path, caplog):
     import logging
 
     with caplog.at_level(logging.WARNING, logger="harmonist.bandcamp_hook"):
-        s._backfill_ignored_purchases()
+        s._backfill_ignored_purchases(survey_album_links(Path(s.local_media.media_dir)))
 
     assert sc.read(standard).bandcamp.item_id == 631669900  # by URL slug
     assert sc.read(longform).bandcamp.item_id == 3417563775  # by title across mismatch
@@ -1116,7 +1118,7 @@ def test_backfill_slug_match_does_not_warn_mistag(tmp_path, caplog):
     s.ignores.is_ignored = lambda i: True
 
     with caplog.at_level(logging.WARNING, logger="harmonist.bandcamp_hook"):
-        s._backfill_ignored_purchases()
+        s._backfill_ignored_purchases(survey_album_links(Path(s.local_media.media_dir)))
 
     assert sc.read(album).bandcamp.item_id == 42  # linked by URL slug
     assert "Possible mis-tag" not in " ".join(r.message for r in caplog.records)
@@ -1136,9 +1138,125 @@ def test_backfill_skips_non_ignored_items(tmp_path):
     s.bandcamp.purchases = [_wus_item(3417563775)]
     s.ignores.is_ignored = lambda item: False  # NOT ignored
 
-    s._backfill_ignored_purchases()
+    s._backfill_ignored_purchases(survey_album_links(Path(s.local_media.media_dir)))
 
     assert sc.read(album).bandcamp is None  # untouched
+
+
+# ---------- adoption auto-link (artist-root store_url + title) ----------
+
+
+def _adopt_syncer(tmp_path) -> HarmonistSyncer:
+    """A link-only bare syncer with the adoption index built from disk."""
+    s = _bare_syncer()
+    s._link_only = True
+    s.local_media.media_dir = str(tmp_path)
+    s.ignores.is_ignored = lambda item: False
+    s._adopt_index = s._build_adopt_index(survey_album_links(Path(tmp_path))[1])
+    s._adopt_consumed = set()
+    return s
+
+
+def _artist_root_album(tmp_path, folder: str, *, store_url: str, title: str) -> Path:
+    d = tmp_path / folder
+    d.mkdir(parents=True)
+    sc.write(
+        d,
+        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=store_url, mb_release_id="rel-ar"),
+    )
+    _tag_album_title(d, title)
+    return d
+
+
+def test_adopt_links_artist_root_album_by_subdomain_and_title(tmp_path):
+    """A purchase whose Bandcamp subdomain matches an unlinked artist-root album
+    AND whose title matches → confidently auto-linked (adopts the full /album/
+    URL, leaves Needs Sync), NOT surfaced as a potential download."""
+    album = _artist_root_album(
+        tmp_path,
+        "Banco de Gaia/Live at Glastonbury",
+        store_url="https://bancodegaia.bandcamp.com",  # artist root, no /album/ slug
+        title="Live at Glastonbury",
+    )
+    p = _StubItem(
+        item_id=555,
+        band_name="Banco de Gaia",
+        item_title="Live at Glastonbury",
+        url_hints={"subdomain": "bancodegaia", "slug": "live-at-glastonbury"},
+    )
+    s = _adopt_syncer(tmp_path)
+    s.bandcamp.purchases = [p]
+
+    assert s.sync_item(p) is False  # linked, no download
+    loaded = sc.read(album)
+    assert loaded.bandcamp.item_id == 555
+    assert loaded.store_url == "https://bancodegaia.bandcamp.com/album/live-at-glastonbury"
+    assert s._pending_this_run == []  # NOT a potential download
+
+
+def test_adopt_skips_album_with_no_store_url(tmp_path):
+    """An album with NO Bandcamp store_url (no evidence it came from Bandcamp) is
+    NOT auto-linked on a name coincidence — it stays for manual review."""
+    d = tmp_path / "Barker" / "Utility"
+    d.mkdir(parents=True)
+    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-b"))
+    _tag_album_title(d, "Utility")
+    p = _StubItem(
+        item_id=556,
+        band_name="Barker",
+        item_title="Utility",
+        url_hints={"subdomain": "sambarker", "slug": "utility"},
+    )
+    s = _adopt_syncer(tmp_path)
+    s.bandcamp.purchases = [p]
+
+    assert s.sync_item(p) is False
+    assert sc.read(d).bandcamp is None  # not linked
+    assert [x.item_id for x in s._pending_this_run] == [556]  # surfaced for review
+
+
+def test_adopt_skips_on_subdomain_mismatch(tmp_path):
+    """Same title but a DIFFERENT Bandcamp subdomain (e.g. a label page) → not
+    confident → manual review, not auto-linked."""
+    album = _artist_root_album(
+        tmp_path, "Artist/Album", store_url="https://somelabel.bandcamp.com", title="Album"
+    )
+    p = _StubItem(
+        item_id=557,
+        band_name="Artist",
+        item_title="Album",
+        url_hints={"subdomain": "theartist", "slug": "album"},
+    )
+    s = _adopt_syncer(tmp_path)
+    s.bandcamp.purchases = [p]
+
+    assert s.sync_item(p) is False
+    assert sc.read(album).bandcamp is None
+    assert [x.item_id for x in s._pending_this_run] == [557]
+
+
+def test_adopt_skips_when_ambiguous(tmp_path):
+    """Two unlinked artist-root albums share host + title → can't tell which →
+    manual review."""
+    a1 = _artist_root_album(
+        tmp_path, "Artist/One", store_url="https://artist.bandcamp.com", title="Live"
+    )
+    a2 = _artist_root_album(
+        tmp_path, "Artist/Two", store_url="https://artist.bandcamp.com", title="Live"
+    )
+    p = _StubItem(
+        item_id=558,
+        band_name="Artist",
+        item_title="Live",
+        url_hints={"subdomain": "artist", "slug": "live"},
+    )
+    s = _adopt_syncer(tmp_path)
+    s.bandcamp.purchases = [p]
+
+    assert s.sync_item(p) is False
+    assert sc.read(a1).bandcamp is None
+    assert sc.read(a2).bandcamp is None
+    assert [x.item_id for x in s._pending_this_run] == [558]
 
 
 class _StubBandcamp:

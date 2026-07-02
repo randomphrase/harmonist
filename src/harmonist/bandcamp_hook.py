@@ -18,6 +18,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import bandcampsync.sync as _bcsync
 from bandcampsync.options import BandcampSyncOptions
@@ -308,6 +309,11 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # couldn't confidently match and so didn't download). Swapped into the
         # module-level in-memory store at the end of the sync.
         self._pending_this_run: list[PendingPurchase] = []
+        # Adoption auto-link (link-only): unlinked artist-root albums indexed by
+        # (bandcamp host, normalized title), + the ones consumed this run. Built
+        # in sync_items; read in sync_item before a purchase is recorded pending.
+        self._adopt_index: dict[tuple[str, str], list[Path]] = {}
+        self._adopt_consumed: set[Path] = set()
         options = BandcampSyncOptions(
             cookies=cookies,
             dir_path=Path(dir_path),
@@ -338,10 +344,19 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # re-fetch it — even if ignores.txt is stale/lost. Exact id match, no disk
         # reads (the scan already read every sidecar). In-memory only.
         self.ignores.ids |= library_index.item_ids()
+        # One disk pass → (slug map, artist-root/slugless albums, linked ids),
+        # shared by the ignored-backfill and the adoption auto-link below.
+        media_dir = getattr(self.local_media, "media_dir", None)
+        survey = survey_album_links(Path(media_dir)) if media_dir else ({}, [], set())
         # Link already-downloaded (ignored) purchases to their on-disk albums
         # BEFORE the parent loop — bandcampsync skips ignored items, so their
         # sidecar would otherwise never get its item_id filled in.
-        self._backfill_ignored_purchases()
+        self._backfill_ignored_purchases(survey)
+        # Adoption (link-only): index unlinked artist-root albums so sync_item can
+        # confidently auto-link a purchase (same Bandcamp subdomain + title) rather
+        # than surfacing it as a potential download.
+        self._adopt_index = self._build_adopt_index(survey[1]) if self._link_only else {}
+        self._adopt_consumed = set()
         # The download limit is enforced per item in sync_item (download up to
         # the cap, defer the rest to the next sync) rather than aborting here.
         await super().sync_items()
@@ -350,7 +365,9 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # which is correct: steady state has no pending downloads).
         pending_downloads.replace_all(self._pending_this_run)
 
-    def _backfill_ignored_purchases(self) -> None:
+    def _backfill_ignored_purchases(
+        self, survey: tuple[dict[str, list[Path]], list[Path], set[int]]
+    ) -> None:
         """Link already-downloaded (ignored) purchases to their on-disk albums.
 
         bandcampsync's loop skips ignored items before `sync_item` runs, so an
@@ -369,10 +386,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
              by a unique exact-title match against the remaining unmatched
              purchases — across the URL mismatch.
         """
-        media_dir = getattr(self.local_media, "media_dir", None)
-        if not media_dir:
-            return
-        by_slug, slugless, linked_ids = survey_album_links(Path(media_dir))
+        by_slug, slugless, linked_ids = survey
         stuck_total = sum(len(v) for v in by_slug.values()) + len(slugless)
         if not by_slug and not slugless:
             return
@@ -541,6 +555,52 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 log.warning("could not mark %s ambiguous: %s", album_dir.name, e)
         return (linked, ambiguous, [])
 
+    def _build_adopt_index(self, slugless: list[Path]) -> dict[tuple[str, str], list[Path]]:
+        """Index unlinked artist-root albums by (bandcamp host, normalized title).
+        These have a Bandcamp store_url but no `/album/` slug — MB's release lacked
+        a Bandcamp URL, so reconcile kept the `©cmt` artist page — so they can't
+        match a purchase by slug. But the host IS the artist and the `©alb` is the
+        album, a strong pair. Reading titles for just this (small) set is cheap."""
+        index: dict[tuple[str, str], list[Path]] = {}
+        for album_dir in slugless:
+            try:
+                sc = sidecar_mod.read(album_dir)
+            except Exception:
+                continue
+            if sc is None or not sc.store_url:
+                continue
+            host = (urlparse(sc.store_url).hostname or "").lower()
+            if not host:
+                continue
+            index.setdefault((host, _norm_title(_album_title(album_dir))), []).append(album_dir)
+        return index
+
+    def _adopt_link(self, item: Any, url: str) -> bool:
+        """Confidently auto-link a purchase to an unlinked artist-root album: same
+        Bandcamp subdomain (its store_url host) AND matching title, uniquely. Links
+        it (adopting the full purchase URL) so it never becomes a potential
+        download; the manual fallback handles anything less certain. Returns True
+        if linked."""
+        host = (urlparse(url).hostname or "").lower()
+        if not host:
+            return False
+        key = (host, _norm_title(getattr(item, "item_title", "")))
+        avail = [d for d in self._adopt_index.get(key, []) if d not in self._adopt_consumed]
+        if len(avail) != 1:
+            return False  # 0 = no confident match; ≥2 = ambiguous → manual review
+        album_dir = avail[0]
+        self._adopt_consumed.add(album_dir)
+        if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
+            activity.record(
+                f"{getattr(item, 'band_name', '?')} — {getattr(item, 'item_title', '?')}: "
+                f"linked to your on-disk album by artist page + title — its store URL was "
+                f"only the artist page ({host}), which MusicBrainz doesn't carry. "
+                f"Needs Sync → Library."
+            )
+        if not self.ignores.is_ignored(item):
+            self.ignores.add(item)
+        return True
+
     def _link(self, album_dir: Path, item: Any) -> None:
         try:
             if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
@@ -645,6 +705,13 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # resolve (Download / Match to an existing album / Don't download), and
         # download nothing this run — UNLESS the user already chose Download for it
         # (approved), in which case fall through and fetch it.
+        # Adoption auto-link: before surfacing a potential download, try a
+        # confident match to an unlinked artist-root album (same Bandcamp
+        # subdomain + title). If it links, the album leaves Needs Sync for the
+        # Library and this purchase is done — no download, no card.
+        if self._link_only and not approved and url and self._adopt_link(item, url):
+            return False
+
         if self._link_only and not approved:
             self._pending_this_run.append(
                 PendingPurchase(
