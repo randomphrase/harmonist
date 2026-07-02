@@ -2954,6 +2954,41 @@ def test_pending_match_link_fills_item_id(client, cfg):
     assert any(m.message.startswith("Linked ") for m in activity.recent(5))
 
 
+def test_pending_match_to_library_album_skips_rescan(client, cfg, monkeypatch):
+    """Matching a potential download to a Library (COMPLETE) album leaves it
+    complete — no inbox change — so it must NOT trigger a full rescan (the flicker
+    the user hit while working through the adoption residue)."""
+    from datetime import datetime
+
+    from harmonist import pending_downloads as pd
+
+    d = _make_tagged_album(cfg, "Lib Match", mbid="rel-lm", tagged_at=datetime.now(UTC))
+    calls: list[int] = []
+    monkeypatch.setattr(
+        client.app.state.scan_runner, "request_scan", lambda *a, **k: calls.append(1)
+    )
+    pd.replace_all([_pp(46, url="https://x.bandcamp.com/album/z")])
+    r = client.post("/pending/46/match", data={"album_id": _id_for(cfg, d)})
+    assert r.status_code == 200
+    assert calls == []  # no rescan → no inbox flicker
+
+
+def test_pending_match_to_surrender_triggers_rescan(client, cfg, monkeypatch):
+    """Matching a Needs-Sync (surrender) album moves it out of the inbox → a
+    rescan IS needed so its card clears."""
+    from harmonist import pending_downloads as pd
+
+    d = _needs_sync_album(cfg, "Surr Match", "rel-sm")
+    calls: list[int] = []
+    monkeypatch.setattr(
+        client.app.state.scan_runner, "request_scan", lambda *a, **k: calls.append(1)
+    )
+    pd.replace_all([_pp(47, url="https://x.bandcamp.com/album/w")])
+    r = client.post("/pending/47/match", data={"album_id": _id_for(cfg, d)})
+    assert r.status_code == 200
+    assert calls == [1]  # rescanned
+
+
 def test_claim_pending_by_store_url_is_subdomain_insensitive(client):
     """Tagging an album whose store_url matches a pending purchase claims it out of
     the list (the purchase is now on disk) — matched by slug, so a label vs artist

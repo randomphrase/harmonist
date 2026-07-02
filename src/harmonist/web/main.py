@@ -412,7 +412,13 @@ def create_app(
         # A state-changing request likely touched the library (tag, forget,
         # confirm, erase…). Trigger a background re-scan; the per-album mtime
         # cache keeps it cheap, and request_scan() is a no-op until engaged.
-        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        # An endpoint that changed nothing the inbox reflects (e.g. skipping a
+        # potential download, or matching one to a Library album) sets
+        # `request.state.skip_rescan` to opt out — a rescan there is pure inbox
+        # flicker while it runs.
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and not getattr(
+            request.state, "skip_rescan", False
+        ):
             request.app.state.scan_runner.request_scan()
         return response
 
@@ -1502,6 +1508,7 @@ def _register_routes(app: FastAPI) -> None:
         _append_ignore(cfg.ignores_file, item_id, label)
         pending_downloads.remove(item_id)
         activity.record(f"Won't download {label} — added to your Bandcamp ignores")
+        request.state.skip_rescan = True  # only removed a pending; no album changed
         return _render_pending_section(request)
 
     @app.post("/pending/{item_id}/download", response_class=HTMLResponse)
@@ -1510,6 +1517,7 @@ def _register_routes(app: FastAPI) -> None:
         label = f"{p.band} — {p.title}" if p else str(item_id)
         pending_downloads.approve(item_id)
         activity.record(f"Will download {label} on the next sync — click Sync")
+        request.state.skip_rescan = True  # only approved a pending; no album changed
         return _render_pending_section(request)
 
     @app.get("/pending/{item_id}/match/results", response_class=HTMLResponse)
@@ -1529,11 +1537,16 @@ def _register_routes(app: FastAPI) -> None:
         if p is None:
             return _render_pending_section(request)
         album = _find_album(request, album_id)
+        # Only a match to an INBOX album (a surrender leaving Needs Sync) changes
+        # the inbox, so only then let the post-mutation middleware rescan. Matching
+        # a Library album (the adoption case) leaves it COMPLETE — a rescan there is
+        # pure overhead and just flickers the inbox while it runs.
+        was_inbox = album.state not in _TERMINAL_STATES
         _link_pending_to_album(album, p)
         _append_ignore(cfg.ignores_file, item_id, f"{p.band} — {p.title}")
         pending_downloads.remove(item_id)
         activity.record(f"Linked {p.band} — {p.title} → {album.artist} — {album.title}")
-        request.app.state.scan_runner.request_scan()
+        request.state.skip_rescan = not was_inbox
         return _render_pending_section(request)
 
     @app.get("/activity", response_class=HTMLResponse)
