@@ -1,5 +1,5 @@
-{# Full-width expanded detail for a library album. Rendered inside an inert
-   <template> by library_page; cloned into #album-detail-panel on tile click. #}
+{# Full detail for a library album. Rendered into #modal by library_detail_modal
+   (Library tile click) and by the potential-download verify flow. #}
 {% set sc = album.sidecar %}
 {% set bc = sc.bandcamp if sc else None %}
 {% set store = store_name(sc.store_url if sc else None) %}

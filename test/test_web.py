@@ -1904,19 +1904,31 @@ def test_library_empty_state(client):
     assert "No fully-tagged albums yet" in r.text
 
 
-def test_library_row_links_to_musicbrainz(client, cfg):
+def test_library_tile_opens_detail_modal(client, cfg):
+    """The Library grid renders tiles that open the album detail in #modal (the
+    same surface as the potential-download verify modal) — no inline template."""
     from datetime import datetime
 
-    _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
+    d = _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
     r = client.get("/library")
+    assert f"/library/{_id_for(cfg, d)}/detail" in r.text
+    # The heavy detail markup is no longer inlined in the grid response.
+    assert "musicbrainz.org/release/abc-123" not in r.text
+
+
+def test_library_detail_links_to_musicbrainz(client, cfg):
+    from datetime import datetime
+
+    d = _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
+    r = client.get(f"/library/{_id_for(cfg, d)}/detail")
     assert "musicbrainz.org/release/abc-123" in r.text
 
 
-def test_library_row_shows_store_url_and_item_id_in_expanded(client, cfg):
+def test_library_detail_shows_store_url_and_item_id(client, cfg):
     from datetime import datetime
 
-    _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
-    r = client.get("/library")
+    d = _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
+    r = client.get(f"/library/{_id_for(cfg, d)}/detail")
     assert "x.bandcamp.com" in r.text
     assert "42" in r.text  # item_id
 
@@ -2720,8 +2732,8 @@ def test_library_compare_renders_side_by_side(client, cfg, monkeypatch):
 
 
 def test_library_detail_offers_verify_tagging(client, cfg):
-    _make_tagged_album(cfg, "HasVerify", mbid="rel-v2", tagged_at=datetime.now(UTC))
-    r = client.get("/library")
+    d = _make_tagged_album(cfg, "HasVerify", mbid="rel-v2", tagged_at=datetime.now(UTC))
+    r = client.get(f"/library/{_id_for(cfg, d)}/detail")
     assert "Verify tagging vs MusicBrainz" in r.text
 
 
@@ -2742,7 +2754,7 @@ def test_library_detail_shows_ambiguous_bandcamp_ids(client, cfg):
             tagged_at=datetime.now(UTC),
         ),
     )
-    r = client.get("/library")
+    r = client.get(f"/library/{_id_for(cfg, d)}/detail")
     assert "ambiguous: item #111 or #222" in r.text
 
 

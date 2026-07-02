@@ -1,8 +1,6 @@
-{# One page of the Library grid. The first page opens #library-grid (and the
-   shared #album-detail-panel); subsequent pages (Load more) emit just tiles +
-   their <template>s + a fresh Load-more, which replace the old button INSIDE
-   the grid. <template> elements are inert (display:none) so their position
-   among grid items doesn't affect layout. #}
+{# One page of the Library grid. The first page opens #library-grid; subsequent
+   pages (Load more) emit just tiles + a fresh Load-more, which replace the old
+   button INSIDE the grid. Clicking a tile opens the album's detail in #modal. #}
 {% if is_first_page %}
 <div class="flex justify-between items-baseline mb-3">
     {# data-total-done carries the full terminal-album count (not just this
@@ -27,9 +25,6 @@
 {% else %}
 {% if is_first_page %}
 <div id="library-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-    {# Full-width expanding detail; moved next to the clicked row's last tile by
-       JS. Hidden (display:none) so it occupies no grid cell until opened. #}
-    <div id="album-detail-panel" class="col-span-full hidden"></div>
 {% endif %}
 
     {% for album in rows %}{% include 'partials/library_tile.html' %}{% endfor %}
@@ -42,10 +37,6 @@
         Load more <span class="text-muted font-normal text-xs ml-2">{{ next_offset }} / {{ total_done }}</span>
     </button>
     {% endif %}
-
-    {% for album in rows %}
-    <template id="album-tpl-{{ album.id }}">{% include 'partials/library_detail.html' %}</template>
-    {% endfor %}
 
 {% if is_first_page %}
 </div>

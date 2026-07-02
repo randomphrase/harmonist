@@ -1,10 +1,9 @@
-{# One album tile in the Library grid. Clicking expands a full-width detail
-   panel below its row (see harmonistLibTile in index.html). The detail markup
-   lives in a sibling <template id="album-tpl-{id}"> rendered by library_page. #}
+{# One album tile in the Library grid. Clicking opens the album's full detail in
+   the shared #modal (same surface as the potential-download verify modal). #}
 {% set sc = album.sidecar %}
 {% set is_new = sc and sc.downloaded_at and (now - sc.downloaded_at).days < 7 %}
-<div id="lib-{{ album.id }}" data-id="{{ album.id }}"
-     onclick="harmonistLibTile('{{ album.id }}')"
+<div id="lib-{{ album.id }}"
+     hx-get="/library/{{ album.id }}/detail" hx-target="#modal" hx-swap="innerHTML"
      class="lib-tile group cursor-pointer select-none">
     <div class="relative">
         <img loading="lazy" src="/cover/{{ album.id }}"

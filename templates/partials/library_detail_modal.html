@@ -6,7 +6,8 @@
      onclick="if (event.target === this) harmonistCloseModal()">
     <div class="bg-white border border-line rounded-lg max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-auto">
         <div class="flex items-center justify-between gap-4 px-4 pt-4">
-            <h2 class="text-sm font-bold text-muted uppercase tracking-widest">Verify album</h2>
+            <h2 class="text-sm font-bold text-muted uppercase tracking-widest">
+                {{ 'Verify album' if pending_item_id is not none else 'Album' }}</h2>
             <button type="button" onclick="harmonistCloseModal()"
                     class="text-muted hover:text-ink text-2xl leading-none">&times;</button>
         </div>
