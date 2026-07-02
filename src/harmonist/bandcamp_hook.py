@@ -593,9 +593,8 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
             activity.record(
                 f"{getattr(item, 'band_name', '?')} — {getattr(item, 'item_title', '?')}: "
-                f"linked to your on-disk album by artist page + title — its store URL was "
-                f"only the artist page ({host}), which MusicBrainz doesn't carry. "
-                f"Needs Sync → Library."
+                f"Needs Sync → Library (auto-linked to Bandcamp purchase "
+                f"{getattr(item, 'item_id', '?')} by artist + title)"
             )
         if not self.ignores.is_ignored(item):
             self.ignores.add(item)

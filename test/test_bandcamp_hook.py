@@ -1187,11 +1187,17 @@ def test_adopt_links_artist_root_album_by_subdomain_and_title(tmp_path):
     s = _adopt_syncer(tmp_path)
     s.bandcamp.purchases = [p]
 
+    from harmonist import activity
+
+    activity.clear()
     assert s.sync_item(p) is False  # linked, no download
     loaded = sc.read(album)
     assert loaded.bandcamp.item_id == 555
     assert loaded.store_url == "https://bancodegaia.bandcamp.com/album/live-at-glastonbury"
     assert s._pending_this_run == []  # NOT a potential download
+    # The activity line names the Bandcamp purchase id (the actionable handle).
+    msgs = [e.message for e in activity.recent(5)]
+    assert any("auto-linked" in m and "555" in m for m in msgs)
 
 
 def test_adopt_skips_album_with_no_store_url(tmp_path):
