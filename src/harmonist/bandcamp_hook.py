@@ -600,10 +600,17 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         album_dir = avail[0]
         self._adopt_consumed.add(album_dir)
         if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
+            # Show BOTH titles when they differ (the match was by word-subsequence,
+            # e.g. MB "…" vs Bandcamp "… EP") so a loose auto-link is auditable.
+            purchase_title = str(getattr(item, "item_title", "?"))
+            disk_title = _album_title(album_dir)
+            matched = (
+                f" → on-disk “{disk_title}”" if disk_title and disk_title != purchase_title else ""
+            )
             activity.record(
-                f"{getattr(item, 'band_name', '?')} — {getattr(item, 'item_title', '?')}: "
+                f"{getattr(item, 'band_name', '?')} — {purchase_title}: "
                 f"Needs Sync → Library (auto-linked to Bandcamp purchase "
-                f"{getattr(item, 'item_id', '?')} by artist + title)"
+                f"{getattr(item, 'item_id', '?')} by artist + title{matched})"
             )
         if not self.ignores.is_ignored(item):
             self.ignores.add(item)

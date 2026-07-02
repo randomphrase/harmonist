@@ -1218,10 +1218,16 @@ def test_adopt_links_across_ep_suffix_title_difference(tmp_path):
     s = _adopt_syncer(tmp_path)
     s.bandcamp.purchases = [p]
 
+    from harmonist import activity
+
+    activity.clear()
     assert s.sync_item(p) is False
     loaded = sc.read(album)
     assert loaded.bandcamp.item_id == 999
     assert s._pending_this_run == []
+    # The log shows BOTH titles because they differ (purchase "… EP" → on-disk "…").
+    msgs = [e.message for e in activity.recent(5)]
+    assert any("on-disk “Music Industry 3. Fitness Industry 1.”" in m and "999" in m for m in msgs)
 
 
 def test_adopt_skips_album_with_no_store_url(tmp_path):
