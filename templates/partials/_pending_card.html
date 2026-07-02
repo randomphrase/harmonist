@@ -18,9 +18,9 @@
             </div>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-            <button hx-post="/pending/{{ p.item_id }}/download" hx-target="#pending-section" hx-swap="outerHTML"
+            <button hx-post="/pending/{{ p.item_id }}/download" hx-target="#pending-section" hx-swap="morph:outerHTML"
                     class="px-2.5 py-1 text-xs font-bold rounded bg-accent text-white hover:bg-accent-dark transition">Download</button>
-            <button hx-post="/pending/{{ p.item_id }}/skip" hx-target="#pending-section" hx-swap="outerHTML"
+            <button hx-post="/pending/{{ p.item_id }}/skip" hx-target="#pending-section" hx-swap="morph:outerHTML"
                     class="px-2.5 py-1 text-xs font-bold rounded border border-line text-muted hover:text-ink transition">Don't&nbsp;download</button>
         </div>
     </div>
@@ -30,7 +30,7 @@
                 {% if sugg %}border-accent/40 bg-accent-soft{% else %}border-line bg-white/40{% endif %}">
         <div class="flex items-center gap-2">
             <span class="text-xs text-muted shrink-0">Already in your library?</span>
-            <input type="search" name="q"
+            <input type="search" name="q" id="search-{{ p.item_id }}"
                    placeholder="{{ 'not this one? search…' if sugg else 'search your library by artist, title or folder…' }}"
                    hx-get="/pending/{{ p.item_id }}/match/results"
                    hx-trigger="keyup changed delay:250ms, search"

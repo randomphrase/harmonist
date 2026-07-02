@@ -17,7 +17,7 @@
             <span class="font-semibold text-ink">{{ sugg.band }} — {{ sugg.title }}</span>
         </div>
         <button hx-post="/pending/{{ sugg.item_id }}/match" hx-vals='{"album_id": "{{ album.id }}"}'
-                hx-target="#pending-section" hx-swap="outerHTML"
+                hx-target="#pending-section" hx-swap="morph:outerHTML"
                 class="px-2 py-0.5 text-xs font-bold rounded bg-accent text-white hover:bg-accent-dark shrink-0 transition">Link</button>
     </div>
     {% endif %}

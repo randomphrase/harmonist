@@ -14,7 +14,7 @@
             <div class="text-2xs text-muted truncate">{{ a.rel_path }}</div>
         </button>
         <button hx-post="/pending/{{ item_id }}/match" hx-vals='{"album_id": "{{ a.id }}"}'
-                hx-target="#pending-section" hx-swap="outerHTML"
+                hx-target="#pending-section" hx-swap="morph:outerHTML"
                 class="px-2 py-0.5 text-xs font-bold rounded bg-accent text-white hover:bg-accent-dark shrink-0 transition">Link</button>
     </li>
     {% endfor %}
