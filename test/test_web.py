@@ -288,12 +288,10 @@ def test_tasks_needs_sync_section_advises_sync(client, cfg):
     )
     r = client.get("/tasks")
     assert "Needs Sync" in r.text
-    # Instruction explicitly calls out Sync
+    # Instruction points at the (header) Sync button — there's no inline
+    # bulk-sync button; the header Sync popover is the single entry point.
     assert "Click Sync" in r.text
-    # Inline bulk-Sync affordance (the whole group is fixed by one Sync).
-    # /tasks is a fragment with no header, so hx-post="/sync" is this button.
-    assert 'hx-post="/sync"' in r.text
-    assert "Sync to link" in r.text
+    assert "Sync to link" not in r.text
 
 
 def test_large_inbox_group_collapses_into_details(client, cfg):
@@ -663,28 +661,6 @@ def test_needs_sync_bulk_button_absent_while_reconciling(client, cfg):
     assert r.status_code == 200
     assert "Sorting your library" in r.text  # the reconcile panel
     assert "sync-trigger" not in r.text  # ...no bulk-sync button
-
-
-def test_needs_sync_bulk_button_enabled_when_idle(client, cfg):
-    # Sanity counterpart: with no reconcile running the button is not disabled.
-    d = _make_album(cfg, "BulkSyncIdle")
-    audio = MP4(d / "01 Track.m4a")
-    audio[ATOM_MB_ALBUM_ID] = [b"rel-bulk-2"]
-    audio.save()
-    sc.write(
-        d,
-        Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
-            store_url="https://x.bandcamp.com/album/y",
-            bandcamp=BandcampInfo(item_id=None),
-            mb_release_id="rel-bulk-2",
-            tagged_at=datetime.now(UTC),
-        ),
-    )
-    r = client.get("/tasks")
-    assert r.status_code == 200
-    button = r.text[r.text.index("sync-trigger") : r.text.index("sync-trigger") + 400]
-    assert "disabled title=" not in button
 
 
 def test_needs_sync_group_collapses_to_progress_note_while_syncing(client, cfg):
@@ -2731,10 +2707,15 @@ def test_library_compare_renders_side_by_side(client, cfg, monkeypatch):
     assert "Track 1" in r.text
 
 
-def test_library_detail_offers_verify_tagging(client, cfg):
+def test_library_detail_auto_loads_track_comparison(client, cfg):
+    """The detail modal auto-loads the per-track disk-vs-MB comparison on open
+    (one MB fetch — a deliberate, one-at-a-time modal), rather than hiding it
+    behind a button."""
     d = _make_tagged_album(cfg, "HasVerify", mbid="rel-v2", tagged_at=datetime.now(UTC))
-    r = client.get(f"/library/{_id_for(cfg, d)}/detail")
-    assert "Verify tagging vs MusicBrainz" in r.text
+    aid = _id_for(cfg, d)
+    r = client.get(f"/library/{aid}/detail")
+    assert f"/library/{aid}/compare" in r.text
+    assert 'hx-trigger="load"' in r.text
 
 
 def test_library_detail_shows_ambiguous_bandcamp_ids(client, cfg):

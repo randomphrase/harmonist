@@ -4,7 +4,7 @@
    `pending_item_id` is set, a Link action closes the loop here. #}
 <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
      onclick="if (event.target === this) harmonistCloseModal()">
-    <div class="bg-white border border-line rounded-lg max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-auto">
+    <div class="bg-white border border-line rounded-lg max-w-4xl w-full shadow-2xl max-h-[90vh] overflow-auto">
         <div class="flex items-center justify-between gap-4 px-4 pt-4">
             <h2 class="text-sm font-bold text-muted uppercase tracking-widest">
                 {{ 'Verify album' if pending_item_id is not none else 'Album' }}</h2>

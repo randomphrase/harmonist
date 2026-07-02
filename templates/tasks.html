@@ -3,9 +3,8 @@
    isn't in any count yet; reconcile files it as it goes. Otherwise it's the
    live snapshot count. #}
 {% set reconciling = reconcile and reconcile.state == 'running' %}
-{# A sync in flight must disable the inline "Sync to link all" button at render
-   time — not just via the #app-status poll, which only re-disables on its next
-   tick and so leaves a gap each time tasks-changed re-renders this button. #}
+{# A sync in flight collapses the Needs-Sync group to a progress note (its albums
+   are being linked right now); syncing gates that below. #}
 {% set syncing = sync and sync.state == 'running' %}
 {# The tab badges come from /status `counts` (live_counts) now, not from a marker
    here. This `inbox_n` only feeds the in-page "N need attention" line below. #}
@@ -153,22 +152,11 @@
                 {% elif state == AlbumState.TAGGING %}Files being written…
                 {% endif %}
             </p>
-            {% if state == AlbumState.NEEDS_SYNC and not syncing %}
-            {# The whole group is fixed by one Sync run — surface it inline so
-               the user doesn't hunt for the header button. `.sync-trigger` lets
-               the #app-status poll disable it if a reconcile starts while this
-               render is still on screen. Hidden while a sync is in flight — the
-               group is being worked on and will clear when it finishes. #}
-            <button hx-post="/sync" hx-swap="none" hx-disabled-elt="this"
-                    class="sync-trigger mt-2 inline-flex items-center px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition disabled:opacity-40 disabled:cursor-not-allowed">
-                Sync to link {% if group|length > 1 %}all {{ group|length }}{% else %}it{% endif %}
-            </button>
-            {% endif %}
         </div>
         {% if syncing and state == AlbumState.NEEDS_SYNC %}
-        {# A sync is running: don't offer the "Show all N albums" list (or the
-           bulk button above). These are being linked to Bandcamp right now and
-           clear from the inbox as the sync completes. #}
+        {# A sync is running: don't offer the "Show all N albums" list. These are
+           being linked to Bandcamp right now and clear from the inbox as the
+           sync completes. #}
         <p class="text-xs text-muted italic px-1">
             Linking these to your Bandcamp purchases — they clear as the sync finishes.
         </p>

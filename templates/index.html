@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const reason = initialScan ? 'Scanning your library…'
             : sync.state === 'running' ? 'Sync in progress'
             : 'Reconciling — finishing up before sync';
-        document.querySelectorAll('#sync-button, #bandcamp-setup-button, .sync-trigger').forEach(function (b) {
+        document.querySelectorAll('#sync-button, #bandcamp-setup-button').forEach(function (b) {
             b.disabled = actionOff;
             b.classList.toggle('opacity-40', actionOff);
             b.classList.toggle('cursor-not-allowed', actionOff);

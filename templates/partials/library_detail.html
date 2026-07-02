@@ -90,15 +90,11 @@
             </div>
 
             {% if sc and sc.mb_release_id %}
-            {# Lazy, on-demand sanity check: did we tag the right release? #}
-            <div>
-                <button hx-get="/library/{{ album.id }}/compare"
-                        hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"
-                        hx-disabled-elt="this"
-                        class="text-xs text-accent hover:underline font-semibold">
-                    Verify tagging vs MusicBrainz
-                </button>
-                <div id="compare-{{ album.id }}"></div>
+            {# Per-track disk-vs-MB comparison, loaded when the modal opens (one MB
+               fetch — the modal is a deliberate, one-at-a-time open). #}
+            <div id="compare-{{ album.id }}"
+                 hx-get="/library/{{ album.id }}/compare" hx-trigger="load" hx-swap="innerHTML">
+                <p class="text-2xs text-muted italic mt-2">Checking tracks against MusicBrainz…</p>
             </div>
             {% endif %}
 
