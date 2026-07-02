@@ -26,7 +26,7 @@ from bandcampsync.sync import Syncer as _BCSyncer
 
 from . import activity, audit, formats, library_index, pending_downloads
 from . import sidecar as sidecar_mod
-from .models import BandcampInfo, Sidecar, is_bandcamp_url
+from .models import BandcampInfo, Sidecar, is_bandcamp_url, title_words, titles_match
 from .pending_downloads import PendingPurchase
 from .sidecar import CURRENT_SCHEMA_VERSION
 from .url_recovery import album_slug as album_slug  # re-export; canonical home is url_recovery
@@ -196,10 +196,11 @@ def write_ambiguous_candidates(album_dir: Path, item_ids: list[int]) -> bool:
 
 
 def _norm_title(s: str) -> str:
-    """Lowercase + keep only alphanumerics — for an exact (not fuzzy) compare
-    between an album's title and a purchase title. Exact-only keeps the tiebreak
-    safe: a near-but-not-equal title falls through to ambiguous rather than
-    risking a mis-link."""
+    """Lowercase + keep only alphanumerics — for an EXACT compare between an
+    album's title and a purchase title (the backfill's edition tiebreak, where a
+    near-but-not-equal title must stay ambiguous rather than risk a mis-link).
+    The looser subsequence match (`titles_match`) is used for the adoption
+    auto-link + render-time suggestion instead."""
     return "".join(ch for ch in s.lower() if ch.isalnum())
 
 
@@ -312,7 +313,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # Adoption auto-link (link-only): unlinked artist-root albums indexed by
         # (bandcamp host, normalized title), + the ones consumed this run. Built
         # in sync_items; read in sync_item before a purchase is recorded pending.
-        self._adopt_index: dict[tuple[str, str], list[Path]] = {}
+        self._adopt_index: dict[str, list[tuple[tuple[str, ...], Path]]] = {}
         self._adopt_consumed: set[Path] = set()
         options = BandcampSyncOptions(
             cookies=cookies,
@@ -555,13 +556,16 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 log.warning("could not mark %s ambiguous: %s", album_dir.name, e)
         return (linked, ambiguous, [])
 
-    def _build_adopt_index(self, slugless: list[Path]) -> dict[tuple[str, str], list[Path]]:
-        """Index unlinked artist-root albums by (bandcamp host, normalized title).
+    def _build_adopt_index(
+        self, slugless: list[Path]
+    ) -> dict[str, list[tuple[tuple[str, ...], Path]]]:
+        """Index unlinked artist-root albums by bandcamp host → [(title words, dir)].
         These have a Bandcamp store_url but no `/album/` slug — MB's release lacked
         a Bandcamp URL, so reconcile kept the `©cmt` artist page — so they can't
-        match a purchase by slug. But the host IS the artist and the `©alb` is the
-        album, a strong pair. Reading titles for just this (small) set is cheap."""
-        index: dict[tuple[str, str], list[Path]] = {}
+        match a purchase by slug. But the host IS the artist page, so within it we
+        match the `©alb` title against the purchase title by word-subsequence
+        (`titles_match`). Reading titles for just this (small) set is cheap."""
+        index: dict[str, list[tuple[tuple[str, ...], Path]]] = {}
         for album_dir in slugless:
             try:
                 sc = sidecar_mod.read(album_dir)
@@ -572,20 +576,25 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             host = (urlparse(sc.store_url).hostname or "").lower()
             if not host:
                 continue
-            index.setdefault((host, _norm_title(_album_title(album_dir))), []).append(album_dir)
+            index.setdefault(host, []).append((title_words(_album_title(album_dir)), album_dir))
         return index
 
     def _adopt_link(self, item: Any, url: str) -> bool:
         """Confidently auto-link a purchase to an unlinked artist-root album: same
-        Bandcamp subdomain (its store_url host) AND matching title, uniquely. Links
-        it (adopting the full purchase URL) so it never becomes a potential
-        download; the manual fallback handles anything less certain. Returns True
-        if linked."""
+        Bandcamp subdomain (its store_url host) AND a matching title, uniquely.
+        Title match is word-subsequence (`titles_match`) — loose is fine, since
+        we're only comparing within one artist's page. Links it (adopting the full
+        purchase URL) so it never becomes a potential download; the manual fallback
+        handles anything less certain. Returns True if linked."""
         host = (urlparse(url).hostname or "").lower()
-        if not host:
+        ptitle = title_words(getattr(item, "item_title", ""))
+        if not host or not ptitle:
             return False
-        key = (host, _norm_title(getattr(item, "item_title", "")))
-        avail = [d for d in self._adopt_index.get(key, []) if d not in self._adopt_consumed]
+        avail = [
+            d
+            for (t, d) in self._adopt_index.get(host, [])
+            if d not in self._adopt_consumed and titles_match(ptitle, t)
+        ]
         if len(avail) != 1:
             return False  # 0 = no confident match; ≥2 = ambiguous → manual review
         album_dir = avail[0]

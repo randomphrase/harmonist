@@ -1200,6 +1200,30 @@ def test_adopt_links_artist_root_album_by_subdomain_and_title(tmp_path):
     assert any("auto-linked" in m and "555" in m for m in msgs)
 
 
+def test_adopt_links_across_ep_suffix_title_difference(tmp_path):
+    """The Mogwai case: on-disk ©alb is the MusicBrainz title (no 'EP'), the
+    purchase title keeps 'EP'. Word-subsequence matching links them anyway."""
+    album = _artist_root_album(
+        tmp_path,
+        "Mogwai/Music Industry",
+        store_url="https://mogwai.bandcamp.com",
+        title="Music Industry 3. Fitness Industry 1.",
+    )
+    p = _StubItem(
+        item_id=999,
+        band_name="Mogwai",
+        item_title="Music Industry 3. Fitness Industry 1. EP",
+        url_hints={"subdomain": "mogwai", "slug": "music-industry-3-fitness-industry-1-ep"},
+    )
+    s = _adopt_syncer(tmp_path)
+    s.bandcamp.purchases = [p]
+
+    assert s.sync_item(p) is False
+    loaded = sc.read(album)
+    assert loaded.bandcamp.item_id == 999
+    assert s._pending_this_run == []
+
+
 def test_adopt_skips_album_with_no_store_url(tmp_path):
     """An album with NO Bandcamp store_url (no evidence it came from Bandcamp) is
     NOT auto-linked on a name coincidence — it stays for manual review."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -232,3 +233,28 @@ def store_name(url: str | None) -> str | None:
     if host.endswith("discogs.com"):
         return "discogs"
     return None
+
+
+def title_words(s: str | None) -> tuple[str, ...]:
+    """An album/release title as a tuple of words: casefold, '&' → 'and',
+    punctuation dropped. The unit for order-preserving approximate title matching
+    (`titles_match`)."""
+    s = (s or "").casefold().replace("&", " and ")
+    return tuple(re.sub(r"[^a-z0-9]+", " ", s).split())
+
+
+def titles_match(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
+    """True if two titles are the *same words in the same order* — i.e. one is a
+    word-level **subsequence** of the other. Absorbs MusicBrainz-vs-Bandcamp
+    differences (a trailing "EP"/"Single", a "(Deluxe Edition)" suffix, a dropped
+    "The", …) without enumerating them. Empty titles never match; safety comes from
+    the caller's UNIQUENESS guard (ambiguous → no match), not from this rule."""
+    if not a or not b:
+        return False
+    return _is_word_subsequence(a, b) or _is_word_subsequence(b, a)
+
+
+def _is_word_subsequence(short: tuple[str, ...], long: tuple[str, ...]) -> bool:
+    """True if every word of `short` appears in `long` in order (gaps allowed)."""
+    it = iter(long)
+    return all(word in it for word in short)

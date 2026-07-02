@@ -49,6 +49,8 @@ from harmonist.models import (
     Release,
     Sidecar,
     store_name,
+    title_words,
+    titles_match,
 )
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
@@ -1084,30 +1086,36 @@ def _reconcile_suggestions(
     - ``surrender_suggestions``: ``album.id`` → the potential download a NEEDS_SYNC
       album probably IS (shown on the surrender card).
 
-    Only **unambiguous** pairs: exactly one candidate on that side, non-empty name,
-    and (for the album side) not already ``item_id``-linked. Otherwise no suggestion
-    — the manual search box is the fallback. Both directions call the same
-    ``/pending/{id}/match`` link, which clears both surfaces."""
-    by_name: dict[tuple[str, str], list[Album]] = {}
+    Match rule: **exact artist** (normalized) scopes the comparison to one
+    artist's catalogue, then titles match by **word-subsequence** (`titles_match`)
+    — loose is fine at that scope, and it absorbs MB-vs-Bandcamp title differences
+    (a trailing "EP", "(Deluxe)", a dropped "The", …). Only **unambiguous** pairs
+    are offered: exactly one candidate on that side (non-empty title; album side
+    not already ``item_id``-linked). Otherwise the manual search box is the
+    fallback. Both directions call the same ``/pending/{id}/match`` link."""
+    # Unlinked on-disk albums grouped by normalized artist → (title words, album).
+    albums_by_artist: dict[str, list[tuple[tuple[str, ...], Album]]] = {}
     for a in albums:
         linked = bool(a.sidecar and a.sidecar.bandcamp and a.sidecar.bandcamp.item_id)
-        key = (_norm_name(a.artist), _norm_name(a.title))
-        if linked or not key[1]:
+        words = title_words(a.title)
+        if linked or not words:
             continue
-        by_name.setdefault(key, []).append(a)
+        albums_by_artist.setdefault(_norm_name(a.artist), []).append((words, a))
 
-    pend_by_name: dict[tuple[str, str], list[pending_downloads.PendingPurchase]] = {}
+    pend_by_artist: dict[str, list[tuple[tuple[str, ...], pending_downloads.PendingPurchase]]] = {}
     for p in pending:
-        key = (_norm_name(p.band), _norm_name(p.title))
-        if not key[1]:
+        words = title_words(p.title)
+        if not words:
             continue
-        pend_by_name.setdefault(key, []).append(p)
+        pend_by_artist.setdefault(_norm_name(p.band), []).append((words, p))
 
     pending_suggestions: dict[int, dict[str, str]] = {}
     for p in pending:
-        cands = by_name.get((_norm_name(p.band), _norm_name(p.title)), [])
-        if len(cands) == 1:
-            a = cands[0]
+        pw = title_words(p.title)
+        cand_albums = albums_by_artist.get(_norm_name(p.band), [])
+        alb_cands = [a for (w, a) in cand_albums if titles_match(pw, w)]
+        if len(alb_cands) == 1:
+            a = alb_cands[0]
             pending_suggestions[p.item_id] = {
                 "id": a.id,
                 "artist": a.artist,
@@ -1120,9 +1128,11 @@ def _reconcile_suggestions(
     for a in albums:
         if a.state != AlbumState.NEEDS_SYNC:
             continue
-        pcands = pend_by_name.get((_norm_name(a.artist), _norm_name(a.title)), [])
-        if len(pcands) == 1:
-            surrender_suggestions[a.id] = pcands[0]
+        aw = title_words(a.title)
+        cand_pend = pend_by_artist.get(_norm_name(a.artist), [])
+        pend_cands = [p for (w, p) in cand_pend if titles_match(aw, w)]
+        if len(pend_cands) == 1:
+            surrender_suggestions[a.id] = pend_cands[0]
 
     return pending_suggestions, surrender_suggestions
 
