@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from mutagen.mp4 import MP4
+from mutagen.mp4 import MP4, MP4Cover
 
 from harmonist import tagger
 from harmonist.tagger import (
@@ -267,6 +267,60 @@ def test_tag_album_no_cover_when_path_none(album_with_tracks):
     tagger.tag_album(album_dir, _single_track_release(), cover_path=None)
     audio = MP4(album_dir / "01 Track 1.m4a")
     assert ATOM_COVER not in audio
+
+
+def _embed_cover(path, data: bytes) -> None:
+    audio = MP4(path)
+    audio[ATOM_COVER] = [MP4Cover(data, imageformat=MP4Cover.FORMAT_JPEG)]
+    audio.save()
+
+
+def test_tag_album_preserves_per_track_artwork(album_with_tracks, tmp_path):
+    """DATA SAFETY: tracks with DIFFERENT embedded covers (per-track art, e.g. a
+    compilation) are preserved — the album cover is NOT embedded over them."""
+    album_dir = album_with_tracks(2)
+    art_a = _minimal_jpeg()
+    art_b = _minimal_jpeg() + b"_different"
+    _embed_cover(album_dir / "01 Track 1.m4a", art_a)
+    _embed_cover(album_dir / "02 Track 2.m4a", art_b)
+    new_cover = tmp_path / "cover.jpg"
+    new_cover.write_bytes(b"\xff\xd8\xff\xe0NEW_ALBUM_COVER\xff\xd9")
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=new_cover)
+
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == art_a  # preserved
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == art_b  # preserved
+
+
+def test_tag_album_overwrite_art_forces_replacement(album_with_tracks, tmp_path):
+    """overwrite_art=True is the explicit override: embed the album cover even over
+    differing per-track art."""
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())
+    _embed_cover(album_dir / "02 Track 2.m4a", _minimal_jpeg() + b"_different")
+    new = b"\xff\xd8\xff\xe0FORCED\xff\xd9"
+    new_cover = tmp_path / "cover.jpg"
+    new_cover.write_bytes(new)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=new_cover, overwrite_art=True)
+
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == new
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == new
+
+
+def test_tag_album_embeds_when_art_missing_on_some_tracks(album_with_tracks, tmp_path):
+    """'Missing on some tracks' is NOT per-track art — only ACTUAL differences are.
+    One track with a cover + one without → the album cover embeds normally."""
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())  # track 2 has none
+    new = b"\xff\xd8\xff\xe0UNIFORM\xff\xd9"
+    new_cover = tmp_path / "cover.jpg"
+    new_cover.write_bytes(new)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=new_cover)
+
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == new
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == new
 
 
 def test_tag_album_returns_count(album_with_tracks):

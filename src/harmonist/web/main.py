@@ -1355,6 +1355,7 @@ def _tag_with_release(
     *,
     incomplete: bool = False,
     store_url_override: str | None = None,
+    overwrite_art: bool = False,
 ) -> None:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
@@ -1376,7 +1377,13 @@ def _tag_with_release(
         release_group_mbid=rg.get("id"),
         size=cfg.cover_art.size,
     )
-    tagger.tag_album(album_path, release, cover_path=cover_path, incomplete=incomplete)
+    tagger.tag_album(
+        album_path,
+        release,
+        cover_path=cover_path,
+        incomplete=incomplete,
+        overwrite_art=overwrite_art,
+    )
 
     track_count_expected = sum(len(m.get("track-list", [])) for m in release.get("medium-list", []))
 
@@ -1871,7 +1878,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response("Unlinked", f"{album.title} → Needs Sync")
 
     @app.post("/retag/{album_id}", response_class=HTMLResponse)
-    def retag(request: Request, album_id: str) -> Response:
+    def retag(request: Request, album_id: str, overwrite_art: bool = Form(False)) -> Response:
         album = _find_album(request, album_id)
         sc = album.sidecar
         if not sc or not sc.mb_release_id:
@@ -1884,11 +1891,13 @@ def _register_routes(app: FastAPI) -> None:
                 sc.mb_release_id,
                 request.app.state.cfg,
                 request.app.state.tagger,
+                overwrite_art=overwrite_art,
             )
         except Exception as e:
             log.exception("retag failed")
             return _flash_response("Re-tag failed", str(e), level="error", tasks_changed=False)
-        return _flash_response("Re-tagged", album.title)
+        details = f"{album.title} (artwork replaced)" if overwrite_art else album.title
+        return _flash_response("Re-tagged", details)
 
     @app.post("/forget/{album_id}", response_class=HTMLResponse)
     def forget(request: Request, album_id: str) -> Response:

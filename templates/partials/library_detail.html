@@ -101,8 +101,18 @@
             <div class="flex gap-2 pt-2 border-t border-line">
                 <button hx-post="/retag/{{ album.id }}"
                         hx-swap="none" hx-disabled-elt="this"
-                        class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
+                        class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition"
+                        title="Re-tag from MusicBrainz. Per-track embedded artwork is preserved.">
                     Re-tag from MB
+                </button>
+                {# Force overwrite of per-track artwork (otherwise preserved). Niche;
+                   subtle styling so it doesn't compete with the primary Re-tag. #}
+                <button hx-post="/retag/{{ album.id }}" hx-vals='{"overwrite_art": "true"}'
+                        hx-swap="none" hx-disabled-elt="this"
+                        hx-confirm="Re-tag AND overwrite each track's embedded artwork with the album cover? Any per-track artwork (e.g. on a compilation) will be replaced — this can't be undone."
+                        class="px-3 py-1.5 bg-surface hover:bg-line text-muted border border-line rounded text-xs font-bold uppercase tracking-widest transition"
+                        title="Replace per-track embedded artwork with the single album cover.">
+                    Replace artwork
                 </button>
                 <button hx-post="/forget/{{ album.id }}"
                         hx-swap="none" hx-disabled-elt="this"

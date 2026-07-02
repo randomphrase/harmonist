@@ -10,6 +10,8 @@ constants are re-exported here.
 
 from __future__ import annotations
 
+import hashlib
+import logging
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -53,6 +55,8 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
 )
 from .models import Release, Track
 
+log = logging.getLogger(__name__)
+
 # One flattened MB track: (medium, track_pos_in_medium, track).
 _FlatTrack = tuple[dict[str, Any], int, Track]
 
@@ -79,6 +83,7 @@ class Tagger(Protocol):
         cover_path: Path | None = None,
         *,
         incomplete: bool = False,
+        overwrite_art: bool = False,
     ) -> int: ...
 
 
@@ -93,8 +98,11 @@ class PicardCompatibleTagger:
         cover_path: Path | None = None,
         *,
         incomplete: bool = False,
+        overwrite_art: bool = False,
     ) -> int:
-        return tag_album(album_dir, release, cover_path, incomplete=incomplete)
+        return tag_album(
+            album_dir, release, cover_path, incomplete=incomplete, overwrite_art=overwrite_art
+        )
 
 
 def tag_album(
@@ -103,6 +111,7 @@ def tag_album(
     cover_path: Path | None = None,
     *,
     incomplete: bool = False,
+    overwrite_art: bool = False,
 ) -> int:
     """Tag every supported audio file in `album_dir`.
 
@@ -114,6 +123,10 @@ def tag_album(
     to a subset of MB tracks via length-similarity (positional fallback).
     file_count > track_count is still an error in both modes (per design
     §15.3 — "extra files on disk" is out of scope).
+
+    `overwrite_art=True` embeds the album cover even when the tracks carry
+    differing per-track artwork (which is otherwise preserved) — the user's
+    explicit "replace the artwork" override.
     """
     files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
     flat_tracks = list(_flatten_tracks(release))
@@ -137,6 +150,18 @@ def tag_album(
         pairs = list(zip(files, flat_tracks, strict=True))
 
     cover = cover_path.read_bytes() if cover_path else None
+    # DATA SAFETY: if the tracks carry DIFFERENT embedded art (a per-track-art
+    # album, e.g. a compilation), embedding one album cover would destroy those
+    # images. Preserve them — pass cover=None (write_tags leaves the existing
+    # embedded cover untouched); the folder cover.* is still written separately.
+    if cover is not None and not overwrite_art and _has_per_track_art(files):
+        log.warning(
+            "%s: tracks have per-track embedded artwork — keeping it, NOT embedding "
+            "the album cover (folder cover.* is still written). Re-tag with "
+            "'replace artwork' to override.",
+            album_dir.name,
+        )
+        cover = None
     media_total = len(release.get("medium-list", [])) or 1
 
     for file_path, (medium, track_pos_in_medium, track) in pairs:
@@ -144,6 +169,20 @@ def tag_album(
         formats.write_tags(file_path, tagset, cover)
 
     return len(files)
+
+
+def _has_per_track_art(files: list[Path]) -> bool:
+    """True when the album's tracks carry DIFFERENT embedded cover images — i.e.
+    per-track artwork worth preserving. Reads each file's existing cover once (at
+    tag time, when we're opening the files anyway) and compares hashes."""
+    seen: set[str] = set()
+    for f in files:
+        art = formats.read_cover(f)
+        if art is not None:
+            seen.add(hashlib.sha1(art[0]).hexdigest())
+        if len(seen) > 1:
+            return True
+    return False
 
 
 def _build_tagset(
