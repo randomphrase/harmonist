@@ -2848,14 +2848,29 @@ def test_pending_download_approves_and_removes(client):
     assert pd.is_approved(43)  # the next sync will fetch it
 
 
-def test_pending_match_panel_renders_search(client):
+def test_pending_card_has_inline_library_search(client):
+    """The card carries the unified 'already in your library?' live search inline
+    (no separate Match toggle) — the search box + results container are always
+    present, so the auto-match and a manual search share one coherent surface."""
     from harmonist import pending_downloads as pd
 
     pd.replace_all([_pp(44, band="Variant", title="Sequential Sleep")])
-    r = client.get("/pending/44/match")
+    body = client.get("/tasks").text
+    assert "Already in your library?" in body
+    assert 'name="q"' in body  # the inline library search input
+    assert 'id="match-results-44"' in body  # the results container the search targets
+
+
+def test_pending_match_results_endpoint_searches_library(client, cfg):
+    """The inline search hits /pending/{id}/match/results, returning library rows."""
+    from harmonist import pending_downloads as pd
+
+    _make_album(cfg, "Sequential Sleep")
+    pd.replace_all([_pp(44, band="Variant", title="Sequential Sleep")])
+    r = client.get("/pending/44/match/results", params={"q": "Sequential"})
     assert r.status_code == 200
-    assert "Variant" in r.text
-    assert 'name="q"' in r.text  # the library search input
+    assert "Sequential Sleep" in r.text
+    assert "/pending/44/match" in r.text  # each row Links via the match POST
 
 
 def test_pending_match_link_fills_item_id(client, cfg):

@@ -1098,6 +1098,7 @@ def _reconcile_suggestions(
                 "id": a.id,
                 "artist": a.artist,
                 "title": a.title,
+                "path": str(a.path),
                 "rel_path": _rel_path(a.path, base),
             }
 
@@ -1503,28 +1504,15 @@ def _register_routes(app: FastAPI) -> None:
         activity.record(f"Will download {label} on the next sync — click Sync")
         return _render_pending_section(request)
 
-    @app.get("/pending/{item_id}/match", response_class=HTMLResponse)
-    def pending_match_panel(request: Request, item_id: int) -> Response:
-        p = pending_downloads.get(item_id)
-        if p is None:  # decided elsewhere meanwhile — just refresh the section
-            return _render_pending_section(request)
-        ctx = _ctx(request, p=p, results=[], item_id=item_id, q="")
-        return _templates(request).TemplateResponse(request, "partials/_pending_match.html", ctx)
-
     @app.get("/pending/{item_id}/match/results", response_class=HTMLResponse)
     def pending_match_results(request: Request, item_id: int, q: str = "") -> Response:
+        # Live results for a card's inline "already in your library?" search. Empty
+        # query → the seeded auto-match is already shown by the card, so return the
+        # empty/hint state (the card's initial render carries the suggestion).
         ctx = _ctx(request, results=_search_albums(request, q), item_id=item_id, q=q)
         return _templates(request).TemplateResponse(
             request, "partials/_pending_match_results.html", ctx
         )
-
-    @app.get("/pending/{item_id}/cancel", response_class=HTMLResponse)
-    def pending_cancel(request: Request, item_id: int) -> Response:
-        p = pending_downloads.get(item_id)
-        if p is None:
-            return _render_pending_section(request)
-        ctx = _ctx(request, p=p, pending_suggestions=_pending_suggestions(request))
-        return _templates(request).TemplateResponse(request, "partials/_pending_card.html", ctx)
 
     @app.post("/pending/{item_id}/match", response_class=HTMLResponse)
     def pending_match_link(request: Request, item_id: int, album_id: str = Form(...)) -> Response:
