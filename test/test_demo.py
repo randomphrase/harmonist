@@ -270,25 +270,13 @@ def test_demo_reset_endpoint(demo_client):
 
 def test_demo_confirm_tags_album_end_to_end(demo_client):
     """Click Confirm on Thamesmen — exercises fetch_release + tagger + cover."""
-    tasks = demo_client.get("/tasks").text
-    # Find the Thamesmen card; pull its album id out of the data-attributes
-    import re
+    from harmonist.scanner import scan
 
-    m = re.search(r'task-([0-9a-f]{32})"[^"]*"[^>]*>[^<]*<[^>]*Gimme Some Money', tasks)
-    if not m:
-        # fallback: pick the album id by scanning
-        from harmonist.models import AlbumState
-        from harmonist.scanner import scan
-
-        albums = scan(demo_client.app.state.cfg.paths.music_dir)
-        nc = next(
-            a
-            for a in albums
-            if a.state == AlbumState.NEEDS_MBID and a.sidecar and a.sidecar.mb_match_candidate
-        )
-        aid = nc.id
-    else:
-        aid = m.group(1)
+    # Select by title — the demo now has two NEEDS_MBID-with-candidate albums
+    # (Thamesmen approximate + Stillwater mis-tag), so "the candidate album" is
+    # ambiguous; pick this one explicitly (order differs across platforms).
+    albums = scan(demo_client.app.state.cfg.paths.music_dir)
+    aid = next(a.id for a in albums if a.title == "Gimme Some Money")
     r = demo_client.post(f"/confirm/{aid}")
     assert r.status_code == 200, r.text
     assert "Tagged" in r.text
