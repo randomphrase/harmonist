@@ -81,3 +81,10 @@ def all_pending() -> list[PendingPurchase]:
 def count() -> int:
     with _lock:
         return len(_pending)
+
+
+def reset() -> None:
+    """Clear all state (pending + approved). For demo re-seed and test isolation."""
+    with _lock:
+        _pending.clear()
+        _approved.clear()

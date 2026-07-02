@@ -193,8 +193,17 @@ def create_app(
         demo.ensure_seeded(cfg.paths.music_dir)
 
         def runner_fn() -> Any:
+            # Same link-only rule as the real runner: the popover override wins,
+            # else auto-detect (any Needs-Link album or pending potential-download).
+            override = sync_runner.link_only_override
+            sync_runner.link_only_override = None
+            auto = live_counts.to_status()["needs_sync"] > 0 or pending_downloads.count() > 0
+            link_only = override if override is not None else auto
             result = demo.run_demo_sync(
-                cfg.paths.music_dir, progress_callback=sync_runner.set_current_item
+                cfg.paths.music_dir,
+                link_only=link_only,
+                ignores_file=cfg.ignores_file,
+                progress_callback=sync_runner.set_current_item,
             )
             # Downloads done; the status bar shouldn't stay pinned to the last
             # album's name while we wrap up.

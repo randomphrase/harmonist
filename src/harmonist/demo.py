@@ -2,7 +2,9 @@
 
 When `HARMONIST_DEMO_MODE=1` is set:
   * The music dir is seeded once with a curated set of demo albums covering
-    every Album state, plus a queue of pending "Bandcamp purchases".
+    every Album state — including a mis-tag and a non-Bandcamp-comment album —
+    plus owned "Bandcamp purchases" that surface as potential downloads in a
+    link-only sync (one recovered via the fuzzy library match).
   * The MB lookup, MB search, Cover Art Archive, and Bandcamp sync layers
     are monkey-patched to return canned demo data — no real network calls.
   * `/demo/reset` wipes the music dir and re-seeds it.
@@ -30,7 +32,7 @@ from typing import Any
 
 from mutagen.mp4 import MP4
 
-from . import activity
+from . import activity, pending_downloads
 from . import sidecar as sidecar_mod
 from .formats.m4a import (
     ATOM_ALBUM,
@@ -41,6 +43,7 @@ from .formats.m4a import (
     ATOM_TRACK_NUM,
 )
 from .models import BandcampInfo, MatchCandidate, Release, Sidecar, TrackComparison
+from .pending_downloads import PendingPurchase
 from .sidecar import CURRENT_SCHEMA_VERSION
 
 log = logging.getLogger(__name__)
@@ -183,11 +186,68 @@ LIBRARY: list[dict[str, Any]] = [
             "track_count_expected": 4,
         },
     },
+    {
+        # State: NEEDS_MBID as a MIS-TAG — on disk it's tagged as the standard
+        # "Fever Dog", but the user owns the "Live at the Riot House" edition
+        # (same release group) on Bandcamp. Seeded straight into the "Possibly
+        # mis-tagged" section; Confirm re-tags to the owned edition.
+        "artist": "Stillwater",
+        "album": "Fever Dog",
+        "tracks": ["Fever Dog", "Love Thing", "Chelsea Hotel"],
+        "cover": "cover-3.jpg",
+        "file_mbid": "demo-rel-fever-std",
+        "sidecar": {
+            "mistag": {
+                "owned_mbid": "demo-rel-fever-live",
+                "owned_url": "https://stillwater.bandcamp.com/album/fever-dog-live",
+                "owned_label": "Stillwater / Fever Dog",
+                "owned_disambig": "Live at the Riot House",
+                "tagged_mbid": "demo-rel-fever-std",
+                "tagged_label": "Stillwater / Fever Dog",
+                "tagged_disambig": "",
+                "release_group_mbid": "demo-rg-fever-dog",
+            },
+        },
+    },
+    {
+        # State: COMPLETE, but a NON-BANDCAMP ©cmt — purchased on Bandcamp, yet
+        # the comment points at the artist's own site, so reconcile finds no
+        # bandcamp.com URL and it lands in the Library unlinked. The matching
+        # queued purchase recovers it via the fuzzy "already in your library?"
+        # potential-download match (the "36" scenario).
+        "artist": "Mouse Rat",
+        "album": "The Awesome Album",
+        "tracks": ["5000 Candles in the Wind", "The Pit", "Sex Hair"],
+        "cover": "cover-6.jpg",
+        "file_mbid": "demo-rel-mouserat",
+        "file_comment": "Visit https://mouserat.net",
+        "sidecar": {
+            "mb_release_id": "demo-rel-mouserat",
+            "tagged": True,
+            # No store_url + no item_id → COMPLETE (Library), unlinked.
+        },
+    },
 ]
 
 
-# Pending "Bandcamp purchases" — popped one per Sync click.
+# Owned Bandcamp purchases NOT matched to an on-disk album by store_url. In a
+# LINK-ONLY sync these surface as "potential downloads" for review; in a full
+# sync they download. Mouse Rat also matches the on-disk Library album by
+# artist/title, so its card shows "Already in your library?"; CB4 + Autobahn are
+# genuinely new (Download). item_id → the id the card carries.
 PENDING_PURCHASES: list[dict[str, Any]] = [
+    {
+        # Matches the on-disk "Mouse Rat / The Awesome Album" (Library, unlinked)
+        # by artist+title → recovered via the fuzzy match instead of re-downloaded.
+        "artist": "Mouse Rat",
+        "album": "The Awesome Album",
+        "tracks": ["5000 Candles in the Wind", "The Pit", "Sex Hair"],
+        "cover": "cover-6.jpg",
+        "sidecar": {
+            "store_url": "https://mouserat.bandcamp.com/album/the-awesome-album",
+            "bandcamp_item_id": 2003,
+        },
+    },
     {
         "artist": "CB4",
         "album": "Straight Outta Lowcash",
@@ -326,6 +386,25 @@ MB_RELEASES: dict[str, Release] = {
         # 4 tracks on MB; the seeded album only has the first 2 on disk.
         ["Can You Picture That?", "Mahna Mahna", "Movin' Right Along", "Rainbow Connection"],
     ),
+    # Two editions of one release group — the mis-tag pairs them (owned = live).
+    "demo-rel-fever-std": _release(
+        "demo-rel-fever-std",
+        "Stillwater",
+        "Fever Dog",
+        ["Fever Dog", "Love Thing", "Chelsea Hotel"],
+    ),
+    "demo-rel-fever-live": _release(
+        "demo-rel-fever-live",
+        "Stillwater",
+        "Fever Dog",
+        ["Fever Dog", "Love Thing", "Chelsea Hotel"],
+    ),
+    "demo-rel-mouserat": _release(
+        "demo-rel-mouserat",
+        "Mouse Rat",
+        "The Awesome Album",
+        ["5000 Candles in the Wind", "The Pit", "Sex Hair"],
+    ),
 }
 
 
@@ -353,13 +432,6 @@ PURCHASE_ITEM_IDS: dict[str, int] = {
     "https://dingoes.bandcamp.com/album/little-bit-o-hoot": 1004,
     "https://variousartists.bandcamp.com/album/the-rural-juror-ost": 1003,
 }
-
-
-# ---------------------------------------------------------------------------
-# Pending queue (in-memory, resets on restart or /demo/reset)
-# ---------------------------------------------------------------------------
-
-_pending_queue: list[dict[str, Any]] = []
 
 
 # ---------------------------------------------------------------------------
@@ -403,8 +475,7 @@ def seed(music_dir: Path) -> None:
     (music_dir / DEMO_MARKER).write_text(
         f"Harmonist demo data — safe to delete.\nversion: {data_version()}\n"
     )
-    global _pending_queue
-    _pending_queue = list(PENDING_PURCHASES)
+    pending_downloads.replace_all([])
 
 
 def reset(music_dir: Path) -> None:
@@ -446,15 +517,20 @@ def ensure_seeded(music_dir: Path) -> bool:
 
 
 def run_demo_sync(
-    music_dir: Path, *, progress_callback: Callable[[str], None] | None = None
+    music_dir: Path,
+    *,
+    link_only: bool = False,
+    ignores_file: Path | None = None,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> Any:
-    """Mirror the real syncer's two behaviours:
-      1. For every already-on-disk album with a Bandcamp store_url and
-         `bandcamp.item_id is None`, fill in the item_id (when the URL
-         matches a known demo purchase). Mirrors
-         HarmonistSyncer.sync_item's existing-on-disk path.
-      2. Pop the next item from the pending queue (if any) and materialise
-         it as a freshly-downloaded album.
+    """Mirror the real syncer's adoption behaviour:
+      1. Link every already-on-disk album whose Bandcamp store_url matches a
+         known purchase (fills `bandcamp.item_id`). Mirrors sync_item's
+         existing-on-disk path — drains "Needs Link".
+      2. The owned purchases with no on-disk copy (by item_id) and not skipped
+         are the residue. In **link-only** mode they surface as POTENTIAL
+         DOWNLOADS for review (download nothing); any the user already approved
+         (clicked Download) are fetched. In a **full** sync they all download.
     Returns a stub matching the attributes the sync runner introspects.
     """
 
@@ -463,16 +539,85 @@ def run_demo_sync(
 
     _fill_in_existing_item_ids(music_dir, progress_callback=progress_callback)
 
-    if _pending_queue:
-        spec = _pending_queue.pop(0)
-        if progress_callback:
-            with contextlib.suppress(Exception):
-                progress_callback(f"{spec['artist']} / {spec['album']}")
-        time.sleep(STEP_DELAY_SECONDS)
-        _materialise(music_dir, spec)
-        activity.record(f"Downloaded {spec['artist']} / {spec['album']}", "info")
-        _Result.new_items_downloaded = True
+    on_disk = _on_disk_item_ids(music_dir)
+    ignored = _read_ignored_ids(ignores_file)
+    unmatched = [
+        p
+        for p in PENDING_PURCHASES
+        if _purchase_item_id(p) not in on_disk and _purchase_item_id(p) not in ignored
+    ]
+
+    if link_only:
+        pending: list[PendingPurchase] = []
+        for p in unmatched:
+            iid = _purchase_item_id(p)
+            if pending_downloads.is_approved(iid):
+                _download(music_dir, p, progress_callback)
+                _Result.new_items_downloaded = True
+            else:
+                pending.append(
+                    PendingPurchase(
+                        item_id=iid,
+                        band=p["artist"],
+                        title=p["album"],
+                        url=p["sidecar"]["store_url"],
+                        fmt="alac",
+                    )
+                )
+        pending_downloads.replace_all(pending)
+    else:
+        for p in unmatched:
+            _download(music_dir, p, progress_callback)
+            _Result.new_items_downloaded = True
+        pending_downloads.replace_all([])
     return _Result()
+
+
+def _download(
+    music_dir: Path, spec: dict[str, Any], progress_callback: Callable[[str], None] | None
+) -> None:
+    """Materialise one purchase as a freshly-downloaded album."""
+    if progress_callback:
+        with contextlib.suppress(Exception):
+            progress_callback(f"{spec['artist']} / {spec['album']}")
+    time.sleep(STEP_DELAY_SECONDS)
+    _materialise(music_dir, spec)
+    activity.record(f"Downloaded {spec['artist']} / {spec['album']}", "info")
+
+
+def _purchase_item_id(spec: dict[str, Any]) -> int:
+    return int(spec["sidecar"]["bandcamp_item_id"])
+
+
+def _on_disk_item_ids(music_dir: Path) -> set[int]:
+    """item_ids already linked on any on-disk sidecar (mirrors library_index)."""
+    ids: set[int] = set()
+    if not music_dir.exists():
+        return ids
+    for harmonist_json in music_dir.rglob(sidecar_mod.SIDECAR_FILENAME):
+        try:
+            sc = sidecar_mod.read(harmonist_json.parent)
+        except Exception:
+            continue
+        if sc and sc.bandcamp and sc.bandcamp.item_id is not None:
+            ids.add(int(sc.bandcamp.item_id))
+    return ids
+
+
+def _read_ignored_ids(ignores_file: Path | None) -> set[int]:
+    """item_ids the user chose "Don't download" (appended to ignores.txt)."""
+    if not ignores_file:
+        return set()
+    try:
+        text = Path(ignores_file).read_text(encoding="utf-8")
+    except Exception:
+        return set()
+    ids: set[int] = set()
+    for line in text.splitlines():
+        token = line.split("#", 1)[0].strip()
+        if token.isdigit():
+            ids.add(int(token))
+    return ids
 
 
 def _fill_in_existing_item_ids(
@@ -694,6 +839,36 @@ def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidec
             track_comparisons=comparisons,
             proposed_at=now,
             notes=cand_spec.get("notes", ["Track lengths differ from MB"]),
+        )
+
+    # A mis-tag candidate: the album is really the *owned* edition, but tagged as
+    # a sibling in the same release group. Renders in the "Possibly mis-tagged"
+    # section; Confirm re-tags to `owned_mbid`.
+    if mistag := sc_spec.get("mistag"):
+        candidate = MatchCandidate(
+            mb_release_id=mistag["owned_mbid"],
+            confidence="no_match",
+            file_count=len(album_spec["tracks"]),
+            track_count=len(album_spec["tracks"]),
+            track_comparisons=[
+                TrackComparison(
+                    file_name=f"{i:02d} {_safe(t)}.m4a",
+                    file_duration_ms=1000,
+                    file_title=t,
+                    mb_track_title=t,
+                    mb_track_length_ms=1000,
+                    delta_ms=0,
+                )
+                for i, t in enumerate(album_spec["tracks"], start=1)
+            ],
+            proposed_at=now,
+            mistag_owned_url=mistag["owned_url"],
+            mistag_owned_label=mistag["owned_label"],
+            mistag_owned_disambig=mistag.get("owned_disambig"),
+            mistag_tagged_mbid=mistag["tagged_mbid"],
+            mistag_tagged_label=mistag["tagged_label"],
+            mistag_tagged_disambig=mistag.get("tagged_disambig"),
+            mistag_release_group_mbid=mistag["release_group_mbid"],
         )
 
     tagged_at = now if sc_spec.get("tagged") else None

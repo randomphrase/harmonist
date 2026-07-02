@@ -19,10 +19,11 @@ def music_dir(tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def reset_pending_queue():
-    """Each test starts with a fresh pending queue."""
-    demo._pending_queue = list(demo.PENDING_PURCHASES)
-    return
+def reset_pending_downloads():
+    """Each test starts (and ends) with clean potential-download state."""
+    demo.pending_downloads.reset()
+    yield
+    demo.pending_downloads.reset()
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +56,10 @@ def test_seed_produces_each_state(music_dir):
     assert states["Little Bit o' Hoot, Whole Lotta Nanny"] == AlbumState.NEEDS_SYNC
     assert states["The Rural Juror (OST)"] == AlbumState.COMPLETE
     assert states["Can You Picture That?"] == AlbumState.INCOMPLETE
+    # Fever Dog: seeded as a mis-tag (NEEDS_MBID with a mistag candidate).
+    assert states["Fever Dog"] == AlbumState.NEEDS_MBID
+    # The Awesome Album: non-Bandcamp comment → Library, unlinked (COMPLETE).
+    assert states["The Awesome Album"] == AlbumState.COMPLETE
 
 
 def test_seed_new_has_mbid_and_comment_for_reconcile(music_dir):
@@ -97,61 +102,75 @@ def test_reset_wipes_and_reseeds(music_dir):
     assert (music_dir / "Wyld Stallion" / "A Most Excellent Journey").exists()
 
 
-def test_reset_resets_pending_queue(music_dir):
+def test_reset_clears_pending_downloads(music_dir):
     demo.seed(music_dir)
-    demo.run_demo_sync(music_dir)  # pop one
-    assert len(demo._pending_queue) == len(demo.PENDING_PURCHASES) - 1
+    demo.pending_downloads.replace_all(
+        [demo.PendingPurchase(item_id=1, band="a", title="b", url="u", fmt="alac")]
+    )
     demo.reset(music_dir)
-    assert len(demo._pending_queue) == len(demo.PENDING_PURCHASES)
+    assert demo.pending_downloads.count() == 0
 
 
-def test_run_demo_sync_pops_one_pending(music_dir):
+def test_link_only_sync_surfaces_potential_downloads(music_dir):
+    """A link-only sync surfaces the owned-but-not-on-disk purchases as potential
+    downloads (Mouse Rat matches a Library album; CB4 + Autobahn are new) and
+    downloads nothing."""
     demo.seed(music_dir)
-    initial_albums = {a.path.name for a in scanner.scan(music_dir)}
-    result = demo.run_demo_sync(music_dir)
+    before = {a.path.name for a in scanner.scan(music_dir)}
+    result = demo.run_demo_sync(music_dir, link_only=True)
+    assert result.new_items_downloaded is False
+    pending = {p.title for p in demo.pending_downloads.all_pending()}
+    assert "The Awesome Album" in pending  # Mouse Rat — recovered via fuzzy match
+    assert "Straight Outta Lowcash" in pending  # CB4 — genuinely new
+    assert "Nagelbett" in pending  # Autobahn
+    # Nothing downloaded — no new album directories.
+    assert {a.path.name for a in scanner.scan(music_dir)} == before
+
+
+def test_full_sync_downloads_unmatched_purchases(music_dir):
+    demo.seed(music_dir)
+    result = demo.run_demo_sync(music_dir, link_only=False)
     assert result.new_items_downloaded is True
     after = {a.path.name for a in scanner.scan(music_dir)}
-    assert len(after) == len(initial_albums) + 1
+    assert "Straight Outta Lowcash" in after  # CB4 downloaded
+    assert "Nagelbett" in after  # Autobahn downloaded
+    assert demo.pending_downloads.count() == 0  # nothing left pending
 
 
-def test_run_demo_sync_no_op_when_queue_empty(music_dir):
+def test_approved_potential_download_fetches_on_next_link_only_sync(music_dir):
+    """Clicking Download on a potential-download approves it; the next link-only
+    sync fetches just that one while the rest stay pending."""
     demo.seed(music_dir)
-    # Drain the queue
-    while demo._pending_queue:
-        demo.run_demo_sync(music_dir)
-    result = demo.run_demo_sync(music_dir)
-    assert result.new_items_downloaded is False
+    demo.run_demo_sync(music_dir, link_only=True)  # surface them
+    demo.pending_downloads.approve(2001)  # user chose Download on CB4
+    demo.run_demo_sync(music_dir, link_only=True)
+    after = {a.path.name for a in scanner.scan(music_dir)}
+    assert "Straight Outta Lowcash" in after  # CB4 fetched
+    assert "Nagelbett" not in after  # Autobahn still pending
+    assert 2001 not in {p.item_id for p in demo.pending_downloads.all_pending()}
 
 
 def test_run_demo_sync_reports_progress(music_dir):
-    """Demo sync invokes the progress callback for each step:
-    first any item_id link-ins for existing albums, then the new download.
-    """
+    """Demo sync invokes the progress callback: item_id link-ins for existing
+    albums, then downloads in a full sync."""
     demo.seed(music_dir)
     seen = []
-    demo.run_demo_sync(music_dir, progress_callback=lambda label: seen.append(label))
-    # The seeded library has 4 existing Bandcamp albums that get item_id
-    # filled in by sync (Sex Bob-omb, Thamesmen, Dingoes, Various Artists);
-    # only Dingoes actually needs it (others already have item_id) — sync
-    # skips no-op patches. Then CB4 (first pending) downloads.
-    assert "CB4 / Straight Outta Lowcash" in seen
-    # Dingoes started in NEEDS_SYNC (item_id=None); sync should link it
-    assert any("Dingoes" in lbl for lbl in seen)
+    demo.run_demo_sync(
+        music_dir, link_only=False, progress_callback=lambda label: seen.append(label)
+    )
+    assert any("CB4" in lbl for lbl in seen)  # a download step
+    assert any("Dingoes" in lbl for lbl in seen)  # a Needs-Link → linked step
 
 
 def test_run_demo_sync_links_existing_needs_sync_album(music_dir):
-    """An album seeded as NEEDS_SYNC (matching Bandcamp URL, no item_id)
-    should have its item_id filled in by sync, transitioning it to
-    COMPLETE without downloading anything new.
-    """
+    """An album seeded as NEEDS_SYNC (matching Bandcamp URL, no item_id) gets its
+    item_id filled in by sync — even a link-only run — without downloading."""
     demo.seed(music_dir)
-    # Drain the pending queue first so this test isolates the link path
-    demo._pending_queue.clear()
     dingoes_dir = next(d for d in (music_dir / "Dingoes Ate My Baby").iterdir() if d.is_dir())
     before = sc.read(dingoes_dir)
     assert before.bandcamp is None or before.bandcamp.item_id is None
 
-    demo.run_demo_sync(music_dir)
+    demo.run_demo_sync(music_dir, link_only=True)
 
     after = sc.read(dingoes_dir)
     assert after.bandcamp is not None
@@ -191,8 +210,9 @@ def test_search_releases_substring_match():
 
 
 def test_search_releases_empty_inputs_returns_all():
-    results = demo.search_releases("", "")
-    # Empty inputs match everything (a-match and t-match both true)
+    # Empty inputs match everything (a-match and t-match both true); raise the
+    # limit above the dataset size so nothing is capped.
+    results = demo.search_releases("", "", limit=100)
     assert len(results) == len(demo.MB_RELEASES)
 
 

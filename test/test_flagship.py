@@ -48,8 +48,9 @@ def reset_demo_state():
         mb_search.search_releases,
         cover_art.ensure_cover,
     )
-    demo._pending_queue = list(demo.PENDING_PURCHASES)
+    demo.pending_downloads.reset()
     yield
+    demo.pending_downloads.reset()
     (
         mb_lookup.fetch_release,
         mb_lookup.fetch_release_urls,
@@ -93,16 +94,13 @@ def _album_by_title(music_dir: Path, title: str):
 def test_flagship_sync_then_recheck_then_done(demo_client, tmp_path):
     """The headline path: Sync, Recheck, file ends Done with full MB tags."""
     music_dir = tmp_path / "music"
-    initial_count = len(scanner.scan(music_dir))
 
-    # --- 1. Click Sync ---
-    r = demo_client.post("/sync")
+    # --- 1. Click Sync (force full/download mode via the popover) ---
+    r = demo_client.post("/sync", data={"from_popover": "true"})
     assert r.status_code == 200
     _wait_for_idle(demo_client)
 
-    # New album landed (CB4 is first in PENDING_PURCHASES)
-    after = scanner.scan(music_dir)
-    assert len(after) == initial_count + 1
+    # A full sync fetches the owned-but-not-on-disk purchases; CB4 lands new.
     new_album = _album_by_title(music_dir, "Straight Outta Lowcash")
     assert new_album.state == AlbumState.NEEDS_MBID
     assert new_album.sidecar.store_url == "https://cb4.bandcamp.com/album/straight-outta-lowcash"
@@ -147,22 +145,22 @@ def test_flagship_sync_status_visible_during_run(demo_client):
     runner._status.state = "idle"
 
 
-def test_flagship_sync_then_pending_exhausted(demo_client, tmp_path):
-    """After all pending purchases are popped, /sync is a no-op."""
+def test_flagship_full_sync_downloads_then_second_is_noop(demo_client, tmp_path):
+    """A full sync fetches every owned-but-not-on-disk purchase; a second full
+    sync has nothing left to download."""
     music_dir = tmp_path / "music"
-    initial = len(scanner.scan(music_dir))
 
-    n_pending = len(demo.PENDING_PURCHASES)
-    for _ in range(n_pending):
-        demo_client.post("/sync")
-        _wait_for_idle(demo_client)
-    assert len(scanner.scan(music_dir)) == initial + n_pending
+    demo_client.post("/sync", data={"from_popover": "true"})
+    _wait_for_idle(demo_client)
+    after_first = {a.title for a in scanner.scan(music_dir)}
+    assert "Straight Outta Lowcash" in after_first  # CB4
+    assert "Nagelbett" in after_first  # Autobahn
+    count_after_first = len(after_first)
 
-    # One more sync — should be a no-op
-    demo_client.post("/sync")
-    final_status = _wait_for_idle(demo_client)
-    assert final_status["new_items"] == 0
-    assert len(scanner.scan(music_dir)) == initial + n_pending
+    # One more full sync — everything is now on disk / linked, so it's a no-op.
+    demo_client.post("/sync", data={"from_popover": "true"})
+    _wait_for_idle(demo_client)
+    assert len(scanner.scan(music_dir)) == count_after_first
 
 
 def test_flagship_409_when_sync_in_flight(demo_client):
