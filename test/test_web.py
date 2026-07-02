@@ -2873,6 +2873,34 @@ def test_pending_match_results_endpoint_searches_library(client, cfg):
     assert "/pending/44/match" in r.text  # each row Links via the match POST
 
 
+def test_library_detail_modal_verifies_and_links(client, cfg):
+    """A pending card's search result is clickable → the album's library detail
+    opens in a modal (verify the release) with a Link action carrying the pending
+    item_id, so verify → link closes in one place."""
+    from harmonist import pending_downloads as pd
+    from harmonist import scanner
+    from harmonist import sidecar as scmod
+
+    d = _make_album(cfg, "Black Soma", mbid="rel-bs")
+    scmod.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-bs"))
+    album_id = _id_for(cfg, d)
+    a = next(x for x in scanner.scan(cfg.paths.music_dir) if x.path == d)
+    # Pending band/title match the on-disk album → it's seeded as the suggestion,
+    # whose row deep-links into the verify modal.
+    pd.replace_all([_pp(77, band=a.artist, title=a.title, url="https://3six.net/album/black-soma")])
+
+    r = client.get(f"/library/{album_id}/detail", params={"pending": 77})
+    assert r.status_code == 200
+    assert "Verify album" in r.text
+    assert "Black Soma" in r.text  # the album detail
+    # The Link action carries the pending item_id and this album.
+    assert "/pending/77/match" in r.text
+    assert f'"album_id": "{album_id}"' in r.text
+    # And the result row itself deep-links into this detail.
+    body = client.get("/tasks").text
+    assert f"/library/{album_id}/detail?pending=77" in body
+
+
 def test_pending_match_link_fills_item_id(client, cfg):
     """Linking a potential download to an on-disk album writes the purchase's
     item_id + store_url onto that album's sidecar, and drops it from pending."""

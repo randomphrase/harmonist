@@ -1,0 +1,25 @@
+{# Album detail shown in the shared #modal so a potential-download's library-search
+   result is clickable — the user can VERIFY it's the right release (cover, tracks,
+   MusicBrainz compare) before linking. Reuses library_detail.html verbatim. When
+   `pending_item_id` is set, a Link action closes the loop here. #}
+<div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+     onclick="if (event.target === this) harmonistCloseModal()">
+    <div class="bg-white border border-line rounded-lg max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-auto">
+        <div class="flex items-center justify-between gap-4 px-4 pt-4">
+            <h2 class="text-sm font-bold text-muted uppercase tracking-widest">Verify album</h2>
+            <button type="button" onclick="harmonistCloseModal()"
+                    class="text-muted hover:text-ink text-2xl leading-none">&times;</button>
+        </div>
+        {% include 'partials/library_detail.html' %}
+        {% if pending_item_id is not none %}
+        <div class="px-4 pb-4 -mt-1">
+            <button hx-post="/pending/{{ pending_item_id }}/match" hx-vals='{"album_id": "{{ album.id }}"}'
+                    hx-target="#pending-section" hx-swap="outerHTML"
+                    onclick="harmonistCloseModal()"
+                    class="w-full px-3 py-2 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+                Link this to “{{ pending_label }}”
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>

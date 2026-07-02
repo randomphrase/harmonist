@@ -4,10 +4,15 @@
 <ul class="divide-y divide-line border border-line rounded bg-white/60 max-h-64 overflow-auto">
     {% for a in results %}
     <li class="flex items-center justify-between gap-2 px-2 py-1.5">
-        <div class="min-w-0">
-            <div class="text-sm text-ink truncate">{{ a.artist or '?' }} — {{ a.title }}</div>
-            <div class="text-2xs text-muted truncate" title="{{ a.path }}">{{ a.rel_path }}</div>
-        </div>
+        {# Click the album to open its full library detail (cover, tracks, MB
+           compare) in a modal — verify it's the right release before linking. #}
+        <button type="button" hx-get="/library/{{ a.id }}/detail?pending={{ item_id }}"
+                hx-target="#modal" hx-swap="innerHTML"
+                title="Verify this album — {{ a.path }}"
+                class="group/row min-w-0 text-left">
+            <div class="text-sm text-ink truncate group-hover/row:text-accent group-hover/row:underline">{{ a.artist or '?' }} — {{ a.title }}</div>
+            <div class="text-2xs text-muted truncate">{{ a.rel_path }}</div>
+        </button>
         <button hx-post="/pending/{{ item_id }}/match" hx-vals='{"album_id": "{{ a.id }}"}'
                 hx-target="#pending-section" hx-swap="outerHTML"
                 class="px-2 py-0.5 text-xs font-bold rounded bg-accent text-white hover:bg-accent-dark shrink-0 transition">Link</button>

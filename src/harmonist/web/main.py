@@ -1786,6 +1786,26 @@ def _register_routes(app: FastAPI) -> None:
         )
         return _templates(request).TemplateResponse(request, "partials/library_page.html", ctx)
 
+    @app.get("/library/{album_id}/detail", response_class=HTMLResponse)
+    def library_detail_modal(
+        request: Request, album_id: str, pending: int | None = None
+    ) -> Response:
+        """The album's full library detail as a modal — so a potential-download's
+        library-search result is clickable and the user can VERIFY it's the right
+        release (cover, tracks, MB compare) before linking. `pending` (a purchase
+        item_id) adds a Link action so verify → link closes in one place."""
+        album = _find_album(request, album_id)
+        p = pending_downloads.get(pending) if pending is not None else None
+        ctx = _ctx(
+            request,
+            album=album,
+            pending_item_id=(p.item_id if p else None),
+            pending_label=(f"{p.band} — {p.title}" if p else None),
+        )
+        return _templates(request).TemplateResponse(
+            request, "partials/library_detail_modal.html", ctx
+        )
+
     @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
     def library_compare(request: Request, album_id: str) -> Response:
         """On-demand disk-vs-MB track comparison for a tagged album — a sanity
