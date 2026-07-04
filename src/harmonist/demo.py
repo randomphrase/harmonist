@@ -187,26 +187,24 @@ LIBRARY: list[dict[str, Any]] = [
         },
     },
     {
-        # State: NEEDS_MBID as a MIS-TAG — on disk it's tagged as the standard
-        # "Fever Dog", but the user owns the "Live at the Riot House" edition
-        # (same release group) on Bandcamp. Seeded straight into the "Possibly
-        # mis-tagged" section; Confirm re-tags to the owned edition.
+        # State: NEEDS_SYNC, tagged as the STANDARD "Fever Dog" — but the user owns
+        # the "Live at the Riot House" edition (sibling in the same release group).
+        # The FIRST sync can't link the std URL (no purchase for it), so post-sync
+        # mis-tag detection browses the release group, spots the owned live edition,
+        # and demotes this to "Possibly mis-tagged" — the realistic flow (a mis-tag
+        # surfaces AFTER a sync, not pre-seeded). Confirm re-tags to the live
+        # edition; a further sync then links it → Library.
         "artist": "Stillwater",
         "album": "Fever Dog",
         "tracks": ["Fever Dog", "Love Thing", "Chelsea Hotel"],
         "cover": "cover-3.jpg",
         "file_mbid": "demo-rel-fever-std",
+        "file_comment": "Visit https://stillwater.bandcamp.com",
         "sidecar": {
-            "mistag": {
-                "owned_mbid": "demo-rel-fever-live",
-                "owned_url": "https://stillwater.bandcamp.com/album/fever-dog-live",
-                "owned_label": "Stillwater / Fever Dog",
-                "owned_disambig": "Live at the Riot House",
-                "tagged_mbid": "demo-rel-fever-std",
-                "tagged_label": "Stillwater / Fever Dog",
-                "tagged_disambig": "",
-                "release_group_mbid": "demo-rg-fever-dog",
-            },
+            "store_url": "https://stillwater.bandcamp.com/album/fever-dog",
+            "bandcamp_item_id": None,
+            "mb_release_id": "demo-rel-fever-std",
+            "tagged": True,
         },
     },
     {
@@ -276,13 +274,21 @@ PENDING_PURCHASES: list[dict[str, Any]] = [
 
 
 def _release(
-    mbid: str, artist: str, title: str, tracks: list[str], lengths_ms: list[int] | None = None
+    mbid: str,
+    artist: str,
+    title: str,
+    tracks: list[str],
+    lengths_ms: list[int] | None = None,
+    *,
+    rg: str | None = None,
+    disambiguation: str = "",
 ) -> Release:
     if lengths_ms is None:
         lengths_ms = [1000] * len(tracks)
     return {
         "id": mbid,
         "title": title,
+        "disambiguation": disambiguation,
         "status": "Official",
         "country": "US",
         "date": "2024-01-01",
@@ -291,7 +297,7 @@ def _release(
             {"artist": {"id": f"demo-art-{mbid}", "name": artist}, "name": artist},
         ],
         "release-group": {
-            "id": f"demo-rg-{mbid}",
+            "id": rg or f"demo-rg-{mbid}",
             "primary-type": "Album",
         },
         "label-info-list": [
@@ -386,18 +392,22 @@ MB_RELEASES: dict[str, Release] = {
         # 4 tracks on MB; the seeded album only has the first 2 on disk.
         ["Can You Picture That?", "Mahna Mahna", "Movin' Right Along", "Rainbow Connection"],
     ),
-    # Two editions of one release group — the mis-tag pairs them (owned = live).
+    # Two editions of ONE release group — the mis-tag detection pairs them after a
+    # sync (album tagged as the std edition; the user owns the live one).
     "demo-rel-fever-std": _release(
         "demo-rel-fever-std",
         "Stillwater",
         "Fever Dog",
         ["Fever Dog", "Love Thing", "Chelsea Hotel"],
+        rg="demo-rg-fever-dog",
     ),
     "demo-rel-fever-live": _release(
         "demo-rel-fever-live",
         "Stillwater",
         "Fever Dog",
         ["Fever Dog", "Love Thing", "Chelsea Hotel"],
+        rg="demo-rg-fever-dog",
+        disambiguation="Live at the Riot House",
     ),
     "demo-rel-mouserat": _release(
         "demo-rel-mouserat",
@@ -418,6 +428,10 @@ URL_RELS: dict[str, str] = {
     "https://variousartists.bandcamp.com/album/the-rural-juror-ost": "demo-rel-rural-juror",
     "https://cb4.bandcamp.com/album/straight-outta-lowcash": "demo-rel-cb4",
     "https://autobahn.bandcamp.com/album/nagelbett": "demo-rel-autobahn",
+    # Both Fever Dog editions carry a Bandcamp URL on MB, so post-sync mis-tag
+    # detection can browse the release group and spot the owned (live) sibling.
+    "https://stillwater.bandcamp.com/album/fever-dog": "demo-rel-fever-std",
+    "https://stillwater.bandcamp.com/album/fever-dog-live": "demo-rel-fever-live",
 }
 
 
@@ -431,6 +445,9 @@ PURCHASE_ITEM_IDS: dict[str, int] = {
     "https://thamesmen.bandcamp.com/album/gimme-some-money": 1002,
     "https://dingoes.bandcamp.com/album/little-bit-o-hoot": 1004,
     "https://variousartists.bandcamp.com/album/the-rural-juror-ost": 1003,
+    # The Stillwater mis-tag's OWNED edition — so confirming the mis-tag (which
+    # re-tags to this URL) then syncing links it → Library, completing the story.
+    "https://stillwater.bandcamp.com/album/fever-dog-live": 1006,
 }
 
 
@@ -531,16 +548,31 @@ def run_demo_sync(
          are the residue. In **link-only** mode they surface as POTENTIAL
          DOWNLOADS for review (download nothing); any the user already approved
          (clicked Download) are fetched. In a **full** sync they all download.
-    Returns a stub matching the attributes the sync runner introspects.
+    Returns a stub matching the attributes the sync runner introspects — including
+    `unmatched_purchases()`, which the post-sync mis-tag detection reads.
     """
 
     class _Result:
-        new_items_downloaded = False
+        def __init__(self) -> None:
+            self.new_items_downloaded = False
+            self.unmatched: list[tuple[int, str, str]] = []
 
+        def unmatched_purchases(self) -> list[tuple[int, str, str]]:
+            return self.unmatched
+
+    result = _Result()
     _fill_in_existing_item_ids(music_dir, progress_callback=progress_callback)
 
     on_disk = _on_disk_item_ids(music_dir)
     ignored = _read_ignored_ids(ignores_file)
+    # Owned purchases (by known URL→id) not linked on any sidecar — the input to
+    # mis-tag detection (e.g. the Fever Dog live edition the album isn't tagged as).
+    result.unmatched = [
+        (iid, url, _purchase_label(url))
+        for url, iid in PURCHASE_ITEM_IDS.items()
+        if iid not in on_disk
+    ]
+
     unmatched = [
         p
         for p in PENDING_PURCHASES
@@ -553,7 +585,7 @@ def run_demo_sync(
             iid = _purchase_item_id(p)
             if pending_downloads.is_approved(iid):
                 _download(music_dir, p, progress_callback)
-                _Result.new_items_downloaded = True
+                result.new_items_downloaded = True
             else:
                 pending.append(
                     PendingPurchase(
@@ -568,9 +600,20 @@ def run_demo_sync(
     else:
         for p in unmatched:
             _download(music_dir, p, progress_callback)
-            _Result.new_items_downloaded = True
+            result.new_items_downloaded = True
         pending_downloads.replace_all([])
-    return _Result()
+    return result
+
+
+def _purchase_label(url: str) -> str:
+    """ "Artist / Title" for a purchase URL (from the mocked MB release), for the
+    mis-tag detection's activity line. Falls back to the URL."""
+    mbid = URL_RELS.get(url)
+    rel = MB_RELEASES.get(mbid) if mbid else None
+    if rel:
+        artist = (rel.get("artist-credit") or [{}])[0].get("name", "?")
+        return f"{artist} / {rel.get('title', '?')}"
+    return url
 
 
 def _download(
@@ -692,6 +735,16 @@ def lookup_by_bandcamp_url(bandcamp_url: str) -> list[str]:
     return [mbid] if mbid else []
 
 
+def browse_release_group_releases(release_group_mbid: str) -> list[tuple[str, list[str]]]:
+    """Siblings in a release group → [(release_mbid, [bandcamp urls])]. Drives the
+    post-sync mis-tag detection (the demo's Fever Dog std ↔ live pairing)."""
+    out: list[tuple[str, list[str]]] = []
+    for mbid, rel in MB_RELEASES.items():
+        if (rel.get("release-group") or {}).get("id") == release_group_mbid:
+            out.append((mbid, fetch_release_urls(mbid)))
+    return out
+
+
 def search_releases(artist: str, title: str, limit: int = 10) -> list[dict[str, Any]]:
     a = (artist or "").strip().lower()
     t = (title or "").strip().lower()
@@ -755,6 +808,7 @@ def install() -> None:
     mb_lookup.fetch_release = fetch_release
     mb_lookup.fetch_release_urls = fetch_release_urls
     mb_lookup.lookup_by_bandcamp_url = lookup_by_bandcamp_url
+    mb_lookup.browse_release_group_releases = browse_release_group_releases
     mb_search.search_releases = search_releases
     cover_art.ensure_cover = ensure_cover
     log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art")

@@ -193,3 +193,22 @@ def test_flagship_new_to_done_via_reconcile_and_confirm(demo_client, tmp_path):
         after_reconcile.sidecar.store_url
         == "https://wyldstallion.bandcamp.com/album/a-most-excellent-journey"
     )
+
+
+def test_flagship_mistag_surfaces_after_first_sync(demo_client, tmp_path):
+    """Realistic flow: Fever Dog starts NEEDS_SYNC (tagged as the standard edition);
+    the first sync's post-sync mis-tag detection browses the release group, spots
+    the owned live edition, and demotes it to a mis-tag — surfacing AFTER the sync,
+    not pre-seeded."""
+    music_dir = tmp_path / "music"
+    assert _album_by_title(music_dir, "Fever Dog").state == AlbumState.NEEDS_SYNC
+
+    demo_client.post("/sync")
+    _wait_for_idle(demo_client)
+
+    after = _album_by_title(music_dir, "Fever Dog")
+    assert after.state == AlbumState.NEEDS_MBID
+    cand = after.sidecar.mb_match_candidate
+    assert cand is not None
+    assert cand.mistag_owned_url == "https://stillwater.bandcamp.com/album/fever-dog-live"
+    assert cand.mb_release_id == "demo-rel-fever-live"  # re-tag target = the live edition

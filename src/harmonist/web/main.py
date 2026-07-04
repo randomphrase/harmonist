@@ -208,6 +208,19 @@ def create_app(
                 ignores_file=cfg.ignores_file,
                 progress_callback=sync_runner.set_current_item,
             )
+            # Run the REAL post-sync mis-tag detection (like the non-demo runner),
+            # so a mis-tag surfaces AFTER a sync rather than being pre-seeded. Pass
+            # the demo-patched MB fns explicitly — the defaults were bound at import,
+            # before demo.install() monkey-patched them.
+            if result.unmatched_purchases():
+                _detect_mistags_after_sync(
+                    cfg,
+                    result,
+                    browse_rg=mb_lookup.browse_release_group_releases,
+                    fetch_release=mb_lookup.fetch_release,
+                    albums=scan_runner.scan_now(),
+                    progress=sync_runner.set_current_item,
+                )
             # Downloads done; the status bar shouldn't stay pinned to the last
             # album's name while we wrap up.
             sync_runner.set_current_item("finishing up…")

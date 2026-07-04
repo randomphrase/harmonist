@@ -56,8 +56,9 @@ def test_seed_produces_each_state(music_dir):
     assert states["Little Bit o' Hoot, Whole Lotta Nanny"] == AlbumState.NEEDS_SYNC
     assert states["The Rural Juror (OST)"] == AlbumState.COMPLETE
     assert states["Can You Picture That?"] == AlbumState.INCOMPLETE
-    # Fever Dog: seeded as a mis-tag (NEEDS_MBID with a mistag candidate).
-    assert states["Fever Dog"] == AlbumState.NEEDS_MBID
+    # Fever Dog: tagged as the standard edition → NEEDS_SYNC (the mis-tag only
+    # surfaces AFTER a sync, via detection — see test_demo_sync_surfaces_mistag).
+    assert states["Fever Dog"] == AlbumState.NEEDS_SYNC
     # The Awesome Album: non-Bandcamp comment → Library, unlinked (COMPLETE).
     assert states["The Awesome Album"] == AlbumState.COMPLETE
 
