@@ -1123,6 +1123,23 @@ def _norm_name(s: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", s).split())
 
 
+_ARTIST_FEAT_MARKERS = {"feat", "featuring", "ft"}
+
+
+def _norm_artist(s: str) -> str:
+    """Normalize an artist for the match scope so trivially-different renderings of
+    a collaboration land in the same bucket: Bandcamp writes 'A / B', tags write
+    'A and B' or 'A & B' — drop the 'and' (the '/', ',' separators already collapse
+    to gaps, '&' → 'and') so all three match. Also truncate at a featuring marker,
+    since Bandcamp's band page is usually the primary artist ('A feat. B' ↔ 'A')."""
+    words = _norm_name(s).split()
+    for i, w in enumerate(words):
+        if w in _ARTIST_FEAT_MARKERS:
+            words = words[:i]
+            break
+    return " ".join(w for w in words if w != "and")
+
+
 def _reconcile_suggestions(
     albums: list[Album],
     pending: list[pending_downloads.PendingPurchase],
@@ -1151,19 +1168,19 @@ def _reconcile_suggestions(
         words = title_words(a.title)
         if linked or not words:
             continue
-        albums_by_artist.setdefault(_norm_name(a.artist), []).append((words, a))
+        albums_by_artist.setdefault(_norm_artist(a.artist), []).append((words, a))
 
     pend_by_artist: dict[str, list[tuple[tuple[str, ...], pending_downloads.PendingPurchase]]] = {}
     for p in pending:
         words = title_words(p.title)
         if not words:
             continue
-        pend_by_artist.setdefault(_norm_name(p.band), []).append((words, p))
+        pend_by_artist.setdefault(_norm_artist(p.band), []).append((words, p))
 
     pending_suggestions: dict[int, dict[str, str]] = {}
     for p in pending:
         pw = title_words(p.title)
-        cand_albums = albums_by_artist.get(_norm_name(p.band), [])
+        cand_albums = albums_by_artist.get(_norm_artist(p.band), [])
         alb_cands = [a for (w, a) in cand_albums if titles_match(pw, w)]
         if len(alb_cands) == 1:
             a = alb_cands[0]
@@ -1189,7 +1206,7 @@ def _reconcile_suggestions(
         if a.state != AlbumState.NEEDS_SYNC and not surrendered:
             continue
         aw = title_words(a.title)
-        cand_pend = pend_by_artist.get(_norm_name(a.artist), [])
+        cand_pend = pend_by_artist.get(_norm_artist(a.artist), [])
         pend_cands = [p for (w, p) in cand_pend if titles_match(aw, w)]
         if len(pend_cands) == 1:
             surrender_suggestions[a.id] = pend_cands[0]

@@ -19,7 +19,7 @@ from harmonist import sidecar as sc
 from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
 from harmonist.models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 from harmonist.sidecar import CURRENT_SCHEMA_VERSION
-from harmonist.tagger import ATOM_ALBUM, ATOM_COMMENT, ATOM_MB_ALBUM_ID
+from harmonist.tagger import ATOM_ALBUM, ATOM_ARTIST, ATOM_COMMENT, ATOM_MB_ALBUM_ID
 from harmonist.web.main import create_app
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -3144,6 +3144,56 @@ def test_reconcile_suggestions_includes_surrendered_albums(cfg):
     pend = [_pp(60, band=a.artist, title=a.title, url="https://x.bandcamp.com/album/other")]
     _, ss = _reconcile_suggestions(albums, pend, cfg.paths.music_dir)
     assert ss[a.id].item_id == 60
+
+
+def test_norm_artist_collapses_collab_and_feat_variants():
+    """A collaboration written differently across sources normalizes the same:
+    Bandcamp 'A / B' vs tagged 'A and B'/'A & B', and 'A feat. B' vs 'A'."""
+    from harmonist.web.main import _norm_artist
+
+    assert _norm_artist("Jah Wobble and Bill Laswell") == _norm_artist("Jah Wobble / Bill Laswell")
+    assert _norm_artist("A & B") == _norm_artist("A / B")
+    assert _norm_artist("Bonobo feat. Andreya Triana") == _norm_artist("Bonobo")
+    assert _norm_artist("Above and Beyond") != _norm_artist("Tycho")  # not everything collapses
+
+
+def test_reconcile_suggestions_matches_collab_artist_separator(cfg):
+    """The Radioaxiom case: on-disk artist 'A and B' (tags) vs purchase band 'A / B'
+    (Bandcamp) still matches — the artist normalization collapses the separator."""
+    from harmonist import scanner
+    from harmonist.web.main import _reconcile_suggestions
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _make_album(cfg, "Radioaxiom", mbid="rel-ra")
+    f = next(d.glob("*.m4a"))
+    audio = MP4(f)
+    audio[ATOM_ARTIST] = ["Jah Wobble and Bill Laswell"]
+    audio[ATOM_ALBUM] = ["Radioaxiom"]
+    audio.save()
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="http://billlaswell.bandcamp.com",
+            mb_release_id=None,
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-ra",
+                confidence="exact",
+                file_count=1,
+                track_count=1,
+                unmatched_purchase=True,
+            ),
+        ),
+    )
+    albums = scanner.scan(cfg.paths.music_dir)
+    a = next(x for x in albums if x.path == d)
+    assert a.artist == "Jah Wobble and Bill Laswell"
+    pend = [
+        _pp(70, band="Jah Wobble / Bill Laswell", title="Radioaxiom", url="https://x.net/album/ra")
+    ]
+    ps, ss = _reconcile_suggestions(albums, pend, cfg.paths.music_dir)
+    assert 70 in ps  # forward: pending → album
+    assert a.id in ss  # reverse: surrendered album → pending
 
 
 def test_link_surrendered_album_un_surrenders_to_complete(client, cfg):
