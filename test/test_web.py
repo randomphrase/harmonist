@@ -3097,6 +3097,79 @@ def test_reconcile_suggestions_includes_library_albums(cfg):
     assert ps[81]["id"] == a.id  # the library album is offered as the match
 
 
+def _surrendered_album(cfg, name: str, mbid: str) -> Path:
+    """An album that surrendered: files tagged with `mbid`, but the sidecar's
+    mb_release_id was cleared and an `unmatched_purchase` candidate stashed →
+    NEEDS_MBID (the 'No Bandcamp purchase found' card)."""
+    d = _make_album(cfg, name, mbid=mbid)
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url=f"https://x.bandcamp.com/album/{name.lower().replace(' ', '-')}",
+            mb_release_id=None,
+            mb_match_candidate=MatchCandidate(
+                mb_release_id=mbid,
+                confidence="exact",
+                file_count=1,
+                track_count=1,
+                unmatched_purchase=True,
+            ),
+        ),
+    )
+    return d
+
+
+def test_reconcile_suggestions_includes_surrendered_albums(cfg):
+    """A surrendered album (NEEDS_MBID + unmatched_purchase) gets the reverse
+    suggestion too, not just NEEDS_SYNC — that's where unmatched albums live."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+    from harmonist.web.main import _reconcile_suggestions
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    d = _surrendered_album(cfg, "Surrendered One", "rel-s1")
+    albums = scanner.scan(cfg.paths.music_dir)
+    a = next(x for x in albums if x.path == d)
+    assert a.state == AlbumState.NEEDS_MBID
+    pend = [_pp(60, band=a.artist, title=a.title, url="https://x.bandcamp.com/album/other")]
+    _, ss = _reconcile_suggestions(albums, pend, cfg.paths.music_dir)
+    assert ss[a.id].item_id == 60
+
+
+def test_link_surrendered_album_un_surrenders_to_complete(client, cfg):
+    """Linking a potential download to a surrendered album restores its release id
+    from the candidate (files are still tagged) → Library, and links the item_id."""
+    from harmonist import pending_downloads as pd
+    from harmonist import sidecar as scmod
+    from harmonist.models import AlbumState
+    from harmonist.scanner import scan
+
+    d = _surrendered_album(cfg, "Undo Surrender", "rel-us")
+    pd.replace_all([_pp(61, url="https://x.bandcamp.com/album/undo")])
+    r = client.post("/pending/61/match", data={"album_id": _id_for(cfg, d)})
+    assert r.status_code == 200
+    loaded = scmod.read(d)
+    assert loaded.bandcamp.item_id == 61
+    assert loaded.mb_release_id == "rel-us"  # restored from the candidate
+    assert loaded.mb_match_candidate is None  # surrender cleared
+    assert next(x for x in scan(cfg.paths.music_dir) if x.path == d).state == AlbumState.COMPLETE
+
+
+def test_surrender_card_shows_reverse_suggestion(client, cfg):
+    """The surrendered ('No Bandcamp purchase found') card offers the matching
+    potential download to link."""
+    from harmonist import pending_downloads as pd
+    from harmonist import scanner
+
+    d = _surrendered_album(cfg, "Reverse Vis", "rel-rv")
+    a = next(x for x in scanner.scan(cfg.paths.music_dir) if x.path == d)
+    pd.replace_all([_pp(62, band=a.artist, title=a.title, url="https://x.bandcamp.com/album/rv2")])
+    body = client.get("/tasks").text
+    assert "matches a Bandcamp purchase you own" in body
+    assert "/pending/62/match" in body
+
+
 def test_case_b_suggestions_render_on_both_cards(client, cfg):
     """The potential-download card shows 'Already in your library?' with a Link-these
     button to the matched album, and the surrender card shows the reverse — both

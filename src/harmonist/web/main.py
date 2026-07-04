@@ -1124,9 +1124,18 @@ def _reconcile_suggestions(
                 "rel_path": _rel_path(a.path, base),
             }
 
+    # The reverse suggestion shows on cards for owned-but-unlinked albums: a
+    # NEEDS_SYNC album, or a *surrendered* one (NEEDS_MBID whose candidate is an
+    # `unmatched_purchase` — a full sync couldn't find its purchase). Both are
+    # "you own this, we just couldn't link it" — the natural place to offer the
+    # matching potential download.
     surrender_suggestions: dict[str, pending_downloads.PendingPurchase] = {}
     for a in albums:
-        if a.state != AlbumState.NEEDS_SYNC:
+        cand = a.sidecar.mb_match_candidate if a.sidecar else None
+        surrendered = (
+            a.state == AlbumState.NEEDS_MBID and cand is not None and cand.unmatched_purchase
+        )
+        if a.state != AlbumState.NEEDS_SYNC and not surrendered:
             continue
         aw = title_words(a.title)
         cand_pend = pend_by_artist.get(_norm_name(a.artist), [])
@@ -1194,11 +1203,15 @@ def _search_albums(request: Request, q: str, *, limit: int = 25) -> list[dict[st
 
 def _link_pending_to_album(album: Album, p: pending_downloads.PendingPurchase) -> None:
     """Link a potential download to an existing on-disk album: fill the purchase's
-    item_id (+ store_url) onto its sidecar, creating a minimal one if untagged."""
+    item_id (+ store_url) onto its sidecar, creating a minimal one if untagged.
+
+    If the album had **surrendered** (a full sync couldn't find its purchase, so it
+    was demoted to NEEDS_MBID with an `unmatched_purchase` candidate), the purchase
+    turned out to exist after all — so un-surrender it: restore the release id from
+    the candidate (the files are still tagged with it, so no re-tag) → Library.
+    """
     sc = album.sidecar
-    if sc is not None:
-        _link_album_to_purchase(album.path, sc, item_id=p.item_id, store_url=p.url)
-    else:
+    if sc is None:
         sidecar_mod.write(
             album.path,
             Sidecar(
@@ -1207,6 +1220,35 @@ def _link_pending_to_album(album: Album, p: pending_downloads.PendingPurchase) -
                 bandcamp=BandcampInfo(item_id=p.item_id),
             ),
         )
+        return
+
+    cand = sc.mb_match_candidate
+    surrendered = sc.mb_release_id is None and cand is not None and cand.unmatched_purchase
+    resolved_mbid = cand.mb_release_id if (surrendered and cand is not None) else sc.mb_release_id
+    sidecar_mod.write(
+        album.path,
+        Sidecar(
+            schema_version=sc.schema_version,
+            store_url=p.url,
+            bandcamp=BandcampInfo(
+                item_id=p.item_id,
+                band_id=sc.bandcamp.band_id if sc.bandcamp else None,
+                is_private=sc.bandcamp.is_private if sc.bandcamp else False,
+            ),
+            downloaded_at=sc.downloaded_at,
+            added_at=sc.added_at,
+            mb_release_id=resolved_mbid,
+            mb_match_candidate=None if surrendered else sc.mb_match_candidate,
+            tagged_at=sc.tagged_at,
+            track_count_expected=sc.track_count_expected,
+            notes=sc.notes,
+        ),
+    )
+    # If it's now tagged, it leaves the inbox for the Library — move counts from
+    # the album's ACTUAL state (NEEDS_SYNC or surrendered NEEDS_MBID). The scan
+    # reset splits COMPLETE/INCOMPLETE exactly.
+    if resolved_mbid is not None and album.state not in _TERMINAL_STATES:
+        live_counts.move(album.state, AlbumState.COMPLETE)
 
 
 def _persist_max_downloads(request: Request, value: int) -> None:
