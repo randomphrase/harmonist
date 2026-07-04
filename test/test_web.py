@@ -3216,8 +3216,8 @@ def test_link_surrendered_album_un_surrenders_to_complete(client, cfg):
 
 
 def test_surrender_card_shows_reverse_suggestion(client, cfg):
-    """The surrendered ('No Bandcamp purchase found') card offers the matching
-    potential download to link."""
+    """A surrendered album with a matching potential download LEADS with the Link
+    (positive framing), not the contradictory 'No Bandcamp purchase found' panel."""
     from harmonist import pending_downloads as pd
     from harmonist import scanner
 
@@ -3225,8 +3225,11 @@ def test_surrender_card_shows_reverse_suggestion(client, cfg):
     a = next(x for x in scanner.scan(cfg.paths.music_dir) if x.path == d)
     pd.replace_all([_pp(62, band=a.artist, title=a.title, url="https://x.bandcamp.com/album/rv2")])
     body = client.get("/tasks").text
-    assert "matches a Bandcamp purchase you own" in body
+    assert "Looks like a purchase you own" in body
     assert "/pending/62/match" in body
+    # With a match, the contradictory "No Bandcamp purchase found" panel is dropped.
+    card = body[body.index('id="task-' + a.id) :]
+    assert "No Bandcamp purchase found" not in card[: card.index("</section>")]
 
 
 def test_case_b_suggestions_render_on_both_cards(client, cfg):

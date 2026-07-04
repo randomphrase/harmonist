@@ -58,10 +58,30 @@
     {% endif %}
 
     {% if is_surrender %}
-    {# ---- Surrender: a full sync found no matching Bandcamp purchase. The
-         album's current release is kept as read-only context (no Confirm —
-         re-confirming would loop straight back to Needs Sync); the user resolves
-         it via the tools below (seed on Harmony, or fix the store URL). ---- #}
+    {% set sugg = (surrender_suggestions | default({})).get(album.id) %}
+    {% if sugg %}
+    {# ---- A potential download matches this album (artist + subsequence title):
+         the sync couldn't auto-link it (different URL/subdomain), but it's almost
+         certainly the same record. Lead with the Link — it un-surrenders the album
+         (restores its release id) → Library. ---- #}
+    <div class="rounded-lg border border-accent/50 bg-accent-soft p-3 mb-3 flex items-center justify-between gap-3">
+        <div class="min-w-0 text-sm">
+            <p class="font-bold text-accent-dark mb-0.5">Looks like a purchase you own</p>
+            <p class="text-xs text-ink/80">
+                Link this to <span class="font-semibold">{{ sugg.band }} — {{ sugg.title }}</span> —
+                it leaves Needs MBID for the Library. (The sync couldn't auto-link it: a
+                different store URL.)
+            </p>
+        </div>
+        <button hx-post="/pending/{{ sugg.item_id }}/match" hx-vals='{"album_id": "{{ album.id }}"}'
+                hx-target="#pending-section" hx-swap="morph:outerHTML"
+                class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest shrink-0 transition">Link</button>
+    </div>
+    {% else %}
+    {# ---- Surrender with NO matching purchase: a full sync found none. The album's
+         current release is kept as read-only context (no Confirm — re-confirming
+         would loop straight back to Needs Sync); the user resolves it via the tools
+         below (seed on Harmony, or fix the store URL). ---- #}
     <div class="rounded-lg border border-amber-300 bg-amber-50/60 p-3 mb-3 text-xs text-ink/80 leading-relaxed">
         <p class="font-bold text-amber-800 mb-1">No Bandcamp purchase found</p>
         <p>
@@ -75,20 +95,6 @@
             under a different URL, or the release is missing from MusicBrainz, use Harmony
             or the tools below.
         </p>
-    </div>
-    {# Reverse of the potential-download suggestion: a pending purchase that
-       matches this surrendered album (artist + subsequence title). Linking it
-       un-surrenders the album (restores its release id) → Library. #}
-    {% set sugg = (surrender_suggestions | default({})).get(album.id) %}
-    {% if sugg %}
-    <div class="mb-3 flex items-center justify-between gap-2 rounded border border-accent/40 bg-accent-soft px-2 py-1.5">
-        <div class="min-w-0 text-xs">
-            <span class="text-muted">Actually — this matches a Bandcamp purchase you own:</span>
-            <span class="font-semibold text-ink">{{ sugg.band }} — {{ sugg.title }}</span>
-        </div>
-        <button hx-post="/pending/{{ sugg.item_id }}/match" hx-vals='{"album_id": "{{ album.id }}"}'
-                hx-target="#pending-section" hx-swap="morph:outerHTML"
-                class="px-2 py-0.5 text-xs font-bold rounded bg-accent text-white hover:bg-accent-dark shrink-0 transition">Link</button>
     </div>
     {% endif %}
     {% endif %}
