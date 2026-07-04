@@ -60,6 +60,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Bake the commit into the image so the app logs its build at startup.
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           # Cache layers between runs to keep builds quick.
           cache-from: type=gha
           cache-to: type=gha,mode=max

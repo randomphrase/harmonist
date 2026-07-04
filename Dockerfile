@@ -26,6 +26,13 @@ COPY static ./static
 
 RUN pip install -e .
 
+# The build's git commit, baked so the app logs which build it's running at
+# startup (avoids testing a stale deploy). Placed AFTER pip install so a new SHA
+# only invalidates this cheap layer, not the dependency build. CI passes
+# --build-arg GIT_SHA=<sha>; a plain `docker build` leaves it "unknown".
+ARG GIT_SHA=unknown
+ENV HARMONIST_GIT_SHA=${GIT_SHA}
+
 # Library + config live on bind mounts (see docker-compose.yml). Created so the
 # defaults resolve even before anything is mounted.
 RUN mkdir -p /music /config

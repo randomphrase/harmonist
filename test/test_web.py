@@ -2784,6 +2784,15 @@ def test_about_page_renders(client):
     assert "github.com/randomphrase/harmonist" in r.text
 
 
+def test_git_sha_prefers_baked_env(monkeypatch):
+    """The build SHA is taken from HARMONIST_GIT_SHA (baked at Docker build) when
+    set — so the container reports its commit even with no .git present."""
+    from harmonist.web.main import _git_sha
+
+    monkeypatch.setenv("HARMONIST_GIT_SHA", "deadbeefcafebabe1234")
+    assert _git_sha() == "deadbeefcafe"  # truncated to 12
+
+
 # ---------- startup permission gate ----------
 
 

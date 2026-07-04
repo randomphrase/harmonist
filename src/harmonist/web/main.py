@@ -142,6 +142,15 @@ def _validate_runtime_paths(cfg: config_mod.Config) -> None:
     scan/reconcile runs but every sidecar/config write fails — so fail fast at
     startup with an actionable message. Gates startup from the lifespan.
     """
+    import platform
+
+    log.info(
+        "Harmonist %s — build %s — Python %s on %s",
+        _app_version(),
+        _git_sha(),
+        platform.python_version(),
+        platform.platform(),
+    )
     ids = ""
     if hasattr(os, "getuid"):
         ids = f"uid={os.getuid()} gid={os.getgid()} groups={sorted(os.getgroups())}"
@@ -564,6 +573,35 @@ def _app_version() -> str:
         return version("harmonist")
     except PackageNotFoundError:
         return "dev"
+
+
+def _git_sha() -> str:
+    """The build's git commit — so a startup log line answers 'which build is
+    this?' and prevents testing a stale deploy. Baked at Docker build time via
+    HARMONIST_GIT_SHA; falls back to `git rev-parse` for a dev checkout (marking a
+    dirty tree); else 'unknown'."""
+    import subprocess
+
+    if sha := os.environ.get("HARMONIST_GIT_SHA", "").strip():
+        return sha[:12]
+    root = Path(__file__).resolve().parent
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return "unknown"
+        sha = r.stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True, timeout=2
+        )
+        return f"{sha}-dirty" if dirty.returncode == 0 and dirty.stdout.strip() else sha
+    except Exception:
+        return "unknown"
 
 
 def _credits() -> list[dict[str, str]]:
