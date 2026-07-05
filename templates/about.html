@@ -12,13 +12,14 @@
             <span class="text-2xl">🎧</span>
             <div>
                 <div class="text-lg font-extrabold text-ink tracking-tight">Harmonist</div>
-                <div class="text-2xs font-mono text-muted">v{{ app_version }}</div>
+                <div class="text-2xs font-mono text-muted">v{{ app_version }}{% if git_sha and git_sha != 'unknown' %} · {{ git_sha }}{% endif %}</div>
             </div>
         </div>
         <p class="text-sm text-muted">
-            Semi-automated music metadata tool: it bridges fresh Bandcamp purchases and a
-            well-tagged Plex/Navidrome library, using MusicBrainz as the source of truth and
-            writing Picard-compatible tags.
+            A self-hosted music tagger that turns your Bandcamp purchases into an organized
+            library, with metadata from MusicBrainz. Complete Picard-compatible tags and cover
+            art, ready for Plex and Navidrome — and it <strong class="text-ink">asks before it
+            guesses</strong>, so nothing gets mislabeled.
         </p>
         <div class="flex flex-wrap gap-x-5 gap-y-1 text-sm pt-1">
             <a href="https://github.com/randomphrase/harmonist" target="_blank" rel="noopener"

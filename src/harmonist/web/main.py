@@ -1696,7 +1696,7 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/about", response_class=HTMLResponse)
     def about_page(request: Request) -> Response:
-        ctx = _ctx(request, app_version=_app_version(), credits=_credits())
+        ctx = _ctx(request, app_version=_app_version(), git_sha=_git_sha(), credits=_credits())
         return _templates(request).TemplateResponse(request, "about.html", ctx)
 
     @app.get("/settings", response_class=HTMLResponse)
