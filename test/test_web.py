@@ -142,6 +142,18 @@ def test_index_renders(client):
     assert "Inbox" in r.text
 
 
+def test_index_has_inbox_busy_lock(client):
+    """The inbox carries a busy banner (hidden until the /status poll toggles it)
+    so a background op dims + locks the inbox."""
+    r = client.get("/").text
+    assert 'id="inbox-busy"' in r
+    assert 'id="inbox-busy-label"' in r
+    # Toggled by the status handler on any running op.
+    for label in ("Syncing…", "Reconciling…", "Scanning…"):
+        assert label in r
+    assert "pointer-events-none" in r  # the lock the JS applies to #task-list
+
+
 def test_tasks_empty_inbox(client):
     r = client.get("/tasks")
     assert r.status_code == 200
