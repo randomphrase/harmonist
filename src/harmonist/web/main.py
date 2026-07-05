@@ -1977,10 +1977,18 @@ def _register_routes(app: FastAPI) -> None:
         return _templates(request).TemplateResponse(request, "partials/library_compare.html", ctx)
 
     @app.post("/library/{album_id}/unlink", response_class=HTMLResponse)
-    def library_unlink(request: Request, album_id: str) -> Response:
-        """Undo a Bandcamp link: clear the purchase item_id so the album reverts
-        from the Library (COMPLETE) to Needs Link. Tags + store_url are kept, so a
-        later sync or manual match can re-link it. Reversible by design."""
+    def library_unlink(request: Request, album_id: str, forget_url: bool = Form(False)) -> Response:
+        """Undo a Bandcamp link. Two modes:
+
+        - **Unlink** (`forget_url=False`): clear the purchase `item_id` but keep the
+          `store_url`, so the album reverts to Needs Link and a later sync/manual
+          match can re-link it. For temporarily undoing a *correct* link.
+        - **Wrong match** (`forget_url=True`): also drop the `store_url` (and the
+          bandcamp block), so no future sync re-links it by slug and adoption can't
+          re-adopt it. The album stays correctly tagged in the Library (COMPLETE);
+          the freed purchase re-surfaces as unmatched for correct handling. Without
+          this, keeping the wrong `store_url` would just re-link the same wrong
+          purchase on the next sync."""
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None or sc.bandcamp is None or sc.bandcamp.item_id is None:
@@ -1988,14 +1996,18 @@ def _register_routes(app: FastAPI) -> None:
                 "Nothing to unlink", f"{album.title} isn't linked", level="warning"
             )
         old_id = sc.bandcamp.item_id
-        new_sc = replace(sc, bandcamp=BandcampInfo(item_id=None, band_id=sc.bandcamp.band_id))
+        if forget_url:
+            new_sc = replace(sc, store_url=None, bandcamp=None)
+            dest, arrow = "Library (URL forgotten)", "Library → Library (forgot the wrong URL)"
+        else:
+            new_sc = replace(sc, bandcamp=BandcampInfo(item_id=None, band_id=sc.bandcamp.band_id))
+            dest, arrow = "Needs Link", "Library → Needs Link"
         sidecar_mod.write(album.path, new_sc)
         activity.record(
-            f"Unlinked {album.artist} — {album.title} "
-            f"(was Bandcamp purchase {old_id}): Library → Needs Link"
+            f"Unlinked {album.artist} — {album.title} (was Bandcamp purchase {old_id}): {arrow}"
         )
         request.app.state.scan_runner.request_scan()
-        return _flash_response("Unlinked", f"{album.title} → Needs Link")
+        return _flash_response("Unlinked", f"{album.title} → {dest}")
 
     @app.post("/retag/{album_id}", response_class=HTMLResponse)
     def retag(request: Request, album_id: str, overwrite_art: bool = Form(False)) -> Response:

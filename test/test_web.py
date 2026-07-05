@@ -2000,6 +2000,33 @@ def test_unlink_reverts_complete_album_to_needs_sync(client, cfg):
     assert any("Unlinked" in e.message and "99" in e.message for e in activity.recent(5))
 
 
+def test_unlink_wrong_match_forgets_url_and_stays_in_library(client, cfg):
+    """'Wrong match' unlink also drops the store_url, so the album stays a
+    correctly-tagged Library album (COMPLETE) and no sync can re-link it — unlike a
+    plain unlink, which keeps the (wrong) URL and would re-link on the next sync."""
+    from datetime import datetime
+
+    from harmonist.bandcamp_hook import survey_album_links
+    from harmonist.models import AlbumState
+    from harmonist.scanner import scan
+
+    d = _make_tagged_album(cfg, "Wrong Link", mbid="rel-w", tagged_at=datetime.now(UTC), item_id=42)
+    assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.COMPLETE
+
+    r = client.post(f"/library/{_id_for(cfg, d)}/unlink", data={"forget_url": "true"})
+    assert r.status_code == 200
+    loaded = sc.read(d)
+    assert loaded.store_url is None  # URL forgotten
+    assert loaded.bandcamp is None
+    assert loaded.mb_release_id == "rel-w"  # still correctly tagged
+    # Stays in the Library (not Needs Link), and no sync will re-link it: with no
+    # store_url it's invisible to both the slug matcher and adoption.
+    assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.COMPLETE
+    by_slug, slugless, _ = survey_album_links(cfg.paths.music_dir)
+    assert d not in slugless
+    assert all(d not in paths for paths in by_slug.values())
+
+
 # ---------- retag / forget ----------
 
 

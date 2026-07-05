@@ -120,14 +120,24 @@
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Forget
                 </button>
-                {# Undo a wrong Bandcamp link → back to Needs Link (keeps tags + URL). #}
+                {# Undo a Bandcamp link. Two flavours: keep the URL (temporarily undo
+                   a CORRECT link → Needs Link, re-links next sync); or forget the URL
+                   (undo a WRONG auto-link → stays in Library, won't re-link). #}
                 {% if bc and bc.item_id is not none %}
                 <button hx-post="/library/{{ album.id }}/unlink"
                         hx-swap="none" hx-disabled-elt="this"
                         onclick="harmonistCloseModal()"
-                        hx-confirm="Unlink this album from its Bandcamp purchase? It reverts to Needs Link — tags and store URL are kept."
+                        hx-confirm="Unlink this album from its Bandcamp purchase? It reverts to Needs Link — tags and store URL are kept, so the next sync can re-link it."
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Unlink
+                </button>
+                <button hx-post="/library/{{ album.id }}/unlink" hx-vals='{"forget_url": "true"}'
+                        hx-swap="none" hx-disabled-elt="this"
+                        onclick="harmonistCloseModal()"
+                        hx-confirm="Wrong match? Unlink AND forget the Bandcamp URL. The album stays correctly tagged in your Library, and no future sync will re-link it to this purchase. The purchase reappears as a potential download so you can match it correctly."
+                        title="Use when the album was auto-linked to the WRONG purchase — forgets the URL so it won't re-link."
+                        class="px-3 py-1.5 bg-surface hover:bg-line text-muted border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+                    Wrong match
                 </button>
                 {% endif %}
             </div>
