@@ -1,0 +1,20 @@
+{# Escape hatches for a SURRENDERED album whose tag is actually wrong. We already
+   resolved an MBID (kept as the read-only candidate), so — unlike the general
+   Needs-MBID tools — there's no "look up releases at this store URL" or Recheck:
+   those re-run the very lookup that already succeeded. Only a name search, a
+   direct MBID paste, and (last resort) seeding a missing release on Harmony. #}
+{% set sc = album.sidecar %}
+<p class="text-muted font-bold uppercase tracking-widest text-2xs mb-1">Search MusicBrainz by name</p>
+{% include 'partials/_name_search.html' %}
+<div id="mbid-results-{{ album.id }}" class="mt-2"></div>
+<div class="mt-3">
+    <p class="text-muted font-bold uppercase tracking-widest text-2xs mb-1">Or paste a MusicBrainz ID</p>
+    {% include 'partials/_mbid_paste.html' %}
+</div>
+{% if sc and sc.store_url %}
+<p class="text-2xs text-muted mt-2">
+    Release missing from MusicBrainz?
+    <a href="{{ harmony_base }}/release?url={{ sc.store_url|urlencode }}"
+       target="_blank" rel="noopener" class="text-mb-purple hover:underline">Seed it on Harmony ↗</a>
+</p>
+{% endif %}

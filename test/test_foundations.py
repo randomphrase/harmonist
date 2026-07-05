@@ -188,6 +188,25 @@ def test_sidecar_round_trip_with_track_count_expected(tmp_path):
     assert loaded.track_count_expected == 12
 
 
+def test_sidecar_round_trip_purchase_unavailable(tmp_path):
+    """purchase_unavailable persists (and defaults False when absent)."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            mb_release_id="rel-aaa",
+            tagged_at=datetime(2026, 5, 7, tzinfo=UTC),
+            purchase_unavailable=True,
+        ),
+    )
+    assert sc.read(album_dir).purchase_unavailable is True
+    # Absent in an older sidecar → False.
+    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-bbb"))
+    assert sc.read(album_dir).purchase_unavailable is False
+
+
 def test_sidecar_read_rejects_both_mbid_and_temp_uid(tmp_path):
     """Hand-crafted sidecar with both identity fields set is invalid."""
     album_dir = tmp_path / "Album"

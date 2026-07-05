@@ -160,6 +160,14 @@ class Sidecar:
     # See design §3, §15.3.
     track_count_expected: int | None = None
     notes: str | None = None
+    # Set when the user accepts a SURRENDERED album as done: a full sync found no
+    # matching Bandcamp purchase (release withdrawn from Bandcamp, bought
+    # elsewhere, or ripped) and they chose "Keep in Library". Load-bearing: the
+    # scanner then treats the album as terminal (COMPLETE/INCOMPLETE) despite the
+    # Bandcamp store_url + missing item_id, and the surrender pass leaves it alone.
+    # Without it the album would re-classify NEEDS_SYNC and re-surrender on every
+    # full sync — there is no purchase to link, ever.
+    purchase_unavailable: bool = False
 
 
 @dataclass

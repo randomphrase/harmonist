@@ -177,6 +177,8 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
         d["track_count_expected"] = s.track_count_expected
     if s.notes is not None:
         d["notes"] = s.notes
+    if s.purchase_unavailable:
+        d["purchase_unavailable"] = True
     return d
 
 
@@ -315,6 +317,7 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
         tagged_at=_parse_iso(d.get("tagged_at")),
         track_count_expected=d.get("track_count_expected"),
         notes=d.get("notes"),
+        purchase_unavailable=bool(d.get("purchase_unavailable", False)),
     )
 
 

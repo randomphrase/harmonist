@@ -534,8 +534,9 @@ def test_mistag_renders_in_own_top_level_section(client, cfg):
 
 
 def test_surrender_card_renders_readonly_with_tools(client, cfg):
-    """A surrender candidate (unmatched_purchase) renders read-only: the
-    'No Bandcamp purchase found' note + the seed/fix tools, and NO Confirm."""
+    """A surrender candidate (unmatched_purchase, no matching download) leads with
+    'Keep in Library' + the withdrawn-release explanation, and offers the 'wrong
+    release?' escape hatch — but NO Confirm & Tag (that would loop to Needs Sync)."""
     d = _make_album(cfg, "Surrendered")
     sc.write(
         d,
@@ -551,14 +552,57 @@ def test_surrender_card_renders_readonly_with_tools(client, cfg):
             ),
         ),
     )
+    from harmonist import scanner
+
+    a = next(x for x in scanner.scan(cfg.paths.music_dir) if x.path == d)
     r = client.get("/tasks")
-    assert "No Bandcamp purchase found" in r.text
+    assert "No matching Bandcamp purchase" in r.text
+    assert "withdrawn from Bandcamp" in r.text  # names the common cause
     assert "https://musicbrainz.org/release/rel-surr" in r.text
-    # Read-only: no Confirm action at all.
+    # Primary action is Keep in Library; no Confirm-and-tag loop.
+    assert f"/surrender/{a.id}/keep" in r.text
+    assert "Keep in Library" in r.text
     assert "Confirm &amp; Tag" not in r.text
     assert "/confirm/" not in r.text
-    # The resolution tools are present (Harmony seed + recheck/fix).
-    assert "Open in Harmony" in r.text
+    # The redundant store-URL lookup is gone; the name/MBID escape hatch remains.
+    assert "Look up releases at this URL" not in r.text
+
+
+def test_surrender_keep_marks_purchase_unavailable_and_completes(client, cfg):
+    """'Keep in Library' restores the release id from the surrender candidate, flags
+    the purchase unavailable, and the album classifies COMPLETE — and STAYS complete
+    (a re-scan won't drag it back to NEEDS_SYNC despite the Bandcamp store_url)."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+
+    d = _make_album(cfg, "Withdrawn", mbid="rel-wd")  # files tagged with rel-wd
+    sc.write(
+        d,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/withdrawn",
+            mb_release_id=None,
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-wd",
+                confidence="exact",
+                file_count=1,
+                track_count=1,
+                unmatched_purchase=True,
+            ),
+        ),
+    )
+    a = next(x for x in scanner.scan(cfg.paths.music_dir) if x.path == d)
+    assert a.state == AlbumState.NEEDS_MBID
+
+    r = client.post(f"/surrender/{a.id}/keep")
+    assert r.status_code == 200, r.text
+
+    loaded = sc.read(d)
+    assert loaded.purchase_unavailable is True
+    assert loaded.mb_release_id == "rel-wd"
+    assert loaded.mb_match_candidate is None
+    after = next(x for x in scanner.scan(cfg.paths.music_dir) if x.path == d)
+    assert after.state == AlbumState.COMPLETE  # terminal, despite the bandcamp store_url
 
 
 def test_inconsistent_card_renders(client, cfg):

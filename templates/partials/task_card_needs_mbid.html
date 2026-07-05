@@ -78,23 +78,30 @@
                 class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest shrink-0 transition">Link</button>
     </div>
     {% else %}
-    {# ---- Surrender with NO matching purchase: a full sync found none. The album's
-         current release is kept as read-only context (no Confirm — re-confirming
-         would loop straight back to Needs Sync); the user resolves it via the tools
-         below (seed on Harmony, or fix the store URL). ---- #}
-    <div class="rounded-lg border border-amber-300 bg-amber-50/60 p-3 mb-3 text-xs text-ink/80 leading-relaxed">
-        <p class="font-bold text-amber-800 mb-1">No Bandcamp purchase found</p>
-        <p>
-            A full sync couldn't link this album to an available Bandcamp purchase —
-            none in your collection matched. It stays <span class="font-semibold">correctly
-            tagged</span> as
+    {# ---- Surrender with NO matching purchase. Common when a release is WITHDRAWN
+         from Bandcamp (its page 404s and it drops out of your collection, so there's
+         nothing to link or re-download), or it was bought elsewhere / ripped. The
+         files are already correctly tagged, so the primary action is to accept it
+         into the Library; the "wrong release?" tools are the fallback. ---- #}
+    <div class="rounded-lg border border-line bg-surface p-3 mb-3">
+        <p class="font-bold text-ink mb-1 text-sm">No matching Bandcamp purchase</p>
+        <p class="text-xs text-ink/80 leading-relaxed">
+            A full sync found no purchase to link. That's expected if the release was
+            <span class="font-semibold">withdrawn from Bandcamp</span> (its page no longer
+            resolves), or you bought it elsewhere / ripped it — there's nothing to link or
+            re-download. The files stay <span class="font-semibold">correctly tagged</span> as
             <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}"
                target="_blank" rel="noopener"
-               class="font-semibold text-mb-purple hover:underline">this MusicBrainz release</a>;
-            it just has no Bandcamp link (used for re-downloads). If the purchase exists
-            under a different URL, or the release is missing from MusicBrainz, use Harmony
-            or the tools below.
+               class="font-semibold text-mb-purple hover:underline">this MusicBrainz release</a>.
         </p>
+        <div class="mt-3">
+            <button hx-post="/surrender/{{ album.id }}/keep"
+                    hx-swap="none" hx-disabled-elt="this"
+                    title="Accept this album as correctly tagged. It moves to your Library and won't be re-checked for a Bandcamp purchase on future syncs."
+                    class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+                Keep in Library
+            </button>
+        </div>
     </div>
     {% endif %}
     {% endif %}
@@ -187,11 +194,17 @@
          results (which live only in the DOM). ---- #}
     <div id="mbid-tools-{{ album.id }}" hx-preserve="true">
     {% if is_surrender %}
-    {# Surrender: the tools ARE the action (seed/fix), so show them open, not
-       collapsed under a "wrong release?" disclosure. #}
-    <div class="space-y-3">
-        {% include 'partials/_needs_mbid_tools.html' %}
-    </div>
+    {# Surrender: the primary action ("Keep in Library") is in the panel above. The
+       album is already correctly tagged, so the release tools are just an escape
+       hatch for a wrong tag — collapsed and de-emphasised, with a reduced set. #}
+    <details class="text-xs">
+        <summary class="cursor-pointer text-muted hover:text-ink select-none">
+            Wrong release? Assign a different one
+        </summary>
+        <div class="mt-2 space-y-3">
+            {% include 'partials/_surrender_tools.html' %}
+        </div>
+    </details>
     {% elif candidate %}
     <details class="text-xs">
         <summary class="cursor-pointer text-muted hover:text-ink select-none">

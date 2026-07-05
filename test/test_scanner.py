@@ -198,6 +198,39 @@ def test_scan_needs_sync_when_item_id_missing(tmp_path):
     assert a.state == AlbumState.NEEDS_SYNC
 
 
+def test_scan_purchase_unavailable_is_complete_not_needs_sync(tmp_path):
+    """purchase_unavailable (a withdrawn/ripped/elsewhere album the user accepted) is
+    terminal COMPLETE, not NEEDS_SYNC — so a full sync never re-surrenders it."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album")
+    release = {
+        "id": "rel-aaa",
+        "title": "Album",
+        "release-group": {"id": "rg-aaa"},
+        "medium-list": [
+            {
+                "position": "1",
+                "track-list": [
+                    {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
+                ],
+            }
+        ],
+    }
+    tagger.tag_album(album_dir, release)
+    sc.write(
+        album_dir,
+        Sidecar(
+            schema_version=CURRENT_SCHEMA_VERSION,
+            store_url="https://x.bandcamp.com/album/y",
+            bandcamp=BandcampInfo(item_id=None),
+            mb_release_id="rel-aaa",
+            tagged_at=datetime.now(UTC),
+            purchase_unavailable=True,
+        ),
+    )
+    a = scan(tmp_path)[0]
+    assert a.state == AlbumState.COMPLETE
+
+
 def test_scan_ambiguous_link_is_complete_not_needs_sync(tmp_path):
     """An ambiguously-linked album (no single item_id, but candidate_item_ids
     recorded — several editions share a store URL) is as resolved as we can get,

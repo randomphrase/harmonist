@@ -2279,6 +2279,39 @@ def _register_routes(app: FastAPI) -> None:
         sidecar_mod.write(album.path, new_sc)
         return _flash_response("Match rejected", album.title)
 
+    @app.post("/surrender/{album_id}/keep", response_class=HTMLResponse)
+    def surrender_keep(request: Request, album_id: str) -> Response:
+        """Accept a surrendered album as done — there's no purchase to link (the
+        release was withdrawn from Bandcamp, or it was bought elsewhere / ripped).
+        Restore the release id from the read-only candidate, flag the purchase as
+        unavailable, and clear the candidate → the scanner classifies it as a
+        terminal Library album (COMPLETE/INCOMPLETE) and no future sync re-surrenders
+        it. The files are already tagged with this release, so nothing is re-written."""
+        album = _find_album(request, album_id)
+        sc = album.sidecar
+        cand = sc.mb_match_candidate if sc else None
+        if sc is None or cand is None or not cand.unmatched_purchase:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "not a surrendered album")
+        sidecar_mod.write(
+            album.path,
+            Sidecar(
+                schema_version=sc.schema_version,
+                store_url=sc.store_url,
+                bandcamp=sc.bandcamp,
+                downloaded_at=sc.downloaded_at,
+                added_at=sc.added_at,
+                mb_release_id=cand.mb_release_id,
+                mb_match_candidate=None,
+                tagged_at=sc.tagged_at,
+                track_count_expected=sc.track_count_expected,
+                notes=sc.notes,
+                purchase_unavailable=True,
+            ),
+        )
+        if album.state not in _TERMINAL_STATES:
+            live_counts.move(album.state, AlbumState.COMPLETE)
+        return _flash_response("Kept in Library", album.title)
+
     @app.post("/unconfirmed/{album_id}/url", response_class=HTMLResponse)
     def update_unconfirmed_url(request: Request, album_id: str, url: str = Form(...)) -> Response:
         album = _find_album(request, album_id)

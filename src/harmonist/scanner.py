@@ -296,6 +296,9 @@ def _derive_state(sidecar: Sidecar | None, fields: list[formats.ScanFields]) -> 
             is_bandcamp_url(sidecar.store_url)
             and (bc is None or bc.item_id is None)
             and not (bc is not None and bc.candidate_item_ids)
+            # The user accepted "no purchase available" (withdrawn/ripped/elsewhere):
+            # it's a terminal Library album, not something a sync can resolve.
+            and not sidecar.purchase_unavailable
         ):
             return AlbumState.NEEDS_SYNC
         return AlbumState.COMPLETE
