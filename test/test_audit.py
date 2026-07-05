@@ -10,7 +10,6 @@ import pytest
 from harmonist import audit
 from harmonist import sidecar as sc
 from harmonist.models import BandcampInfo, Sidecar
-from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 
 
 def test_audit_record_formats_key_values(caplog):
@@ -25,7 +24,7 @@ def test_audit_record_formats_key_values(caplog):
 
 
 def _sc(**kw) -> Sidecar:
-    return Sidecar(schema_version=CURRENT_SCHEMA_VERSION, **kw)
+    return Sidecar(**kw)
 
 
 def test_sidecar_write_audits_create_and_identity_change(tmp_path, caplog):

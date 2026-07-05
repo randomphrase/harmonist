@@ -20,7 +20,6 @@ from harmonist.config import (
     ServerConfig,
     TestConfig,
 )
-from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
 from harmonist.web.main import create_app
 from harmonist.web.reconcile_runner import (
@@ -264,7 +263,7 @@ def test_reconcile_reports_live_inbox_library_counts(tmp_path):
 def sc_for_held():
     from harmonist.models import Sidecar
 
-    return Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-h")
+    return Sidecar(mb_release_id="rel-h")
 
 
 # ---------- web integration ----------

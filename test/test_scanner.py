@@ -17,7 +17,6 @@ from harmonist.models import (
     Sidecar,
 )
 from harmonist.scanner import scan
-from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import (
     ATOM_ALBUM,
     ATOM_ARTIST,
@@ -106,7 +105,6 @@ def test_scan_needs_mbid_when_sidecar_has_store_url(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=1),
             downloaded_at=datetime.now(UTC),
@@ -122,7 +120,6 @@ def test_scan_needs_mbid_when_sidecar_has_no_store_url(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             added_at=datetime.now(UTC),
         ),
     )
@@ -137,7 +134,6 @@ def test_scan_needs_mbid_when_match_candidate_set(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=1),
             mb_match_candidate=MatchCandidate(
@@ -158,7 +154,6 @@ def test_scan_tagging_when_mbid_set_but_files_not_tagged(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             added_at=datetime.now(UTC),
         ),
@@ -187,7 +182,6 @@ def test_scan_needs_sync_when_item_id_missing(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=None),
             mb_release_id="rel-aaa",
@@ -219,7 +213,6 @@ def test_scan_purchase_unavailable_is_complete_not_needs_sync(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=None),
             mb_release_id="rel-aaa",
@@ -253,7 +246,6 @@ def test_scan_ambiguous_link_is_complete_not_needs_sync(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=None, candidate_item_ids=[111, 222]),
             mb_release_id="rel-aaa",
@@ -284,7 +276,6 @@ def test_scan_done_when_bandcamp_item_id_present(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             bandcamp=BandcampInfo(item_id=12345),
             mb_release_id="rel-aaa",
@@ -320,7 +311,6 @@ def test_scan_done_when_mbid_set_and_files_tagged(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(UTC),
         ),
@@ -350,7 +340,6 @@ def test_scan_complete_when_file_count_matches_expected(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(UTC),
             track_count_expected=2,
@@ -388,7 +377,6 @@ def test_scan_incomplete_when_file_count_less_than_expected(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(UTC),
             track_count_expected=5,  # MB says 5 tracks; only 2 on disk
@@ -411,7 +399,6 @@ def test_scan_complete_without_expected_count_legacy(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(UTC),
             track_count_expected=None,
@@ -435,7 +422,6 @@ def test_scan_incomplete_promotes_to_complete_on_file_addition(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(UTC),
             track_count_expected=3,
@@ -472,7 +458,7 @@ def test_scan_done_check_only_matches_correct_mbid(tmp_path):
     tagger.tag_album(album_dir, release)
     sc.write(
         album_dir,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-aaa"),
+        Sidecar(mb_release_id="rel-aaa"),
     )
     assert scan(tmp_path)[0].state == AlbumState.TAGGING
 
@@ -555,7 +541,6 @@ def test_scan_inconsistent_trumps_existing_sidecar(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-original",
             tagged_at=datetime.now(UTC),
         ),
@@ -593,7 +578,6 @@ def test_partial_tag_count_when_some_files_missing_mbid(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(UTC),
         ),
@@ -615,7 +599,6 @@ def test_partial_tag_count_none_when_all_tagged(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(UTC),
         ),
@@ -627,7 +610,7 @@ def test_partial_tag_count_none_when_all_tagged(tmp_path):
 def test_partial_tag_count_none_without_mbid(tmp_path):
     """No mb_release_id on sidecar → can't compute partial tagging."""
     album_dir = _make_album_dir(tmp_path, "Artist", "NoMBID", n_tracks=2)
-    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION))
+    sc.write(album_dir, Sidecar())
     a = scan(tmp_path)[0]
     assert a.partial_tag_count is None
 
@@ -647,7 +630,6 @@ def test_partial_tag_count_independent_of_incomplete_state(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime.now(UTC),
             track_count_expected=5,
@@ -792,7 +774,7 @@ def test_scan_cache_skips_tag_reads_on_sidecar_write(tmp_path, monkeypatch):
     reads = _tag_read_spy(monkeypatch)
     cache: scanner.AlbumCache = {}
     scanner.scan(tmp_path, album_cache=cache)
-    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-x"))
+    sc.write(d, Sidecar(mb_release_id="rel-x"))
     second = scanner.scan(tmp_path, album_cache=cache)
     assert len(reads) == 1  # audio unchanged → tags NOT re-read (the win)
     assert second[0].sidecar is not None

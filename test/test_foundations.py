@@ -15,7 +15,6 @@ from harmonist.models import (
     Sidecar,
     TrackComparison,
 )
-from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 
 # ---------- config ----------
 
@@ -124,7 +123,7 @@ def test_sidecar_write_mints_temp_uid_when_no_mbid(tmp_path):
     """Writing a sidecar with no mb_release_id auto-mints a temp_uid."""
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
-    s = Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url="https://x.bandcamp.com/album/y")
+    s = Sidecar(store_url="https://x.bandcamp.com/album/y")
     sc.write(album_dir, s)
     loaded = sc.read(album_dir)
     assert loaded.temp_uid is not None
@@ -137,7 +136,6 @@ def test_sidecar_write_drops_stale_temp_uid_when_mbid_set(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     s = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         mb_release_id="rel-aaa",
         temp_uid="stale-uid-from-earlier",
         tagged_at=datetime.now(UTC),
@@ -157,14 +155,13 @@ def test_sidecar_write_preserves_existing_temp_uid(tmp_path):
     album_dir.mkdir()
     sc.write(
         album_dir,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url="https://x.bandcamp.com/album/y"),
+        Sidecar(store_url="https://x.bandcamp.com/album/y"),
     )
     first = sc.read(album_dir)
     # Rewrite (e.g. user updates store_url) — temp_uid should not regenerate
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/different",
             temp_uid=first.temp_uid,
         ),
@@ -178,7 +175,6 @@ def test_sidecar_round_trip_with_track_count_expected(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     s = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         mb_release_id="rel-aaa",
         tagged_at=datetime(2026, 5, 7, tzinfo=UTC),
         track_count_expected=12,
@@ -195,7 +191,6 @@ def test_sidecar_round_trip_purchase_unavailable(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             mb_release_id="rel-aaa",
             tagged_at=datetime(2026, 5, 7, tzinfo=UTC),
             purchase_unavailable=True,
@@ -203,7 +198,7 @@ def test_sidecar_round_trip_purchase_unavailable(tmp_path):
     )
     assert sc.read(album_dir).purchase_unavailable is True
     # Absent in an older sidecar → False.
-    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-bbb"))
+    sc.write(album_dir, Sidecar(mb_release_id="rel-bbb"))
     assert sc.read(album_dir).purchase_unavailable is False
 
 
@@ -224,7 +219,6 @@ def test_sidecar_round_trip_with_optional_item_id(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     s = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url="https://x.bandcamp.com/album/y",
         bandcamp=BandcampInfo(item_id=None),
         mb_release_id="rel-aaa",
@@ -245,7 +239,6 @@ def test_sidecar_round_trip_bandcamp(tmp_path):
     album_dir = tmp_path / "Artist" / "Album"
     album_dir.mkdir(parents=True)
     s = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url="https://x.bandcamp.com/album/y",
         bandcamp=BandcampInfo(item_id=42, band_id=99),
         downloaded_at=datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC),
@@ -265,7 +258,6 @@ def test_sidecar_round_trip_ambiguous_candidate_ids(tmp_path):
     album_dir = tmp_path / "Artist" / "Album"
     album_dir.mkdir(parents=True)
     s = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url="https://x.bandcamp.com/album/y",
         bandcamp=BandcampInfo(item_id=None, candidate_item_ids=[222, 111]),
         mb_release_id="rel-x",
@@ -280,7 +272,6 @@ def test_sidecar_round_trip_manual(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     s = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         added_at=datetime(2026, 5, 7, 13, 0, 0, tzinfo=UTC),
         mb_release_id="abc-123",
         notes="seeded by hand",
@@ -317,7 +308,7 @@ def test_sidecar_rejects_invalid_json(tmp_path):
 def test_sidecar_atomic_write_no_tmp_leftover(tmp_path):
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
-    s = Sidecar(schema_version=CURRENT_SCHEMA_VERSION, added_at=datetime.now(UTC))
+    s = Sidecar(added_at=datetime.now(UTC))
     sc.write(album_dir, s)
     assert not list(album_dir.glob("*.tmp"))
     assert sc.has_sidecar(album_dir)
@@ -353,7 +344,6 @@ def test_sidecar_round_trip_with_match_candidate(tmp_path):
         notes=["some track lengths differ", "some MB tracks have no recorded length"],
     )
     s = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url="https://x.bandcamp.com/album/y",
         bandcamp=BandcampInfo(item_id=1),
         mb_match_candidate=candidate,

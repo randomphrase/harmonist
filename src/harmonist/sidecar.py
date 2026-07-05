@@ -11,10 +11,18 @@ from pathlib import Path
 from typing import Any
 
 from . import audit, id_registry, library_index
-from .models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
+
+# Re-exported so existing `from harmonist.sidecar import CURRENT_SCHEMA_VERSION`
+# keeps working; it's defined in models.py so Sidecar can default to it.
+from .models import (
+    CURRENT_SCHEMA_VERSION,
+    BandcampInfo,
+    MatchCandidate,
+    Sidecar,
+    TrackComparison,
+)
 
 SIDECAR_FILENAME = ".harmonist.json"
-CURRENT_SCHEMA_VERSION = 1
 
 
 class UnsupportedSchemaVersionError(Exception):

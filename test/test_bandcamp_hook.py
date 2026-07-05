@@ -20,7 +20,6 @@ from harmonist.bandcamp_hook import (
     write_sidecar_for_item,
 )
 from harmonist.models import BandcampInfo, Sidecar
-from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import ATOM_ALBUM
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -198,7 +197,6 @@ def test_unmatched_purchases_returns_only_unlinked(tmp_path):
     sc.write(
         linked,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/linked",
             bandcamp=BandcampInfo(item_id=111),
         ),
@@ -336,7 +334,6 @@ def test_sync_item_skips_download_when_release_on_disk_by_slug(tmp_path, monkeyp
     sc.write(
         album,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://variant.bandcamp.com/album/sequential-sleep",  # artist page
             mb_release_id="rel-1",
             bandcamp=BandcampInfo(item_id=999),  # linked to a DIFFERENT purchase
@@ -402,7 +399,6 @@ def test_sync_item_skips_relink_for_already_linked_album(tmp_path, monkeypatch):
     sc.write(
         album,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/a",
             mb_release_id="rel-1",
             bandcamp=BandcampInfo(item_id=555),  # already linked
@@ -517,7 +513,6 @@ def test_write_sidecar_fills_in_item_id_on_existing_sidecar(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             mb_release_id="rel-aaa",
         ),
@@ -540,7 +535,6 @@ def test_write_sidecar_prefer_item_url_adopts_item_url(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://label.bandcamp.com/album/home",  # drifted
             mb_release_id="rel-aaa",
         ),
@@ -616,7 +610,6 @@ def _write_sidecar(album_dir: Path, store_url: str, *, item_id: int | None = Non
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url=store_url,
             mb_release_id="rel-x",
             bandcamp=BandcampInfo(item_id=item_id) if item_id is not None else None,
@@ -631,7 +624,6 @@ def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
     sc.write(
         existing_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             mb_release_id="rel-aaa",
         ),
@@ -670,7 +662,6 @@ def test_sync_item_short_circuit_records_transition_to_activity(monkeypatch, tmp
     sc.write(
         existing_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             mb_release_id="rel-a",
         ),
@@ -702,7 +693,6 @@ def test_sync_item_slug_fallback_links_and_adopts_url(monkeypatch, tmp_path):
     sc.write(
         existing_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://echospacedetroit.bandcamp.com/album/home",  # label page
             mb_release_id="rel-home",
         ),
@@ -742,7 +732,6 @@ def test_sync_item_ambiguous_slug_skips_download_no_dupe(monkeypatch, tmp_path):
         sc.write(
             d,
             Sidecar(
-                schema_version=CURRENT_SCHEMA_VERSION,
                 store_url=f"https://{sub.lower()}.bandcamp.com/album/home",
                 mb_release_id=f"rel-{sub}",
             ),
@@ -773,7 +762,6 @@ def test_sync_item_short_circuit_does_not_re_add_already_ignored(monkeypatch, tm
     sc.write(
         existing_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/y",
             mb_release_id="rel-aaa",
         ),
@@ -814,7 +802,6 @@ def test_survey_album_links_splits_unlinked_and_linked(tmp_path):
     sc.write(
         linked,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url=_WUS_URL,
             bandcamp=BandcampInfo(item_id=631669900),
         ),
@@ -823,7 +810,7 @@ def test_survey_album_links_splits_unlinked_and_linked(tmp_path):
     unlinked.mkdir()
     sc.write(
         unlinked,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-x"),
+        Sidecar(store_url=_WUS_URL, mb_release_id="rel-x"),
     )
     # An unlinked album with an artist-root (slug-less) Bandcamp store_url.
     slugless = tmp_path / "Slugless"
@@ -831,7 +818,6 @@ def test_survey_album_links_splits_unlinked_and_linked(tmp_path):
     sc.write(
         slugless,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://quietdetails.bandcamp.com",
             mb_release_id="rel-y",
         ),
@@ -851,7 +837,6 @@ def test_backfill_links_ignored_purchase_to_unlinked_album(tmp_path):
     sc.write(
         album,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url=_WUS_URL,
             mb_release_id="8954fdcc-long-form",
         ),
@@ -876,7 +861,6 @@ def test_backfill_links_slugless_album_by_title(tmp_path):
     sc.write(
         album,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://quietdetails.bandcamp.com",  # artist-root placeholder
             mb_release_id="rel-manual",
         ),
@@ -903,7 +887,6 @@ def test_backfill_does_not_touch_linked_sibling_sharing_slug(tmp_path):
     sc.write(
         regular,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url=_WUS_URL,
             bandcamp=BandcampInfo(item_id=631669900),
         ),
@@ -912,7 +895,7 @@ def test_backfill_does_not_touch_linked_sibling_sharing_slug(tmp_path):
     longform.mkdir(parents=True)
     sc.write(
         longform,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
+        Sidecar(store_url=_WUS_URL, mb_release_id="rel-lf"),
     )
     s = _bare_syncer()
     s.local_media.media_dir = str(tmp_path)
@@ -936,7 +919,6 @@ def test_backfill_does_not_mislink_linked_purchase_to_unlinked_sibling(tmp_path)
     sc.write(
         regular,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url=_WUS_URL,
             bandcamp=BandcampInfo(item_id=631669900),
         ),
@@ -945,7 +927,7 @@ def test_backfill_does_not_mislink_linked_purchase_to_unlinked_sibling(tmp_path)
     longform.mkdir(parents=True)
     sc.write(
         longform,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
+        Sidecar(store_url=_WUS_URL, mb_release_id="rel-lf"),
     )
     s = _bare_syncer()
     s.local_media.media_dir = str(tmp_path)
@@ -969,14 +951,14 @@ def test_backfill_title_tiebreak_pairs_editions(tmp_path):
     standard.mkdir(parents=True)
     sc.write(
         standard,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-std"),
+        Sidecar(store_url=_WUS_URL, mb_release_id="rel-std"),
     )
     _tag_album_title(standard, "While the Universe Sleeps")
     longform = tmp_path / "Variant" / "lf"
     longform.mkdir(parents=True)
     sc.write(
         longform,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
+        Sidecar(store_url=_WUS_URL, mb_release_id="rel-lf"),
     )
     _tag_album_title(longform, "While the Universe Sleeps (Long-Form Edition)")
     p_std = _StubItem(
@@ -1008,15 +990,11 @@ def test_backfill_marks_ambiguous_when_title_cannot_separate(tmp_path):
     leaves NEEDS_SYNC (no nag), rather than guessing."""
     a = tmp_path / "Variant" / "a"
     a.mkdir(parents=True)
-    sc.write(
-        a, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="ra")
-    )
+    sc.write(a, Sidecar(store_url=_WUS_URL, mb_release_id="ra"))
     _tag_album_title(a, "Edition A")
     b = tmp_path / "Variant" / "b"
     b.mkdir(parents=True)
-    sc.write(
-        b, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rb")
-    )
+    sc.write(b, Sidecar(store_url=_WUS_URL, mb_release_id="rb"))
     _tag_album_title(b, "Edition B")
     # Purchase titles match neither folder.
     p1 = _StubItem(
@@ -1052,14 +1030,14 @@ def test_backfill_cross_slug_title_fallback_links_longform(tmp_path, caplog):
     standard.mkdir(parents=True)
     sc.write(
         standard,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-std"),
+        Sidecar(store_url=_WUS_URL, mb_release_id="rel-std"),
     )
     _tag_album_title(standard, "While the Universe Sleeps")
     longform = tmp_path / "Variant" / "lf"
     longform.mkdir(parents=True)
     sc.write(
         longform,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-lf"),
+        Sidecar(store_url=_WUS_URL, mb_release_id="rel-lf"),
     )
     _tag_album_title(longform, "While the Universe Sleeps (Long-Form Edition)")
     # Standard purchase shares the album's public URL; the long-form purchase
@@ -1109,7 +1087,7 @@ def test_backfill_slug_match_does_not_warn_mistag(tmp_path, caplog):
     url = "https://x.bandcamp.com/album/album"
     sc.write(
         album,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=url, mb_release_id="rel-a"),
+        Sidecar(store_url=url, mb_release_id="rel-a"),
     )
     item = _StubItem(item_id=42, item_title="Album", url_hints={"subdomain": "x", "slug": "album"})
     s = _bare_syncer()
@@ -1131,7 +1109,7 @@ def test_backfill_skips_non_ignored_items(tmp_path):
     album.mkdir()
     sc.write(
         album,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=_WUS_URL, mb_release_id="rel-x"),
+        Sidecar(store_url=_WUS_URL, mb_release_id="rel-x"),
     )
     s = _bare_syncer()
     s.local_media.media_dir = str(tmp_path)
@@ -1162,7 +1140,7 @@ def _artist_root_album(tmp_path, folder: str, *, store_url: str, title: str) -> 
     d.mkdir(parents=True)
     sc.write(
         d,
-        Sidecar(schema_version=CURRENT_SCHEMA_VERSION, store_url=store_url, mb_release_id="rel-ar"),
+        Sidecar(store_url=store_url, mb_release_id="rel-ar"),
     )
     _tag_album_title(d, title)
     return d
@@ -1235,7 +1213,7 @@ def test_adopt_skips_album_with_no_store_url(tmp_path):
     NOT auto-linked on a name coincidence — it stays for manual review."""
     d = tmp_path / "Barker" / "Utility"
     d.mkdir(parents=True)
-    sc.write(d, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-b"))
+    sc.write(d, Sidecar(mb_release_id="rel-b"))
     _tag_album_title(d, "Utility")
     p = _StubItem(
         item_id=556,

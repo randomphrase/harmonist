@@ -18,6 +18,12 @@ from urllib.parse import urlparse
 type Release = dict[str, Any]
 type Track = dict[str, Any]
 
+# The `.harmonist.json` sidecar schema version. Lives here (not in `sidecar.py`)
+# so `Sidecar.schema_version` can default to it without an import cycle —
+# `sidecar.py` imports `models`, not the other way round. `sidecar.py` re-exports
+# it for `from harmonist.sidecar import CURRENT_SCHEMA_VERSION`.
+CURRENT_SCHEMA_VERSION = 1
+
 
 class AlbumState(StrEnum):
     NEW = "new"
@@ -149,7 +155,7 @@ class Sidecar:
     scanner reads whichever is set and assigns it to `Album.id`.
     """
 
-    schema_version: int
+    schema_version: int = CURRENT_SCHEMA_VERSION
     store_url: str | None = None
     bandcamp: BandcampInfo | None = None
     downloaded_at: datetime | None = None

@@ -35,7 +35,6 @@ from urllib.parse import urlparse
 from . import formats, url_recovery
 from . import sidecar as sidecar_mod
 from .models import Sidecar
-from .sidecar import CURRENT_SCHEMA_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +98,6 @@ def reconcile_album(
     # URL needs no network and is a better match key (it's what the user bought).
     bandcamp_url = store_url_for_tagging(album_dir, mbid, fetch_urls=fetch_urls)
     sc = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url=bandcamp_url,
         mb_release_id=mbid,
         added_at=now,
@@ -123,7 +121,6 @@ def _reconcile_untagged(
     if not recovered:
         return None
     sc = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url=recovered,
         mb_release_id=None,  # untagged — lands in NEEDS_MBID, not NEEDS_SYNC
         added_at=now,

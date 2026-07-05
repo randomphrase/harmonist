@@ -44,7 +44,6 @@ from .formats.m4a import (
 )
 from .models import BandcampInfo, MatchCandidate, Release, Sidecar, TrackComparison
 from .pending_downloads import PendingPurchase
-from .sidecar import CURRENT_SCHEMA_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -928,7 +927,6 @@ def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidec
     tagged_at = now if sc_spec.get("tagged") else None
 
     return Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url=store_url,
         bandcamp=bandcamp,
         downloaded_at=(now if store_url else None),

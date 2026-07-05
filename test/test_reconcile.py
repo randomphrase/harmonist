@@ -10,7 +10,6 @@ from mutagen.mp4 import MP4
 from harmonist import sidecar as sc
 from harmonist.models import BandcampInfo, Sidecar
 from harmonist.reconcile import reconcile_album, reconcile_pending
-from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -46,7 +45,7 @@ def _bandcamp_urls(*urls):
 def test_skips_album_with_consistent_existing_sidecar(tmp_path):
     """Sidecar already agrees with the file tags → no-op, and no MB query."""
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="Visit https://x.bandcamp.com")
-    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-aaa"))
+    sc.write(album_dir, Sidecar(mb_release_id="rel-aaa"))
 
     def boom(_mbid):
         raise AssertionError("should not query MB when sidecar already matches the files")
@@ -70,7 +69,6 @@ def test_adopts_external_file_retag(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/a",
             mb_release_id="rel-OLD",  # stale
             bandcamp=BandcampInfo(item_id=99),
@@ -87,7 +85,7 @@ def test_adopts_external_file_retag(tmp_path):
 def test_leaves_consistent_sidecar_untouched(tmp_path):
     """Sidecar MBID == file MBID → idempotent no-op."""
     album_dir = _make_album(tmp_path, mbid="rel-1")
-    sc.write(album_dir, Sidecar(schema_version=CURRENT_SCHEMA_VERSION, mb_release_id="rel-1"))
+    sc.write(album_dir, Sidecar(mb_release_id="rel-1"))
     assert reconcile_album(album_dir, fetch_urls=_no_urls) is None
 
 
@@ -98,7 +96,6 @@ def test_does_not_re_promote_surrendered_album(tmp_path):
     sc.write(
         album_dir,
         Sidecar(
-            schema_version=CURRENT_SCHEMA_VERSION,
             store_url="https://x.bandcamp.com/album/a",
             mb_release_id=None,  # surrendered → Needs MBID
         ),

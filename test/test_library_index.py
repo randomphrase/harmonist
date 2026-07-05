@@ -9,7 +9,6 @@ from typing import cast
 from harmonist import library_index
 from harmonist import sidecar as scmod
 from harmonist.models import Album, BandcampInfo, Sidecar
-from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 
 
 @dataclass
@@ -20,7 +19,6 @@ class _A:  # minimal Album stand-in: reset_from reads only .path + .sidecar
 
 def _sc(store_url: str | None = None, item_id: int | None = None) -> Sidecar:
     return Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url=store_url,
         mb_release_id="rel",
         bandcamp=BandcampInfo(item_id=item_id) if item_id is not None else None,

@@ -28,7 +28,6 @@ from . import activity, audit, formats, library_index, pending_downloads
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url, title_words, titles_match
 from .pending_downloads import PendingPurchase
-from .sidecar import CURRENT_SCHEMA_VERSION
 from .url_recovery import album_slug as album_slug  # re-export; canonical home is url_recovery
 
 log = logging.getLogger(__name__)
@@ -152,7 +151,6 @@ def write_sidecar_for_item(item: Any, album_dir: Path, *, prefer_item_url: bool 
         return True
 
     sc = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url=url,
         bandcamp=BandcampInfo(item_id=item_id, band_id=band_id, is_private=is_private),
         downloaded_at=datetime.now(UTC),

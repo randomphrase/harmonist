@@ -52,7 +52,6 @@ from harmonist.models import (
     title_words,
     titles_match,
 )
-from harmonist.sidecar import CURRENT_SCHEMA_VERSION
 from harmonist.tagger import PicardCompatibleTagger, Tagger
 from harmonist.web import dir_watcher
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
@@ -1283,7 +1282,6 @@ def _link_pending_to_album(album: Album, p: pending_downloads.PendingPurchase) -
         sidecar_mod.write(
             album.path,
             Sidecar(
-                schema_version=CURRENT_SCHEMA_VERSION,
                 store_url=p.url,
                 bandcamp=BandcampInfo(item_id=p.item_id),
             ),
@@ -1434,7 +1432,6 @@ def _apply_best_match(
 
     existing = sidecar_mod.read(album_path)
     new = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url=existing.store_url if existing else None,
         bandcamp=existing.bandcamp if existing else None,
         downloaded_at=existing.downloaded_at if existing else None,
@@ -1521,7 +1518,6 @@ def _tag_with_release(
         except Exception:
             log.exception("store_url derivation during tagging failed")
     new = Sidecar(
-        schema_version=CURRENT_SCHEMA_VERSION,
         store_url=store_url,
         bandcamp=sc.bandcamp if sc else None,
         downloaded_at=sc.downloaded_at if sc else None,
