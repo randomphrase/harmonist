@@ -2335,7 +2335,7 @@ def _register_routes(app: FastAPI) -> None:
         )
         if album.state not in _TERMINAL_STATES:
             live_counts.move(album.state, AlbumState.COMPLETE)
-        return _flash_response("Kept in Library", album.title)
+        return _flash_response("Moved to Library", album.title)
 
     @app.post("/unconfirmed/{album_id}/url", response_class=HTMLResponse)
     def update_unconfirmed_url(request: Request, album_id: str, url: str = Form(...)) -> Response:

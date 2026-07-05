@@ -539,7 +539,7 @@ def test_mistag_renders_in_own_top_level_section(client, cfg):
 
 def test_surrender_card_renders_readonly_with_tools(client, cfg):
     """A surrender candidate (unmatched_purchase, no matching download) leads with
-    'Keep in Library' + the withdrawn-release explanation, and offers the 'wrong
+    'Move to Library' + the withdrawn-release explanation, and offers the 'wrong
     release?' escape hatch — but NO Confirm & Tag (that would loop to Needs Link)."""
     d = _make_album(cfg, "Surrendered")
     sc.write(
@@ -561,10 +561,9 @@ def test_surrender_card_renders_readonly_with_tools(client, cfg):
     r = client.get("/tasks")
     assert "No matching Bandcamp purchase" in r.text
     assert "withdrawn from Bandcamp" in r.text  # names the common cause
-    assert "https://musicbrainz.org/release/rel-surr" in r.text
-    # Primary action is Keep in Library; no Confirm-and-tag loop.
+    # Primary action is Move to Library; no Confirm-and-tag loop.
     assert f"/surrender/{a.id}/keep" in r.text
-    assert "Keep in Library" in r.text
+    assert "Move to Library" in r.text
     assert "Confirm &amp; Tag" not in r.text
     assert "/confirm/" not in r.text
     # The redundant store-URL lookup is gone; the name/MBID escape hatch remains.
@@ -572,7 +571,7 @@ def test_surrender_card_renders_readonly_with_tools(client, cfg):
 
 
 def test_surrender_keep_marks_purchase_unavailable_and_completes(client, cfg):
-    """'Keep in Library' restores the release id from the surrender candidate, flags
+    """'Move to Library' restores the release id from the surrender candidate, flags
     the purchase unavailable, and the album classifies COMPLETE — and STAYS complete
     (a re-scan won't drag it back to NEEDS_SYNC despite the Bandcamp store_url)."""
     from harmonist import scanner
@@ -3307,18 +3306,17 @@ def test_case_b_suggestions_render_on_both_cards(client, cfg):
     assert "/pending/90/match" in body
 
 
-def test_pending_section_collapsed_by_default_with_summary(client):
-    """The potential-downloads list is a collapsed <details> (no `open`) with a
-    one-line summary — a subset library's list is large, so we lead with the small
-    mis-tag/surrender sets and keep this behind an expander."""
+def test_pending_section_open_by_default_with_summary(client):
+    """The potential-downloads list is an OPEN <details> with a one-line summary —
+    these purchases need reviewing, so we don't hide them behind an expander. The
+    user can still collapse it (open state is preserved across swaps)."""
     from harmonist import pending_downloads as pd
 
     pd.replace_all([_pp(50), _pp(51)])
     body = client.get("/tasks").text
     assert 'id="group-PENDING"' in body
-    # Collapsed: a <details> without the open attribute.
-    assert '<details id="group-PENDING"' in body
-    assert '<details open id="group-PENDING"' not in body
+    # Open by default.
+    assert '<details id="group-PENDING" open' in body
     assert "you own but" in body  # the summary line
     assert "· 2" in body  # the count
 
