@@ -10,6 +10,18 @@
 
 Harmonist streamlines the workflow from *album purchased on Bandcamp* to *fully tagged file in Plex / Navidrome*, using MusicBrainz (MB) as the source of truth. It is a **workflow tool**, not a tagger. Picard-style tagging is a step we automate inside that workflow.
 
+### Guiding principle
+
+**Transparency + user control over perfection.** Harmonist does not chase bulletproof de-duplication or perfect automation. Every download, link, move, and tag is **visible and reversible** — so when best-effort matching slips (it will, especially adopting a decades-old mixed-provenance library), the user sees it happened and fixes it in a click. Imperfect automation degrades to *"more clicks,"* never to a silent duplicate or silent data loss. Best-effort matching sits on top of a transparent, auditable, user-controllable base — not the other way around.
+
+Concretely, this shows up as:
+
+- A dedicated **audit log** (`harmonist.audit`) for every potentially-destructive op — downloads (id + target path + format), file moves/overwrites, sidecar rewrites (old → new), demotes/surrenders, checkpoint clears, case-collisions.
+- **No automatic directory reshuffling.** Harmonist only *logs* a case-collision (e.g. `variant/` next to `Variant/`); it never renames or moves directories. The user tidies folders by hand.
+- **Unmatched purchases are never auto-downloaded during adoption** — each is surfaced as a *potential download* for an explicit Download / Match / Don't-download decision, so a matching gap costs a click, not a duplicate.
+
+Besides data loss, **usability is a top-tier concern**, not an afterthought.
+
 ### Non-goals
 
 The following are explicitly out of scope for this prototype:
