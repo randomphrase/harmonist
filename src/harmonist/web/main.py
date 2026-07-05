@@ -256,7 +256,7 @@ def create_app(
             # a full sync resolves every NEEDS_SYNC album (link OR surrender).
             pending_links = _force_full_sync_if_pending_links(cfg, scan_runner)
             # Adopt the existing library before fetching anything new: while any
-            # album is unlinked (Needs Sync), this sync runs LINK-ONLY — it links
+            # album is unlinked (Needs Link), this sync runs LINK-ONLY — it links
             # every on-disk match and surrenders the rest, but downloads nothing,
             # so we never re-download a copy of an album already on disk. The Sync
             # popover can force link-only either way (e.g. adopt a fully-reconciled
@@ -840,7 +840,7 @@ def _link_unmatched_by_release_urls(
         # Don't let a second album claim the same purchase this pass.
         owned = {s: v for s, v in owned.items() if v[0] != item_id}
         activity.record(
-            f"{a.artist} — {a.title}: Needs Sync → Library "
+            f"{a.artist} — {a.title}: Needs Link → Library "
             f"(linked to Bandcamp purchase {item_id} via the release's MB URL)"
         )
 
@@ -1382,7 +1382,7 @@ def _run_bandcamp_sync(
     """Build a HarmonistSyncer and let it run end-to-end.
 
     ``link_only`` runs the sync in adopt mode: link on-disk matches + surrender
-    the rest, download nothing (used while any album is still Needs Sync).
+    the rest, download nothing (used while any album is still Needs Link).
     """
     if not cfg.cookies_file.exists():
         raise FileNotFoundError(
@@ -1511,7 +1511,7 @@ def _tag_with_release(
     store_url = store_url_override or (sc.store_url if sc else None)
     if store_url is None:
         # No store_url yet (e.g. a manual download assigned an MBID directly).
-        # Derive the Bandcamp store URL so a purchase lands in Needs Sync rather
+        # Derive the Bandcamp store URL so a purchase lands in Needs Link rather
         # than Complete: embedded ©cmt URL → MB url-rel → artist-root placeholder,
         # all gated by ©cmt Bandcamp evidence. Best-effort — never blocks tagging.
         try:
@@ -1664,7 +1664,7 @@ def _register_routes(app: FastAPI) -> None:
         if p is None:
             return _render_pending_section(request)
         album = _find_album(request, album_id)
-        # Only a match to an INBOX album (a surrender leaving Needs Sync) changes
+        # Only a match to an INBOX album (a surrender leaving Needs Link) changes
         # the inbox, so only then let the post-mutation middleware rescan. Matching
         # a Library album (the adoption case) leaves it COMPLETE — a rescan there is
         # pure overhead and just flickers the inbox while it runs.
@@ -1979,7 +1979,7 @@ def _register_routes(app: FastAPI) -> None:
     @app.post("/library/{album_id}/unlink", response_class=HTMLResponse)
     def library_unlink(request: Request, album_id: str) -> Response:
         """Undo a Bandcamp link: clear the purchase item_id so the album reverts
-        from the Library (COMPLETE) to Needs Sync. Tags + store_url are kept, so a
+        from the Library (COMPLETE) to Needs Link. Tags + store_url are kept, so a
         later sync or manual match can re-link it. Reversible by design."""
         album = _find_album(request, album_id)
         sc = album.sidecar
@@ -1992,10 +1992,10 @@ def _register_routes(app: FastAPI) -> None:
         sidecar_mod.write(album.path, new_sc)
         activity.record(
             f"Unlinked {album.artist} — {album.title} "
-            f"(was Bandcamp purchase {old_id}): Library → Needs Sync"
+            f"(was Bandcamp purchase {old_id}): Library → Needs Link"
         )
         request.app.state.scan_runner.request_scan()
-        return _flash_response("Unlinked", f"{album.title} → Needs Sync")
+        return _flash_response("Unlinked", f"{album.title} → Needs Link")
 
     @app.post("/retag/{album_id}", response_class=HTMLResponse)
     def retag(request: Request, album_id: str, overwrite_art: bool = Form(False)) -> Response:

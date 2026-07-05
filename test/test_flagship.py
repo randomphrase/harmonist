@@ -174,7 +174,7 @@ def test_flagship_409_when_sync_in_flight(demo_client):
 
 
 def test_flagship_new_to_done_via_reconcile_and_confirm(demo_client, tmp_path):
-    """Alt path: New → Reconcile → Needs Sync (already tagged)."""
+    """Alt path: New → Reconcile → Needs Link (already tagged)."""
     music_dir = tmp_path / "music"
     new_album = _album_by_title(music_dir, "A Most Excellent Journey")
     assert new_album.state == AlbumState.NEW

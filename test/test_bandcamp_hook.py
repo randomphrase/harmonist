@@ -660,7 +660,7 @@ def test_sync_item_short_circuits_on_url_match(monkeypatch, tmp_path):
 
 
 def test_sync_item_short_circuit_records_transition_to_activity(monkeypatch, tmp_path):
-    """Linking an on-disk album during the download loop is a Needs Sync →
+    """Linking an on-disk album during the download loop is a Needs Link →
     Library transition — it should hit the Activity feed (not just the server
     log), like the ignored-purchase backfill."""
     from harmonist import activity
@@ -691,7 +691,7 @@ def test_sync_item_short_circuit_records_transition_to_activity(monkeypatch, tmp
     activity.clear()
     s.sync_item(item)
     msgs = [e.message for e in activity.recent(5)]
-    assert any("Needs Sync → Library" in m and "12345" in m for m in msgs)
+    assert any("Needs Link → Library" in m and "12345" in m for m in msgs)
 
 
 def test_sync_item_slug_fallback_links_and_adopts_url(monkeypatch, tmp_path):
@@ -1171,7 +1171,7 @@ def _artist_root_album(tmp_path, folder: str, *, store_url: str, title: str) -> 
 def test_adopt_links_artist_root_album_by_subdomain_and_title(tmp_path):
     """A purchase whose Bandcamp subdomain matches an unlinked artist-root album
     AND whose title matches → confidently auto-linked (adopts the full /album/
-    URL, leaves Needs Sync), NOT surfaced as a potential download."""
+    URL, leaves Needs Link), NOT surfaced as a potential download."""
     album = _artist_root_album(
         tmp_path,
         "Banco de Gaia/Live at Glastonbury",

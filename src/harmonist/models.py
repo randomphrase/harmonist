@@ -27,6 +27,10 @@ class AlbumState(StrEnum):
     # tools. (Formerly split into NEEDS_MBID + NEEDS_REVIEW.)
     NEEDS_MBID = "needs_mbid"
     TAGGING = "tagging"
+    # Displayed as "Needs Link" — the album needs its on-disk copy linked to the
+    # Bandcamp purchase (fill item_id). The enum name/value stay "needs_sync"
+    # (the mechanism, and the /status JSON key the frontend reads); only the
+    # user-facing label changed. See docs/design.md §3.
     NEEDS_SYNC = "needs_sync"
     COMPLETE = "complete"
     INCOMPLETE = "incomplete"

@@ -291,8 +291,8 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
     ):
         self._max_downloads_per_sync = max_downloads_per_sync
         # Adopt mode: link on-disk matches + surrender the rest, download NOTHING.
-        # Set while any album is still Needs Sync, so we never re-download a copy
-        # of an album already on disk; downloads resume next sync (Needs Sync 0).
+        # Set while any album is still Needs Link, so we never re-download a copy
+        # of an album already on disk; downloads resume next sync (Needs Link 0).
         self._link_only = link_only
         self._progress_callback = progress_callback
         # Called with the album dir after each successful download + sidecar
@@ -547,7 +547,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                     log.warning(
                         "Ambiguous Bandcamp link for %r: could be item_id %s — "
                         "%d editions share this store URL and the title didn't "
-                        "single one out. Stored all candidates; left out of Needs Sync.",
+                        "single one out. Stored all candidates; left out of Needs Link.",
                         album_dir.name,
                         cand_desc,
                         len(cand_ids),
@@ -609,7 +609,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             )
             activity.record(
                 f"{getattr(item, 'band_name', '?')} — {purchase_title}: "
-                f"Needs Sync → Library (auto-linked to Bandcamp purchase "
+                f"Needs Link → Library (auto-linked to Bandcamp purchase "
                 f"{getattr(item, 'item_id', '?')} by artist + title{matched})"
             )
         if not self.ignores.is_ignored(item):
@@ -619,11 +619,11 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
     def _link(self, album_dir: Path, item: Any) -> None:
         try:
             if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
-                # A linked album leaves Needs Sync for the Library. Record the
+                # A linked album leaves Needs Link for the Library. Record the
                 # transition in the Activity feed (and server log).
                 activity.record(
                     f"{getattr(item, 'band_name', '?')} — {getattr(item, 'item_title', '?')}: "
-                    f"Needs Sync → Library (linked to Bandcamp purchase "
+                    f"Needs Link → Library (linked to Bandcamp purchase "
                     f"{getattr(item, 'item_id', '?')})"
                 )
         except Exception as e:
@@ -661,7 +661,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 # the album isn't already linked. Otherwise we'd rewrite every
                 # sidecar each sync (bumping mtimes → the next scan re-reads every
                 # album's tags, the slow "finishing up") and spam the feed with
-                # "Needs Sync → Library" for albums long since in the Library.
+                # "Needs Link → Library" for albums long since in the Library.
                 try:
                     existing = sidecar_mod.read(existing_dir)
                 except Exception:
@@ -674,7 +674,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                         write_sidecar_for_item(item, existing_dir, prefer_item_url=by_slug)
                         activity.record(
                             f"{getattr(item, 'band_name', '?')} — "
-                            f"{getattr(item, 'item_title', '?')}: Needs Sync → Library "
+                            f"{getattr(item, 'item_title', '?')}: Needs Link → Library "
                             f"(linked to Bandcamp purchase {getattr(item, 'item_id', '?')}"
                             f"{' by slug' if by_slug else ''})"
                         )
@@ -722,7 +722,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # (approved), in which case fall through and fetch it.
         # Adoption auto-link: before surfacing a potential download, try a
         # confident match to an unlinked artist-root album (same Bandcamp
-        # subdomain + title). If it links, the album leaves Needs Sync for the
+        # subdomain + title). If it links, the album leaves Needs Link for the
         # Library and this purchase is done — no download, no card.
         if self._link_only and not approved and url and self._adopt_link(item, url):
             return False

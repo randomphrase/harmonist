@@ -79,7 +79,7 @@ For each such album (`harmonist.reconcile.reconcile_album`):
 1. Read the `MusicBrainz Album Id` atom from the album's tracks.
 2. Read the `©cmt` (comment) tag from the same file.
 3. Fetch the release's URL relationships from MB (`mb_lookup.fetch_release_urls`).
-4. **If `©cmt` mentions any `bandcamp.com` URL AND MB has at least one Bandcamp URL relationship for the release:** write a sidecar with `store_url` set to MB's canonical Bandcamp URL, `bandcamp.item_id=None` (filled in later by sync). The album shows as **Needs Sync** until the next sync resolves the item_id.
+4. **If `©cmt` mentions any `bandcamp.com` URL AND MB has at least one Bandcamp URL relationship for the release:** write a sidecar with `store_url` set to MB's canonical Bandcamp URL, `bandcamp.item_id=None` (filled in later by sync). The album shows as **Needs Link** until the next sync resolves the item_id.
 5. **Otherwise:** write a sidecar with no `store_url`. Album shows as **Complete** (already tagged).
 
 The `©cmt` evidence rule prevents false-positive "purchased on Bandcamp" classifications when a user happens to own an album that's *also* available on Bandcamp but they bought it elsewhere (Beatport, CD rip, etc.).
@@ -105,7 +105,7 @@ artist-page scraping):
   `store_url`.
 
 Because tagging records the `store_url`, a manually-assigned download lands in
-**Needs Sync** (not Complete), and the next sync fills in `item_id`. When the
+**Needs Link** (not Complete), and the next sync fills in `item_id`. When the
 placeholder is only an artist-root URL (no `/album/` slug), the sync can't match
 it by slug, so the backfill links it in its **title-fallback** pass instead (see
 below) — tagged `©alb` title ⟷ purchase title, the same exact-match rule used for
@@ -161,7 +161,7 @@ unlinked albums and the candidate purchases whose URL carries that slug.
    a **unique** match; then link a lone 1-album/1-purchase remainder by elimination.
 3. Purchases the title couldn't pin to an album → record them as an **ambiguous
    link**: store the candidate item_ids on the album (`bandcamp.candidate_item_ids`)
-   with no single `item_id`. The album leaves Needs Sync for **Complete** — it's
+   with no single `item_id`. The album leaves Needs Link for **Complete** — it's
    as resolved as we can get without per-item track data; a future re-download
    can collapse the set by fetching each candidate's tracklist.
 4. An album with no candidate purchase for its slug is handed to phase 2.
@@ -210,11 +210,11 @@ the on-disk URL was the stale MB-relationship one), appends the id to
 
 A normal sync stops at bandcampsync's collection checkpoint
 (`.bandcampsync-state.json`) and never re-pages older purchases — so an album
-waiting to link (**Needs Sync**) whose purchase is *old* would never be seen. So
-if any album is in Needs Sync at sync start, Harmonist **clears the checkpoint**
+waiting to link (**Needs Link**) whose purchase is *old* would never be seen. So
+if any album is in Needs Link at sync start, Harmonist **clears the checkpoint**
 for that run, forcing a full re-page (bandcampsync writes a fresh checkpoint at
 the end, so subsequent syncs return to incremental). Self-limiting: a full sync
-resolves every Needs Sync album — it either links it, or surrenders it.
+resolves every Needs Link album — it either links it, or surrenders it.
 
 ##### Linking via a release's other Bandcamp URLs
 
@@ -231,7 +231,7 @@ detection.
 
 ##### Surrender — when nothing matches
 
-After the backfill and the post-sync mis-tag pass, an album still in Needs Sync
+After the backfill and the post-sync mis-tag pass, an album still in Needs Link
 on a **full** sync has genuinely no matching purchase. Rather than nag forever,
 Harmonist **surrenders** it: demote to Needs MBID, keeping its current release as
 a **read-only** suggestion (`mb_match_candidate.unmatched_purchase`) plus a "no
@@ -285,7 +285,7 @@ one click restores it). A future refinement would record tag provenance and
 skip surrender for user-assigned tags; until then this behavior is pinned by
 `test_surrender_leaves_on_disk_file_tags_intact`.
 
-The inbox also surfaces a Needs Sync album with two manual affordances:
+The inbox also surfaces a Needs Link album with two manual affordances:
 **Try a different URL** (supply the correct Bandcamp URL → next sync re-matches)
 and **Mark purchased elsewhere** (clear `store_url`, drop the bandcamp block →
 Complete).
@@ -350,7 +350,7 @@ Every album in the music dir is in exactly one state, derived from the presence/
 | present | null | null | n/a | — | **Needs MBID** | yes | If `store_url`: "Open in Harmony" + "Recheck"; always: manual MBID form |
 | present | null | set | n/a | — | **Needs MBID** (with suggestion) | yes | Adaptive card: side-by-side files vs MB release (per-track green/amber length deltas) + "Confirm" / "Confirm as Incomplete" / "Dismiss suggestion", with the find/assign tools available under a disclosure. Sorted first in the group. |
 | present | set | n/a | no | — | **Tagging** (transient) | yes (briefly) | spinner |
-| present, `store_url` is bandcamp, `bandcamp.item_id=None` | set | n/a | yes | — | **Needs Sync** | yes | "Try a different URL" / "Mark purchased elsewhere" |
+| present, `store_url` is bandcamp, `bandcamp.item_id=None` | set | n/a | yes | — | **Needs Link** | yes | "Try a different URL" / "Mark purchased elsewhere" |
 | present | set | n/a | yes | equal | **Complete** | no | (hidden — visible in library) |
 | present | set | n/a | yes | less | **Incomplete** | no | library badge "N of M tracks"; "Recheck — maybe more tracks now" |
 
@@ -363,17 +363,17 @@ MBID — they can do that inline, and dismissing a suggestion stays put.
 
 **Two refinements from the purchase-matcher (§2.5):**
 
-- **Ambiguous link → Complete, not Needs Sync.** A bandcamp album with
-  `bandcamp.item_id=None` is normally Needs Sync — *unless* it carries
+- **Ambiguous link → Complete, not Needs Link.** A bandcamp album with
+  `bandcamp.item_id=None` is normally Needs Link — *unless* it carries
   `bandcamp.candidate_item_ids` (several editions share one store URL and a
   title tiebreak couldn't pin a single one). That's as resolved as we can get
-  without per-item track data, so it scans as **Complete**, not Needs Sync. The
+  without per-item track data, so it scans as **Complete**, not Needs Link. The
   Library badge's tooltip shows the candidate ids.
 - **Surrender = Needs MBID with a read-only suggestion.** When a full sync finds
   no matching purchase, the album is demoted to Needs MBID with its *own* current
   release as the `mb_match_candidate`, flagged `unmatched_purchase=true`. The card
   renders this read-only (no Confirm — re-confirming would loop straight back to
-  Needs Sync) with a "no purchase found" note and the seed/fix tools.
+  Needs Link) with a "no purchase found" note and the seed/fix tools.
 
 `Complete` vs `Incomplete` is derived at scan time by comparing the
 album's file count against `sidecar.track_count_expected` (the MB
@@ -480,12 +480,12 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
 - `bandcamp` block (optional) holds Bandcamp-specific identifiers
   (`item_id`, `band_id`, `is_private`) and only appears when at least one is set.
   When `store_url` is on a bandcamp.com host but `bandcamp.item_id` is
-  null, the album is in **Needs Sync** until the next sync resolves it —
+  null, the album is in **Needs Link** until the next sync resolves it —
   *unless* `candidate_item_ids` is set.
   - `candidate_item_ids` (optional, list of ints): the purchase ids this album
     *could* be when several editions share one store URL and a title tiebreak
     couldn't pin a single one (§2.5). Set instead of `item_id`; takes the album
-    out of Needs Sync (it scans as Complete). A future re-download can collapse
+    out of Needs Link (it scans as Complete). A future re-download can collapse
     the set to one id by comparing tracklists.
 - `mb_match_candidate` (optional) is a proposed-but-unconfirmed match (§"Match
   confidence"). Beyond the track comparison it can carry **mis-tag provenance**
@@ -701,7 +701,7 @@ Album IDs remain MD5-of-path (matches existing convention; survives across runs 
 - Form takes either a full MB release URL/MBID *or* runs the search helper (`/manual/{id}/search?artist=...&title=...`) and presents matches to pick.
 - On selection, POST to `/manual/{id}/assign`. The assign tags the album and
   derives its Bandcamp `store_url` from the MBID + `©cmt` (see §2.5), so a manual
-  download reaches Needs Sync rather than Complete.
+  download reaches Needs Link rather than Complete.
 
 ---
 
@@ -1171,7 +1171,7 @@ the state model and UI don't preclude them.
   **Re-download from Bandcamp** above (drop the entry from `ignores.txt`),
   so the two should share UI.
 - **Live count updating during the sync phase** *(nice to have)* — the
-  reconcile pass already publishes live inbox/library/New/Needs Sync
+  reconcile pass already publishes live inbox/library/New/Needs Link
   counts as it files each orphan (base captured at start + running
   outcome tallies, no mid-pass rescan — see `reconcile_runner.py`'s
   `ReconcileStatus` and `reconcile_pending_orphans`, and the live-count
@@ -1180,7 +1180,7 @@ the state model and UI don't preclude them.
   of the sync `runner_fn`, so the inbox/library numbers only refresh once
   sync completes (snap-at-end). Extend the same base + tallies approach to
   sync — as each purchase links its `item_id` and an album moves
-  NEEDS_SYNC → COMPLETE, decrement Needs Sync / increment Library live —
+  NEEDS_SYNC → COMPLETE, decrement Needs Link / increment Library live —
   without a full mid-sync rescan (which would hammer the network mount).
   Low priority: the end-of-sync snap is functionally correct; this is
   purely a responsiveness polish.

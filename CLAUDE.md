@@ -87,7 +87,7 @@ The Tailwind version is pinned (`TAILWINDCSS_VERSION` in the Makefile) so
 | `NEW`          | No sidecar; nothing tagged                           | yes    |
 | `NEEDS_MBID`   | Sidecar present, no MBID; may carry a suggestion     | yes    |
 | `NEEDS_REVIEW` | An approximate MB match exists; needs confirmation   | yes    |
-| `NEEDS_SYNC`   | Tagged + URL is Bandcamp, but `bandcamp.item_id=None`| yes    |
+| `NEEDS_SYNC`   | Tagged + URL is Bandcamp, but `bandcamp.item_id=None` — shown as **"Needs Link"** | yes    |
 | `TAGGING`      | Transient — in the middle of writing tags            | yes    |
 | `COMPLETE`     | Tagged, file count matches MB track count            | no     |
 | `INCOMPLETE`   | Tagged, but file count < MB track count              | no     |

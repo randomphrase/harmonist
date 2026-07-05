@@ -28,7 +28,7 @@
     <p class="text-xs text-muted">
         Sorting your library as albums are identified —
         <span class="font-semibold text-ink">{{ reconcile.new }}</span> New ·
-        <span class="font-semibold text-ink">{{ reconcile.needs_sync }}</span> Needs Sync ·
+        <span class="font-semibold text-ink">{{ reconcile.needs_sync }}</span> Needs Link ·
         <span class="font-semibold text-ink">{{ reconcile.library }}</span> to Library.
     </p>
 </div>
@@ -139,7 +139,7 @@
                 {% if state == AlbumState.INCONSISTENT %}Inconsistent
                 {% elif state == AlbumState.NEW %}New
                 {% elif state == AlbumState.NEEDS_MBID %}Needs <abbr title="MusicBrainz Identifier — the unique ID of a specific release in the MusicBrainz database" class="cursor-help underline decoration-dotted underline-offset-2">MBID</abbr>
-                {% elif state == AlbumState.NEEDS_SYNC %}Needs Sync
+                {% elif state == AlbumState.NEEDS_SYNC %}Needs Link
                 {% elif state == AlbumState.TAGGING %}Tagging
                 {% endif %}
                 <span class="text-muted font-normal ml-1">· {{ group|length }}</span>

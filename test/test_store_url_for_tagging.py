@@ -1,5 +1,5 @@
 """Tests for reconcile.store_url_for_tagging — the tag-time derivation of a
-Bandcamp store_url so a manually-assigned download reaches Needs Sync.
+Bandcamp store_url so a manually-assigned download reaches Needs Link.
 
 Sources in preference order: embedded ©cmt /album/ URL → MB url-rel → artist-root
 placeholder; all gated by ©cmt Bandcamp evidence."""

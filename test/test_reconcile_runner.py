@@ -194,7 +194,7 @@ def test_reconcile_pending_walks_only_orphans(tmp_path):
 
 def test_reconcile_records_transitions_to_activity(tmp_path):
     """Reconcile narrates to the Activity feed: a start line, a per-album line
-    for each real transition (→ Needs Sync, → Library), and a closing summary.
+    for each real transition (→ Needs Link, → Library), and a closing summary.
     Skips are NOT posted per-album (they'd flood a large untagged library) —
     they show up in the summary's 'unchanged' count."""
     from harmonist import activity
@@ -212,7 +212,7 @@ def test_reconcile_records_transitions_to_activity(tmp_path):
     )
     msgs = [e.message for e in activity.recent(20)]
     assert any("Reconcile started" in m for m in msgs)
-    assert any("Needs Sync (reconciled" in m for m in msgs)
+    assert any("Needs Link (reconciled" in m for m in msgs)
     assert any("Library (reconciled" in m for m in msgs)
     # The skipped (no-MBID) album is in the summary, not a per-album feed line.
     assert not any("New (no MusicBrainz Id" in m for m in msgs)
@@ -240,7 +240,7 @@ def test_reconcile_reuses_snapshot_without_rescanning(tmp_path, monkeypatch):
 
 def test_reconcile_reports_live_inbox_library_counts(tmp_path):
     """As it files each orphan, reconcile reports live counts = base (0 here,
-    all orphans) + the running tallies: → Library, → Needs Sync, → stuck New."""
+    all orphans) + the running tallies: → Library, → Needs Link, → stuck New."""
     music = tmp_path / "music"
     _make_album(music, "BC", mbid="rel-bc", comment="Visit https://x.bandcamp.com")
     _make_album(music, "Manual", mbid="rel-man")  # no bandcamp comment → Library

@@ -181,7 +181,7 @@ def store_url_for_tagging(
 ) -> str | None:
     """The best deterministic Bandcamp store URL for an album being tagged to
     `mbid`, or None — used at tag time so a manually-assigned download reaches
-    Needs Sync (not Complete) when it's a Bandcamp purchase.
+    Needs Link (not Complete) when it's a Bandcamp purchase.
 
     No guessing, three sources in preference order (precise first):
       1. The fully-formed `/album/` (or `/track/`) URL embedded in the file's
@@ -192,7 +192,7 @@ def store_url_for_tagging(
          Bandcamp purchase; the sync then links it to a purchase by title.
 
     Everything is gated by Bandcamp evidence in the `©cmt`: with no Bandcamp URL
-    in the comment at all, returns None (a CD rip stays Complete, not Needs Sync).
+    in the comment at all, returns None (a CD rip stays Complete, not Needs Link).
     """
     files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
     if not files:
@@ -201,7 +201,7 @@ def store_url_for_tagging(
     url = url_recovery.extract_bandcamp_url(comment)
     if url is None:
         # No Bandcamp evidence → not treated as a Bandcamp purchase (→ Complete,
-        # not Needs Sync). Observability: when there IS a comment but no
+        # not Needs Link). Observability: when there IS a comment but no
         # bandcamp.com URL (e.g. "Visit https://3six.net", or a Picard-stripped
         # tag), log it so a genuinely-purchased album silently landing in Library
         # is explainable from the logs — the fuzzy potential-download match is the

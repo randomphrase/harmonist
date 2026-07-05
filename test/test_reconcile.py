@@ -240,7 +240,7 @@ def test_precise_cmt_url_used_without_mb_call(tmp_path):
 
 def test_records_artist_root_url_when_mb_has_no_bandcamp_link(tmp_path):
     """Artist-root ©cmt + MB has no Bandcamp url-rel → record the artist-root URL
-    from the comment (it's still a Bandcamp purchase → Needs Sync), not None."""
+    from the comment (it's still a Bandcamp purchase → Needs Link), not None."""
     album_dir = _make_album(tmp_path, mbid="rel-aaa", comment="https://x.bandcamp.com")
     fetch = _bandcamp_urls("https://example.com/somewhere-else")  # no bandcamp URL
     result = reconcile_album(album_dir, fetch_urls=fetch)
