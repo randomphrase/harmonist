@@ -14,6 +14,10 @@ ENV HARMONIST_MUSIC_DIR=/music \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# Signals "running in a container" — the app omits log-line timestamps and lets
+# the log driver stamp at capture (use `docker logs -t`).
+ENV HARMONIST_IN_CONTAINER=1
+
 WORKDIR /app
 
 # Copy the whole package + root-level templates/static. main.py locates

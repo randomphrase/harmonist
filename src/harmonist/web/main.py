@@ -91,6 +91,22 @@ _TERMINAL_STATES = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
 
 _logging_configured = False
 
+# Log-line format, with vs without a timestamp. In a container the log driver
+# stamps every line at capture (`docker logs -t`, or a collector) in one clock, so
+# an app timestamp only collides with the driver's in a possibly-different TZ (a
+# double-stamp) — omit it there, matching uvicorn's own convention (its
+# access/error lines carry none). In bare local dev nothing else stamps, so keep a
+# timestamp for readability.
+_LOG_FORMAT_WITH_TS = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+_LOG_FORMAT_NO_TS = "%(levelname)s %(name)s: %(message)s"
+
+
+def _in_container() -> bool:
+    """True when running inside a container. `HARMONIST_IN_CONTAINER` is baked into
+    our image (explicit, build-time); `/.dockerenv` is Docker's runtime marker, so
+    the package also self-detects if run in a container we didn't build."""
+    return os.environ.get("HARMONIST_IN_CONTAINER") == "1" or Path("/.dockerenv").exists()
+
 
 def _configure_logging(cfg: config_mod.Config) -> None:
     """Send `harmonist.*` logs (with tracebacks) to stdout so they show up in
@@ -126,7 +142,8 @@ def _configure_logging(cfg: config_mod.Config) -> None:
 
     if not _logging_configured:
         handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        fmt = _LOG_FORMAT_NO_TS if _in_container() else _LOG_FORMAT_WITH_TS
+        handler.setFormatter(logging.Formatter(fmt))
         logger.addHandler(handler)
         # We own the harmonist logger's output; don't also bubble to the root
         # logger (avoids duplicate lines if anything ever configures root).

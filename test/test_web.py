@@ -2840,6 +2840,18 @@ def test_git_sha_prefers_baked_env(monkeypatch):
     assert _git_sha() == "deadbeefcafe"  # truncated to 12
 
 
+def test_container_detected_from_env_selects_no_timestamp_format(monkeypatch):
+    """HARMONIST_IN_CONTAINER=1 marks a container → log format omits the timestamp
+    (the driver stamps at capture); the dev format keeps one."""
+    from harmonist.web import main as m
+
+    monkeypatch.setenv("HARMONIST_IN_CONTAINER", "1")
+    assert m._in_container() is True
+    # The two formats differ exactly by the timestamp field.
+    assert "asctime" not in m._LOG_FORMAT_NO_TS
+    assert "asctime" in m._LOG_FORMAT_WITH_TS
+
+
 # ---------- startup permission gate ----------
 
 
