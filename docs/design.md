@@ -26,14 +26,12 @@ Besides data loss, **usability is a top-tier concern**, not an afterthought.
 
 The following are explicitly out of scope for this prototype:
 
-- **No automatic polling of Bandcamp.** Sync is a button. The user buys infrequently and Bandcamp has no purchase webhook.
 - **No in-app MusicBrainz seeding form.** When an album isn't on MB, we link out to [Harmony](https://harmony.pulsewidth.org.uk). Harmony does the seeding work.
 - **No database.** State lives in `.harmonist.json` sidecars next to each album. bandcampsync's `ignores.txt` is the source of truth for "what's downloaded".
-- **No C++ bindings.** The earlier readme mentioned them; they don't exist and we're not adding them.
 - **No multi-user / no auth.** Single-user app behind the user's network.
 - **No format conversion.** Files are downloaded in the requested format (default FLAC) and tagged in place.
-- **No fix-it-yourself for inconsistent dirs.** Picard exists for that. See §15.2.
-- **No transcoding, no folder splitting.** See §15.4.
+- **No fix-it-yourself for inconsistent dirs.** Picard exists for that. See §13.2.
+- **No transcoding, no folder splitting.** See §13.4.
 
 ---
 
@@ -65,22 +63,17 @@ the whole reason the `NEEDS_SYNC` state exists.
 3. User pastes an MB release URL/MBID, or uses a name-based MB search helper.
 4. Harmonist writes a sidecar with no `store_url` (the manual case) and the resolved `mb_release_id`, then tags the files.
 
-### 2.3 Held-album recheck
+### 2.3 Recheck a Needs-MBID album
 
-1. User has previously seeded a release in Harmony.
-2. User clicks **Recheck** on a Held album (or **Recheck All**).
-3. Harmonist re-runs the MB URL lookup. If now matched, it tags. If still unmatched, the album stays Held.
+1. User previously seeded a release in Harmony (an album with a `store_url` but no MB match).
+2. User clicks **Recheck** on that album.
+3. Harmonist re-runs the MB URL lookup. If now matched, it tags; if still unmatched, the album stays in Needs MBID.
 
-### 2.4 Re-tag from MB *(planned — post-v1)*
+### 2.4 Re-tag from MB
 
-1. User edits a release in MB (track titles, dates, etc.).
-2. User clicks **Re-tag** on a matched album.
-3. Harmonist re-fetches the MB release and rewrites the file tags.
-
-**Not in the initial release.** Captured here so the state model and UI
-don't preclude it later. No `COMPLETE → COMPLETE` or
-`INCOMPLETE → INCOMPLETE` "Re-tag" self-loop appears in the §3.1
-diagram until this use case is in scope.
+1. User edits a release in MB (track titles, dates, etc.) — or just wants to refresh tags.
+2. User clicks **Re-tag from MB** on a Library album (in the detail modal).
+3. Harmonist re-fetches the MB release and rewrites the file tags. Per-track embedded artwork is preserved unless the user forces **Replace artwork**.
 
 ### 2.5 Per-album reconciliation
 
@@ -152,7 +145,7 @@ slug is Bandcamp's **stable per-release handle** — minted once, immutable even
 the artist renames the band or re-letters the title — which is what makes it a
 safe key. The item-type segment is kept so `album`/`track` can't collide.
 
-##### The backfill: a two-phase matcher
+#### The backfill: a two-phase matcher
 
 `survey_album_links` walks the library once into two structures: unlinked albums
 grouped by store_url slug, and the set of item_ids **already** linked to an
@@ -218,7 +211,7 @@ to loose, unscoped matching.
 the on-disk URL was the stale MB-relationship one), appends the id to
 `ignores.txt`, and skips the download.
 
-##### Forcing a full sync
+#### Forcing a full sync
 
 A normal sync stops at bandcampsync's collection checkpoint
 (`.bandcampsync-state.json`) and never re-pages older purchases — so an album
@@ -228,7 +221,7 @@ for that run, forcing a full re-page (bandcampsync writes a fresh checkpoint at
 the end, so subsequent syncs return to incremental). Self-limiting: a full sync
 resolves every Needs Link album — it either links it, or surrenders it.
 
-##### Linking via a release's other Bandcamp URLs
+#### Linking via a release's other Bandcamp URLs
 
 Bandcamp linking keys on the album **slug** (`/album/<slug>`), but an MB release
 often lists *several* Bandcamp URLs (e.g. `/album/x` and `/album/x-2`, or an
@@ -241,7 +234,7 @@ release's Bandcamp URLs (only when exactly one matches). Cost is one MB call per
 unmatched album — bounded by the small failed set, same budget as mis-tag
 detection.
 
-##### Surrender — when nothing matches
+#### Surrender — when nothing matches
 
 After the backfill and the post-sync mis-tag pass, an album still in Needs Link
 on a **full** sync has genuinely no matching purchase. Rather than nag forever,
@@ -253,7 +246,7 @@ is None`) — on a partial sync, "no match" might just mean "not paged this run"
 so we only warn there and leave the album alone. If a surrendered album is tagged
 as the *same* MB release as one already linked to a purchase, a non-committal
 WARNING flags a possible duplicate copy — or a release legitimately split across
-directories (§15.3), which we don't try to tell apart.
+directories (§13.3), which we don't try to tell apart.
 
 After a **full** sync, an album reaches surrender for exactly one of three
 reasons — its `store_url` slug matched no purchase slug *and* its tagged title
@@ -341,7 +334,7 @@ differs from the canonical Bandcamp-sync flow is volume.
 
 **Assumptions / out of scope:**
 
-- Library is **internally consistent** per §15.2. Bulk-import does not
+- Library is **internally consistent** per §13.2. Bulk-import does not
   attempt to untangle mixed-album dirs; those land in `INCONSISTENT`
   and the user resolves with Picard.
 - Library is not actively being written to by another tool during the
@@ -416,6 +409,8 @@ stateDiagram-v2
     NEEDS_MBID --> COMPLETE: Confirm / recheck / paste MBID<br/>(non-bandcamp store_url → tagged)
     NEEDS_MBID --> NEEDS_SYNC: Confirm / recheck / paste MBID<br/>(bandcamp store_url → awaits item_id)
     NEEDS_MBID --> INCOMPLETE: Confirm as Incomplete
+    NEEDS_MBID --> COMPLETE: Move to Library<br/>(surrendered, no purchase;<br/>purchase_unavailable)
+    NEEDS_MBID --> COMPLETE: Link a potential download<br/>(surrendered; un-surrenders)
 
     NEEDS_SYNC --> COMPLETE: Sync matches<br/>purchase (item_id filled)
     NEEDS_SYNC --> COMPLETE: Ambiguous link<br/>(candidate_item_ids set)
@@ -441,7 +436,7 @@ Notes:
 - `TAGGING` is omitted: it's a transient state visible only while the
   tagger is mid-write (typically <1s).
 - `INCONSISTENT` is purely derived from on-disk file tags; user resolves
-  via Picard (§15.2). No sidecar action needed.
+  via Picard (§13.2). No sidecar action needed.
 - Forget adds the path to an in-memory exemption set so auto-reconcile
   doesn't immediately reverse it.
 
@@ -513,6 +508,12 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   (`file_count < track_count_expected`). There is no `incomplete` flag;
   state is the marker, and `track_count_expected` is what persists user
   intent across MB upstream changes.
+- `purchase_unavailable` (optional, bool) is set when the user accepts a
+  **surrendered** album via **Move to Library** — a full sync found no purchase
+  and there is none to find (the Bandcamp release was withdrawn, or it was bought
+  elsewhere / ripped). It makes the scanner treat the album as terminal
+  (Complete/Incomplete) despite a bandcamp `store_url` + missing `item_id`, so no
+  future sync re-surrenders it. Absent → `false`.
 - All timestamps are ISO 8601 UTC with `Z` suffix.
 
 **Persistence philosophy:** The sidecar holds load-bearing state only —
@@ -597,32 +598,37 @@ Plex with the MusicBrainz agent can fetch its own artwork from external sources,
 
 ```
 src/harmonist/
-  config.py            NEW   env-var + TOML config loader, single source of truth
-  models.py            NEW   Album dataclass, AlbumState enum, Sidecar dataclass
-  sidecar.py           NEW   read/write/migrate .harmonist.json atomically
-  scanner.py           REPLACE  walk music dir → list of Albums (sidecar-driven, not tag-driven)
-  bandcamp_hook.py     NEW   Syncer subclass; intercepts post-download, writes sidecar
-  mb_lookup.py         NEW   MB URL-relationship lookup; full-release fetch for tagging
-  mb_search.py         NEW   name-based search helper (manual path only)
-  match.py             NEW   compare local files to MB release: confidence + per-track deltas
-  reconcile.py         NEW   per-album reconciliation: derive sidecar from MBID tag + ©cmt + MB url-rels
-  cover_art.py         NEW   Cover Art Archive fetch, resize, cache, write to album dir
-  tagger.py            NEW   Picard-compatible tag writer (incl. embedded covr atom)
-  url_recovery.py      NEW   extract any embedded Bandcamp URL from ©cmt (precise or artist-root; no scraping)
+  config.py             Pydantic config model + env/TOML loading
+  models.py             Album, Sidecar, AlbumState, MatchCandidate, BandcampInfo, …
+  sidecar.py            Read/write .harmonist.json sidecars atomically
+  scanner.py            Walk music dir → Album objects (state derived per-album)
+  reconcile.py          Derive a sidecar from MBID tag + ©cmt + MB url-rels (orphan recovery)
+  url_recovery.py       Recover an embedded Bandcamp URL from ©cmt (precise or artist-root; no scraping)
+  bandcamp_hook.py      bandcampsync Syncer subclass: download cap, sidecar capture, purchase↔album linking
+  pending_downloads.py  In-memory "potential downloads" (unmatched purchases awaiting a decision)
+  mb_lookup.py          MB by-id / by-url fetch (1 req/sec budget)
+  mb_search.py          MB free-text search (manual-ingest path)
+  match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
+  tagger.py             Picard-compatible tag writer (+ embedded cover)
+  cover_art.py          Cover Art Archive fetch + cover.* writing
+  formats/              Per-format tag I/O (m4a, mp3, flac, ogg, opus; _vorbis shared; types)
+  activity.py           In-memory ring-buffer log for the Activity tab
+  audit.py              Audit log for destructive ops (downloads, moves, sidecar rewrites, …)
+  live_counts.py        Single source of truth for state counts (reset per scan + live moves)
+  library_index.py      In-memory sidecar/dedup index (one update point)
+  id_registry.py        Stable UUID for albums without an MBID
+  demo.py               Demo-mode monkey-patches + seeded sample library
   web/
-    main.py            REWRITE  FastAPI routes
-    sync_runner.py     NEW   in-process job runner with status polling
-  fixtures/            NEW   small ALAC fixtures + sample sidecars for tests
-
-DELETE:
-  src/harmonist/syncer.py                       (replaced by bandcamp_hook.py)
-  src/harmonist/bandcamp_scraper.py             (Harmony does seeding)
-  src/harmonist/mb_searcher.py                  (replaced by mb_lookup.py + mb_search.py)
-  src/harmonist/setup_demo.py                   (replaced by fixtures/)
-  src/harmonist/web/templates/index.html        (stub; real templates are at root)
-  templates/partials/verify_seeding.html        (no in-app seeding)
-  readme.md~ , .envrc~                          (cruft)
+    main.py             FastAPI app — create_app() + all routes
+    security.py         CSRF / TrustedHost / optional Basic-auth middleware
+    sync_runner.py      Bandcamp sync wrapper (background thread) + status
+    reconcile_runner.py Reconciliation pass over the library (rate-limited MB)
+    scan_runner.py      Cache-backed library scan + status
+    dir_watcher.py      watchfiles watcher → rescan when the music dir settles
 ```
+
+Templates and static assets live at the **project root** (`/templates`,
+`/static`), not under `src/` — `web/main.py` walks up to find them.
 
 ---
 
@@ -672,23 +678,24 @@ Validation runs at startup via Pydantic; the app refuses to start with an invali
 
 ## 8. HTTP API surface
 
-All routes return HTML fragments unless noted. JSON only for `/healthz`, `/sync/status`.
+Routes return **HTML fragments** (HTMX swaps) except a few JSON status
+endpoints: `/healthz`, `/status` (a consolidated sync + reconcile + scan poll),
+`/sync/status`, `/reconcile/status`, `/scan/status`. `web/main.py` is the
+authoritative list; the shape is:
 
-| Method | Route | Purpose | Response |
-|---|---|---|---|
-| GET  | `/` | Inbox page | full HTML |
-| GET  | `/tasks` | Inbox content (tasks partial) | HTML fragment |
-| POST | `/sync` | Start sync | HTML fragment + `HX-Trigger: sync-started` |
-| GET  | `/sync/status` | Poll sync state | JSON `{state, progress, current_item}` |
-| POST | `/tag/{album_id}/{mbid}` | Apply tagging with given MBID | HTML fragment |
-| POST | `/recheck/{album_id}` | Re-run MB lookup for held album | HTML fragment |
-| POST | `/recheck` | Recheck all held | HTML fragment |
-| POST | `/manual/{album_id}` | Open manual MBID entry/search | HTML fragment |
-| POST | `/manual/{album_id}/search` | Run name-based MB search helper | HTML fragment |
-| GET  | `/healthz` | Health for Docker | JSON |
-| GET  | `/static/...` | Static assets (cover art via symlink to music dir is one option) | binary |
+- **Pages**: `GET /` (inbox), `/about`.
+- **Content fragments**: `GET /tasks` (inbox), `/library`, `/activity`.
+- **Background jobs**: `POST /sync`, `POST /reconcile`.
+- **Per-album actions** (keyed by album id): `/confirm/{id}`, `/reject/{id}`,
+  `/recheck/{id}`, `/manual/{id}/…` (search / candidates / assign),
+  `/retag/{id}`, `/forget/{id}`, `/surrender/{id}/keep` (Move to Library),
+  `/library/{id}/…` (detail / unlink).
+- **Potential downloads** (keyed by purchase item_id): `/pending/{id}/…`
+  (match / download / skip).
+- **Cover art**: `GET /cover/{id}`; other static assets under `/static/`.
 
-Album IDs remain MD5-of-path (matches existing convention; survives across runs as long as the album doesn't move).
+**Album IDs** are the MusicBrainz release id once the album is tagged, otherwise
+a UUID assigned by `id_registry` — never a hash of the path.
 
 ---
 
@@ -899,27 +906,7 @@ A checklist in `docs/manual-tests.md` (separate doc, owned by QA):
 
 ---
 
-## 12. Build order
-
-Each step ends with green tests at its level. No agent moves on until QA signs off.
-
-1. **Foundations** — `config.py`, `models.py`, `sidecar.py`. Unit tests for sidecar I/O (round-trip, atomic writes, schema rejection).
-2. **Tagger** — `tagger.py` against ALAC fixture files. Unit tests assert exact atom set written + re-read. This blocks nothing else and is independently valuable.
-2a. **Cover art** — `cover_art.py`: CAA fetch, resize to configured size, write `cover.jpg` + embed `covr`. Cassette tests for matched / no-art / release-group fallback. Tagger gets extended to call this.
-3. **Scanner rewrite** — sidecar-driven. Unit tests across all states (orphan / held / tagged) with fixture trees.
-4. **MB lookup** — `mb_lookup.py` URL-relationship endpoint + full-release fetch. Cassette tests for matched / unmatched / API error.
-5. **bandcampsync hook** — `bandcamp_hook.py`. Unit tests against a mocked `BandcampItem` shape; integration test against a fixture collection-items response.
-6. **Web layer** — FastAPI routes, `sync_runner.py`, templates. Integration tests via `TestClient` covering each route × each state.
-7. **UX live updates** — HTMX polling, status indicator, sync button states. Browser-tested manually.
-8. **Manual + recheck flows** — `mb_search.py`, manual-entry templates, recheck routes.
-9. **URL recovery fallback** — `url_recovery.py` extracts any embedded Bandcamp URL from `©cmt` (precise `/album/` or artist-root; no scraping). Lower priority.
-10. **Containerise** — Dockerfile (amd64), GHCR publish workflow, healthcheck, Docker-native `user:` for ownership, compose recipes.
-11. **Flagship E2E test** — cassette-mode test of the full sync flow. Becomes the gate for "prototype done".
-12. **Manual test pass** — QA runs through `docs/manual-tests.md` on macOS and Pi.
-
----
-
-## 14. Audio format support
+## 12. Audio format support
 
 Harmonist supports common audio container formats. The scanner walks for
 all supported extensions; the tagger dispatches by file extension to the
@@ -968,7 +955,7 @@ format (https://picard.musicbrainz.org/docs/mappings/). The comment field
 (`©cmt` / `COMM` / `COMMENT`) is never overwritten on tagging so a
 recovered store URL survives a retag.
 
-## 15. Best-effort handling of imperfect libraries
+## 13. Best-effort handling of imperfect libraries
 
 Harmonist heavily biases the **curated user** — Picard-tagged, sane folder
 structure, purchased / legitimately-obtained library. For chaotic
@@ -982,7 +969,7 @@ a `.harmonist.json` sidecar by hand to escape a state.* If they do, that's
 a UX bug. Every state must have a path out via on-disk file edits, Picard,
 or a button in the UI.
 
-### 15.1 Partial tagging
+### 13.1 Partial tagging
 
 Some tracks in an album dir have the MB Album Id atom, others don't.
 Common cause: user added a track to an existing album without re-tagging,
@@ -1004,7 +991,7 @@ meantime the user can re-tag externally with Picard.
 
 No new state — partial tagging is a quality issue, not ambiguity.
 
-### 15.2 Inconsistent dirs (multiple albums in one folder)
+### 13.2 Inconsistent dirs (multiple albums in one folder)
 
 Tracks in an album dir disagree on album title (`©alb` / `TALB` / `ALBUM`)
 or MB Album Id. Common cause: messy filesystem; user dumped multiple
@@ -1050,7 +1037,7 @@ surface a "Sidecar Stale" state.
 **Rationale:** tagging an inconsistent dir is high-risk silent
 corruption. We refuse to guess; Picard exists for this case.
 
-### 15.3 Incomplete albums
+### 13.3 Incomplete albums
 
 On-disk track count is **less than** the MB release's track count, but
 the user has a valid reason (CD rip missing a hidden track, intentional
@@ -1089,7 +1076,7 @@ the new MB count still exceeds file count) or routes back through
 **Out of scope:** file_count > track_count (extra tracks on disk) — same
 class as inconsistent; user resolves externally.
 
-### 15.4 Explicitly out of scope
+### 13.4 Explicitly out of scope
 
 - **Folder splitting** (separating two albums in one dir into two dirs):
   filesystem-level operation; user does this with Finder/CLI/Picard.
@@ -1099,14 +1086,14 @@ class as inconsistent; user resolves externally.
   must be flattened first.
 - **Format conversion**: Harmonist never transcodes.
 
-## 16. Store support
+## 14. Store support
 
 Sidecars carry a single `store_url` field — any storefront URL Harmony
 recognises. The first-class store is Bandcamp (full sync + match flow);
 others are accepted as URL inputs into the manual / reconcile paths and
 handed to Harmony for MB seeding.
 
-### 16.1 Bandcamp (first-class)
+### 14.1 Bandcamp (first-class)
 
 - **Purchase listing + download**: `bandcampsync` (subclassed as
   `HarmonistSyncer`).
@@ -1116,14 +1103,14 @@ handed to Harmony for MB seeding.
   contains the Bandcamp album URL (used by `url_recovery` to seed a
   store_url on New albums).
 
-### 16.2 Other stores (URL-only)
+### 14.2 Other stores (URL-only)
 
 For any other store (Beatport, Discogs, Deezer, etc.) the sidecar can
 hold a `store_url`. The reconcile/recheck flow then asks Harmony to seed
 the MB release from that URL, and tagging proceeds via the existing
 MB-by-MBID path. This adds no store-specific code.
 
-### 16.3 Beatport — why no first-class support
+### 14.3 Beatport — why no first-class support
 
 Beatport has a v4 OAuth API (`api.beatport.com/v4/`) but it is gated.
 New API keys are not issued through normal channels. Community plugins
@@ -1137,12 +1124,12 @@ user's Beatport credentials. This is technically functional but:
 - No equivalent of `bandcampsync` for downloading purchases via API.
   Beatport's "My Beatport" downloads are a web-session flow, not API.
 
-Decision: accept Beatport **URLs** in `store_url` (free, via §16.2), but
+Decision: accept Beatport **URLs** in `store_url` (free, via §14.2), but
 do not build a Beatport-specific scraper, syncer, or metadata enricher.
 Users with Beatport purchases manage downloads out-of-band and paste
 the release URL when reconciling.
 
-## 17. Open questions
+## 15. Open questions
 
 - **Cover art serving:** the inbox UI references covers via `/static/music/...`. Simplest path is a FastAPI mount of the music dir, scoped to image files only. Decision pending.
 - **Cover art library optimisation:** future enhancement, not in scope here. If the library grows big enough to matter, a separate batch tool can downsize covers across all albums. Keep that out of the tagger's hot path.
@@ -1152,12 +1139,11 @@ the release URL when reconciling.
 - **Single-writer assumption on the ignores file** — if the user runs bandcampsync standalone outside the container, are concurrent writes possible? In practice almost certainly no, but worth flagging.
 - **Backup before tag write?** Optionally write `<file>.bak` before mutagen.save() during the prototype phase, removable by config later. QA's call.
 
-## 18. Future enhancements
+## 16. Future enhancements
 
-Decided-but-deferred features. Not in the initial release; captured so
-the state model and UI don't preclude them.
+Decided-but-deferred features. Captured so the state model and UI don't preclude
+them. (Re-tag from MB and the Activity feed have since shipped — §2.4, §6.)
 
-- **Re-tag from MB** — see §2.4.
 - **Re-download from Bandcamp** — a per-album action for a fully-synced
   (`COMPLETE`, bandcamp-sourced, `item_id` known) album that forces
   bandcampsync to fetch it again. Use cases: the user changed their
@@ -1170,9 +1156,6 @@ the state model and UI don't preclude them.
   respecting the per-sync download cap. Surfaces in the library
   expanded view alongside Re-tag / Forget. Deferred for that
   complexity.
-- **Recent-messages popup** — a panel showing the last ~20 status
-  messages (sync/reconcile transitions, action results); the status
-  bar only shows the most recent. *(Shipped as the Activity tab.)*
 - **Ignored-but-not-present items** — a sync skips purchases listed in
   `ignores.txt` (already downloaded). If an ignored item is no longer in
   the library (deleted, or ignored without ever being kept), it's
