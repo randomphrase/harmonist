@@ -16,3 +16,6 @@ docker-compose.override.yml
 
 # Local scratch / dev data dirs
 /music/
+
+# Runtime logs (never commit — may contain private data)
+*.log
