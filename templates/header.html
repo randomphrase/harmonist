@@ -21,7 +21,11 @@
                         class="px-4 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-semibold transition">
                     Sync Bandcamp
                 </button>
-                <div class="hidden group-hover:block group-focus-within:block absolute right-0 mt-1 w-72 bg-white border border-line rounded-lg shadow-lg p-3 z-50 text-left cursor-default">
+                {# Positioned at top-full with a transparent pt-1 *bridge* (padding, not
+                   margin) so moving the cursor from the button into the card never
+                   crosses a dead zone that would drop :hover and close the popover. #}
+                <div class="hidden group-hover:block group-focus-within:block absolute right-0 top-full pt-1 w-72 z-50 text-left cursor-default">
+                  <div class="bg-white border border-line rounded-lg shadow-lg p-3">
                     <form hx-post="/sync" hx-target="#sync-flash" hx-swap="innerHTML" class="space-y-2.5 text-sm text-ink">
                         <input type="hidden" name="from_popover" value="true">
                         <label class="flex items-start gap-2 cursor-pointer">
@@ -47,6 +51,7 @@
                         </button>
                         <p class="text-2xs text-muted"><span class="font-semibold">0</span> = pause downloads.</p>
                     </form>
+                  </div>
                 </div>
             </div>
             {% else %}
