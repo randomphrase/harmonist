@@ -319,19 +319,24 @@ check. The Tailwind CLI is pinned for reproducible output.
 `pytailwindcss`), `mutagen`, `musicbrainzngs`, `bandcampsync`, `httpx` +
 BeautifulSoup, Pydantic, `tomlkit`.
 
-## How this was built
+## How it's built
 
-Harmonist is written with heavy AI assistance (Claude) — worth being upfront
-about. The aim is production-quality, maintainable software, not a throwaway
-prototype:
+Harmonist is built with extensive help from an AI coding assistant (Claude),
+with rigorous automated and manual verification and review to hold it to a
+production-quality bar:
 
-- Every change is **reviewed by a human** before it lands.
-- The codebase is type-checked with **mypy `--strict`** and linted/formatted
-  with **Ruff**, enforced in CI on every push.
-- An extensive automated test suite gives **~91% line coverage**
-  (`make coverage`), run in CI across Python 3.12 / 3.13.
+- **Every change is reviewed and approved by a human** before it lands.
+- Type-checked with **mypy `--strict`** and linted/formatted with **Ruff**, both
+  enforced in CI on every push.
+- An extensive test suite — **~91% line coverage** (`make coverage`), run in CI
+  across Python 3.12 / 3.13.
 
-If something doesn't meet that bar, please open an issue.
+**Using Harmonist needs no AI.** It calls no language model and needs no API key
+at runtime: matching is a deterministic MusicBrainz URL lookup, by design. AI
+helped *build* it; it has no part in *running* it — which is exactly the idea
+behind "asks before it guesses": exact, auditable matches, never a model's guess.
+
+If something falls short of that bar, please open an issue.
 
 ## License
 
