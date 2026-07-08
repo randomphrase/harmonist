@@ -35,17 +35,17 @@ Harmonist sits between your **purchases** (Bandcamp) and your **media server**
 (Plex, Navidrome) — it automates the *tagging* step for music you already own.
 It's deliberately narrow, and complements rather than replaces the usual tools.
 
-The basic idea: because your music comes from a Bandcamp *purchase*, Harmonist
-already knows the release's store URL — and MusicBrainz records Bandcamp URLs
-as release relationships. So instead of fuzzy-matching on file tags or acoustic
+The basic idea: because your music comes from a Bandcamp purchase, Harmonist
+already knows the release's store URL — and MusicBrainz records Bandcamp URLs as
+release relationships. So instead of fuzzy-matching on file tags or acoustic
 fingerprints and hoping for the best, Harmonist can look up the exact
 MusicBrainz release directly from the URL. Matching becomes a lookup, not a
-guess — which is why it can run unattended and only escalate genuine ambiguity
-to the review inbox. And when MusicBrainz doesn't know the release yet (common
-for obscure Bandcamp-only material), that's not a dead end: the inbox flags it,
-and you seed it into MusicBrainz via [Harmony](https://harmony.pulsewidth.org.uk)
-in a couple of clicks — so every gap you hit makes the database better for the
-next person.
+guess — which is why it can generally run unattended and only escalate genuine
+ambiguity to the review inbox. When MusicBrainz doesn't know about the release
+yet (common for newly-released Bandcamp-only material), that's not a dead end:
+the inbox flags it, and you seed it via
+[Harmony](https://harmony.pulsewidth.org.uk) in a couple of clicks — so every
+gap you hit makes MusicBrainz better for the next person.
 
 - **[MusicBrainz Picard](https://picard.musicbrainz.org)** is the gold-standard
   *manual* desktop tagger — you cluster and match files by hand. Harmonist
@@ -208,6 +208,43 @@ user_agent = "Harmonist/0.1 ( you@example.com )"
 
 Bandcamp sync needs a `cookies.txt` (exported from a logged-in browser) — paste
 or upload it via the in-app **Set up Bandcamp sync** prompt.
+
+## Onboarding an existing library
+
+Point Harmonist at a music library you already have and it does its best to
+**adopt** it — recognizing what's already tagged, linking your previous Bandcamp
+downloads to your purchases, and flagging the rest for review — all **without
+re-downloading anything you own**.
+
+It works best on a library that's already in reasonable shape. Harmonist assumes:
+
+- **One album per folder** — each directory of audio files is treated as a single
+  album. A folder mixing several albums is flagged **Inconsistent**; split it with
+  [Picard](https://picard.musicbrainz.org) first.
+- **Already tagged** — ideally Picard-tagged. Harmonist reads the MusicBrainz
+  Album ID from your files to recognize what's matched; anything untagged lands in
+  the inbox for you to match by hand.
+
+**What to expect on the first scan.** Every album is sorted into the inbox by what
+it needs:
+
+- **Library** — already tagged and matched; nothing to do.
+- **Needs MBID** — not matched to a MusicBrainz release yet. Resolve it from the
+  inbox: search by name, paste an MBID, or seed a missing release via
+  [Harmony](https://harmony.pulsewidth.org.uk).
+- **Needs Link** — a Bandcamp-sourced album that's tagged but not yet tied to its
+  purchase (a sync fills that in).
+
+**Recommended order:**
+
+1. **Get everything matched first.** Work through **Needs MBID** — this is the one
+   step that genuinely needs you; untagged/unmatched albums are the main thing
+   Harmonist can't do on its own. Aim to clear it *before* your first sync.
+2. **Then run your first Sync.** While unlinked albums remain, that sync runs in
+   **link-only** mode: it links your on-disk albums to your Bandcamp purchases and
+   **downloads nothing new**. Anything it can't confidently match surfaces as a
+   *potential download* to Match / Download / skip.
+3. Once everything's linked, later syncs fetch genuinely new purchases as normal.
 
 ## Deployment & security
 
