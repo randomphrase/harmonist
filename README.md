@@ -84,14 +84,18 @@ In short: if you buy music on Bandcamp and want it correctly tagged and dropped
 into Plex or Navidrome without hand-tagging every album, that's the gap
 Harmonist fills.
 
-## Screenshots
+## Demo
 
-<!-- TODO: drop images in docs/screenshots/ and reference them here, e.g.
+A short walk-through of the flow — inbox triage, matching, and a link-only sync:
+
+https://github.com/user-attachments/assets/dc08c85f-43f8-402a-85a5-09388200c239
+
+<!-- Stills can be added later, e.g.
 ![Inbox](docs/screenshots/inbox.png)
 ![Library](docs/screenshots/library.png)
 ![Activity](docs/screenshots/activity.png)
 -->
-_Screenshots coming soon — the Inbox task list, the Library grid, and the Activity feed._
+
 
 ## Running
 
