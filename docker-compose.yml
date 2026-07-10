@@ -1,33 +1,20 @@
 # Example compose for running Harmonist on a NAS / server.
-#   docker compose up -d        # pulls the published image
-#
-# Bind-mount your real music library at /music and a persistent config dir at
-# /config (holds harmonist.toml, cookies.txt, ignores.txt, the id registry).
-# For machine-specific paths, put them in docker-compose.override.yml (gitignored)
-# rather than editing this file.
+# Edit the two host paths and the `user:`, then: docker compose up -d
 services:
   harmonist:
-    image: ghcr.io/randomphrase/harmonist:edge
-    # Or build locally instead of pulling the published image:
-    # build: .
+    image: ghcr.io/randomphrase/harmonist:latest   # published to GHCR, linux/amd64
     container_name: harmonist
-    ports:
-      - "8023:8000"
-    volumes:
-      - /volume1/media/music:/music
-      - /volume1/docker/harmonist:/config
     restart: unless-stopped
-    # Config normally lives in /config/harmonist.toml, but any setting can be set
-    # via the environment too (env wins over the TOML). The one you most likely
-    # need when exposing Harmonist beyond localhost is the allowed-hosts list
-    # (DNS-rebinding protection — Starlette's TrustedHostMiddleware): set it to
-    # your real hostname(s), comma-separated. Loopback is always allowed
-    # regardless, so healthchecks/local curl keep working. Default is "*"
-    # (permissive). E.g.
+    ports:
+      - "8000:8000"
+    volumes:
+      - /path/to/music:/music     # your music library
+      - /path/to/config:/config   # persistent: harmonist.toml, cookies.txt, ignores.txt, id registry
+    # Run as the OWNER of the two host dirs above, so sidecars, tags and cover.*
+    # files aren't written as root. `id -u` / `id -g` to find yours; omit to run
+    # as root. (Synology: usually a 1026+ uid and gid 100 — the `users` group.)
+    user: "1000:1000"
+    # Only if you expose Harmonist beyond localhost: restrict the hostname
+    # allow-list (DNS-rebinding protection). Loopback is always allowed.
     # environment:
     #   - HARMONIST_ALLOWED_HOSTS=harmonist.example.com,nas.local
-    # Run as the OWNER of /music and /config on the host so written sidecars,
-    # tags and cover.* land with the right ownership — Docker-native, the image
-    # needs no PUID/PGID plumbing. `id -u`/`id -g`; on Synology 100 is the
-    # `users` group. Omit to run as root (root-owned files). E.g.
-    user: "1026:100"

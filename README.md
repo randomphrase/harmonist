@@ -7,9 +7,6 @@ Complete [Picard](https://picard.musicbrainz.org)-compatible tags and cover art,
 ready for Plex and Navidrome — and it **asks before it guesses**, so nothing
 gets mislabeled.
 
-> **Status:** early but usable; actively dogfooded. Feedback welcome — please
-> open an issue.
-
 ## What it does
 
 - **Sync** your Bandcamp library (via [bandcampsync](https://github.com/meeb/bandcampsync)),
@@ -101,77 +98,42 @@ https://github.com/user-attachments/assets/dc08c85f-43f8-402a-85a5-09388200c239
 
 ### Docker (recommended)
 
-A pre-baked Compose file lives at `docker-compose.yml`. It pulls the
-CI-published image from GHCR (`ghcr.io/randomphrase/harmonist`, `linux/amd64`).
-Bind-mount your music library at `/music` and a persistent config dir at
-`/config` (holds `harmonist.toml`, `cookies.txt`, `ignores.txt`, and the
-album-id registry).
-
-```bash
-docker compose up -d       # pulls the image, then visit http://<host>:8000
-```
-
-For machine-specific paths (NAS share locations, etc.), use a gitignored
-`docker-compose.override.yml` rather than editing the tracked file.
-
-**Building locally** (instead of pulling the published image) — swap the
-`image:` line in `docker-compose.yml` for `build: .`, or:
-
-```bash
-docker build -t harmonist:local .
-```
-
-#### File ownership: setting UID / GID
-
-The container runs as root by default. If your bind-mounted host directories
-are owned by a non-root user (almost always the case on a NAS), Harmonist will
-write files with **root ownership** unless you tell Compose otherwise — at best
-inconvenient, at worst it fights your other tools (Plex, Navidrome, Samba) for
-the same files.
-
-The fix is one line in `docker-compose.yml`:
+Copy this into a `docker-compose.yml`, edit the two host paths and the `user:`,
+then `docker compose up -d` and visit `http://<host>:8000`:
 
 ```yaml
 services:
   harmonist:
-    # ... build / image / ports / volumes as above ...
-    user: "1000:1000"   # match the OWNER of /music and /config on the host
+    image: ghcr.io/randomphrase/harmonist:latest   # published to GHCR, linux/amd64
+    container_name: harmonist
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - /path/to/music:/music     # your music library
+      - /path/to/config:/config   # persistent: harmonist.toml, cookies.txt, ignores.txt, id registry
+    # Run as the OWNER of the two host dirs above, so sidecars, tags and cover.*
+    # files aren't written as root. `id -u` / `id -g` to find yours; omit to run
+    # as root. (Synology: usually a 1026+ uid and gid 100 — the `users` group.)
+    user: "1000:1000"
+    # Only if you expose Harmonist beyond localhost: restrict the hostname
+    # allow-list (DNS-rebinding protection). Loopback is always allowed.
+    # environment:
+    #   - HARMONIST_ALLOWED_HOSTS=harmonist.example.com,nas.local
 ```
 
-Find the right values:
+**Permissions.** Make the host `music`/`config` dirs writable by that `user:`
+*before* starting — Docker won't `chown` them for you (`sudo chown -R 1000:1000
+/path/to/music /path/to/config`). On startup Harmonist probe-writes both and
+fails fast with a clear message if either isn't writable, so a permission problem
+announces itself instead of looking like a stuck scan.
 
-```bash
-# On Linux / macOS — look up your user, or the user that owns the dirs.
-id
-# uid=1000(alice) gid=1000(alice) groups=1000(alice),...
-
-# Synology: System Control Panel → User & Group, the UID column.
-# Synology share-folder accounts typically use UID 1026+ and GID 100 (users).
-```
-
-Then make sure the host directories are writable by that user **before** you
-start the container — Docker won't fix permissions for you:
-
-```bash
-mkdir -p ./config ./music
-sudo chown -R 1000:1000 ./config ./music   # or the UID/GID you picked
-```
-
-On startup Harmonist logs its `uid/gid/groups` and probe-writes `/music` and
-`/config`, failing fast with a clear message if either isn't writable — so a
-permission problem announces itself instead of looking like a stuck scan.
-
-**Synology / ACL shares (the gotcha that bites everyone):** `user:` sets the
-uid and *primary* gid only — it does **not** carry your supplementary groups.
-So a process started as `1026:100` has `groups=[100]` even though your SSH login
-is also in `administrators` (101). If the share grants write via the
-`administrators` group (or a DSM ACL — note "owner" in File Station is an ACL
-concept, *not* the POSIX owner), the container is denied despite the "right"
-uid. The clean fix is to grant **Authenticated Users** (or the `users` group)
-Read/Write **recursively** on the music + config shared folders — that matches
-the container's credentials across the whole tree, regardless of who owns each
-album subfolder. (`group_add: ["101"]` in compose is the alternative, but
-granting `users`/Authenticated-Users is safer.)
+**Synology / ACL shares (the gotcha that bites everyone):** `user:` sets the uid
+and *primary* gid only — not your supplementary groups. So `1026:100` has
+`groups=[100]` even though your login is also in `administrators` (101); if the
+share grants write via that group or a DSM ACL, the container is denied despite
+the "right" uid. Cleanest fix: grant **Authenticated Users** (or the `users`
+group) Read/Write **recursively** on the music + config shared folders.
 
 ### From source (dev)
 
@@ -207,7 +169,7 @@ download_format = "flac"
 max_downloads_per_sync = 25       # safety cap
 
 [musicbrainz]
-user_agent = "Harmonist/0.1 ( you@example.com )"
+user_agent = "Harmonist/1.0 ( you@example.com )"
 ```
 
 Bandcamp sync needs a `cookies.txt` (exported from a logged-in browser) — paste

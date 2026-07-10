@@ -29,7 +29,7 @@ class BandcampConfig(BaseModel):
 
 
 class MusicBrainzConfig(BaseModel):
-    user_agent: str = "Harmonist/0.1 ( harmonist@girtby.net )"
+    user_agent: str = "Harmonist/1.0 ( harmonist@girtby.net )"
 
 
 class ServerConfig(BaseModel):
