@@ -35,6 +35,9 @@ persistence rules — the load-bearing-fields-only rule now lives in gate item 3
 
 - **Quality gate:** `make check` (ruff + `ruff format --check` + `mypy --strict`
   + pytest) must pass before you commit; CI runs the same on Python 3.12/3.13.
+- **Changelog:** when a change is user-visible, add a one-line entry to
+  `CHANGELOG.md` under `[Unreleased]` in the same commit — see the `changelog`
+  skill for what counts and how to word it.
 - **CSS is a committed build artifact.** After editing *any* template, run
   `make css` and commit the regenerated `static/harmonist.css`. The Tailwind CLI
   is pinned so output is byte-reproducible, and CI fails on drift — a template
