@@ -128,12 +128,12 @@ services:
 fails fast with a clear message if either isn't writable, so a permission problem
 announces itself instead of looking like a stuck scan.
 
-**Synology / ACL shares (the gotcha that bites everyone):** `user:` sets the uid
-and *primary* gid only — not your supplementary groups. So `1026:100` has
-`groups=[100]` even though your login is also in `administrators` (101); if the
-share grants write via that group or a DSM ACL, the container is denied despite
-the "right" uid. Cleanest fix: grant **Authenticated Users** (or the `users`
-group) Read/Write **recursively** on the music + config shared folders.
+**Synology / ACL shares:** `user:` sets the uid and *primary* gid only — not
+your supplementary groups. So `1026:100` has `groups=[100]` even though your
+login is also in `administrators` (101); if the share grants write via that
+group or a DSM ACL, the container is denied despite the "right" uid. Cleanest
+fix: grant **Authenticated Users** (or the `users` group) Read/Write
+**recursively** on the music + config shared folders.
 
 ### From source (dev)
 
