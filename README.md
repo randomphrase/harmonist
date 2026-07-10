@@ -309,6 +309,22 @@ Basic auth without TLS sends the password in plaintext on every request —
 credential-holding tagger and destructive endpoints is not something you want
 behind nothing but luck.
 
+## Uninstall
+
+All of Harmonist's state lives in `.harmonist.json` **sidecar** files next to your
+albums — your audio, its MusicBrainz tags, and `cover.*` art are just your library
+and carry nothing Harmonist-specific. To remove it cleanly:
+
+1. **Settings → Erase sidecars.** This deletes every `.harmonist.json`; your
+   tagged audio and cover files are not touched.
+2. **Stop the app straight away — don't return to the Inbox.** Opening the inbox
+   triggers a re-scan and reconcile, which would re-derive the sidecars from your
+   files' tags. Shut down first (e.g. `docker compose down`) and the library is
+   left sidecar-free.
+
+Your music stays fully tagged and Picard-compatible, with no trace of Harmonist.
+To also drop the stored Bandcamp cookie and settings, delete the config dir.
+
 ## Development
 
 ```bash
