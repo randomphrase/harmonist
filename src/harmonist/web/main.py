@@ -608,12 +608,18 @@ def _git_sha() -> str:
             capture_output=True,
             text=True,
             timeout=2,
+            check=False,
         )
         if r.returncode != 0 or not r.stdout.strip():
             return "unknown"
         sha = r.stdout.strip()
         dirty = subprocess.run(
-            ["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True, timeout=2
+            ["git", "status", "--porcelain"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
         )
         return f"{sha}-dirty" if dirty.returncode == 0 and dirty.stdout.strip() else sha
     except Exception:

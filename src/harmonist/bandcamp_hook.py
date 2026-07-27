@@ -28,7 +28,7 @@ from . import activity, audit, formats, library_index, pending_downloads
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url, title_words, titles_match
 from .pending_downloads import PendingPurchase
-from .url_recovery import album_slug as album_slug  # re-export; canonical home is url_recovery
+from .url_recovery import album_slug as album_slug  # noqa: PLC0414 (explicit re-export)
 
 log = logging.getLogger(__name__)
 

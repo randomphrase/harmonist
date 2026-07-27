@@ -122,7 +122,7 @@ def test_flagship_sync_then_recheck_then_done(demo_client, tmp_path):
     assert final.sidecar.bandcamp.item_id == 2001
 
     # --- 4. File tags actually written ---
-    first_track = sorted(new_album.path.glob("*.m4a"))[0]
+    first_track = min(new_album.path.glob("*.m4a"))
     audio = MP4(first_track)
     assert ATOM_MB_ALBUM_ID in audio
     assert audio[ATOM_MB_ALBUM_ID][0].decode("utf-8") == "demo-rel-cb4"

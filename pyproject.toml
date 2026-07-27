@@ -10,7 +10,7 @@ dependencies = ["mutagen", "bandcampsync~=0.8.0", "fastapi", "jinja2", "httpx", 
 # ruff + mypy are pinned exactly: an unpinned formatter/linter drifts between
 # a dev machine and CI (a patch bump reformats code), which fails the format
 # check on a green-locally branch. Bump deliberately, like TAILWINDCSS_VERSION.
-dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff==0.15.21", "mypy==2.3.0", "coverage"]
+dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff==0.16.0", "mypy==2.3.0", "coverage"]
 
 [tool.setuptools.packages]
 find = {where = ["src"], include = ["harmonist*"]}
@@ -28,18 +28,15 @@ line-length = 100
 src = ["src", "test"]
 
 [tool.ruff.lint]
-select = [
-    "E", "W",   # pycodestyle
-    "F",        # pyflakes
-    "I",        # isort (import ordering)
-    "UP",       # pyupgrade (modern-idiom enforcement)
-    "B",        # flake8-bugbear (real-bug patterns)
-    "SIM",      # flake8-simplify
-    "C4",       # flake8-comprehensions
-    "N",        # pep8-naming
-    "PT",       # flake8-pytest-style
-    "PIE",      # flake8-pie
-    "RUF",      # ruff-specific
+# Adopt ruff's default rule set (413 rules as of 0.16.0) rather than a
+# hand-curated select. Opt back OUT of individual rules via `ignore` below.
+ignore = [
+    # Harmonist deliberately catches broadly and skips-then-continues so that a
+    # single corrupt file, unreadable sidecar or flaky network call never aborts
+    # a whole scan/sync. Non-destructive resilience is a design invariant, not a
+    # smell — so the two rules that police that pattern are off wholesale.
+    "BLE001",  # blind-except (except Exception:)
+    "S112",    # try-except-continue
 ]
 
 [tool.ruff.lint.per-file-ignores]
