@@ -74,6 +74,18 @@ Filing the issue and *then* immediately doing the work in the same session is fi
 and expected — the point is the durable record and CI validation, not a waiting
 period.
 
+### Referencing an issue *without* closing it
+
+Only use a closing keyword (`Fixes`/`Closes`/`Resolves #N`) when the merge should
+close the issue. For interim work that references an issue it should **not** close
+(one of several PRs, a partial step), use a neutral phrase: **`Workaround for #N`**,
+`Part of #N`, `Re #N`, or `Toward #N`.
+
+GitHub's parser **ignores negation** — writing "does not close #N" still matches
+`close #N` and auto-closes the issue on merge. Never put a closing keyword next to an
+issue number unless you mean it, even in a negated sentence. (This is why #42 was
+wrongly auto-closed.)
+
 ## The trivial track (non-functional work)
 
 **Maintainers** skip all of the above: no issue, no branch, no PR. Make the change
