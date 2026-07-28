@@ -33,6 +33,11 @@ persistence rules — the load-bearing-fields-only rule now lives in gate item 3
 
 ## Working conventions
 
+- **Issue-first:** raise substantial/functional work (bug fixes, features,
+  behavior changes, non-trivial refactors) as a GitHub issue *before* writing the
+  code, and close it from the commit (`Fixes #N`). Only changes that can't alter
+  runtime behavior (formatting, lint, comments, tests) skip this — see the
+  `issue-first` skill for the dividing line.
 - **Quality gate:** `make check` (ruff + `ruff format --check` + `mypy --strict`
   + pytest) must pass before you commit; CI runs the same on Python 3.12/3.13.
 - **Changelog:** when a change is user-visible, add a one-line entry to
