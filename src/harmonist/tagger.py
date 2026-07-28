@@ -296,9 +296,19 @@ def _flatten_tracks(release: Release) -> Iterator[_FlatTrack]:
 
 
 def _track_title(track: Track) -> str:
-    if (recording := track.get("recording")) and (title := recording.get("title")):
+    """The track's title, preferring the per-release **track** title over the
+    underlying recording title.
+
+    This matches Picard: `track_to_metadata` seeds the title from the recording
+    and then overrides it with the track title when present. The track title is
+    what appears on *this* release — e.g. after applying MusicBrainz's featured-
+    artist style, the editor moves the guest out of the track title into the
+    artist credit, while the recording title often keeps its original form.
+    Reading the recording title instead would silently re-tag with the stale
+    name (see issue #27)."""
+    if title := track.get("title"):
         return str(title)
-    return str(track.get("title", ""))
+    return str((track.get("recording") or {}).get("title", ""))
 
 
 def _isrcs(track: Track) -> list[str]:
