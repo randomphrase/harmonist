@@ -2028,6 +2028,32 @@ def _register_routes(app: FastAPI) -> None:
         request.app.state.scan_runner.request_scan()
         return _flash_response("Unlinked", f"{album.title} → {dest}")
 
+    @app.post("/library/{album_id}/rematch", response_class=HTMLResponse)
+    def library_rematch(request: Request, album_id: str) -> Response:
+        """Mark the MusicBrainz match as wrong. Clears `mb_release_id` (and
+        `tagged_at`), which derives the album back to Needs MBID — where the
+        manual search / store-URL-candidate tools let the user pick the correct
+        release and re-tag. `sidecar.write` mints a `temp_uid` and audits the
+        identity change; the Bandcamp link (`store_url` / `item_id`) is kept, and
+        the on-disk tags are left untouched until the user re-tags. Non-destructive."""
+        album = _find_album(request, album_id)
+        sc = album.sidecar
+        if sc is None or not sc.mb_release_id:
+            return _flash_response(
+                "Nothing to re-match", f"{album.title} has no MB release", level="warning"
+            )
+        old_mbid = sc.mb_release_id
+        new_sc = replace(sc, mb_release_id=None, tagged_at=None, mb_match_candidate=None)
+        sidecar_mod.write(album.path, new_sc)
+        activity.record(
+            f"Cleared MB match for {album.artist} — {album.title} "
+            f"(was {old_mbid}): Library → Needs MBID"
+        )
+        request.app.state.scan_runner.request_scan()
+        return _flash_response(
+            "MB match cleared", f"{album.title} → Needs MBID — pick the correct release"
+        )
+
     @app.post("/retag/{album_id}", response_class=HTMLResponse)
     def retag(request: Request, album_id: str, overwrite_art: bool = Form(False)) -> Response:
         album = _find_album(request, album_id)

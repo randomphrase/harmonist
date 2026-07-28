@@ -27,6 +27,10 @@
             {% if sc and (sc.mb_release_id or sc.store_url) %}
             <div class="flex gap-2 items-center flex-wrap">
                 {% if sc and sc.mb_release_id %}
+                {# Badge + its "wrong match" control grouped, so the pencil clearly
+                   belongs to MusicBrainz (not Bandcamp) — placement is what removes
+                   the old ambiguity. #}
+                <span class="inline-flex items-center gap-1">
                 <a href="https://musicbrainz.org/release/{{ sc.mb_release_id }}"
                    target="_blank" rel="noopener"
                    title="View on MusicBrainz · {{ sc.mb_release_id }}"
@@ -36,6 +40,20 @@
                     </svg>
                     MusicBrainz
                 </a>
+                {# Wrong MB release → back to Needs MBID to re-pick. Rare, so subtle
+                   (muted until hover); confirms first to guard against a mis-click. #}
+                <button type="button" hx-post="/library/{{ album.id }}/rematch"
+                        hx-swap="none" hx-disabled-elt="this" onclick="harmonistCloseModal()"
+                        hx-confirm="Wrong MusicBrainz release? The album goes back to Needs MBID so you can pick the correct one. Your files keep their current tags until you re-tag."
+                        title="Wrong MusicBrainz match — pick the correct release"
+                        aria-label="Wrong MusicBrainz match — pick the correct release"
+                        class="inline-flex items-center justify-center w-5 h-5 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/>
+                    </svg>
+                </button>
+                </span>
                 {% endif %}
                 {% if sc and sc.store_url %}
                 {% set store_tip %}
@@ -47,6 +65,7 @@
                         View on {{ store|title if store else 'store' }} · {{ sc.store_url }}
                     {%- endif -%}
                 {% endset %}
+                <span class="inline-flex items-center gap-1">
                 <a href="{{ sc.store_url }}"
                    target="_blank" rel="noopener"
                    title="{{ store_tip }}"
@@ -62,6 +81,22 @@
                     {% endif %}
                     {% if store == 'bandcamp' %}Bandcamp{% elif store %}{{ store|title }}{% else %}Store{% endif %}
                 </a>
+                {# Wrong purchase link → forget the store URL (the album stays tagged;
+                   the purchase re-surfaces as a potential download). Only when there's
+                   a link to forget. Subtle × grouped with the badge; confirms first. #}
+                {% if bc and bc.item_id is not none %}
+                <button type="button" hx-post="/library/{{ album.id }}/unlink" hx-vals='{"forget_url": "true"}'
+                        hx-swap="none" hx-disabled-elt="this" onclick="harmonistCloseModal()"
+                        hx-confirm="Wrong Bandcamp purchase? Unlink AND forget the store URL. The album stays correctly tagged in your Library, no future sync will re-link it, and the purchase reappears as a potential download so you can match it correctly."
+                        title="Wrong Bandcamp purchase — forget this link"
+                        aria-label="Wrong Bandcamp purchase — forget this link"
+                        class="inline-flex items-center justify-center w-5 h-5 rounded-full text-muted hover:text-bc-teal hover:bg-bc-teal/10 transition">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+                        <path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+                {% endif %}
+                </span>
                 {% endif %}
             </div>
             {% endif %}
@@ -127,9 +162,9 @@
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Forget
                 </button>
-                {# Undo a Bandcamp link. Two flavours: keep the URL (temporarily undo
-                   a CORRECT link → Needs Link, re-links next sync); or forget the URL
-                   (undo a WRONG auto-link → stays in Library, won't re-link). #}
+                {# Temporarily undo a CORRECT Bandcamp link → Needs Link (tags + store
+                   URL kept, re-links next sync). The "wrong purchase" case (forget the
+                   URL) now lives as the × beside the Bandcamp badge above. #}
                 {% if bc and bc.item_id is not none %}
                 <button hx-post="/library/{{ album.id }}/unlink"
                         hx-swap="none" hx-disabled-elt="this"
@@ -137,14 +172,6 @@
                         hx-confirm="Unlink this album from its Bandcamp purchase? It reverts to Needs Link — tags and store URL are kept, so the next sync can re-link it."
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Unlink
-                </button>
-                <button hx-post="/library/{{ album.id }}/unlink" hx-vals='{"forget_url": "true"}'
-                        hx-swap="none" hx-disabled-elt="this"
-                        onclick="harmonistCloseModal()"
-                        hx-confirm="Wrong match? Unlink AND forget the Bandcamp URL. The album stays correctly tagged in your Library, and no future sync will re-link it to this purchase. The purchase reappears as a potential download so you can match it correctly."
-                        title="Use when the album was auto-linked to the WRONG purchase — forgets the URL so it won't re-link."
-                        class="px-3 py-1.5 bg-surface hover:bg-line text-muted border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-                    Wrong match
                 </button>
                 {% endif %}
             </div>

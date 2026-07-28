@@ -2012,6 +2012,55 @@ def test_unlink_wrong_match_forgets_url_and_stays_in_library(client, cfg):
     assert all(d not in paths for paths in by_slug.values())
 
 
+def test_rematch_clears_mbid_and_demotes_to_needs_mbid(client, cfg):
+    """Wrong MusicBrainz match → /rematch clears mb_release_id so the album
+    derives back to Needs MBID, keeping the Bandcamp link and the on-disk tags
+    intact for the user to re-pick + re-tag (#38)."""
+    from harmonist.models import AlbumState
+    from harmonist.scanner import scan
+
+    d = _make_tagged_album(
+        cfg, "Wrong MB", mbid="rel-wrong", tagged_at=datetime.now(UTC), item_id=7
+    )
+    assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.COMPLETE
+    # File carries the (wrong) MB Album Id before re-match.
+    assert MP4(d / "01 Track.m4a")[ATOM_MB_ALBUM_ID][0].decode() == "rel-wrong"
+
+    r = client.post(f"/library/{_id_for(cfg, d)}/rematch")
+    assert r.status_code == 200
+    assert "Needs MBID" in r.text
+
+    loaded = sc.read(d)
+    assert loaded.mb_release_id is None  # MB match cleared
+    assert loaded.temp_uid is not None  # write() minted a local id (identity invariant)
+    assert loaded.store_url is not None  # Bandcamp link kept — only MB was wrong
+    assert loaded.bandcamp.item_id == 7
+    # Non-destructive: the on-disk tag is untouched until the user re-tags.
+    assert MP4(d / "01 Track.m4a")[ATOM_MB_ALBUM_ID][0].decode() == "rel-wrong"
+    assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.NEEDS_MBID
+
+
+def test_rematch_warns_when_no_mb_release(client, cfg):
+    """/rematch on an album with no MB release is a no-op warning, not an error."""
+    d = _make_album(cfg, "NoMB")  # NEW, no sidecar mb_release_id
+    r = client.post(f"/library/{_id_for(cfg, d)}/rematch")
+    assert r.status_code == 200
+    assert "Nothing to re-match" in r.text
+
+
+def test_library_detail_wrong_match_controls_beside_badges(client, cfg):
+    """The per-badge 'wrong match' controls: a re-pick (pencil → /rematch) beside
+    the MB badge and a forget-link (× → /unlink forget_url) beside the Bandcamp
+    badge — replacing the old ambiguous 'Wrong match' text button (#37/#38)."""
+    d = _make_tagged_album(cfg, "Badges", mbid="rel-b", tagged_at=datetime.now(UTC), item_id=9)
+    aid = _id_for(cfg, d)
+    html = client.get(f"/library/{aid}/detail").text
+    assert f"/library/{aid}/rematch" in html  # MB re-pick control exists
+    assert "forget_url" in html  # BC forget-link control exists
+    assert "Wrong MusicBrainz match" in html  # explanatory tooltip
+    assert "Wrong match" not in html  # old ambiguous button is gone
+
+
 # ---------- retag / forget ----------
 
 
