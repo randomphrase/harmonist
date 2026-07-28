@@ -15,11 +15,12 @@
         </thead>
         <tbody>
             {% for tc in candidate.track_comparisons %}
+            {# Only an over-tolerance gap is worth flagging. A within-tolerance
+               difference is muted — these lengths are "the same" (> 4000ms mirrors
+               match.LENGTH_TOLERANCE_MS). #}
             {% set delta_class = 'text-muted' %}
             {% if tc.delta_ms is not none and tc.delta_ms > 4000 %}
                 {% set delta_class = 'text-amber-700 font-bold' %}
-            {% elif tc.delta_ms is not none %}
-                {% set delta_class = 'text-accent font-semibold' %}
             {% endif %}
             {# Flag on-disk titles that differ from MB — only where the caller asks
                (the verify-tagging view), so the pre-link suggestion card, where
@@ -36,7 +37,8 @@
                     {% if tc.mb_track_title %}{{ tc.mb_track_title }}{% else %}<span class="text-muted italic">— missing —</span>{% endif %}
                 </td>
                 <td class="py-1 px-2 font-mono text-muted">{% if tc.mb_track_length_ms is not none %}{{ '%d:%02d' | format(tc.mb_track_length_ms // 60000, (tc.mb_track_length_ms // 1000) % 60) }}{% else %}<span class="text-muted">?</span>{% endif %}</td>
-                <td class="py-1 px-2 font-mono {{ delta_class }}">{% if tc.delta_ms is not none %}{{ '%+.1fs' | format(tc.delta_ms / 1000) }}{% else %}—{% endif %}</td>
+                {# Whole seconds only (delta_ms is an absolute magnitude), rounded. #}
+                <td class="py-1 px-2 font-mono {{ delta_class }}">{% if tc.delta_ms is not none %}{{ '%ds' | format((tc.delta_ms + 500) // 1000) }}{% else %}—{% endif %}</td>
             </tr>
             {% endfor %}
         </tbody>

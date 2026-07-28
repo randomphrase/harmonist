@@ -17,6 +17,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- The disk-vs-MusicBrainz length Δ column now shows whole seconds, and a
+  within-tolerance difference is muted (the lengths are effectively the same) while
+  an over-tolerance difference stays highlighted.
 - The ambiguous "Wrong match" button in the album detail is gone. Correcting a wrong
   MusicBrainz release is now a pencil beside the MusicBrainz badge (see Added). The
   Bandcamp link-removal controls (the old "Wrong match" and "Unlink") are temporarily
