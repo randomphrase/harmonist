@@ -11,6 +11,16 @@ versions follow [semantic versioning](https://semver.org).
 - The library "verify tagging" view now flags tracks whose on-disk title differs
   from MusicBrainz: the header reports the count instead of claiming "exact match",
   and the differing rows are highlighted.
+- You can now correct a wrong MusicBrainz match on a Library album — a pencil beside
+  the MusicBrainz badge (in the album detail) sends it back to Needs MBID so you can
+  pick the right release and re-tag. Your files keep their tags until you do.
+
+### Changed
+
+- The ambiguous "Wrong match" button is gone. Each "wrong match" control now sits
+  beside the badge it affects: a × on the Bandcamp badge forgets a wrong purchase
+  link, and a pencil on the MusicBrainz badge re-picks a wrong release. Both confirm
+  before acting.
 
 ### Fixed
 
