@@ -14,6 +14,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Manual "Re-tag from MB" now shows a progress spinner while it runs and refreshes
+  the album details view when it finishes, so the disk-vs-MusicBrainz comparison
+  reflects the just-written tags without reopening the album.
 - Re-tagging from MusicBrainz now writes the per-release track title, not the
   underlying recording title. Track titles edited on a release (e.g. cleaning up a
   featured-artist credit) are picked up on re-tag instead of silently keeping the

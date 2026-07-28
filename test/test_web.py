@@ -2038,6 +2038,47 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
     assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=UTC)
 
 
+def test_retag_emits_album_retagged_trigger(client, cfg, monkeypatch):
+    """On success /retag fires an `album-retagged` HX-Trigger so the open detail
+    modal reloads itself — otherwise its disk-vs-MB comparison stays stale (#34)."""
+    d = _make_tagged_album(
+        cfg, "TriggerRetag", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    r = client.post(f"/retag/{_id_for(cfg, d)}")
+    assert r.status_code == 200
+    assert "album-retagged" in r.headers.get("HX-Trigger", "")
+
+
+def test_retag_failure_does_not_emit_refresh_trigger(client, cfg, monkeypatch):
+    """A failed re-tag must not fire album-retagged (nothing changed to refresh)."""
+    d = _make_tagged_album(cfg, "FailRetag", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
+
+    def boom(mbid):
+        raise RuntimeError("mb down")
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", boom)
+    r = client.post(f"/retag/{_id_for(cfg, d)}")
+    assert r.status_code == 200  # rendered as a flash, not an HTTP error
+    assert "Re-tag failed" in r.text
+    assert "album-retagged" not in r.headers.get("HX-Trigger", "")
+
+
+def test_library_detail_wires_retag_progress_and_refresh(client, cfg):
+    """The detail modal shows a tagging indicator on the re-tag button and a
+    listener that reloads the modal when album-retagged fires (#34)."""
+    d = _make_tagged_album(cfg, "DetailWiring", mbid="rel-1", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+    r = client.get(f"/library/{aid}/detail")
+    assert r.status_code == 200
+    assert f'hx-indicator="#tagging-{aid}"' in r.text  # progress spinner target
+    assert f'id="tagging-{aid}"' in r.text  # the overlay itself
+    assert "album-retagged from:body" in r.text  # the modal-reload listener
+
+
 def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg, monkeypatch):
     """When MB over-counts (e.g. a phantom album-mix track) an album lands as a
     spurious INCOMPLETE. After the user fixes MB upstream, Re-tag from MB

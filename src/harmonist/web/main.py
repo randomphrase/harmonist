@@ -2048,7 +2048,9 @@ def _register_routes(app: FastAPI) -> None:
             log.exception("retag failed")
             return _flash_response("Re-tag failed", str(e), level="error", tasks_changed=False)
         details = f"{album.title} (artwork replaced)" if overwrite_art else album.title
-        return _flash_response("Re-tagged", details)
+        # Reload the open detail modal so its disk-vs-MB comparison + metadata
+        # reflect the just-written tags (tasks-changed only refreshes the tiles).
+        return _flash_response("Re-tagged", details, extra_triggers={"album-retagged": True})
 
     @app.post("/forget/{album_id}", response_class=HTMLResponse)
     def forget(request: Request, album_id: str) -> Response:
@@ -2504,6 +2506,7 @@ def _flash_response(
     level: str = "info",
     tasks_changed: bool = True,
     status_code: int = 200,
+    extra_triggers: dict[str, Any] | None = None,
 ) -> HTMLResponse:
     """Standard action response: flash HTML body + HX-Trigger events.
 
@@ -2514,6 +2517,8 @@ def _flash_response(
     Emits:
       - `harmonist-status` — picked up by the status-bar JS in index.html.
       - `tasks-changed` (when `tasks_changed=True`) — inbox + library refresh.
+      - any `extra_triggers` — endpoint-specific client events (e.g. an open
+        modal reloading itself). Merged last; don't shadow the two above.
 
     Use for every endpoint that mutates album state. For pure-display
     failures (e.g. MB lookup error with no state change), pass
@@ -2531,6 +2536,8 @@ def _flash_response(
     }
     if tasks_changed:
         triggers["tasks-changed"] = True
+    if extra_triggers:
+        triggers.update(extra_triggers)
     return HTMLResponse(
         _flash(message, level=level),
         status_code=status_code,
