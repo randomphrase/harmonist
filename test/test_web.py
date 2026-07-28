@@ -1949,17 +1949,17 @@ def test_library_detail_shows_store_url_and_item_id(client, cfg):
     assert "42" in r.text  # item_id
 
 
-def test_library_detail_shows_unlink_only_when_linked(client, cfg):
-    from datetime import datetime
-
+def test_library_detail_omits_bandcamp_removal_controls(client, cfg):
+    """#42 interim: the Bandcamp link-removal controls (× forget-URL and Unlink) are
+    temporarily pulled — with no way to re-link a Library album, removing a link is a
+    dead end. Even a linked album shows no removal control. (The /unlink endpoint
+    still exists; only the UI is removed.)"""
     linked = _make_tagged_album(
         cfg, "IsLinked", mbid="rel-l", tagged_at=datetime.now(UTC), item_id=7
     )
-    lid = _id_for(cfg, linked)
-    assert f"/library/{lid}/unlink" in client.get(f"/library/{lid}/detail").text
-    # An unlinked album (no item_id) offers no Unlink button.
-    plain = _make_tagged_album(cfg, "NoLink", mbid="rel-n", tagged_at=datetime.now(UTC))
-    assert "/unlink" not in client.get(f"/library/{_id_for(cfg, plain)}/detail").text
+    html = client.get(f"/library/{_id_for(cfg, linked)}/detail").text
+    assert "/unlink" not in html
+    assert "forget_url" not in html
 
 
 def test_unlink_reverts_complete_album_to_needs_sync(client, cfg):
@@ -2049,16 +2049,16 @@ def test_rematch_warns_when_no_mb_release(client, cfg):
 
 
 def test_library_detail_wrong_match_controls_beside_badges(client, cfg):
-    """The per-badge 'wrong match' controls: a re-pick (pencil → /rematch) beside
-    the MB badge and a forget-link (× → /unlink forget_url) beside the Bandcamp
-    badge — replacing the old ambiguous 'Wrong match' text button (#37/#38)."""
+    """The MB 'wrong match' re-pick (pencil → /rematch) sits beside the MusicBrainz
+    badge (#38), replacing the old ambiguous 'Wrong match' text button. The Bandcamp
+    forget-link control is temporarily removed pending a re-link path (#42)."""
     d = _make_tagged_album(cfg, "Badges", mbid="rel-b", tagged_at=datetime.now(UTC), item_id=9)
     aid = _id_for(cfg, d)
     html = client.get(f"/library/{aid}/detail").text
     assert f"/library/{aid}/rematch" in html  # MB re-pick control exists
-    assert "forget_url" in html  # BC forget-link control exists
     assert "Wrong MusicBrainz match" in html  # explanatory tooltip
     assert "Wrong match" not in html  # old ambiguous button is gone
+    assert "forget_url" not in html  # BC removal control pulled for now (#42)
 
 
 def test_library_detail_modal_actions_close_after_success_not_onclick(client, cfg):
@@ -2071,8 +2071,7 @@ def test_library_detail_modal_actions_close_after_success_not_onclick(client, cf
 
     d = _make_tagged_album(cfg, "ModalActs", mbid="rel-ma", tagged_at=datetime.now(UTC), item_id=5)
     html = client.get(f"/library/{_id_for(cfg, d)}/detail").text
-    assert "/rematch" in html
-    assert "forget_url" in html
+    assert "/rematch" in html  # the pencil re-pick closes the modal after acting
     # No hx-post *action* button may use onclick to close (that detaches it before
     # htmx runs). The modal's own pure-close × button (no hx-post) is fine.
     action_buttons = re.findall(r"<button[^>]*\shx-post[^>]*>", html)
