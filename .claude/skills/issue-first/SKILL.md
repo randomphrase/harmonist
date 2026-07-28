@@ -106,8 +106,15 @@ link related issues.
 
 **Always apply a type label** so the issue is triageable: `bug` for a defect,
 `enhancement` for a feature or change. Add situational labels already in the repo
-where they fit (`idea`, `deferred`, `documentation`, …); don't invent new ones
-casually.
+where they fit (`idea`, `deferred`, `documentation`, `performance`, …); don't invent
+new ones casually.
+
+**Don't hard-wrap body prose.** GitHub renders issue, PR, and comment bodies as
+Markdown and reflows paragraphs to the reader's width — wrapping prose at a fixed
+column just bakes in awkward line breaks. Write each paragraph as one long line, with
+a blank line between paragraphs; use normal Markdown for lists, headings, and code
+fences. (This applies to `gh issue create`, `gh pr create`, and `gh … comment`
+bodies — the wrapped examples below are illustrative, not a wrapping rule to copy.)
 
 ```
 gh issue create --repo randomphrase/harmonist \
