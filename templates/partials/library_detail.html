@@ -43,7 +43,7 @@
                 {# Wrong MB release → back to Needs MBID to re-pick. Rare, so subtle
                    (muted until hover); confirms first to guard against a mis-click. #}
                 <button type="button" hx-post="/library/{{ album.id }}/rematch"
-                        hx-swap="none" hx-disabled-elt="this" onclick="harmonistCloseModal()"
+                        hx-swap="none" hx-disabled-elt="this" hx-on::after-request="if (event.detail.successful) harmonistCloseModal()"
                         hx-confirm="Wrong MusicBrainz release? The album goes back to Needs MBID so you can pick the correct one. Your files keep their current tags until you re-tag."
                         title="Wrong MusicBrainz match — pick the correct release"
                         aria-label="Wrong MusicBrainz match — pick the correct release"
@@ -86,7 +86,7 @@
                    a link to forget. Subtle × grouped with the badge; confirms first. #}
                 {% if bc and bc.item_id is not none %}
                 <button type="button" hx-post="/library/{{ album.id }}/unlink" hx-vals='{"forget_url": "true"}'
-                        hx-swap="none" hx-disabled-elt="this" onclick="harmonistCloseModal()"
+                        hx-swap="none" hx-disabled-elt="this" hx-on::after-request="if (event.detail.successful) harmonistCloseModal()"
                         hx-confirm="Wrong Bandcamp purchase? Unlink AND forget the store URL. The album stays correctly tagged in your Library, no future sync will re-link it, and the purchase reappears as a potential download so you can match it correctly."
                         title="Wrong Bandcamp purchase — forget this link"
                         aria-label="Wrong Bandcamp purchase — forget this link"
@@ -168,7 +168,7 @@
                 {% if bc and bc.item_id is not none %}
                 <button hx-post="/library/{{ album.id }}/unlink"
                         hx-swap="none" hx-disabled-elt="this"
-                        onclick="harmonistCloseModal()"
+                        hx-on::after-request="if (event.detail.successful) harmonistCloseModal()"
                         hx-confirm="Unlink this album from its Bandcamp purchase? It reverts to Needs Link — tags and store URL are kept, so the next sync can re-link it."
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Unlink

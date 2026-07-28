@@ -2061,6 +2061,27 @@ def test_library_detail_wrong_match_controls_beside_badges(client, cfg):
     assert "Wrong match" not in html  # old ambiguous button is gone
 
 
+def test_library_detail_modal_actions_close_after_success_not_onclick(client, cfg):
+    """Regression for #40: modal action buttons that close the modal must do so via
+    hx-on::after-request (after htmx has run its confirm + request), NOT via
+    onclick. An onclick that wipes #modal detaches the button before htmx's
+    delegated handler runs, so the confirm never shows and the request never
+    fires — the control silently does nothing but close the modal."""
+    import re
+
+    d = _make_tagged_album(cfg, "ModalActs", mbid="rel-ma", tagged_at=datetime.now(UTC), item_id=5)
+    html = client.get(f"/library/{_id_for(cfg, d)}/detail").text
+    assert "/rematch" in html
+    assert "forget_url" in html
+    # No hx-post *action* button may use onclick to close (that detaches it before
+    # htmx runs). The modal's own pure-close × button (no hx-post) is fine.
+    action_buttons = re.findall(r"<button[^>]*\shx-post[^>]*>", html)
+    assert action_buttons
+    assert all("onclick=" not in b for b in action_buttons)
+    # The ones that close after acting use hx-on::after-request instead.
+    assert any("hx-on::after-request" in b for b in action_buttons)
+
+
 # ---------- retag / forget ----------
 
 
