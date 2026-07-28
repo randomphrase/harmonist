@@ -3,7 +3,14 @@
 {% set sc = album.sidecar %}
 {% set bc = sc.bandcamp if sc else None %}
 {% set store = store_name(sc.store_url if sc else None) %}
-<div class="border border-line rounded-lg bg-surface p-4 mt-1 mb-1">
+<div class="relative border border-line rounded-lg bg-surface p-4 mt-1 mb-1">
+    {# Covers the panel while a multi-second re-tag is in flight (the re-tag
+       buttons point their hx-indicator here). #}
+    {% include 'partials/_tagging_overlay.html' %}
+    {# On a successful re-tag the endpoint fires `album-retagged`; reload the whole
+       modal so the comparison + metadata below reflect the newly written tags. #}
+    <span hx-get="/library/{{ album.id }}/detail" hx-trigger="album-retagged from:body"
+          hx-target="#modal" hx-swap="innerHTML" class="hidden"></span>
     <div class="flex flex-col md:flex-row gap-4">
         <img loading="lazy" src="/cover/{{ album.id }}"
              onerror="this.style.visibility='hidden'" alt=""
@@ -100,7 +107,7 @@
 
             <div class="flex gap-2 pt-2 border-t border-line">
                 <button hx-post="/retag/{{ album.id }}"
-                        hx-swap="none" hx-disabled-elt="this"
+                        hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
                         class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition"
                         title="Re-tag from MusicBrainz. Per-track embedded artwork is preserved.">
                     Re-tag from MB
@@ -108,7 +115,7 @@
                 {# Force overwrite of per-track artwork (otherwise preserved). Niche;
                    subtle styling so it doesn't compete with the primary Re-tag. #}
                 <button hx-post="/retag/{{ album.id }}" hx-vals='{"overwrite_art": "true"}'
-                        hx-swap="none" hx-disabled-elt="this"
+                        hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
                         hx-confirm="Re-tag AND overwrite each track's embedded artwork with the album cover? Any per-track artwork (e.g. on a compilation) will be replaced — this can't be undone."
                         class="px-3 py-1.5 bg-surface hover:bg-line text-muted border border-line rounded text-xs font-bold uppercase tracking-widest transition"
                         title="Replace per-track embedded artwork with the single album cover.">
