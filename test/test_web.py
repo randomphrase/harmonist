@@ -18,7 +18,13 @@ from mutagen.mp4 import MP4
 from harmonist import sidecar as sc
 from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
 from harmonist.models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
-from harmonist.tagger import ATOM_ALBUM, ATOM_ARTIST, ATOM_COMMENT, ATOM_MB_ALBUM_ID
+from harmonist.tagger import (
+    ATOM_ALBUM,
+    ATOM_ARTIST,
+    ATOM_COMMENT,
+    ATOM_MB_ALBUM_ID,
+    ATOM_TITLE,
+)
 from harmonist.web.main import create_app
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -2787,6 +2793,35 @@ def test_library_compare_renders_side_by_side(client, cfg, monkeypatch):
     assert r.status_code == 200
     assert "On disk vs MusicBrainz" in r.text
     assert "Track 1" in r.text
+
+
+def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
+    """When on-disk track titles differ from MB (e.g. a featured-artist tidy-up
+    on MB after tagging), the verify view must not claim 'exact match' — it
+    reports the metadata difference even though lengths line up (issue #29)."""
+    d = _make_tagged_album(cfg, "Mismatch", mbid="rel-mm", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_TITLE] = ["Ground Glass [w/ Foxes in Fiction]"]
+    audio.save()
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Mismatch",
+            "medium-list": [
+                {
+                    "position": "1",
+                    # MB has the cleaned-up title; the file still carries the old one.
+                    "track-list": [{"id": "t1", "title": "Ground Glass", "length": "1000"}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    r = client.get(f"/library/{_id_for(cfg, d)}/compare")
+    assert r.status_code == 200
+    assert "title difference" in r.text
+    assert "exact match" not in r.text
 
 
 def test_library_detail_auto_loads_track_comparison(client, cfg):

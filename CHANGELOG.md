@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- The library "verify tagging" view now flags tracks whose on-disk title differs
+  from MusicBrainz: the header reports the count instead of claiming "exact match",
+  and the differing rows are highlighted.
+
 ### Fixed
 
 - Re-tagging from MusicBrainz now writes the per-release track title, not the
