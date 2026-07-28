@@ -17,16 +17,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
-- The ambiguous "Wrong match" button is gone. Each "wrong match" control now sits
-  beside the badge it affects: a × on the Bandcamp badge forgets a wrong purchase
-  link, and a pencil on the MusicBrainz badge re-picks a wrong release. Both confirm
-  before acting.
+- The ambiguous "Wrong match" button in the album detail is gone. Correcting a wrong
+  MusicBrainz release is now a pencil beside the MusicBrainz badge (see Added). The
+  Bandcamp link-removal controls (the old "Wrong match" and "Unlink") are temporarily
+  removed until a Library album can be re-linked to a purchase.
 
 ### Fixed
 
-- Album-detail actions that close the modal (Unlink, and the new per-badge
-  wrong-match controls) now actually perform their action. Previously the modal
-  closed before the request could fire, so the control did nothing.
+- Album-detail actions that close the modal now actually perform their action.
+  Previously the modal closed before the request could fire, so the control did
+  nothing.
 - Manual "Re-tag from MB" now shows a progress spinner while it runs and refreshes
   the album details view when it finishes, so the disk-vs-MusicBrainz comparison
   reflects the just-written tags without reopening the album.

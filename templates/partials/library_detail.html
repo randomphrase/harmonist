@@ -65,7 +65,9 @@
                         View on {{ store|title if store else 'store' }} · {{ sc.store_url }}
                     {%- endif -%}
                 {% endset %}
-                <span class="inline-flex items-center gap-1">
+                {# NOTE: the "wrong purchase" × (forget the store URL) is temporarily
+                   removed — there's no way to re-link a Library album yet, so removal
+                   would be a dead end. Reinstated with a re-link path in #42. #}
                 <a href="{{ sc.store_url }}"
                    target="_blank" rel="noopener"
                    title="{{ store_tip }}"
@@ -81,22 +83,6 @@
                     {% endif %}
                     {% if store == 'bandcamp' %}Bandcamp{% elif store %}{{ store|title }}{% else %}Store{% endif %}
                 </a>
-                {# Wrong purchase link → forget the store URL (the album stays tagged;
-                   the purchase re-surfaces as a potential download). Only when there's
-                   a link to forget. Subtle × grouped with the badge; confirms first. #}
-                {% if bc and bc.item_id is not none %}
-                <button type="button" hx-post="/library/{{ album.id }}/unlink" hx-vals='{"forget_url": "true"}'
-                        hx-swap="none" hx-disabled-elt="this" hx-on::after-request="if (event.detail.successful) harmonistCloseModal()"
-                        hx-confirm="Wrong Bandcamp purchase? Unlink AND forget the store URL. The album stays correctly tagged in your Library, no future sync will re-link it, and the purchase reappears as a potential download so you can match it correctly."
-                        title="Wrong Bandcamp purchase — forget this link"
-                        aria-label="Wrong Bandcamp purchase — forget this link"
-                        class="inline-flex items-center justify-center w-5 h-5 rounded-full text-muted hover:text-bc-teal hover:bg-bc-teal/10 transition">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
-                        <path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </button>
-                {% endif %}
-                </span>
                 {% endif %}
             </div>
             {% endif %}
@@ -162,18 +148,10 @@
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Forget
                 </button>
-                {# Temporarily undo a CORRECT Bandcamp link → Needs Link (tags + store
-                   URL kept, re-links next sync). The "wrong purchase" case (forget the
-                   URL) now lives as the × beside the Bandcamp badge above. #}
-                {% if bc and bc.item_id is not none %}
-                <button hx-post="/library/{{ album.id }}/unlink"
-                        hx-swap="none" hx-disabled-elt="this"
-                        hx-on::after-request="if (event.detail.successful) harmonistCloseModal()"
-                        hx-confirm="Unlink this album from its Bandcamp purchase? It reverts to Needs Link — tags and store URL are kept, so the next sync can re-link it."
-                        class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-                    Unlink
-                </button>
-                {% endif %}
+                {# Unlink (clear the Bandcamp item_id) is temporarily removed alongside
+                   the × — until a Library album can be re-linked, taking a link off is a
+                   dead end. Both come back with the re-link path in #42. The /unlink
+                   endpoint stays for now. #}
             </div>
         </div>
     </div>
