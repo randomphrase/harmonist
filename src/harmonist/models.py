@@ -84,6 +84,14 @@ class BandcampInfo:
     candidate_item_ids: list[int] | None = None
 
 
+def _norm_title(s: str) -> str:
+    """Light normalisation for comparing a disk title against an MB title:
+    collapse whitespace and casefold. Deliberately *not* the aggressive
+    `_norm_*` used for matching — here we want to surface real differences, so
+    only cosmetic noise (spacing, case) is ignored."""
+    return " ".join(s.split()).casefold()
+
+
 @dataclass
 class TrackComparison:
     """One row in a side-by-side files-vs-MB-release comparison.
@@ -99,6 +107,15 @@ class TrackComparison:
     mb_track_title: str | None
     mb_track_length_ms: int | None
     delta_ms: int | None  # None when either side's length is unknown
+
+    @property
+    def title_differs(self) -> bool:
+        """True when both titles are present and differ after light
+        normalisation. A padding row (either side missing) is a count mismatch,
+        not a metadata discrepancy, so it returns False. Derived, never stored."""
+        if not self.file_title or not self.mb_track_title:
+            return False
+        return _norm_title(self.file_title) != _norm_title(self.mb_track_title)
 
 
 @dataclass
@@ -139,6 +156,14 @@ class MatchCandidate:
     # Load-bearing: drives that read-only render. Distinct from a mis-tag (where
     # the candidate is a *different*, confirmable release).
     unmatched_purchase: bool = False
+
+    @property
+    def title_mismatch_count(self) -> int:
+        """How many track rows have an on-disk title that differs from MB.
+        Derived from `track_comparisons`, never stored — lets the verify-tagging
+        view flag a metadata discrepancy that the length-based `confidence`
+        can't see."""
+        return sum(1 for tc in self.track_comparisons if tc.title_differs)
 
 
 @dataclass

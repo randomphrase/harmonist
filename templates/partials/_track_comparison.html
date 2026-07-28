@@ -21,13 +21,18 @@
             {% elif tc.delta_ms is not none %}
                 {% set delta_class = 'text-accent font-semibold' %}
             {% endif %}
+            {# Flag on-disk titles that differ from MB — only where the caller asks
+               (the verify-tagging view), so the pre-link suggestion card, where
+               differing titles are normal, stays uncluttered. #}
+            {% set title_diff = highlight_titles | default(false) and tc.title_differs %}
+            {% set title_class = 'text-amber-700 font-semibold' if title_diff else 'text-ink' %}
             <tr class="border-b border-line last:border-0">
                 <td class="py-1 px-2 font-mono text-muted">{{ loop.index }}</td>
-                <td class="py-1 px-2 text-ink truncate max-w-xs">
+                <td class="py-1 px-2 truncate max-w-xs {{ title_class }}">
                     {% if tc.file_title %}{{ tc.file_title }}{% else %}<span class="text-muted italic">— missing —</span>{% endif %}
                 </td>
                 <td class="py-1 px-2 font-mono text-muted">{% if tc.file_duration_ms is not none %}{{ '%d:%02d' | format(tc.file_duration_ms // 60000, (tc.file_duration_ms // 1000) % 60) }}{% else %}—{% endif %}</td>
-                <td class="py-1 px-2 text-ink truncate max-w-xs">
+                <td class="py-1 px-2 truncate max-w-xs {{ title_class }}">
                     {% if tc.mb_track_title %}{{ tc.mb_track_title }}{% else %}<span class="text-muted italic">— missing —</span>{% endif %}
                 </td>
                 <td class="py-1 px-2 font-mono text-muted">{% if tc.mb_track_length_ms is not none %}{{ '%d:%02d' | format(tc.mb_track_length_ms // 60000, (tc.mb_track_length_ms // 1000) % 60) }}{% else %}<span class="text-muted">?</span>{% endif %}</td>
