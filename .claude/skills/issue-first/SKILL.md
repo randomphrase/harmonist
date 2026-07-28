@@ -80,12 +80,15 @@ For a **bug**:
 For a **feature / change**: the motivation and the desired behavior. Keep it terse;
 link related issues.
 
-Use labels already in the repo (`idea`, `deferred`, etc.) where they fit; don't
-invent new ones casually.
+**Always apply a type label** so the issue is triageable: `bug` for a defect,
+`enhancement` for a feature or change. Add situational labels already in the repo
+where they fit (`idea`, `deferred`, `documentation`, …); don't invent new ones
+casually.
 
 ```
 gh issue create --repo randomphrase/harmonist \
   --title "<concise imperative summary>" \
+  --label bug \
   --body "$(cat <<'EOF'
 **Symptom**
 ...
