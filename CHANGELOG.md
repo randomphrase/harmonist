@@ -24,6 +24,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Album-detail actions that close the modal (Unlink, and the new per-badge
+  wrong-match controls) now actually perform their action. Previously the modal
+  closed before the request could fire, so the control did nothing.
 - Manual "Re-tag from MB" now shows a progress spinner while it runs and refreshes
   the album details view when it finishes, so the disk-vs-MusicBrainz comparison
   reflects the just-written tags without reopening the album.
