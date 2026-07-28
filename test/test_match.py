@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from harmonist.match import _mb_track_length_ms, assess_match, best_match
+from harmonist.models import MatchCandidate, TrackComparison
 from harmonist.tagger import ATOM_TITLE
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -275,3 +276,57 @@ def test_best_match_breaks_count_ties_on_closest_lengths(tmp_path):
     result = best_match(album_dir, [far, close])
     assert result is not None
     assert result.mb_release_id == "rel-close"
+
+
+# -- title-discrepancy signal (issue #29) --
+
+
+def _tc(file_title: str | None, mb_title: str | None) -> TrackComparison:
+    return TrackComparison(
+        file_name="x.m4a",
+        file_duration_ms=1000,
+        file_title=file_title,
+        mb_track_title=mb_title,
+        mb_track_length_ms=1000,
+        delta_ms=0,
+    )
+
+
+def test_title_differs_flags_real_difference():
+    assert _tc("Ground Glass [w/ Foxes in Fiction]", "Ground Glass").title_differs is True
+
+
+def test_title_differs_ignores_case_and_whitespace():
+    assert _tc("Ground  Glass", "ground glass").title_differs is False
+
+
+def test_title_differs_false_when_a_side_is_missing():
+    # Padding rows (count mismatch) are not a metadata discrepancy.
+    assert _tc(None, "Ground Glass").title_differs is False
+    assert _tc("Ground Glass", None).title_differs is False
+
+
+def test_title_mismatch_count_sums_differing_rows():
+    cand = MatchCandidate(
+        mb_release_id="rel",
+        confidence="exact",
+        file_count=3,
+        track_count=3,
+        track_comparisons=[
+            _tc("Same", "Same"),
+            _tc("Ground Glass [w/ Foxes in Fiction]", "Ground Glass"),
+            _tc("Etalon [w/ Foxes in Fiction]", "Etalon"),
+        ],
+    )
+    assert cand.title_mismatch_count == 2
+
+
+def test_title_mismatch_count_zero_on_clean_match():
+    cand = MatchCandidate(
+        mb_release_id="rel",
+        confidence="exact",
+        file_count=1,
+        track_count=1,
+        track_comparisons=[_tc("Same Title", "Same Title")],
+    )
+    assert cand.title_mismatch_count == 0
