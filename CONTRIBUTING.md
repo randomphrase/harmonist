@@ -3,32 +3,33 @@
 Thanks for your interest in Harmonist. This is the short version of how work flows
 through the project.
 
-## Two tracks for every change
+## Every change comes as a pull request
 
-One question decides how a change is handled: **could it alter what Harmonist does
-at runtime, or plausibly regress behavior?**
+All contributions land through a PR — there is no direct pushing to `main`. Fork
+the repo (or branch, if you have write access), do the work on a branch, and open a
+pull request. **CI must be green before a PR merges** — that's the gate.
 
-### Functional changes → issue, branch, PR
+### Functional changes need an issue first
 
 Bug fixes, new features, changes to existing behavior, and refactors that aren't
-provably behavior-preserving take the full track:
+provably behavior-preserving should start with a GitHub issue, so the *what* and
+*why* are recorded before the code:
 
-1. **Open a GitHub issue first**, describing the problem or proposal. For a bug,
-   include the symptom, the root cause once known, and the intended fix. Apply a
-   type label — `bug` or `enhancement`.
-2. **Work on a branch** whose name carries the issue number:
-   `<type>/<N>-<slug>`, e.g. `fix/27-track-title`.
-3. **Open a pull request** that references the issue (`Fixes #N`) so merging closes
-   it. **CI must be green before it merges** — that's the gate.
-
-### Non-functional changes → straight to `main`
-
-Formatting, lint fixes, comment/docstring/typo edits, test-only additions, and
-documentation don't need an issue, a branch, or a PR. Commit them directly to
-`main`. (`no issue ⇒ no branch ⇒ no PR` — the three go together.)
+1. **Open an issue** describing the problem or proposal. For a bug, include the
+   symptom, the root cause once known, and the intended fix. Apply a type label —
+   `bug` or `enhancement`.
+2. **Branch** with the issue number in the name: `<type>/<N>-<slug>`, e.g.
+   `fix/27-track-title`.
+3. **Open the PR** referencing the issue (`Fixes #N`) so merging closes it.
 
 If you can't confidently say a change is behavior-preserving, treat it as
-functional.
+functional and open an issue.
+
+### Trivial changes still come as a PR
+
+Formatting, lint fixes, comment/docstring/typo edits, test-only additions, and
+documentation don't need an issue — but they still go through a branch and a PR so
+CI can validate them. When in doubt, just open the PR; a maintainer will help.
 
 ## Before you commit
 
