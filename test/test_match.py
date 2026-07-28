@@ -179,7 +179,12 @@ def test_candidate_records_proposed_at(tmp_path):
 def test_track_comparison_has_file_and_mb_titles(tmp_path):
     album_dir = _album_with(tmp_path, 1)
     rel = _release([FIXTURE_DURATION_MS])
-    rel["medium-list"][0]["track-list"][0]["recording"]["title"] = "Song A"
+    track = rel["medium-list"][0]["track-list"][0]
+    # The per-release track title is authoritative and must win over a differing
+    # recording title (issue #27) — the assessment display would otherwise show
+    # the stale recording name.
+    track["title"] = "Song A"
+    track["recording"]["title"] = "Song A /w Someone"
     result = assess_match(album_dir, rel)
     tc = result.track_comparisons[0]
     assert tc.mb_track_title == "Song A"

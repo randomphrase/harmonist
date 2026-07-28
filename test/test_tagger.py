@@ -207,6 +207,38 @@ def test_tag_album_track_artist_credit_overrides_release(album_with_tracks):
     assert track2[ATOM_ALBUM_ARTIST] == ["Test Artist"]
 
 
+def test_tag_album_prefers_track_title_over_recording_title(album_with_tracks):
+    """Regression for #27: the per-release track title wins over the recording
+    title. After an editor applies MB featured-artist style, the guest moves out
+    of the *track* title into the artist credit while the *recording* title keeps
+    its original form — re-tagging must write the track title, not the stale
+    recording title."""
+    album_dir = album_with_tracks(2)
+    release = _release_2_tracks()
+    # Track 1: release track title differs from its recording title.
+    release["medium-list"][0]["track-list"][0]["title"] = "Ground Glass"
+    release["medium-list"][0]["track-list"][0]["recording"]["title"] = (
+        "Ground Glass /w Foxes in Fiction"
+    )
+    tagger.tag_album(album_dir, release)
+
+    track1 = MP4(album_dir / "01 Track 1.m4a")
+    assert track1[ATOM_TITLE] == ["Ground Glass"]
+
+
+def test_tag_album_falls_back_to_recording_title(album_with_tracks):
+    """When a track carries no per-release title of its own, fall back to the
+    recording title rather than writing an empty title."""
+    album_dir = album_with_tracks(2)
+    release = _release_2_tracks()
+    del release["medium-list"][0]["track-list"][0]["title"]
+    release["medium-list"][0]["track-list"][0]["recording"]["title"] = "Recording Only"
+    tagger.tag_album(album_dir, release)
+
+    track1 = MP4(album_dir / "01 Track 1.m4a")
+    assert track1[ATOM_TITLE] == ["Recording Only"]
+
+
 def test_tag_album_removes_legacy_release_id(album_with_tracks):
     album_dir = album_with_tracks(1)
     f = album_dir / "01 Track 1.m4a"
