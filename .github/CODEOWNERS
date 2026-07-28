@@ -1,0 +1,7 @@
+# Code owners / maintainers for Harmonist.
+# GitHub auto-requests review from these owners on every pull request, and this
+# file is the source of truth for who may commit non-functional changes straight
+# to `main` (see .claude/skills/issue-first and CONTRIBUTING.md). Everyone else
+# contributes via a pull request.
+
+* @randomphrase

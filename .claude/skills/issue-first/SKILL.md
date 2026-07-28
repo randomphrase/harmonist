@@ -24,21 +24,32 @@ there is no third.
   state name, a config option, deployment.
 - Refactors you cannot confidently call behavior-preserving.
 
-**Non-functional — straight to `main`, no issue, no branch, no PR:**
+**Non-functional — no issue needed:**
 - Formatting / `ruff` / `ruff format` / lint fixes.
 - Comment, docstring, or typo edits with no code effect.
 - Test-only additions that don't change `src/`.
-- Dependency bumps that CI handles and that don't change behavior.
+- Documentation, and dependency bumps that CI handles and don't change behavior.
 
-These three go together: **no issue ⇒ no branch ⇒ no PR.** If a change doesn't
-warrant an issue, it doesn't warrant a branch either — commit it directly to
-`main`. If it *does* warrant an issue, it takes the whole track, branch and PR
-included. Never a half-measure (an issue but a direct commit, or a branch with no
-issue).
+For functional work the tracks go together: **no issue ⇒ no branch; issue ⇒ branch
++ PR.** Never a half-measure (an issue but no branch, or a branch with no issue).
 
 **Judgment call** — a "pure" internal refactor. If you can't state with confidence
 that it's behavior-preserving, it's functional: it takes the full track. When still
 unsure, ask the user rather than deciding unilaterally.
+
+## Who may commit straight to `main`
+
+The direct-to-`main` shortcut for non-functional work is a **maintainer** privilege
+— `main` is protected and everyone else contributes via a PR, even for trivial
+changes. Maintainers are whoever `.github/CODEOWNERS` lists (currently
+`@randomphrase`).
+
+Before committing anything directly to `main`, confirm you're acting as a
+maintainer: `gh api user --jq .login` against the CODEOWNERS list, or
+`gh api repos/randomphrase/harmonist/collaborators/<login>/permission --jq .permission`
+(`admin`/`maintain` qualifies). **If you are not a maintainer, every change takes
+the full PR track** — open an issue for functional work, or go straight to a
+branch + PR for trivial work (no issue required).
 
 ## The full track (functional work)
 
@@ -65,9 +76,10 @@ period.
 
 ## The trivial track (non-functional work)
 
-Skip all of the above: no issue, no branch, no PR. Make the change on `main`, run
-`review-gate` (it self-exempts docs/format-only diffs in one line), and commit. The
-`make check` quality gate still applies to every commit.
+**Maintainers** skip all of the above: no issue, no branch, no PR. Make the change
+on `main`, run `review-gate` (it self-exempts docs/format-only diffs in one line),
+and commit. Non-maintainers still branch + PR (see "Who may commit straight to
+`main`" above). The `make check` quality gate applies to every commit either way.
 
 ## What a good issue contains
 
