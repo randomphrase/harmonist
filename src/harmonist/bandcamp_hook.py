@@ -24,7 +24,7 @@ import bandcampsync.sync as _bcsync
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
-from . import activity, audit, formats, library_index, pending_downloads
+from . import activity, audit, formats, id_registry, library_index, pending_downloads
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url, title_words, titles_match
 from .pending_downloads import PendingPurchase
@@ -762,15 +762,23 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         result = bool(super().sync_item(item, encoding))
         if result:
             self.new_items += 1
+            # Mint the album's id NOW, before the sidecar exists, so these audit
+            # rows can be attached to it. `write_sidecar_for_item` below writes a
+            # sidecar with no MBID, and sidecar.write's identity normalisation
+            # adopts this same registry UUID as `temp_uid` — so the download rows
+            # and the album's later history share one id (#33).
+            album_id = id_registry.get_or_mint(local_path)
             if collided is not None:
                 audit.record(
                     "case_collision",
+                    album_id=album_id,
                     item_id=getattr(item, "item_id", "?"),
                     created=local_path.parent,
                     existing=collided,
                 )
             audit.record(
                 "download",
+                album_id=album_id,
                 item_id=getattr(item, "item_id", "?"),
                 fmt=encoding or getattr(self, "media_format", "?"),
                 path=local_path,
