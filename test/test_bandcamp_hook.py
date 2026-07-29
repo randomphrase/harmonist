@@ -107,6 +107,38 @@ def test_url_returns_none_with_garbage_hints():
     assert construct_bandcamp_url(item) is None
 
 
+def test_download_audit_id_matches_the_albums_sidecar_id(tmp_path):
+    """A download is audited before any sidecar exists, so the album id is minted
+    from the registry. The sidecar written straight after must adopt that SAME id
+    as its temp_uid — otherwise the download rows would be orphaned from the
+    album's later history (#33)."""
+    from harmonist import activity_store, audit, id_registry
+    from harmonist.activity_store import Source
+
+    id_registry.clear()
+    activity_store.init(tmp_path / "activity.db")
+    activity_store.clear()
+
+    album_dir = tmp_path / "Artist" / "Album"
+    album_dir.mkdir(parents=True)
+
+    # What sync_item does: mint the id, then audit the download against it.
+    album_id = id_registry.get_or_mint(album_dir)
+    audit.record("download", album_id=album_id, item_id=999, path=album_dir)
+
+    # ...then the post-download sidecar write.
+    item = _StubItem(
+        item_id=999,
+        url_hints={"subdomain": "myartist", "slug": "my-album", "item_type": "album"},
+    )
+    assert write_sidecar_for_item(item, album_dir) is True
+
+    # The sidecar adopted the registry id, so both rows share one album id.
+    assert sc.read(album_dir).temp_uid == album_id
+    rows = activity_store.recent(album_id=album_id, source=Source.AUDIT)
+    assert {r.message.split()[0] for r in rows} == {"download", "sidecar.create"}
+
+
 # ---------- write_sidecar_for_item ----------
 
 
