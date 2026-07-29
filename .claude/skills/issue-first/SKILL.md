@@ -82,9 +82,19 @@ close the issue. For interim work that references an issue it should **not** clo
 `Part of #N`, `Re #N`, or `Toward #N`.
 
 GitHub's parser **ignores negation** — writing "does not close #N" still matches
-`close #N` and auto-closes the issue on merge. Never put a closing keyword next to an
-issue number unless you mean it, even in a negated sentence. (This is why #42 was
-wrongly auto-closed.)
+`close #N` and auto-closes the issue on merge. Never put a closing keyword
+(`fix`/`close`/`resolve` + any suffix) next to an issue number unless you mean it,
+even in a negated sentence. To say an issue **stays open**, phrase it *without* the
+keyword at all:
+
+| ✗ auto-closes on merge | ✓ leaves the issue open |
+| --- | --- |
+| `Does not close #33` | `Part of #33; stays open` |
+| `Not resolved by this — see #33` | `Increment 1 of #33` |
+| `Doesn't fix #14 yet` | `Toward #14` |
+
+(This bit #42 once and #33 once — the rule is right, the negated phrasing is the
+trap. If in doubt, drop the verb and just reference the number.)
 
 ## The trivial track (non-functional work)
 
