@@ -40,6 +40,7 @@ from harmonist import (
 )
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
+from harmonist.activity_store import Level
 from harmonist.bandcamp_hook import HarmonistSyncer, album_slug
 from harmonist.match import assess_match, best_match
 from harmonist.models import (
@@ -288,7 +289,7 @@ def create_app(
             if link_only and pending_links == 0:
                 _clear_bandcampsync_checkpoint(cfg.paths.music_dir)
             if link_only:
-                activity.record(
+                activity.info(
                     f"Linking your library — {pending_links} album(s) to match. "
                     "Downloads are paused this sync and resume on the next one.",
                 )
@@ -536,7 +537,7 @@ def _register_demo_routes(app: FastAPI) -> None:
             demo.reset(request.app.state.cfg.paths.music_dir)
         except RuntimeError as e:
             return _flash_response(
-                "Demo reset failed", str(e), level="error", tasks_changed=False, status_code=400
+                "Demo reset failed", str(e), level=Level.ERROR, tasks_changed=False, status_code=400
             )
         return _flash_response("Demo data reset", "back to original state")
 
@@ -918,10 +919,9 @@ def _detect_mistags_after_sync(
     if not albums or not owned:
         return
     if len(albums) > _MISTAG_DETECTION_MAX_ALBUMS:
-        activity.record(
+        activity.warning(
             f"Mis-tag detection skipped: {len(albums)} unmatched albums after sync exceeds "
-            f"the cap of {_MISTAG_DETECTION_MAX_ALBUMS} — something looks wrong with this sync.",
-            level="warning",
+            f"the cap of {_MISTAG_DETECTION_MAX_ALBUMS} — something looks wrong with this sync."
         )
         return
 
@@ -991,11 +991,10 @@ def _detect_mistags_after_sync(
         # must NOT also show as a potential download. `replace_all` already ran
         # during the sync, so remove the now-claimed id.
         pending_downloads.remove(owned_item_id)
-        activity.record(
+        activity.warning(
             f"Possible mis-tag: {album.artist} — {album.title}. You own “{label}” on "
             f"Bandcamp ({url}) — the same release group but a different release than it's "
-            f"tagged as. Moved to Needs MBID with {owned_mbid} suggested; confirm to re-tag.",
-            level="warning",
+            f"tagged as. Moved to Needs MBID with {owned_mbid} suggested; confirm to re-tag."
         )
 
 
@@ -1040,10 +1039,9 @@ def _report_unmatched_after_sync(
         )
         for a in unmatched:
             store_url = a.sidecar.store_url if a.sidecar else None
-            activity.record(
+            activity.warning(
                 f"Not linked to a Bandcamp purchase: {a.artist} — {a.title} "
-                f"[{store_url or 'no store URL'}] (use 'Try a different URL' to link it)",
-                level="warning",
+                f"[{store_url or 'no store URL'}] (use 'Try a different URL' to link it)"
             )
         return
 
@@ -1072,19 +1070,17 @@ def _report_unmatched_after_sync(
             unmatched_purchase=True,
         )
         _demote_to_needs_mbid(a.path, sc, candidate=candidate)
-        activity.record(
+        activity.warning(
             f"No Bandcamp purchase matched {a.artist} — {a.title} — kept its tags, moved "
             "to Needs MBID. Add its Bandcamp URL to the MusicBrainz release (or match it "
-            "manually) so it links instead of risking a duplicate download.",
-            level="warning",
+            "manually) so it links instead of risking a duplicate download."
         )
         if twins:
-            activity.record(
+            activity.warning(
                 f"Heads up: {a.artist} — {a.title} is tagged as the same MusicBrainz "
                 f"release as “{twins[0].title}” ({twins[0].path.name}), which already "
                 f"linked to a purchase — possibly a duplicate copy, or a release split "
-                f"across directories.",
-                level="warning",
+                f"across directories."
             )
 
 
@@ -1575,13 +1571,13 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
     try:
         mbids = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
         if not mbids:
-            activity.record(f"Synced {album_path.name} — no MusicBrainz match yet", "info")
+            activity.record(f"Synced {album_path.name} — no MusicBrainz match yet")
             return "no_match"
         status_str, _ = _apply_best_match(album_path, mbids, cfg, tagger)
         if status_str == "tagged":
-            activity.record(f"Auto-tagged {album_path.name} from MusicBrainz after sync", "info")
+            activity.info(f"Auto-tagged {album_path.name} from MusicBrainz after sync")
         else:
-            activity.record(f"Synced {album_path.name} — MusicBrainz suggestion to review", "info")
+            activity.info(f"Synced {album_path.name} — MusicBrainz suggestion to review")
         return status_str
     except Exception as e:
         log.warning("auto-resolve failed for %s: %s", album_path, e)
@@ -1657,7 +1653,7 @@ def _register_routes(app: FastAPI) -> None:
         label = f"{p.band} — {p.title}" if p else str(item_id)
         _append_ignore(cfg.ignores_file, item_id, label)
         pending_downloads.remove(item_id)
-        activity.record(f"Won't download {label} — added to your Bandcamp ignores")
+        activity.info(f"Won't download {label} — added to your Bandcamp ignores")
         request.state.skip_rescan = True  # only removed a pending; no album changed
         return _render_pending_section(request)
 
@@ -1734,13 +1730,13 @@ def _register_routes(app: FastAPI) -> None:
         # returns to the main page — not the pre-erase cards lingering.
         live_counts.reset_from([])
         request.app.state.scan_runner.reset_and_rescan()
-        activity.record(
-            f"Erased {removed} sidecar(s) — albums revert to tag-derived state{suffix}", "warning"
+        activity.warning(
+            f"Erased {removed} sidecar(s) — albums revert to tag-derived state{suffix}"
         )
         return _flash_response(
             "Sidecars erased",
             f"{removed} removed — audio untouched; albums re-derive on next scan{suffix}",
-            level="warning",
+            level=Level.WARNING,
         )
 
     @app.post("/settings", response_class=HTMLResponse)
@@ -1797,7 +1793,7 @@ def _register_routes(app: FastAPI) -> None:
         # MB user-agent is applied at startup, so re-configure it now too.
         request.app.state.cfg = new_cfg
         mb_lookup.configure(new_cfg.musicbrainz.user_agent)
-        activity.record("Settings updated", "info")
+        activity.info("Settings updated")
 
         ctx = _ctx(
             request,
@@ -1848,7 +1844,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response(
             "Reconcile busy",
             "already running or just finished",
-            level="warning",
+            level=Level.WARNING,
             tasks_changed=False,
         )
 
@@ -1867,7 +1863,7 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "Sync unavailable",
                 "reconciling — try again in a moment",
-                level="warning",
+                level=Level.WARNING,
                 tasks_changed=False,
                 status_code=status.HTTP_409_CONFLICT,
             )
@@ -1885,7 +1881,7 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "Sync busy",
                 "already running",
-                level="warning",
+                level=Level.WARNING,
                 tasks_changed=False,
                 status_code=status.HTTP_409_CONFLICT,
             )
@@ -2016,7 +2012,7 @@ def _register_routes(app: FastAPI) -> None:
         sc = album.sidecar
         if sc is None or sc.bandcamp is None or sc.bandcamp.item_id is None:
             return _flash_response(
-                "Nothing to unlink", f"{album.title} isn't linked", level="warning"
+                "Nothing to unlink", f"{album.title} isn't linked", level=Level.WARNING
             )
         old_id = sc.bandcamp.item_id
         if forget_url:
@@ -2044,7 +2040,7 @@ def _register_routes(app: FastAPI) -> None:
         sc = album.sidecar
         if sc is None or not sc.mb_release_id:
             return _flash_response(
-                "Nothing to re-match", f"{album.title} has no MB release", level="warning"
+                "Nothing to re-match", f"{album.title} has no MB release", level=Level.WARNING
             )
         old_mbid = sc.mb_release_id
         new_sc = replace(sc, mb_release_id=None, tagged_at=None, mb_match_candidate=None)
@@ -2076,7 +2072,7 @@ def _register_routes(app: FastAPI) -> None:
             )
         except Exception as e:
             log.exception("retag failed")
-            return _flash_response("Re-tag failed", str(e), level="error", tasks_changed=False)
+            return _flash_response("Re-tag failed", str(e), level=Level.ERROR, tasks_changed=False)
         details = f"{album.title} (artwork replaced)" if overwrite_art else album.title
         # Reload the open detail modal so its disk-vs-MB comparison + metadata
         # reflect the just-written tags (tasks-changed only refreshes the tiles).
@@ -2183,7 +2179,7 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "Reconcile failed",
                 str(e),
-                level="error",
+                level=Level.ERROR,
                 tasks_changed=False,
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -2195,7 +2191,7 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "No MBID atom",
                 f"{album.title} has no MusicBrainz Album Id",
-                level="warning",
+                level=Level.WARNING,
                 tasks_changed=False,
             )
         label = "Bandcamp source" if sc.store_url else "manual source"
@@ -2210,12 +2206,14 @@ def _register_routes(app: FastAPI) -> None:
         try:
             mbids = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
         except mb_lookup.MBError as e:
-            return _flash_response("MB lookup failed", str(e), level="error", tasks_changed=False)
+            return _flash_response(
+                "MB lookup failed", str(e), level=Level.ERROR, tasks_changed=False
+            )
         if not mbids:
             return _flash_response(
                 "Still no match",
                 f"{album.title}: no MusicBrainz release for this URL yet",
-                level="warning",
+                level=Level.WARNING,
                 tasks_changed=False,
             )
 
@@ -2227,7 +2225,7 @@ def _register_routes(app: FastAPI) -> None:
                 results, total = mb_lookup.candidate_summaries_for_url(sc.store_url)
             except mb_lookup.MBError as e:
                 return _flash_response(
-                    "MB lookup failed", str(e), level="error", tasks_changed=False
+                    "MB lookup failed", str(e), level=Level.ERROR, tasks_changed=False
                 )
             return _render_release_picker(
                 request,
@@ -2241,7 +2239,9 @@ def _register_routes(app: FastAPI) -> None:
         try:
             releases = [mb_lookup.fetch_release(m) for m in mbids]
         except mb_lookup.MBError as e:
-            return _flash_response("MB fetch failed", str(e), level="error", tasks_changed=False)
+            return _flash_response(
+                "MB fetch failed", str(e), level=Level.ERROR, tasks_changed=False
+            )
         candidate = best_match(album.path, releases)
         assert candidate is not None  # releases is non-empty (mbids guarded)
         mbid = candidate.mb_release_id
@@ -2268,7 +2268,7 @@ def _register_routes(app: FastAPI) -> None:
                 return _flash_response(
                     "Tagging failed",
                     str(e),
-                    level="error",
+                    level=Level.ERROR,
                     tasks_changed=False,
                 )
         return _flash_response(
@@ -2294,7 +2294,7 @@ def _register_routes(app: FastAPI) -> None:
             )
         except Exception as e:
             log.exception("tag failed")
-            return _flash_response("Tagging failed", str(e), level="error", tasks_changed=False)
+            return _flash_response("Tagging failed", str(e), level=Level.ERROR, tasks_changed=False)
         return _flash_response("Tagged", album.title)
 
     @app.post("/confirm/{album_id}/incomplete", response_class=HTMLResponse)
@@ -2319,7 +2319,7 @@ def _register_routes(app: FastAPI) -> None:
             )
         except Exception as e:
             log.exception("incomplete tag failed")
-            return _flash_response("Tagging failed", str(e), level="error", tasks_changed=False)
+            return _flash_response("Tagging failed", str(e), level=Level.ERROR, tasks_changed=False)
         return _flash_response("Tagged as incomplete", album.title)
 
     @app.post("/reject/{album_id}", response_class=HTMLResponse)
@@ -2414,7 +2414,9 @@ def _register_routes(app: FastAPI) -> None:
             # tool. Each row links out to the release for closer inspection.
             results = mb_search.search_releases(artist, title, limit=5)
         except mb_search.MBSearchError as e:
-            return _flash_response("MB search failed", str(e), level="error", tasks_changed=False)
+            return _flash_response(
+                "MB search failed", str(e), level=Level.ERROR, tasks_changed=False
+            )
         return _render_release_picker(
             request, album, results, len(results), heading="MusicBrainz search results"
         )
@@ -2431,7 +2433,9 @@ def _register_routes(app: FastAPI) -> None:
         try:
             results, total = mb_lookup.candidate_summaries_for_url(sc.store_url)
         except mb_lookup.MBError as e:
-            return _flash_response("MB lookup failed", str(e), level="error", tasks_changed=False)
+            return _flash_response(
+                "MB lookup failed", str(e), level=Level.ERROR, tasks_changed=False
+            )
         return _render_release_picker(
             request, album, results, total, heading="Releases linked to this store URL"
         )
@@ -2444,7 +2448,7 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "Could not parse",
                 "Paste a full MB release URL or the 36-char MBID",
-                level="error",
+                level=Level.ERROR,
                 tasks_changed=False,
             )
         try:
@@ -2452,10 +2456,14 @@ def _register_routes(app: FastAPI) -> None:
                 album.path, [extracted], request.app.state.cfg, request.app.state.tagger
             )
         except mb_lookup.MBError as e:
-            return _flash_response("MB lookup failed", str(e), level="error", tasks_changed=False)
+            return _flash_response(
+                "MB lookup failed", str(e), level=Level.ERROR, tasks_changed=False
+            )
         except Exception as e:
             log.exception("manual assign failed")
-            return _flash_response("Assignment failed", str(e), level="error", tasks_changed=False)
+            return _flash_response(
+                "Assignment failed", str(e), level=Level.ERROR, tasks_changed=False
+            )
         # status_str is 'tagged' or 'needs_confirmation' — use the friendlier
         # verb from msg's first clause.
         verb = "Tagged" if status_str == "tagged" else "Needs review"
@@ -2541,7 +2549,7 @@ def _flash_response(
     verb: str,
     details: str | None = None,
     *,
-    level: str = "info",
+    level: Level = Level.INFO,
     tasks_changed: bool = True,
     status_code: int = 200,
     extra_triggers: dict[str, Any] | None = None,
@@ -2564,7 +2572,7 @@ def _flash_response(
     """
     message = verb if not details else f"{verb} — {details}"
     # Every action outcome is also an activity-log entry (the Activity tab).
-    activity.record(message, level if level in ("info", "warning", "error") else "info")
+    activity.record(message, level)
     triggers: dict[str, Any] = {
         "harmonist-status": {
             "verb": verb,

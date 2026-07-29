@@ -17,23 +17,25 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from . import activity_store
-from .activity_store import Source
-
-_Level = str  # "info" | "warning" | "error"
+from .activity_store import Level, Source
 
 
 @dataclass(frozen=True)
 class Event:
     ts: datetime
-    level: _Level
+    level: Level
     message: str
 
 
 log = logging.getLogger(__name__)
-_LOG_LEVELS = {"info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
+_LOG_LEVELS = {
+    Level.INFO: logging.INFO,
+    Level.WARNING: logging.WARNING,
+    Level.ERROR: logging.ERROR,
+}
 
 
-def record(message: str, level: _Level = "info") -> None:
+def record(message: str, level: Level = Level.INFO) -> None:
     """Append an event (Activity feed) AND emit it to the log, so the docker
     log is a superset of the feed. Safe to call from any thread."""
     message = (message or "").strip()
@@ -43,6 +45,21 @@ def record(message: str, level: _Level = "info") -> None:
     # Mirror to the log. The `_activity` flag stops _ActivityLogHandler from
     # re-recording it (which would feed back into this function — a loop).
     log.log(_LOG_LEVELS.get(level, logging.INFO), "%s", message, extra={"_activity": True})
+
+
+def info(message: str) -> None:
+    """Record an info-level activity event (logging-style shorthand for record())."""
+    record(message, Level.INFO)
+
+
+def warning(message: str) -> None:
+    """Record a warning-level activity event."""
+    record(message, Level.WARNING)
+
+
+def error(message: str) -> None:
+    """Record an error-level activity event."""
+    record(message, Level.ERROR)
 
 
 def recent(limit: int = 100) -> list[Event]:
@@ -69,7 +86,7 @@ class _ActivityLogHandler(logging.Handler):
             msg = rec.getMessage()
         except Exception:
             return
-        level = "error" if rec.levelno >= logging.ERROR else "warning"
+        level = Level.ERROR if rec.levelno >= logging.ERROR else Level.WARNING
         record(msg, level)
 
 

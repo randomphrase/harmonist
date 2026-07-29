@@ -38,9 +38,14 @@ class Source(StrEnum):
     AUDIT = "audit"
 
 
-# TODO(#47): make this a StrEnum too — deferred because `level` is set at ~30
-# flash/record sites across the web layer; that conversion is its own change.
-_Level = str  # "info" | "warning" | "error"
+class Level(StrEnum):
+    """Severity of a stored event — drives the status-pill colour and the mirrored
+    log level. A str at heart (StrEnum), so it stores/compares as its value."""
+
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+
 
 _LOCK = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -73,7 +78,7 @@ SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
 @dataclass(frozen=True)
 class StoredEvent:
     ts: datetime
-    level: _Level
+    level: Level
     source: Source
     message: str
 
@@ -147,7 +152,7 @@ def _ensure() -> sqlite3.Connection:
     return _conn
 
 
-def append(*, message: str, level: _Level, source: Source) -> None:
+def append(*, message: str, level: Level, source: Source) -> None:
     """Append one event. Best-effort: a failure here (e.g. a teardown race in
     tests) must never crash the caller or the logging path."""
     message = (message or "").strip()
@@ -159,7 +164,7 @@ def append(*, message: str, level: _Level, source: Source) -> None:
         with _LOCK:
             conn.execute(
                 "INSERT INTO events (ts, level, source, message) VALUES (?, ?, ?, ?)",
-                (ts, level, source.value, message),
+                (ts, level.value, source.value, message),
             )
             conn.commit()
     except sqlite3.Error:
@@ -182,7 +187,9 @@ def recent(limit: int = 100, *, source: Source | None = None) -> list[StoredEven
     except sqlite3.Error:
         return []
     return [
-        StoredEvent(ts=datetime.fromisoformat(ts), level=level, source=Source(src), message=msg)
+        StoredEvent(
+            ts=datetime.fromisoformat(ts), level=Level(level), source=Source(src), message=msg
+        )
         for ts, level, src, msg in rows
     ]
 

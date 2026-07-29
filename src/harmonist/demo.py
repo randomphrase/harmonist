@@ -642,7 +642,7 @@ def _download(
             progress_callback(f"{spec['artist']} / {spec['album']}")
     time.sleep(STEP_DELAY_SECONDS)
     _materialise(music_dir, spec)
-    activity.record(f"Downloaded {spec['artist']} / {spec['album']}", "info")
+    activity.info(f"Downloaded {spec['artist']} / {spec['album']}")
 
 
 def _purchase_item_id(spec: dict[str, Any]) -> int:
@@ -719,9 +719,7 @@ def _fill_in_existing_item_ids(
         )
         sidecar_mod.write(album_dir, new_sc)
         patched += 1
-        activity.record(
-            f"Linked {album_dir.parent.name} / {album_dir.name} to its Bandcamp purchase", "info"
-        )
+        activity.info(f"Linked {album_dir.parent.name} / {album_dir.name} to its Bandcamp purchase")
         if progress_callback:
             with contextlib.suppress(Exception):
                 progress_callback(f"Linked: {album_dir.parent.name} / {album_dir.name}")

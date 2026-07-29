@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
 from harmonist import sidecar as sc
+from harmonist.activity_store import Level
 from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
 from harmonist.models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 from harmonist.tagger import (
@@ -2655,8 +2656,8 @@ def test_activity_empty_state(client):
 def test_activity_lists_recorded_events(client):
     from harmonist import activity
 
-    activity.record("Tagged — Some Album", "info")
-    activity.record("Sync failed — boom", "error")
+    activity.record("Tagged — Some Album", Level.INFO)
+    activity.record("Sync failed — boom", Level.ERROR)
     r = client.get("/activity")
     assert r.status_code == 200
     assert "Tagged — Some Album" in r.text
