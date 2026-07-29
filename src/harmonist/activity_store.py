@@ -70,6 +70,14 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         )""",
         "CREATE INDEX idx_events_source_id ON events (source, id)",
     ),
+    # 1 -> 2: per-album reference (an album's `Album.id`) so events can be filtered
+    # by album — the foundation for per-album history (#14) and the gardener (#32).
+    # Nullable: events not about one album (sync started, settings updated) have
+    # none. Set on BOTH sources, so one query returns an album's activity + audit.
+    (
+        "ALTER TABLE events ADD COLUMN album_id TEXT",
+        "CREATE INDEX idx_events_album_id ON events (album_id, id)",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -81,6 +89,7 @@ class StoredEvent:
     level: Level
     source: Source
     message: str
+    album_id: str | None = None
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -152,9 +161,11 @@ def _ensure() -> sqlite3.Connection:
     return _conn
 
 
-def append(*, message: str, level: Level, source: Source) -> None:
-    """Append one event. Best-effort: a failure here (e.g. a teardown race in
-    tests) must never crash the caller or the logging path."""
+def append(*, message: str, level: Level, source: Source, album_id: str | None = None) -> None:
+    """Append one event. `album_id` (an album's `Album.id`) ties the event to an
+    album so per-album history spans both sources; None when it isn't about one
+    album. Best-effort: a failure here (e.g. a teardown race in tests) must never
+    crash the caller or the logging path."""
     message = (message or "").strip()
     if not message:
         return
@@ -163,21 +174,31 @@ def append(*, message: str, level: Level, source: Source) -> None:
         conn = _ensure()
         with _LOCK:
             conn.execute(
-                "INSERT INTO events (ts, level, source, message) VALUES (?, ?, ?, ?)",
-                (ts, level.value, source.value, message),
+                "INSERT INTO events (ts, level, source, message, album_id) VALUES (?, ?, ?, ?, ?)",
+                (ts, level.value, source.value, message, album_id),
             )
             conn.commit()
     except sqlite3.Error:
         log.debug("activity_store append failed", exc_info=True, extra={"_activity": True})
 
 
-def recent(limit: int = 100, *, source: Source | None = None) -> list[StoredEvent]:
-    """Most-recent-first events, optionally filtered by source."""
-    q = "SELECT ts, level, source, message FROM events"
+def recent(
+    limit: int = 100, *, source: Source | None = None, album_id: str | None = None
+) -> list[StoredEvent]:
+    """Most-recent-first events, optionally filtered by source and/or album.
+    Filtering by `album_id` alone returns that album's whole history — activity
+    AND audit."""
+    q = "SELECT ts, level, source, message, album_id FROM events"
+    where: list[str] = []
     args: list[object] = []
     if source is not None:
-        q += " WHERE source = ?"
+        where.append("source = ?")
         args.append(source.value)
+    if album_id is not None:
+        where.append("album_id = ?")
+        args.append(album_id)
+    if where:
+        q += " WHERE " + " AND ".join(where)
     q += " ORDER BY id DESC LIMIT ?"
     args.append(limit)
     try:
@@ -188,9 +209,13 @@ def recent(limit: int = 100, *, source: Source | None = None) -> list[StoredEven
         return []
     return [
         StoredEvent(
-            ts=datetime.fromisoformat(ts), level=Level(level), source=Source(src), message=msg
+            ts=datetime.fromisoformat(ts),
+            level=Level(level),
+            source=Source(src),
+            message=msg,
+            album_id=aid,
         )
-        for ts, level, src, msg in rows
+        for ts, level, src, msg, aid in rows
     ]
 
 

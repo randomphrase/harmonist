@@ -111,13 +111,26 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
     library_index.upsert(album_dir, sidecar)
 
 
+def _album_id_of(sc: Sidecar) -> str | None:
+    """The album's canonical id for this sidecar — mirrors `scanner._album_id`
+    (MBID preferred, else temp_uid). `write()` normalises identity before this is
+    called, so exactly one is set. Defined locally: scanner imports sidecar, so
+    importing it back would be circular."""
+    return sc.mb_release_id or sc.temp_uid
+
+
 def _audit_identity_change(album_dir: Path, old: Sidecar | None, new: Sidecar) -> None:
     """Audit a sidecar write that creates a sidecar or changes its load-bearing
-    identity (MBID / Bandcamp item_id / store_url). No-op re-writes don't log."""
+    identity (MBID / Bandcamp item_id / store_url). No-op re-writes don't log.
+
+    Rows carry the album's id AFTER the write; when the id itself changes (an MBID
+    rewrite), the `mbid` field records both sides so the two ids can be linked."""
     new_item = new.bandcamp.item_id if new.bandcamp else None
+    album_id = _album_id_of(new)
     if old is None:
         audit.record(
             "sidecar.create",
+            album_id=album_id,
             album=album_dir,
             mbid=new.mb_release_id,
             item_id=new_item,
@@ -125,7 +138,9 @@ def _audit_identity_change(album_dir: Path, old: Sidecar | None, new: Sidecar) -
         )
         return
     old_item = old.bandcamp.item_id if old.bandcamp else None
-    changes: dict[str, object] = {}
+    # str-valued (not object) so it splats cleanly into audit.record's typed
+    # keyword-only params.
+    changes: dict[str, str] = {}
     if old.mb_release_id != new.mb_release_id:
         changes["mbid"] = f"{old.mb_release_id}->{new.mb_release_id}"
     if old_item != new_item:
@@ -133,7 +148,7 @@ def _audit_identity_change(album_dir: Path, old: Sidecar | None, new: Sidecar) -
     if old.store_url != new.store_url:
         changes["store_url"] = f"{old.store_url}->{new.store_url}"
     if changes:
-        audit.record("sidecar.update", album=album_dir, **changes)
+        audit.record("sidecar.update", album_id=album_id, album=album_dir, **changes)
 
 
 def _normalise_identity(s: Sidecar, album_dir: Path) -> Sidecar:

@@ -2108,6 +2108,31 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
     assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=UTC)
 
 
+def test_album_action_records_activity_against_that_album(client, cfg, monkeypatch):
+    """End-to-end for #33: a per-album action tags its activity entry with the
+    album's id, so the album's history is queryable (and other albums' events
+    aren't mixed in)."""
+    from harmonist import activity_store
+
+    d = _make_tagged_album(
+        cfg, "Historied", mbid="rel-hist", tagged_at=datetime.now(UTC), item_id=3
+    )
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    activity_store.clear()
+
+    r = client.post(f"/retag/{aid}")
+    assert r.status_code == 200
+
+    mine = activity_store.recent(album_id=aid)
+    assert any("Re-tagged" in e.message for e in mine)
+    # Nothing recorded against this album belongs to another one.
+    assert all(e.album_id == aid for e in mine)
+
+
 def test_retag_emits_album_retagged_trigger(client, cfg, monkeypatch):
     """On success /retag fires an `album-retagged` HX-Trigger so the open detail
     modal reloads itself — otherwise its disk-vs-MB comparison stays stale (#34)."""

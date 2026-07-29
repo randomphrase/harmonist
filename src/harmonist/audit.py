@@ -26,16 +26,18 @@ from .activity_store import Level, Source
 log = logging.getLogger("harmonist.audit")
 
 
-def record(event: str, **fields: object) -> None:
+def record(event: str, *, album_id: str | None = None, **fields: object) -> None:
     """Record one audit event as ``event key=value …`` — to the server log and to
     the durable store.
 
-    Values containing whitespace (album paths!) are quoted so each event stays a
-    single, parseable line. None is rendered as ``-``.
+    ``album_id`` (an album's ``Album.id``) is a structured column, not part of the
+    message: it ties the row to an album so per-album history spans activity+audit
+    (#33). Values containing whitespace (album paths!) are quoted so each event
+    stays a single, parseable line. None is rendered as ``-``.
     """
     line = event if not fields else f"{event} {_detail(fields)}"
     log.info("%s", line)
-    activity_store.append(message=line, level=Level.INFO, source=Source.AUDIT)
+    activity_store.append(message=line, level=Level.INFO, source=Source.AUDIT, album_id=album_id)
 
 
 def _detail(fields: dict[str, object]) -> str:
