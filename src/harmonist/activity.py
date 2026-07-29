@@ -1,27 +1,23 @@
-"""In-memory activity log — a bounded ring buffer of recent events.
+"""The user-facing activity feed — action outcomes plus mirrored WARNING/ERROR
+log records so background failures are visible.
 
-Process-level only (NOT persisted to sidecars — see the sidecar-minimalism
-rule). Lost on restart, which is fine for a "recent activity" feed. Fed from
-two places: action outcomes (every `_flash_response` in the web layer) and a
-logging handler that mirrors harmonist's own WARNING/ERROR log records so
-background failures show up too.
+Durability lives in `activity_store` (a shared SQLite store, issue #33): `record()`
+appends there tagged `source="activity"`, and `recent()` reads those rows back, so
+the feed survives a restart. This module keeps the public API (`record`, `recent`,
+`Event`, `clear`, `install_log_handler`) and adds the log mirroring on top.
 
-Thread-safe: the sync / reconcile runners append from worker threads.
+Thread-safe: the store serialises appends; the sync / reconcile runners record from
+worker threads.
 """
 
 from __future__ import annotations
 
 import logging
-import threading
-from collections import deque
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
-# Sized so a bulk pass (e.g. a ~130-album reconcile, which now records a
-# per-album transition each) doesn't evict the notable events — mis-tags,
-# surrenders, sync results — that share the feed. The server log keeps
-# everything regardless; this is the in-memory glance.
-_MAX_EVENTS = 1000
+from . import activity_store
+from .activity_store import Source
 
 _Level = str  # "info" | "warning" | "error"
 
@@ -33,9 +29,6 @@ class Event:
     message: str
 
 
-_LOCK = threading.Lock()
-_EVENTS: deque[Event] = deque(maxlen=_MAX_EVENTS)
-
 log = logging.getLogger(__name__)
 _LOG_LEVELS = {"info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
 
@@ -46,25 +39,23 @@ def record(message: str, level: _Level = "info") -> None:
     message = (message or "").strip()
     if not message:
         return
-    with _LOCK:
-        _EVENTS.append(Event(ts=datetime.now(UTC), level=level, message=message))
+    activity_store.append(message=message, level=level, source=Source.ACTIVITY)
     # Mirror to the log. The `_activity` flag stops _ActivityLogHandler from
     # re-recording it (which would feed back into this function — a loop).
     log.log(_LOG_LEVELS.get(level, logging.INFO), "%s", message, extra={"_activity": True})
 
 
 def recent(limit: int = 100) -> list[Event]:
-    """Most-recent-first list of up to `limit` events."""
-    with _LOCK:
-        items = list(_EVENTS)
-    items.reverse()
-    return items[:limit]
+    """Most-recent-first list of up to `limit` activity events."""
+    return [
+        Event(ts=e.ts, level=e.level, message=e.message)
+        for e in activity_store.recent(limit, source=Source.ACTIVITY)
+    ]
 
 
 def clear() -> None:
-    """Drop all events (used by tests / demo reset)."""
-    with _LOCK:
-        _EVENTS.clear()
+    """Drop all stored events (used by tests / demo reset)."""
+    activity_store.clear()
 
 
 class _ActivityLogHandler(logging.Handler):

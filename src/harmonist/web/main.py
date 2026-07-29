@@ -27,6 +27,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from harmonist import (
     activity,
+    activity_store,
     audit,
     cover_art,
     formats,
@@ -204,6 +205,9 @@ def create_app(
 
     _configure_logging(cfg)
     mb_lookup.configure(cfg.musicbrainz.user_agent)
+    # Durable activity + audit store (issue #33) — point it at the config dir before
+    # anything records, so nothing is lost and the feed survives restarts.
+    activity_store.init(cfg.paths.config_dir / "activity.db")
     activity.install_log_handler()
 
     sync_runner = SyncRunner(runner_fn=lambda: None)  # placeholder, replaced below
