@@ -2369,6 +2369,14 @@ def _register_routes(app: FastAPI) -> None:
         )
         if album.state not in _TERMINAL_STATES:
             live_counts.move(album.state, AlbumState.COMPLETE)
+        # Reflect the move in one render: refresh the snapshot synchronously and opt
+        # out of the async post-mutation rescan, whose "scanning" status dims the
+        # inbox — the #11 flicker. (When not engaged, the render re-scans fresh, so
+        # nothing to refresh and skip_rescan is a harmless no-op.)
+        runner = request.app.state.scan_runner
+        if runner.is_engaged():
+            runner.refresh_now()
+        request.state.skip_rescan = True
         return _flash_response("Moved to Library", album.title)
 
     @app.post("/unconfirmed/{album_id}/url", response_class=HTMLResponse)

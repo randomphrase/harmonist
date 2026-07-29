@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- "Move to Library" no longer flickers the inbox — the album now resolves in a
+  single render instead of triggering a background rescan that briefly dimmed and
+  reloaded the list.
+
 ## [1.0.1] - 2026-07-28
 
 ### Added
