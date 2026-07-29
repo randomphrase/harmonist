@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-28
+
 ### Added
 
 - The library "verify tagging" view now flags tracks whose on-disk title differs
