@@ -150,6 +150,24 @@ LIBRARY: list[dict[str, Any]] = [
         },
     },
     {
+        # State: NEEDS_MBID via SURRENDER — a sync couldn't match this owned
+        # purchase (withdrawn from Bandcamp), so it was dropped back with a
+        # read-only "couldn't link" candidate. Its store_url is deliberately NOT a
+        # known purchase, so a sync never re-links it. "Move to Library"
+        # (surrender_keep) accepts it as a terminal Library album — the action that
+        # must resolve without an inbox flicker (#11).
+        "artist": "Barry Jive and the Uptown Five",
+        "album": "Withdrawn from Sale",
+        "tracks": ["No Longer Listed", "Gone from the Store", "Yours to Keep"],
+        "cover": "cover-8.jpg",
+        "file_mbid": "demo-rel-barryjive",
+        "sidecar": {
+            "store_url": "https://barryjive.bandcamp.com/album/withdrawn-from-sale",
+            "bandcamp_item_id": None,
+            "surrender": {"mb_release_id": "demo-rel-barryjive"},
+        },
+    },
+    {
         # State: COMPLETE — fully tagged & confirmed. Hidden from inbox;
         # appears in the Library section.
         "artist": "Various Artists",
@@ -922,6 +940,31 @@ def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidec
             mistag_tagged_label=mistag["tagged_label"],
             mistag_tagged_disambig=mistag.get("tagged_disambig"),
             mistag_release_group_mbid=mistag["release_group_mbid"],
+        )
+
+    # A surrendered purchase: a sync couldn't match this owned album to any
+    # purchase (e.g. withdrawn from Bandcamp), so it was dropped back to NEEDS_MBID
+    # with a read-only "couldn't link" candidate. "Move to Library" accepts it as a
+    # terminal Library album (surrender_keep).
+    if surrender := sc_spec.get("surrender"):
+        candidate = MatchCandidate(
+            mb_release_id=surrender["mb_release_id"],
+            confidence="exact",
+            file_count=len(album_spec["tracks"]),
+            track_count=len(album_spec["tracks"]),
+            track_comparisons=[
+                TrackComparison(
+                    file_name=f"{i:02d} {_safe(t)}.m4a",
+                    file_duration_ms=1000,
+                    file_title=t,
+                    mb_track_title=t,
+                    mb_track_length_ms=1000,
+                    delta_ms=0,
+                )
+                for i, t in enumerate(album_spec["tracks"], start=1)
+            ],
+            proposed_at=now,
+            unmatched_purchase=True,
         )
 
     tagged_at = now if sc_spec.get("tagged") else None
