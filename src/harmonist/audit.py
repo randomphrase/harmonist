@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 
 from . import activity_store
-from .activity_store import Source
+from .activity_store import Level, Source
 
 log = logging.getLogger("harmonist.audit")
 
@@ -35,7 +35,7 @@ def record(event: str, **fields: object) -> None:
     """
     line = event if not fields else f"{event} {_detail(fields)}"
     log.info("%s", line)
-    activity_store.append(message=line, level="info", source=Source.AUDIT)
+    activity_store.append(message=line, level=Level.INFO, source=Source.AUDIT)
 
 
 def _detail(fields: dict[str, object]) -> str:

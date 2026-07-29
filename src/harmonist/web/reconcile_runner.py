@@ -212,7 +212,7 @@ def reconcile_pending_orphans(
     if albums is None:
         # No snapshot handed in — walk the library ourselves. This can take a
         # while on a large tree, so announce it (the feed would be silent).
-        activity.record("Reconcile started — scanning the library for albums to reconcile…")
+        activity.info("Reconcile started — scanning the library for albums to reconcile…")
         albums = scanner.scan(music_dir)
     else:
         activity.record("Reconcile started")
@@ -292,10 +292,7 @@ def reconcile_pending_orphans(
             # The sidecar adopted the file tags (external Picard re-tag). The new
             # state (Library / Needs Link) settles on the post-reconcile rescan.
             adopted += 1
-            activity.record(
-                f"{label}: adopted external re-tag — sidecar now {sc.mb_release_id}",
-                "warning",
-            )
+            activity.warning(f"{label}: adopted external re-tag — sidecar now {sc.mb_release_id}")
         elif sc.mb_release_id and sc.store_url:
             reconciled_bandcamp += 1
             live_counts.move(AlbumState.NEW, AlbumState.NEEDS_SYNC)

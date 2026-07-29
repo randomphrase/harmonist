@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 from harmonist import activity, activity_store, audit
-from harmonist.activity_store import Source
+from harmonist.activity_store import Level, Source
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +20,7 @@ def _fresh_store(tmp_path):
 
 
 def test_append_and_recent_roundtrip():
-    activity_store.append(message="hello", level="info", source=Source.ACTIVITY)
+    activity_store.append(message="hello", level=Level.INFO, source=Source.ACTIVITY)
     events = activity_store.recent()
     assert [e.message for e in events] == ["hello"]
     assert events[0].level == "info"
@@ -29,22 +29,22 @@ def test_append_and_recent_roundtrip():
 
 def test_recent_is_most_recent_first_and_respects_limit():
     for i in range(5):
-        activity_store.append(message=f"e{i}", level="info", source=Source.ACTIVITY)
+        activity_store.append(message=f"e{i}", level=Level.INFO, source=Source.ACTIVITY)
     msgs = [e.message for e in activity_store.recent(limit=3)]
     assert msgs == ["e4", "e3", "e2"]  # newest first, capped at 3
 
 
 def test_source_filter_separates_activity_and_audit():
-    activity_store.append(message="user action", level="info", source=Source.ACTIVITY)
-    activity_store.append(message="download url=x", level="info", source=Source.AUDIT)
+    activity_store.append(message="user action", level=Level.INFO, source=Source.ACTIVITY)
+    activity_store.append(message="download url=x", level=Level.INFO, source=Source.AUDIT)
     assert [e.message for e in activity_store.recent(source=Source.ACTIVITY)] == ["user action"]
     assert [e.message for e in activity_store.recent(source=Source.AUDIT)] == ["download url=x"]
     assert {e.message for e in activity_store.recent()} == {"user action", "download url=x"}
 
 
 def test_blank_messages_are_dropped():
-    activity_store.append(message="   ", level="info", source=Source.ACTIVITY)
-    activity_store.append(message="", level="info", source=Source.ACTIVITY)
+    activity_store.append(message="   ", level=Level.INFO, source=Source.ACTIVITY)
+    activity_store.append(message="", level=Level.INFO, source=Source.ACTIVITY)
     assert activity_store.recent() == []
 
 
@@ -54,7 +54,7 @@ def test_survives_reopen(tmp_path):
     db = tmp_path / "persist.db"
     activity_store.init(db)
     activity_store.clear()
-    activity_store.append(message="before restart", level="warning", source=Source.AUDIT)
+    activity_store.append(message="before restart", level=Level.WARNING, source=Source.AUDIT)
 
     activity_store.init(db)  # simulate a restart: new connection, same file
     events = activity_store.recent()
@@ -79,8 +79,29 @@ def test_audit_record_stores_as_audit_and_is_absent_from_the_feed():
     assert activity.recent() == []
 
 
+def test_level_roundtrips_as_enum():
+    activity_store.append(message="boom", level=Level.ERROR, source=Source.ACTIVITY)
+    e = activity_store.recent()[0]
+    assert e.level is Level.ERROR
+    # StrEnum stays a str, so the template's `e.level == 'error'` still matches
+    # (checked via a str-typed alias — mypy rejects the literal comparison as
+    # non-overlapping, but the runtime behaviour is what the template relies on).
+    as_str: str = e.level
+    assert as_str == "error"
+
+
+def test_activity_level_wrappers_record_the_right_level():
+    activity.info("fyi")
+    activity.warning("careful")
+    activity.error("broke")
+    got = {(e.message, e.level) for e in activity_store.recent(source=Source.ACTIVITY)}
+    assert ("fyi", Level.INFO) in got
+    assert ("careful", Level.WARNING) in got
+    assert ("broke", Level.ERROR) in got
+
+
 def test_clear_empties_the_store():
-    activity_store.append(message="x", level="info", source=Source.ACTIVITY)
+    activity_store.append(message="x", level=Level.INFO, source=Source.ACTIVITY)
     activity_store.clear()
     assert activity_store.recent() == []
 
@@ -97,7 +118,7 @@ def _user_version(db) -> int:
 def test_fresh_db_is_migrated_to_current_schema_version(tmp_path):
     db = tmp_path / "ver.db"
     activity_store.init(db)
-    activity_store.append(message="x", level="info", source=Source.ACTIVITY)
+    activity_store.append(message="x", level=Level.INFO, source=Source.ACTIVITY)
     assert activity_store.SCHEMA_VERSION >= 1
     assert _user_version(db) == activity_store.SCHEMA_VERSION
 
@@ -111,7 +132,7 @@ def test_downgrade_guard_falls_back_to_memory_without_crashing(tmp_path):
     conn.close()
 
     activity_store.init(db)  # must not raise
-    activity_store.append(message="still works", level="info", source=Source.ACTIVITY)
+    activity_store.append(message="still works", level=Level.INFO, source=Source.ACTIVITY)
     assert [e.message for e in activity_store.recent()] == ["still works"]
 
     # The future-versioned file was left untouched — no events table written to it.

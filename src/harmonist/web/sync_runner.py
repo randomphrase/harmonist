@@ -100,7 +100,7 @@ class SyncRunner:
         return self._status
 
     def _run(self) -> None:
-        activity.record("Bandcamp sync started", "info")
+        activity.info("Bandcamp sync started")
         new_items = 0
         remaining = 0
         error: str | None = None
@@ -124,10 +124,10 @@ class SyncRunner:
                 self._status.new_items = new_items
                 self._status.current_item = ""
         if error:
-            activity.record(f"Bandcamp sync failed — {error}", "error")
+            activity.error(f"Bandcamp sync failed — {error}")
         else:
             plural = "" if new_items == 1 else "s"
             msg = f"Bandcamp sync finished — {new_items} new item{plural}"
             if remaining:
                 msg += f"; {remaining} more reached the per-sync limit — run Sync again"
-            activity.record(msg, "info")
+            activity.info(msg)
