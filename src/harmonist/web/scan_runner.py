@@ -141,6 +141,17 @@ class ScanRunner:
         background scan is safe — worst case a redundant re-read of one album."""
         return scanner.scan(self._music_dir, album_cache=self._cache)
 
+    def refresh_now(self) -> None:
+        """Synchronously refresh the snapshot from a cache-warm scan and patch
+        `_albums` in place, WITHOUT flipping status to 'scanning'. A single-album
+        mutation that must show immediately pairs this with
+        `request.state.skip_rescan = True`, so the album resolves in one render
+        instead of via the async post-mutation rescan — whose 'scanning' status
+        dims the inbox (the #11 flicker). Safe from a worker thread: the cache is
+        shared safely (see `scan_now`) and the `_albums` assignment is GIL-atomic."""
+        self._albums = self.scan_now()
+        self._completed_once = True
+
     def status(self) -> dict[str, Any]:
         return self._status.to_dict()
 

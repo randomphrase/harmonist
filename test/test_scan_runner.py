@@ -34,6 +34,23 @@ def test_scan_runner_not_engaged_before_attach(tmp_path):
     runner.request_scan()  # no-op without a loop, must not raise
 
 
+def test_refresh_now_updates_snapshot_without_scanning_status(tmp_path):
+    """refresh_now patches the snapshot from a synchronous cache-warm scan and
+    never flips to 'scanning' — so a single-album mutation can reflect in one
+    render with no async rescan (and no inbox busy-lock flash). See #11."""
+    runner = ScanRunner(tmp_path)
+    _album(tmp_path, "One")
+    runner.refresh_now()
+    assert {a.path.name for a in runner.albums()} == {"One"}
+    assert runner.has_completed() is True
+    assert runner.status()["state"] == "idle"  # never advertised a scan
+
+    # A subsequent change shows up on the next refresh.
+    _album(tmp_path, "Two")
+    runner.refresh_now()
+    assert {a.path.name for a in runner.albums()} == {"One", "Two"}
+
+
 def test_reset_and_rescan_no_loop_is_noop(tmp_path):
     """Before the runner is engaged, reset_and_rescan must be a safe no-op (the
     erase-sidecars handler may run before/without the background loop)."""
