@@ -6,6 +6,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- The activity feed now persists across restarts, backed by a SQLite store
+  (`activity.db`) in the config dir; audit records (downloads, file/tag rewrites,
+  demotions) are written there durably too, so the record of what Harmonist did
+  survives a restart. The feed still shows only user-facing activity, not audit
+  detail.
+
 ### Fixed
 
 - "Move to Library" no longer flickers the inbox — the album now resolves in a

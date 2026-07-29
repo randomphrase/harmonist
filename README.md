@@ -111,7 +111,7 @@ services:
       - "8000:8000"
     volumes:
       - /path/to/music:/music     # your music library
-      - /path/to/config:/config   # persistent: harmonist.toml, cookies.txt, ignores.txt, id registry
+      - /path/to/config:/config   # persistent: harmonist.toml, cookies.txt, ignores.txt, id registry, activity.db
     # Run as the OWNER of the two host dirs above, so sidecars, tags and cover.*
     # files aren't written as root. `id -u` / `id -g` to find yours; omit to run
     # as root. (Synology: usually a 1026+ uid and gid 100 — the `users` group.)
