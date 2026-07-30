@@ -51,6 +51,23 @@ def test_refresh_now_updates_snapshot_without_scanning_status(tmp_path):
     assert {a.path.name for a in runner.albums()} == {"One", "Two"}
 
 
+def test_request_scan_after_loop_close_is_noop(tmp_path):
+    """A sync/reconcile thread can outlive the app's event loop (daemon thread,
+    lifespan already torn down) and still call request_scan() as its last act.
+    That must be a silent no-op, not 'RuntimeError: Event loop is closed'
+    surfacing as a bogus 'reconcile run failed' (issue #52)."""
+    runner = ScanRunner(tmp_path)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(runner.has_completed)
+
+    asyncio.run(go())  # asyncio.run closes the loop on exit
+    assert runner.is_engaged()  # still holds the (now closed) loop
+    runner.request_scan()  # must not raise
+    runner.reset_and_rescan()  # must not raise, must not clear the snapshot
+
+
 def test_reset_and_rescan_no_loop_is_noop(tmp_path):
     """Before the runner is engaged, reset_and_rescan must be a safe no-op (the
     erase-sidecars handler may run before/without the background loop)."""

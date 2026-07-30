@@ -160,11 +160,10 @@ class ScanRunner:
     def request_scan(self) -> None:
         """Mark the library dirty and ensure a scan runs. Thread-safe — safe to
         call from FastAPI's sync route handlers (threadpool) and the sync/
-        reconcile runner threads. No-op until engaged."""
-        loop = self._loop
-        if loop is None:
-            return
-        loop.call_soon_threadsafe(self._kick)
+        reconcile runner threads. No-op until engaged, and again after the app
+        shuts down — a sync/reconcile thread finishing its last pass during
+        teardown must not die with 'Event loop is closed' (issue #52)."""
+        self._kick_threadsafe(self._kick)
 
     def reset_and_rescan(self) -> None:
         """Drop the current snapshot, then kick a fresh scan. Used after a nuke
@@ -175,10 +174,19 @@ class ScanRunner:
         (The rescan itself is cheap now — erasing sidecars leaves the audio
         unchanged, so the cache reuses the tag fields and only re-reads the absent
         sidecars.)"""
+        self._kick_threadsafe(self._reset_and_kick)
+
+    def _kick_threadsafe(self, kick: Callable[[], None]) -> None:
+        # No-op when not yet engaged OR the loop has since closed (app shutdown).
+        # The is_closed() check races with close(), so the call itself can still
+        # raise — swallow that too; a scan requested during teardown is moot.
         loop = self._loop
-        if loop is None:
+        if loop is None or loop.is_closed():
             return
-        loop.call_soon_threadsafe(self._reset_and_kick)
+        try:
+            loop.call_soon_threadsafe(kick)
+        except RuntimeError:
+            pass
 
     def _reset_and_kick(self) -> None:
         # On the loop thread: clear the snapshot before the scan task starts so a

@@ -16,6 +16,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Shutting down while a reconcile pass was finishing no longer logs a spurious
+  "reconcile run failed — Event loop is closed" error; the pass's trailing
+  rescan request is simply dropped.
 - Linking a potential download from the "Verify album" dialog now actually links
   it — previously the dialog closed without sending the request (same root cause
   as #40: closing from `onclick` detached the button before HTMX could act).

@@ -2803,19 +2803,37 @@ def test_tasks_shows_scanning_placeholder_while_scanning(client, cfg, monkeypatc
 def test_engaged_lifespan_serves_background_scan_snapshot(cfg):
     """With the lifespan running (TestClient as a context manager), the
     background scanner engages and routes serve its snapshot — not a
-    request-time scan. The /scan/status endpoint reports progress."""
+    request-time scan. The /scan/status endpoint reports progress.
+
+    Startup also auto-kicks a reconcile pass the moment the first scan
+    completes, and /tasks deliberately replaces the album cards with a
+    "Sorting your library…" progress panel while reconcile is running — so
+    asserting on /tasks right after the scan reports "done" raced that pass
+    (the issue #52 flake: near-instant locally, but a late-scheduled thread
+    on a loaded CI runner left it mid-pass). Wait for full startup
+    quiescence — scan done AND the reconcile pass finished — first."""
     import time as _time
 
     _make_album(cfg, "BgAlbum")  # present before startup → initial scan finds it
     with TestClient(create_app(cfg), headers={"HX-Request": "true"}) as client:
-        status = {}
+        status: dict = {}
+        reconcile: dict = {}
         for _ in range(200):
             status = client.get("/scan/status").json()
-            if status["state"] == "done":
+            reconcile = client.get("/reconcile/status").json()
+            # finished_at set ⇒ the startup reconcile ran to completion (its
+            # initial state is also "idle", so "idle" alone can't tell
+            # not-yet-started from done).
+            if (
+                status["state"] == "done"
+                and reconcile["state"] == "idle"
+                and (reconcile["finished_at"] is not None)
+            ):
                 break
             _time.sleep(0.02)
         assert status["state"] == "done"
         assert status["albums_found"] == 1
+        assert reconcile["state"] == "idle" and reconcile["finished_at"] is not None
         # /tasks serves the snapshot the background scan produced.
         assert "BgAlbum" in client.get("/tasks").text
 
