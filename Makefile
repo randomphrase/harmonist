@@ -1,4 +1,4 @@
-.PHONY: css css-watch test coverage run lint format typecheck check
+.PHONY: css css-watch test coverage run lint format typecheck template-lint check
 
 # Pin the Tailwind standalone binary so `make css` is byte-reproducible across
 # machines + CI — pytailwindcss otherwise downloads 'latest', whose minified
@@ -39,8 +39,13 @@ format-check:
 typecheck:
 	mypy
 
+# Forbid onclick alongside hx-* on one element (the #40 race) — see
+# scripts/lint_templates.py for the rationale.
+template-lint:
+	python3 scripts/lint_templates.py
+
 # Everything CI would gate on (lint + format + types + tests).
-check: lint format-check typecheck test
+check: lint format-check typecheck template-lint test
 
 # Local dev server. Set HARMONIST_MUSIC_DIR / HARMONIST_CONFIG_DIR as needed.
 run:
