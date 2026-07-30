@@ -5,7 +5,17 @@
  * `harmonist.css` is the build output served at /static/harmonist.css.
  */
 
-@import "tailwindcss";
+/* `source(none)` disables Tailwind's automatic content detection, so the bundle
+ * is a function of the two @source globs below and NOTHING else. Without it,
+ * Tailwind scans the whole repo and mints utilities from any prose that happens
+ * to read like a class name — a `bg-black/40` in a Markdown doc, the word
+ * "now-fixed" in a comment, or a bare <table> tag were all silently adding
+ * rules. That makes the committed bundle depend on documentation, so editing a
+ * .md file fails the CSS drift check in CI (issue #61).
+ *
+ * Consequence: anything that emits class names must be listed here. Today that
+ * is the templates and main.py (the only .py with class="" strings). */
+@import "tailwindcss" source(none);
 
 @source "../templates/**/*.html";
 @source "../src/harmonist/web/main.py";
