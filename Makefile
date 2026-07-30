@@ -1,4 +1,4 @@
-.PHONY: css css-watch test coverage run lint format typecheck template-lint check
+.PHONY: css css-watch test coverage run lint format typecheck template-lint check e2e
 
 # Pin the Tailwind standalone binary so `make css` is byte-reproducible across
 # machines + CI — pytailwindcss otherwise downloads 'latest', whose minified
@@ -46,6 +46,10 @@ template-lint:
 
 # Everything CI would gate on (lint + format + types + tests).
 check: lint format-check typecheck template-lint test
+
+# Browser smoke tests (opt-in): pip install -e .[e2e] && playwright install chromium
+e2e:
+	RUN_E2E=1 pytest test/e2e/
 
 # Local dev server. Set HARMONIST_MUSIC_DIR / HARMONIST_CONFIG_DIR as needed.
 run:
