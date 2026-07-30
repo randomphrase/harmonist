@@ -2166,6 +2166,41 @@ def test_activity_feed_links_entries_with_an_album(client, cfg):
     assert 'href="/?album=None"' not in body
 
 
+def test_status_bar_payload_carries_the_album_name(client, cfg, monkeypatch):
+    """#68: the status bar has no album column, so the album name must ride in
+    the harmonist-status payload — otherwise it just says "Tagged" with no clue
+    which album. Carried as its own field, NOT folded into `details` (that would
+    duplicate it in the feed, which is what #65 got wrong)."""
+    import json as _json
+
+    d = _make_tagged_album(cfg, "BarNamed", mbid="rel-bar", tagged_at=datetime.now(UTC), item_id=11)
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    r = client.post(f"/retag/{aid}")
+    payload = _json.loads(r.headers["HX-Trigger"])["harmonist-status"]
+    assert "BarNamed" in payload["album"]
+    # ...and it is NOT smuggled into details (the feed renders that verbatim).
+    assert "BarNamed" not in (payload["details"] or "")
+
+
+def test_activity_feed_puts_album_before_message(client, cfg):
+    """#68: album name leads, message follows — one left-aligned run. The old
+    right-aligned column flung them to opposite edges on a wide window."""
+    from harmonist import activity
+
+    activity.clear()
+    activity.record("Unlinked now", album_id="rel-x", album_label="The Thamesmen — Gimme")
+
+    body = client.get("/activity").text
+    # Single entry, so these are unambiguous positions within the one row.
+    assert body.index("The Thamesmen — Gimme") < body.index("Unlinked now")
+    assert "text-right" not in body  # no right-aligned column any more
+
+
 def test_activity_shows_album_label_even_when_link_is_dead(client, cfg):
     """The label is stored with the event, so an entry stays readable after its
     album is gone — the reason we persist it rather than resolving live."""

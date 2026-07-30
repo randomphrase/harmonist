@@ -17,26 +17,25 @@
             {% elif e.level == 'warning' %}bg-amber-500
             {% else %}bg-accent{% endif %}"
             aria-hidden="true"></span>
-        <span class="min-w-0 break-words flex-grow
+        {# Album name leads (it's the subject), then the message — both left-aligned
+           in one run so the row reads as a sentence. NOT a right-aligned column:
+           that flung the two apart on a wide window. Only the NAME is the link,
+           never the whole sentence. The label is stored with the event, so it
+           still reads correctly after the album is renamed, re-identified, or
+           deleted; `album_id` only decides whether it's clickable. A real <a href>
+           (not hx-get) keeps the deep link shareable and reload-proof. #}
+        <span class="min-w-0 break-words
             {% if e.level == 'error' %}text-red-700
             {% elif e.level == 'warning' %}text-amber-700
-            {% else %}text-ink{% endif %}">{{ e.message }}</span>
-        {# The album this entry is about, as its own column — so only the NAME is
-           the link, not the whole sentence. The label is stored with the event,
-           so it still reads correctly after the album is renamed, re-identified,
-           or deleted; `album_id` only decides whether it's clickable. A real
-           <a href> (not hx-get) keeps the deep link shareable and reload-proof. #}
-        {% if e.album_label %}
-        <span class="flex-shrink-0 max-w-[45%] truncate text-2xs text-right">
-            {% if e.album_id %}
-            <a href="/?album={{ e.album_id | urlencode }}"
-               class="text-muted hover:text-accent underline decoration-dotted underline-offset-2 hover:decoration-solid"
-               title="Open {{ e.album_label }}">{{ e.album_label }}</a>
-            {% else %}
-            <span class="text-muted">{{ e.album_label }}</span>
-            {% endif %}
+            {% else %}text-ink{% endif %}">
+            {% if e.album_label %}{% if e.album_id %}<a
+                href="/?album={{ e.album_id | urlencode }}"
+                class="font-semibold underline decoration-dotted underline-offset-2 hover:decoration-solid hover:text-accent"
+                title="Open {{ e.album_label }}">{{ e.album_label }}</a>{% else %}<span
+                class="font-semibold">{{ e.album_label }}</span>{% endif %}
+            <span class="text-muted px-0.5" aria-hidden="true">·</span>
+            {% endif %}{{ e.message }}
         </span>
-        {% endif %}
     </li>
     {% endfor %}
 </ul>

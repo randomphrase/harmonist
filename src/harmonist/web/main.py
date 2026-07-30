@@ -207,8 +207,14 @@ def create_app(
     _configure_logging(cfg)
     mb_lookup.configure(cfg.musicbrainz.user_agent)
     # Durable activity + audit store (issue #33) — point it at the config dir before
-    # anything records, so nothing is lost and the feed survives restarts.
-    activity_store.init(cfg.paths.config_dir / "activity.db")
+    # anything records, so nothing is lost and the feed survives restarts. Demo mode
+    # stays in memory: it shares the REAL config dir (only the music dir is
+    # sandboxed), so a file-backed store would write demo events into the user's
+    # genuine history — and re-open a DB the demo has no business touching (#69).
+    if cfg.demo_mode:
+        activity_store.init_memory()
+    else:
+        activity_store.init(cfg.paths.config_dir / "activity.db")
     activity.install_log_handler()
 
     sync_runner = SyncRunner(runner_fn=lambda: None)  # placeholder, replaced below
@@ -2674,6 +2680,12 @@ def _flash_response(
             "verb": verb,
             "details": details,
             "level": level,
+            # Carried SEPARATELY rather than folded into `details`, because the two
+            # surfaces compose it differently: the feed puts the name in its own
+            # (linked) position, while the status bar has no such column and must
+            # inline it. Baking it into details would double it up in the feed —
+            # the #65 mistake — and dropping it left the bar saying just "Tagged".
+            "album": album_label,
         }
     }
     if tasks_changed:
