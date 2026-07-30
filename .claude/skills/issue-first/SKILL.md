@@ -69,6 +69,27 @@ branch + PR for trivial work (no issue required).
    with `Fixes #N`. **CI green is the merge gate** — `make check` passing locally is
    necessary but not sufficient; the PR must go green before it lands. Don't merge a
    red or pending PR, and don't bypass CI with a direct push to `main`.
+7. **Land it locally, not with the merge button.** If `main` has moved, rebase
+   onto it and force-push *first*, so CI validates exactly the commits that will
+   land:
+
+   ```
+   git rebase origin/main <branch> --gpg-sign
+   git push --force-with-lease origin <branch>     # CI runs; wait for green
+   git checkout main && git merge --ff-only <branch>
+   git push origin main && git push origin --delete <branch>
+   ```
+
+   GitHub's rebase-merge **re-creates the commits and strips their GPG signature**
+   — the author survives, the signature doesn't. Landing it yourself keeps history
+   linear *and* signed. The fast-forward makes the PR head reachable from `main`,
+   so GitHub marks the PR merged, and `Fixes #N` in the commit closes the issue on
+   push. This is not a CI bypass — the gate is that those exact commits went green.
+
+**Don't stack PRs.** A PR whose base is another branch gets **closed** — not
+retargeted — when that base is deleted on merge, and a closed PR can't be
+reopened or retargeted. If work genuinely must be sequenced, land each piece to
+`main` before opening the next PR.
 
 Filing the issue and *then* immediately doing the work in the same session is fine
 and expected — the point is the durable record and CI validation, not a waiting

@@ -20,6 +20,11 @@ then follow the conventions below.
 Reach for `docs/design.md` before answering anything about states, the sidecar,
 matching/linking, or tagging — don't reconstruct it from memory or code alone.
 
+Three further skills are situational rather than always-on, each written up from
+a bug this repo actually paid for — consult them when you're in their territory:
+`web-ui` (anything under `templates/`), `bulk-refactor` (a mechanical edit across
+many call sites), `schema-migration` (the `activity_store` SQLite schema).
+
 ## Review gate — before every commit
 
 Consult the **review-gate** skill before every commit, and before declaring any
