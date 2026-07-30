@@ -17,10 +17,26 @@
             {% elif e.level == 'warning' %}bg-amber-500
             {% else %}bg-accent{% endif %}"
             aria-hidden="true"></span>
-        <span class="min-w-0 break-words
+        <span class="min-w-0 break-words flex-grow
             {% if e.level == 'error' %}text-red-700
             {% elif e.level == 'warning' %}text-amber-700
             {% else %}text-ink{% endif %}">{{ e.message }}</span>
+        {# The album this entry is about, as its own column — so only the NAME is
+           the link, not the whole sentence. The label is stored with the event,
+           so it still reads correctly after the album is renamed, re-identified,
+           or deleted; `album_id` only decides whether it's clickable. A real
+           <a href> (not hx-get) keeps the deep link shareable and reload-proof. #}
+        {% if e.album_label %}
+        <span class="flex-shrink-0 max-w-[45%] truncate text-2xs text-right">
+            {% if e.album_id %}
+            <a href="/?album={{ e.album_id | urlencode }}"
+               class="text-muted hover:text-accent underline decoration-dotted underline-offset-2 hover:decoration-solid"
+               title="Open {{ e.album_label }}">{{ e.album_label }}</a>
+            {% else %}
+            <span class="text-muted">{{ e.album_label }}</span>
+            {% endif %}
+        </span>
+        {% endif %}
     </li>
     {% endfor %}
 </ul>

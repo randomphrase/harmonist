@@ -25,6 +25,14 @@ class Event:
     ts: datetime
     level: Level
     message: str
+    # The album this event was about, if any — carried through so the feed can
+    # link the entry to that album (#65). An id recorded here is a snapshot: it
+    # can go stale when reconcile rewrites an album's identity, so readers must
+    # resolve it rather than trust it (see `_find_album`).
+    album_id: str | None = None
+    # The album's human name, frozen when the event was written. Rendered as the
+    # entry's album column; `album_id` only decides whether it's a link.
+    album_label: str | None = None
 
 
 log = logging.getLogger(__name__)
@@ -35,39 +43,58 @@ _LOG_LEVELS = {
 }
 
 
-def record(message: str, level: Level = Level.INFO, *, album_id: str | None = None) -> None:
+def record(
+    message: str,
+    level: Level = Level.INFO,
+    *,
+    album_id: str | None = None,
+    album_label: str | None = None,
+) -> None:
     """Append an event (Activity feed) AND emit it to the log, so the docker
     log is a superset of the feed. `album_id` ties the event to an album for
-    per-album history (#33); None when it isn't about one album. Safe to call
-    from any thread."""
+    per-album history (#33); None when it isn't about one album. `album_label`
+    is that album's display name, stored so the entry stays readable after the
+    id stops resolving (#65). Safe to call from any thread."""
     message = (message or "").strip()
     if not message:
         return
-    activity_store.append(message=message, level=level, source=Source.ACTIVITY, album_id=album_id)
+    activity_store.append(
+        message=message,
+        level=level,
+        source=Source.ACTIVITY,
+        album_id=album_id,
+        album_label=album_label,
+    )
     # Mirror to the log. The `_activity` flag stops _ActivityLogHandler from
     # re-recording it (which would feed back into this function — a loop).
     log.log(_LOG_LEVELS.get(level, logging.INFO), "%s", message, extra={"_activity": True})
 
 
-def info(message: str, *, album_id: str | None = None) -> None:
+def info(message: str, *, album_id: str | None = None, album_label: str | None = None) -> None:
     """Record an info-level activity event (logging-style shorthand for record())."""
-    record(message, Level.INFO, album_id=album_id)
+    record(message, Level.INFO, album_id=album_id, album_label=album_label)
 
 
-def warning(message: str, *, album_id: str | None = None) -> None:
+def warning(message: str, *, album_id: str | None = None, album_label: str | None = None) -> None:
     """Record a warning-level activity event."""
-    record(message, Level.WARNING, album_id=album_id)
+    record(message, Level.WARNING, album_id=album_id, album_label=album_label)
 
 
-def error(message: str, *, album_id: str | None = None) -> None:
+def error(message: str, *, album_id: str | None = None, album_label: str | None = None) -> None:
     """Record an error-level activity event."""
-    record(message, Level.ERROR, album_id=album_id)
+    record(message, Level.ERROR, album_id=album_id, album_label=album_label)
 
 
 def recent(limit: int = 100) -> list[Event]:
     """Most-recent-first list of up to `limit` activity events."""
     return [
-        Event(ts=e.ts, level=e.level, message=e.message)
+        Event(
+            ts=e.ts,
+            level=e.level,
+            message=e.message,
+            album_id=e.album_id,
+            album_label=e.album_label,
+        )
         for e in activity_store.recent(limit, source=Source.ACTIVITY)
     ]
 

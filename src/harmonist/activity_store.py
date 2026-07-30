@@ -78,6 +78,15 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         "ALTER TABLE events ADD COLUMN album_id TEXT",
         "CREATE INDEX idx_events_album_id ON events (album_id, id)",
     ),
+    # 2 -> 3: human label for the album an event is about ("Artist — Title"),
+    # frozen at write time (#65). An id alone is not enough to render history:
+    # album ids MOVE (tagging drops the sidecar's temp_uid for the MBID; unlink
+    # reverses it), so an older row's album_id often no longer resolves — and an
+    # album can leave the library entirely. The label keeps the entry readable
+    # regardless; the id is only used to decide whether to LINK it. Nullable:
+    # events not about one album, and rows written before this migration, have
+    # none. No index — it's display-only, never a query key.
+    ("ALTER TABLE events ADD COLUMN album_label TEXT",),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -90,6 +99,9 @@ class StoredEvent:
     source: Source
     message: str
     album_id: str | None = None
+    # Display label for `album_id`'s album, frozen at write time (#65) — ids move,
+    # so this is what keeps an old entry readable after its link goes stale.
+    album_label: str | None = None
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -161,10 +173,18 @@ def _ensure() -> sqlite3.Connection:
     return _conn
 
 
-def append(*, message: str, level: Level, source: Source, album_id: str | None = None) -> None:
+def append(
+    *,
+    message: str,
+    level: Level,
+    source: Source,
+    album_id: str | None = None,
+    album_label: str | None = None,
+) -> None:
     """Append one event. `album_id` (an album's `Album.id`) ties the event to an
     album so per-album history spans both sources; None when it isn't about one
-    album. Best-effort: a failure here (e.g. a teardown race in tests) must never
+    album. `album_label` is that album's human name, stored alongside because the
+    id can stop resolving later (see the 2->3 migration). Best-effort: a failure here (e.g. a teardown race in tests) must never
     crash the caller or the logging path."""
     message = (message or "").strip()
     if not message:
@@ -174,8 +194,9 @@ def append(*, message: str, level: Level, source: Source, album_id: str | None =
         conn = _ensure()
         with _LOCK:
             conn.execute(
-                "INSERT INTO events (ts, level, source, message, album_id) VALUES (?, ?, ?, ?, ?)",
-                (ts, level.value, source.value, message, album_id),
+                "INSERT INTO events (ts, level, source, message, album_id, album_label) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (ts, level.value, source.value, message, album_id, album_label),
             )
             conn.commit()
     except sqlite3.Error:
@@ -188,7 +209,7 @@ def recent(
     """Most-recent-first events, optionally filtered by source and/or album.
     Filtering by `album_id` alone returns that album's whole history — activity
     AND audit."""
-    q = "SELECT ts, level, source, message, album_id FROM events"
+    q = "SELECT ts, level, source, message, album_id, album_label FROM events"
     where: list[str] = []
     args: list[object] = []
     if source is not None:
@@ -214,8 +235,9 @@ def recent(
             source=Source(src),
             message=msg,
             album_id=aid,
+            album_label=label,
         )
-        for ts, level, src, msg, aid in rows
+        for ts, level, src, msg, aid, label in rows
     ]
 
 
