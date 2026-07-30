@@ -137,6 +137,27 @@ def _open(db: str) -> sqlite3.Connection:
     return conn
 
 
+def init_memory() -> None:
+    """Use a throwaway in-memory store, touching no file. For demo mode: demo
+    sandboxes the music dir but shares the real config dir, so opening the
+    on-disk DB there would append demo events to the user's genuine history —
+    the same reason demo never writes to the configured music_dir."""
+    global _conn
+    conn = _open(":memory:")
+    with _LOCK:
+        old, _conn = _conn, conn
+    _close_quietly(old)
+
+
+def _close_quietly(conn: sqlite3.Connection | None) -> None:
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except sqlite3.Error:
+        pass
+
+
 def init(db_path: Path | str) -> None:
     """Point the store at a file (call once at app start): create the parent dir,
     open the DB, and run migrations. Replaces any prior connection. If the DB can't
@@ -157,11 +178,7 @@ def init(db_path: Path | str) -> None:
         conn = _open(":memory:")
     with _LOCK:
         old, _conn = _conn, conn
-    if old is not None:
-        try:
-            old.close()
-        except sqlite3.Error:
-            pass
+    _close_quietly(old)
 
 
 def _ensure() -> sqlite3.Connection:

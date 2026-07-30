@@ -252,3 +252,49 @@ def test_downgrade_guard_falls_back_to_memory_without_crashing(tmp_path):
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     conn.close()
     assert "events" not in tables
+
+
+def test_demo_mode_uses_an_in_memory_store_and_writes_no_file(tmp_path, monkeypatch):
+    """#69: demo mode shares the REAL config dir (only the music dir is
+    sandboxed), so a file-backed store would append demo events to the user's
+    genuine history — and re-open a DB the demo has no business touching. It
+    must stay in memory and leave no file behind."""
+    from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
+    from harmonist.web.main import create_app
+
+    cfg = Config(
+        paths=PathsConfig(config_dir=tmp_path / "config", music_dir=tmp_path / "music"),
+        bandcamp=BandcampConfig(),
+        server=ServerConfig(),
+        test=TestConfig(mode="fixture"),
+        demo_mode=True,
+    )
+    cfg.paths.config_dir.mkdir(parents=True)
+    cfg.paths.music_dir.mkdir(parents=True)
+
+    create_app(cfg)
+    activity.record("demo-only event")
+
+    assert not (cfg.paths.config_dir / "activity.db").exists()
+    # ...but the feed still works in-process.
+    assert "demo-only event" in [e.message for e in activity_store.recent()]
+
+
+def test_non_demo_mode_still_writes_the_file(tmp_path):
+    """The counterpart: a normal run must still persist to activity.db."""
+    from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
+    from harmonist.web.main import create_app
+
+    cfg = Config(
+        paths=PathsConfig(config_dir=tmp_path / "config", music_dir=tmp_path / "music"),
+        bandcamp=BandcampConfig(),
+        server=ServerConfig(),
+        test=TestConfig(mode="fixture"),
+    )
+    cfg.paths.config_dir.mkdir(parents=True)
+    cfg.paths.music_dir.mkdir(parents=True)
+
+    create_app(cfg)
+    activity.record("persisted event")
+
+    assert (cfg.paths.config_dir / "activity.db").exists()
