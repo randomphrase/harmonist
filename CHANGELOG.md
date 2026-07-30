@@ -23,6 +23,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- The "that album isn't in your library any more" notice can now be dismissed,
+  and no longer reappears when you refresh.
 - Demo mode no longer writes into your real activity history, and no longer logs
   a start-up error trying to open the activity database — it now keeps its events
   in memory, matching how it already leaves your music dir alone.

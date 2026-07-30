@@ -135,6 +135,36 @@ def test_deep_link_opens_album_dialog_without_clobbering_saved_tab(demo_server: 
         browser.close()
 
 
+def test_missing_album_notice_dismisses_and_clears_the_url(demo_server: str) -> None:
+    """#71: the notice must actually go away.
+
+    Both halves are invisible to pytest, which only sees the markup: whether the
+    dismiss button really removes the element, and whether `history.replaceState`
+    really drops `?album=` (so a refresh doesn't resurrect a message about a
+    navigation that already happened).
+    """
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{demo_server}/?album=definitely-not-a-real-album-id")
+
+        notice = page.locator("#deep-link-notice")
+        notice.wait_for(state="visible")
+        # The parameter is gone from the address bar before any interaction...
+        assert "album=" not in page.url
+        # ...and a reload therefore does not bring the notice back.
+        page.reload()
+        assert page.locator("#deep-link-notice").count() == 0
+
+        # And the dismiss control removes it outright.
+        page.goto(f"{demo_server}/?album=definitely-not-a-real-album-id")
+        notice.wait_for(state="visible")
+        page.click('#deep-link-notice button[aria-label="Dismiss"]')
+        notice.wait_for(state="detached")
+
+        browser.close()
+
+
 def test_activity_album_link_actually_opens_the_album(demo_server: str) -> None:
     """The full round trip that shipped broken: do an action, then click the
     album link the Activity feed writes for it.
