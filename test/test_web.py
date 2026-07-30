@@ -2289,6 +2289,33 @@ def test_action_records_an_id_that_still_resolves_after_tagging(client, cfg, mon
     assert f'hx-get="/library/{entry.album_id}/detail"' in r.text
 
 
+def test_missing_album_notice_is_dismissible_and_clears_the_url(client, cfg):
+    """#71: the notice described a navigation that already happened, but sat
+    there through tab switches and survived refreshes (?album= stayed in the
+    URL and re-rendered it). It now has a dismiss control, and the failure path
+    strips the parameter."""
+    _make_album(cfg, "Present")
+
+    body = client.get("/?album=no-such-album-id").text
+    assert "isn't in your library any more" in body
+    assert 'id="deep-link-notice"' in body
+    assert 'aria-label="Dismiss"' in body
+    assert "searchParams.delete('album')" in body
+
+
+def test_successful_deep_link_keeps_the_url_parameter(client, cfg):
+    """The counterpart to #71: a WORKING deep link must keep ?album= so it stays
+    bookmarkable and reopens the modal on reload. Only the broken one is
+    stripped."""
+    d = _make_album(cfg, "Keeper")
+    aid = _id_for(cfg, d)
+
+    body = client.get(f"/?album={aid}").text
+    assert f'hx-get="/library/{aid}/detail"' in body
+    assert "searchParams.delete('album')" not in body
+    assert 'id="deep-link-notice"' not in body
+
+
 def test_deep_link_follows_moved_album_id(client, cfg):
     """The id in an old activity row is a snapshot. When a NEW album's registry
     UUID is superseded (a sidecar write giving it an MBID identity), the deep
