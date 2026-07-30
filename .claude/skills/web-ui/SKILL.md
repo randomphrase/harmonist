@@ -72,11 +72,21 @@ common CI break in this repo.
 
 Two traps:
 
-- Tailwind scans the whole working tree. An **untracked directory at the repo
-  root** containing HTML (a review dump, a scratch copy, an unpacked patch) will
-  silently inject classes into your bundle that CI can't reproduce. If `make css`
-  produces classes you didn't write, look for stray files before suspecting the
-  toolchain.
+- **The bundle is a function of the `@source` globs in `static/input.css`, and
+  nothing else.** That file uses `@import "tailwindcss" source(none)`, which turns
+  Tailwind's automatic content detection *off* — so if you add a new place that
+  emits class names (a second `.py` building HTML, a JS file, a template outside
+  `templates/`), its classes are **silently not generated** and the UI renders
+  unstyled with a green `make check`. Add an `@source` line for it in the same
+  commit.
+
+  This replaced the older failure mode, worth knowing because the symptom is the
+  same drift error: with auto-detection on, Tailwind scanned the *whole repo* and
+  minted utilities out of anything that merely read like a class name — a
+  `bg-black/40` written in prose in **this very file**, the word "now-fixed" in a
+  template comment, a bare `<table>` tag. Editing a `.md` could fail the CSS drift
+  check (#61). If you ever see drift you can't explain from a template edit,
+  check whether `source(none)` is still there before hunting further.
 - Removing the last use of a class removes its custom property too. Dropping
   `bg-black/40` for `dialog::backdrop` also dropped `--color-black` — a real diff,
   not noise.
