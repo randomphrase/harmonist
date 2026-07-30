@@ -87,6 +87,23 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
     # events not about one album, and rows written before this migration, have
     # none. No index — it's display-only, never a query key.
     ("ALTER TABLE events ADD COLUMN album_label TEXT",),
+    # 3 -> 4: album identity aliases (#33). Album ids MOVE: tagging drops the
+    # sidecar's temp_uid in favour of the MBID, a re-match rewrites the MBID, an
+    # unlink reverses it. Crucially the superseded id is ERASED from disk, so the
+    # link between an album's past and present identity is observable ONLY at the
+    # instant it changes — after that, nothing can reconstruct it. Recording the
+    # pair keeps an album's history joinable across the flip (#14) and lets a
+    # deep link written under the old id still resolve.
+    # old_id is the PK: an id is superseded exactly once, so it maps forward to at
+    # most one successor. new_id is indexed for the reverse walk (#14's union).
+    (
+        """CREATE TABLE album_aliases (
+            old_id TEXT PRIMARY KEY,
+            new_id TEXT NOT NULL,
+            ts     TEXT NOT NULL
+        )""",
+        "CREATE INDEX idx_album_aliases_new_id ON album_aliases (new_id)",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -258,12 +275,70 @@ def recent(
     ]
 
 
+def record_alias(old_id: str, new_id: str) -> None:
+    """Remember that `old_id` became `new_id` (#33).
+
+    Called at the moment an album's identity changes, which is the only time the
+    pair is knowable — the superseded id is erased from the sidecar, so this is
+    not reconstructible after the fact. Best-effort: identity changes must not
+    fail because the log is unavailable.
+
+    Idempotent via REPLACE: re-writing the same sidecar re-asserts the same pair
+    rather than erroring on the primary key.
+    """
+    if not old_id or not new_id or old_id == new_id:
+        return
+    ts = datetime.now(UTC).isoformat()
+    try:
+        conn = _ensure()
+        with _LOCK:
+            conn.execute(
+                "INSERT OR REPLACE INTO album_aliases (old_id, new_id, ts) VALUES (?, ?, ?)",
+                (old_id, new_id, ts),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        log.debug("activity_store record_alias failed", exc_info=True, extra={"_activity": True})
+
+
+def resolve_alias(album_id: str, *, max_hops: int = 20) -> str | None:
+    """Follow the alias chain forward to the album's CURRENT id, or None if this
+    id was never superseded.
+
+    Walks transitively (temp_uid -> mbid -> corrected mbid). `max_hops` and the
+    seen-set bound the walk: a cycle would otherwise spin forever, and while the
+    schema shouldn't permit one, a log is not worth hanging a request over.
+    """
+    seen = {album_id}
+    current = album_id
+    try:
+        conn = _ensure()
+        with _LOCK:
+            for _ in range(max_hops):
+                row = conn.execute(
+                    "SELECT new_id FROM album_aliases WHERE old_id = ?", (current,)
+                ).fetchone()
+                if row is None or row[0] in seen:
+                    break
+                current = row[0]
+                seen.add(current)
+    except sqlite3.Error:
+        return None
+    return None if current == album_id else current
+
+
 def clear() -> None:
-    """Drop all events (tests / demo reset)."""
+    """Drop all stored state — events AND aliases (tests / demo reset).
+
+    Aliases go too: they describe albums in the library this store was recording,
+    so after a demo re-seed (or between tests) they'd point at identities that no
+    longer exist, and could mis-resolve a deep link to the wrong album.
+    """
     try:
         conn = _ensure()
         with _LOCK:
             conn.execute("DELETE FROM events")
+            conn.execute("DELETE FROM album_aliases")
             conn.commit()
     except sqlite3.Error:
         pass

@@ -298,3 +298,99 @@ def test_non_demo_mode_still_writes_the_file(tmp_path):
     activity.record("persisted event")
 
     assert (cfg.paths.config_dir / "activity.db").exists()
+
+
+# ---------- album identity aliases (#33) ----------
+
+
+def test_migrates_a_v3_database_in_place_keeping_its_rows(tmp_path):
+    """The 3 -> 4 upgrade (album_aliases): a v3 activity.db gains the table in
+    place, keeps every existing row, and starts empty of aliases. Built from a
+    PREFIX of the real _MIGRATIONS so it can't drift from what shipped."""
+    db = tmp_path / "v3.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for step in activity_store._MIGRATIONS[:3]:
+        for stmt in step:
+            conn.execute(stmt)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message, album_id) VALUES (?, ?, ?, ?, ?)",
+        ("2026-07-01T00:00:00+00:00", "info", "activity", "written by v3", "rel-old"),
+    )
+    conn.execute("PRAGMA user_version = 3")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    assert [e.message for e in activity_store.recent()] == ["written by v3"]
+    assert activity_store.resolve_alias("rel-old") is None  # no aliases yet
+    # ...and the upgraded DB accepts them.
+    activity_store.record_alias("rel-old", "rel-new")
+    assert activity_store.resolve_alias("rel-old") == "rel-new"
+
+
+def test_resolve_alias_follows_a_chain_and_survives_a_cycle(tmp_path):
+    """Identity can move more than once (temp_uid -> mbid -> corrected mbid), so
+    resolution is transitive. A cycle must terminate rather than hang a request."""
+    activity_store.init(tmp_path / "a.db")
+    activity_store.record_alias("uid-1", "mbid-a")
+    activity_store.record_alias("mbid-a", "mbid-b")
+    assert activity_store.resolve_alias("uid-1") == "mbid-b"
+    assert activity_store.resolve_alias("mbid-a") == "mbid-b"
+    assert activity_store.resolve_alias("mbid-b") is None  # current; nothing beyond
+    assert activity_store.resolve_alias("never-seen") is None
+
+    # A -> B -> A must not spin.
+    activity_store.record_alias("mbid-b", "uid-1")
+    assert activity_store.resolve_alias("uid-1") is not None  # terminates
+
+
+def test_clear_drops_aliases_too(tmp_path):
+    """A demo re-seed (or the next test) must not inherit aliases pointing at
+    albums that no longer exist — they could mis-resolve a deep link."""
+    activity_store.init(tmp_path / "a.db")
+    activity_store.record_alias("old", "new")
+    activity_store.clear()
+    assert activity_store.resolve_alias("old") is None
+
+
+def test_sidecar_write_records_the_identity_change(tmp_path):
+    """Capture happens at the sidecar write — the only moment the pair is
+    knowable, since normalisation erases temp_uid once an MBID lands."""
+    from harmonist import sidecar as sc
+    from harmonist.models import Sidecar
+
+    activity_store.init(tmp_path / "a.db")
+    album = tmp_path / "album"
+    album.mkdir()
+
+    sc.write(album, Sidecar(store_url="https://x.bandcamp.com/album/y"))
+    uid = sc.read(album).temp_uid
+    assert uid
+
+    # Tagging moves the identity to the MBID and erases temp_uid...
+    sc.write(album, Sidecar(store_url="https://x.bandcamp.com/album/y", mb_release_id="rel-1"))
+    assert sc.read(album).temp_uid is None
+    # ...but the link survives in the alias table.
+    assert activity_store.resolve_alias(uid) == "rel-1"
+
+    # A re-match (MBID -> MBID) is captured too, and chains.
+    sc.write(album, Sidecar(store_url="https://x.bandcamp.com/album/y", mb_release_id="rel-2"))
+    assert activity_store.resolve_alias("rel-1") == "rel-2"
+    assert activity_store.resolve_alias(uid) == "rel-2"
+
+
+def test_sidecar_create_and_noop_rewrite_record_no_alias(tmp_path):
+    """A create supersedes nothing, and re-writing an unchanged identity must not
+    manufacture a self-alias."""
+    from harmonist import sidecar as sc
+    from harmonist.models import Sidecar
+
+    activity_store.init(tmp_path / "a.db")
+    album = tmp_path / "album"
+    album.mkdir()
+
+    sc.write(album, Sidecar(mb_release_id="rel-1"))
+    assert activity_store.resolve_alias("rel-1") is None
+    sc.write(album, Sidecar(mb_release_id="rel-1", notes="changed something else"))
+    assert activity_store.resolve_alias("rel-1") is None

@@ -1139,6 +1139,17 @@ def _find_album(request: Request, album_id: str) -> Album:
         for a in albums:
             if a.path == legacy_path:
                 return a
+    # Durable fallback: the album's identity has since MOVED (tagging replaced its
+    # temp_uid with an MBID, a re-match rewrote the MBID). The registry can't help
+    # — it's in-memory and only knows ids it minted, so it's empty for anything
+    # already sidecar'd and after every restart. The alias chain, recorded at each
+    # change, does: it maps the superseded id forward to the current one (#33).
+    # This is what keeps an old activity-feed deep link working.
+    current_id = activity_store.resolve_alias(album_id)
+    if current_id is not None:
+        for a in albums:
+            if a.id == current_id:
+                return a
     raise HTTPException(status.HTTP_404_NOT_FOUND, f"album {album_id} not found")
 
 

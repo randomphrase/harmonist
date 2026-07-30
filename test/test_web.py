@@ -2316,6 +2316,34 @@ def test_successful_deep_link_keeps_the_url_parameter(client, cfg):
     assert 'id="deep-link-notice"' not in body
 
 
+def test_deep_link_resolves_through_the_alias_chain_after_a_restart(client, cfg):
+    """#33's payoff, and the case the registry CANNOT cover.
+
+    An album that already had a sidecar was never registry-minted, and the
+    registry is in-memory anyway — so after a restart it knows nothing. When
+    tagging then moves the album's identity (temp_uid dropped for the MBID), a
+    deep link written under the old id has no way home. The durable alias chain,
+    recorded at the moment of the change, is what rescues it.
+    """
+    from harmonist import id_registry
+
+    d = _make_album(cfg, "Aliased")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/aliased"))
+    old_id = _id_for(cfg, d)
+
+    # Tag it: identity moves to the MBID and temp_uid is erased from disk.
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/aliased", mb_release_id="rel-al"))
+    id_registry.clear()  # as after a restart — the in-memory fallback is empty
+    assert sc.read(d).temp_uid is None
+    assert _id_for(cfg, d) == "rel-al"
+
+    r = client.get(f"/?album={old_id}")
+    assert r.status_code == 200
+    assert "isn't in your library any more" not in r.text
+    # Resolved forward to the album's CURRENT id.
+    assert 'hx-get="/library/rel-al/detail"' in r.text
+
+
 def test_deep_link_follows_moved_album_id(client, cfg):
     """The id in an old activity row is a snapshot. When a NEW album's registry
     UUID is superseded (a sidecar write giving it an MBID identity), the deep
@@ -2863,9 +2891,16 @@ def test_canonical_id_change_mid_transaction(client, cfg, monkeypatch):
     # Album's canonical id is now the MBID
     assert _id_for(cfg, d) == mbid
 
-    # The old temp_uid URL no longer resolves
+    # The old temp_uid URL STILL resolves — to the same album. This assertion was
+    # inverted by #33: it previously expected 404, which encoded the limitation of
+    # the in-memory registry (empty for anything already sidecar'd, and after any
+    # restart) rather than a design goal. `_find_album` has always intended the
+    # opposite — "404 only when we can't resolve the id any way" — and the durable
+    # alias chain now makes that achievable. The id refers to the same album, so
+    # acting on it is correct; a stale page's buttons keep working instead of
+    # dead-ending.
     r_stale = client.post(f"/recheck/{temp_uid}")
-    assert r_stale.status_code == 404
+    assert r_stale.status_code == 200
 
 
 # ---------- activity feed ----------

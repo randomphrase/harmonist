@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import audit, id_registry, library_index
+from . import activity_store, audit, id_registry, library_index
 
 # Re-exported so existing `from harmonist.sidecar import CURRENT_SCHEMA_VERSION`
 # keeps working; it's defined in models.py so Sidecar can default to it.
@@ -106,6 +106,7 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
         os.fsync(f.fileno())
     os.replace(tmp, target)
     _audit_identity_change(album_dir, old, sidecar)
+    _record_identity_alias(old, sidecar)
     # The ONE place the in-memory index learns of a sidecar change (link, demote,
     # tag, download, reconcile all land here) — so sync-time dedup never re-reads.
     library_index.upsert(album_dir, sidecar)
@@ -117,6 +118,29 @@ def _album_id_of(sc: Sidecar) -> str | None:
     called, so exactly one is set. Defined locally: scanner imports sidecar, so
     importing it back would be circular."""
     return sc.mb_release_id or sc.temp_uid
+
+
+def _record_identity_alias(old: Sidecar | None, new: Sidecar) -> None:
+    """Durably link an album's superseded id to its new one (#33).
+
+    This write is the ONLY moment the pair is knowable: `_normalise_identity`
+    drops `temp_uid` once an MBID lands, so a second later there is nothing on
+    disk connecting the two. Without the alias, everything recorded under the old
+    id — the album's whole pre-tag history, and any deep link already written into
+    the activity feed — is orphaned the instant it's tagged.
+
+    Covers every direction, since it compares canonical ids rather than fields:
+    temp_uid -> MBID (tag/reconcile), MBID -> MBID (re-match), MBID -> temp_uid
+    (unlink). A create (`old is None`) supersedes nothing.
+
+    The audit trail already notes the change, but only as a message string —
+    unqueryable, so it can't answer "what is this album's id now?".
+    """
+    if old is None:
+        return
+    old_id, new_id = _album_id_of(old), _album_id_of(new)
+    if old_id and new_id and old_id != new_id:
+        activity_store.record_alias(old_id, new_id)
 
 
 def _audit_identity_change(album_dir: Path, old: Sidecar | None, new: Sidecar) -> None:

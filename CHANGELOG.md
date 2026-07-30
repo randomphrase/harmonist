@@ -23,6 +23,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Links and bookmarks to an album keep working after Harmonist re-identifies it
+  (tagging it, or correcting its MusicBrainz match) — previously the old link
+  dead-ended, and a restart made it unrecoverable. Harmonist now remembers that
+  an album's identity moved, so its history stays joined to it.
 - The "that album isn't in your library any more" notice can now be dismissed,
   and no longer reappears when you refresh.
 - Demo mode no longer writes into your real activity history, and no longer logs
