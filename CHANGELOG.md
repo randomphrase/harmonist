@@ -16,6 +16,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- A store URL is now recognised only when its *host* is the store's domain (or a
+  subdomain of it). Previously a lookalike host like `notbandcamp.com`, or a URL
+  carrying `bandcamp.com` only in its path or query, was accepted as a Bandcamp
+  purchase URL and could be recorded as an album's store URL; Beatport and
+  Discogs had the same flaw.
 - Shutting down while a reconcile pass was finishing no longer logs a spurious
   "reconcile run failed — Event loop is closed" error; the pass's trailing
   rescan request is simply dropped.

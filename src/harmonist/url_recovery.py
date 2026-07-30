@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from . import formats
+from .models import is_bandcamp_url
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +87,6 @@ def extract_bandcamp_url(comment: str) -> str | None:
     """
     for match in _URL_RE.finditer(comment or ""):
         url = match.group(0).rstrip(".,);]>\"'")
-        if "bandcamp.com" in url.lower():
+        if is_bandcamp_url(url):
             return url
     return None

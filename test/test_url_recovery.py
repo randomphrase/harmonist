@@ -84,3 +84,15 @@ def test_extract_returns_artist_root():
 def test_extract_returns_none_without_bandcamp():
     assert extract_bandcamp_url("https://example.com/x") is None
     assert extract_bandcamp_url("") is None
+
+
+def test_extract_rejects_lookalike_hosts():
+    """The host must *be* bandcamp.com or a subdomain — a URL that merely
+    contains the string (in its host, path or query) is not a store URL."""
+    assert extract_bandcamp_url("https://notbandcamp.com/album/y") is None
+    assert extract_bandcamp_url("https://evil.example/?ref=bandcamp.com") is None
+    assert extract_bandcamp_url("https://evil.example/bandcamp.com/album/y") is None
+    # ...but a genuine subdomain still resolves.
+    assert (
+        extract_bandcamp_url("https://x.bandcamp.com/album/y") == "https://x.bandcamp.com/album/y"
+    )

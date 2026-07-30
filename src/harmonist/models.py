@@ -252,28 +252,34 @@ class Album:
 # ---------------------------------------------------------------------------
 
 
-def is_bandcamp_url(url: str | None) -> bool:
-    """True if the URL is on a bandcamp.com domain (any subdomain or
-    custom domain mapped to bandcamp.com).
+def host_is(url: str | None, domain: str) -> bool:
+    """True if the URL's host is `domain` itself or a subdomain of it.
+
+    The dot in the suffix is load-bearing: a bare `endswith("bandcamp.com")`
+    also accepts `notbandcamp.com`, and a substring test accepts anything with
+    the domain in its path or query. Store URLs reach us from file tags and
+    user input, so a lookalike host must not be classified as the real store.
     """
     if not url:
         return False
     host = (urlparse(url).hostname or "").lower()
-    return host == "bandcamp.com" or host.endswith(".bandcamp.com")
+    return host == domain or host.endswith(f".{domain}")
+
+
+def is_bandcamp_url(url: str | None) -> bool:
+    """True if the URL is on a bandcamp.com domain (any subdomain)."""
+    return host_is(url, "bandcamp.com")
 
 
 def store_name(url: str | None) -> str | None:
     """Identify the store from a URL's hostname. Returns None when the
     URL is absent or the store is unrecognised.
     """
-    if not url:
-        return None
-    host = (urlparse(url).hostname or "").lower()
-    if host == "bandcamp.com" or host.endswith(".bandcamp.com"):
+    if host_is(url, "bandcamp.com"):
         return "bandcamp"
-    if host.endswith("beatport.com"):
+    if host_is(url, "beatport.com"):
         return "beatport"
-    if host.endswith("discogs.com"):
+    if host_is(url, "discogs.com"):
         return "discogs"
     return None
 

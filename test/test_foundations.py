@@ -14,6 +14,8 @@ from harmonist.models import (
     MatchCandidate,
     Sidecar,
     TrackComparison,
+    is_bandcamp_url,
+    store_name,
 )
 
 # ---------- config ----------
@@ -114,6 +116,50 @@ def test_album_state_values():
     assert AlbumState.NEEDS_SYNC.value == "needs_sync"
     assert AlbumState.COMPLETE.value == "complete"
     assert AlbumState.INCOMPLETE.value == "incomplete"
+
+
+# ---------- store URL host classification ----------
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("https://bandcamp.com/album/y", "bandcamp"),
+        ("https://x.bandcamp.com/album/y", "bandcamp"),
+        ("https://www.beatport.com/release/x/1", "beatport"),
+        ("https://beatport.com/release/x/1", "beatport"),
+        ("https://www.discogs.com/release/1", "discogs"),
+        # Lookalike domains must not be classified as the real store: a bare
+        # `endswith("beatport.com")` accepts all three of these.
+        ("https://notbandcamp.com/album/y", None),
+        ("https://evilbeatport.com/release/x/1", None),
+        ("https://notdiscogs.com/release/1", None),
+        # Nor may the domain appear only in the path or query.
+        ("https://evil.example/?ref=bandcamp.com", None),
+        ("https://evil.example/discogs.com/release/1", None),
+        ("https://example.com/x", None),
+        ("not a url", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_store_name_requires_a_matching_host(url, expected):
+    assert store_name(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("https://bandcamp.com", True),
+        ("https://x.bandcamp.com/album/y", True),
+        ("https://notbandcamp.com/album/y", False),
+        ("https://evil.example/?ref=bandcamp.com", False),
+        ("", False),
+        (None, False),
+    ],
+)
+def test_is_bandcamp_url(url, expected):
+    assert is_bandcamp_url(url) is expected
 
 
 # ---------- temp_uid lifecycle ----------

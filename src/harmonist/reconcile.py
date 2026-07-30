@@ -30,11 +30,10 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 from . import formats, url_recovery
 from . import sidecar as sidecar_mod
-from .models import Sidecar
+from .models import Sidecar, is_bandcamp_url
 
 log = logging.getLogger(__name__)
 
@@ -234,7 +233,7 @@ def matching_bandcamp_url(
     Used as the fallback when no fully-formed Bandcamp URL is embedded in the
     comment; the recorded URL is MB's canonical one.
     """
-    if not _comment_mentions_bandcamp(comment):
+    if url_recovery.extract_bandcamp_url(comment) is None:
         return None
     try:
         urls = fetch_urls(mbid)
@@ -242,13 +241,6 @@ def matching_bandcamp_url(
         log.warning("MB url-rels lookup failed for %s: %s", mbid, e)
         return None
     for url in urls:
-        host = (urlparse(url).hostname or "").lower()
-        if host == "bandcamp.com" or host.endswith(".bandcamp.com"):
+        if is_bandcamp_url(url):
             return url
     return None
-
-
-def _comment_mentions_bandcamp(comment: str) -> bool:
-    if not comment:
-        return False
-    return "bandcamp.com" in comment.lower()

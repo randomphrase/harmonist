@@ -9,6 +9,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Checkout is all either job needs; don't inherit the repo-default token scope.
+permissions:
+  contents: read
+
 jobs:
   # Lint + type-check + tests, mirroring `make check`, across supported Pythons.
   check:
