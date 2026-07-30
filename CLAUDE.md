@@ -39,7 +39,13 @@ persistence rules — the load-bearing-fields-only rule now lives in gate item 3
   runtime behavior (formatting, lint, comments, tests) skip this — see the
   `issue-first` skill for the dividing line.
 - **Quality gate:** `make check` (ruff + `ruff format --check` + `mypy --strict`
-  + pytest) must pass before you commit; CI runs the same on Python 3.12/3.13.
+  + `template-lint` + pytest) must pass before you commit; CI runs the same on
+  Python 3.12/3.13/3.14.
+- **UI work:** before editing anything under `templates/` or `static/input.css`,
+  consult the `web-ui` skill — native elements over hand-rolled widgets, never
+  `onclick` on an element that also carries `hx-*` (mechanically enforced by
+  `make template-lint`), and how to verify behavior the Python suite can't see.
+  It expands on the CSS-artifact and test-client notes below.
 - **Changelog:** when a change is user-visible, add a one-line entry to
   `CHANGELOG.md` under `[Unreleased]` in the same commit — see the `changelog`
   skill for what counts and how to word it.
