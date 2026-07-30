@@ -16,6 +16,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Linking a potential download from the "Verify album" dialog now actually links
+  it — previously the dialog closed without sending the request (same root cause
+  as #40: closing from `onclick` detached the button before HTMX could act).
+  Modals now use the native `<dialog>` element, which closes without destroying
+  its contents, removing this class of bug; Esc and backdrop-click behave as
+  before.
 - "Move to Library" no longer flickers the inbox — the album now resolves in a
   single render instead of triggering a background rescan that briefly dimmed and
   reloaded the list.

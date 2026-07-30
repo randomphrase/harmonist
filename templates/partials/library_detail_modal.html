@@ -2,9 +2,11 @@
    result is clickable — the user can VERIFY it's the right release (cover, tracks,
    MusicBrainz compare) before linking. Reuses library_detail.html verbatim. When
    `pending_item_id` is set, a Link action closes the loop here. #}
-<div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
-     onclick="if (event.target === this) harmonistCloseModal()">
-    <div class="bg-white border border-line rounded-lg max-w-4xl w-full shadow-2xl max-h-[90vh] overflow-auto">
+{# Native <dialog>: base.html opens it on swap-in and clears the mount on close.
+   A click landing on the dialog element itself is a backdrop click. #}
+<dialog class="bg-transparent p-0 m-auto max-w-4xl w-full"
+        onclick="if (event.target === this) this.close()">
+    <div class="bg-white border border-line rounded-lg w-full shadow-2xl max-h-[90vh] overflow-auto">
         <div class="flex items-center justify-between gap-4 px-4 pt-4">
             <h2 class="text-sm font-bold text-muted uppercase tracking-widest">
                 {{ 'Verify album' if pending_item_id is not none else 'Album' }}</h2>
@@ -14,13 +16,15 @@
         {% include 'partials/library_detail.html' %}
         {% if pending_item_id is not none %}
         <div class="px-4 pb-4 -mt-1">
+            {# Close only after the POST succeeds (never from onclick alongside
+               hx-* — that detaches the button before htmx acts; see #40). #}
             <button hx-post="/pending/{{ pending_item_id }}/match" hx-vals='{"album_id": "{{ album.id }}"}'
-                    hx-target="#pending-section" hx-swap="morph:outerHTML"
-                    onclick="harmonistCloseModal()"
+                    hx-target="#pending-section" hx-swap="morph:outerHTML" hx-disabled-elt="this"
+                    hx-on::after-request="if (event.detail.successful) harmonistCloseModal()"
                     class="w-full px-3 py-2 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
                 Link this to “{{ pending_label }}”
             </button>
         </div>
         {% endif %}
     </div>
-</div>
+</dialog>
