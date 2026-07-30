@@ -85,3 +85,9 @@ button[disabled],
 .find-mode:has(input[value="name"]:checked) .find-mode__panel--name {
   display: block;
 }
+/* Native <dialog> modals (see base.html modal plumbing). The dialog element is
+   an unstyled transparent shell (backdrop-click detection target); the inner
+   card carries the visual chrome. */
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
