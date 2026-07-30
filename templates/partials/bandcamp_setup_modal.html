@@ -1,8 +1,10 @@
 {# Bandcamp sync setup dialog. Loaded into #modal via HTMX.
    `error` is set on re-render after a failed submit. #}
-<div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
-     onclick="if (event.target === this) harmonistCloseModal()">
-    <div class="bg-white border border-line rounded-lg max-w-lg w-full p-6 shadow-2xl space-y-4">
+{# Native <dialog>: base.html opens it on swap-in and clears the mount on close.
+   A click landing on the dialog element itself is a backdrop click. #}
+<dialog class="bg-transparent p-0 m-auto max-w-lg w-full"
+        onclick="if (event.target === this) this.close()">
+    <div class="bg-white border border-line rounded-lg w-full p-6 shadow-2xl space-y-4">
         <div class="flex items-start justify-between gap-4">
             <h2 class="text-xl font-bold text-ink">Set up Bandcamp sync</h2>
             <button type="button" onclick="harmonistCloseModal()"
@@ -61,4 +63,4 @@
             </div>
         </form>
     </div>
-</div>
+</dialog>
