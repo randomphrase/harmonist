@@ -2133,6 +2133,143 @@ def test_album_action_records_activity_against_that_album(client, cfg, monkeypat
     assert all(e.album_id == aid for e in mine)
 
 
+def test_activity_recent_carries_album_id(cfg):
+    """#65: the stored album_id must survive the store → Event conversion, or the
+    feed template can't link the entry no matter what the DB holds."""
+    from harmonist import activity
+
+    activity.clear()
+    activity.record("Tagged something", album_id="rel-xyz", album_label="BoC — Geogaddi")
+    activity.record("Something general")
+
+    events = {e.message: (e.album_id, e.album_label) for e in activity.recent(10)}
+    assert events["Tagged something"] == ("rel-xyz", "BoC — Geogaddi")
+    assert events["Something general"] == (None, None)
+
+
+def test_activity_feed_links_entries_with_an_album(client, cfg):
+    """An entry tied to an album renders a real deep link; one without stays
+    plain text (nothing to point at)."""
+    from harmonist import activity
+
+    activity.clear()
+    activity.record("Unlinked", album_id="rel-geo", album_label="BoC — Geogaddi")
+    activity.record("Sync finished")
+
+    body = client.get("/activity").text
+    # Only the album NAME is the link — the message stays plain text beside it.
+    assert ">BoC — Geogaddi</a>" in body
+    assert 'href="/?album=rel-geo"' in body
+    assert "Unlinked" in body
+    # The untied entry is present but carries no album column at all.
+    assert "Sync finished" in body
+    assert 'href="/?album=None"' not in body
+
+
+def test_activity_shows_album_label_even_when_link_is_dead(client, cfg):
+    """The label is stored with the event, so an entry stays readable after its
+    album is gone — the reason we persist it rather than resolving live."""
+    from harmonist import activity
+
+    activity.clear()
+    activity.record("Tagged", album_id=None, album_label="Departed — Album")
+
+    body = client.get("/activity").text
+    assert "Departed — Album" in body  # still named...
+    assert 'href="/?album=' not in body  # ...but not a link
+
+
+def test_deep_link_opens_album_modal(client, cfg):
+    """GET /?album=<id> loads the app with that album's detail fragment queued
+    into #modal — the shareable/bookmarkable half of #65."""
+    d = _make_album(cfg, "DeepLinked")
+    aid = _id_for(cfg, d)
+
+    r = client.get(f"/?album={aid}")
+    assert r.status_code == 200
+    assert f'hx-get="/library/{aid}/detail"' in r.text
+    assert 'hx-target="#modal"' in r.text
+    # Deep link shows the Library without rewriting the saved tab.
+    assert "harmonistTab('library', false)" in r.text
+
+
+def test_deep_link_to_unknown_album_still_renders_page(client, cfg):
+    """A stale id (reconcile moved the album's identity, or it left the library)
+    must degrade to the normal page plus a notice — never a whole-page 404, and
+    never a silent no-op that looks like a broken link."""
+    _make_album(cfg, "Present")
+
+    r = client.get("/?album=no-such-album-id")
+    assert r.status_code == 200
+    assert "isn't in your library any more" in r.text
+    # No album-detail fetch queued — there's nothing to open. (Checked on the
+    # detail URL specifically: the header's Bandcamp-setup button legitimately
+    # targets #modal too, so asserting on the target alone would always match.)
+    assert "/detail" not in r.text
+
+
+def test_action_records_an_id_that_still_resolves_after_tagging(client, cfg, monkeypatch):
+    """Regression: the link in the Activity feed must actually work.
+
+    An album that already has a sidecar `temp_uid` — demo's seeded library, or
+    anything at all after a restart — is NOT in the in-memory id registry. Tagging
+    then DROPS temp_uid in favour of the MBID (models.py), so the pre-mutation id
+    the handler was holding is erased from disk and unrecoverable: `_find_album`'s
+    registry fallback can't help. Recording that id produced a permanently dead
+    link. `_flash_response` now re-derives the id from disk AFTER the mutation.
+    """
+    from harmonist import activity, id_registry
+
+    # A sidecar'd but untagged album: its id is the sidecar's temp_uid.
+    d = _make_album(cfg, "Relinked")
+    sc.write(
+        d,
+        Sidecar(
+            store_url="https://x.bandcamp.com/album/relinked",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-relink", confidence="exact", file_count=1, track_count=1
+            ),
+        ),
+    )
+    id_registry.clear()  # as after a restart: nothing registry-minted
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    activity.clear()
+
+    # Confirming TAGS it: temp_uid is dropped, the id becomes the MBID.
+    assert client.post(f"/confirm/{aid}").status_code == 200
+    assert _id_for(cfg, d) != aid  # the identity really did move
+    assert sc.read(d).temp_uid is None  # ...and the old id is gone from disk
+
+    entry = next(e for e in activity.recent(10) if "Tagged" in e.message)
+    assert entry.album_id is not None
+    assert entry.album_label  # the feed can name it
+    # The recorded id resolves — i.e. the rendered link is live, not a 404.
+    r = client.get(f"/?album={entry.album_id}")
+    assert r.status_code == 200
+    assert "isn't in your library any more" not in r.text
+    assert f'hx-get="/library/{entry.album_id}/detail"' in r.text
+
+
+def test_deep_link_follows_moved_album_id(client, cfg):
+    """The id in an old activity row is a snapshot. When a NEW album's registry
+    UUID is superseded (a sidecar write giving it an MBID identity), the deep
+    link must still resolve via the registry fallback rather than 404."""
+    d = _make_album(cfg, "Moved")
+    original_id = _id_for(cfg, d)  # registry UUID, minted for the NEW album
+    sc.write(d, Sidecar(mb_release_id="rel-moved"))
+    current_id = _id_for(cfg, d)
+    assert current_id != original_id  # identity moved to the MBID
+
+    r = client.get(f"/?album={original_id}")
+    assert r.status_code == 200
+    # Resolved forward to the album's CURRENT id, so the fragment fetch works.
+    assert f'hx-get="/library/{current_id}/detail"' in r.text
+
+
 def test_retag_emits_album_retagged_trigger(client, cfg, monkeypatch):
     """On success /retag fires an `album-retagged` HX-Trigger so the open detail
     modal reloads itself — otherwise its disk-vs-MB comparison stays stale (#34)."""

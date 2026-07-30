@@ -186,6 +186,55 @@ def test_migrates_a_v1_database_in_place_keeping_its_rows(tmp_path):
     assert [e.message for e in activity_store.recent(album_id="rel-new")] == ["after migration"]
 
 
+def test_migrates_a_v2_database_in_place_keeping_its_rows(tmp_path):
+    """The 2 -> 3 upgrade (album_label, #65): a v2 activity.db must gain the
+    column in place, keep every existing row, and read the new column as NULL —
+    those rows predate it, so there is nothing to back-fill them with.
+
+    Built by applying a PREFIX of the real _MIGRATIONS rather than hand-written
+    DDL, so this test can't drift from what shipped.
+    """
+    db = tmp_path / "v2.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for step in activity_store._MIGRATIONS[:2]:
+        for stmt in step:
+            conn.execute(stmt)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message, album_id) VALUES (?, ?, ?, ?, ?)",
+        ("2026-07-01T00:00:00+00:00", "info", "activity", "written by v2", "rel-old"),
+    )
+    conn.execute("PRAGMA user_version = 2")
+    conn.close()
+
+    activity_store.init(db)  # should migrate 2 -> current
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    events = activity_store.recent()
+    assert [e.message for e in events] == ["written by v2"]
+    assert events[0].album_id == "rel-old"  # pre-existing data intact
+    assert events[0].album_label is None  # nothing to back-fill it with
+    # ...and the upgraded DB round-trips the new column.
+    activity.info("after 2->3", album_id="rel-x", album_label="Boards of Canada — Geogaddi")
+    got = activity_store.recent(album_id="rel-x")
+    assert [e.album_label for e in got] == ["Boards of Canada — Geogaddi"]
+
+
+def test_reopening_a_current_db_applies_nothing(tmp_path):
+    """Idempotent re-open: opening an already-current DB must not re-run
+    migrations or disturb existing rows."""
+    db = tmp_path / "current.db"
+    activity_store.init(db)
+    activity.info("first run", album_id="rel-1", album_label="A — B")
+    before = _user_version(db)
+
+    activity_store.init(db)  # second open, same file
+
+    assert _user_version(db) == before == activity_store.SCHEMA_VERSION
+    events = activity_store.recent()
+    assert [e.message for e in events] == ["first run"]
+    assert events[0].album_label == "A — B"
+
+
 def test_downgrade_guard_falls_back_to_memory_without_crashing(tmp_path):
     """A DB stamped newer than this build understands (a Harmonist downgrade) must
     not be written to or crash startup — the store degrades to in-memory."""

@@ -8,6 +8,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Activity entries about a particular album now name that album in their own
+  column, and the name is a link — click it and the album's detail opens over
+  your Library. It's a normal URL (`/?album=<id>`), so you can bookmark or share
+  it and it still works after a reload. The name is recorded with the entry, so
+  older entries stay readable even after the album is renamed, re-identified, or
+  removed; only the link goes quiet. Action messages no longer repeat the album
+  title now that the column carries it.
 - The activity feed now persists across restarts, backed by a SQLite store
   (`activity.db`) in the config dir; audit records (downloads, file/tag rewrites,
   demotions) are written there durably too, so the record of what Harmonist did

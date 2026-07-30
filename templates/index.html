@@ -12,6 +12,28 @@
          hx-swap="innerHTML"
          class="hidden"></div>
 
+    {# `?album=<id>` deep link (from an Activity entry). Pull the album's detail
+       fragment into #modal on load; base.html opens whatever dialog lands there,
+       so this needs no opening logic of its own. The id was already resolved
+       server-side, so this fetch can't 404. #}
+    {% if deep_link_id %}
+    <div hx-get="/library/{{ deep_link_id }}/detail"
+         hx-trigger="load"
+         hx-target="#modal"
+         hx-swap="innerHTML"
+         class="hidden"></div>
+    {% endif %}
+
+    {# The deep link named an album we can't resolve — reconcile may have moved
+       its identity beyond what the registry remembers, or it's off disk. Say so
+       rather than opening nothing and looking broken. #}
+    {% if deep_link_missing %}
+    <div class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        That album isn't in your library any more — it may have been removed, or
+        re-identified since that activity entry was written.
+    </div>
+    {% endif %}
+
     {# Bandcamp-style text tabs: Inbox / Library. Both panels stay mounted so
        their HTMX polling/triggers keep firing; the tabs only toggle which is
        visible. Counts are filled in by JS after each panel loads. #}
@@ -84,7 +106,11 @@
 <script>
 // Inbox / Library tabs. Both panels stay in the DOM; we only toggle which is
 // shown and restyle the active tab (ink text + accent underline).
-function harmonistTab(name) {
+// `persist` is false for a deep link (?album=): it should show the Library
+// underneath the album's modal WITHOUT rewriting the user's saved tab, so
+// following a link from Activity doesn't silently move where they land next
+// time (and closing the modal returns them to their own preference on reload).
+function harmonistTab(name, persist = true) {
     document.querySelectorAll('.hmt-tab').forEach(t => {
         const active = t.dataset.tab === name;
         t.classList.toggle('text-ink', active);
@@ -95,18 +121,25 @@ function harmonistTab(name) {
     document.querySelectorAll('[id^="panel-"]').forEach(p => {
         p.classList.toggle('hidden', p.id !== 'panel-' + name);
     });
-    try { localStorage.setItem('harmonist-tab', name); } catch (e) {}
+    if (persist) {
+        try { localStorage.setItem('harmonist-tab', name); } catch (e) {}
+    }
 }
 
 // Tab counts (Inbox / Library) are driven from the consolidated /status poll's
 // `counts` block — the single source of truth (live_counts), reset from each
 // scan and kept live by transitions. See the /status handler below.
 
-// Restore last tab (default Inbox) on load.
+// Restore last tab (default Inbox) on load. A deep link (?album=) instead shows
+// the Library — the album's modal opens over it — without persisting that.
 document.addEventListener('DOMContentLoaded', function () {
+    {% if deep_link_id %}
+    harmonistTab('library', false);
+    {% else %}
     let saved = 'inbox';
     try { saved = localStorage.getItem('harmonist-tab') || 'inbox'; } catch (e) {}
     harmonistTab(saved);
+    {% endif %}
 });
 </script>
 
