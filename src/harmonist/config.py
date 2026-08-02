@@ -178,7 +178,20 @@ def load() -> Config:
         # toml/env. (Tests build Config directly and don't go through load(), so
         # they keep their own isolated dirs.)
         sandbox = Path(tempfile.gettempdir()) / "harmonist-demo"
-        cfg = cfg.model_copy(update={"paths": cfg.paths.model_copy(update={"music_dir": sandbox})})
+        # The ignores file too (#77): it lives in the CONFIG dir, which demo
+        # shares with the real install, so "Don't download" on a demo purchase
+        # was appending fixture item_ids to the user's genuine ignores.txt and
+        # suppressing them from real syncs. Same trap as the activity store
+        # (#69) — sandboxing the music dir alone is not enough for config-dir
+        # state that demo actions write to.
+        cfg = cfg.model_copy(
+            update={
+                "paths": cfg.paths.model_copy(update={"music_dir": sandbox}),
+                "bandcamp": cfg.bandcamp.model_copy(
+                    update={"ignores_file": sandbox / "ignores.txt"}
+                ),
+            }
+        )
 
     return cfg
 

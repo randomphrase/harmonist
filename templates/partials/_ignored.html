@@ -1,0 +1,35 @@
+{# Purchases the user chose not to download (#19). Lives on Settings, not the
+   Inbox: it's an exclusion LIST — a preference — and a declined purchase is
+   resolved, not pending. Keeping it out of the Inbox leaves that a pure work
+   queue. Rendered as a normal Settings section; absent entirely when empty.
+
+   Shows ONLY the user region of ignores.txt. The auto-managed region below the
+   separator is bandcampsync's record of everything already downloaded; listing
+   that would present the user's whole collection as "ignored". #}
+<div id="ignored-section">
+{% if ignored %}
+<section class="border border-line rounded-lg p-4 space-y-3">
+    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
+        Won't download
+        <span class="text-muted font-normal normal-case tracking-normal ml-1">· {{ ignored|length }}</span>
+    </h2>
+    <p class="text-2xs text-muted">
+        Purchases you told Harmonist to skip. Restoring one offers it again on the
+        next sync — it doesn't download anything on its own.
+    </p>
+    <ul class="divide-y divide-line">
+        {% for item in ignored %}
+        <li class="flex items-center justify-between gap-3 py-1.5 text-sm">
+            <span class="min-w-0 break-words text-ink">{{ item.label }}</span>
+            <button hx-post="/ignored/{{ item.item_id }}/restore"
+                    hx-target="#ignored-section" hx-swap="outerHTML"
+                    hx-disabled-elt="this"
+                    class="flex-shrink-0 text-xs text-muted hover:text-accent underline decoration-dotted underline-offset-2"
+                    title="Offer this purchase again on the next sync"
+                    aria-label="Restore {{ item.label }}">Restore</button>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+</div>

@@ -3836,3 +3836,98 @@ def test_sync_popover_exposes_ids_for_live_default_js(client, cfg):
     assert 'id="sync-link-only"' in home
     assert 'id="sync-max-row"' in home
     assert 'id="sync-max-downloads"' in home
+
+
+# ---------- ignores.txt: write region + the "Won't download" surface (#19/#77) ----------
+
+_IGNORES_WITH_SEPARATOR = """\
+# This file allows you to exclude releases from downloads.
+1111  # Manually / Added
+# =========================================================
+2222  # Already / Downloaded
+3333  # Also Already / Downloaded
+"""
+
+
+def test_ignore_is_written_above_the_separator(client, cfg):
+    """#77: a declined purchase belongs in the USER region. Appending put it in
+    bandcampsync's auto-managed region, where it's indistinguishable from
+    'already downloaded' and gets clobbered when bandcampsync rewrites the file."""
+    from harmonist.web.main import _append_ignore
+
+    cfg.ignores_file.parent.mkdir(parents=True, exist_ok=True)
+    cfg.ignores_file.write_text(_IGNORES_WITH_SEPARATOR)
+
+    _append_ignore(cfg.ignores_file, 4444, "New / Ignore")
+
+    lines = cfg.ignores_file.read_text().splitlines()
+    sep = next(i for i, ln in enumerate(lines) if "=========" in ln)
+    ours = next(i for i, ln in enumerate(lines) if ln.startswith("4444"))
+    assert ours < sep, "user ignore must land above the separator"
+    # The auto-managed region is untouched.
+    assert lines[sep + 1 :] == ["2222  # Already / Downloaded", "3333  # Also Already / Downloaded"]
+
+
+def test_ignore_with_no_separator_still_appends(client, cfg):
+    """A fresh ignores.txt has no separator yet (bandcampsync adds it at the end
+    on first run), so everything present is user data — append is correct."""
+    from harmonist.web.main import _append_ignore
+
+    cfg.ignores_file.parent.mkdir(parents=True, exist_ok=True)
+    cfg.ignores_file.write_text("# header only\n")
+    _append_ignore(cfg.ignores_file, 55, "Solo / Ignore")
+    assert "55  # Solo / Ignore" in cfg.ignores_file.read_text()
+
+
+def test_ignored_surface_lists_only_user_entries(client, cfg):
+    """#19: the surface must NOT list the auto-managed region — that's every
+    album already downloaded, i.e. the user's whole collection."""
+    from harmonist.web.main import _read_user_ignores
+
+    cfg.ignores_file.parent.mkdir(parents=True, exist_ok=True)
+    cfg.ignores_file.write_text(_IGNORES_WITH_SEPARATOR)
+
+    got = _read_user_ignores(cfg.ignores_file)
+    assert [i["item_id"] for i in got] == [1111]
+    assert got[0]["label"] == "Manually / Added"
+
+    # Lives on Settings, not the Inbox: a declined purchase is resolved, not
+    # pending, so the Inbox stays a pure work queue.
+    settings = client.get("/settings").text
+    assert "Manually / Added" in settings
+    assert "Already / Downloaded" not in settings
+    assert "Manually / Added" not in client.get("/tasks").text
+
+
+def test_restore_removes_only_from_the_user_region(client, cfg):
+    """Restoring must never drop an id from the auto-managed region — that would
+    make the next sync re-download an album the user already has."""
+    from harmonist.web.main import _read_user_ignores
+
+    cfg.ignores_file.parent.mkdir(parents=True, exist_ok=True)
+    cfg.ignores_file.write_text(_IGNORES_WITH_SEPARATOR)
+
+    r = client.post("/ignored/1111/restore")
+    assert r.status_code == 200
+    assert _read_user_ignores(cfg.ignores_file) == []
+    # ...and the downloaded ids survive.
+    text = cfg.ignores_file.read_text()
+    assert "2222" in text and "3333" in text
+
+    # Restoring an id that only exists in the auto region is a no-op.
+    client.post("/ignored/2222/restore")
+    assert "2222" in cfg.ignores_file.read_text()
+
+
+def test_demo_mode_sandboxes_the_ignores_file(monkeypatch, tmp_path):
+    """#77: demo shares the real CONFIG dir, so 'Don't download' on a demo
+    purchase was appending fixture item_ids to the user's genuine ignores.txt."""
+    from harmonist import config as config_mod
+
+    monkeypatch.setenv("HARMONIST_DEMO_MODE", "1")
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(tmp_path / "config"))
+    cfg = config_mod.load()
+
+    assert cfg.demo_mode
+    assert cfg.paths.config_dir not in cfg.ignores_file.parents
+    assert cfg.ignores_file.parent == cfg.paths.music_dir  # the demo sandbox

@@ -1263,6 +1263,13 @@ def _pending_suggestions(request: Request) -> dict[int, dict[str, str]]:
     return ps
 
 
+def _render_ignored_section(request: Request) -> Response:
+    """Re-render the #ignored-section partial (the target of a Restore swap)."""
+    cfg: config_mod.Config = request.app.state.cfg
+    ctx = _ctx(request, ignored=_read_user_ignores(cfg.ignores_file))
+    return _templates(request).TemplateResponse(request, "partials/_ignored.html", ctx)
+
+
 def _render_pending_section(request: Request) -> Response:
     """Re-render the #pending-section partial (the target of every action swap)."""
     ctx = _ctx(
@@ -1273,15 +1280,90 @@ def _render_pending_section(request: Request) -> Response:
     return _templates(request).TemplateResponse(request, "partials/_pending.html", ctx)
 
 
+# A comment line of 10+ '=' splits ignores.txt: user-entered ids above,
+# bandcampsync's "already downloaded" ids below. Mirrors its own detection.
+_IGNORES_SEPARATOR = re.compile(r"^\s*#.*={10,}")
+
+
+def _ignores_split(text: str) -> tuple[list[str], list[str]]:
+    """`(user_lines, auto_lines)` — the halves of ignores.txt either side of the
+    separator. With no separator the whole file is the user region, which is
+    correct: bandcampsync appends the separator *at the end* when it first adds
+    one, so everything already present becomes user data."""
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if _IGNORES_SEPARATOR.match(line):
+            return lines[:i], lines[i:]
+    return lines, []
+
+
 def _append_ignore(ignores_file: Path, item_id: int, label: str) -> None:
-    """Append a purchase to bandcampsync's ignores.txt so it's never downloaded.
-    The next sync reads it; best-effort (a failed write just means it may re-surface)."""
+    """Record a purchase the user declined, in ignores.txt's USER region.
+
+    Written above the separator, not appended (#77). Below it is bandcampsync's
+    auto-managed list of already-downloaded ids, which it rewrites wholesale from
+    the copy it read at startup — so an append there is both semantically wrong
+    (indistinguishable from "already downloaded", which is what blocks a UI over
+    this data) and racy: bandcampsync's own source notes that changes made while
+    it runs are lost.
+
+    Best-effort; a failed write just means the purchase may re-surface."""
     try:
         ignores_file.parent.mkdir(parents=True, exist_ok=True)
-        with ignores_file.open("a", encoding="utf-8") as f:
-            f.write(f"{item_id}  # {label}\n")
+        text = ignores_file.read_text(encoding="utf-8") if ignores_file.exists() else ""
+        user, auto = _ignores_split(text)
+        if user and not user[-1].endswith("\n"):
+            user[-1] += "\n"
+        user.append(f"{item_id}  # {label}\n")
+        ignores_file.write_text("".join(user + auto), encoding="utf-8")
     except OSError as e:
         log.warning("could not append %s to ignores %s: %s", item_id, ignores_file, e)
+
+
+def _read_user_ignores(ignores_file: Path) -> list[dict[str, Any]]:
+    """Purchases the user explicitly declined — newest first.
+
+    ONLY the user region (above the separator). The auto-managed region below it
+    is bandcampsync's record of everything already downloaded; listing that would
+    present the user's whole collection as "ignored" (#19).
+
+    Entries written before #77 landed in the auto region and are unrecoverable as
+    user intent, so they simply don't appear. That's the safe direction to fail:
+    an ignore we can't prove was deliberate is better hidden than wrongly offered
+    for un-ignoring."""
+    try:
+        text = ignores_file.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    user, _ = _ignores_split(text)
+    out: list[dict[str, Any]] = []
+    for line in user:
+        token, _, comment = line.partition("#")
+        token = token.strip()
+        if token.isdigit():
+            out.append({"item_id": int(token), "label": comment.strip() or token})
+    out.reverse()  # newest first — they're appended in order
+    return out
+
+
+def _remove_user_ignore(ignores_file: Path, item_id: int) -> bool:
+    """Drop one id from the USER region so the next sync offers it again.
+    Returns True if a line was removed. Never touches the auto-managed region —
+    removing an already-downloaded id there would re-download the album."""
+    try:
+        text = ignores_file.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    user, auto = _ignores_split(text)
+    kept = [ln for ln in user if (ln.partition("#")[0].strip() or None) != str(item_id)]
+    if len(kept) == len(user):
+        return False
+    try:
+        ignores_file.write_text("".join(kept + auto), encoding="utf-8")
+    except OSError as e:
+        log.warning("could not rewrite ignores %s: %s", ignores_file, e)
+        return False
+    return True
 
 
 def _search_albums(request: Request, q: str, *, limit: int = 25) -> list[dict[str, str]]:
@@ -1756,6 +1838,24 @@ def _register_routes(app: FastAPI) -> None:
         request.state.skip_rescan = not was_inbox
         return _render_pending_section(request)
 
+    @app.post("/ignored/{item_id}/restore", response_class=HTMLResponse)
+    def ignored_restore(request: Request, item_id: int) -> Response:
+        """Un-ignore a declined purchase so the next sync offers it again (#19).
+
+        Only ever removes from the USER region — the auto-managed region records
+        what is already downloaded, and dropping an id from there would make the
+        next sync re-download an album the user already has."""
+        cfg: config_mod.Config = request.app.state.cfg
+        entry = next(
+            (i for i in _read_user_ignores(cfg.ignores_file) if i["item_id"] == item_id), None
+        )
+        if _remove_user_ignore(cfg.ignores_file, item_id):
+            label = entry["label"] if entry else str(item_id)
+            activity.info(f"Restored {label} — it'll be offered again on the next sync")
+        # Nothing on disk changed; a rescan here would just flicker the inbox.
+        request.state.skip_rescan = True
+        return _render_ignored_section(request)
+
     @app.get("/activity", response_class=HTMLResponse)
     def activity_feed(request: Request) -> Response:
         ctx = _ctx(request, events=activity.recent(100))
@@ -1773,6 +1873,7 @@ def _register_routes(app: FastAPI) -> None:
             request,
             bandcamp_ok=_bandcamp_configured(cfg),
             sidecar_count=sidecar_mod.count_all(cfg.paths.music_dir),
+            ignored=_read_user_ignores(cfg.ignores_file),
         )
         return _templates(request).TemplateResponse(request, "settings.html", ctx)
 

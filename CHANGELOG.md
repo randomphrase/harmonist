@@ -8,10 +8,22 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Settings now lists the purchases you told Harmonist not to download, with a
+  Restore button — an ignore is no longer a one-way door. Only choices you made
+  yourself are listed, never the albums Harmonist has already downloaded.
 - Activity entries written by a sync or by auto-reconcile now name and link their
   album too — including "Auto-tagged … after sync", the one worth clicking when
   Harmonist has tagged something on its own initiative. Previously only entries
   from actions you took yourself were linked.
+
+### Fixed
+
+- "Don't download" is now recorded in the user section of `ignores.txt` rather
+  than the section bandcampsync manages automatically. Previously the choice was
+  indistinguishable from an already-downloaded album, and could be lost entirely
+  if it was made while a sync was running.
+- Demo mode no longer writes to your real `ignores.txt` — trying "Don't
+  download" on a demo purchase used to add that fixture to your genuine ignores.
 
 ## [1.1.0] - 2026-07-31
 
