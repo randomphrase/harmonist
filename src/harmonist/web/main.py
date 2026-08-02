@@ -1585,16 +1585,35 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
     sc = sidecar_mod.read(album_path)
     if sc is None or not sc.store_url or sc.mb_release_id:
         return "skipped"  # nothing to resolve, or already resolved
+    # The album's name for the feed's album column. No artist/title is available
+    # on this path — neither MatchCandidate nor BandcampInfo carries one, and
+    # _apply_best_match returns plain strings — so use the directory name, which
+    # is what these messages already displayed and what bandcampsync put on disk.
+    label = album_path.name
     try:
         mbids = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
         if not mbids:
-            activity.record(f"Synced {album_path.name} — no MusicBrainz match yet")
+            # Ids are read back from disk AFTER each mutation below, never from
+            # `sc` above: tagging drops temp_uid for the MBID, so the id captured
+            # before the write is often already dead (#65).
+            activity.record(
+                "Synced — no MusicBrainz match yet",
+                album_id=sidecar_mod.album_id_for(album_path),
+                album_label=label,
+            )
             return "no_match"
         status_str, _ = _apply_best_match(album_path, mbids, cfg, tagger)
+        album_id = sidecar_mod.album_id_for(album_path)
         if status_str == "tagged":
-            activity.info(f"Auto-tagged {album_path.name} from MusicBrainz after sync")
+            activity.info(
+                "Auto-tagged from MusicBrainz after sync", album_id=album_id, album_label=label
+            )
         else:
-            activity.info(f"Synced {album_path.name} — MusicBrainz suggestion to review")
+            activity.info(
+                "Synced — MusicBrainz suggestion to review",
+                album_id=album_id,
+                album_label=label,
+            )
         return status_str
     except Exception as e:
         log.warning("auto-resolve failed for %s: %s", album_path, e)
@@ -1725,7 +1744,15 @@ def _register_routes(app: FastAPI) -> None:
         _link_pending_to_album(album, p)
         _append_ignore(cfg.ignores_file, item_id, f"{p.band} — {p.title}")
         pending_downloads.remove(item_id)
-        activity.record(f"Linked {p.band} — {p.title} → {album.artist} — {album.title}")
+        # This one IS about an on-disk album (unlike the skip/approve entries
+        # above, which concern a purchase with nothing on disk yet), so it links.
+        # Id read back after _link_pending_to_album wrote the sidecar.
+        album_id_now, album_label = _live_album_ref(album)
+        activity.record(
+            f"Linked purchase {p.band} — {p.title}",
+            album_id=album_id_now,
+            album_label=album_label,
+        )
         request.state.skip_rescan = not was_inbox
         return _render_pending_section(request)
 
@@ -2640,12 +2667,9 @@ def _live_album_ref(album: Album) -> tuple[str | None, str]:
     wrote that same file, so it's warm.
     """
     label = f"{album.artist} — {album.title}".strip(" —")
-    try:
-        sc = sidecar_mod.read(album.path)
-    except Exception:
-        sc = None
-    if sc is not None and (sc.mb_release_id or sc.temp_uid):
-        return (sc.mb_release_id or sc.temp_uid), label
+    current = sidecar_mod.album_id_for(album.path)
+    if current is not None:
+        return current, label
     # No sidecar (still NEW, or it was just erased): the registry id the caller
     # already holds is the best available handle, and it IS resolvable.
     return album.id, label

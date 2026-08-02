@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harmonist import activity, live_counts
+from harmonist import activity, live_counts, sidecar
 
 if TYPE_CHECKING:
     from harmonist.models import Album
@@ -266,6 +266,9 @@ def reconcile_pending_orphans(
 
     for album in pending:
         label = f"{album.artist} / {album.title}"
+        # The feed's album column: same "Artist — Title" shape the rest of the
+        # log uses (the status bar keeps `label`'s " / " form).
+        feed_label = f"{album.artist} — {album.title}".strip(" —")
         if status_updater:
             status_updater(current_item=label)
         try:
@@ -292,21 +295,39 @@ def reconcile_pending_orphans(
             # The sidecar adopted the file tags (external Picard re-tag). The new
             # state (Library / Needs Link) settles on the post-reconcile rescan.
             adopted += 1
-            activity.warning(f"{label}: adopted external re-tag — sidecar now {sc.mb_release_id}")
+            # Id read back from disk AFTER reconcile_album wrote the sidecar —
+            # it just moved the album's identity, so a pre-write id is dead (#65).
+            activity.warning(
+                f"Adopted external re-tag — sidecar now {sc.mb_release_id}",
+                album_id=sidecar.album_id_for(album.path),
+                album_label=feed_label,
+            )
         elif sc.mb_release_id and sc.store_url:
             reconciled_bandcamp += 1
             live_counts.move(AlbumState.NEW, AlbumState.NEEDS_SYNC)
-            activity.record(f"{label}: New → Needs Link (reconciled from tags)")
+            activity.record(
+                "New → Needs Link (reconciled from tags)",
+                album_id=sidecar.album_id_for(album.path),
+                album_label=feed_label,
+            )
         elif sc.mb_release_id:
             reconciled_manual += 1
             # → Library; COMPLETE is the proxy bucket (the scan reset splits
             # COMPLETE/INCOMPLETE exactly — only the library *total* matters here).
             live_counts.move(AlbumState.NEW, AlbumState.COMPLETE)
-            activity.record(f"{label}: New → Library (reconciled from tags)")
+            activity.record(
+                "New → Library (reconciled from tags)",
+                album_id=sidecar.album_id_for(album.path),
+                album_label=feed_label,
+            )
         else:
             recovered_url += 1
             live_counts.move(AlbumState.NEW, AlbumState.NEEDS_MBID)
-            activity.record(f"{label}: New → Needs MBID (recovered Bandcamp URL from tags)")
+            activity.record(
+                "New → Needs MBID (recovered Bandcamp URL from tags)",
+                album_id=sidecar.album_id_for(album.path),
+                album_label=feed_label,
+            )
         completed += 1
         _report()
         # No explicit pacing: reconcile_album now derives the store_url from the

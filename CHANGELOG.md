@@ -6,6 +6,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- Activity entries written by a sync or by auto-reconcile now name and link their
+  album too — including "Auto-tagged … after sync", the one worth clicking when
+  Harmonist has tagged something on its own initiative. Previously only entries
+  from actions you took yourself were linked.
+
 ## [1.1.0] - 2026-07-31
 
 ### Added

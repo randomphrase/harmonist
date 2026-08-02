@@ -112,6 +112,24 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
     library_index.upsert(album_dir, sidecar)
 
 
+def album_id_for(album_dir: Path) -> str | None:
+    """The album's canonical id as recorded ON DISK right now, or None if it has
+    no sidecar yet.
+
+    Read this AFTER a mutation, never before: tagging drops the sidecar's
+    `temp_uid` in favour of the MBID, so an id captured beforehand is frequently
+    already dead (#65). Callers that want to tie a log entry to an album need the
+    id that will still resolve afterwards.
+
+    Lives here because identity is the sidecar's business, and callers outside
+    the web layer (the reconcile runner) need it too."""
+    try:
+        sc = read(album_dir)
+    except Exception:
+        return None
+    return None if sc is None else _album_id_of(sc)
+
+
 def _album_id_of(sc: Sidecar) -> str | None:
     """The album's canonical id for this sidecar — mirrors `scanner._album_id`
     (MBID preferred, else temp_uid). `write()` normalises identity before this is

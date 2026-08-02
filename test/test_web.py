@@ -2344,6 +2344,53 @@ def test_deep_link_resolves_through_the_alias_chain_after_a_restart(client, cfg)
     assert 'hx-get="/library/rel-al/detail"' in r.text
 
 
+def test_post_sync_auto_tag_entry_links_to_the_album(cfg, monkeypatch):
+    """#75: the entry a user is most likely to want to click — Harmonist tagged
+    something on its own initiative after a sync — was plain text. The id must be
+    read back AFTER tagging, since that write moves the album's identity."""
+    from harmonist import activity
+    from harmonist.tagger import PicardCompatibleTagger
+    from harmonist.web.main import _resolve_by_store_url
+
+    d = _make_album(cfg, "AutoTagged")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/auto"))
+    monkeypatch.setattr("harmonist.mb_lookup.lookup_by_bandcamp_url", lambda url: ["rel-auto"])
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    activity.clear()
+
+    assert _resolve_by_store_url(d, cfg, PicardCompatibleTagger()) == "tagged"
+
+    entry = next(e for e in activity.recent(10) if "Auto-tagged" in e.message)
+    assert entry.album_label == "AutoTagged"  # the on-disk name, as shown before
+    # Resolves to the id the album has NOW (the MBID), not its pre-tag temp_uid.
+    assert entry.album_id == "rel-auto"
+    assert _id_for(cfg, d) == entry.album_id
+    # The name is no longer duplicated inside the message.
+    assert "AutoTagged" not in entry.message
+
+
+def test_reconcile_entries_link_to_their_album(cfg):
+    """#75: reconcile's 'New -> ...' entries carry the album too, with the same
+    'Artist — Title' column the rest of the feed uses."""
+    from harmonist import activity
+    from harmonist.web.reconcile_runner import reconcile_pending_orphans
+
+    d = _make_album(cfg, "Reconciled", mbid="rel-rec")
+    activity.clear()
+
+    reconcile_pending_orphans(cfg.paths.music_dir, fetch_urls=lambda mbid: [])
+
+    entry = next(e for e in activity.recent(20) if "New →" in e.message)
+    # The recorded id is the one the album actually has after reconcile wrote its
+    # sidecar — i.e. the link resolves, rather than merely being non-empty.
+    assert entry.album_id == _id_for(cfg, d)
+    assert entry.album_label and "Reconciled" in entry.album_label
+    assert "Reconciled" not in entry.message  # not duplicated in the text
+
+
 def test_deep_link_follows_moved_album_id(client, cfg):
     """The id in an old activity row is a snapshot. When a NEW album's registry
     UUID is superseded (a sidecar write giving it an MBID identity), the deep
