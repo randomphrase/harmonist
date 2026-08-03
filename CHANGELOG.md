@@ -9,8 +9,11 @@ versions follow [semantic versioning](https://semver.org).
 ### Added
 
 - Activity entries now carry a "what changed" disclosure showing exactly what
-  Harmonist did underneath — the sidecar rewrites and file moves that action
-  produced. Entries with nothing to show are unchanged.
+  Harmonist did underneath — the tracks it re-tagged, the sidecar rewrites and
+  the file moves that action produced. Entries with nothing to show are unchanged.
+- Tagging and erasing sidecars are now recorded in the audit log. Tagging notes
+  the release and every track it wrote; erasing names each album that lost its
+  sidecar, so the most destructive action in the app leaves a trail.
 
 ## [1.2.0] - 2026-08-02
 

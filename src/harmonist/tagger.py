@@ -16,7 +16,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from . import formats
+from . import audit, formats
+from . import sidecar as sidecar_mod
 from .formats import TagSet
 from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_ALBUM,
@@ -164,9 +165,34 @@ def tag_album(
         cover = None
     media_total = len(release.get("medium-list", [])) or 1
 
+    # Tag writing replaces information in every audio file, so it belongs in the
+    # audit log — it was the one core mutation with no record at all. The album
+    # line is written BEFORE the loop so a crash part-way leaves evidence of what
+    # was attempted, not silence.
+    #
+    # This is deliberately coarse for now: which tracks were rewritten, not which
+    # individual TAGS changed. Per-field before/after diffs (Picard-style) need a
+    # read-compare-write pass that doesn't exist yet — see #86.
+    album_id = sidecar_mod.album_id_for(album_dir)
+    audit.record(
+        "tag.album",
+        album_id=album_id,
+        album=album_dir,
+        release=release.get("id"),
+        tracks=len(pairs),
+        art="embedded" if cover is not None else "preserved",
+        mode="incomplete" if incomplete else "full",
+    )
     for file_path, (medium, track_pos_in_medium, track) in pairs:
         tagset = _build_tagset(release, medium, track_pos_in_medium, track, media_total)
         formats.write_tags(file_path, tagset, cover)
+        audit.record(
+            "tag.track",
+            album_id=album_id,
+            file=file_path.name,
+            track=track_pos_in_medium,
+            title=_track_title(track),
+        )
 
     return len(files)
 

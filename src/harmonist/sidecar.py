@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -55,13 +56,27 @@ def delete_all(music_dir: Path) -> int:
     """
     if not music_dir.exists():
         return 0
+    # The most destructive thing Harmonist does — every album's identity, match
+    # candidate and purchase link goes at once — and it had NO audit record.
+    # One line per sidecar, so the record names exactly which albums lost one;
+    # a bare count would say a nuke happened but not what it took.
     removed = 0
     for p in music_dir.rglob(SIDECAR_FILENAME):
         try:
+            existing = None
+            with suppress(Exception):
+                existing = read(p.parent)
             p.unlink()
             removed += 1
+            audit.record(
+                "sidecar.delete",
+                album_id=None if existing is None else _album_id_of(existing),
+                album=p.parent,
+                mbid=None if existing is None else existing.mb_release_id,
+            )
         except OSError:
             continue
+    audit.record("sidecar.delete_all", music_dir=music_dir, removed=removed)
     library_index.clear()  # the sidecars are gone; the rescan refills the index
     return removed
 

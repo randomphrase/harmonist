@@ -125,6 +125,49 @@ def _atom_strs(audio: MP4, atom: str) -> list[str]:
     return [v.decode("utf-8") for v in audio[atom]]
 
 
+def test_tag_album_writes_audit_records(album_with_tracks, tmp_path):
+    """Tag writing replaces information in every audio file, so the review gate's
+    audit rule covers it — yet it produced no records at all until #86. One album
+    line naming what was attempted, then one per track actually written."""
+    from harmonist import activity_store
+    from harmonist.activity_store import Source
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+
+    rows = [e.message for e in activity_store.recent(50, source=Source.AUDIT)]
+    album_line = next(m for m in rows if m.startswith("tag.album"))
+    assert "release=rel-aaa" in album_line
+    assert "tracks=2" in album_line
+    assert "mode=full" in album_line
+
+    tracks = [m for m in rows if m.startswith("tag.track")]
+    assert len(tracks) == 2
+    assert any("01 Track 1.m4a" in m for m in tracks)
+
+
+def test_tag_album_audits_the_album_line_before_writing(album_with_tracks, tmp_path, monkeypatch):
+    """Recorded BEFORE the loop, per the gate's "before/as it acts": a crash
+    part-way must leave evidence of what was attempted, not silence."""
+    from harmonist import activity_store, formats
+    from harmonist.activity_store import Source
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+
+    def boom(*a, **kw):
+        raise OSError("disk died mid-write")
+
+    monkeypatch.setattr(formats, "write_tags", boom)
+    with pytest.raises(OSError):
+        tagger.tag_album(album_dir, _release_2_tracks())
+
+    rows = [e.message for e in activity_store.recent(50, source=Source.AUDIT)]
+    assert any(m.startswith("tag.album") for m in rows), "no evidence of the attempt"
+    assert not [m for m in rows if m.startswith("tag.track")]  # nothing was written
+
+
 def test_tag_album_writes_all_album_atoms(album_with_tracks):
     album_dir = album_with_tracks(2)
     tagger.tag_album(album_dir, _release_2_tracks())

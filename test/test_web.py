@@ -3138,6 +3138,30 @@ def test_app_attribute_is_memoized(monkeypatch):
     assert len(calls) == 1
 
 
+def test_erase_sidecars_is_audited_per_album(client, cfg):
+    """Erasing sidecars is the most destructive thing Harmonist does — every
+    album's identity, match candidate and purchase link at once — and it had no
+    audit record. One line per sidecar names which albums lost one; a bare count
+    would say a nuke happened but not what it took."""
+    from harmonist import activity_store
+    from harmonist import sidecar as scmod
+    from harmonist.activity_store import Source
+
+    a = _make_album(cfg, "NukedOne")
+    b = _make_album(cfg, "NukedTwo")
+    scmod.write(a, Sidecar(mb_release_id="rel-a"))
+    scmod.write(b, Sidecar(mb_release_id="rel-b"))
+    activity_store.clear()
+
+    assert client.post("/settings/erase-sidecars").status_code == 200
+
+    rows = [e.message for e in activity_store.recent(50, source=Source.AUDIT)]
+    deletes = [m for m in rows if m.startswith("sidecar.delete ")]
+    assert len(deletes) == 2
+    assert any("rel-a" in m for m in deletes) and any("rel-b" in m for m in deletes)
+    assert any(m.startswith("sidecar.delete_all") and "removed=2" in m for m in rows)
+
+
 def test_erase_sidecars_removes_only_sidecars(client, cfg):
     from harmonist import sidecar as scmod
 
