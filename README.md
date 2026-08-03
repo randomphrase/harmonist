@@ -21,7 +21,9 @@ gets mislabeled.
   `.opus`, embedding the MusicBrainz Release ID and cover art.
 - **Library view** of everything done, with an on-demand "verify tagging vs
   MusicBrainz" check.
-- **Activity feed** of recent syncs, matches, and errors.
+- **A full record of every change** — Harmonist never edits your files silently.
+  Each entry in the Activity feed expands to show exactly what it did underneath
+  (see [Nothing happens silently](#nothing-happens-silently)).
 
 The UI is a single page with **Inbox / Library / Activity** tabs, built with
 HTMX — no SPA, no build step at runtime.
@@ -80,6 +82,42 @@ gap you hit makes MusicBrainz better for the next person.
 In short: if you buy music on Bandcamp and want it correctly tagged and dropped
 into Plex or Navidrome without hand-tagging every album, that's the gap
 Harmonist fills.
+
+## Nothing happens silently
+
+Harmonist edits files you care about — it rewrites tags, saves cover art and
+moves downloads into place, often while you're not watching. So every one of
+those changes is recorded, and the record is meant to be *read*, not just kept.
+
+The **Activity feed** shows outcomes in plain language ("Tagged", "Unlinked",
+"Auto-tagged after sync"). Each entry that changed something on disk expands to
+show precisely what:
+
+```
+14:22:07  ●  Boards of Canada — Geogaddi · Tagged     ▸ what changed · 4
+                 tag.album  release=… tracks=12 art=embedded mode=full
+                 tag.track  file="01 Ready Lets Go.m4a" track=1 …
+                 sidecar.update  mbid=None->2f0e…
+                 cover.write  file=cover.jpg source=caa overwrote=False
+```
+
+The properties that make it trustworthy rather than decorative:
+
+- **Durable.** Kept in SQLite in your config dir, so it survives restarts and
+  isn't evicted. Nothing is pruned.
+- **Complete.** Tag writes, sidecar rewrites, file moves and overwrites, cover
+  art, checkpoint clears, surrenders — and erasing sidecars names every album
+  that lost one, because that's the most destructive thing Harmonist can do.
+- **Attributable.** Every record is tied to the action that caused it, so the
+  detail under an entry is *that* action's work, not everything that happened
+  around the same moment.
+- **Still readable later.** Entries keep the album's name as it was, and follow
+  an album across re-identification — so history doesn't rot when a release is
+  re-matched or renamed.
+
+Album names in the feed link straight to the album. A per-album view — one
+album's whole history in one place — is the next step; the record it needs is
+already being kept.
 
 ## Demo
 

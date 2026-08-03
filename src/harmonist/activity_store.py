@@ -308,11 +308,20 @@ def append(
 
 
 def recent(
-    limit: int = 100, *, source: Source | None = None, album_id: str | None = None
+    limit: int = 100,
+    *,
+    source: Source | None = None,
+    album_id: str | None = None,
+    offset: int = 0,
 ) -> list[StoredEvent]:
     """Most-recent-first events, optionally filtered by source and/or album.
     Filtering by `album_id` alone returns that album's whole history — activity
-    AND audit."""
+    AND audit.
+
+    `offset` pages backwards through history. Callers wanting to know whether
+    more exist should ask for `limit + 1` and check the length rather than
+    issuing a COUNT: this table grows without bound and is re-read every couple
+    of seconds, so a full count per page would be the expensive part."""
     q = "SELECT ts, level, source, message, album_id, album_label, action_id FROM events"
     where: list[str] = []
     args: list[object] = []
@@ -324,8 +333,9 @@ def recent(
         args.append(album_id)
     if where:
         q += " WHERE " + " AND ".join(where)
-    q += " ORDER BY id DESC LIMIT ?"
+    q += " ORDER BY id DESC LIMIT ? OFFSET ?"
     args.append(limit)
+    args.append(max(0, offset))
     try:
         conn = _ensure()
         with _LOCK:

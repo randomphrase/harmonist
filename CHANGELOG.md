@@ -19,6 +19,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- The Activity feed can now page back through older history instead of stopping
+  at the most recent entries, and a "Technical detail" toggle shows the raw audit
+  records alongside it.
+
 - Activity entries now carry a "what changed" disclosure showing exactly what
   Harmonist did underneath — the tracks it re-tagged, the sidecar rewrites and
   the file moves that action produced. Entries with nothing to show are unchanged.

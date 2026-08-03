@@ -119,9 +119,14 @@
            text selection is lost. Morphing patches only what actually changed,
            so unchanged rows keep their DOM nodes (#91). The inbox has swapped
            this way since #11; the feed never got the same treatment. #}
+        {# The 2s poll carries the current "technical detail" toggle via hx-vals,
+           so a refresh can't silently revert it, and PAUSES once you've paged
+           (`harmonistFeedPaged`) — a poll replaces the whole container, which
+           would discard the older pages you just loaded (#14). #}
         <div id="activity-feed"
              hx-get="/activity"
-             hx-trigger="load, every 2s[!document.querySelector('#panel-activity')?.classList.contains('hidden')], tasks-changed from:body"
+             hx-vals="js:{audit: window.harmonistShowAudit ? 1 : 0}"
+             hx-trigger="load, every 2s[!document.querySelector('#panel-activity')?.classList.contains('hidden') && !window.harmonistFeedPaged], tasks-changed[!window.harmonistFeedPaged] from:body, refresh-feed from:body"
              hx-swap="morph:innerHTML">
             <div class="text-center py-6 text-muted italic text-sm">Loading activity…</div>
         </div>

@@ -35,6 +35,10 @@ class Event:
     album_label: str | None = None
     # The action that produced this entry — the key its audit detail hangs off (#84).
     action_id: str | None = None
+    # Which sink wrote it. Only meaningful when the caller asked to include audit
+    # rows: the feed renders those differently (technical, monospace) because
+    # they're raw forensics rather than a user-facing outcome.
+    source: Source = Source.ACTIVITY
 
 
 log = logging.getLogger(__name__)
@@ -87,8 +91,16 @@ def error(message: str, *, album_id: str | None = None, album_label: str | None 
     record(message, Level.ERROR, album_id=album_id, album_label=album_label)
 
 
-def recent(limit: int = 100) -> list[Event]:
-    """Most-recent-first list of up to `limit` activity events."""
+def recent(limit: int = 100, *, offset: int = 0, include_audit: bool = False) -> list[Event]:
+    """Most-recent-first list of up to `limit` activity events.
+
+    `include_audit=True` interleaves the raw audit records too. Worth having as
+    an opt-in rather than only inside an entry's "what changed" disclosure:
+    audit rows written OUTSIDE an action scope (the post-sync surrender pass, for
+    instance) have no `action_id`, so no disclosure can ever show them — without
+    this they are reachable from nowhere in the UI.
+    """
+    source = None if include_audit else Source.ACTIVITY
     return [
         Event(
             ts=e.ts,
@@ -97,8 +109,9 @@ def recent(limit: int = 100) -> list[Event]:
             album_id=e.album_id,
             album_label=e.album_label,
             action_id=e.action_id,
+            source=e.source,
         )
-        for e in activity_store.recent(limit, source=Source.ACTIVITY)
+        for e in activity_store.recent(limit, source=source, offset=offset)
     ]
 
 

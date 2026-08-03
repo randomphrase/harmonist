@@ -2986,6 +2986,77 @@ def test_canonical_id_change_mid_transaction(client, cfg, monkeypatch):
 # ---------- activity feed ----------
 
 
+def test_activity_pages_backwards_through_history(client, cfg):
+    """#14: the feed was capped at 100 with no way to reach anything older, so
+    the durable history was accumulating unreachably."""
+    from harmonist import activity
+
+    activity.clear()
+    for i in range(120):
+        activity.record(f"event {i:03d}")
+
+    # Newest first, so page 1 is 119 down to 070.
+    first = client.get("/activity?limit=50").text
+    assert "event 119" in first
+    assert "event 070" in first  # 50th and last on the page
+    assert "event 069" not in first  # page boundary
+    assert "Load older activity" in first
+
+    second = client.get("/activity?offset=50&limit=50").text
+    assert "event 070" not in second  # no overlap with page 1
+    assert "event 069" in second  # continues exactly where page 1 stopped
+    assert "event 020" in second
+    # A later page is an append-only fragment: no list wrapper, no controls.
+    assert "<ul id=" not in second
+    assert "Technical detail" not in second
+
+
+def test_activity_last_page_has_no_load_more(client, cfg):
+    """has_more comes from asking for limit+1, so the final page must not offer
+    another — a COUNT would be wasted work on an unbounded table."""
+    from harmonist import activity
+
+    activity.clear()
+    for i in range(10):
+        activity.record(f"event {i}")
+
+    body = client.get("/activity?limit=50").text
+    assert "Load older activity" not in body
+
+
+def test_activity_audit_toggle_reveals_unscoped_records(client, cfg):
+    """The point of the toggle: audit rows written OUTSIDE an action scope have
+    no action_id, so no entry's "what changed" disclosure can show them. Without
+    this they're reachable from nowhere in the UI."""
+    from harmonist import activity, activity_store, audit
+
+    activity_store.clear()
+    activity.record("a user-facing outcome")
+    audit.record("unscoped.bookkeeping", detail="no action scope")
+
+    plain = client.get("/activity").text
+    assert "a user-facing outcome" in plain
+    assert "unscoped.bookkeeping" not in plain  # invisible by default
+
+    with_audit = client.get("/activity?audit=1").text
+    assert "a user-facing outcome" in with_audit
+    assert "unscoped.bookkeeping" in with_audit
+
+
+def test_activity_audit_toggle_suppresses_duplicate_disclosures(client, cfg):
+    """With audit rows shown inline, an entry's disclosure would repeat the very
+    same records a few lines further down."""
+    from harmonist import activity, activity_store, audit
+
+    activity_store.clear()
+    with activity_store.action():
+        activity.record("Tagged", album_id="rel-1", album_label="An Album")
+        audit.record("sidecar.update", album_id="rel-1", mbid="a->b")
+
+    assert "what changed" in client.get("/activity").text
+    assert "what changed" not in client.get("/activity?audit=1").text
+
+
 def test_activity_empty_state(client):
     r = client.get("/activity")
     assert r.status_code == 200

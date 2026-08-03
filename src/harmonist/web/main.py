@@ -1889,13 +1889,38 @@ def _register_routes(app: FastAPI) -> None:
         return _render_ignored_section(request)
 
     @app.get("/activity", response_class=HTMLResponse)
-    def activity_feed(request: Request) -> Response:
-        events = activity.recent(100)
+    def activity_feed(
+        request: Request, offset: int = 0, limit: int = 50, audit: bool = False
+    ) -> Response:
+        """One page of the Activity feed.
+
+        `audit=1` interleaves the raw audit records. They're opt-in because they
+        are forensics rather than outcomes — but they matter: rows written
+        outside an action scope have no `action_id`, so no "what changed"
+        disclosure can show them, and without this they'd be unreachable.
+        """
+        limit = max(1, min(limit, 200))  # clamp; defensive
+        offset = max(0, offset)
+        # Ask for one MORE than needed: its presence answers "is there another
+        # page?" without a COUNT over a table that grows without bound and is
+        # re-read every couple of seconds.
+        page = activity.recent(limit + 1, offset=offset, include_audit=audit)
+        has_more = len(page) > limit
+        events = page[:limit]
         # The audit records behind each entry, fetched for the whole page in ONE
-        # grouped query (#84) — per-entry lookups would be an N+1 across 100 rows
+        # grouped query (#84) — per-entry lookups would be an N+1 across the page,
         # re-polled every couple of seconds.
         audit_detail = activity_store.audit_by_action([e.action_id for e in events if e.action_id])
-        ctx = _ctx(request, events=events, audit_detail=audit_detail)
+        ctx = _ctx(
+            request,
+            events=events,
+            audit_detail=audit_detail,
+            has_more=has_more,
+            next_offset=(offset + limit) if has_more else None,
+            limit=limit,
+            include_audit=audit,
+            is_first_page=(offset == 0),
+        )
         return _templates(request).TemplateResponse(request, "partials/activity.html", ctx)
 
     @app.get("/about", response_class=HTMLResponse)

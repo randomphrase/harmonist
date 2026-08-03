@@ -1,11 +1,40 @@
-{# Activity feed — most-recent-first list of events. Loaded into the Activity
-   tab; polled/refreshed via HTMX. #}
-{% if not events %}
+{# One page of the Activity feed, most-recent-first.
+
+   Same shape as library_page.html: the FIRST page opens the list and renders the
+   controls; a "Load more" page emits only rows plus a fresh button, which
+   replaces the old button in place — so paging appends instead of re-rendering
+   what you're reading.
+
+   Loaded into the Activity tab and re-polled every 2s. index.html pauses that
+   poll once you've paged or while a request is in flight, because a poll
+   replaces the whole container and would otherwise throw away the pages you
+   loaded. #}
+{% if is_first_page and not events %}
 <div class="p-10 text-center border border-line rounded-lg">
-    <p class="text-muted italic">No activity yet. Sync, tag, or reconcile something and it'll show up here.</p>
+    <p class="text-muted italic">
+        {% if include_audit %}No activity or audit records yet.
+        {% else %}No activity yet. Sync, tag, or reconcile something and it'll show up here.{% endif %}
+    </p>
 </div>
 {% else %}
-<ul class="divide-y divide-line border border-line rounded-lg overflow-hidden">
+
+{% if is_first_page %}
+{# Audit records are opt-in: they're raw forensics, not outcomes. But they're
+   worth being able to see — rows written outside an action scope have no
+   action_id, so no entry's "what changed" disclosure can ever show them. #}
+<div class="flex justify-end mb-2">
+    <button type="button"
+            onclick="window.harmonistShowAudit = !window.harmonistShowAudit; window.harmonistFeedPaged = false; document.body.dispatchEvent(new Event('refresh-feed'));"
+            class="text-2xs uppercase tracking-widest font-bold transition
+                   {% if include_audit %}text-accent{% else %}text-muted hover:text-accent{% endif %}"
+            aria-pressed="{{ 'true' if include_audit else 'false' }}"
+            title="Show the raw audit records alongside activity">
+        {% if include_audit %}✓ {% endif %}Technical detail
+    </button>
+</div>
+<ul id="activity-list" class="divide-y divide-line border border-line rounded-lg overflow-hidden">
+{% endif %}
+
     {% for e in events %}
     {% set detail = audit_detail.get(e.action_id) if (audit_detail and e.action_id) else None %}
     <li class="px-3 py-2 text-sm">
@@ -15,7 +44,8 @@
             {{ e.ts.strftime('%H:%M:%S') }}
         </time>
         <span class="flex-shrink-0 w-1.5 h-1.5 rounded-full
-            {% if e.level == 'error' %}bg-red-500
+            {% if e.source == 'audit' %}bg-line
+            {% elif e.level == 'error' %}bg-red-500
             {% elif e.level == 'warning' %}bg-amber-500
             {% else %}bg-accent{% endif %}"
             aria-hidden="true"></span>
@@ -27,7 +57,8 @@
            deleted; `album_id` only decides whether it's clickable. A real <a href>
            (not hx-get) keeps the deep link shareable and reload-proof. #}
         <span class="min-w-0 break-words
-            {% if e.level == 'error' %}text-red-700
+            {% if e.source == 'audit' %}font-mono text-2xs text-muted
+            {% elif e.level == 'error' %}text-red-700
             {% elif e.level == 'warning' %}text-amber-700
             {% else %}text-ink{% endif %}">
             {% if e.album_label %}{% if e.album_id %}<a
@@ -42,11 +73,13 @@
     {# What this action actually did: the audit records sharing its action_id
        (#84). A native <details> — the platform's own disclosure, no JS. Rendered
        only when there IS detail, so ordinary entries look exactly as before.
+       Suppressed when audit rows are already shown inline, or the same records
+       would appear twice on one screen.
 
        Carries `hmt-group` and a stable id because that's what index.html's
        open-state tracker keys on; without it the feed's 2s re-poll would slam
        an open disclosure shut mid-read. #}
-    {% if detail %}
+    {% if detail and not include_audit %}
     <details id="audit-{{ e.action_id }}" class="hmt-group mt-1 ml-16">
         <summary class="cursor-pointer text-2xs text-muted hover:text-accent select-none">
             what changed <span class="text-muted">· {{ detail|length }}</span>
@@ -60,5 +93,24 @@
     {% endif %}
     </li>
     {% endfor %}
+
+    {% if has_more %}
+    {# Replaces itself with the next page's rows plus a fresh button, so earlier
+       rows are untouched. Sets the paged flag first, which pauses the 2s poll —
+       otherwise the next poll would replace the container and discard the pages
+       just loaded. #}
+    <li id="activity-load-more-{{ next_offset }}" class="px-3 py-2">
+        <button type="button"
+                hx-get="/activity?offset={{ next_offset }}&limit={{ limit }}&audit={{ 1 if include_audit else 0 }}"
+                hx-target="closest li" hx-swap="outerHTML"
+                hx-on::before-request="window.harmonistFeedPaged = true"
+                class="w-full px-4 py-2 bg-surface hover:bg-line text-ink border border-line rounded text-sm font-bold transition">
+            Load older activity
+        </button>
+    </li>
+    {% endif %}
+
+{% if is_first_page %}
 </ul>
+{% endif %}
 {% endif %}

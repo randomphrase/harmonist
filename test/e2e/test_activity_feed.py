@@ -21,6 +21,55 @@ pytestmark = pytest.mark.skipif(
 playwright_sync = pytest.importorskip("playwright.sync_api")
 
 
+def test_loading_older_activity_survives_the_poll(demo_server: str) -> None:
+    """#14: paging and a 2s poll are in direct conflict — the poll replaces the
+    whole container, so without pausing it, the pages you just loaded are
+    discarded a second or two later, mid-read.
+
+    Only observable in a browser: the server has no idea a poll is pending.
+    """
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(demo_server)
+        page.click('[data-tab="activity"]')
+
+        page.wait_for_selector("#activity-feed li")
+
+        # Stand in for appended page content with a sentinel. Deliberately NOT
+        # driven through the Load-more button: how many entries demo happens to
+        # have varies run to run (reset, reconcile and scans all append
+        # asynchronously), so anything asserting on row counts is racy. The
+        # guarantee under test is "a poll doesn't wipe what paging added", and a
+        # sentinel tests exactly that, deterministically.
+        add_sentinel = """
+            const el = document.querySelector('#activity-feed');
+            const li = document.createElement('li');
+            li.id = 'paged-sentinel';
+            el.querySelector('ul').appendChild(li);
+        """
+
+        # CONTROL: with the feed live, a poll SHOULD replace the container and
+        # take the sentinel with it. Without this the test could pass simply
+        # because no poll ever ran.
+        page.evaluate("window.harmonistFeedPaged = false")
+        page.evaluate(add_sentinel)
+        page.wait_for_timeout(4500)
+        assert page.locator("#paged-sentinel").count() == 0, (
+            "no poll fired — the rest of this test would be vacuous"
+        )
+
+        # The real assertion: once paged, the poll is paused and content stays.
+        page.evaluate("window.harmonistFeedPaged = true")
+        page.evaluate(add_sentinel)
+        page.wait_for_timeout(4500)
+        assert page.locator("#paged-sentinel").count() == 1, (
+            "a poll discarded the pages that had been loaded"
+        )
+
+        browser.close()
+
+
 def test_status_pill_is_not_rebuilt_when_unchanged(demo_server: str) -> None:
     """#93: the header status pill must not be re-rendered on every 1.5s poll.
 
