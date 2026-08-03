@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- The Activity tab no longer flickers while it's open. It refreshes every couple
+  of seconds, and was rebuilding the whole list each time; it now updates only
+  what actually changed, so the list stays put and text selection survives.
+
 ### Added
 
 - Activity entries now carry a "what changed" disclosure showing exactly what

@@ -114,10 +114,15 @@
     </div>
 
     <div id="panel-activity" class="hidden">
+        {# morph, not innerHTML: this re-polls every 2s, and a plain swap tears
+           down and rebuilds all 100 rows each time — visible flicker, and any
+           text selection is lost. Morphing patches only what actually changed,
+           so unchanged rows keep their DOM nodes (#91). The inbox has swapped
+           this way since #11; the feed never got the same treatment. #}
         <div id="activity-feed"
              hx-get="/activity"
              hx-trigger="load, every 2s[!document.querySelector('#panel-activity')?.classList.contains('hidden')], tasks-changed from:body"
-             hx-swap="innerHTML">
+             hx-swap="morph:innerHTML">
             <div class="text-center py-6 text-muted italic text-sm">Loading activity…</div>
         </div>
     </div>
