@@ -1365,7 +1365,7 @@ def _read_user_ignores(ignores_file: Path) -> list[dict[str, Any]]:
 
 
 def _remove_user_ignore(ignores_file: Path, item_id: int) -> bool:
-    """Drop one id from the USER region so the next sync offers it again.
+    """Drop one id from the USER region so the next sync considers it again.
     Returns True if a line was removed. Never touches the auto-managed region —
     removing an already-downloaded id there would re-download the album."""
     try:
@@ -1858,7 +1858,10 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post("/ignored/{item_id}/restore", response_class=HTMLResponse)
     def ignored_restore(request: Request, item_id: int) -> Response:
-        """Un-ignore a declined purchase so the next sync offers it again (#19).
+        """Un-ignore a declined purchase so the next sync considers it again (#19).
+
+        "Considers", not "offers": whether it resurfaces as a potential-download
+        card or is fetched outright depends on link-only vs a full sync.
 
         Only ever removes from the USER region — the auto-managed region records
         what is already downloaded, and dropping an id from there would make the
@@ -1869,7 +1872,7 @@ def _register_routes(app: FastAPI) -> None:
         )
         if _remove_user_ignore(cfg.ignores_file, item_id):
             label = entry["label"] if entry else str(item_id)
-            activity.info(f"Restored {label} — it'll be offered again on the next sync")
+            activity.info(f"Restored {label} — the next sync will consider it again")
         # Nothing on disk changed; a rescan here would just flicker the inbox.
         request.state.skip_rescan = True
         return _render_ignored_section(request)

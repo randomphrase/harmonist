@@ -13,9 +13,14 @@
         Won't download
         <span class="text-muted font-normal normal-case tracking-normal ml-1">· {{ ignored|length }}</span>
     </h2>
+    {# Deliberately does NOT promise what the next sync will do with a restored
+       purchase. Whether it becomes a potential-download card or is fetched
+       outright depends on link-only vs a full sync (bandcamp_hook.py) — the
+       earlier copy claimed "it doesn't download anything on its own", which
+       only holds for link-only runs. #}
     <p class="text-2xs text-muted">
-        Purchases you told Harmonist to skip. Restoring one offers it again on the
-        next sync — it doesn't download anything on its own.
+        Purchases you told Harmonist to skip — they're left out of every sync.
+        Restore clears that choice, so the next sync sees the purchase again.
     </p>
     <ul class="divide-y divide-line">
         {% for item in ignored %}
