@@ -577,6 +577,39 @@ def test_surrender_card_renders_readonly_with_tools(client, cfg):
     assert "Look up releases at this URL" not in r.text
 
 
+def test_surrender_is_audited(client, cfg):
+    """#88: a surrender is named in the review gate. Setting the MBID from the
+    candidate was already audited as an identity change, but
+    `purchase_unavailable` — the defining, PERMANENT part of the decision — moved
+    silently. The scanner then treats the album as terminal forever."""
+    from harmonist import activity_store, scanner
+    from harmonist.activity_store import Source
+
+    d = _make_album(cfg, "Surrendered", mbid="rel-sur")
+    sc.write(
+        d,
+        Sidecar(
+            store_url="https://x.bandcamp.com/album/sur",
+            mb_release_id=None,
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-sur",
+                confidence="exact",
+                file_count=1,
+                track_count=1,
+                unmatched_purchase=True,
+            ),
+        ),
+    )
+    a = next(x for x in scanner.scan(cfg.paths.music_dir) if x.path == d)
+    activity_store.clear()
+
+    assert client.post(f"/surrender/{a.id}/keep").status_code == 200
+
+    rows = [e.message for e in activity_store.recent(50, source=Source.AUDIT)]
+    upd = next(m for m in rows if m.startswith("sidecar.update"))
+    assert "purchase_unavailable=False->True" in upd
+
+
 def test_surrender_keep_marks_purchase_unavailable_and_completes(client, cfg):
     """'Move to Library' restores the release id from the surrender candidate, flags
     the purchase unavailable, and the album classifies COMPLETE — and STAYS complete
@@ -4004,7 +4037,7 @@ def test_request_scope_correlates_the_action_with_its_audit_records(client, cfg,
     nothing about requests. This is what the contextvar buys."""
     from harmonist import activity, activity_store
 
-    # Confirm, not re-tag: _audit_identity_change only records when identity
+    # Confirm, not re-tag: _audit_sidecar_change only records when a load-bearing
     # actually moves, so re-tagging to the SAME mbid audits nothing and would
     # make this pass vacuously. Confirming moves temp_uid -> mbid.
     d = _make_album(cfg, "Correlated")

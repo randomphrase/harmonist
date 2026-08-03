@@ -55,6 +55,29 @@ def test_cached_cover_returns_none_when_absent(tmp_path):
     assert cached_cover(tmp_path) is None
 
 
+def test_caa_cover_write_is_audited(tmp_path):
+    """#88: fetching cover art writes into the user's album dir, and can land on
+    a cover.* they put there themselves — a file write like any other, so it's
+    audited. `overwrote` distinguishes creating from replacing."""
+    from harmonist import activity_store
+    from harmonist.activity_store import Source
+
+    activity_store.init(tmp_path / "audit.db")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"imagebytes", headers={"content-type": "image/jpeg"})
+
+    album = tmp_path / "album"
+    album.mkdir()
+    assert ensure_cover(album, "rel-1", client=_client(handler)) == album / "cover.jpg"
+
+    rows = [e.message for e in activity_store.recent(10, source=Source.AUDIT)]
+    line = next(m for m in rows if m.startswith("cover.write"))
+    assert "source=caa" in line
+    assert "overwrote=False" in line  # created, not replaced
+    assert "bytes=10" in line
+
+
 def test_ensure_cover_uses_cache_without_network(tmp_path):
     (tmp_path / "cover.jpg").write_bytes(b"existing")
 

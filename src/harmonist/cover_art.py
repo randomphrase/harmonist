@@ -14,7 +14,7 @@ from pathlib import Path
 
 import httpx
 
-from . import formats
+from . import audit, formats
 
 CAA_BASE = "https://coverartarchive.org"
 DEFAULT_TIMEOUT = 30.0
@@ -71,7 +71,14 @@ def _extract_embedded_cover(album_dir: Path) -> Path | None:
         data, mime = result
         name = "cover.png" if "png" in mime.lower() else "cover.jpg"
         target = album_dir / name
+        # Writing into the user's album dir, and possibly over an existing
+        # cover.* they put there themselves — audited like any other file
+        # overwrite (#88). `overwrote` distinguishes creating from replacing.
+        overwrote = target.exists()
         target.write_bytes(data)
+        audit.record(
+            "cover.write", album=album_dir, file=target.name, source="embedded", overwrote=overwrote
+        )
         log.debug("cover: extracted embedded art from %s -> %s", path.name, target.name)
         return target
     return None
@@ -106,7 +113,17 @@ def _fetch_to_disk(
                 continue
             if resp.is_success:
                 target = album_dir / _filename_for(resp)
+                overwrote = target.exists()
                 target.write_bytes(resp.content)
+                audit.record(
+                    "cover.write",
+                    album=album_dir,
+                    file=target.name,
+                    source="caa",
+                    mbid=mbid,
+                    bytes=len(resp.content),
+                    overwrote=overwrote,
+                )
                 log.debug("CAA: wrote %s (%d bytes)", target, len(resp.content))
                 return target
             raise CoverArtError(f"CAA returned status {resp.status_code} for {url}")

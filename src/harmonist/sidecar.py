@@ -120,7 +120,7 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, target)
-    _audit_identity_change(album_dir, old, sidecar)
+    _audit_sidecar_change(album_dir, old, sidecar)
     _record_identity_alias(old, sidecar)
     # The ONE place the in-memory index learns of a sidecar change (link, demote,
     # tag, download, reconcile all land here) — so sync-time dedup never re-reads.
@@ -176,9 +176,28 @@ def _record_identity_alias(old: Sidecar | None, new: Sidecar) -> None:
         activity_store.record_alias(old_id, new_id)
 
 
-def _audit_identity_change(album_dir: Path, old: Sidecar | None, new: Sidecar) -> None:
-    """Audit a sidecar write that creates a sidecar or changes its load-bearing
-    identity (MBID / Bandcamp item_id / store_url). No-op re-writes don't log.
+def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) -> None:
+    """Audit a sidecar write that creates a sidecar or changes a LOAD-BEARING
+    field. No-op re-writes don't log.
+
+    Load-bearing means "changes what the scanner derives, or records a decision
+    the user can't easily undo":
+
+      * identity — MBID / Bandcamp item_id / store_url
+      * `purchase_unavailable` — a surrender. Permanent: the scanner then treats
+        the album as terminal despite having no purchase link, and no future sync
+        re-surrenders it. Named in the review gate; it moved silently until #88.
+      * `track_count_expected` — splits COMPLETE from INCOMPLETE, so changing it
+        reclassifies the album.
+
+    Deliberately NOT audited, so the narrowness here is a choice rather than an
+    oversight:
+
+      * `mb_match_candidate` — a suggestion, not a decision, and it is rewritten
+        on every Recheck. Auditing it would bury real changes in churn.
+      * `tagged_at` / `added_at` / `downloaded_at` — bookkeeping timestamps; the
+        events they date are audited in their own right (see tagger.tag_album).
+      * `notes` — free text with no derived consequence.
 
     Rows carry the album's id AFTER the write; when the id itself changes (an MBID
     rewrite), the `mbid` field records both sides so the two ids can be linked."""
@@ -204,6 +223,10 @@ def _audit_identity_change(album_dir: Path, old: Sidecar | None, new: Sidecar) -
         changes["item_id"] = f"{old_item}->{new_item}"
     if old.store_url != new.store_url:
         changes["store_url"] = f"{old.store_url}->{new.store_url}"
+    if old.purchase_unavailable != new.purchase_unavailable:
+        changes["purchase_unavailable"] = f"{old.purchase_unavailable}->{new.purchase_unavailable}"
+    if old.track_count_expected != new.track_count_expected:
+        changes["track_count_expected"] = f"{old.track_count_expected}->{new.track_count_expected}"
     if changes:
         audit.record("sidecar.update", album_id=album_id, album=album_dir, **changes)
 

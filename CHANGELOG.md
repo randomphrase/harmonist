@@ -11,6 +11,9 @@ versions follow [semantic versioning](https://semver.org).
 - Activity entries now carry a "what changed" disclosure showing exactly what
   Harmonist did underneath — the tracks it re-tagged, the sidecar rewrites and
   the file moves that action produced. Entries with nothing to show are unchanged.
+- Surrendering an album ("Move to Library" when there's no purchase to link) and
+  saving cover art are now recorded in the audit log, alongside tagging and
+  erasing sidecars.
 - Tagging and erasing sidecars are now recorded in the audit log. Tagging notes
   the release and every track it wrote; erasing names each album that lost its
   sidecar, so the most destructive action in the app leaves a trail.
