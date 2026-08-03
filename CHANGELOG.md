@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-02
+
 ### Upgrading
 
 - **Nothing to do** about `ignores.txt` — existing entries keep working. Choices
