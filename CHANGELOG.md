@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- Activity entries now carry a "what changed" disclosure showing exactly what
+  Harmonist did underneath — the sidecar rewrites and file moves that action
+  produced. Entries with nothing to show are unchanged.
+
 ## [1.2.0] - 2026-08-02
 
 ### Upgrading

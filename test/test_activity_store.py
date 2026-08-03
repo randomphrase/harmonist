@@ -394,3 +394,107 @@ def test_sidecar_create_and_noop_rewrite_record_no_alias(tmp_path):
     assert activity_store.resolve_alias("rel-1") is None
     sc.write(album, Sidecar(mb_release_id="rel-1", notes="changed something else"))
     assert activity_store.resolve_alias("rel-1") is None
+
+
+# ---------- action correlation (#84) ----------
+
+
+def test_migrates_a_v4_database_in_place_keeping_its_rows(tmp_path):
+    """4 -> 5 (action_id): gains the column in place, keeps existing rows, and
+    reads NULL for them — they predate it, so there is nothing to back-fill.
+    Built from a PREFIX of the real _MIGRATIONS so it can't drift from what
+    shipped."""
+    db = tmp_path / "v4.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for step in activity_store._MIGRATIONS[:4]:
+        for stmt in step:
+            conn.execute(stmt)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message, album_id) VALUES (?, ?, ?, ?, ?)",
+        ("2026-07-01T00:00:00+00:00", "info", "activity", "written by v4", "rel-old"),
+    )
+    conn.execute("PRAGMA user_version = 4")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    events = activity_store.recent()
+    assert [e.message for e in events] == ["written by v4"]
+    assert events[0].album_id == "rel-old"  # pre-existing data intact
+    assert events[0].action_id is None
+
+
+def test_action_scope_correlates_activity_with_its_audit_records(tmp_path):
+    """The whole point: one action's activity entry and the audit records
+    underneath it share an id, and unscoped events stay uncorrelated."""
+    from harmonist import audit
+
+    activity_store.init(tmp_path / "a.db")
+    with activity_store.action() as aid:
+        activity.record("Re-tagged", album_id="rel-1")
+        audit.record("sidecar.update", album_id="rel-1", mbid="old->new")
+        audit.record("move", src="/a", dst="/b")
+    activity.record("Unrelated, outside any action")
+
+    detail = activity_store.audit_by_action([aid])
+    # album_id is a structured column, not part of the message (see audit.record).
+    assert [e.message for e in detail[aid]] == [
+        "sidecar.update mbid=old->new",
+        "move src=/a dst=/b",
+    ]
+    assert [e.album_id for e in detail[aid]] == ["rel-1", None]
+    outside = next(e for e in activity_store.recent() if "Unrelated" in e.message)
+    assert outside.action_id is None
+
+
+def test_audit_by_action_groups_and_ignores_activity_rows(tmp_path):
+    """Grouping is by action, and only AUDIT rows come back — the activity entry
+    is the thing being annotated, not part of the annotation."""
+    from harmonist import audit
+
+    activity_store.init(tmp_path / "a.db")
+    with activity_store.action() as a1:
+        activity.record("first")
+        audit.record("one")
+    with activity_store.action() as a2:
+        activity.record("second")
+        audit.record("two")
+
+    got = activity_store.audit_by_action([a1, a2])
+    assert {k: [e.message for e in v] for k, v in got.items()} == {a1: ["one"], a2: ["two"]}
+    assert activity_store.audit_by_action([]) == {}
+
+
+def test_action_scopes_are_isolated_between_threads(tmp_path):
+    """The sync and reconcile runners are plain Threads. They must NOT inherit a
+    request's action id — each opens its own — or a background write would be
+    filed under whatever request happened to be in flight."""
+    import threading
+
+    activity_store.init(tmp_path / "a.db")
+    seen: dict[str, str | None] = {}
+
+    def worker() -> None:
+        seen["inherited"] = activity_store.current_action()
+        with activity_store.action() as own:
+            seen["own"] = own
+
+    with activity_store.action() as outer:
+        t = threading.Thread(target=worker)
+        t.start()
+        t.join()
+
+    assert seen["inherited"] is None  # no leakage into the thread
+    assert seen["own"] != outer  # it minted its own
+
+
+def test_nested_action_scopes_keep_the_outermost_id(tmp_path):
+    """A helper that opens its own scope inside a request must not fragment that
+    request's records across two ids."""
+    activity_store.init(tmp_path / "a.db")
+    with activity_store.action() as outer:
+        with activity_store.action() as inner:
+            assert inner == outer
+        assert activity_store.current_action() == outer
+    assert activity_store.current_action() is None

@@ -24,7 +24,15 @@ import bandcampsync.sync as _bcsync
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
-from . import activity, audit, formats, id_registry, library_index, pending_downloads
+from . import (
+    activity,
+    activity_store,
+    audit,
+    formats,
+    id_registry,
+    library_index,
+    pending_downloads,
+)
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url, title_words, titles_match
 from .pending_downloads import PendingPurchase
@@ -799,7 +807,9 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         """Invoke the post-download hook (MB auto-resolve). Never aborts sync."""
         if self._post_download_callback is None:
             return
-        with contextlib.suppress(Exception):
+        # One action scope PER ITEM, not per sync run (#84): a sync that fetches
+        # ten albums must yield ten separately revertible actions, not one blob.
+        with contextlib.suppress(Exception), activity_store.action():
             self._post_download_callback(album_dir)
 
     def unmatched_purchases(self) -> list[tuple[int, str, str]]:

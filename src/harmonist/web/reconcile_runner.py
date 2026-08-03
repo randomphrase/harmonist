@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harmonist import activity, live_counts, sidecar
+from harmonist import activity, activity_store, live_counts, sidecar
 
 if TYPE_CHECKING:
     from harmonist.models import Album
@@ -265,71 +265,77 @@ def reconcile_pending_orphans(
     )
 
     for album in pending:
-        label = f"{album.artist} / {album.title}"
-        # The feed's album column: same "Artist — Title" shape the rest of the
-        # log uses (the status bar keeps `label`'s " / " form).
-        feed_label = f"{album.artist} — {album.title}".strip(" —")
-        if status_updater:
-            status_updater(current_item=label)
-        try:
-            sc = reconcile.reconcile_album(album.path, fetch_urls=fetch_urls, recover_url=recover)
-        except Exception as e:
-            log.warning("Reconcile failed for %s: %s", label, e)
-            errors += 1
+        # One action scope per ALBUM (#84): reconcile writes a sidecar and an
+        # activity entry for each, so each is separately revertible. A run-wide
+        # scope would lump every album's audit records under a single id.
+        with activity_store.action():
+            label = f"{album.artist} / {album.title}"
+            # The feed's album column: same "Artist — Title" shape the rest of the
+            # log uses (the status bar keeps `label`'s " / " form).
+            feed_label = f"{album.artist} — {album.title}".strip(" —")
+            if status_updater:
+                status_updater(current_item=label)
+            try:
+                sc = reconcile.reconcile_album(
+                    album.path, fetch_urls=fetch_urls, recover_url=recover
+                )
+            except Exception as e:
+                log.warning("Reconcile failed for %s: %s", label, e)
+                errors += 1
+                _report()
+                continue
+            # Record the resulting transition in the Activity feed (and server log).
+            # Reconcile writes a sidecar; the scanner derives the state, but we know
+            # the outcome here from the sidecar shape:
+            #   MBID + store_url  → Needs Link   (tagged Bandcamp album)
+            #   MBID, no store_url→ Library      (tagged, non-Bandcamp)
+            #   store_url, no MBID→ Needs MBID   (recovered URL on an untagged album)
+            #   None              → stays New    (nothing to reconcile)
+            if sc is None:
+                skipped += 1
+                # Nothing to do (no MBID, no recoverable URL). Kept out of the feed —
+                # it floods on a large untagged library; the status bar shows each
+                # album as it's checked, and the closing summary reports the count.
+                log.debug("%s: nothing to reconcile (no MBID or Bandcamp URL)", label)
+            elif album.state == AlbumState.TAGGING:
+                # The sidecar adopted the file tags (external Picard re-tag). The new
+                # state (Library / Needs Link) settles on the post-reconcile rescan.
+                adopted += 1
+                # Id read back from disk AFTER reconcile_album wrote the sidecar —
+                # it just moved the album's identity, so a pre-write id is dead (#65).
+                activity.warning(
+                    f"Adopted external re-tag — sidecar now {sc.mb_release_id}",
+                    album_id=sidecar.album_id_for(album.path),
+                    album_label=feed_label,
+                )
+            elif sc.mb_release_id and sc.store_url:
+                reconciled_bandcamp += 1
+                live_counts.move(AlbumState.NEW, AlbumState.NEEDS_SYNC)
+                activity.record(
+                    "New → Needs Link (reconciled from tags)",
+                    album_id=sidecar.album_id_for(album.path),
+                    album_label=feed_label,
+                )
+            elif sc.mb_release_id:
+                reconciled_manual += 1
+                # → Library; COMPLETE is the proxy bucket (the scan reset splits
+                # COMPLETE/INCOMPLETE exactly — only the library *total* matters here).
+                live_counts.move(AlbumState.NEW, AlbumState.COMPLETE)
+                activity.record(
+                    "New → Library (reconciled from tags)",
+                    album_id=sidecar.album_id_for(album.path),
+                    album_label=feed_label,
+                )
+            else:
+                recovered_url += 1
+                live_counts.move(AlbumState.NEW, AlbumState.NEEDS_MBID)
+                activity.record(
+                    "New → Needs MBID (recovered Bandcamp URL from tags)",
+                    album_id=sidecar.album_id_for(album.path),
+                    album_label=feed_label,
+                )
+            completed += 1
             _report()
-            continue
-        # Record the resulting transition in the Activity feed (and server log).
-        # Reconcile writes a sidecar; the scanner derives the state, but we know
-        # the outcome here from the sidecar shape:
-        #   MBID + store_url  → Needs Link   (tagged Bandcamp album)
-        #   MBID, no store_url→ Library      (tagged, non-Bandcamp)
-        #   store_url, no MBID→ Needs MBID   (recovered URL on an untagged album)
-        #   None              → stays New    (nothing to reconcile)
-        if sc is None:
-            skipped += 1
-            # Nothing to do (no MBID, no recoverable URL). Kept out of the feed —
-            # it floods on a large untagged library; the status bar shows each
-            # album as it's checked, and the closing summary reports the count.
-            log.debug("%s: nothing to reconcile (no MBID or Bandcamp URL)", label)
-        elif album.state == AlbumState.TAGGING:
-            # The sidecar adopted the file tags (external Picard re-tag). The new
-            # state (Library / Needs Link) settles on the post-reconcile rescan.
-            adopted += 1
-            # Id read back from disk AFTER reconcile_album wrote the sidecar —
-            # it just moved the album's identity, so a pre-write id is dead (#65).
-            activity.warning(
-                f"Adopted external re-tag — sidecar now {sc.mb_release_id}",
-                album_id=sidecar.album_id_for(album.path),
-                album_label=feed_label,
-            )
-        elif sc.mb_release_id and sc.store_url:
-            reconciled_bandcamp += 1
-            live_counts.move(AlbumState.NEW, AlbumState.NEEDS_SYNC)
-            activity.record(
-                "New → Needs Link (reconciled from tags)",
-                album_id=sidecar.album_id_for(album.path),
-                album_label=feed_label,
-            )
-        elif sc.mb_release_id:
-            reconciled_manual += 1
-            # → Library; COMPLETE is the proxy bucket (the scan reset splits
-            # COMPLETE/INCOMPLETE exactly — only the library *total* matters here).
-            live_counts.move(AlbumState.NEW, AlbumState.COMPLETE)
-            activity.record(
-                "New → Library (reconciled from tags)",
-                album_id=sidecar.album_id_for(album.path),
-                album_label=feed_label,
-            )
-        else:
-            recovered_url += 1
-            live_counts.move(AlbumState.NEW, AlbumState.NEEDS_MBID)
-            activity.record(
-                "New → Needs MBID (recovered Bandcamp URL from tags)",
-                album_id=sidecar.album_id_for(album.path),
-                album_label=feed_label,
-            )
-        completed += 1
-        _report()
         # No explicit pacing: reconcile_album now derives the store_url from the
         # embedded ©cmt URL (no network) for the common case, and the rare MB
         # url-rel lookups are already paced to 1/sec by musicbrainzngs's built-in

@@ -7,7 +7,9 @@
 {% else %}
 <ul class="divide-y divide-line border border-line rounded-lg overflow-hidden">
     {% for e in events %}
-    <li class="flex items-center gap-3 px-3 py-2 text-sm">
+    {% set detail = audit_detail.get(e.action_id) if (audit_detail and e.action_id) else None %}
+    <li class="px-3 py-2 text-sm">
+    <div class="flex items-center gap-3">
         <time class="flex-shrink-0 font-mono text-2xs text-muted tabular-nums self-center"
               title="{{ e.ts.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
             {{ e.ts.strftime('%H:%M:%S') }}
@@ -36,6 +38,26 @@
             <span class="text-muted px-0.5" aria-hidden="true">·</span>
             {% endif %}{{ e.message }}
         </span>
+    </div>
+    {# What this action actually did: the audit records sharing its action_id
+       (#84). A native <details> — the platform's own disclosure, no JS. Rendered
+       only when there IS detail, so ordinary entries look exactly as before.
+
+       Carries `hmt-group` and a stable id because that's what index.html's
+       open-state tracker keys on; without it the feed's 2s re-poll would slam
+       an open disclosure shut mid-read. #}
+    {% if detail %}
+    <details id="audit-{{ e.action_id }}" class="hmt-group mt-1 ml-16">
+        <summary class="cursor-pointer text-2xs text-muted hover:text-accent select-none">
+            what changed <span class="text-muted">· {{ detail|length }}</span>
+        </summary>
+        <ul class="mt-1 space-y-0.5 border-l border-line pl-3">
+            {% for a in detail %}
+            <li class="font-mono text-2xs text-muted break-all">{{ a.message }}</li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
     </li>
     {% endfor %}
 </ul>

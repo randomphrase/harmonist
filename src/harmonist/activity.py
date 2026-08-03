@@ -33,6 +33,8 @@ class Event:
     # The album's human name, frozen when the event was written. Rendered as the
     # entry's album column; `album_id` only decides whether it's a link.
     album_label: str | None = None
+    # The action that produced this entry — the key its audit detail hangs off (#84).
+    action_id: str | None = None
 
 
 log = logging.getLogger(__name__)
@@ -94,6 +96,7 @@ def recent(limit: int = 100) -> list[Event]:
             message=e.message,
             album_id=e.album_id,
             album_label=e.album_label,
+            action_id=e.action_id,
         )
         for e in activity_store.recent(limit, source=Source.ACTIVITY)
     ]

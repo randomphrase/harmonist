@@ -3964,3 +3964,75 @@ def test_ignore_already_in_the_auto_region_is_a_noop(client, cfg):
     assert cfg.ignores_file.read_text().count("2222") == 1
     # Not promoted into the user region either.
     assert [i["item_id"] for i in _read_user_ignores(cfg.ignores_file)] == [1111]
+
+
+# ---------- action correlation coverage (#84) ----------
+#
+# The mechanism is unit-tested in test_activity_store.py. The risk here is
+# COVERAGE: an audit.record() outside any scope silently gets NULL, so each
+# entry point that opens a scope needs one test proving it actually does.
+
+
+def test_request_scope_correlates_the_action_with_its_audit_records(client, cfg, monkeypatch):
+    """A state-changing request opens one scope, so the activity entry the
+    handler writes and the sidecar audit beneath it share an action_id — even
+    though audit.record() is called from deep inside sidecar.write(), which knows
+    nothing about requests. This is what the contextvar buys."""
+    from harmonist import activity, activity_store
+
+    # Confirm, not re-tag: _audit_identity_change only records when identity
+    # actually moves, so re-tagging to the SAME mbid audits nothing and would
+    # make this pass vacuously. Confirming moves temp_uid -> mbid.
+    d = _make_album(cfg, "Correlated")
+    sc.write(
+        d,
+        Sidecar(
+            store_url="https://x.bandcamp.com/album/corr",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-corr", confidence="exact", file_count=1, track_count=1
+            ),
+        ),
+    )
+    aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    activity.clear()
+
+    assert client.post(f"/confirm/{aid}").status_code == 200
+
+    entry = next(e for e in activity.recent(10) if "Tagged" in e.message)
+    assert entry.action_id, "the request opened no action scope"
+    detail = activity_store.audit_by_action([entry.action_id])
+    assert detail.get(entry.action_id), "no audit records correlated to the action"
+
+
+def test_get_requests_open_no_action_scope(client, cfg):
+    """GETs mutate nothing, so they shouldn't mint an id — an action id that
+    correlates nothing is noise in the column."""
+    from harmonist import activity, activity_store
+
+    _make_album(cfg, "Idle")
+    activity.clear()
+    client.get("/tasks")
+    activity.record("written during no action")
+
+    assert activity_store.recent()[0].action_id is None
+
+
+def test_reconcile_gives_each_album_its_own_action(cfg):
+    """Per album, not per run: reconcile writes a sidecar and an activity entry
+    for each, so each must be separately revertible."""
+    from harmonist import activity
+    from harmonist.web.reconcile_runner import reconcile_pending_orphans
+
+    _make_album(cfg, "OrphanOne", mbid="rel-one")
+    _make_album(cfg, "OrphanTwo", mbid="rel-two")
+    activity.clear()
+
+    reconcile_pending_orphans(cfg.paths.music_dir, fetch_urls=lambda mbid: [])
+
+    ids = {e.action_id for e in activity.recent(20) if "New →" in e.message}
+    assert len(ids) == 2, "the two albums should not share one action id"
+    assert None not in ids

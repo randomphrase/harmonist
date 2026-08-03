@@ -459,7 +459,18 @@ def create_app(
 
     @app.middleware("http")
     async def _rescan_after_mutation(request: Request, call_next: Any) -> Response:
-        response: Response = await call_next(request)
+        # One action scope per state-changing request, so the activity entry the
+        # handler writes and every audit record beneath it share an action_id
+        # (#84). Opened HERE, before call_next, because the id must be in scope
+        # while the handler runs — Starlette copies the context into its
+        # threadpool, so a sync `def` handler sees it without any plumbing.
+        # GETs are excluded: they mutate nothing, so they produce no audit rows.
+        response: Response
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            with activity_store.action():
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
         # A state-changing request likely touched the library (tag, forget,
         # confirm, erase…). Trigger a background re-scan; the per-album mtime
         # cache keeps it cheap, and request_scan() is a no-op until engaged.
@@ -1879,7 +1890,12 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/activity", response_class=HTMLResponse)
     def activity_feed(request: Request) -> Response:
-        ctx = _ctx(request, events=activity.recent(100))
+        events = activity.recent(100)
+        # The audit records behind each entry, fetched for the whole page in ONE
+        # grouped query (#84) — per-entry lookups would be an N+1 across 100 rows
+        # re-polled every couple of seconds.
+        audit_detail = activity_store.audit_by_action([e.action_id for e in events if e.action_id])
+        ctx = _ctx(request, events=events, audit_detail=audit_detail)
         return _templates(request).TemplateResponse(request, "partials/activity.html", ctx)
 
     @app.get("/about", response_class=HTMLResponse)

@@ -19,9 +19,13 @@ ephemeral, exactly like the old ring buffer.
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import sqlite3
 import threading
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -104,9 +108,63 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         )""",
         "CREATE INDEX idx_album_aliases_new_id ON album_aliases (new_id)",
     ),
+    # 4 -> 5: correlation id tying one user-visible ACTION to every row it
+    # produced — the activity entry AND the audit records underneath it (#84).
+    # album_id (migration 1->2) joins at album granularity, which answers "what
+    # happened to this album?" but not "what did THIS action do?" — the finer
+    # question Revert (#32) must answer, since reverting the wrong change is
+    # worse than not offering it. Nullable: bookkeeping outside any action
+    # scope, and every row written before this migration, have none.
+    (
+        "ALTER TABLE events ADD COLUMN action_id TEXT",
+        "CREATE INDEX idx_events_action_id ON events (action_id, id)",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
+
+
+# The action currently in scope, if any. A ContextVar rather than a parameter
+# because audit.record() is called from deep inside sidecar.py / bandcamp_hook.py,
+# far from anything that knows which user action is running — threading an id
+# through those signatures would touch every layer in between.
+#
+# Thread semantics are exactly what's wanted here, and are load-bearing:
+#   * Starlette copies the context into its threadpool, so a scope opened in HTTP
+#     middleware IS visible to a sync route handler.
+#   * A plain threading.Thread does NOT inherit it, so the sync/reconcile runners
+#     can't pick up a stale request's id. They open their own scope.
+_current_action: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "harmonist_action_id", default=None
+)
+
+
+@contextmanager
+def action() -> Iterator[str]:
+    """Scope one user-visible action: every event appended inside it — the
+    activity entry AND the audit records underneath — shares one `action_id`.
+
+    Scope per OUTCOME, not per run: a sync downloading ten albums should open ten
+    scopes, so each is separately revertible (#32), not one blob covering all ten.
+
+    Nesting keeps the outermost id, so a helper that opens its own scope inside a
+    request doesn't fragment that request's records.
+    """
+    existing = _current_action.get()
+    if existing is not None:
+        yield existing
+        return
+    action_id = uuid.uuid4().hex
+    token = _current_action.set(action_id)
+    try:
+        yield action_id
+    finally:
+        _current_action.reset(token)
+
+
+def current_action() -> str | None:
+    """The action id in scope, or None outside one."""
+    return _current_action.get()
 
 
 @dataclass(frozen=True)
@@ -119,6 +177,9 @@ class StoredEvent:
     # Display label for `album_id`'s album, frozen at write time (#65) — ids move,
     # so this is what keeps an old entry readable after its link goes stale.
     album_label: str | None = None
+    # The action that produced this row — shared with every other row from the
+    # same user-visible outcome (#84). None outside an action scope.
+    action_id: str | None = None
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -228,9 +289,18 @@ def append(
         conn = _ensure()
         with _LOCK:
             conn.execute(
-                "INSERT INTO events (ts, level, source, message, album_id, album_label) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (ts, level.value, source.value, message, album_id, album_label),
+                "INSERT INTO events "
+                "(ts, level, source, message, album_id, album_label, action_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    ts,
+                    level.value,
+                    source.value,
+                    message,
+                    album_id,
+                    album_label,
+                    _current_action.get(),
+                ),
             )
             conn.commit()
     except sqlite3.Error:
@@ -243,7 +313,7 @@ def recent(
     """Most-recent-first events, optionally filtered by source and/or album.
     Filtering by `album_id` alone returns that album's whole history — activity
     AND audit."""
-    q = "SELECT ts, level, source, message, album_id, album_label FROM events"
+    q = "SELECT ts, level, source, message, album_id, album_label, action_id FROM events"
     where: list[str] = []
     args: list[object] = []
     if source is not None:
@@ -270,9 +340,47 @@ def recent(
             message=msg,
             album_id=aid,
             album_label=label,
+            action_id=act,
         )
-        for ts, level, src, msg, aid, label in rows
+        for ts, level, src, msg, aid, label, act in rows
     ]
+
+
+def audit_by_action(action_ids: list[str]) -> dict[str, list[StoredEvent]]:
+    """Audit rows for each of `action_ids`, grouped — the "what changed" detail
+    under an activity entry (#84).
+
+    Takes a LIST and returns the whole grouping in ONE query: the feed renders up
+    to 100 entries and re-polls every couple of seconds, so a per-entry lookup
+    would be an N+1 against a table that grows without bound.
+    """
+    if not action_ids:
+        return {}
+    placeholders = ",".join("?" * len(action_ids))
+    q = (
+        "SELECT ts, level, source, message, album_id, album_label, action_id "
+        f"FROM events WHERE source = ? AND action_id IN ({placeholders}) ORDER BY id"
+    )
+    try:
+        conn = _ensure()
+        with _LOCK:
+            rows = conn.execute(q, [Source.AUDIT.value, *action_ids]).fetchall()
+    except sqlite3.Error:
+        return {}
+    out: dict[str, list[StoredEvent]] = {}
+    for ts, level, src, msg, aid, label, act in rows:
+        out.setdefault(act, []).append(
+            StoredEvent(
+                ts=datetime.fromisoformat(ts),
+                level=Level(level),
+                source=Source(src),
+                message=msg,
+                album_id=aid,
+                album_label=label,
+                action_id=act,
+            )
+        )
+    return out
 
 
 def record_alias(old_id: str, new_id: str) -> None:
