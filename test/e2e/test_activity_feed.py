@@ -21,6 +21,41 @@ pytestmark = pytest.mark.skipif(
 playwright_sync = pytest.importorskip("playwright.sync_api")
 
 
+def test_status_pill_is_not_rebuilt_when_unchanged(demo_server: str) -> None:
+    """#93: the header status pill must not be re-rendered on every 1.5s poll.
+
+    `renderStatus()` assigned innerHTML unconditionally, which destroys and
+    rebuilds the children even when the markup is byte-identical — 40 rebuilds a
+    minute for as long as any message shows, and `latestActionMessage` persists
+    after any action. Same node-identity check as the feed test below, for the
+    same reason: the rendered HTML is identical either way.
+    """
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(demo_server)
+
+        # Fire the event the action routes emit, so a pill exists to watch.
+        page.evaluate(
+            "document.body.dispatchEvent(new CustomEvent('harmonist-status',"
+            "{detail:{verb:'Probe', details:'holding steady', level:'info'}}))"
+        )
+        pill = page.locator("#harmonist-status > *").first
+        pill.wait_for(state="attached")
+        page.evaluate(
+            "window.__pill = document.querySelector('#harmonist-status').firstElementChild"
+        )
+
+        page.wait_for_timeout(3500)  # more than two 1.5s status polls
+
+        same_node = page.evaluate(
+            "document.querySelector('#harmonist-status').firstElementChild === window.__pill"
+        )
+        assert same_node, "the status pill was rebuilt despite unchanged content"
+
+        browser.close()
+
+
 def test_feed_poll_patches_the_dom_instead_of_rebuilding_it(demo_server: str) -> None:
     """#91: the 2s re-poll must morph, not replace.
 

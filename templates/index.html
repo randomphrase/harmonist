@@ -198,14 +198,22 @@ document.addEventListener('DOMContentLoaded', function () {
         document.body.dispatchEvent(new Event('library-refresh'));
     }
 
+    // Last string actually written, so an unchanged status isn't re-rendered.
+    // This runs from the 1.5s /status poll, and assigning innerHTML destroys and
+    // rebuilds the children even when the markup is byte-identical — which flickers
+    // the pill 40 times a minute for as long as any message is showing, and
+    // `latestActionMessage` persists after any action (#93). Same family as #91;
+    // here the fix is simply not to write, which is cheaper and exact — morphing
+    // would be overkill for one small fragment.
+    let lastStatusHtml = null;
+
     function renderStatus() {
         const el = document.getElementById(STATUS_EL_ID);
         if (!el) return;
-        if (syncDisplay) { el.innerHTML = syncDisplay; return; }
-        if (reconcileDisplay) { el.innerHTML = reconcileDisplay; return; }
-        if (scanDisplay) { el.innerHTML = scanDisplay; return; }
-        if (latestActionMessage) { el.innerHTML = latestActionMessage; return; }
-        el.innerHTML = '';
+        const html = syncDisplay || reconcileDisplay || scanDisplay || latestActionMessage || '';
+        if (html === lastStatusHtml) return;
+        lastStatusHtml = html;
+        el.innerHTML = html;
     }
 
     // Preserve <details> group open-state across inbox re-swaps. A rescan (e.g.
@@ -313,8 +321,15 @@ document.addEventListener('DOMContentLoaded', function () {
         if (data.counts) {
             const ib = document.getElementById('inbox-count');
             const lb = document.getElementById('library-count');
-            if (ib) ib.textContent = data.counts.inbox;
-            if (lb) lb.textContent = data.counts.library;
+            // Only write when the number actually changed — assigning textContent
+            // replaces the text node even when the value is identical, and this
+            // runs every 1.5s (#93).
+            if (ib && ib.textContent !== String(data.counts.inbox)) {
+                ib.textContent = data.counts.inbox;
+            }
+            if (lb && lb.textContent !== String(data.counts.library)) {
+                lb.textContent = data.counts.library;
+            }
             // Link-only default derives from the live inbox (see the popover block).
             const cb = document.getElementById('sync-link-only');
             if (cb && !syncLinkOnlyTouched) {
