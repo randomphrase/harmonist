@@ -8,6 +8,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Demo mode no longer claims an album has no matching Bandcamp purchase before
+  you've run a sync — that verdict is now reached by the sync, as it is on a real
+  install.
 - The header status message no longer flickers — it was being re-rendered every
   1.5 seconds even when the text hadn't changed.
 - The Activity tab no longer flickers while it's open. It refreshes every couple

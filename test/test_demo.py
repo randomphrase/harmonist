@@ -286,6 +286,44 @@ def test_demo_confirm_tags_album_end_to_end(demo_client):
     assert "Gimme Some Money" not in tasks_after
 
 
+def test_withdrawn_album_is_not_surrendered_before_the_first_sync(music_dir):
+    """#87: "no matching Bandcamp purchase" is a conclusion the sync REACHES by
+    paging the whole collection. Seeding it pre-surrendered showed a fresh demo
+    install a verdict Harmonist hadn't worked out yet.
+
+    Before a sync it's an ordinary tagged-but-unlinked album; the surrender is
+    then earned by the real post-sync pass, not faked at seed time."""
+    from harmonist.web.main import _report_unmatched_after_sync
+
+    demo.install()
+    demo.seed(music_dir)
+
+    def barry():
+        return next(a for a in scanner.scan(music_dir) if "Withdrawn" in a.title)
+
+    before = barry()
+    assert before.state == AlbumState.NEEDS_SYNC
+    assert before.sidecar is not None
+    assert before.sidecar.mb_match_candidate is None  # no verdict yet
+
+    cfg = Config(
+        paths=PathsConfig(config_dir=music_dir.parent / "config", music_dir=music_dir),
+        bandcamp=BandcampConfig(),
+        server=ServerConfig(),
+        test=TestConfig(mode="fixture"),
+    )
+    demo.run_demo_sync(music_dir, link_only=True)
+    # Demo's result stub has no collection_checkpoint_token, so the runner treats
+    # every demo sync as full — the condition that makes surrendering conclusive.
+    _report_unmatched_after_sync(cfg, full_sync=True, albums=scanner.scan(music_dir))
+
+    after = barry()
+    assert after.state == AlbumState.NEEDS_MBID
+    assert after.sidecar is not None
+    assert after.sidecar.mb_match_candidate is not None
+    assert after.sidecar.mb_match_candidate.unmatched_purchase is True
+
+
 def test_demo_auto_resets_on_version_change(music_dir, monkeypatch):
     """A demo dir seeded against an older dataset should auto-reset."""
     demo.seed(music_dir)

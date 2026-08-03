@@ -150,12 +150,21 @@ LIBRARY: list[dict[str, Any]] = [
         },
     },
     {
-        # State: NEEDS_MBID via SURRENDER — a sync couldn't match this owned
-        # purchase (withdrawn from Bandcamp), so it was dropped back with a
-        # read-only "couldn't link" candidate. Its store_url is deliberately NOT a
-        # known purchase, so a sync never re-links it. "Move to Library"
-        # (surrender_keep) accepts it as a terminal Library album — the action that
-        # must resolve without an inbox flicker (#11).
+        # State: NEEDS_SYNC before the first sync, then NEEDS_MBID via SURRENDER
+        # after it. Seeded as an ordinary tagged-but-unlinked album, NOT
+        # pre-surrendered (#87): "no matching Bandcamp purchase" is a conclusion a
+        # sync reaches by paging the whole collection, so asserting it on a fresh
+        # install told the user something Harmonist hadn't worked out yet.
+        #
+        # The surrender is EARNED by the real post-sync pass, not faked here: its
+        # store_url is deliberately not a known purchase, so the sync can't link
+        # it, and `_report_unmatched_after_sync` demotes it with the read-only
+        # "couldn't link" candidate. (Demo's result stub has no
+        # collection_checkpoint_token, so every demo sync counts as full — which
+        # is the condition that makes surrendering conclusive.)
+        #
+        # "Move to Library" (surrender_keep) then accepts it as a terminal Library
+        # album — the action that must resolve without an inbox flicker (#11).
         "artist": "Barry Jive and the Uptown Five",
         "album": "Withdrawn from Sale",
         "tracks": ["No Longer Listed", "Gone from the Store", "Yours to Keep"],
@@ -164,7 +173,8 @@ LIBRARY: list[dict[str, Any]] = [
         "sidecar": {
             "store_url": "https://barryjive.bandcamp.com/album/withdrawn-from-sale",
             "bandcamp_item_id": None,
-            "surrender": {"mb_release_id": "demo-rel-barryjive"},
+            "mb_release_id": "demo-rel-barryjive",
+            "tagged": True,
         },
     },
     {
@@ -940,30 +950,11 @@ def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidec
             mistag_release_group_mbid=mistag["release_group_mbid"],
         )
 
-    # A surrendered purchase: a sync couldn't match this owned album to any
-    # purchase (e.g. withdrawn from Bandcamp), so it was dropped back to NEEDS_MBID
-    # with a read-only "couldn't link" candidate. "Move to Library" accepts it as a
-    # terminal Library album (surrender_keep).
-    if surrender := sc_spec.get("surrender"):
-        candidate = MatchCandidate(
-            mb_release_id=surrender["mb_release_id"],
-            confidence="exact",
-            file_count=len(album_spec["tracks"]),
-            track_count=len(album_spec["tracks"]),
-            track_comparisons=[
-                TrackComparison(
-                    file_name=f"{i:02d} {_safe(t)}.m4a",
-                    file_duration_ms=1000,
-                    file_title=t,
-                    mb_track_title=t,
-                    mb_track_length_ms=1000,
-                    delta_ms=0,
-                )
-                for i, t in enumerate(album_spec["tracks"], start=1)
-            ],
-            proposed_at=now,
-            unmatched_purchase=True,
-        )
+    # NOTE: there is deliberately no way to seed a pre-surrendered album (#87).
+    # A surrender is a conclusion the sync reaches by paging the whole collection
+    # and finding no matching purchase, so faking it at seed time showed the user
+    # a verdict Harmonist hadn't reached. The Barry Jive fixture is seeded as an
+    # ordinary unlinked album and surrendered by the real post-sync pass instead.
 
     tagged_at = now if sc_spec.get("tagged") else None
 
