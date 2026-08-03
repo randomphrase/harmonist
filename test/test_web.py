@@ -3931,3 +3931,36 @@ def test_demo_mode_sandboxes_the_ignores_file(monkeypatch, tmp_path):
     assert cfg.demo_mode
     assert cfg.paths.config_dir not in cfg.ignores_file.parents
     assert cfg.ignores_file.parent == cfg.paths.music_dir  # the demo sandbox
+
+
+def test_ignore_is_not_written_twice(client, cfg):
+    """#79: re-deciding the same purchase must not append a duplicate. Ours was
+    the only unguarded writer — bandcampsync checks is_ignored() before its own
+    adds — which is how a real file grew 55 lines for 31 unique ids."""
+    from harmonist.web.main import _append_ignore, _read_user_ignores
+
+    cfg.ignores_file.parent.mkdir(parents=True, exist_ok=True)
+    cfg.ignores_file.write_text("# header\n")
+
+    _append_ignore(cfg.ignores_file, 4242, "Band — Album")
+    _append_ignore(cfg.ignores_file, 4242, "Band — Album")
+    _append_ignore(cfg.ignores_file, 4242, "Band — Album (different label)")
+
+    assert cfg.ignores_file.read_text().count("4242") == 1
+    assert len(_read_user_ignores(cfg.ignores_file)) == 1
+
+
+def test_ignore_already_in_the_auto_region_is_a_noop(client, cfg):
+    """An id bandcampsync already recorded is honoured wherever it sits, so
+    re-adding it to the user region would change nothing and just inflate the
+    file — and would wrongly offer an album you HAVE for un-ignoring."""
+    from harmonist.web.main import _append_ignore, _read_user_ignores
+
+    cfg.ignores_file.parent.mkdir(parents=True, exist_ok=True)
+    cfg.ignores_file.write_text(_IGNORES_WITH_SEPARATOR)
+
+    _append_ignore(cfg.ignores_file, 2222, "Already / Downloaded")
+
+    assert cfg.ignores_file.read_text().count("2222") == 1
+    # Not promoted into the user region either.
+    assert [i["item_id"] for i in _read_user_ignores(cfg.ignores_file)] == [1111]

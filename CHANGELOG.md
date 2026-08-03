@@ -18,6 +18,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Deciding the same purchase twice no longer adds a duplicate line to
+  `ignores.txt`.
 - "Don't download" is now recorded in the user section of `ignores.txt` rather
   than the section bandcampsync manages automatically. Previously the choice was
   indistinguishable from an already-downloaded album, and could be lost entirely

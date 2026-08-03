@@ -1297,6 +1297,17 @@ def _ignores_split(text: str) -> tuple[list[str], list[str]]:
     return lines, []
 
 
+def _ignored_ids(text: str) -> set[str]:
+    """Every item_id already present in ignores.txt, from BOTH regions —
+    bandcampsync honours an id wherever it appears in the file."""
+    ids: set[str] = set()
+    for line in text.splitlines():
+        token = line.partition("#")[0].strip()
+        if token.isdigit():
+            ids.add(token)
+    return ids
+
+
 def _append_ignore(ignores_file: Path, item_id: int, label: str) -> None:
     """Record a purchase the user declined, in ignores.txt's USER region.
 
@@ -1311,6 +1322,13 @@ def _append_ignore(ignores_file: Path, item_id: int, label: str) -> None:
     try:
         ignores_file.parent.mkdir(parents=True, exist_ok=True)
         text = ignores_file.read_text(encoding="utf-8") if ignores_file.exists() else ""
+        # Already ignored? Nothing to do (#79). Checked across BOTH regions: an
+        # id in the auto-managed region is honoured just the same, so re-adding
+        # it changes no behaviour and only inflates the file. bandcampsync guards
+        # its own writes this way; ours didn't, so re-deciding a purchase — which
+        # the pre-#77 write race made routine — appended a duplicate each time.
+        if str(item_id) in _ignored_ids(text):
+            return
         user, auto = _ignores_split(text)
         if user and not user[-1].endswith("\n"):
             user[-1] += "\n"
