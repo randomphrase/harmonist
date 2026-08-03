@@ -215,6 +215,9 @@ def create_app(
         activity_store.init_memory()
     else:
         activity_store.init(cfg.paths.config_dir / "activity.db")
+    # Audit paths are recorded relative to the library (#98). Demo mode already
+    # has its sandbox substituted into cfg, so this follows it automatically.
+    audit.set_library_root(cfg.paths.music_dir)
     activity.install_log_handler()
 
     sync_runner = SyncRunner(runner_fn=lambda: None)  # placeholder, replaced below

@@ -19,11 +19,30 @@ outcomes (``source="activity"``) and does not show audit rows.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from . import activity_store
 from .activity_store import Level, Source
 
 log = logging.getLogger("harmonist.audit")
+
+# The library root, so recorded paths are relative to it (#98). An absolute path
+# is mostly noise: under Docker the prefix is a container path (`/music`) that
+# means nothing to the user, and on any install the same prefix repeats on every
+# line while the part that identifies the album is the tail.
+#
+# Set once at startup and read HERE rather than threaded through call sites,
+# because the writers — sidecar.py, cover_art.py, tagger.py, bandcamp_hook.py —
+# have no idea where the library is and shouldn't need to. `_fmt` is the single
+# point every audit value passes through.
+_library_root: Path | None = None
+
+
+def set_library_root(path: Path | None) -> None:
+    """Record paths relative to `path`. None (the default) keeps them absolute,
+    which is what tests and any pre-startup write get."""
+    global _library_root
+    _library_root = path
 
 
 def record(event: str, *, album_id: str | None = None, **fields: object) -> None:
@@ -47,5 +66,22 @@ def _detail(fields: dict[str, object]) -> str:
 def _fmt(value: object) -> str:
     if value is None:
         return "-"
-    s = str(value)
+    s = _rel(value) if isinstance(value, Path) else str(value)
     return f'"{s}"' if (not s or any(c.isspace() for c in s)) else s
+
+
+def _rel(p: Path) -> str:
+    """`p` relative to the library root, else unchanged.
+
+    Only `Path` values are rewritten — a string that happens to look like a path
+    is left alone, since guessing would risk mangling ordinary field values.
+    Anything outside the library (or the root itself) stays absolute: a relative
+    path that escapes upward would be less readable, not more."""
+    root = _library_root
+    if root is None:
+        return str(p)
+    try:
+        rel = p.relative_to(root)
+    except ValueError:
+        return str(p)  # outside the library — absolute is the honest rendering
+    return str(rel) if rel.parts else str(p)

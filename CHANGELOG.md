@@ -22,6 +22,9 @@ versions follow [semantic versioning](https://semver.org).
 - The Activity feed can now page back through older history instead of stopping
   at the most recent entries, and a "Technical detail" toggle shows the raw audit
   records alongside it.
+- File paths in the audit records are now shown relative to your music library
+  (`Artist/Album/01 Track.m4a`) instead of as full paths — under Docker the
+  leading part was a container path that meant nothing anyway.
 - Downloads, purchase links and possible mis-tags now name and link their album
   in the feed, like the rest of the entries — and each expands to show what it
   changed, including the Bandcamp purchase id a link recorded.

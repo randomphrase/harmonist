@@ -46,6 +46,19 @@ def clear_activity():
     activity.clear()
 
 
+@pytest.fixture(autouse=True)
+def reset_audit_library_root():
+    """`create_app` sets a process-level library root for relativising audit
+    paths (#98). Reset it after every test, or a test that built an app would
+    leave its tmp_path as the root and quietly change how a LATER test's audit
+    paths render — tests run in random order, so that would be a puzzling
+    intermittent failure rather than an obvious one."""
+    from harmonist import audit
+
+    yield
+    audit.set_library_root(None)
+
+
 @pytest.fixture
 def album_with_tracks(tmp_path):
     """Factory: build an album dir with N copies of the sine fixture, named NN Title.m4a."""

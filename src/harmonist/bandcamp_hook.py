@@ -51,7 +51,9 @@ if not getattr(_bcsync.move_file, "__harmonist_audited__", False):
 
     def _audited_move_file(src: Any, dst: Any) -> Any:
         with contextlib.suppress(Exception):
-            audit.record("move", src=src, dst=dst, overwrite=Path(dst).exists())
+            # Coerced to Path so the audit formatter can make them relative
+            # to the library (#98); bandcampsync hands us str or Path.
+            audit.record("move", src=Path(src), dst=Path(dst), overwrite=Path(dst).exists())
         return _orig_move_file(src, dst)
 
     _audited_move_file.__harmonist_audited__ = True  # type: ignore[attr-defined]

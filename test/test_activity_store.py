@@ -79,6 +79,49 @@ def test_audit_record_stores_as_audit_and_is_absent_from_the_feed():
     assert activity.recent() == []
 
 
+def test_audit_paths_are_recorded_relative_to_the_library(tmp_path):
+    """#98: an absolute path is mostly noise — under Docker the prefix is a
+    container path that means nothing to the user, and the part identifying the
+    album is the tail. Relativised centrally in `_fmt`, so the writers (sidecar,
+    tagger, cover_art, bandcamp_hook) never need to know where the library is."""
+    from pathlib import Path
+
+    music = tmp_path / "music"
+    audit.set_library_root(music)
+
+    audit.record("tag.album", album=music / "Artist" / "Album")
+    assert (
+        activity_store.recent(1, source=Source.AUDIT)[0].message == "tag.album album=Artist/Album"
+    )
+
+    # Outside the library, absolute is the honest rendering.
+    audit.record("checkpoint.clear", path=Path("/etc/elsewhere.json"))
+    assert (
+        activity_store.recent(1, source=Source.AUDIT)[0].message
+        == "checkpoint.clear path=/etc/elsewhere.json"
+    )
+
+    # The root itself has no meaningful relative form, so it stays absolute
+    # rather than rendering as a bare ".".
+    audit.record("scan", dir=music)
+    assert str(music) in activity_store.recent(1, source=Source.AUDIT)[0].message
+
+    # Strings are left alone — guessing which ones are paths would risk
+    # mangling ordinary field values.
+    audit.record("note", detail="/music/not-a-path-field")
+    assert "/music/not-a-path-field" in activity_store.recent(1, source=Source.AUDIT)[0].message
+
+
+def test_audit_paths_stay_absolute_before_a_library_root_is_set():
+    """Default is unset, so anything recorded before startup wiring — or in a
+    test — renders exactly as it always did."""
+    from pathlib import Path
+
+    audit.set_library_root(None)
+    audit.record("move", src=Path("/music/a.m4a"))
+    assert activity_store.recent(1, source=Source.AUDIT)[0].message == "move src=/music/a.m4a"
+
+
 def test_level_roundtrips_as_enum():
     activity_store.append(message="boom", level=Level.ERROR, source=Source.ACTIVITY)
     e = activity_store.recent()[0]

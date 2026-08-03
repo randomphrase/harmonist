@@ -76,7 +76,8 @@ def delete_all(music_dir: Path) -> int:
             )
         except OSError:
             continue
-    audit.record("sidecar.delete_all", music_dir=music_dir, removed=removed)
+    # No music_dir field: every path in the log is already relative to it (#98).
+    audit.record("sidecar.delete_all", removed=removed)
     library_index.clear()  # the sidecars are gone; the rescan refills the index
     return removed
 
