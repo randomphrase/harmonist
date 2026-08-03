@@ -241,6 +241,11 @@ def create_app(
             sync_runner.link_only_override = None
             auto = live_counts.to_status()["needs_sync"] > 0 or pending_downloads.count() > 0
             link_only = override if override is not None else auto
+            activity.info(
+                "Sync started (link-only) — downloads are paused this sync."
+                if link_only
+                else "Sync started (full) — new purchases will be downloaded."
+            )
             result = demo.run_demo_sync(
                 cfg.paths.music_dir,
                 link_only=link_only,
@@ -297,11 +302,16 @@ def create_app(
             link_only = override if override is not None else pending_links > 0
             if link_only and pending_links == 0:
                 _clear_bandcampsync_checkpoint(cfg.paths.music_dir)
+            # The ONE sync-start entry, written here because this is where the
+            # mode is decided — the runner's generic "started" line fired before
+            # this point and so could never name it (#101).
             if link_only:
                 activity.info(
-                    f"Linking your library — {pending_links} album(s) to match. "
+                    f"Sync started (link-only) — {pending_links} album(s) to match. "
                     "Downloads are paused this sync and resume on the next one.",
                 )
+            else:
+                activity.info("Sync started (full) — new purchases will be downloaded.")
             result = _run_bandcamp_sync(
                 cfg,
                 progress_callback=sync_runner.set_current_item,
@@ -2117,7 +2127,11 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
                 status_code=status.HTTP_409_CONFLICT,
             )
-        return _flash_response("Sync started", "watch the inbox", tasks_changed=False)
+        # No activity entry here: the runner writes the single sync-start line
+        # once it knows link-only vs full (#101). This is just the status flash.
+        return _flash_response(
+            "Sync started", "watch the inbox", tasks_changed=False, record_activity=False
+        )
 
     @app.get("/bandcamp/setup", response_class=HTMLResponse)
     def bandcamp_setup(request: Request) -> Response:
@@ -2855,6 +2869,7 @@ def _flash_response(
     status_code: int = 200,
     extra_triggers: dict[str, Any] | None = None,
     album: Album | None = None,
+    record_activity: bool = True,
 ) -> HTMLResponse:
     """Standard action response: flash HTML body + HX-Trigger events.
 
@@ -2880,7 +2895,11 @@ def _flash_response(
     message = verb if not details else f"{verb} — {details}"
     album_id, album_label = (None, None) if album is None else _live_album_ref(album)
     # Every action outcome is also an activity-log entry (the Activity tab).
-    activity.record(message, level, album_id=album_id, album_label=album_label)
+    # `record_activity=False` is for the rare case where a background worker
+    # writes the authoritative entry itself — starting a sync, where only the
+    # runner knows link-only vs full — and this would just duplicate it (#101).
+    if record_activity:
+        activity.record(message, level, album_id=album_id, album_label=album_label)
     triggers: dict[str, Any] = {
         "harmonist-status": {
             "verb": verb,

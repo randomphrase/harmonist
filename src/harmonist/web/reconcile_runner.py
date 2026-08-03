@@ -212,10 +212,10 @@ def reconcile_pending_orphans(
     if albums is None:
         # No snapshot handed in — walk the library ourselves. This can take a
         # while on a large tree, so announce it (the feed would be silent).
-        activity.info("Reconcile started — scanning the library for albums to reconcile…")
+        # Phrased as progress, not a start: the "Reconcile started — N to check"
+        # line below is the start, and two "started" entries read as a bug.
+        activity.info("Reconcile: scanning the library…")
         albums = scanner.scan(music_dir)
-    else:
-        activity.record("Reconcile started")
     # NEW: derive a sidecar. TAGGING: the sidecar's MBID disagrees with the file
     # tags (an external Picard re-tag) — adopt the files. Both are reconcile's job.
     pending = [
@@ -258,11 +258,22 @@ def reconcile_pending_orphans(
     if status_updater:
         status_updater(total=total)
     _report()  # publish the base (all-zero deltas) before the first album
-    activity.record(
-        f"Reconcile: {total} album(s) to check"
-        if total
-        else "Reconcile: nothing to reconcile (no new albums on disk)"
-    )
+    if not total:
+        # Nothing to do. Reconcile runs on startup and after every sync, so
+        # announcing a no-op made it the feed's most frequent content — three
+        # lines to report that nothing happened (#101). Still logged, so it
+        # stays greppable when someone asks "did reconcile run?".
+        log.info("Reconcile: nothing to reconcile (no new albums on disk)")
+        return {
+            "total": 0,
+            "reconciled_bandcamp": 0,
+            "reconciled_manual": 0,
+            "recovered_url": 0,
+            "adopted": 0,
+            "skipped": 0,
+            "errors": 0,
+        }
+    activity.record(f"Reconcile started — {total} album(s) to check")
 
     for album in pending:
         # One action scope per ALBUM (#84): reconcile writes a sidecar and an

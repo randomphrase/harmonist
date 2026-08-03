@@ -704,6 +704,32 @@ def test_post_sync_starts_runner(client):
     assert "Sync started" in r.text
 
 
+def test_sync_route_does_not_duplicate_the_start_entry(client):
+    """#101: starting a sync wrote TWO feed entries — the route's flash and the
+    runner's generic line — and neither said whether it was link-only. The route
+    keeps its status-bar flash but no longer writes an entry; the runner writes
+    the single authoritative one once it knows the mode."""
+    import time
+
+    from harmonist import activity
+
+    runner = client.app.state.sync_runner
+    runner._runner_fn = lambda: None
+    activity.clear()
+
+    r = client.post("/sync")
+    assert r.status_code == 200
+    assert "Sync started" in r.text  # the status-bar flash still fires
+
+    for _ in range(50):  # let the runner thread finish
+        if runner.status()["state"] == "idle":
+            break
+        time.sleep(0.02)
+
+    starts = [e.message for e in activity.recent(20) if "ync started" in e.message]
+    assert starts == [], f"the route should write no start entry, got {starts}"
+
+
 def test_post_sync_409_when_already_running(client):
     runner = client.app.state.sync_runner
     # Manually flag as running so the second POST hits the 409 branch
@@ -2410,6 +2436,43 @@ def test_post_sync_auto_tag_entry_links_to_the_album(cfg, monkeypatch):
     assert _id_for(cfg, d) == entry.album_id
     # The name is no longer duplicated inside the message.
     assert "AutoTagged" not in entry.message
+
+
+def test_reconcile_with_nothing_to_do_is_silent_in_the_feed(cfg, caplog):
+    """#101: reconcile runs on startup and after every sync, and used to report a
+    no-op with three entries — making "nothing happened" the feed's most frequent
+    content. It stays in the server log so it's still greppable."""
+    import logging
+
+    from harmonist import activity
+    from harmonist.web.reconcile_runner import reconcile_pending_orphans
+
+    cfg.paths.music_dir.mkdir(parents=True, exist_ok=True)
+    activity.clear()
+
+    with caplog.at_level(logging.INFO):
+        reconcile_pending_orphans(cfg.paths.music_dir, fetch_urls=lambda m: [], albums=[])
+
+    assert activity.recent(10) == []
+    assert any("nothing to reconcile" in r.message for r in caplog.records)
+
+
+def test_reconcile_with_work_announces_once(cfg):
+    """One start line naming the count, then the summary — not a separate
+    "started" and "N to check"."""
+    from harmonist import activity
+    from harmonist.web.reconcile_runner import reconcile_pending_orphans
+
+    _make_album(cfg, "NeedsReconcile", mbid="rel-nr")
+    activity.clear()
+
+    reconcile_pending_orphans(cfg.paths.music_dir, fetch_urls=lambda m: [])
+
+    msgs = [e.message for e in activity.recent(10)]
+    starts = [m for m in msgs if m.startswith("Reconcile started")]
+    assert len(starts) == 1, f"expected exactly one start line, got {starts}"
+    assert "1 album(s) to check" in starts[0]
+    assert any(m.startswith("Reconcile done") for m in msgs)
 
 
 def test_reconcile_entries_link_to_their_album(cfg):

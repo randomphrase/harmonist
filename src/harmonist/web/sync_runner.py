@@ -100,7 +100,10 @@ class SyncRunner:
         return self._status
 
     def _run(self) -> None:
-        activity.info("Bandcamp sync started")
+        # No "started" entry here: it fired before runner_fn decides link-only
+        # vs full, so it could never name the mode. The runner writes the single
+        # authoritative line once it knows (#101).
+        log.info("sync started")
         new_items = 0
         remaining = 0
         error: str | None = None
