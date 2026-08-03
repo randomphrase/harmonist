@@ -1008,10 +1008,15 @@ def _detect_mistags_after_sync(
         # must NOT also show as a potential download. `replace_all` already ran
         # during the sync, so remove the now-claimed id.
         pending_downloads.remove(owned_item_id)
+        # Id read back AFTER _demote_to_needs_mbid rewrote the sidecar — that
+        # write clears the MBID, so a pre-demote id is already dead (#65).
+        mistag_id, mistag_label = _live_album_ref(album)
         activity.warning(
-            f"Possible mis-tag: {album.artist} — {album.title}. You own “{label}” on "
-            f"Bandcamp ({url}) — the same release group but a different release than it's "
-            f"tagged as. Moved to Needs MBID with {owned_mbid} suggested; confirm to re-tag."
+            f"Possible mis-tag. You own “{label}” on Bandcamp ({url}) — the same "
+            f"release group but a different release than it's tagged as. Moved to "
+            f"Needs MBID with {owned_mbid} suggested; confirm to re-tag.",
+            album_id=mistag_id,
+            album_label=mistag_label,
         )
 
 

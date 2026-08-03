@@ -1197,6 +1197,13 @@ def test_detect_mistag_by_release_group_demotes_with_suggestion(cfg):
     assert album.state == AlbumState.NEEDS_MBID
     msgs = [e.message for e in activity.recent(10)]
     assert any("Possible mis-tag" in m and "Cell / Live in Corfu" in m for m in msgs)
+    # #97: the warning names and links its album. The id is read back AFTER the
+    # demote rewrote the sidecar (which clears the MBID), so it still resolves.
+    entry = next(e for e in activity.recent(10) if "Possible mis-tag" in e.message)
+    assert entry.album_id == _id_for(cfg, d)
+    # Named from the album ON DISK, not the MusicBrainz release — the feed should
+    # call it what the user's library calls it.
+    assert entry.album_label == album.title
 
 
 def test_detect_mistag_no_action_when_no_owned_sibling(cfg):

@@ -605,33 +605,49 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             return False  # 0 = no confident match; ≥2 = ambiguous → manual review
         album_dir = avail[0]
         self._adopt_consumed.add(album_dir)
-        if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
-            # Show BOTH titles when they differ (the match was by word-subsequence,
-            # e.g. MB "…" vs Bandcamp "… EP") so a loose auto-link is auditable.
-            purchase_title = str(getattr(item, "item_title", "?"))
-            disk_title = _album_title(album_dir)
-            matched = (
-                f" → on-disk “{disk_title}”" if disk_title and disk_title != purchase_title else ""
-            )
-            activity.record(
-                f"{getattr(item, 'band_name', '?')} — {purchase_title}: "
-                f"Needs Link → Library (auto-linked to Bandcamp purchase "
-                f"{getattr(item, 'item_id', '?')} by artist + title{matched})"
-            )
+        # One action scope, so the sidecar audit this write produces (which
+        # records item_id=None->N — the Bandcamp id) attaches to the entry below
+        # as its "what changed" (#97). Without it that row has no action_id and
+        # can only be found via the Technical detail toggle.
+        with activity_store.action():
+            if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
+                # Show BOTH titles when they differ (the match was by
+                # word-subsequence, e.g. MB "…" vs Bandcamp "… EP") so a loose
+                # auto-link is auditable.
+                purchase_title = str(getattr(item, "item_title", "?"))
+                disk_title = _album_title(album_dir)
+                matched = (
+                    f" → on-disk “{disk_title}”"
+                    if disk_title and disk_title != purchase_title
+                    else ""
+                )
+                activity.record(
+                    f"Needs Link → Library (auto-linked to Bandcamp purchase "
+                    f"{getattr(item, 'item_id', '?')} by artist + title{matched})",
+                    album_id=sidecar_mod.album_id_for(album_dir),
+                    album_label=f"{getattr(item, 'band_name', '?')} — {purchase_title}",
+                )
         if not self.ignores.is_ignored(item):
             self.ignores.add(item)
         return True
 
     def _link(self, album_dir: Path, item: Any) -> None:
         try:
-            if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
-                # A linked album leaves Needs Link for the Library. Record the
-                # transition in the Activity feed (and server log).
-                activity.record(
-                    f"{getattr(item, 'band_name', '?')} — {getattr(item, 'item_title', '?')}: "
-                    f"Needs Link → Library (linked to Bandcamp purchase "
-                    f"{getattr(item, 'item_id', '?')})"
-                )
+            # Scoped so the sidecar audit (item_id=None->N, i.e. the Bandcamp id)
+            # attaches to the activity entry as its "what changed" (#97).
+            with activity_store.action():
+                if write_sidecar_for_item(item, album_dir, prefer_item_url=True):
+                    # A linked album leaves Needs Link for the Library. Record the
+                    # transition in the Activity feed (and server log).
+                    activity.record(
+                        f"Needs Link → Library (linked to Bandcamp purchase "
+                        f"{getattr(item, 'item_id', '?')})",
+                        album_id=sidecar_mod.album_id_for(album_dir),
+                        album_label=(
+                            f"{getattr(item, 'band_name', '?')} — "
+                            f"{getattr(item, 'item_title', '?')}"
+                        ),
+                    )
         except Exception as e:
             log.warning(
                 "could not backfill ignored purchase %s: %s",

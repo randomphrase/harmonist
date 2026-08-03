@@ -22,7 +22,9 @@ versions follow [semantic versioning](https://semver.org).
 - The Activity feed can now page back through older history instead of stopping
   at the most recent entries, and a "Technical detail" toggle shows the raw audit
   records alongside it.
-
+- Downloads, purchase links and possible mis-tags now name and link their album
+  in the feed, like the rest of the entries — and each expands to show what it
+  changed, including the Bandcamp purchase id a link recorded.
 - Activity entries now carry a "what changed" disclosure showing exactly what
   Harmonist did underneath — the tracks it re-tagged, the sidecar rewrites and
   the file moves that action produced. Entries with nothing to show are unchanged.

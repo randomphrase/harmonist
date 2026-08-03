@@ -32,7 +32,7 @@ from typing import Any
 
 from mutagen.mp4 import MP4
 
-from . import activity, pending_downloads
+from . import activity, activity_store, pending_downloads
 from . import sidecar as sidecar_mod
 from .formats.m4a import (
     ATOM_ALBUM,
@@ -651,8 +651,16 @@ def _download(
         with contextlib.suppress(Exception):
             progress_callback(f"{spec['artist']} / {spec['album']}")
     time.sleep(STEP_DELAY_SECONDS)
-    _materialise(music_dir, spec)
-    activity.info(f"Downloaded {spec['artist']} / {spec['album']}")
+    # Scoped so the sidecar audit _materialise writes attaches to this entry as
+    # its "what changed" (#97), and labelled so the entry links to the album.
+    with activity_store.action():
+        _materialise(music_dir, spec)
+        album_dir = music_dir / _safe(spec["artist"]) / _safe(spec["album"])
+        activity.info(
+            "Downloaded from Bandcamp",
+            album_id=sidecar_mod.album_id_for(album_dir),
+            album_label=f"{spec['artist']} — {spec['album']}",
+        )
 
 
 def _purchase_item_id(spec: dict[str, Any]) -> int:
@@ -727,9 +735,14 @@ def _fill_in_existing_item_ids(
             track_count_expected=sc.track_count_expected,
             notes=sc.notes,
         )
-        sidecar_mod.write(album_dir, new_sc)
+        with activity_store.action():
+            sidecar_mod.write(album_dir, new_sc)
+            activity.info(
+                "Linked to its Bandcamp purchase",
+                album_id=sidecar_mod.album_id_for(album_dir),
+                album_label=f"{album_dir.parent.name} — {album_dir.name}",
+            )
         patched += 1
-        activity.info(f"Linked {album_dir.parent.name} / {album_dir.name} to its Bandcamp purchase")
         if progress_callback:
             with contextlib.suppress(Exception):
                 progress_callback(f"Linked: {album_dir.parent.name} / {album_dir.name}")

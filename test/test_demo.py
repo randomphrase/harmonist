@@ -286,6 +286,38 @@ def test_demo_confirm_tags_album_end_to_end(demo_client):
     assert "Gimme Some Money" not in tasks_after
 
 
+def test_sync_download_and_link_entries_name_and_link_their_album(music_dir, tmp_path):
+    """#97: "Downloaded …" and "Linked … to its Bandcamp purchase" were plain
+    text — no album name, no "what changed". Each now carries its album AND runs
+    in an action scope, so the sidecar audit it produces (which records the
+    Bandcamp item_id) attaches to the entry instead of floating unreachable."""
+    from harmonist import activity, activity_store
+
+    activity_store.init(tmp_path / "audit.db")
+    demo.install()
+    demo.seed(music_dir)
+    activity_store.clear()
+
+    demo.run_demo_sync(music_dir, link_only=False)
+
+    entries = [e for e in activity.recent(40) if e.message.startswith(("Downloaded", "Linked to"))]
+    assert entries, "no download/link entries were recorded"
+    for e in entries:
+        assert e.album_id, f"{e.message!r} has no album to link to"
+        assert e.album_label and " — " in e.album_label
+        assert e.message.count(e.album_label) == 0  # name lives in the column, not the text
+        assert e.action_id, f"{e.message!r} ran outside an action scope"
+        assert activity_store.audit_by_action([e.action_id]).get(e.action_id), (
+            f"{e.message!r} has no correlated audit detail"
+        )
+
+    # The Bandcamp id is what makes a link auditable — check it actually lands.
+    linked = next(e for e in entries if e.message.startswith("Linked to"))
+    assert linked.action_id
+    rows = activity_store.audit_by_action([linked.action_id])[linked.action_id]
+    assert any("item_id=None->" in r.message for r in rows)
+
+
 def test_withdrawn_album_is_not_surrendered_before_the_first_sync(music_dir):
     """#87: "no matching Bandcamp purchase" is a conclusion the sync REACHES by
     paging the whole collection. Seeding it pre-surrendered showed a fresh demo
