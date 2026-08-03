@@ -6,6 +6,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Upgrading
+
+- **Nothing to do** about `ignores.txt` — existing entries keep working. Choices
+  made before this release sit below the file's separator line, so they won't
+  appear in the new "Won't download" list; move a line above the separator if you
+  want it listed. **Don't delete the file:** albums you've downloaded are
+  recognised from their sidecars, but a "Don't download" choice exists nowhere
+  else, and removing it lets the purchase download again.
+
 ### Added
 
 - Settings now lists the purchases you told Harmonist not to download, with a
