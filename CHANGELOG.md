@@ -10,39 +10,24 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
-- The Activity feed no longer announces non-events: starting a sync writes one
-  entry instead of two, and it now says whether the sync is link-only (drains
-  Needs Link, downloads nothing) or full. A reconcile that finds nothing to do
-  says nothing at all, rather than three lines reporting that nothing happened.
-- Demo mode no longer claims an album has no matching Bandcamp purchase before
-  you've run a sync — that verdict is now reached by the sync, as it is on a real
-  install.
-- The header status message no longer flickers — it was being re-rendered every
-  1.5 seconds even when the text hadn't changed.
-- The Activity tab no longer flickers while it's open. It refreshes every couple
-  of seconds, and was rebuilding the whole list each time; it now updates only
-  what actually changed, so the list stays put and text selection survives.
+- Starting a sync writes one Activity entry instead of two, and says whether it's
+  link-only or full; a reconcile with nothing to do stays quiet (#101).
+- Demo mode no longer says an album has no matching Bandcamp purchase before
+  you've synced (#87).
+- The header status message no longer flickers (#93).
+- The Activity tab no longer flickers while it's open (#91).
 
 ### Added
 
-- The Activity feed can now page back through older history instead of stopping
-  at the most recent entries, and a "Technical detail" toggle shows the raw audit
-  records alongside it.
-- File paths in the audit records are now shown relative to your music library
-  (`Artist/Album/01 Track.m4a`) instead of as full paths — under Docker the
-  leading part was a container path that meant nothing anyway.
-- Downloads, purchase links and possible mis-tags now name and link their album
-  in the feed, like the rest of the entries — and each expands to show what it
-  changed, including the Bandcamp purchase id a link recorded.
-- Activity entries now carry a "what changed" disclosure showing exactly what
-  Harmonist did underneath — the tracks it re-tagged, the sidecar rewrites and
-  the file moves that action produced. Entries with nothing to show are unchanged.
-- Surrendering an album ("Move to Library" when there's no purchase to link) and
-  saving cover art are now recorded in the audit log, alongside tagging and
-  erasing sidecars.
-- Tagging and erasing sidecars are now recorded in the audit log. Tagging notes
-  the release and every track it wrote; erasing names each album that lost its
-  sidecar, so the most destructive action in the app leaves a trail.
+- Activity entries expand to show exactly what Harmonist changed on disk (#84).
+- Tagging, erasing sidecars, surrendering an album and saving cover art are now
+  recorded in the audit log (#88).
+- The Activity feed pages back through older history, with a "Technical detail"
+  toggle for the raw audit records (#14).
+- Downloads, purchase links and possible mis-tags now name and link their album,
+  like the rest of the feed (#97).
+- Audit records show paths relative to your music library rather than in full
+  (#98).
 
 ## [1.2.0] - 2026-08-02
 
@@ -57,70 +42,43 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
-- Settings now lists the purchases you told Harmonist not to download, with a
-  Restore button — an ignore is no longer a one-way door. Only choices you made
-  yourself are listed, never the albums Harmonist has already downloaded.
-- Activity entries written by a sync or by auto-reconcile now name and link their
-  album too — including "Auto-tagged … after sync", the one worth clicking when
-  Harmonist has tagged something on its own initiative. Previously only entries
-  from actions you took yourself were linked.
+- Settings lists the purchases you told Harmonist not to download, with a Restore
+  button — an ignore is no longer a one-way door (#19).
+- Activity entries written by a sync or auto-reconcile now name and link their
+  album too (#75).
 
 ### Fixed
 
-- Deciding the same purchase twice no longer adds a duplicate line to
-  `ignores.txt`.
-- "Don't download" is now recorded in the user section of `ignores.txt` rather
-  than the section bandcampsync manages automatically. Previously the choice was
-  indistinguishable from an already-downloaded album, and could be lost entirely
-  if it was made while a sync was running.
-- Demo mode no longer writes to your real `ignores.txt` — trying "Don't
-  download" on a demo purchase used to add that fixture to your genuine ignores.
+- "Don't download" is recorded in the user section of `ignores.txt`, so the
+  choice can't be mistaken for an already-downloaded album or lost mid-sync (#77).
+- Deciding the same purchase twice no longer duplicates a line in `ignores.txt`
+  (#79).
+- Demo mode no longer writes to your real `ignores.txt` (#77).
 
 ## [1.1.0] - 2026-07-31
 
 ### Added
 
-- Activity entries about a particular album now lead with that album's name, and
-  the name is a link — click it and the album's detail opens over
-  your Library. It's a normal URL (`/?album=<id>`), so you can bookmark or share
-  it and it still works after a reload. The name is recorded with the entry, so
-  older entries stay readable even after the album is renamed, re-identified, or
-  removed; only the link goes quiet. Action messages no longer repeat the album
-  title now that the entry names it up front.
-- The activity feed now persists across restarts, backed by a SQLite store
-  (`activity.db`) in the config dir; audit records (downloads, file/tag rewrites,
-  demotions) are written there durably too, so the record of what Harmonist did
-  survives a restart. The feed still shows only user-facing activity, not audit
-  detail.
+- Activity entries name their album and link to it, at a URL you can bookmark or
+  share (#65).
+- The activity feed and audit records persist across restarts, in a SQLite store
+  in the config dir (#33).
 
 ### Fixed
 
-- Links and bookmarks to an album keep working after Harmonist re-identifies it
-  (tagging it, or correcting its MusicBrainz match) — previously the old link
-  dead-ended, and a restart made it unrecoverable. Harmonist now remembers that
-  an album's identity moved, so its history stays joined to it.
-- The "that album isn't in your library any more" notice can now be dismissed,
-  and no longer reappears when you refresh.
-- Demo mode no longer writes into your real activity history, and no longer logs
-  a start-up error trying to open the activity database — it now keeps its events
-  in memory, matching how it already leaves your music dir alone.
-- A store URL is now recognised only when its *host* is the store's domain (or a
-  subdomain of it). Previously a lookalike host like `notbandcamp.com`, or a URL
-  carrying `bandcamp.com` only in its path or query, was accepted as a Bandcamp
-  purchase URL and could be recorded as an album's store URL; Beatport and
-  Discogs had the same flaw.
-- Shutting down while a reconcile pass was finishing no longer logs a spurious
-  "reconcile run failed — Event loop is closed" error; the pass's trailing
-  rescan request is simply dropped.
+- Links to an album keep working after Harmonist re-identifies it — tagging it,
+  or correcting its MusicBrainz match (#33).
+- The "that album isn't in your library any more" notice can be dismissed, and no
+  longer reappears on refresh (#71).
+- Demo mode no longer writes into your real activity history, or logs a start-up
+  error opening the activity database (#69).
+- A store URL is recognised only when its *host* is the store's domain, so a
+  lookalike like `notbandcamp.com` is no longer accepted (#63).
+- Shutting down mid-reconcile no longer logs a spurious "Event loop is closed"
+  error (#52).
 - Linking a potential download from the "Verify album" dialog now actually links
-  it — previously the dialog closed without sending the request (same root cause
-  as #40: closing from `onclick` detached the button before HTMX could act).
-  Modals now use the native `<dialog>` element, which closes without destroying
-  its contents, removing this class of bug; Esc and backdrop-click behave as
-  before.
-- "Move to Library" no longer flickers the inbox — the album now resolves in a
-  single render instead of triggering a background rescan that briefly dimmed and
-  reloaded the list.
+  it; modals use the native `<dialog>` element (#53).
+- "Move to Library" no longer flickers the inbox (#11).
 
 ## [1.0.1] - 2026-07-28
 

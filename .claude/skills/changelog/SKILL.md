@@ -32,6 +32,25 @@ unsure, ask.
 - **One line, in plain user-facing language** — describe the *effect*, not the
   code. Good: "Sync options popover no longer closes when you move the cursor onto
   it." Bad: "add transparent hover bridge to #sync-control".
+- **One sentence, and end with the issue number.** The entry answers *what
+  changed for me?*; the issue answers *why, and how*. Anyone wanting the second
+  is one click away, so don't pre-empt it here.
+
+  ```
+  ✓  Activity entries now link to their album (#65).
+  ✗  Activity entries about a particular album now lead with that album's name,
+     and the name is a link — click it and the album's detail opens over your
+     Library. It's a normal URL (`/?album=<id>`), so you can bookmark or share it
+     and it still works after a reload. The name is recorded with the entry, so
+     older entries stay readable even after the album is renamed…
+  ```
+
+  That second one is real, from 1.1.0. It is accurate, and nobody will read it.
+  **Rationale, mechanism and edge cases belong in the issue and the commit** —
+  putting them here turns a scannable list into an essay and buries the entries
+  either side of it.
+- **Two lines is the ceiling**, and only when one genuinely won't carry the
+  meaning. If you need a caveat, that's a signal the issue should carry it.
 - Match the voice of the existing entries; keep it terse.
 - Put it in the **same commit** as the change, at the top of `## [Unreleased]`.
 - Once several entries accumulate, group them under `### Added`, `### Changed`,
@@ -49,3 +68,7 @@ Do this in the same commit the release tag will point at, so the tagged commit's
 `## [X.Y.Z]` section **is** the release notes (reuse it for the GitHub Release
 body). Never invent entries at release time — they should already be there from
 the work.
+
+Read the section before you cut, as the user will: a wall of prose is the moment
+to tighten it, because after the tag the changelog and the published GitHub
+Release have to be edited together to stay in step.
