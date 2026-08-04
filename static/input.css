@@ -60,9 +60,14 @@
 /* In-progress feedback for slow actions (MB lookup, tagging). Buttons use
    hx-disabled-elt="this" so they get [disabled] during the request; forms in
    flight get HTMX's .htmx-request class. Dimming + a progress cursor make it
-   obvious the backend is working — outcomes then land in the status bar. */
+   obvious the backend is working — outcomes then land in the status bar.
+
+   `.hx-poll` opts out. This rule is for work the USER started and is waiting on;
+   a background poll is neither, and dimming what it polls means the panel spends
+   its life greyed out with a progress cursor for something nobody asked for
+   (#118). Put .hx-poll on any container whose hx-trigger is `every …`. */
 button[disabled],
-.htmx-request {
+.htmx-request:not(.hx-poll) {
   opacity: 0.55;
   cursor: progress;
 }

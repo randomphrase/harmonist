@@ -49,14 +49,22 @@ def test_loading_older_activity_survives_the_poll(demo_server: str) -> None:
             el.querySelector('ul').appendChild(li);
         """
 
-        # CONTROL: with the feed live, a poll SHOULD replace the container and
-        # take the sentinel with it. Without this the test could pass simply
-        # because no poll ever ran.
+        # CONTROL: with the feed live AND something to send, a poll replaces the
+        # container and takes the sentinel with it. Without this the test could
+        # pass simply because no poll ever ran.
+        #
+        # The stale version is what makes it deterministic. Since #118 an idle
+        # poll answers 204 and deliberately does NOT swap, so "a poll fired" no
+        # longer implies "the container was replaced" — this control used to rely
+        # on that and would now wait forever for a demo instance that has nothing
+        # new to say. Corrupting the stashed version forces the mismatch a real
+        # new entry would cause.
         page.evaluate("window.harmonistFeedPaged = false")
+        page.evaluate("document.getElementById('feed-version').dataset.version = 'stale'")
         page.evaluate(add_sentinel)
         page.wait_for_timeout(4500)
         assert page.locator("#paged-sentinel").count() == 0, (
-            "no poll fired — the rest of this test would be vacuous"
+            "no poll swapped — the rest of this test would be vacuous"
         )
 
         # The real assertion: once paged, the poll is paused and content stays.
@@ -134,5 +142,73 @@ def test_feed_poll_patches_the_dom_instead_of_rebuilding_it(demo_server: str) ->
             "document.querySelector('#activity-feed li') === window.__firstRow"
         )
         assert same_node, "the feed rebuilt its rows instead of morphing them"
+
+        browser.close()
+
+
+def test_the_polling_feed_is_never_dimmed_by_its_own_poll(demo_server: str) -> None:
+    """#118: `.htmx-request { opacity: .55; cursor: progress }` is global, and
+    htmx puts that class on whatever issued the request — including a background
+    poll. On a large library the feed then sat dimmed with a progress cursor for
+    most of every 2s cycle, for work nobody asked for.
+
+    Only a browser can answer this: it's a computed style under a CSS class htmx
+    adds and removes on its own schedule, so the class is applied directly here
+    rather than raced against a real request.
+    """
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(demo_server)
+        page.click('[data-tab="activity"]')
+        feed = page.locator("#activity-feed")
+        feed.wait_for(state="visible")
+
+        page.evaluate("document.getElementById('activity-feed').classList.add('htmx-request')")
+        opacity = page.evaluate(
+            "getComputedStyle(document.getElementById('activity-feed')).opacity"
+        )
+        assert float(opacity) == 1.0, f"the polling feed dims itself (opacity {opacity})"
+
+        # Control: a non-polling element with the same class DOES still dim, or
+        # the rule would have been removed rather than scoped.
+        dimmed = page.evaluate(
+            """(() => {
+                const el = document.createElement('div');
+                el.className = 'htmx-request';
+                document.body.appendChild(el);
+                return getComputedStyle(el).opacity;
+            })()"""
+        )
+        assert float(dimmed) < 1.0, "the in-flight dim was removed entirely, not scoped"
+
+        browser.close()
+
+
+def test_an_idle_feed_stops_re_sending_itself(demo_server: str) -> None:
+    """#118: the poll carries the version already on screen and the server
+    answers 204, so an idle feed transfers nothing. Measured through the browser
+    because it's the real poll — hx-vals reads the version out of the DOM."""
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(demo_server)
+        page.click('[data-tab="activity"]')
+        page.locator("#activity-feed li").first.wait_for(state="visible")
+
+        codes: list[int] = []
+        page.on(
+            "response",
+            lambda r: codes.append(r.status) if "/activity" in r.url else None,
+        )
+        page.wait_for_timeout(7000)  # ~3 polls
+
+        # NOT `all(...)`: demo start-up is still settling (a scan and reconcile
+        # both write entries), and a poll that lands while something genuinely
+        # happened SHOULD be a 200. Asserting the run ends quiet is the honest
+        # claim, and it can't be broken by incidental start-up churn (#52 taught
+        # us what a count-based assertion here costs).
+        assert codes, "the feed stopped polling altogether"
+        assert codes[-1] == 204, f"idle feed still re-sent itself: {codes}"
 
         browser.close()

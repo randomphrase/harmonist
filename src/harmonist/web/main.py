@@ -88,6 +88,13 @@ log = logging.getLogger(__name__)
 
 HARMONY_BASE = "https://harmony.pulsewidth.org.uk"
 
+# Most audit rows to render under one activity entry's "what changed". One action
+# can produce hundreds — the first scan of a large library records every album it
+# meets — and the feed re-polls every 2s, so rendering them all put ~150 KB on the
+# wire each time. The count in the summary is always the true total; the album's
+# own page carries its full history (#118).
+AUDIT_DETAIL_LIMIT = 20
+
 # Terminal states — hidden from the inbox, shown in the library.
 _TERMINAL_STATES = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
 
@@ -418,6 +425,7 @@ def create_app(
     templates.env.globals["display_path"] = _display_path
     templates.env.globals["rel_path"] = _rel_path
     templates.env.globals["ago"] = _ago
+    templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
     templates.env.globals["demo_mode"] = cfg.demo_mode
     # Evaluated per-render (callable, not a constant) so the header's
     # Sync/Set-up button flips the moment cookies are saved.
@@ -1970,7 +1978,11 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/activity", response_class=HTMLResponse)
     def activity_feed(
-        request: Request, offset: int = 0, limit: int = 50, audit: bool = False
+        request: Request,
+        offset: int = 0,
+        limit: int = 50,
+        audit: bool = False,
+        have: str = "",
     ) -> Response:
         """One page of the Activity feed.
 
@@ -1978,9 +1990,28 @@ def _register_routes(app: FastAPI) -> None:
         are forensics rather than outcomes — but they matter: rows written
         outside an action scope have no `action_id`, so no "what changed"
         disclosure can show them, and without this they'd be unreachable.
+
+        `have` is the version the client already has on screen. When it matches,
+        the answer is 204 and htmx leaves the DOM alone — the feed polls every 2s
+        and was otherwise re-sending every entry each time, 154 KB of it on a
+        large library, for a panel that usually hasn't changed (#118).
         """
         limit = max(1, min(limit, 200))  # clamp; defensive
         offset = max(0, offset)
+        # The params are part of the token, so toggling "Technical detail" or
+        # paging can't be mistaken for "nothing changed" — the client's `have` was
+        # computed under the old params and won't match.
+        try:
+            feed_version = f"{activity_store.version()}-{audit:d}-{offset}-{limit}"
+        except activity_store.StoreUnavailableError:
+            # Can't tell whether anything changed, so don't claim it hasn't; fall
+            # through and let the render below report the store as unavailable.
+            feed_version = ""
+        if have and have == feed_version:
+            # 204: htmx's documented "do not swap". Deliberately not 304 — the
+            # browser turns that back into a 200-from-cache for XHR, so htmx would
+            # swap and idiomorph would still diff the whole feed.
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
         # An unreadable store must render as "can't read the feed", never as an
         # empty feed — the feed is re-polled every couple of seconds, so a silent
         # empty page is exactly how a broken store would go unnoticed for weeks
@@ -2017,6 +2048,7 @@ def _register_routes(app: FastAPI) -> None:
             include_audit=audit,
             is_first_page=(offset == 0),
             store_unavailable=store_unavailable,
+            feed_version=feed_version,
         )
         return _templates(request).TemplateResponse(request, "partials/activity.html", ctx)
 

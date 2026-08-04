@@ -2290,6 +2290,93 @@ def test_activity_feed_puts_album_before_message(client, cfg):
     assert "text-right" not in body  # no right-aligned column any more
 
 
+# ---------- The feed poll must not re-send an unchanged feed (#118) ----------
+
+
+def _feed_version(html: str) -> str:
+    m = re.search(r'id="feed-version" data-version="([^"]*)"', html)
+    assert m is not None, "no feed-version element — the poll can never match"
+    return m.group(1)
+
+
+def test_an_unchanged_feed_answers_204_and_sends_no_body(client, cfg):
+    """The feed polls every 2s. Re-sending every entry each time put 154 KB on
+    the wire for a panel that usually hasn't changed, and kept it dimmed by the
+    in-flight style for most of the interval (#118). 204 is htmx's documented
+    "do not swap"."""
+    from harmonist import activity
+
+    activity.clear()
+    activity.record("something happened")
+
+    first = client.get("/activity")
+    assert first.status_code == 200
+    have = _feed_version(first.text)
+
+    again = client.get("/activity", params={"have": have})
+    assert again.status_code == 204
+    assert again.content == b""
+
+
+def test_a_new_event_makes_the_feed_answer_200_again(client, cfg):
+    """The control: 204 must mean "nothing changed", not "always 204". Without
+    this the feed would freeze on whatever it last showed."""
+    from harmonist import activity
+
+    activity.clear()
+    activity.record("first")
+    have = _feed_version(client.get("/activity").text)
+    assert client.get("/activity", params={"have": have}).status_code == 204
+
+    activity.record("second")
+    r = client.get("/activity", params={"have": have})
+    assert r.status_code == 200
+    assert "second" in r.text
+
+
+def test_toggling_technical_detail_is_not_mistaken_for_no_change(client, cfg):
+    """The params are part of the version, so a client holding the plain-feed
+    token can't be answered 204 when it asks for the audit view."""
+    from harmonist import activity, audit
+
+    activity.clear()
+    activity.record("visible")
+    audit.record("sidecar.update", mbid="a->b")
+
+    have = _feed_version(client.get("/activity").text)
+    r = client.get("/activity", params={"have": have, "audit": 1})
+    assert r.status_code == 200
+    assert "sidecar.update" in r.text
+
+
+def test_an_unreadable_store_still_carries_a_version(client, broken_store):
+    """Otherwise the poll sends an empty `have`, never matches, and re-renders
+    the unavailable notice every 2s forever."""
+    r = client.get("/activity")
+    assert r.status_code == 200
+    assert 'id="feed-version"' in r.text
+
+
+def test_audit_detail_is_capped_but_reports_the_true_total(client, cfg):
+    """One action can produce hundreds of rows — the first scan of a large
+    library records every album. Rendering them all is what made the payload
+    150 KB; the summary still shows the real count (#118)."""
+    from harmonist import activity, activity_store, audit
+    from harmonist.web.main import AUDIT_DETAIL_LIMIT
+
+    activity.clear()
+    n = AUDIT_DETAIL_LIMIT + 15
+    with activity_store.action():
+        activity.record("Started tracking lots")
+        for i in range(n):
+            audit.record("album.discovered", album=f"Artist {i}/Album {i}")
+
+    body = client.get("/activity").text
+    assert body.count("album.discovered") == AUDIT_DETAIL_LIMIT
+    assert f"· {n}" in body  # summary reports the true total, not the shown count
+    assert f"…and {n - AUDIT_DETAIL_LIMIT} more" in body
+
+
 def test_activity_shows_album_label_even_when_link_is_dead(client, cfg):
     """The label is stored with the event, so an entry stays readable after its
     album is gone — the reason we persist it rather than resolving live."""

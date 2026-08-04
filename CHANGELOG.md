@@ -14,6 +14,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- The Activity feed no longer greys itself out every couple of seconds, and an
+  unchanged feed is no longer re-sent — on a large library that was 154 KB every
+  2 seconds (#118).
+- An entry's "what changed" shows the first 20 records rather than all of them;
+  the count still reports the true total (#118).
 - An album with no sidecar keeps the same id across restarts, so what Harmonist
   records about it stays attached to it (#114).
 - Demo downloads are recorded in the audit log like real ones, so a demo album's

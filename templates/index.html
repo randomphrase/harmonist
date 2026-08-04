@@ -10,7 +10,7 @@
          hx-get="/status"
          hx-trigger="load, every 1500ms"
          hx-swap="innerHTML"
-         class="hidden"></div>
+         class="hidden hx-poll"></div>
 
     {# The deep link named an album we can't resolve — reconcile may have moved
        its identity beyond what the registry remembers, or it's off disk. Say so
@@ -85,7 +85,7 @@
              hx-get="/tasks"
              hx-trigger="load, every 1500ms[document.querySelector('#app-status')?.dataset?.reconcile==='running' || document.querySelector('#app-status')?.dataset?.scan==='scanning'], tasks-changed from:body"
              hx-swap="morph:innerHTML"
-             class="space-y-3">
+             class="space-y-3 hx-poll">
             <div class="text-center py-10">
                 <span class="text-muted italic">Loading…</span>
             </div>
@@ -111,9 +111,15 @@
            so a refresh can't silently revert it, and PAUSES once you've paged
            (`harmonistFeedPaged`) — a poll replaces the whole container, which
            would discard the older pages you just loaded (#14). #}
+        {# `have` is the version of the feed already on screen. The server answers
+           204 when nothing has changed since, and htmx does not swap on 204 — so
+           an idle feed costs one tiny request and zero morph work, instead of
+           re-sending every entry (154 KB on a large library) every 2s (#118).
+           Read from the DOM, so it can't drift from what's actually rendered. #}
         <div id="activity-feed"
+             class="hx-poll"
              hx-get="/activity"
-             hx-vals="js:{audit: window.harmonistShowAudit ? 1 : 0}"
+             hx-vals="js:{audit: window.harmonistShowAudit ? 1 : 0, have: document.getElementById('feed-version')?.dataset?.version || ''}"
              hx-trigger="load, every 2s[!document.querySelector('#panel-activity')?.classList.contains('hidden') && !window.harmonistFeedPaged], tasks-changed[!window.harmonistFeedPaged] from:body, refresh-feed from:body"
              hx-swap="morph:innerHTML">
             <div class="text-center py-6 text-muted italic text-sm">Loading activity…</div>

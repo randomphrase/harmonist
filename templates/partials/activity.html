@@ -92,14 +92,24 @@
        open-state tracker keys on; without it the feed's 2s re-poll would slam
        an open disclosure shut mid-read. #}
     {% if detail and not include_audit %}
+    {# Capped, because one action can produce hundreds of rows — the first scan of
+       a large library records every album it meets. Rendering all of them put
+       150 KB into a panel that re-polls every 2s, and nobody reads row 400 of a
+       disclosure anyway. The album's own page carries its full history (#118). #}
+    {% set shown = detail[:AUDIT_DETAIL_LIMIT] %}
     <details id="audit-{{ e.action_id }}" class="hmt-group mt-1 ml-16">
         <summary class="cursor-pointer text-2xs text-muted hover:text-accent select-none">
             what changed <span class="text-muted">· {{ detail|length }}</span>
         </summary>
         <ul class="mt-1 space-y-0.5 border-l border-line pl-3">
-            {% for a in detail %}
+            {% for a in shown %}
             <li class="font-mono text-2xs text-muted break-all">{{ a.message }}</li>
             {% endfor %}
+            {% if detail|length > shown|length %}
+            <li class="font-mono text-2xs text-muted italic">
+                …and {{ detail|length - shown|length }} more
+            </li>
+            {% endif %}
         </ul>
     </details>
     {% endif %}
@@ -125,4 +135,16 @@
 {% if is_first_page %}
 </ul>
 {% endif %}
+{% endif %}
+
+{# What the client sends back as `have` next poll. Outside the empty/unavailable
+   branches, so those renders carry it too — otherwise the poll would send an
+   empty `have`, never match, and re-render forever (#118).
+
+   FIRST PAGE ONLY. A "Load older" response is swapped into the middle of the
+   list, so emitting it there would put a second element with this id in the DOM
+   and getElementById would start answering with the wrong one. Paging pauses the
+   poll anyway, and un-pausing re-fetches a whole first page. #}
+{% if is_first_page %}
+<div id="feed-version" data-version="{{ feed_version }}" hidden></div>
 {% endif %}

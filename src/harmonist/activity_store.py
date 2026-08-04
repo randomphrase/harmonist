@@ -391,6 +391,29 @@ def recent(
     ]
 
 
+def version() -> str:
+    """A token that changes iff the stored events have. Cheap enough to compute
+    on every feed poll (#118).
+
+    `MAX(id)` alone would nearly do, since the table is append-only and ids only
+    go up. `COUNT(*)` rides along so `clear()` (demo reset, tests) also moves the
+    token: it deletes every row, after which the next MAX could otherwise repeat
+    a value the client has already seen.
+
+    Raises rather than returning a fixed token on failure: a constant would mean
+    "nothing has changed" forever, freezing the feed on whatever it last showed —
+    the same class of lie as returning an empty list (error-handling skill §1).
+    """
+    try:
+        conn = _ensure()
+        with _LOCK:
+            row = conn.execute("SELECT MAX(id), COUNT(*) FROM events").fetchone()
+    except sqlite3.Error as exc:
+        log.exception("activity_store version() failed", extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read the store version") from exc
+    return f"{row[0] or 0}.{row[1] or 0}"
+
+
 #: The audit type written when the scanner first meets an album (#107). Also
 #: serves as the "have we met?" marker — see `already_discovered`.
 DISCOVERY_EVENT = "album.discovered"
