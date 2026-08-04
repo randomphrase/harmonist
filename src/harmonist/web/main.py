@@ -2144,6 +2144,19 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
                 status_code=status.HTTP_409_CONFLICT,
             )
+        # Same backstop for the cold-start scan: until it lands there's no
+        # snapshot, so a sync would run against an inbox/library it can't see.
+        # `seq == 0` narrows this to the FIRST scan (the counter only increments
+        # on a completed one), leaving later rescans free to overlap a sync.
+        scan = request.app.state.scan_runner.status()
+        if scan.get("state") == "scanning" and scan.get("seq") == 0:
+            return _flash_response(
+                "Sync unavailable",
+                "still scanning your library — try again when it finishes",
+                level=Level.WARNING,
+                tasks_changed=False,
+                status_code=status.HTTP_409_CONFLICT,
+            )
         # Sync-popover knobs. max-downloads persists (it's the same setting as the
         # Settings page); link-only is a one-shot override for THIS sync.
         if max_downloads is not None and max_downloads >= 0:

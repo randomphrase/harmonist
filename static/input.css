@@ -95,6 +95,20 @@ button[disabled],
 .find-mode:has(input[value="name"]:checked) .find-mode__panel--name {
   display: block;
 }
+/* The sync popover is bound to its own button: whenever Sync Bandcamp is
+   disabled, the popover cannot open. Its submit is a SECOND sync trigger, and
+   `disabled` on the button doesn't suppress :hover on the wrapper — so without
+   this the popover opened, and worked, over a disabled button (#110).
+
+   Deliberately one mechanism rather than two. Whatever disables the button —
+   the poll JS during a sync, reconcile or the cold-start scan, or the
+   server-side render on /settings — takes the popover with it, so a new
+   disable-reason can never forget to. Two IDs outrank Tailwind's
+   `group-hover:block`, which is what makes this win. */
+#sync-control:has(#sync-button:disabled) #sync-popover {
+  display: none;
+}
+
 /* Native <dialog> modals (see base.html modal plumbing). The dialog element is
    an unstyled transparent shell (backdrop-click detection target); the inner
    card carries the visual chrome. */

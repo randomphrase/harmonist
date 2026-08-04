@@ -750,6 +750,27 @@ def test_post_sync_409_while_reconciling(client):
     assert "reconciling" in r.text.lower()
 
 
+def test_post_sync_409_during_the_cold_start_scan(client):
+    # Until the first scan lands there's no snapshot, so a sync would run
+    # against a library it can't see. The button is disabled client-side; this
+    # is the backstop for a stale page or the window before the next poll.
+    client.app.state.sync_runner._runner_fn = lambda: None
+    client.app.state.scan_runner._status.state = "scanning"
+    client.app.state.scan_runner._status.seq = 0
+    r = client.post("/sync")
+    assert r.status_code == 409
+    assert "scanning" in r.text.lower()
+
+
+def test_post_sync_allowed_during_a_later_rescan(client):
+    # Only the FIRST scan blocks: a later rescan (seq > 0) has a usable
+    # snapshot behind it, so it must not lock the user out of syncing.
+    client.app.state.sync_runner._runner_fn = lambda: None
+    client.app.state.scan_runner._status.state = "scanning"
+    client.app.state.scan_runner._status.seq = 3
+    assert client.post("/sync").status_code == 200
+
+
 def test_needs_sync_bulk_button_absent_while_reconciling(client, cfg):
     # During reconcile the inbox renders the live-count panel, not the groups —
     # so the bulk-sync button isn't offered at all (can't race the pass).
@@ -3281,16 +3302,24 @@ def test_settings_page_disables_the_global_sync_actions(client, cfg):
     )
     settings = client.get("/settings")
     assert "disabled" in _button_tag(settings.text, "sync-button")
-    # The popover carries a SECOND sync trigger (its submit) and `disabled` on
-    # the button doesn't stop :hover on the wrapper — so it must be gone, not
-    # merely covered.
-    assert 'name="link_only"' not in settings.text
-
     # Control: the same header on the index page is live, or this test would
     # pass against a sync button that is disabled everywhere.
-    home = client.get("/")
-    assert "disabled" not in _button_tag(home.text, "sync-button")
-    assert 'name="link_only"' in home.text
+    assert "disabled" not in _button_tag(client.get("/").text, "sync-button")
+
+
+def test_sync_popover_is_bound_to_the_sync_button(client, cfg):
+    """The popover's submit is a second sync trigger, so it must not open over
+    a disabled button. That binding is a CSS rule keyed on #sync-popover /
+    #sync-button, so all pytest can check is that the two hooks it needs are
+    present — whether the popover actually stays shut is an e2e test (#110)."""
+    cfg.cookies_file.write_text(
+        "# Netscape HTTP Cookie File\n.bandcamp.com\tTRUE\t/\tFALSE\t0\tident\tabc\n"
+    )
+    home = client.get("/").text
+    assert 'id="sync-popover"' in home
+    assert 'id="sync-button"' in home
+    css = Path(__file__).resolve().parents[1] / "static" / "harmonist.css"
+    assert "#sync-control:has(#sync-button:disabled) #sync-popover" in css.read_text()
 
 
 def test_settings_page_disables_the_header_setup_button(client, cfg):

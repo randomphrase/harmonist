@@ -22,14 +22,15 @@
                         class="px-4 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
                     Sync Bandcamp
                 </button>
-                {# Suppressed entirely when the globals are off: `disabled` on the
-                   button doesn't stop :hover on this wrapper, and the popover holds
-                   a second sync trigger (its submit) that would still fire. #}
-                {% if not globals_off_reason %}
                 {# Positioned at top-full with a transparent pt-1 *bridge* (padding, not
                    margin) so moving the cursor from the button into the card never
-                   crosses a dead zone that would drop :hover and close the popover. #}
-                <div class="hidden group-hover:block group-focus-within:block absolute right-0 top-full pt-1 w-72 z-50 text-left cursor-default">
+                   crosses a dead zone that would drop :hover and close the popover.
+
+                   #sync-popover is load-bearing, not decorative: input.css binds this
+                   element's visibility to `#sync-button:disabled`, so the popover
+                   can't open over a disabled button (#110). #}
+                <div id="sync-popover"
+                     class="hidden group-hover:block group-focus-within:block absolute right-0 top-full pt-1 w-72 z-50 text-left cursor-default">
                   <div class="bg-white border border-line rounded-lg shadow-lg p-3">
                     <form hx-post="/sync" hx-target="#sync-flash" hx-swap="innerHTML" class="space-y-2.5 text-sm text-ink">
                         <input type="hidden" name="from_popover" value="true">
@@ -58,7 +59,6 @@
                     </form>
                   </div>
                 </div>
-                {% endif %}
             </div>
             {% else %}
             {# Cookies not configured yet — prompt setup instead of syncing.

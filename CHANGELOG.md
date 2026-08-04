@@ -10,6 +10,10 @@ versions follow [semantic versioning](https://semver.org).
 
 - Sync Bandcamp is disabled on the Settings page, where it would have read
   settings you're partway through changing (#108).
+- The sync options popover no longer opens over a disabled Sync button — during
+  the first library scan its "Sync with these options" started a sync anyway
+  (#110).
+- Syncing is refused while the first library scan is still running (#110).
 
 ### Added
 
