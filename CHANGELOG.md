@@ -6,13 +6,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-03
+
 ### Fixed
 
 - The Activity feed no longer announces non-events: starting a sync writes one
   entry instead of two, and it now says whether the sync is link-only (drains
   Needs Link, downloads nothing) or full. A reconcile that finds nothing to do
   says nothing at all, rather than three lines reporting that nothing happened.
-
 - Demo mode no longer claims an album has no matching Bandcamp purchase before
   you've run a sync — that verdict is now reached by the sync, as it is on a real
   install.
