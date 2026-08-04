@@ -3,8 +3,18 @@
    MusicBrainz compare) before linking. Reuses library_detail.html verbatim. When
    `pending_item_id` is set, a Link action closes the loop here. #}
 {# Native <dialog>: base.html opens it on swap-in and clears the mount on close.
-   A click landing on the dialog element itself is a backdrop click. #}
-<dialog class="bg-transparent p-0 m-auto max-w-4xl w-full"
+   A click landing on the dialog element itself is a backdrop click.
+
+   `tabindex="-1" autofocus` puts showModal()'s initial focus on the dialog
+   itself. Without it the browser focuses the first focusable descendant — the
+   title link — and draws a focus ring around the title the moment the modal
+   opens, for mouse users too. Focus still starts inside the dialog, so Tab
+   walks the modal's own controls and keyboard users lose nothing.
+
+   focus:outline-none goes with it: the dialog is a focus *holder*, not a
+   control you can operate, so ringing it says nothing. Every control inside
+   keeps its own ring. #}
+<dialog class="bg-transparent p-0 m-auto max-w-4xl w-full focus:outline-none" tabindex="-1" autofocus
         onclick="if (event.target === this) this.close()">
     <div class="bg-white border border-line rounded-lg w-full shadow-2xl max-h-[90vh] overflow-auto">
         {# No "Album" heading: the panel's own title bar IS the header now, and a
