@@ -1208,7 +1208,19 @@ def _find_album(request: Request, album_id: str) -> Album:
     # already sidecar'd and after every restart. The alias chain, recorded at each
     # change, does: it maps the superseded id forward to the current one (#33).
     # This is what keeps an old activity-feed deep link working.
-    current_id = activity_store.resolve_alias(album_id)
+    #
+    # A store failure here is NOT a miss: we simply couldn't check, and the album
+    # may well be on disk. Answer 503, never 404 — telling the user their album is
+    # gone because SQLite hiccuped is the failure the error-handling skill opens
+    # with (#104).
+    try:
+        current_id = activity_store.resolve_alias(album_id)
+    except activity_store.StoreUnavailableError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "can't resolve this link right now — the history store is unavailable. "
+            "The album may still be in your library; try the Library tab.",
+        ) from exc
     if current_id is not None:
         for a in albums:
             if a.id == current_id:
@@ -1414,7 +1426,15 @@ def _read_user_ignores(ignores_file: Path) -> list[dict[str, Any]]:
     for un-ignoring."""
     try:
         text = ignores_file.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return []  # nothing declined yet — a genuinely empty answer
     except OSError:
+        # A permission or I/O error is NOT "you have declined nothing". Settings
+        # would show an empty list, so nothing could be restored and the user
+        # would have no way to tell why (#104).
+        log.exception(
+            "could not read ignores %s — declined purchases can't be listed", ignores_file
+        )
         return []
     user, _ = _ignores_split(text)
     out: list[dict[str, Any]] = []
@@ -1431,9 +1451,13 @@ def _remove_user_ignore(ignores_file: Path, item_id: int) -> bool:
     """Drop one id from the USER region so the next sync considers it again.
     Returns True if a line was removed. Never touches the auto-managed region —
     removing an already-downloaded id there would re-download the album."""
+    # False means "there was no such line", which the caller treats as a no-op and
+    # reports nothing. A read/write failure is a different thing entirely — the
+    # user pressed Restore and nothing happened — so it has to be loud (#104).
     try:
         text = ignores_file.read_text(encoding="utf-8")
     except OSError:
+        log.exception("could not read ignores %s — Restore did nothing", ignores_file)
         return False
     user, auto = _ignores_split(text)
     kept = [ln for ln in user if (ln.partition("#")[0].strip() or None) != str(item_id)]
@@ -1441,8 +1465,8 @@ def _remove_user_ignore(ignores_file: Path, item_id: int) -> bool:
         return False
     try:
         ignores_file.write_text("".join(kept + auto), encoding="utf-8")
-    except OSError as e:
-        log.warning("could not rewrite ignores %s: %s", ignores_file, e)
+    except OSError:
+        log.exception("could not rewrite ignores %s — Restore did nothing", ignores_file)
         return False
     return True
 
@@ -1954,16 +1978,32 @@ def _register_routes(app: FastAPI) -> None:
         """
         limit = max(1, min(limit, 200))  # clamp; defensive
         offset = max(0, offset)
-        # Ask for one MORE than needed: its presence answers "is there another
-        # page?" without a COUNT over a table that grows without bound and is
-        # re-read every couple of seconds.
-        page = activity.recent(limit + 1, offset=offset, include_audit=audit)
-        has_more = len(page) > limit
-        events = page[:limit]
-        # The audit records behind each entry, fetched for the whole page in ONE
-        # grouped query (#84) — per-entry lookups would be an N+1 across the page,
-        # re-polled every couple of seconds.
-        audit_detail = activity_store.audit_by_action([e.action_id for e in events if e.action_id])
+        # An unreadable store must render as "can't read the feed", never as an
+        # empty feed — the feed is re-polled every couple of seconds, so a silent
+        # empty page is exactly how a broken store would go unnoticed for weeks
+        # (#104). Caught rather than raised so the poll doesn't 500 on a loop.
+        events: list[activity.Event] = []
+        audit_detail: dict[str, list[activity_store.StoredEvent]] = {}
+        has_more = False
+        store_unavailable = False
+        try:
+            # Ask for one MORE than needed: its presence answers "is there another
+            # page?" without a COUNT over a table that grows without bound and is
+            # re-read every couple of seconds.
+            page = activity.recent(limit + 1, offset=offset, include_audit=audit)
+            has_more = len(page) > limit
+            events = page[:limit]
+            # The audit records behind each entry, fetched for the whole page in ONE
+            # grouped query (#84) — per-entry lookups would be an N+1 across the page,
+            # re-polled every couple of seconds.
+            audit_detail = activity_store.audit_by_action(
+                [e.action_id for e in events if e.action_id]
+            )
+        except activity_store.StoreUnavailableError:
+            # Already logged with a traceback in the store. Drop any partial page:
+            # half a feed presented as the whole feed is the same lie in miniature.
+            events, audit_detail, has_more = [], {}, False
+            store_unavailable = True
         ctx = _ctx(
             request,
             events=events,
@@ -1973,6 +2013,7 @@ def _register_routes(app: FastAPI) -> None:
             limit=limit,
             include_audit=audit,
             is_first_page=(offset == 0),
+            store_unavailable=store_unavailable,
         )
         return _templates(request).TemplateResponse(request, "partials/activity.html", ctx)
 
@@ -2257,13 +2298,24 @@ def _register_routes(app: FastAPI) -> None:
         lands here rather than 404-ing.
         """
         album = _find_album(request, album_id)
-        ctx = _ctx(
-            request,
-            album=album,
+        # The tracklist and actions don't depend on the store, so a broken store
+        # must not take the whole page down — but the history section has to say
+        # it couldn't read rather than fall through to "Nothing recorded for this
+        # album yet", which is the confident lie #104 is about.
+        history: list[activity_store.StoredEvent] = []
+        history_unavailable = False
+        try:
             # Keyed on the album's CURRENT id — album_history unions backwards
             # over the chain from there, so passing the (possibly stale) URL id
             # would find only the tail of its own history.
-            history=activity_store.album_history(album.id),
+            history = activity_store.album_history(album.id)
+        except activity_store.StoreUnavailableError:
+            history_unavailable = True  # already logged with a traceback in the store
+        ctx = _ctx(
+            request,
+            album=album,
+            history=history,
+            history_unavailable=history_unavailable,
         )
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 

@@ -11,6 +11,7 @@ import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -3491,6 +3492,33 @@ def test_erase_sidecars_is_audited_per_album(client, cfg):
     assert any(m.startswith("sidecar.delete_all") and "removed=2" in m for m in rows)
 
 
+def test_erase_sidecars_counts_and_reports_ones_it_could_not_delete(cfg, caplog):
+    """The "Erased N sidecar(s)" count must not over-report. A sidecar that fails to
+    unlink was skipped silently and left out of the count, so the user believed
+    the nuke was complete while that album kept its identity (#104)."""
+    from harmonist import sidecar as scmod
+
+    a = _make_album(cfg, "Deletable")
+    b = _make_album(cfg, "Stubborn")
+    scmod.write(a, Sidecar(mb_release_id="rel-a"))
+    scmod.write(b, Sidecar(mb_release_id="rel-b"))
+
+    stubborn = scmod.sidecar_path(b)
+    real_unlink = Path.unlink
+
+    def selective_unlink(self, *args, **kwargs):
+        if self == stubborn:
+            raise OSError("permission denied")
+        return real_unlink(self, *args, **kwargs)
+
+    with mock.patch.object(Path, "unlink", selective_unlink), caplog.at_level("ERROR"):
+        removed = scmod.delete_all(cfg.paths.music_dir)
+
+    assert removed == 1, "the undeletable sidecar must not be counted as erased"
+    assert scmod.sidecar_path(b).exists()
+    assert any("could not be deleted" in r.message for r in caplog.records)
+
+
 def test_erase_sidecars_removes_only_sidecars(client, cfg):
     from harmonist import sidecar as scmod
 
@@ -4394,3 +4422,72 @@ def test_reconcile_gives_each_album_its_own_action(cfg):
     ids = {e.action_id for e in activity.recent(20) if "New →" in e.message}
     assert len(ids) == 2, "the two albums should not share one action id"
     assert None not in ids
+
+
+# ---------- A broken history store must not render as an empty one (#104) ----------
+
+
+@pytest.fixture
+def broken_store(monkeypatch):
+    """Every activity_store operation fails, as a locked or corrupt DB would."""
+    import sqlite3
+
+    from harmonist import activity_store
+
+    def boom():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(activity_store, "_ensure", boom)
+
+
+def test_activity_feed_says_unavailable_rather_than_empty(client, broken_store):
+    """The feed is re-polled every 2s, so rendering a store failure as "No
+    activity yet" is how a broken store goes unnoticed for weeks on a NAS."""
+    r = client.get("/activity")
+    assert r.status_code == 200  # a polling panel must not 500 on a loop
+    assert "Activity unavailable" in r.text
+    assert "No activity yet" not in r.text
+
+
+def test_album_page_says_history_unavailable_rather_than_nothing_recorded(client, cfg):
+    """The sharpest form of the lie: the page would state as fact that Harmonist
+    has never touched the album, at the moment the user asks what it did."""
+    d = _make_album(cfg, "BrokenHistory")
+    sc.write(d, sc.Sidecar(store_url="https://x.bandcamp.com/album/y"))
+    album_id = sc.album_id_for(d)
+    assert album_id
+
+    # Control first: with a working store the page renders real history (the
+    # sidecar write above audited itself) and no unavailable notice.
+    ok = client.get(f"/album/{album_id}")
+    assert ok.status_code == 200
+    assert "sidecar.create" in ok.text
+    assert "History unavailable" not in ok.text
+
+    from harmonist import activity_store
+
+    def boom(*a, **k):
+        raise activity_store.StoreUnavailableError("nope")
+
+    with mock.patch.object(activity_store, "album_history", boom):
+        r = client.get(f"/album/{album_id}")
+    assert r.status_code == 200  # tracklist and actions don't need the store
+    assert "History unavailable" in r.text
+    assert "Nothing recorded for this album yet" not in r.text
+    assert "sidecar.create" not in r.text  # no half-history presented as whole
+
+
+def test_unresolvable_link_is_503_not_404_when_the_store_is_broken(client, cfg, broken_store):
+    """resolve_alias returning None means "never superseded", which sends
+    _find_album to a 404. One DB hiccup must not tell the user an album that is
+    sitting on disk does not exist."""
+    r = client.get("/album/some-id-that-is-not-in-the-snapshot")
+    assert r.status_code == 503
+    assert "history store is unavailable" in r.text
+
+
+def test_a_genuine_miss_is_still_404(client, cfg):
+    """Control for the test above — a working store must still 404 an id that
+    really isn't there, or the 503 would just be masking every miss."""
+    r = client.get("/album/some-id-that-is-not-in-the-snapshot")
+    assert r.status_code == 404

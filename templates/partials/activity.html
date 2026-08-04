@@ -9,7 +9,19 @@
    poll once you've paged or while a request is in flight, because a poll
    replaces the whole container and would otherwise throw away the pages you
    loaded. #}
-{% if is_first_page and not events %}
+{# "Couldn't read the feed" must never render as "no activity". This panel is
+   re-polled every 2s, so a silently empty feed is precisely how a broken store
+   would go unnoticed for weeks on an unattended NAS (#104). #}
+{% if store_unavailable %}
+<div class="p-6 text-center border border-amber-200 bg-amber-50 rounded-lg">
+    <p class="text-amber-700">
+        <span class="font-bold">Activity unavailable.</span>
+        Harmonist couldn't read its history store, so this feed can't be shown —
+        this does <em>not</em> mean nothing has happened. The error is in the
+        application log.
+    </p>
+</div>
+{% elif is_first_page and not events %}
 <div class="p-10 text-center border border-line rounded-lg">
     <p class="text-muted italic">
         {% if include_audit %}No activity or audit records yet.

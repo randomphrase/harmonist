@@ -27,6 +27,17 @@ The same shape, worse: `resolve_alias` returning `None` on error means "this id
 was never superseded", so `_find_album` concludes the album doesn't exist. One
 transient DB error and the user is told their album is gone.
 
+Both were real (`activity_store`, fixed in #104), and the fix is the pattern to
+copy: a **typed error for "I couldn't tell"** — `StoreUnavailableError` — raised
+by every read, caught at the route, rendered as *"History unavailable … this does
+not mean nothing was recorded"*. Three properties make it work:
+
+- The failure has its **own type**, so a caller can't confuse it with a result.
+- The route **degrades the section, not the page**: the album page still renders
+  its tracklist and actions, and the polled feed doesn't 500 in a loop.
+- A partial answer is **discarded**, not shown. Half a feed presented as the
+  whole feed is the same lie in miniature.
+
 Before writing a fallback value, ask: **can the caller tell this apart from
 success?** If not, don't return it — propagate.
 

@@ -41,6 +41,41 @@ from .url_recovery import album_slug as album_slug  # noqa: PLC0414 (explicit re
 log = logging.getLogger(__name__)
 
 
+class _SkippedSidecars:
+    """Counts sidecars a library pass couldn't read, and says so in the log.
+
+    Skipping one silently is not cosmetic. The album drops out of the index being
+    built, so its purchase matches nothing and becomes a *potential download* —
+    re-downloading audio the user already owns is the exact harm the adoption
+    design exists to prevent, and a bare `continue` is how it used to happen
+    without a trace (#104).
+
+    First failure carries the traceback, the rest are counted: one unreadable
+    file must not bury the log under N identical stacks (skill §3). Callers pass
+    over the whole library, so `done()` at the end is what makes a partial index
+    diagnosable after the fact.
+    """
+
+    def __init__(self, pass_name: str) -> None:
+        self._pass_name = pass_name
+        self.count = 0
+
+    def skip(self, path: Path) -> None:
+        """Call from inside the `except` — it reads the live exception."""
+        self.count += 1
+        if self.count == 1:
+            log.exception("%s: skipping unreadable sidecar %s", self._pass_name, path)
+
+    def done(self) -> None:
+        if self.count:
+            log.error(
+                "%s: %d sidecar(s) unreadable and skipped — those albums are missing "
+                "from this pass, so their purchases may be offered as new downloads",
+                self._pass_name,
+                self.count,
+            )
+
+
 # Capture bandcampsync's per-file extract moves in the audit log — every file
 # written/overwritten into the library is then recorded (transparency: the data-
 # safety concern). bandcampsync's own "Moving extracted file …" lines ride its
@@ -246,10 +281,12 @@ def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], list[Pat
     by_slug: dict[str, list[Path]] = {}
     slugless: list[Path] = []
     linked_ids: set[int] = set()
+    skipped = _SkippedSidecars("backfill index")
     for f in music_dir.rglob(".harmonist.json"):
         try:
             sc = sidecar_mod.read(f.parent)
-        except Exception:
+        except (OSError, sidecar_mod.InvalidSidecarError):
+            skipped.skip(f)
             continue
         if sc is None or not sc.store_url:
             continue
@@ -260,6 +297,7 @@ def survey_album_links(music_dir: Path) -> tuple[dict[str, list[Path]], list[Pat
             by_slug.setdefault(slug, []).append(f.parent)
         elif is_bandcamp_url(sc.store_url):
             slugless.append(f.parent)
+    skipped.done()
     return by_slug, slugless, linked_ids
 
 
@@ -574,10 +612,12 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         match the `©alb` title against the purchase title by word-subsequence
         (`titles_match`). Reading titles for just this (small) set is cheap."""
         index: dict[str, list[tuple[tuple[str, ...], Path]]] = {}
+        skipped = _SkippedSidecars("adopt index")
         for album_dir in slugless:
             try:
                 sc = sidecar_mod.read(album_dir)
-            except Exception:
+            except (OSError, sidecar_mod.InvalidSidecarError):
+                skipped.skip(album_dir)
                 continue
             if sc is None or not sc.store_url:
                 continue
@@ -585,6 +625,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             if not host:
                 continue
             index.setdefault(host, []).append((title_words(_album_title(album_dir)), album_dir))
+        skipped.done()
         return index
 
     def _adopt_link(self, item: Any, url: str) -> bool:
@@ -686,14 +727,29 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 # sidecar each sync (bumping mtimes → the next scan re-reads every
                 # album's tags, the slow "finishing up") and spam the feed with
                 # "Needs Link → Library" for albums long since in the Library.
+                #
+                # An unreadable sidecar must NOT read as "not linked yet". That
+                # sends us down the write path above — rewriting a sidecar we
+                # can't even read, over an album that may well be linked already,
+                # for exactly the churn this guard exists to prevent (#104). Treat
+                # it as "leave it alone", loudly: not overwriting what we can't
+                # read is also the non-destructive answer.
+                unreadable = False
+                existing = None
                 try:
                     existing = sidecar_mod.read(existing_dir)
-                except Exception:
-                    existing = None
+                except (OSError, sidecar_mod.InvalidSidecarError):
+                    unreadable = True
+                    log.exception(
+                        "could not read the sidecar at %s while linking Bandcamp "
+                        "purchase %s — leaving it untouched",
+                        existing_dir,
+                        getattr(item, "item_id", "?"),
+                    )
                 already_linked = bool(
                     existing and existing.bandcamp and existing.bandcamp.item_id is not None
                 )
-                if not already_linked:
+                if not already_linked and not unreadable:
                     try:
                         write_sidecar_for_item(item, existing_dir, prefer_item_url=by_slug)
                         activity.record(
@@ -840,13 +896,19 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         if not media_dir:
             return []
         linked: set[int] = set()
+        # A skip here INFLATES the unmatched set (the album's item_id is missing
+        # from `linked`), so its purchase looks unlinked to mis-tag detection and
+        # relink — the opposite direction to the index passes, same root cause.
+        skipped = _SkippedSidecars("unmatched-purchase scan")
         for f in Path(media_dir).rglob(".harmonist.json"):
             try:
                 sc = sidecar_mod.read(f.parent)
-            except Exception:
+            except (OSError, sidecar_mod.InvalidSidecarError):
+                skipped.skip(f)
                 continue
             if sc and sc.bandcamp and sc.bandcamp.item_id is not None:
                 linked.add(int(sc.bandcamp.item_id))
+        skipped.done()
         out: list[tuple[int, str, str]] = []
         for item in self.bandcamp.purchases:
             try:

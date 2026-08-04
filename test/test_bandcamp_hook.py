@@ -1462,3 +1462,55 @@ def test_sync_item_does_not_short_circuit_when_no_match(monkeypatch, tmp_path):
     assert result is True
     assert parent_called == [True]
     assert sc.has_sidecar(new_dir)
+
+
+# ---------- An unreadable sidecar must not look like an unlinked album (#104) ----------
+
+
+def test_sync_item_leaves_an_unreadable_sidecar_alone(monkeypatch, tmp_path, caplog):
+    """A sidecar we can't read used to read as `existing = None`, hence "not
+    linked yet" — sending the sync down the write path, rewriting a sidecar it
+    couldn't even read, over an album that may already be linked. That bumps the
+    mtime (forcing a full tag re-read next scan) and duplicates the feed entry,
+    which is exactly what the guard above it exists to prevent (#104)."""
+    album_dir = tmp_path / "Artist" / "Album"
+    album_dir.mkdir(parents=True)
+    url = "https://x.bandcamp.com/album/y"
+    sc.write(album_dir, Sidecar(store_url=url, bandcamp=BandcampInfo(item_id=1)))
+    before = sc.sidecar_path(album_dir).read_text()
+
+    s = _bare_syncer()
+    s.local_media.media_dir = str(tmp_path)
+    s.local_media.get_path_for_purchase = MagicMock(return_value=album_dir)
+    monkeypatch.setattr(library_index, "dir_for_url", lambda _u: album_dir)
+
+    def unreadable(_dir):
+        raise OSError("I/O error")
+
+    monkeypatch.setattr("harmonist.bandcamp_hook.sidecar_mod.read", unreadable)
+
+    item = _StubItem(item_id=1, url_hints={"subdomain": "x", "slug": "y"})
+    with caplog.at_level("ERROR"):
+        assert s.sync_item(item) is False  # still "already on disk", no download
+
+    assert sc.sidecar_path(album_dir).read_text() == before, "rewrote what it couldn't read"
+    assert any("leaving it untouched" in r.message for r in caplog.records)
+
+
+def test_backfill_index_logs_the_sidecars_it_skips(tmp_path, caplog):
+    """A skipped sidecar drops its album out of the index, so its purchase
+    matches nothing and becomes a potential download — re-downloading audio the
+    user already owns. Silently, before #104."""
+    good = tmp_path / "Artist" / "Good"
+    good.mkdir(parents=True)
+    sc.write(good, Sidecar(store_url="https://x.bandcamp.com/album/good"))
+    bad = tmp_path / "Artist" / "Bad"
+    bad.mkdir(parents=True)
+    sc.sidecar_path(bad).write_text("{ this is not json")
+
+    with caplog.at_level("ERROR"):
+        by_slug, _slugless, _linked = survey_album_links(tmp_path)
+
+    assert "album/good" in by_slug  # the readable one still indexed
+    assert any("unreadable sidecar" in r.message for r in caplog.records)
+    assert any("offered as new downloads" in r.message for r in caplog.records)

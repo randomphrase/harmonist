@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
-from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +22,8 @@ from .models import (
     Sidecar,
     TrackComparison,
 )
+
+log = logging.getLogger(__name__)
 
 SIDECAR_FILENAME = ".harmonist.json"
 
@@ -61,11 +63,22 @@ def delete_all(music_dir: Path) -> int:
     # One line per sidecar, so the record names exactly which albums lost one;
     # a bare count would say a nuke happened but not what it took.
     removed = 0
+    failed = 0
     for p in music_dir.rglob(SIDECAR_FILENAME):
         try:
             existing = None
-            with suppress(Exception):
+            try:
                 existing = read(p.parent)
+            except (OSError, InvalidSidecarError):
+                # Only costs us the identity FIELDS on the audit line below; the
+                # delete itself still proceeds and is still recorded against the
+                # path. Loud because a `sidecar.delete` row that can't say which
+                # album lost its identity is the one thing that line is for.
+                log.exception(
+                    "could not read %s before deleting it — its audit record will "
+                    "not name the album's identity",
+                    p,
+                )
             p.unlink()
             removed += 1
             audit.record(
@@ -75,9 +88,16 @@ def delete_all(music_dir: Path) -> int:
                 mbid=None if existing is None else existing.mb_release_id,
             )
         except OSError:
+            # A sidecar that survived the nuke. Counted and reported, or "Erased N
+            # sidecar(s)" would over-claim and the user would believe albums were
+            # reset that still carry their identity (#104).
+            failed += 1
+            log.exception("could not delete sidecar %s", p)
             continue
+    if failed:
+        log.error("%d sidecar(s) could not be deleted and are still on disk", failed)
     # No music_dir field: every path in the log is already relative to it (#98).
-    audit.record("sidecar.delete_all", removed=removed)
+    audit.record("sidecar.delete_all", removed=removed, failed=failed)
     library_index.clear()  # the sidecars are gone; the rescan refills the index
     return removed
 
@@ -106,8 +126,20 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
     """
     try:
         old = read(album_dir)  # for the audit diff — best-effort, never blocks the write
-    except Exception:
+    except (OSError, InvalidSidecarError, UnsupportedSchemaVersionError):
+        # Still doesn't block the write — but it is NOT free, so it can't be
+        # silent. `old` feeds _record_identity_alias, which returns early on None,
+        # and that alias is only knowable right now: _normalise_identity is about
+        # to erase the superseded id from disk. Losing it orphans the album's
+        # pre-tag history and 404s every old link to it, permanently. It also
+        # makes the audit below record a `sidecar.create` for what is really a
+        # modification (#104).
         old = None
+        log.exception(
+            "could not read the existing sidecar at %s before rewriting it — if this "
+            "write changes the album's identity, the link from its old id is lost",
+            album_dir,
+        )
     sidecar = _normalise_identity(sidecar, album_dir)
     assert bool(sidecar.mb_release_id) ^ bool(sidecar.temp_uid), (
         f"sidecar identity invariant violated: mb_release_id="
@@ -141,7 +173,18 @@ def album_id_for(album_dir: Path) -> str | None:
     the web layer (the reconcile runner) need it too."""
     try:
         sc = read(album_dir)
-    except Exception:
+    except (OSError, InvalidSidecarError, UnsupportedSchemaVersionError):
+        # None is also "no sidecar yet", so a caller can't tell these apart —
+        # but every caller uses this to stamp `album_id=` on a log entry, and
+        # neither propagating (a failed read must not abort the tagging run it
+        # is describing) nor guessing an id is better. So: keep the None, make
+        # the reason findable. A None here means the entry won't appear on that
+        # album's history page (#104).
+        log.exception(
+            "could not read the sidecar at %s to identify the album — records "
+            "written for it now won't appear in its history",
+            album_dir,
+        )
         return None
     return None if sc is None else _album_id_of(sc)
 

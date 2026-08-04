@@ -541,3 +541,70 @@ def test_nested_action_scopes_keep_the_outermost_id(tmp_path):
             assert inner == outer
         assert activity_store.current_action() == outer
     assert activity_store.current_action() is None
+
+
+# ---------- A broken store must not look like an empty one (#104) ----------
+
+
+@pytest.fixture
+def broken_store(monkeypatch):
+    """Make every store operation fail the way a locked/corrupt DB would.
+
+    Patching `_ensure` is enough: every read and write calls it from inside the
+    same `try`, so the error surfaces exactly where a real sqlite failure would.
+    """
+
+    def boom():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(activity_store, "_ensure", boom)
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        pytest.param(lambda: activity_store.recent(), id="recent"),
+        pytest.param(lambda: activity_store.audit_by_action(["a"]), id="audit_by_action"),
+        pytest.param(lambda: activity_store.resolve_alias("some-id"), id="resolve_alias"),
+        pytest.param(lambda: activity_store.album_history("some-id"), id="album_history"),
+    ],
+)
+def test_reads_raise_rather_than_returning_an_empty_result(broken_store, call):
+    """Every read used to swallow sqlite3.Error and return []/{}/None, which the
+    caller cannot tell from a genuine empty answer — the album page then claims
+    "Nothing recorded for this album yet" over a broken database (#104)."""
+    with pytest.raises(activity_store.StoreUnavailableError):
+        call()
+
+
+def test_resolve_alias_failure_is_not_reported_as_never_superseded(broken_store):
+    """The sharpest case: None from resolve_alias means "this id was never
+    superseded", which sends its only caller on to a 404. A DB error must not be
+    able to say that about an album sitting on disk."""
+    with pytest.raises(activity_store.StoreUnavailableError):
+        activity_store.resolve_alias("old-id")
+
+
+def test_writes_stay_best_effort_but_log_at_error(broken_store, caplog):
+    """Recording must never abort the operation being recorded — but a dropped
+    audit row makes every remaining row untrustworthy, so it can't be quiet.
+    These were log.debug, i.e. invisible at default level AND below the feed
+    mirror's WARNING threshold (#104, skill §5)."""
+    caplog.set_level("DEBUG")
+    activity_store.append(message="x", level=Level.INFO, source=Source.AUDIT)
+    activity_store.record_alias("old", "new")
+    activity_store.clear()  # teardown path — swallows too, but must be loud
+
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 3, [r.message for r in caplog.records]
+    assert all(r.exc_info for r in errors), "no traceback — the thing you want in 3 weeks"
+
+
+def test_append_failure_does_not_re_enter_the_feed_mirror(broken_store, caplog):
+    """The `_activity` flag on the failure log is load-bearing: without it the
+    feed's WARNING+ mirror would call record() again, which fails again..."""
+    caplog.set_level("DEBUG")
+    activity_store.append(message="x", level=Level.INFO, source=Source.ACTIVITY)
+    failures = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(failures) == 1
+    assert getattr(failures[0], "_activity", False) is True

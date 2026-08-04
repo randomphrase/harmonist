@@ -34,6 +34,30 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 
+# Every failure logged from THIS module carries `_activity`, which tells the
+# feed's log mirror (activity._ActivityLogHandler) not to turn it into a feed
+# entry. Two reasons: writing "the store is broken" INTO the broken store is
+# self-defeating, and the mirror's own append would fail and log again. The
+# guard makes that terminate, but the pointless round trip is worth skipping.
+_QUIET_MIRROR = {"_activity": True}
+
+
+class StoreUnavailableError(RuntimeError):
+    """A read against the store failed — the answer is unknown, not empty.
+
+    Every read here used to swallow `sqlite3.Error` and return `[]` / `{}` /
+    `None`, which the caller cannot tell from a genuine empty result. The album
+    page then renders "Nothing recorded for this album yet" over a locked or
+    corrupt database, stating as fact that Harmonist has never touched the album
+    — at the moment the user is trying to find out what it did (#104).
+
+    So reads raise this instead, and the routes turn it into a visible "history
+    unavailable" rather than a confident lie. WRITES do not raise: recording is
+    incidental to the operation being recorded and must never abort it, so they
+    log at ERROR and continue. See the error-handling skill §1 and §5.
+    """
+
+
 class Source(StrEnum):
     """Which log a stored event belongs to. The feed shows ACTIVITY; AUDIT is the
     durable forensic trail (both share this store, distinguished by this column)."""
@@ -304,7 +328,15 @@ def append(
             )
             conn.commit()
     except sqlite3.Error:
-        log.debug("activity_store append failed", exc_info=True, extra={"_activity": True})
+        # ERROR, not debug: this is the single sink for BOTH activity and audit,
+        # so a dropped row here can be the only record that Harmonist rewrote the
+        # user's tags. The audit log's whole value is "if it isn't here, it didn't
+        # happen" — dropping rows quietly makes every remaining row untrustworthy
+        # (skill §5). Still swallowed: recording must not abort what it records.
+        #
+        # `extra={"_activity": True}` is load-bearing — it stops the feed's log
+        # mirror re-entering record() and looping (activity._ActivityLogHandler).
+        log.exception("activity_store append failed", extra=_QUIET_MIRROR)
 
 
 def recent(
@@ -340,8 +372,11 @@ def recent(
         conn = _ensure()
         with _LOCK:
             rows = conn.execute(q, args).fetchall()
-    except sqlite3.Error:
-        return []
+    except sqlite3.Error as exc:
+        log.exception(
+            "activity_store recent() failed — the feed cannot be read", extra=_QUIET_MIRROR
+        )
+        raise StoreUnavailableError("could not read the activity store") from exc
     return [
         StoredEvent(
             ts=datetime.fromisoformat(ts),
@@ -375,8 +410,9 @@ def audit_by_action(action_ids: list[str]) -> dict[str, list[StoredEvent]]:
         conn = _ensure()
         with _LOCK:
             rows = conn.execute(q, [Source.AUDIT.value, *action_ids]).fetchall()
-    except sqlite3.Error:
-        return {}
+    except sqlite3.Error as exc:
+        log.exception("activity_store audit_by_action() failed", extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read the audit detail") from exc
     out: dict[str, list[StoredEvent]] = {}
     for ts, level, src, msg, aid, label, act in rows:
         out.setdefault(act, []).append(
@@ -416,7 +452,18 @@ def record_alias(old_id: str, new_id: str) -> None:
             )
             conn.commit()
     except sqlite3.Error:
-        log.debug("activity_store record_alias failed", exc_info=True, extra={"_activity": True})
+        # ERROR and unrecoverable: this insert is the ONLY moment the old->new
+        # pair is knowable (the superseded id is erased from the sidecar straight
+        # afterwards), so losing it orphans the album's entire pre-tag history and
+        # 404s every deep link written under the old id, permanently. Still
+        # swallowed — an identity change must not fail because the log is down.
+        log.exception(
+            "activity_store record_alias failed — %s -> %s; this album's history "
+            "before the change is now unreachable and old links to it will 404",
+            old_id,
+            new_id,
+            extra=_QUIET_MIRROR,
+        )
 
 
 def resolve_alias(album_id: str, *, max_hops: int = 20) -> str | None:
@@ -426,6 +473,11 @@ def resolve_alias(album_id: str, *, max_hops: int = 20) -> str | None:
     Walks transitively (temp_uid -> mbid -> corrected mbid). `max_hops` and the
     seen-set bound the walk: a cycle would otherwise spin forever, and while the
     schema shouldn't permit one, a log is not worth hanging a request over.
+
+    Raises `StoreUnavailableError` rather than returning None on a read failure:
+    None here means "never superseded", which sends the only caller on to a 404
+    — so one transient DB error would tell the user an album that is sitting on
+    disk, intact, does not exist (#104, skill §1).
     """
     seen = {album_id}
     current = album_id
@@ -440,8 +492,9 @@ def resolve_alias(album_id: str, *, max_hops: int = 20) -> str | None:
                     break
                 current = row[0]
                 seen.add(current)
-    except sqlite3.Error:
-        return None
+    except sqlite3.Error as exc:
+        log.exception("activity_store resolve_alias(%s) failed", album_id, extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not follow the album alias chain") from exc
     return None if current == album_id else current
 
 
@@ -463,14 +516,18 @@ def album_history(album_id: str, limit: int = 200, *, offset: int = 0) -> list[S
         f"FROM events WHERE album_id IN ({placeholders}) "
         "ORDER BY id DESC LIMIT ? OFFSET ?"
     )
-    # Deliberately NOT caught: an empty list here renders as "Nothing recorded for
-    # this album yet", so swallowing a read failure would have the page state, as
+    # Deliberately NOT swallowed: an empty list here renders as "Nothing recorded
+    # for this album yet", so hiding a read failure would have the page state, as
     # fact, that Harmonist has never touched the album — at the moment the user is
-    # trying to find out what it did. A 500 is the honest answer. See the
-    # error-handling skill §1.
-    conn = _ensure()
-    with _LOCK:
-        rows = conn.execute(q, [*ids, limit, max(0, offset)]).fetchall()
+    # trying to find out what it did. Raised as StoreUnavailableError so the route
+    # can say "history unavailable" instead. See the error-handling skill §1.
+    try:
+        conn = _ensure()
+        with _LOCK:
+            rows = conn.execute(q, [*ids, limit, max(0, offset)]).fetchall()
+    except sqlite3.Error as exc:
+        log.exception("activity_store album_history(%s) failed", album_id, extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read this album's history") from exc
     return [
         StoredEvent(
             ts=datetime.fromisoformat(ts),
@@ -499,23 +556,27 @@ def _alias_ancestors(album_id: str, *, max_hops: int = 20) -> list[str]:
     found: list[str] = []
     seen = {album_id}
     frontier = [album_id]
-    # Not caught: a partial chain silently narrows the history to a subset of the
-    # album's ids, which looks exactly like a complete answer. Let it propagate to
-    # album_history's caller rather than quietly returning less than was asked
-    # for. See the error-handling skill §1.
-    conn = _ensure()
-    with _LOCK:
-        for _ in range(max_hops):
-            if not frontier:
-                break
-            placeholders = ",".join("?" * len(frontier))
-            rows = conn.execute(
-                f"SELECT old_id FROM album_aliases WHERE new_id IN ({placeholders})",
-                frontier,
-            ).fetchall()
-            frontier = [r[0] for r in rows if r[0] not in seen]
-            seen.update(frontier)
-            found.extend(frontier)
+    # Not swallowed: a partial chain silently narrows the history to a subset of
+    # the album's ids, which looks exactly like a complete answer — and the old
+    # code discarded the ids it HAD already walked on the way out. Propagate to
+    # album_history's caller instead. See the error-handling skill §1.
+    try:
+        conn = _ensure()
+        with _LOCK:
+            for _ in range(max_hops):
+                if not frontier:
+                    break
+                placeholders = ",".join("?" * len(frontier))
+                rows = conn.execute(
+                    f"SELECT old_id FROM album_aliases WHERE new_id IN ({placeholders})",
+                    frontier,
+                ).fetchall()
+                frontier = [r[0] for r in rows if r[0] not in seen]
+                seen.update(frontier)
+                found.extend(frontier)
+    except sqlite3.Error as exc:
+        log.exception("activity_store _alias_ancestors(%s) failed", album_id, extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read this album's identity history") from exc
     return found
 
 
@@ -533,4 +594,11 @@ def clear() -> None:
             conn.execute("DELETE FROM album_aliases")
             conn.commit()
     except sqlite3.Error:
-        pass
+        # Swallowed rather than raised: the callers are teardown paths (test
+        # fixtures, the demo reset) where failing to wipe is not the user's work
+        # and a raise would mask the real failure under a cleanup error. Loud,
+        # though — a reset that didn't reset leaves stale aliases that can
+        # mis-resolve a deep link to the wrong album.
+        log.exception(
+            "activity_store clear() failed — stored events may be stale", extra=_QUIET_MIRROR
+        )

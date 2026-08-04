@@ -26,11 +26,23 @@
     <section class="border border-line rounded-lg p-4 space-y-3">
         <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
             History
+            {% if not history_unavailable %}
             <span class="text-muted font-normal normal-case tracking-normal ml-1">
                 · {{ history|length }}</span>
+            {% endif %}
         </h2>
 
-        {% if not history %}
+        {# "Couldn't read" and "nothing to read" are different claims, and the
+           page must not make the second one when it means the first — that's the
+           lie #104 is about. No count either: 0 would be just as wrong. #}
+        {% if history_unavailable %}
+        <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            <span class="font-bold">History unavailable.</span>
+            Harmonist couldn't read its history store, so this album's records
+            can't be shown — this does <em>not</em> mean nothing was recorded.
+            The error is in the application log.
+        </p>
+        {% elif not history %}
         <p class="text-2xs text-muted italic">
             Nothing recorded for this album yet. Entries appear here as Harmonist
             tags, links, or otherwise changes it.

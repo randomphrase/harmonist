@@ -14,6 +14,16 @@ versions follow [semantic versioning](https://semver.org).
   the first library scan its "Sync with these options" started a sync anyway
   (#110).
 - Syncing is refused while the first library scan is still running (#110).
+- A history store Harmonist can't read now says so, instead of showing an empty
+  Activity feed and "Nothing recorded for this album yet" (#104).
+- A broken history store no longer makes a link to an album report that the album
+  doesn't exist (#104).
+- A sidecar that can't be read is no longer silently skipped during a sync, where
+  it could offer an album you already own as a new download (#104), or quietly
+  rewritten when it should have been left alone.
+- "Erased N sidecar(s)" no longer counts sidecars it failed to delete (#104).
+- Failures that used to be invisible — a dropped activity or audit record, an
+  unreadable ignores file, a Restore that did nothing — are now logged (#104).
 
 ### Added
 
