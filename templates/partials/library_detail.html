@@ -15,18 +15,26 @@
     <span hx-get="/library/{{ album.id }}/detail" hx-trigger="album-retagged from:body"
           hx-target="#modal" hx-swap="innerHTML" class="hidden"></span>
 
-    {# Title bar. The album's name IS the header — a separate "Album" heading
-       said nothing the context didn't. In the modal the title carries the link
-       through to the page and the bar holds the close ×; on the page it's a
-       plain heading. Full-width and shaded so it reads as the panel's header
-       rather than the first line of its contents. #}
+    {# Title bar. "<Title> — <Artist>" IS the header — a separate "Album" heading
+       said nothing the context didn't, and the artist on its own line below the
+       bar read as a stray caption. Full-width and shaded so it reads as the
+       panel's header rather than the first line of its contents.
+
+       Only the TITLE is the link: there's no per-artist page to go to, so
+       underlining the artist half would promise a destination that doesn't
+       exist. On the page the title is plain text — you're already there. #}
     <div class="flex items-center justify-between gap-3 px-4 py-2.5 bg-line/50 border-b border-line">
-        {% if full_page %}
-        <h1 class="text-lg font-bold text-ink break-words min-w-0">{{ album.title }}</h1>
-        {% else %}
-        <a href="/album/{{ album.id }}"
-           class="text-lg font-bold text-ink break-words min-w-0 hover:text-accent underline decoration-dotted underline-offset-4 hover:decoration-solid"
-           title="Open the full album page — tracklist, history and actions">{{ album.title }}</a>
+        <h1 class="text-lg break-words min-w-0">
+            {% if full_page %}
+            <span class="font-bold text-ink">{{ album.title }}</span>
+            {% else %}
+            <a href="/album/{{ album.id }}"
+               class="font-bold text-ink hover:text-accent underline decoration-dotted underline-offset-4 hover:decoration-solid"
+               title="Open the full album page — tracklist, history and actions">{{ album.title }}</a>
+            {% endif %}
+            <span class="text-muted font-normal">&mdash; {{ album.artist }}</span>
+        </h1>
+        {% if not full_page %}
         {# Plain onclick, no hx-* on this element — template-lint's dividing line,
            and there's no request to sequence, just a dialog close. #}
         <button type="button" onclick="harmonistCloseModal()"
@@ -43,8 +51,6 @@
              style="max-width: 11rem;">
 
         <div class="flex-grow min-w-0 space-y-3">
-            <div class="text-sm text-muted break-words">{{ album.artist }}</div>
-
             {# Badges left, dates right, on ONE row. Both are small reference
                detail, so they sit at the same scale and share a baseline —
                pairing the dates with the (much larger) title made them look

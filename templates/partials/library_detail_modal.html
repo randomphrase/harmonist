@@ -12,7 +12,9 @@
            close × and the link through to the page (see library_detail). The
            verify flow keeps a heading, because *that* isn't obvious from context. #}
         {% if pending_item_id is not none %}
-        <h2 class="px-4 pt-3 pb-1 text-sm font-bold text-muted uppercase tracking-widest">Verify album</h2>
+        {# A <p>, not a heading: it labels the flow, and the panel's own <h1>
+           follows it — an <h2> here would put the headings out of order. #}
+        <p class="px-4 pt-3 pb-1 text-sm font-bold text-muted uppercase tracking-widest">Verify album</p>
         {% endif %}
         {# `full_page` unset: this is the summary. Tracklist, history and every
            action live on the page, which isn't fighting a viewport for room and
