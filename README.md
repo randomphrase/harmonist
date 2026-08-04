@@ -114,10 +114,13 @@ The properties that make it trustworthy rather than decorative:
 - **Still readable later.** Entries keep the album's name as it was, and follow
   an album across re-identification — so history doesn't rot when a release is
   re-matched or renamed.
+- **Honest when it can't answer.** If Harmonist can't read its own history it
+  says so, rather than showing you an empty feed. "Nothing happened" and "I
+  couldn't tell you" are different claims, and only one of them is ever a guess.
 
-Album names in the feed link straight to the album. A per-album view — one
-album's whole history in one place — is the next step; the record it needs is
-already being kept.
+Album names in the feed link straight to that album's page, where the same
+history is gathered in one place — including the records written before the
+album was last re-identified.
 
 ## Demo
 

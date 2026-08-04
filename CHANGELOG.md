@@ -6,24 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
-### Fixed
-
-- Sync Bandcamp is disabled on the Settings page, where it would have read
-  settings you're partway through changing (#108).
-- The sync options popover no longer opens over a disabled Sync button — during
-  the first library scan its "Sync with these options" started a sync anyway
-  (#110).
-- Syncing is refused while the first library scan is still running (#110).
-- A history store Harmonist can't read now says so, instead of showing an empty
-  Activity feed and "Nothing recorded for this album yet" (#104).
-- A broken history store no longer makes a link to an album report that the album
-  doesn't exist (#104).
-- A sidecar that can't be read is no longer silently skipped during a sync, where
-  it could offer an album you already own as a new download (#104), or quietly
-  rewritten when it should have been left alone.
-- "Erased N sidecar(s)" no longer counts sidecars it failed to delete (#104).
-- Failures that used to be invisible — a dropped activity or audit record, an
-  unreadable ignores file, a Restore that did nothing — are now logged (#104).
+## [1.4.0] - 2026-08-04
 
 ### Added
 
@@ -32,6 +15,23 @@ versions follow [semantic versioning](https://semver.org).
   was last re-identified (#103).
 - Clicking a library tile still opens a summary; it answers "is this the right
   release?" and links through to the page for the tracklist and actions (#103).
+
+### Fixed
+
+- A history store Harmonist can't read now says so, instead of showing an empty
+  Activity feed and "Nothing recorded for this album yet" (#104).
+- A broken history store no longer reports that an album doesn't exist (#104).
+- A sidecar that can't be read is no longer skipped in silence during a sync,
+  where it could offer an album you already own as a new download (#104).
+- A sidecar that can't be read is no longer overwritten during a sync (#104).
+- "Erased N sidecar(s)" no longer counts sidecars it failed to delete (#104).
+- Failures that used to be invisible — a dropped activity or audit record, an
+  unreadable ignores file, a Restore that did nothing — are now logged (#104).
+- The sync options popover no longer opens over a disabled Sync button, where
+  its "Sync with these options" started a sync anyway (#110).
+- Syncing is refused while the first library scan is still running (#110).
+- Sync Bandcamp is disabled on the Settings page, where it would have read
+  settings you're partway through changing (#108).
 
 ## [1.3.0] - 2026-08-03
 
