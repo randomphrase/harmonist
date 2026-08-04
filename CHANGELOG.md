@@ -6,6 +6,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- Sync Bandcamp is disabled on the Settings page, where it would have read
+  settings you're partway through changing (#108).
+
 ### Added
 
 - Albums now have their own page at `/album/<id>`, with the full tracklist and

@@ -7,6 +7,7 @@ templates render without crashing for each AlbumState.
 
 from __future__ import annotations
 
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -3262,6 +3263,44 @@ def test_settings_page_renders(client, cfg):
     # The preferences form must submit via HTMX (hx-boost) so the CSRF
     # middleware's required HX-Request header is sent — a plain POST 403s.
     assert 'action="/settings" hx-boost="true"' in r.text
+
+
+def _button_tag(html: str, button_id: str) -> str:
+    """The opening <button> tag with this id, so a test can assert on the
+    attributes of THAT button rather than anywhere in the page."""
+    m = re.search(rf'<button id="{button_id}"[^>]*>', html)
+    assert m is not None, f"no <button id={button_id}> in page"
+    return m.group(0)
+
+
+def test_settings_page_disables_the_global_sync_actions(client, cfg):
+    """Sync is inert on Settings: it would read configuration the user is
+    partway through changing (#108)."""
+    cfg.cookies_file.write_text(
+        "# Netscape HTTP Cookie File\n.bandcamp.com\tTRUE\t/\tFALSE\t0\tident\tabc\n"
+    )
+    settings = client.get("/settings")
+    assert "disabled" in _button_tag(settings.text, "sync-button")
+    # The popover carries a SECOND sync trigger (its submit) and `disabled` on
+    # the button doesn't stop :hover on the wrapper — so it must be gone, not
+    # merely covered.
+    assert 'name="link_only"' not in settings.text
+
+    # Control: the same header on the index page is live, or this test would
+    # pass against a sync button that is disabled everywhere.
+    home = client.get("/")
+    assert "disabled" not in _button_tag(home.text, "sync-button")
+    assert 'name="link_only"' in home.text
+
+
+def test_settings_page_disables_the_header_setup_button(client, cfg):
+    """The header's Set-up duplicate goes inert too — Settings has its own in
+    the Bandcamp sync section, so this is no dead end (#108)."""
+    settings = client.get("/settings")  # no cookies → header offers setup
+    assert "disabled" in _button_tag(settings.text, "bandcamp-setup-button")
+    # The escape hatch: Settings' own control, still live.
+    assert 'hx-get="/bandcamp/setup"' in settings.text
+    assert "disabled" not in _button_tag(client.get("/").text, "bandcamp-setup-button")
 
 
 def test_debug_memory_endpoint(client):

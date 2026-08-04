@@ -18,9 +18,14 @@
                         hx-post="/sync"
                         hx-target="#sync-flash"
                         hx-swap="innerHTML"
-                        class="px-4 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-semibold transition">
+                        {% if globals_off_reason %}disabled title="{{ globals_off_reason }}"{% endif %}
+                        class="px-4 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
                     Sync Bandcamp
                 </button>
+                {# Suppressed entirely when the globals are off: `disabled` on the
+                   button doesn't stop :hover on this wrapper, and the popover holds
+                   a second sync trigger (its submit) that would still fire. #}
+                {% if not globals_off_reason %}
                 {# Positioned at top-full with a transparent pt-1 *bridge* (padding, not
                    margin) so moving the cursor from the button into the card never
                    crosses a dead zone that would drop :hover and close the popover. #}
@@ -53,15 +58,20 @@
                     </form>
                   </div>
                 </div>
+                {% endif %}
             </div>
             {% else %}
             {# Cookies not configured yet — prompt setup instead of syncing.
-               Doubles as a visible reminder that onboarding is incomplete. #}
+               Doubles as a visible reminder that onboarding is incomplete.
+               Inert on Settings, which carries its own Set up button in the
+               Bandcamp sync section — so this isn't a dead end, just the
+               duplicate stepping aside. #}
             <button id="bandcamp-setup-button"
                     hx-get="/bandcamp/setup"
                     hx-target="#modal"
                     hx-swap="innerHTML"
-                    class="px-4 py-1.5 border border-accent text-accent hover:bg-accent-soft rounded font-semibold transition">
+                    {% if globals_off_reason %}disabled title="Use Set up in the Bandcamp sync section below."{% endif %}
+                    class="px-4 py-1.5 border border-accent text-accent hover:bg-accent-soft rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
                 Set up Bandcamp sync
             </button>
             {% endif %}

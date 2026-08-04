@@ -720,6 +720,16 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
         "sync_link_only_default": (
             live_counts.to_status()["needs_sync"] > 0 or pending_downloads.count() > 0
         ),
+        # Why the header's global actions are inert on this page, or None if they
+        # aren't. Derived here rather than passed per-route so a new page can't
+        # forget it, and server-side because the poll JS that does the *busy*-state
+        # gating only runs on the index page.
+        "globals_off_reason": (
+            "Finish in Settings first — a sync started here would read settings you're"
+            " partway through changing."
+            if request.url.path == "/settings"
+            else None
+        ),
     }
     base.update(extra)
     return base
