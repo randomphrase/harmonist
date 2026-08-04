@@ -445,6 +445,80 @@ def resolve_alias(album_id: str, *, max_hops: int = 20) -> str | None:
     return None if current == album_id else current
 
 
+def album_history(album_id: str, limit: int = 200, *, offset: int = 0) -> list[StoredEvent]:
+    """Everything recorded about one album — activity AND audit — newest first.
+
+    Unions over the album's ALIAS CHAIN, which is the whole point: an album's
+    records are spread across every id it has ever had. Tagging replaces a
+    sidecar's temp_uid with the MBID, so querying the current id alone silently
+    drops the album's entire pre-tag history — the records most likely to explain
+    how it got into its current state.
+
+    This is the consumer the alias capture (#73) was built for.
+    """
+    ids = [album_id, *_alias_ancestors(album_id)]
+    placeholders = ",".join("?" * len(ids))
+    q = (
+        "SELECT ts, level, source, message, album_id, album_label, action_id "
+        f"FROM events WHERE album_id IN ({placeholders}) "
+        "ORDER BY id DESC LIMIT ? OFFSET ?"
+    )
+    # Deliberately NOT caught: an empty list here renders as "Nothing recorded for
+    # this album yet", so swallowing a read failure would have the page state, as
+    # fact, that Harmonist has never touched the album — at the moment the user is
+    # trying to find out what it did. A 500 is the honest answer. See the
+    # error-handling skill §1.
+    conn = _ensure()
+    with _LOCK:
+        rows = conn.execute(q, [*ids, limit, max(0, offset)]).fetchall()
+    return [
+        StoredEvent(
+            ts=datetime.fromisoformat(ts),
+            level=Level(level),
+            source=Source(src),
+            message=msg,
+            album_id=aid,
+            album_label=label,
+            action_id=act,
+        )
+        for ts, level, src, msg, aid, label, act in rows
+    ]
+
+
+def _alias_ancestors(album_id: str, *, max_hops: int = 20) -> list[str]:
+    """Every id this album used to have, walking the alias chain BACKWARDS.
+
+    `resolve_alias` walks forward (old -> current) to rescue a stale link; this
+    walks the other way (current -> everything it superseded) to gather history.
+    Breadth-first, because an id can have several predecessors — an album
+    re-matched twice leaves two supplanted ids pointing at the same current one.
+
+    Bounded by `max_hops` and a seen-set: a cycle would otherwise spin, and a log
+    query is not worth hanging a request over.
+    """
+    found: list[str] = []
+    seen = {album_id}
+    frontier = [album_id]
+    # Not caught: a partial chain silently narrows the history to a subset of the
+    # album's ids, which looks exactly like a complete answer. Let it propagate to
+    # album_history's caller rather than quietly returning less than was asked
+    # for. See the error-handling skill §1.
+    conn = _ensure()
+    with _LOCK:
+        for _ in range(max_hops):
+            if not frontier:
+                break
+            placeholders = ",".join("?" * len(frontier))
+            rows = conn.execute(
+                f"SELECT old_id FROM album_aliases WHERE new_id IN ({placeholders})",
+                frontier,
+            ).fetchall()
+            frontier = [r[0] for r in rows if r[0] not in seen]
+            seen.update(frontier)
+            found.extend(frontier)
+    return found
+
+
 def clear() -> None:
     """Drop all stored state — events AND aliases (tests / demo reset).
 

@@ -23,18 +23,11 @@ pytestmark = pytest.mark.skipif(
 playwright_sync = pytest.importorskip("playwright.sync_api")
 
 
-def test_deep_link_opens_album_dialog_without_clobbering_saved_tab(demo_server: str) -> None:
-    """#65: `/?album=<id>` must actually OPEN the dialog on load, not merely put
-    the right markup on the page.
-
-    The Python suite can assert the hx-get is rendered, but the open depends on
-    a chain it structurally cannot see: htmx fires the load trigger, swaps the
-    fragment into #modal, and base.html's afterSwap handler calls showModal().
-    Any link in that chain can break with the template still asserting fine.
-
-    Also pins the tab behaviour: a deep link shows the Library underneath, but
-    must NOT rewrite the user's saved tab — following a link from Activity
-    shouldn't quietly change where they land next time.
+def test_old_deep_link_lands_on_the_album_page(demo_server: str) -> None:
+    """`?album=<id>` opened a dialog before there was an album page (#65). Now it
+    redirects there (#103). Those links are written into durable activity
+    entries, so this URL keeps arriving indefinitely and must keep working —
+    followed as a real navigation, since that's what an <a href> does.
     """
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -49,16 +42,10 @@ def test_deep_link_opens_album_dialog_without_clobbering_saved_tab(demo_server: 
         album_id = hx_get.split("/library/")[1].split("/detail")[0]
         assert album_id
 
-        # Set a deliberate preference, so clobbering it would be visible.
-        page.evaluate("localStorage.setItem('harmonist-tab', 'activity')")
-
-        # Follow the deep link as a fresh navigation (what an <a href> does).
         page.goto(f"{demo_server}/?album={album_id}")
 
-        # The actual assertion: a native dialog is open and visible.
-        page.locator("#modal dialog[open]").wait_for(state="visible")
-        assert page.locator("#panel-library").is_visible()
-        assert page.evaluate("localStorage.getItem('harmonist-tab')") == "activity"
+        assert page.url.endswith(f"/album/{album_id}"), f"did not redirect: {page.url}"
+        page.locator("text=History").first.wait_for(state="visible")
 
         browser.close()
 
@@ -119,12 +106,14 @@ def test_activity_album_link_actually_opens_the_album(demo_server: str) -> None:
 
         # Its Activity entry must carry a link on the album name.
         page.click('[data-tab="activity"]')
-        link = page.locator('#panel-activity a[href^="/?album="]').first
+        link = page.locator('#panel-activity a[href^="/album/"]').first
         link.wait_for(state="visible")
         link.click()
 
-        # Following it opens the album — NOT the unresolvable-album notice.
-        page.locator("#modal dialog[open]").wait_for(state="visible")
+        # Following it lands on the album's page (#103) with its history —
+        # NOT the unresolvable-album notice.
+        page.locator("text=History").first.wait_for(state="visible")
+        assert "/album/" in page.url
         assert "isn't in your library any more" not in page.content()
 
         browser.close()

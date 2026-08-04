@@ -2225,11 +2225,11 @@ def test_activity_feed_links_entries_with_an_album(client, cfg):
     body = client.get("/activity").text
     # Only the album NAME is the link — the message stays plain text beside it.
     assert ">BoC — Geogaddi</a>" in body
-    assert 'href="/?album=rel-geo"' in body
+    assert 'href="/album/rel-geo"' in body
     assert "Unlinked" in body
     # The untied entry is present but carries no album column at all.
     assert "Sync finished" in body
-    assert 'href="/?album=None"' not in body
+    assert 'href="/album/None"' not in body
 
 
 def test_status_bar_payload_carries_the_album_name(client, cfg, monkeypatch):
@@ -2277,21 +2277,68 @@ def test_activity_shows_album_label_even_when_link_is_dead(client, cfg):
 
     body = client.get("/activity").text
     assert "Departed — Album" in body  # still named...
-    assert 'href="/?album=' not in body  # ...but not a link
+    assert 'href="/album/' not in body  # ...but not a link
 
 
-def test_deep_link_opens_album_modal(client, cfg):
-    """GET /?album=<id> loads the app with that album's detail fragment queued
-    into #modal — the shareable/bookmarkable half of #65."""
+def test_album_page_shows_history_from_before_the_album_was_re_identified(client, cfg):
+    """#103's reason for existing, and the consumer the alias table (#73) was
+    built for: an album's records are spread across every id it has ever had.
+    Tagging replaces the sidecar's temp_uid with the MBID, so querying the
+    current id alone silently drops everything from before — the records most
+    likely to explain how the album got into its current state."""
+    from harmonist import activity, activity_store
+
+    d = _make_album(cfg, "Historied")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/h"))
+    old_id = _id_for(cfg, d)
+    activity_store.clear()
+    activity.record("Discovered", album_id=old_id, album_label="Artist — Historied")
+
+    # Tag it: identity moves to the MBID, and the alias is recorded.
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/h", mb_release_id="rel-hist"))
+    new_id = _id_for(cfg, d)
+    assert new_id != old_id
+    activity.record("Tagged", album_id=new_id, album_label="Artist — Historied")
+
+    body = client.get(f"/album/{new_id}").text
+    assert "Tagged" in body
+    assert "Discovered" in body, "history stopped at the last re-identification"
+
+    # The naive query — current id only — would have missed it entirely.
+    naive = [e.message for e in activity_store.recent(50, album_id=new_id)]
+    assert "Discovered" not in naive
+    assert "Discovered" in [e.message for e in activity_store.album_history(new_id)]
+
+
+def test_album_page_resolves_a_superseded_id(client, cfg):
+    """A link written before the album was re-identified must still land on the
+    page rather than 404 — the same forward walk `_find_album` already does."""
+    d = _make_album(cfg, "Moved")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/m"))
+    old_id = _id_for(cfg, d)
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/m", mb_release_id="rel-moved"))
+
+    r = client.get(f"/album/{old_id}")
+    assert r.status_code == 200
+    assert "Moved" in r.text
+
+
+def test_album_page_404s_for_an_unknown_album(client, cfg):
+    _make_album(cfg, "Present")
+    assert client.get("/album/no-such-id").status_code == 404
+
+
+def test_old_deep_link_redirects_to_the_album_page(client, cfg):
+    """`?album=<id>` was the deep link before there was an album page (#65). Now
+    there is one (#103), so it redirects — activity entries written with the old
+    URL are durable, so this will keep arriving indefinitely and must keep
+    working."""
     d = _make_album(cfg, "DeepLinked")
     aid = _id_for(cfg, d)
 
-    r = client.get(f"/?album={aid}")
-    assert r.status_code == 200
-    assert f'hx-get="/library/{aid}/detail"' in r.text
-    assert 'hx-target="#modal"' in r.text
-    # Deep link shows the Library without rewriting the saved tab.
-    assert "harmonistTab('library', false)" in r.text
+    r = client.get(f"/?album={aid}", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == f"/album/{aid}"
 
 
 def test_deep_link_to_unknown_album_still_renders_page(client, cfg):
@@ -2539,16 +2586,35 @@ def test_retag_failure_does_not_emit_refresh_trigger(client, cfg, monkeypatch):
     assert "album-retagged" not in r.headers.get("HX-Trigger", "")
 
 
-def test_library_detail_wires_retag_progress_and_refresh(client, cfg):
-    """The detail modal shows a tagging indicator on the re-tag button and a
-    listener that reloads the modal when album-retagged fires (#34)."""
+def test_album_page_wires_retag_progress_and_refresh(client, cfg):
+    """The re-tag button shows a tagging indicator and a listener that reloads on
+    album-retagged (#34). On the PAGE now, not the modal: mutations moved there
+    with #103, leaving the modal to answer "is this the right release?"."""
     d = _make_tagged_album(cfg, "DetailWiring", mbid="rel-1", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
-    r = client.get(f"/library/{aid}/detail")
+    r = client.get(f"/album/{aid}")
     assert r.status_code == 200
     assert f'hx-indicator="#tagging-{aid}"' in r.text  # progress spinner target
     assert f'id="tagging-{aid}"' in r.text  # the overlay itself
-    assert "album-retagged from:body" in r.text  # the modal-reload listener
+    assert "album-retagged from:body" in r.text  # the reload listener
+
+
+def test_modal_is_a_summary_without_mutations(client, cfg):
+    """#103: the modal answers "is this the right album/release?" — so the
+    identity-correcting rematch control stays, but Re-tag / Replace artwork /
+    Forget do not. An uncommon, hard-to-undo action shouldn't sit one mis-click
+    from a library tile."""
+    d = _make_tagged_album(cfg, "SummaryOnly", mbid="rel-s", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+
+    modal = client.get(f"/library/{aid}/detail").text
+    assert f"/library/{aid}/rematch" in modal  # "wrong release?" — the modal's job
+    assert f"/retag/{aid}" not in modal
+    assert f"/forget/{aid}" not in modal
+
+    page = client.get(f"/album/{aid}").text
+    assert f"/retag/{aid}" in page
+    assert f"/forget/{aid}" in page
 
 
 def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg, monkeypatch):
@@ -3457,15 +3523,20 @@ def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     assert "exact match" not in r.text
 
 
-def test_library_detail_auto_loads_track_comparison(client, cfg):
-    """The detail modal auto-loads the per-track disk-vs-MB comparison on open
-    (one MB fetch — a deliberate, one-at-a-time modal), rather than hiding it
-    behind a button."""
+def test_album_page_loads_the_track_comparison_and_the_modal_does_not(client, cfg):
+    """#103: the per-track comparison is the page's job. A viewport-constrained
+    dialog can't hold a full tracklist without scrolling and squeezing, so the
+    modal stays the quick "is this the right release?" check and links through."""
     d = _make_tagged_album(cfg, "HasVerify", mbid="rel-v2", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
-    r = client.get(f"/library/{aid}/detail")
-    assert f"/library/{aid}/compare" in r.text
-    assert 'hx-trigger="load"' in r.text
+
+    page = client.get(f"/album/{aid}").text
+    assert f"/library/{aid}/compare" in page
+    assert 'hx-trigger="load"' in page
+
+    modal = client.get(f"/library/{aid}/detail").text
+    assert f"/library/{aid}/compare" not in modal
+    assert f'href="/album/{aid}"' in modal  # ...but links to where it lives
 
 
 def test_library_detail_shows_ambiguous_bandcamp_ids(client, cfg):

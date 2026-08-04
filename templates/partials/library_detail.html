@@ -117,15 +117,23 @@
                 </div>
             </div>
 
-            {% if sc and sc.mb_release_id %}
-            {# Per-track disk-vs-MB comparison, loaded when the modal opens (one MB
-               fetch — the modal is a deliberate, one-at-a-time open). #}
+            {% if sc and sc.mb_release_id and full_page %}
+            {# Per-track disk-vs-MB comparison. PAGE ONLY: a full tracklist is
+               exactly what a viewport-constrained <dialog> can't hold without
+               scrolling and squeezing (#103). The dialog answers "is this the
+               right release?" and links through for the rest. #}
             <div id="compare-{{ album.id }}"
                  hx-get="/library/{{ album.id }}/compare" hx-trigger="load" hx-swap="innerHTML">
                 <p class="text-2xs text-muted italic mt-2">Checking tracks against MusicBrainz…</p>
             </div>
             {% endif %}
 
+            {# Actions are PAGE ONLY too (#103). The dialog is a summary — "is
+               this the right release?" — and shouldn't offer a second route to
+               every mutation, least of all uncommon, hard-to-undo ones like
+               Forget. Individual actions can be bubbled back up to the dialog
+               later if one turns out to be wanted in the flow. #}
+            {% if full_page %}
             <div class="flex gap-2 pt-2 border-t border-line">
                 <button hx-post="/retag/{{ album.id }}"
                         hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
@@ -153,6 +161,7 @@
                    dead end. Both come back with the re-link path in #42. The /unlink
                    endpoint stays for now. #}
             </div>
+            {% endif %}
         </div>
     </div>
 </div>

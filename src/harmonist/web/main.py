@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError as PydanticValidationError
@@ -1759,19 +1759,21 @@ def _register_routes(app: FastAPI) -> None:
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request, album: str | None = None) -> Response:
         albums = _albums(request)
-        # `?album=<id>` deep link (an Activity entry links here, #65): open that
-        # album's detail modal on load. Resolve it HERE rather than letting the
-        # client fetch blind, because the id in an old activity row is a
-        # snapshot — reconcile rewrites an album's identity when it writes a
-        # sidecar, and the album may since have left the library entirely.
-        # _find_album absorbs the rename case via the id registry; anything it
-        # still can't resolve degrades to the normal page plus a notice, never a
-        # whole-page 404 or a silently dead link.
-        deep_link_id: str | None = None
+        # `?album=<id>` was the deep link before there was an album page (#65).
+        # Now there is one, so redirect rather than opening a modal — links
+        # already written into activity entries keep working, and land somewhere
+        # better. Kept permanently: those entries are durable, so this URL will
+        # be arriving for as long as the store holds them.
+        #
+        # An id that resolves to nothing still degrades to the normal page plus a
+        # notice, never a whole-page 404 or a silently dead link.
         deep_link_missing = False
         if album:
             try:
-                deep_link_id = _find_album(request, album).id
+                return RedirectResponse(
+                    f"/album/{_find_album(request, album).id}",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
             except HTTPException:
                 deep_link_missing = True
         ctx = _ctx(
@@ -1779,7 +1781,6 @@ def _register_routes(app: FastAPI) -> None:
             albums=_inbox_albums(albums),
             total_albums=len(albums),
             sync_status=request.app.state.sync_runner.status(),
-            deep_link_id=deep_link_id,
             deep_link_missing=deep_link_missing,
         )
         return _templates(request).TemplateResponse(request, "index.html", ctx)
@@ -2198,6 +2199,26 @@ def _register_routes(app: FastAPI) -> None:
             is_first_page=(offset == 0),
         )
         return _templates(request).TemplateResponse(request, "partials/library_page.html", ctx)
+
+    @app.get("/album/{album_id}", response_class=HTMLResponse)
+    def album_page(request: Request, album_id: str) -> Response:
+        """The standalone album page (#103) — full tracklist plus the album's
+        history, neither of which fits a viewport-constrained dialog.
+
+        Served for a stale id too: `_find_album` resolves one forward through the
+        alias chain, so a link written before the album was re-identified still
+        lands here rather than 404-ing.
+        """
+        album = _find_album(request, album_id)
+        ctx = _ctx(
+            request,
+            album=album,
+            # Keyed on the album's CURRENT id — album_history unions backwards
+            # over the chain from there, so passing the (possibly stale) URL id
+            # would find only the tail of its own history.
+            history=activity_store.album_history(album.id),
+        )
+        return _templates(request).TemplateResponse(request, "album.html", ctx)
 
     @app.get("/library/{album_id}/detail", response_class=HTMLResponse)
     def library_detail_modal(

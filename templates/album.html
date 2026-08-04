@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{# The standalone album page (#103). A real page, not a fragment: the two things
+   worth adding — the full tracklist and the album's history — are exactly what a
+   viewport-constrained <dialog> can't hold. The dialog stays as the quick
+   "is this the right release?" check and links here.
+
+   Shares `library_detail.html` with the dialog rather than duplicating it, and
+   passes `show_tracks` so the per-track MusicBrainz comparison renders only
+   here. #}
+{% block content %}
+<div class="space-y-5">
+
+    <a href="/" class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">
+        ← Back to library
+    </a>
+
+    {% with full_page = True %}
+    {% include 'partials/library_detail.html' %}
+    {% endwith %}
+
+    {# Everything Harmonist has recorded about THIS album — activity and audit
+       together, newest first. Unioned across the album's alias chain, so records
+       written before it was tagged (under its old id) are here too; without that
+       the page would silently start at the last re-identification. #}
+    <section class="border border-line rounded-lg p-4 space-y-3">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
+            History
+            <span class="text-muted font-normal normal-case tracking-normal ml-1">
+                · {{ history|length }}</span>
+        </h2>
+
+        {% if not history %}
+        <p class="text-2xs text-muted italic">
+            Nothing recorded for this album yet. Entries appear here as Harmonist
+            tags, links, or otherwise changes it.
+        </p>
+        {% else %}
+        <ul class="divide-y divide-line">
+            {% for e in history %}
+            <li class="flex items-baseline gap-3 py-1.5 text-sm">
+                <time class="flex-shrink-0 font-mono text-2xs text-muted tabular-nums"
+                      title="{{ e.ts.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
+                    {{ e.ts.strftime('%Y-%m-%d %H:%M') }}
+                </time>
+                <span class="flex-shrink-0 w-1.5 h-1.5 rounded-full self-center
+                    {% if e.source == 'audit' %}bg-line
+                    {% elif e.level == 'error' %}bg-red-500
+                    {% elif e.level == 'warning' %}bg-amber-500
+                    {% else %}bg-accent{% endif %}"
+                    aria-hidden="true"></span>
+                <span class="min-w-0 break-words
+                    {% if e.source == 'audit' %}font-mono text-2xs text-muted
+                    {% elif e.level == 'error' %}text-red-700
+                    {% elif e.level == 'warning' %}text-amber-700
+                    {% else %}text-ink{% endif %}">{{ e.message }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

@@ -12,18 +12,6 @@
          hx-swap="innerHTML"
          class="hidden"></div>
 
-    {# `?album=<id>` deep link (from an Activity entry). Pull the album's detail
-       fragment into #modal on load; base.html opens whatever dialog lands there,
-       so this needs no opening logic of its own. The id was already resolved
-       server-side, so this fetch can't 404. #}
-    {% if deep_link_id %}
-    <div hx-get="/library/{{ deep_link_id }}/detail"
-         hx-trigger="load"
-         hx-target="#modal"
-         hx-swap="innerHTML"
-         class="hidden"></div>
-    {% endif %}
-
     {# The deep link named an album we can't resolve — reconcile may have moved
        its identity beyond what the registry remembers, or it's off disk. Say so
        rather than opening nothing and looking broken. #}
@@ -160,16 +148,12 @@ function harmonistTab(name, persist = true) {
 // `counts` block — the single source of truth (live_counts), reset from each
 // scan and kept live by transitions. See the /status handler below.
 
-// Restore last tab (default Inbox) on load. A deep link (?album=) instead shows
-// the Library — the album's modal opens over it — without persisting that.
+// Restore last tab (default Inbox) on load. `?album=` no longer lands here at
+// all — it redirects to /album/<id> (#103), so there's no deep-link case left.
 document.addEventListener('DOMContentLoaded', function () {
-    {% if deep_link_id %}
-    harmonistTab('library', false);
-    {% else %}
     let saved = 'inbox';
     try { saved = localStorage.getItem('harmonist-tab') || 'inbox'; } catch (e) {}
     harmonistTab(saved);
-    {% endif %}
 });
 </script>
 

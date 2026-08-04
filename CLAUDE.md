@@ -25,7 +25,8 @@ a bug this repo actually paid for — consult them when you're in their territor
 `web-ui` (anything under `templates/`), `bulk-refactor` (a mechanical edit across
 many call sites), `schema-migration` (the `activity_store` SQLite schema),
 `event-recording` (any `activity.record()` / `audit.record()` call, and any code
-that mutates a sidecar, tags, or files on disk).
+that mutates a sidecar, tags, or files on disk), `error-handling` (any `except`
+clause, fallback return, or broad `except Exception`).
 
 ## Review gate — before every commit
 

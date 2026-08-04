@@ -6,6 +6,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- Albums now have their own page at `/album/<id>`, with the full tracklist and
+  everything Harmonist has recorded about them — including from before the album
+  was last re-identified (#103).
+- Clicking a library tile still opens a summary; it answers "is this the right
+  release?" and links through to the page for the tracklist and actions (#103).
+
 ## [1.3.0] - 2026-08-03
 
 ### Fixed

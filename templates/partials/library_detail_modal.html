@@ -13,7 +13,16 @@
             <button type="button" onclick="harmonistCloseModal()"
                     class="text-muted hover:text-ink text-2xl leading-none">&times;</button>
         </div>
+        {# `full_page` unset: this is the summary. Tracklist, history and every
+           action live on the page, which isn't fighting a viewport for room and
+           isn't the place you land by mis-clicking a tile (#103). #}
         {% include 'partials/library_detail.html' %}
+        <div class="px-4 pb-3 -mt-1">
+            <a href="/album/{{ album.id }}"
+               class="text-2xs text-muted hover:text-accent underline decoration-dotted underline-offset-2">
+                Open full album page — tracklist, history and actions →
+            </a>
+        </div>
         {% if pending_item_id is not none %}
         <div class="px-4 pb-4 -mt-1">
             {# Close only after the POST succeeds (never from onclick alongside
