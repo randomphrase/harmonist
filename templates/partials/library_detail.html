@@ -18,9 +18,19 @@
              style="max-width: 11rem;">
 
         <div class="flex-grow min-w-0 space-y-3">
-            {# Title + artist shown once, here (the tile's labels are small). #}
+            {# Title + artist shown once, here (the tile's labels are small).
+               In the modal the title IS the way through to the page — a plain
+               hyperlink on the thing you're looking at, rather than a separate
+               "open full page" line restating it. On the page itself there is
+               nowhere to go, so it's just text. #}
             <div>
+                {% if full_page %}
                 <div class="text-lg font-bold text-ink break-words">{{ album.title }}</div>
+                {% else %}
+                <a href="/album/{{ album.id }}"
+                   class="text-lg font-bold text-ink break-words hover:text-accent underline decoration-dotted underline-offset-4 hover:decoration-solid"
+                   title="Open the full album page — tracklist, history and actions">{{ album.title }}</a>
+                {% endif %}
                 <div class="text-sm text-muted break-words">{{ album.artist }}</div>
             </div>
 
@@ -87,26 +97,25 @@
             </div>
             {% endif %}
 
-            <div class="grid grid-cols-3 gap-2 text-xs">
-                {% if sc and sc.downloaded_at %}
-                <div>
-                    <div class="text-2xs text-muted uppercase tracking-widest">Downloaded</div>
-                    <div class="text-ink font-mono">{{ sc.downloaded_at.strftime('%Y-%m-%d') }}</div>
+            {# Label/value rows, right-aligned so the values line up as a column
+               and can be compared down the list. Shown as elapsed time, because
+               what these answer is "how recently?" rather than "on what date?";
+               the exact timestamp is one hover away. #}
+            <dl class="text-xs space-y-0.5">
+                {% for label, when in [
+                    ('Downloaded', sc.downloaded_at if sc else None),
+                    ('Added', sc.added_at if sc else None),
+                    ('Tagged', sc.tagged_at if sc else None),
+                ] %}
+                {% if when %}
+                <div class="flex items-baseline justify-between gap-3">
+                    <dt class="text-2xs text-muted uppercase tracking-widest">{{ label }}</dt>
+                    <dd class="text-ink text-right tabular-nums"
+                        title="{{ when.strftime('%Y-%m-%d %H:%M:%S UTC') }}">{{ ago(when) }}</dd>
                 </div>
                 {% endif %}
-                {% if sc and sc.added_at %}
-                <div>
-                    <div class="text-2xs text-muted uppercase tracking-widest">Added</div>
-                    <div class="text-ink font-mono">{{ sc.added_at.strftime('%Y-%m-%d') }}</div>
-                </div>
-                {% endif %}
-                {% if sc and sc.tagged_at %}
-                <div>
-                    <div class="text-2xs text-muted uppercase tracking-widest">Tagged</div>
-                    <div class="text-ink font-mono">{{ sc.tagged_at.strftime('%Y-%m-%d') }}</div>
-                </div>
-                {% endif %}
-            </div>
+                {% endfor %}
+            </dl>
 
             <div class="text-xs">
                 <div class="text-2xs text-muted uppercase tracking-widest">Path</div>

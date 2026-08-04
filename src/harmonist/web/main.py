@@ -412,6 +412,7 @@ def create_app(
     templates.env.globals["store_name"] = store_name
     templates.env.globals["display_path"] = _display_path
     templates.env.globals["rel_path"] = _rel_path
+    templates.env.globals["ago"] = _ago
     templates.env.globals["demo_mode"] = cfg.demo_mode
     # Evaluated per-render (callable, not a constant) so the header's
     # Sync/Set-up button flips the moment cookies are saved.
@@ -593,6 +594,29 @@ def _rel_path(p: Path | str, base: Path | str) -> str:
         return str(Path(p).relative_to(base))
     except ValueError:
         return _display_path(p)
+
+
+def _ago(when: datetime | None) -> str:
+    """A timestamp as rough elapsed time — "3 days ago".
+
+    What the user actually wants to know from these is recency ("did this happen
+    recently?"), not the calendar date, and a relative figure answers that at a
+    glance. Templates pair it with the exact timestamp in a `title` so nothing is
+    lost. Deliberately coarse: no "1 month" vs "4 weeks" hair-splitting, since
+    the precise answer is one hover away."""
+    if when is None:
+        return ""
+    seconds = (datetime.now(UTC) - when).total_seconds()
+    if seconds < 0:
+        return "just now"  # clock skew; don't render "in -3 days"
+    for size, unit in ((31_536_000, "year"), (2_592_000, "month"), (86_400, "day"), (3600, "hour")):
+        if seconds >= size:
+            n = int(seconds // size)
+            return f"{n} {unit}{'s' if n != 1 else ''} ago"
+    if seconds >= 60:
+        n = int(seconds // 60)
+        return f"{n} minute{'s' if n != 1 else ''} ago"
+    return "just now"
 
 
 # Libraries Harmonist builds on, for the About page. (name, pip distribution or

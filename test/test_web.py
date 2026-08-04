@@ -2599,6 +2599,27 @@ def test_album_page_wires_retag_progress_and_refresh(client, cfg):
     assert "album-retagged from:body" in r.text  # the reload listener
 
 
+def test_modal_title_links_to_the_page_and_dates_are_relative(client, cfg):
+    """The album title IS the way through to the page — a plain hyperlink on the
+    thing you're looking at, rather than a separate line restating it. On the
+    page the title is just text, since there's nowhere to go.
+
+    Dates read as elapsed time (what these answer is "how recently?"), with the
+    exact timestamp on hover so nothing is lost."""
+    d = _make_tagged_album(cfg, "Linked", mbid="rel-l", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+
+    modal = client.get(f"/library/{aid}/detail").text
+    assert f'href="/album/{aid}"' in modal
+    assert "Linked</a>" in modal  # the title itself carries the link
+    assert "Open full album page" not in modal  # no separate line restating it
+    assert "just now" in modal  # relative, not a bare date
+    assert datetime.now(UTC).strftime("%Y-%m-%d") in modal  # exact value on hover
+
+    page = client.get(f"/album/{aid}").text
+    assert "Linked</a>" not in page  # nowhere to go from the page
+
+
 def test_modal_is_a_summary_without_mutations(client, cfg):
     """#103: the modal answers "is this the right album/release?" — so the
     identity-correcting rematch control stays, but Re-tag / Replace artwork /
