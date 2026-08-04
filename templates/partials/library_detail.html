@@ -3,7 +3,10 @@
 {% set sc = album.sidecar %}
 {% set bc = sc.bandcamp if sc else None %}
 {% set store = store_name(sc.store_url if sc else None) %}
-<div class="relative border border-line rounded-lg bg-surface p-4 mt-1 mb-1">
+{# In the modal the panel IS the dialog card — the <dialog> wrapper already
+   supplies the border, rounding and shadow, so repeating them here drew a box
+   inside a box. On the page it stands on the page background and needs its own. #}
+<div class="relative overflow-hidden bg-surface{% if full_page %} border border-line rounded-lg{% endif %}">
     {# Covers the panel while a multi-second re-tag is in flight (the re-tag
        buttons point their hx-indicator here). #}
     {% include 'partials/_tagging_overlay.html' %}
@@ -11,29 +14,43 @@
        modal so the comparison + metadata below reflect the newly written tags. #}
     <span hx-get="/library/{{ album.id }}/detail" hx-trigger="album-retagged from:body"
           hx-target="#modal" hx-swap="innerHTML" class="hidden"></span>
-    <div class="flex flex-col md:flex-row gap-4">
+
+    {# Title bar. The album's name IS the header — a separate "Album" heading
+       said nothing the context didn't. In the modal the title carries the link
+       through to the page and the bar holds the close ×; on the page it's a
+       plain heading. Full-width and shaded so it reads as the panel's header
+       rather than the first line of its contents. #}
+    <div class="flex items-center justify-between gap-3 px-4 py-2.5 bg-line/50 border-b border-line">
+        {% if full_page %}
+        <h1 class="text-lg font-bold text-ink break-words min-w-0">{{ album.title }}</h1>
+        {% else %}
+        <a href="/album/{{ album.id }}"
+           class="text-lg font-bold text-ink break-words min-w-0 hover:text-accent underline decoration-dotted underline-offset-4 hover:decoration-solid"
+           title="Open the full album page — tracklist, history and actions">{{ album.title }}</a>
+        {# Plain onclick, no hx-* on this element — template-lint's dividing line,
+           and there's no request to sequence, just a dialog close. #}
+        <button type="button" onclick="harmonistCloseModal()"
+                class="flex-shrink-0 text-muted hover:text-ink text-2xl leading-none"
+                title="Close" aria-label="Close">&times;</button>
+        {% endif %}
+    </div>
+
+    <div class="p-4 flex flex-col md:flex-row gap-4">
         <img loading="lazy" src="/cover/{{ album.id }}"
              onerror="this.style.visibility='hidden'" alt=""
-             class="w-full md:w-44 md:flex-shrink-0 aspect-square object-cover rounded border border-line bg-white"
+             {# self-start or the flex row stretches it taller than aspect-square. #}
+             class="w-full md:w-44 md:flex-shrink-0 self-start aspect-square object-cover rounded border border-line bg-white"
              style="max-width: 11rem;">
 
         <div class="flex-grow min-w-0 space-y-3">
-            {# Title + artist shown once, here (the tile's labels are small).
-               In the modal the title IS the way through to the page — a plain
-               hyperlink on the thing you're looking at, rather than a separate
-               "open full page" line restating it. On the page itself there is
-               nowhere to go, so it's just text. #}
-            <div>
-                {% if full_page %}
-                <div class="text-lg font-bold text-ink break-words">{{ album.title }}</div>
-                {% else %}
-                <a href="/album/{{ album.id }}"
-                   class="text-lg font-bold text-ink break-words hover:text-accent underline decoration-dotted underline-offset-4 hover:decoration-solid"
-                   title="Open the full album page — tracklist, history and actions">{{ album.title }}</a>
-                {% endif %}
-                <div class="text-sm text-muted break-words">{{ album.artist }}</div>
-            </div>
+            <div class="text-sm text-muted break-words">{{ album.artist }}</div>
 
+            {# Badges left, dates right, on ONE row. Both are small reference
+               detail, so they sit at the same scale and share a baseline —
+               pairing the dates with the (much larger) title made them look
+               stranded. #}
+            <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
             {% if sc and (sc.mb_release_id or sc.store_url) %}
             <div class="flex gap-2 items-center flex-wrap">
                 {% if sc and sc.mb_release_id %}
@@ -96,26 +113,27 @@
                 {% endif %}
             </div>
             {% endif %}
+            </div>{# /left of the row: badges #}
 
-            {# Label/value rows, right-aligned so the values line up as a column
-               and can be compared down the list. Shown as elapsed time, because
-               what these answer is "how recently?" rather than "on what date?";
+            {# A two-column grid so labels and values each right-align into their
+               own tidy column, kept narrow (shrink-0) so it sits beside the
+               badges rather than stretching across the panel. Elapsed time,
+               because these answer "how recently?" rather than "on what date?";
                the exact timestamp is one hover away. #}
-            <dl class="text-xs space-y-0.5">
+            <dl class="flex-shrink-0 grid grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-xs text-right">
                 {% for label, when in [
                     ('Downloaded', sc.downloaded_at if sc else None),
                     ('Added', sc.added_at if sc else None),
                     ('Tagged', sc.tagged_at if sc else None),
                 ] %}
                 {% if when %}
-                <div class="flex items-baseline justify-between gap-3">
-                    <dt class="text-2xs text-muted uppercase tracking-widest">{{ label }}</dt>
-                    <dd class="text-ink text-right tabular-nums"
-                        title="{{ when.strftime('%Y-%m-%d %H:%M:%S UTC') }}">{{ ago(when) }}</dd>
-                </div>
+                <dt class="text-2xs text-muted uppercase tracking-widest self-baseline">{{ label }}</dt>
+                <dd class="text-ink tabular-nums self-baseline whitespace-nowrap"
+                    title="{{ when.strftime('%Y-%m-%d %H:%M:%S UTC') }}">{{ ago(when) }}</dd>
                 {% endif %}
                 {% endfor %}
             </dl>
+            </div>{# /badges + dates row #}
 
             <div class="text-xs">
                 <div class="text-2xs text-muted uppercase tracking-widest">Path</div>

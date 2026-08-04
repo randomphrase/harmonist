@@ -7,17 +7,16 @@
 <dialog class="bg-transparent p-0 m-auto max-w-4xl w-full"
         onclick="if (event.target === this) this.close()">
     <div class="bg-white border border-line rounded-lg w-full shadow-2xl max-h-[90vh] overflow-auto">
-        <div class="flex items-center justify-between gap-4 px-4 pt-4">
-            <h2 class="text-sm font-bold text-muted uppercase tracking-widest">
-                {{ 'Verify album' if pending_item_id is not none else 'Album' }}</h2>
-            <button type="button" onclick="harmonistCloseModal()"
-                    class="text-muted hover:text-ink text-2xl leading-none">&times;</button>
-        </div>
+        {# No "Album" heading: the panel's own title bar IS the header now, and a
+           separate label said nothing the context didn't. That bar carries the
+           close × and the link through to the page (see library_detail). The
+           verify flow keeps a heading, because *that* isn't obvious from context. #}
+        {% if pending_item_id is not none %}
+        <h2 class="px-4 pt-3 pb-1 text-sm font-bold text-muted uppercase tracking-widest">Verify album</h2>
+        {% endif %}
         {# `full_page` unset: this is the summary. Tracklist, history and every
            action live on the page, which isn't fighting a viewport for room and
            isn't the place you land by mis-clicking a tile (#103). #}
-        {# The album TITLE is the link through to the page (see library_detail),
-           so there's no separate "open full page" line restating it. #}
         {% include 'partials/library_detail.html' %}
         {% if pending_item_id is not none %}
         <div class="px-4 pb-4 -mt-1">
