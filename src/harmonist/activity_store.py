@@ -391,6 +391,61 @@ def recent(
     ]
 
 
+#: The audit type written when the scanner first meets an album (#107). Also
+#: serves as the "have we met?" marker — see `already_discovered`.
+DISCOVERY_EVENT = "album.discovered"
+
+
+def already_discovered(album_ids: list[str]) -> set[str]:
+    """Which of `album_ids` already have a discovery record.
+
+    The record IS the ledger, so there is no separate table to keep in step: an
+    album has been met iff a row says so. That only works because a sidecar-less
+    album's id is now derived from its path and so is stable across restarts
+    (#114) — with the old per-process UUIDs this question was unanswerable.
+
+    One indexed query per scan regardless of library size; the scan runs
+    constantly, so a per-album lookup would be the expensive part.
+    """
+    if not album_ids:
+        return set()
+    placeholders = ",".join("?" * len(album_ids))
+    q = (
+        f"SELECT DISTINCT album_id FROM events WHERE album_id IN ({placeholders}) "
+        "AND source = ? AND message LIKE ?"
+    )
+    try:
+        conn = _ensure()
+        with _LOCK:
+            rows = conn.execute(
+                q, [*album_ids, Source.AUDIT.value, f"{DISCOVERY_EVENT} %"]
+            ).fetchall()
+    except sqlite3.Error as exc:
+        log.exception("activity_store already_discovered() failed", extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read the discovery records") from exc
+    return {r[0] for r in rows}
+
+
+def any_discovery_recorded() -> bool:
+    """Whether ANY album has ever been recorded as discovered.
+
+    False means this is the first scan since the feature arrived, so the albums
+    it finds predate the ledger — Harmonist doesn't know when they appeared and
+    must not claim they turned up just now.
+    """
+    try:
+        conn = _ensure()
+        with _LOCK:
+            row = conn.execute(
+                "SELECT 1 FROM events WHERE source = ? AND message LIKE ? LIMIT 1",
+                (Source.AUDIT.value, f"{DISCOVERY_EVENT} %"),
+            ).fetchone()
+    except sqlite3.Error as exc:
+        log.exception("activity_store any_discovery_recorded() failed", extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read the discovery records") from exc
+    return row is not None
+
+
 def audit_by_action(action_ids: list[str]) -> dict[str, list[StoredEvent]]:
     """Audit rows for each of `action_ids`, grouped — the "what changed" detail
     under an activity entry (#84).

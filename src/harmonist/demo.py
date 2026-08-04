@@ -32,7 +32,7 @@ from typing import Any
 
 from mutagen.mp4 import MP4
 
-from . import activity, activity_store, pending_downloads
+from . import activity, activity_store, audit, id_registry, pending_downloads
 from . import sidecar as sidecar_mod
 from .formats.m4a import (
     ATOM_ALBUM,
@@ -651,11 +651,25 @@ def _download(
         with contextlib.suppress(Exception):
             progress_callback(f"{spec['artist']} / {spec['album']}")
     time.sleep(STEP_DELAY_SECONDS)
+    album_dir = music_dir / _safe(spec["artist"]) / _safe(spec["album"])
     # Scoped so the sidecar audit _materialise writes attaches to this entry as
     # its "what changed" (#97), and labelled so the entry links to the album.
     with activity_store.action():
+        # Mirrors the real download path (bandcamp_hook.sync_item): mint the id
+        # BEFORE the sidecar exists, so the `download` row can be attached to the
+        # album, and sidecar.write's identity normalisation then adopts the same
+        # registry UUID as `temp_uid`. Without this row the demo album's history
+        # starts at `sidecar.create` and looks like it appeared from nowhere —
+        # demo is where people form their first impression of the feature (#107).
+        album_id = id_registry.get_or_mint(album_dir)
+        audit.record(
+            "download",
+            album_id=album_id,
+            item_id=_purchase_item_id(spec),
+            fmt="alac",
+            path=album_dir,
+        )
         _materialise(music_dir, spec)
-        album_dir = music_dir / _safe(spec["artist"]) / _safe(spec["album"])
         activity.info(
             "Downloaded from Bandcamp",
             album_id=sidecar_mod.album_id_for(album_dir),

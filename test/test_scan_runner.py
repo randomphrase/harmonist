@@ -189,3 +189,123 @@ def test_scan_runner_rescan_picks_up_new_album(tmp_path):
 
     asyncio.run(go())
     assert {a.path.name for a in runner.albums()} == {"A", "B"}
+
+
+# ---------- Discovery records (#107) ----------
+
+
+def _discovery_rows() -> list:
+    from harmonist import activity_store
+    from harmonist.activity_store import Source
+
+    return [
+        e
+        for e in activity_store.recent(200, source=Source.AUDIT)
+        if e.message.startswith(activity_store.DISCOVERY_EVENT)
+    ]
+
+
+def test_first_scan_adopts_the_existing_library_rather_than_claiming_it_is_new(tmp_path):
+    """Albums present on the first scan after this feature arrived predate the
+    ledger — Harmonist has no idea when they turned up, so announcing them as
+    found-just-now would be a lie about the user's whole existing collection
+    (#107). They're still recorded, so later scans have their baseline."""
+    from harmonist import activity, activity_store, id_registry
+
+    music = tmp_path / "music"
+    _album(music, "A")
+    _album(music, "B")
+    activity_store.init(tmp_path / "activity.db")
+    activity_store.clear()
+    id_registry.set_library_root(music)
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(runner.has_completed)
+        await _wait(lambda: len(_discovery_rows()) == 2)
+
+    asyncio.run(go())
+
+    entries = [e.message for e in activity.recent(20)]
+    assert any("Started tracking 2 albums already in your library" in m for m in entries), entries
+    assert not any(m.startswith("Found ") for m in entries), entries
+
+
+def test_an_album_added_later_is_announced_as_new_and_only_once(tmp_path):
+    from harmonist import activity, activity_store, id_registry
+
+    music = tmp_path / "music"
+    _album(music, "Existing")
+    activity_store.init(tmp_path / "activity.db")
+    activity_store.clear()
+    id_registry.set_library_root(music)
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(lambda: len(_discovery_rows()) == 1)  # the adopt pass
+        _album(music, "Arrived")
+        runner.request_scan()
+        await _wait(lambda: len(_discovery_rows()) == 2)
+        # A third scan with nothing new must add nothing — the scan runs
+        # constantly, so a per-scan repeat would bury the feed.
+        runner.request_scan()
+        await _wait(lambda: runner.status()["seq"] >= 3)
+        await asyncio.sleep(0.05)
+
+    asyncio.run(go())
+
+    assert len(_discovery_rows()) == 2
+    entries = [e.message for e in activity.recent(20)]
+    assert any("Found 1 new album" in m for m in entries), entries
+
+
+def test_a_discovered_album_reaches_its_own_history_page(tmp_path):
+    """The point of the record: for an ADOPTED album — no download, no sidecar —
+    this is the only thing that answers "where did this come from?"."""
+    from harmonist import activity_store, id_registry
+
+    music = tmp_path / "music"
+    _album(music, "Adopted")
+    activity_store.init(tmp_path / "activity.db")
+    activity_store.clear()
+    id_registry.set_library_root(music)
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(lambda: len(_discovery_rows()) == 1)
+
+    asyncio.run(go())
+
+    album = runner.albums()[0]
+    assert not (album.path / ".harmonist.json").exists()  # no sidecar: id is path-derived
+    history = [e.message for e in activity_store.album_history(album.id)]
+    assert any(m.startswith(activity_store.DISCOVERY_EVENT) for m in history), history
+
+
+def test_the_discovery_entry_carries_its_albums_as_what_changed(tmp_path):
+    """One activity entry per scan, audit rows inside its action scope — so the
+    feed says "a scan found N" while each row lands on its own album's page."""
+    from harmonist import activity, activity_store, id_registry
+
+    music = tmp_path / "music"
+    _album(music, "A")
+    _album(music, "B")
+    activity_store.init(tmp_path / "activity.db")
+    activity_store.clear()
+    id_registry.set_library_root(music)
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(lambda: len(_discovery_rows()) == 2)
+
+    asyncio.run(go())
+
+    entry = next(e for e in activity.recent(20) if "Started tracking" in e.message)
+    assert entry.action_id, "discovery entry ran outside an action scope"
+    detail = activity_store.audit_by_action([entry.action_id])[entry.action_id]
+    assert len(detail) == 2  # one line per album, not one entry per album
+    assert all(r.message.startswith(activity_store.DISCOVERY_EVENT) for r in detail)

@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from harmonist import library_index, live_counts, scanner
+from harmonist import activity, activity_store, audit, library_index, live_counts, scanner
 from harmonist.models import Album
 
 log = logging.getLogger(__name__)
@@ -275,6 +275,7 @@ class ScanRunner:
 
         scanner.prune_cache(self._cache, {a.path for a in results})
         self._albums = results
+        self._announce_discoveries(results)
         # Reset the authoritative live counts from this fresh snapshot — the
         # self-healing baseline that transitions (live_counts.move) adjust between
         # scans. This snapshot IS what the UI reads, so the counts now match it.
@@ -301,3 +302,56 @@ class ScanRunner:
                 self._on_first_complete()
             except Exception:
                 log.exception("on-first-scan-complete callback failed")
+
+    def _announce_discoveries(self, albums: list[Album]) -> None:
+        """Record albums the scanner has never met before (#107).
+
+        ONE activity entry per scan, with an audit row per album inside its action
+        scope. That gives both readings from one write: the feed says "a scan
+        found 12 albums", and each row's `album_id` puts it on that album's own
+        history page — answering "where did this album even come from?", which for
+        an ADOPTED album nothing else could.
+
+        One entry per scan rather than per album is also what keeps the volume
+        honest: dropping a large collection in adds a line to the feed, not
+        thousands.
+
+        The audit rows ARE the ledger — an album has been met iff a row says so —
+        which is only possible because a sidecar-less album's id now derives from
+        its path (#114) and so survives a restart.
+
+        Bookkeeping about a scan, so it must never fail one — hence the broad
+        catch. Loud, though: silence here would mean albums quietly never getting
+        the record, which is the bug this fixes.
+        """
+        try:
+            # First scan since this feature arrived: whatever it finds was already
+            # in the library, and Harmonist has no idea when it arrived. Recorded
+            # (so later scans have their baseline) but announced as what it is —
+            # claiming the user's existing collection turned up just now would be
+            # a lie about every album they already had.
+            adopting = not activity_store.any_discovery_recorded()
+            known = activity_store.already_discovered([a.id for a in albums])
+            fresh = [a for a in albums if a.id not in known]
+            if not fresh:
+                return
+            with activity_store.action():
+                activity.info(
+                    f"Started tracking {len(fresh)} album{'s' if len(fresh) != 1 else ''} "
+                    "already in your library"
+                    if adopting
+                    else f"Found {len(fresh)} new album{'s' if len(fresh) != 1 else ''}"
+                )
+                for a in fresh:
+                    # `album` (the path) rather than only the id, so the row still
+                    # names which album it was about if that album is later moved
+                    # and re-identified.
+                    audit.record(
+                        activity_store.DISCOVERY_EVENT,
+                        album_id=a.id,
+                        album=a.path,
+                        state=a.state,
+                        tracks=a.track_count,
+                    )
+        except Exception:
+            log.exception("could not record newly-discovered albums")

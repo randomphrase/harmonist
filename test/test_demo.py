@@ -318,6 +318,32 @@ def test_sync_download_and_link_entries_name_and_link_their_album(music_dir, tmp
     assert any("item_id=None->" in r.message for r in rows)
 
 
+def test_demo_download_is_audited_and_reaches_the_album_history(music_dir, tmp_path):
+    """#107: demo downloads wrote the sidecar directly and never went through the
+    download audit path, so a demo album's history began at `sidecar.create` and
+    looked like it appeared from nowhere. Real installs don't have this gap, but
+    demo is where people form their first impression of the feature."""
+    from harmonist import activity_store
+
+    activity_store.init(tmp_path / "audit.db")
+    demo.install()
+    demo.seed(music_dir)
+    activity_store.clear()
+
+    demo.run_demo_sync(music_dir, link_only=False)
+
+    downloaded = next(a for a in scanner.scan(music_dir) if a.title == "Straight Outta Lowcash")
+    history = [e.message for e in activity_store.album_history(downloaded.id)]
+
+    # Reaches the album's OWN page — which is the point. The row is written
+    # before any sidecar exists, so it only gets here via the id the sidecar
+    # then adopts as its temp_uid.
+    assert any(m.startswith("download ") for m in history), history
+    assert any("item_id=2001" in m for m in history)
+    # …and it is the FIRST thing that happened, not a footnote after the sidecar.
+    assert history[-1].startswith("download "), history
+
+
 def test_withdrawn_album_is_not_surrendered_before_the_first_sync(music_dir):
     """#87: "no matching Bandcamp purchase" is a conclusion the sync REACHES by
     paging the whole collection. Seeding it pre-surrendered showed a fresh demo

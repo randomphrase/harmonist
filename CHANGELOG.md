@@ -6,6 +6,20 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- Albums are recorded when Harmonist first sees them, so an album's history
+  starts at when it turned up rather than the first time a sidecar was written —
+  the only answer to "where did this come from?" for an album you already owned
+  (#107).
+
+### Fixed
+
+- An album with no sidecar keeps the same id across restarts, so what Harmonist
+  records about it stays attached to it (#114).
+- Demo downloads are recorded in the audit log like real ones, so a demo album's
+  history no longer begins mid-story (#107).
+
 ## [1.4.0] - 2026-08-04
 
 ### Added
