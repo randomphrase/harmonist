@@ -1,62 +1,89 @@
-"""Per-process path → UUID registry for albums without a sidecar.
+"""Stable ids for albums that have no sidecar to read one from.
 
 The sidecar JSON is the long-term source of truth for an album's id (via
-`mb_release_id` when matched, `temp_uid` when not). But NEW albums — dirs
-the scanner has seen but for which no sidecar has been written yet — have
-no on-disk record to read a UUID from. The inbox UI still needs *some* id
-to wire its Reconcile/Recover/Manual buttons.
+`mb_release_id` when matched, `temp_uid` when not). But albums the scanner has
+seen and for which no sidecar has been written yet have no on-disk record to
+read a UUID from, and the UI still needs *some* id to wire its
+Reconcile/Recover/Manual buttons to.
 
-This module owns that gap: per-process, keyed by absolute path, mints a
-UUID once and returns the same UUID on subsequent lookups. When the first
-sidecar gets written for a path, `sidecar.write()` consults the registry
-so the persisted `temp_uid` matches what the UI has already shown — the
-URL stays the same across the NEW → sidecar'd transition.
+This module owns that gap. The id is a **hash of the album's path relative to
+the library root** — deterministic, so the same directory always yields the same
+id, on this run and every future one.
 
-In-memory only. Server restart clears the registry; NEW albums get fresh
-UUIDs on next scan, which is fine because nobody bookmarks inbox URLs. A
-directory rename of a NEW album (before any sidecar exists) drops the old
-mapping and mints a new UUID for the new path — acceptable since NEW is a
-transient state, usually resolved by auto-reconcile within seconds.
+It used to be a random UUID held in a per-process dict, which was fine while the
+id only had to survive one session ("nobody bookmarks inbox URLs"). It stopped
+being fine once history became per-album: everything recorded against a
+sidecar-less album was orphaned by the next restart, because the album came back
+with a different id. That is not an edge case — `reconcile` writes no sidecar at
+all for an album with no MBID and no recoverable store URL, so such an album
+stays sidecar-less indefinitely (#114).
+
+Two consequences worth knowing:
+
+* **Relative to the library root**, not absolute, so re-pointing a bind-mount at
+  the same library doesn't re-identify every album in it. `set_library_root()`
+  is called once at startup, mirroring `audit.set_library_root()`.
+* **A rename re-identifies** a sidecar-less album, since the path is the input.
+  Unavoidable without a durable marker on disk, and mild: an album with a
+  sidecar carries its id inside the file, which moves with the directory.
+
+Hashed rather than used raw because the id goes in URL path segments, and most
+routes carry a further segment after it (`/library/{album_id}/detail`) — a value
+containing slashes can't sit there, and `%2F` is routinely mangled by reverse
+proxies.
 """
 
 from __future__ import annotations
 
-import uuid
+import hashlib
 from pathlib import Path
 
-_uids: dict[Path, str] = {}
+# Set once at startup. Until then ids derive from the absolute path, which keeps
+# unit tests and non-web callers working — they just aren't portable across a
+# different mount point, which no test cares about.
+_library_root: Path | None = None
+
+# Long enough that a collision across a library is not a practical concern,
+# short enough to stay readable in a URL.
+_ID_LENGTH = 32
+
+
+def set_library_root(root: Path | None) -> None:
+    """Point id derivation at the configured music dir (once, at startup)."""
+    global _library_root
+    _library_root = root
+
+
+def _key(path: Path) -> str:
+    """The string an album's id is derived from: its path relative to the library
+    root, or the absolute path when it lies outside (or no root is set yet)."""
+    if _library_root is not None:
+        try:
+            return str(path.relative_to(_library_root))
+        except ValueError:
+            pass
+    return str(path)
 
 
 def get_or_mint(path: Path) -> str:
-    """Return the UUID for this path, minting a new one if none is known."""
-    if path not in _uids:
-        _uids[path] = uuid.uuid4().hex
-    return _uids[path]
+    """This album directory's id. Deterministic — the name is kept for the
+    call sites, but nothing is minted or stored any more."""
+    return hashlib.sha256(_key(path).encode("utf-8")).hexdigest()[:_ID_LENGTH]
 
 
 def peek(path: Path) -> str | None:
-    """Return the UUID for this path if one has been minted, else None.
+    """Same as `get_or_mint`; retained because `sidecar.write()` reads it to
+    persist an album's existing id as its `temp_uid`, so the id doesn't change
+    when the first sidecar appears."""
+    return get_or_mint(path)
 
-    Used by sidecar.write() to preserve the registry UUID when persisting
-    a sidecar for the first time, without minting a fresh one.
+
+def path_for(uid: str, candidates: list[Path]) -> Path | None:
+    """Reverse lookup: which of `candidates` has this id.
+
+    A hash can't be inverted, so the caller supplies the paths to check — in
+    practice the current scan's albums, which is the same linear pass the old
+    dict-based lookup did. Used by `_find_album` when a rendered URL holds the
+    pre-sidecar id of an album whose canonical id has since changed.
     """
-    return _uids.get(path)
-
-
-def path_for(uid: str) -> Path | None:
-    """Reverse lookup: given a UUID, return the path it was minted for.
-
-    Used by _find_album as a fallback when an inbox-rendered URL holds a
-    registry UUID for an album whose canonical id has since changed
-    (e.g. auto-reconcile wrote a sidecar between page render and the
-    user's click).
-    """
-    for path, registered in _uids.items():
-        if registered == uid:
-            return path
-    return None
-
-
-def clear() -> None:
-    """Drop all registrations. Test helper."""
-    _uids.clear()
+    return next((p for p in candidates if get_or_mint(p) == uid), None)

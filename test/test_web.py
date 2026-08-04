@@ -2389,7 +2389,7 @@ def test_action_records_an_id_that_still_resolves_after_tagging(client, cfg, mon
     registry fallback can't help. Recording that id produced a permanently dead
     link. `_flash_response` now re-derives the id from disk AFTER the mutation.
     """
-    from harmonist import activity, id_registry
+    from harmonist import activity
 
     # A sidecar'd but untagged album: its id is the sidecar's temp_uid.
     d = _make_album(cfg, "Relinked")
@@ -2402,7 +2402,6 @@ def test_action_records_an_id_that_still_resolves_after_tagging(client, cfg, mon
             ),
         ),
     )
-    id_registry.clear()  # as after a restart: nothing registry-minted
     aid = _id_for(cfg, d)
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
@@ -2453,23 +2452,20 @@ def test_successful_deep_link_keeps_the_url_parameter(client, cfg):
 
 
 def test_deep_link_resolves_through_the_alias_chain_after_a_restart(client, cfg):
-    """#33's payoff, and the case the registry CANNOT cover.
+    """#33's payoff, and the case the path-derived id CANNOT cover.
 
-    An album that already had a sidecar was never registry-minted, and the
-    registry is in-memory anyway — so after a restart it knows nothing. When
-    tagging then moves the album's identity (temp_uid dropped for the MBID), a
-    deep link written under the old id has no way home. The durable alias chain,
-    recorded at the moment of the change, is what rescues it.
+    id_registry only answers for an album with no sidecar. Once tagging moves an
+    album's identity (temp_uid dropped for the MBID), a deep link written under
+    the old id has no way home — the old id is erased from disk and isn't
+    derivable from the path either. The durable alias chain, recorded at the
+    moment of the change, is what rescues it.
     """
-    from harmonist import id_registry
-
     d = _make_album(cfg, "Aliased")
     sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/aliased"))
     old_id = _id_for(cfg, d)
 
     # Tag it: identity moves to the MBID and temp_uid is erased from disk.
     sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/aliased", mb_release_id="rel-al"))
-    id_registry.clear()  # as after a restart — the in-memory fallback is empty
     assert sc.read(d).temp_uid is None
     assert _id_for(cfg, d) == "rel-al"
 

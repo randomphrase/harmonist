@@ -31,6 +31,7 @@ from harmonist import (
     audit,
     cover_art,
     formats,
+    id_registry,
     live_counts,
     mb_lookup,
     mb_search,
@@ -218,6 +219,10 @@ def create_app(
     # Audit paths are recorded relative to the library (#98). Demo mode already
     # has its sandbox substituted into cfg, so this follows it automatically.
     audit.set_library_root(cfg.paths.music_dir)
+    # A sidecar-less album's id derives from its path relative to the same root,
+    # so re-pointing a bind-mount at the same library doesn't re-identify all of
+    # it (#114).
+    id_registry.set_library_root(cfg.paths.music_dir)
     activity.install_log_handler()
 
     sync_runner = SyncRunner(runner_fn=lambda: None)  # placeholder, replaced below
@@ -1187,25 +1192,23 @@ def _find_album(request: Request, album_id: str) -> Album:
     URLs to sidecar'd albums are stable across directory renames (the
     UUID lives in the sidecar JSON which moves with the directory).
     """
-    from harmonist import id_registry
-
     albums = _albums(request)
     for a in albums:
         if a.id == album_id:
             return a
-    # Race fallback: the rendered page may hold a registry UUID for an
-    # album whose canonical id has since changed (auto-reconcile beat the
-    # user). The registry remembers the original path → UUID, so look up
-    # by path.
-    legacy_path = id_registry.path_for(album_id)
+    # Race fallback: the rendered page may hold the pre-sidecar id of an album
+    # whose canonical id has since changed (auto-reconcile beat the user). That
+    # id derives from the album's path, so re-derive it for each album on disk
+    # and see which one matches.
+    legacy_path = id_registry.path_for(album_id, [a.path for a in albums])
     if legacy_path is not None:
         for a in albums:
             if a.path == legacy_path:
                 return a
     # Durable fallback: the album's identity has since MOVED (tagging replaced its
     # temp_uid with an MBID, a re-match rewrote the MBID). The registry can't help
-    # — it's in-memory and only knows ids it minted, so it's empty for anything
-    # already sidecar'd and after every restart. The alias chain, recorded at each
+    # — it only derives the pre-sidecar id, so it can't answer for anything whose
+    # identity has moved on since. The alias chain, recorded at each
     # change, does: it maps the superseded id forward to the current one (#33).
     # This is what keeps an old activity-feed deep link working.
     #

@@ -108,14 +108,13 @@ def test_url_returns_none_with_garbage_hints():
 
 
 def test_download_audit_id_matches_the_albums_sidecar_id(tmp_path):
-    """A download is audited before any sidecar exists, so the album id is minted
-    from the registry. The sidecar written straight after must adopt that SAME id
-    as its temp_uid — otherwise the download rows would be orphaned from the
-    album's later history (#33)."""
+    """A download is audited before any sidecar exists, so the album id comes from
+    id_registry. The sidecar written straight after must adopt that SAME id as its
+    temp_uid — otherwise the download rows would be orphaned from the album's
+    later history (#33)."""
     from harmonist import activity_store, audit, id_registry
     from harmonist.activity_store import Source
 
-    id_registry.clear()
     activity_store.init(tmp_path / "activity.db")
     activity_store.clear()
 
