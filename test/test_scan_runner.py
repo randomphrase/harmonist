@@ -205,11 +205,10 @@ def _discovery_rows() -> list:
     ]
 
 
-def test_first_scan_adopts_the_existing_library_rather_than_claiming_it_is_new(tmp_path):
-    """Albums present on the first scan after this feature arrived predate the
-    ledger — Harmonist has no idea when they turned up, so announcing them as
-    found-just-now would be a lie about the user's whole existing collection
-    (#107). They're still recorded, so later scans have their baseline."""
+def test_untouched_albums_are_recorded_without_claiming_when_they_arrived(tmp_path):
+    """A sidecar-less album might have turned up ten minutes ago or ten years
+    ago, and Harmonist cannot tell which. So the entry says what it actually
+    knows — when it started keeping records — and nothing about arrival (#116)."""
     from harmonist import activity, activity_store, id_registry
 
     music = tmp_path / "music"
@@ -227,13 +226,47 @@ def test_first_scan_adopts_the_existing_library_rather_than_claiming_it_is_new(t
 
     asyncio.run(go())
 
+    # Exact, not a substring: the old wording ("…already in your library") also
+    # contained this, and the whole point is that the sentence stops here.
     entries = [e.message for e in activity.recent(20)]
-    assert any("Started tracking 2 albums already in your library" in m for m in entries), entries
-    assert not any(m.startswith("Found ") for m in entries), entries
+    assert "Started tracking 2 albums" in entries, entries
 
 
-def test_an_album_added_later_is_announced_as_new_and_only_once(tmp_path):
+def test_an_album_with_a_sidecar_is_never_recorded_as_discovered(tmp_path):
+    """A sidecar means Harmonist has written to this album before, so it already
+    HAS history. Recording a discovery anyway put an `album.discovered` row above
+    the album's own download and tagging rows, dated later (#116)."""
     from harmonist import activity, activity_store, id_registry
+    from harmonist import sidecar as scmod
+    from harmonist.models import Sidecar
+
+    music = tmp_path / "music"
+    known = _album(music, "AlreadyKnown")
+    _album(music, "Untouched")
+    activity_store.init(tmp_path / "activity.db")
+    id_registry.set_library_root(music)
+    scmod.write(known, Sidecar(mb_release_id="rel-known"))
+    activity_store.clear()  # forget the sidecar.create the write just audited
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(runner.has_completed)
+        await _wait(lambda: len(_discovery_rows()) == 1)
+        await asyncio.sleep(0.05)  # give a wrong second row time to appear
+
+    asyncio.run(go())
+
+    rows = _discovery_rows()
+    assert len(rows) == 1, [r.message for r in rows]
+    assert "Untouched" in rows[0].message
+    assert not any("AlreadyKnown" in r.message for r in rows)
+    entries = [e.message for e in activity.recent(20)]
+    assert any("Started tracking 1 album" in m for m in entries), entries
+
+
+def test_an_album_added_later_is_recorded_once_and_only_once(tmp_path):
+    from harmonist import activity_store, id_registry
 
     music = tmp_path / "music"
     _album(music, "Existing")
@@ -244,7 +277,7 @@ def test_an_album_added_later_is_announced_as_new_and_only_once(tmp_path):
 
     async def go() -> None:
         runner.attach_loop()
-        await _wait(lambda: len(_discovery_rows()) == 1)  # the adopt pass
+        await _wait(lambda: len(_discovery_rows()) == 1)
         _album(music, "Arrived")
         runner.request_scan()
         await _wait(lambda: len(_discovery_rows()) == 2)
@@ -257,8 +290,6 @@ def test_an_album_added_later_is_announced_as_new_and_only_once(tmp_path):
     asyncio.run(go())
 
     assert len(_discovery_rows()) == 2
-    entries = [e.message for e in activity.recent(20)]
-    assert any("Found 1 new album" in m for m in entries), entries
 
 
 def test_a_discovered_album_reaches_its_own_history_page(tmp_path):

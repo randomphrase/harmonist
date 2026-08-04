@@ -304,11 +304,11 @@ class ScanRunner:
                 log.exception("on-first-scan-complete callback failed")
 
     def _announce_discoveries(self, albums: list[Album]) -> None:
-        """Record albums the scanner has never met before (#107).
+        """Record albums Harmonist has never touched before (#107).
 
         ONE activity entry per scan, with an audit row per album inside its action
-        scope. That gives both readings from one write: the feed says "a scan
-        found 12 albums", and each row's `album_id` puts it on that album's own
+        scope. That gives both readings from one write: the feed says "started
+        tracking 12", and each row's `album_id` puts it on that album's own
         history page — answering "where did this album even come from?", which for
         an ADOPTED album nothing else could.
 
@@ -320,27 +320,30 @@ class ScanRunner:
         which is only possible because a sidecar-less album's id now derives from
         its path (#114) and so survives a restart.
 
+        The wording deliberately claims nothing about WHEN an album arrived. A
+        sidecar-less album might have turned up ten minutes ago or ten years ago,
+        and Harmonist cannot tell which — all it knows is when it started keeping
+        records for it (#116).
+
         Bookkeeping about a scan, so it must never fail one — hence the broad
         catch. Loud, though: silence here would mean albums quietly never getting
         the record, which is the bug this fixes.
         """
         try:
-            # First scan since this feature arrived: whatever it finds was already
-            # in the library, and Harmonist has no idea when it arrived. Recorded
-            # (so later scans have their baseline) but announced as what it is —
-            # claiming the user's existing collection turned up just now would be
-            # a lie about every album they already had.
-            adopting = not activity_store.any_discovery_recorded()
-            known = activity_store.already_discovered([a.id for a in albums])
-            fresh = [a for a in albums if a.id not in known]
+            # A sidecar means Harmonist has written to this album before, so it
+            # already HAS history and needs no start marker. Recording one anyway
+            # put an `album.discovered` row above an album's own download and
+            # tagging rows, dated a day later — true, useless, and misleading
+            # (#116). This leaves the record doing only the job it exists for:
+            # the adopted album nothing else can account for.
+            candidates = [a for a in albums if a.sidecar is None]
+            known = activity_store.already_discovered([a.id for a in candidates])
+            fresh = [a for a in candidates if a.id not in known]
             if not fresh:
                 return
             with activity_store.action():
                 activity.info(
-                    f"Started tracking {len(fresh)} album{'s' if len(fresh) != 1 else ''} "
-                    "already in your library"
-                    if adopting
-                    else f"Found {len(fresh)} new album{'s' if len(fresh) != 1 else ''}"
+                    f"Started tracking {len(fresh)} album{'s' if len(fresh) != 1 else ''}"
                 )
                 for a in fresh:
                     # `album` (the path) rather than only the id, so the row still

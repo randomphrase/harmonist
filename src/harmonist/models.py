@@ -211,8 +211,9 @@ class Album:
 
     `id` is the album's stable URL id. The scanner assigns it from the
     sidecar's `mb_release_id` (preferred) or `temp_uid` (fallback). For
-    NEW albums with no sidecar, the scanner mints a per-process UUID via
-    `id_registry`. No path-derived ids exist anywhere — that's the point.
+    albums with no sidecar it comes from `id_registry`, which derives it
+    from the path relative to the library root — so it survives a restart
+    and records written against such an album stay attached to it (#114).
     """
 
     id: str

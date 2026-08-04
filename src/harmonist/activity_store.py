@@ -426,26 +426,6 @@ def already_discovered(album_ids: list[str]) -> set[str]:
     return {r[0] for r in rows}
 
 
-def any_discovery_recorded() -> bool:
-    """Whether ANY album has ever been recorded as discovered.
-
-    False means this is the first scan since the feature arrived, so the albums
-    it finds predate the ledger — Harmonist doesn't know when they appeared and
-    must not claim they turned up just now.
-    """
-    try:
-        conn = _ensure()
-        with _LOCK:
-            row = conn.execute(
-                "SELECT 1 FROM events WHERE source = ? AND message LIKE ? LIMIT 1",
-                (Source.AUDIT.value, f"{DISCOVERY_EVENT} %"),
-            ).fetchone()
-    except sqlite3.Error as exc:
-        log.exception("activity_store any_discovery_recorded() failed", extra=_QUIET_MIRROR)
-        raise StoreUnavailableError("could not read the discovery records") from exc
-    return row is not None
-
-
 def audit_by_action(action_ids: list[str]) -> dict[str, list[StoredEvent]]:
     """Audit rows for each of `action_ids`, grouped — the "what changed" detail
     under an activity entry (#84).

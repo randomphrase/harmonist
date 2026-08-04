@@ -8,10 +8,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
-- Albums are recorded when Harmonist first sees them, so an album's history
-  starts at when it turned up rather than the first time a sidecar was written —
-  the only answer to "where did this come from?" for an album you already owned
-  (#107).
+- Albums Harmonist has never touched are recorded the first time it sees them,
+  so an album you already owned has a start to its history rather than beginning
+  at whatever first wrote a sidecar (#107).
 
 ### Fixed
 
