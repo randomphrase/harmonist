@@ -23,14 +23,35 @@
        together, newest first. Unioned across the album's alias chain, so records
        written before it was tagged (under its old id) are here too; without that
        the page would silently start at the last re-identification. #}
-    <section class="border border-line rounded-lg p-4 space-y-3">
-        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
-            History
-            {% if not history_unavailable %}
-            <span class="text-muted font-normal normal-case tracking-normal ml-1">
-                · {{ history|length }}</span>
+    {# `album-history` + the --brief modifier drive the "Show details" toggle in
+       CSS: every row is already on the page, so hiding the audit ones is a class
+       away and a round trip would be silly. Checked BY DEFAULT, unlike the feed —
+       a single album's history is often mostly audit rows (download,
+       sidecar.create, album.discovered), and an adopted album may have nothing
+       else at all, so defaulting it off would show an empty history for exactly
+       the albums this page exists to explain (#123). #}
+    {% set plain = history | rejectattr('source', 'equalto', 'audit') | list %}
+    <section class="album-history border border-line rounded-lg p-4 space-y-3">
+        <div class="flex items-center justify-between gap-4">
+            <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
+                History
+                {% if not history_unavailable %}
+                <span class="text-muted font-normal normal-case tracking-normal ml-1">·
+                    <span class="album-history__count-full">{{ history|length }}</span>
+                    <span class="album-history__count-brief">{{ plain|length }}</span>
+                </span>
+                {% endif %}
+            </h2>
+            {% if history and not history_unavailable %}
+            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
+                          text-2xs uppercase tracking-widest font-bold text-muted hover:text-ink transition"
+                   title="Show the raw audit records — exactly what Harmonist changed on disk">
+                <input type="checkbox" class="cursor-pointer" checked
+                       onchange="this.closest('.album-history').classList.toggle('album-history--brief', !this.checked)">
+                Show details
+            </label>
             {% endif %}
-        </h2>
+        </div>
 
         {# "Couldn't read" and "nothing to read" are different claims, and the
            page must not make the second one when it means the first — that's the
@@ -50,7 +71,7 @@
         {% else %}
         <ul class="divide-y divide-line">
             {% for e in history %}
-            <li class="flex items-baseline gap-3 py-1.5 text-sm">
+            <li class="flex items-baseline gap-3 py-1.5 text-sm{% if e.source == 'audit' %} album-history__audit{% endif %}">
                 <time class="flex-shrink-0 font-mono text-2xs text-muted tabular-nums"
                       title="{{ e.ts.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
                     {{ e.ts.strftime('%Y-%m-%d %H:%M') }}

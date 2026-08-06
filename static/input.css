@@ -114,6 +114,16 @@ button[disabled],
   display: none;
 }
 
+/* Album-page history: "Show details" (checked by default) hides the raw audit
+   rows, leaving the plain-language entries. Done in CSS because the page already
+   holds every row — a round trip to hide what we've fetched would be silly — and
+   the count switches with them, or it would report 12 above 3 visible rows. */
+.album-history--brief .album-history__audit,
+.album-history--brief .album-history__count-full,
+.album-history:not(.album-history--brief) .album-history__count-brief {
+  display: none;
+}
+
 /* Native <dialog> modals (see base.html modal plumbing). The dialog element is
    an unstyled transparent shell (backdrop-click detection target); the inner
    card carries the visual chrome. */

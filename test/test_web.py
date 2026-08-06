@@ -2404,10 +2404,10 @@ def test_audit_detail_is_capped_but_reports_the_true_total(client, cfg):
         for i in range(n):
             audit.record("album.discovered", album=f"Artist {i}/Album {i}")
 
-    body = client.get("/activity").text
+    body = client.get("/activity", params={"audit": 1}).text
     assert body.count("album.discovered") == AUDIT_DETAIL_LIMIT
-    assert f"· {n}" in body  # summary reports the true total, not the shown count
-    assert f"…and {n - AUDIT_DETAIL_LIMIT} more" in body
+    # The overflow line names the true total, not just what was shown.
+    assert f"…and {n - AUDIT_DETAIL_LIMIT} more of {n}" in body
 
 
 def test_activity_shows_album_label_even_when_link_is_dead(client, cfg):
@@ -3339,9 +3339,11 @@ def test_activity_audit_toggle_reveals_unscoped_records(client, cfg):
     assert "unscoped.bookkeeping" in with_audit
 
 
-def test_activity_audit_toggle_suppresses_duplicate_disclosures(client, cfg):
-    """With audit rows shown inline, an entry's disclosure would repeat the very
-    same records a few lines further down."""
+def test_audit_detail_hangs_off_its_entry_and_only_when_asked(client, cfg):
+    """Detail belongs to the entry that caused it, and appears only with "Show
+    details" on. It used to be an always-present <details> disclosure as well as
+    an inline interleave — two routes to the same records, and the interleave is
+    what let one big action swamp the page (#123)."""
     from harmonist import activity, activity_store, audit
 
     activity_store.clear()
@@ -3349,8 +3351,56 @@ def test_activity_audit_toggle_suppresses_duplicate_disclosures(client, cfg):
         activity.record("Tagged", album_id="rel-1", album_label="An Album")
         audit.record("sidecar.update", album_id="rel-1", mbid="a->b")
 
-    assert "what changed" in client.get("/activity").text
-    assert "what changed" not in client.get("/activity?audit=1").text
+    off = client.get("/activity").text
+    assert "Tagged" in off
+    assert "sidecar.update" not in off
+    assert "what changed" not in off  # the disclosure is gone entirely
+
+    on = client.get("/activity?audit=1").text
+    assert "Tagged" in on
+    assert on.count("sidecar.update") == 1  # once, under its entry — not twice
+
+
+def test_audit_rows_outside_an_action_still_appear(client, cfg):
+    """They have no entry to hang off, so grouping alone would hide them.
+
+    Most writes are scoped (the HTTP middleware wraps every mutating request;
+    reconcile scopes per album), but the post-sync surrender / unmatched-purchase
+    pass runs on the sync thread outside any request — and those rows are the
+    only record that a surrender happened (#123)."""
+    from harmonist import activity, activity_store, audit
+
+    activity_store.clear()
+    activity.record("Reconcile done")
+    audit.record("sidecar.create", album_id="rel-1", mbid="x")  # no action scope
+
+    assert "sidecar.create" not in client.get("/activity").text
+    on = client.get("/activity?audit=1").text
+    assert "sidecar.create" in on
+    assert "Reconcile done" in on
+
+
+def test_a_big_action_cannot_swamp_the_feed(client, cfg):
+    """The bug behind #123: audit rows were interleaved by id, so one action that
+    wrote 970 of them filled page 1 with identical lines and pushed every outcome
+    off it. Detail hanging off its entry is what bounds that."""
+    from harmonist import activity, activity_store, audit
+    from harmonist.web.main import AUDIT_DETAIL_LIMIT
+
+    activity_store.clear()
+    for i in range(5):
+        activity.record(f"Bandcamp sync finished — {i} new items")
+    with activity_store.action():
+        activity.record("Started tracking 300 albums")
+        for i in range(300):
+            audit.record("album.discovered", album=f"Artist {i}/Album {i}")
+
+    body = client.get("/activity?audit=1").text
+    # Every ordinary outcome is still on the page…
+    for i in range(5):
+        assert f"Bandcamp sync finished — {i} new items" in body
+    # …and the 300 are capped rather than filling it.
+    assert body.count("album.discovered") <= AUDIT_DETAIL_LIMIT
 
 
 def test_activity_empty_state(client):
@@ -4591,6 +4641,25 @@ def test_album_page_says_history_unavailable_rather_than_nothing_recorded(client
     assert "History unavailable" in r.text
     assert "Nothing recorded for this album yet" not in r.text
     assert "sidecar.create" not in r.text  # no half-history presented as whole
+
+
+def test_album_page_history_offers_show_details_checked_by_default(client, cfg):
+    """Checked by default, unlike the feed: a single album's history is often
+    mostly audit rows, and an adopted album may have nothing else at all — so
+    defaulting it off would show an empty history for exactly the albums this
+    page exists to explain (#123)."""
+    d = _make_album(cfg, "HistoryToggle")
+    sc.write(d, sc.Sidecar(store_url="https://x.bandcamp.com/album/y"))
+    album_id = sc.album_id_for(d)
+
+    body = client.get(f"/album/{album_id}").text
+    assert 'type="checkbox" class="cursor-pointer" checked' in body
+    assert "Show details" in body
+    # Audit rows are marked for the CSS toggle, and both counts are rendered so
+    # the heading can follow it without JS.
+    assert "album-history__audit" in body
+    assert "album-history__count-full" in body
+    assert "album-history__count-brief" in body
 
 
 def test_unresolvable_link_is_503_not_404_when_the_store_is_broken(client, cfg, broken_store):

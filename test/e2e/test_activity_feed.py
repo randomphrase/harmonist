@@ -212,3 +212,66 @@ def test_an_idle_feed_stops_re_sending_itself(demo_server: str) -> None:
         assert codes[-1] == 204, f"idle feed still re-sent itself: {codes}"
 
         browser.close()
+
+
+def test_show_details_checkbox_actually_reveals_the_audit_rows(demo_server: str) -> None:
+    """#123: the toggle's whole job. Only a browser exercises the real path —
+    the checkbox sets a window flag, dispatches `refresh-feed`, and hx-vals reads
+    that flag back when building the request. pytest can hit `?audit=1` directly
+    and prove nothing about whether the control is wired to it."""
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(demo_server)
+        # A sync gives the demo some audit rows to actually reveal.
+        page.click("#sync-button")
+        page.click('[data-tab="activity"]')
+        page.locator("#activity-feed li").first.wait_for(state="visible")
+        page.wait_for_timeout(6000)  # let the demo sync finish writing
+
+        box = page.locator("#activity-feed input[type=checkbox]")
+        box.wait_for(state="visible")
+        assert not box.is_checked(), "details should start off in the feed"
+        before = page.locator("#activity-list li").count()
+
+        box.check()
+        page.wait_for_timeout(1500)
+        after = page.locator("#activity-list li").count()
+
+        assert after > before, f"checking Show details revealed nothing ({before} -> {after})"
+        assert box.is_checked(), "the re-render lost the checkbox state"
+
+        browser.close()
+
+
+def test_album_history_details_toggle_hides_the_audit_rows(demo_server: str) -> None:
+    """#123: the album page hides its audit rows in CSS, since the page already
+    holds them all. Computed style is the only way to see that, and the heading
+    count has to follow or it reports 12 above 3 visible rows."""
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(demo_server)
+        page.click('[data-tab="library"]')
+        tile = page.locator('#panel-library [hx-get*="/detail"]').first
+        tile.wait_for(state="attached")
+        hx_get = tile.get_attribute("hx-get") or ""
+        page.goto(f"{demo_server}/album/{hx_get.split('/library/')[1].split('/detail')[0]}")
+
+        audit_rows = page.locator(".album-history__audit")
+        audit_rows.first.wait_for(state="attached")
+        box = page.locator(".album-history input[type=checkbox]")
+        assert box.is_checked(), "album history should show details BY DEFAULT"
+        assert audit_rows.first.is_visible(), "details on, but the audit rows are hidden"
+        full_count = page.locator(".album-history__count-full").inner_text()
+
+        box.uncheck()
+        page.wait_for_timeout(200)
+        assert not audit_rows.first.is_visible(), "unchecking left the audit rows visible"
+        # The heading switches to the plain-only count, and it really is different.
+        brief_count = page.locator(".album-history__count-brief").inner_text()
+        assert page.locator(".album-history__count-brief").is_visible()
+        assert not page.locator(".album-history__count-full").is_visible()
+        assert brief_count != full_count, "the count didn't follow the toggle"
+
+        browser.close()

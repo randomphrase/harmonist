@@ -31,18 +31,20 @@
 {% else %}
 
 {% if is_first_page %}
-{# Audit records are opt-in: they're raw forensics, not outcomes. But they're
-   worth being able to see — rows written outside an action scope have no
-   action_id, so no entry's "what changed" disclosure can ever show them. #}
+{# Audit records are opt-in: they're raw forensics, not outcomes. A checkbox
+   rather than a button carrying aria-pressed — the platform already has a
+   two-state control, and it brings the semantics and keyboard behaviour with it
+   (web-ui skill §1). No hx-* on it, so the inline handler is fine by
+   template-lint; there's no request to sequence, just a re-fetch. #}
 <div class="flex justify-end mb-2">
-    <button type="button"
-            onclick="window.harmonistShowAudit = !window.harmonistShowAudit; window.harmonistFeedPaged = false; document.body.dispatchEvent(new Event('refresh-feed'));"
-            class="text-2xs uppercase tracking-widest font-bold transition
-                   {% if include_audit %}text-accent{% else %}text-muted hover:text-accent{% endif %}"
-            aria-pressed="{{ 'true' if include_audit else 'false' }}"
-            title="Show the raw audit records alongside activity">
-        {% if include_audit %}✓ {% endif %}Technical detail
-    </button>
+    <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
+                  text-2xs uppercase tracking-widest font-bold text-muted hover:text-ink transition"
+           title="Show the raw audit records — exactly what Harmonist changed on disk">
+        <input type="checkbox" class="cursor-pointer"
+               {% if include_audit %}checked{% endif %}
+               onchange="window.harmonistShowAudit = this.checked; window.harmonistFeedPaged = false; document.body.dispatchEvent(new Event('refresh-feed'));">
+        Show details
+    </label>
 </div>
 <ul id="activity-list" class="divide-y divide-line border border-line rounded-lg overflow-hidden">
 {% endif %}
@@ -83,35 +85,28 @@
         </span>
     </div>
     {# What this action actually did: the audit records sharing its action_id
-       (#84). A native <details> — the platform's own disclosure, no JS. Rendered
-       only when there IS detail, so ordinary entries look exactly as before.
-       Suppressed when audit rows are already shown inline, or the same records
-       would appear twice on one screen.
+       (#84), shown beneath their entry when "Show details" is on.
 
-       Carries `hmt-group` and a stable id because that's what index.html's
-       open-state tracker keys on; without it the feed's 2s re-poll would slam
-       an open disclosure shut mid-read. #}
-    {% if detail and not include_audit %}
-    {# Capped, because one action can produce hundreds of rows — the first scan of
-       a large library records every album it meets. Rendering all of them put
-       150 KB into a panel that re-polls every 2s, and nobody reads row 400 of a
-       disclosure anyway. The album's own page carries its full history (#118). #}
+       No <details> disclosure any more. With the checkbox there was no reason to
+       ALSO make each entry individually expandable, and grouping under the entry
+       is what keeps the page usable: interleaving these chronologically let one
+       action that wrote 970 rows fill the whole page and push every outcome off
+       it (#123).
+
+       Capped, because that same action is why — nobody reads row 400, and the
+       album's own page carries its full history. The count is the true total. #}
+    {% if detail %}
     {% set shown = detail[:AUDIT_DETAIL_LIMIT] %}
-    <details id="audit-{{ e.action_id }}" class="hmt-group mt-1 ml-16">
-        <summary class="cursor-pointer text-2xs text-muted hover:text-accent select-none">
-            what changed <span class="text-muted">· {{ detail|length }}</span>
-        </summary>
-        <ul class="mt-1 space-y-0.5 border-l border-line pl-3">
-            {% for a in shown %}
-            <li class="font-mono text-2xs text-muted break-all">{{ a.message }}</li>
-            {% endfor %}
-            {% if detail|length > shown|length %}
-            <li class="font-mono text-2xs text-muted italic">
-                …and {{ detail|length - shown|length }} more
-            </li>
-            {% endif %}
-        </ul>
-    </details>
+    <ul class="mt-1 ml-16 space-y-0.5 border-l border-line pl-3">
+        {% for a in shown %}
+        <li class="font-mono text-2xs text-muted break-all">{{ a.message }}</li>
+        {% endfor %}
+        {% if detail|length > shown|length %}
+        <li class="font-mono text-2xs text-muted italic">
+            …and {{ detail|length - shown|length }} more of {{ detail|length }}
+        </li>
+        {% endif %}
+    </ul>
     {% endif %}
     </li>
     {% endfor %}

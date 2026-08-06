@@ -12,6 +12,14 @@ versions follow [semantic versioning](https://semver.org).
   so an album you already owned has a start to its history rather than beginning
   at whatever first wrote a sidecar (#107).
 
+### Changed
+
+- "Technical detail" is now a "Show details" checkbox, and the records it
+  reveals sit under the entry that caused them instead of being interleaved —
+  one big action no longer fills the page (#123).
+- The album page's history has the same "Show details" toggle, on by default
+  (#123).
+
 ### Fixed
 
 - Inbox cards show the album's path relative to your music library, like the

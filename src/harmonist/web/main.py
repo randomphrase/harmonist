@@ -609,6 +609,32 @@ def _rel_path(p: Path | str, base: Path | str) -> str:
         return _display_path(p)
 
 
+def _merge_unscoped_audit(events: list[activity.Event], since: datetime) -> list[activity.Event]:
+    """Fold audit rows that belong to no action into a page of activity entries,
+    newest first (#123).
+
+    They can't hang off an entry the way scoped rows do, so they take rows of
+    their own. Merged by timestamp rather than appended, or a reconcile's
+    `sidecar.create` would sit at the bottom of the page instead of beside the
+    entry it happened alongside.
+    """
+    unscoped = [
+        activity.Event(
+            ts=r.ts,
+            level=r.level,
+            message=r.message,
+            album_id=r.album_id,
+            album_label=r.album_label,
+            action_id=r.action_id,
+            source=r.source,
+        )
+        for r in activity_store.audit_without_action(since)
+    ]
+    if not unscoped:
+        return events
+    return sorted([*events, *unscoped], key=lambda e: e.ts, reverse=True)
+
+
 def _ago(when: datetime | None) -> str:
     """A timestamp as rough elapsed time — "3 days ago".
 
@@ -2021,18 +2047,34 @@ def _register_routes(app: FastAPI) -> None:
         has_more = False
         store_unavailable = False
         try:
+            # The page is ALWAYS activity rows. Audit rows used to be interleaved
+            # into it when `audit` was on, which sorted them by id — so one action
+            # that wrote 970 rows (a first scan of a large library) filled the
+            # whole page with identical `album.discovered` lines and pushed every
+            # outcome off it. Detail now hangs off its entry instead (#123).
+            #
             # Ask for one MORE than needed: its presence answers "is there another
             # page?" without a COUNT over a table that grows without bound and is
             # re-read every couple of seconds.
-            page = activity.recent(limit + 1, offset=offset, include_audit=audit)
+            page = activity.recent(limit + 1, offset=offset)
             has_more = len(page) > limit
             events = page[:limit]
-            # The audit records behind each entry, fetched for the whole page in ONE
-            # grouped query (#84) — per-entry lookups would be an N+1 across the page,
-            # re-polled every couple of seconds.
-            audit_detail = activity_store.audit_by_action(
-                [e.action_id for e in events if e.action_id]
-            )
+            if audit:
+                # The audit records behind each entry, fetched for the whole page
+                # in ONE grouped query (#84) — per-entry lookups would be an N+1
+                # across the page, re-polled every couple of seconds.
+                audit_detail = activity_store.audit_by_action(
+                    [e.action_id for e in events if e.action_id]
+                )
+                # Rows written outside any action have no entry to sit under, so
+                # they get rows of their own — otherwise the UI would never show
+                # them at all. Most writes ARE scoped (the HTTP middleware
+                # wraps every mutating request; reconcile scopes per album), but
+                # the post-sync surrender / unmatched-purchase pass runs on the
+                # sync thread outside any request, and those rows are the only
+                # record that a surrender happened.
+                if events:
+                    events = _merge_unscoped_audit(events, events[-1].ts)
         except activity_store.StoreUnavailableError:
             # Already logged with a traceback in the store. Drop any partial page:
             # half a feed presented as the whole feed is the same lie in miniature.

@@ -487,6 +487,48 @@ def audit_by_action(action_ids: list[str]) -> dict[str, list[StoredEvent]]:
     return out
 
 
+def audit_without_action(since: datetime, limit: int = 200) -> list[StoredEvent]:
+    """Audit rows written OUTSIDE any action scope, newest first, no older than
+    `since`.
+
+    These have no activity entry to sit beneath, so the feed shows them as rows
+    of their own — without this they'd be invisible in the UI entirely.
+
+    Most writes ARE scoped: the HTTP middleware wraps every mutating request, and
+    reconcile opens a scope per album. The ones that aren't come from background
+    passes with no enclosing request — the post-sync surrender / unmatched-purchase
+    sweep in particular, whose rows are the only record that a surrender happened
+    (#123).
+
+    `since` bounds them to the page being rendered; without it, one ancient
+    orphan would surface at the top of page 1 forever.
+    """
+    q = (
+        "SELECT ts, level, source, message, album_id, album_label, action_id "
+        "FROM events WHERE source = ? AND action_id IS NULL AND ts >= ? "
+        "ORDER BY id DESC LIMIT ?"
+    )
+    try:
+        conn = _ensure()
+        with _LOCK:
+            rows = conn.execute(q, (Source.AUDIT.value, since.isoformat(), limit)).fetchall()
+    except sqlite3.Error as exc:
+        log.exception("activity_store audit_without_action() failed", extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read the unscoped audit rows") from exc
+    return [
+        StoredEvent(
+            ts=datetime.fromisoformat(ts),
+            level=Level(level),
+            source=Source(src),
+            message=msg,
+            album_id=aid,
+            album_label=label,
+            action_id=act,
+        )
+        for ts, level, src, msg, aid, label, act in rows
+    ]
+
+
 def record_alias(old_id: str, new_id: str) -> None:
     """Remember that `old_id` became `new_id` (#33).
 
