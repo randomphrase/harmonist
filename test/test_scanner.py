@@ -822,29 +822,46 @@ def test_a_readable_untagged_file_is_not_flagged_unreadable(tmp_path):
     assert fields.album_id is None
 
 
-def test_a_tagged_album_with_one_unreadable_file_does_not_revert_to_tagging(tmp_path, caplog):
-    """The user-visible bug: a COMPLETE album on a failing disk reappeared in
-    the inbox as stuck mid-tagging, inviting a re-tag — i.e. inviting a WRITE to
-    the drive that just failed to read."""
+def _tag_with_mbid(album_dir: Path, mbid: str) -> None:
     from mutagen.mp4 import MP4
 
-    d = _make_album_dir(tmp_path, "Artist", "Failing", n_tracks=3)
-    for f in sorted(d.glob("*.m4a")):
+    for f in sorted(album_dir.glob("*.m4a")):
         audio = MP4(f)
-        audio[ATOM_MB_ALBUM_ID] = [b"rel-failing"]
+        audio[ATOM_MB_ALBUM_ID] = [mbid.encode()]
         audio.save()
+
+
+def test_an_unreadable_track_makes_the_album_incomplete(tmp_path, caplog):
+    """A track Harmonist can't open is, for every purpose the user cares about,
+    a track they don't have — so it lands in the same state as an absent one.
+
+    It must NOT read as TAGGING (the original bug), which invites a re-tag —
+    a write to the drive that just failed a read."""
+    d = _make_album_dir(tmp_path, "Artist", "Failing", n_tracks=3)
+    _tag_with_mbid(d, "rel-failing")
     sc.write(d, Sidecar(mb_release_id="rel-failing", tagged_at=datetime.now(UTC)))
     assert scan(tmp_path)[0].state == AlbumState.COMPLETE  # before the disk trouble
 
-    for f in sorted(d.glob("*.m4a")):
-        _make_unreadable(f)
+    _make_unreadable(min(d.glob("*.m4a")))
 
     with caplog.at_level("WARNING"):
         album = scan(tmp_path)[0]
 
-    assert album.state is not AlbumState.TAGGING
-    assert album.state == AlbumState.COMPLETE
+    assert album.state == AlbumState.INCOMPLETE
     assert any("could not be read" in r.message for r in caplog.records)
+
+
+def test_one_corrupt_track_is_not_hidden_by_the_others_being_fine(tmp_path):
+    """The ordering that matters: the check runs BEFORE the tagged/untagged
+    branch. Two good files still carry the MBID, so a later check would call the
+    album COMPLETE and the corruption would never be shown."""
+    d = _make_album_dir(tmp_path, "Artist", "OneBad", n_tracks=3)
+    _tag_with_mbid(d, "rel-onebad")
+    sc.write(d, Sidecar(mb_release_id="rel-onebad", tagged_at=datetime.now(UTC)))
+
+    _make_unreadable(min(d.glob("*.m4a")))
+
+    assert scan(tmp_path)[0].state == AlbumState.INCOMPLETE
 
 
 def test_a_genuinely_untagged_album_still_reads_as_tagging(tmp_path):

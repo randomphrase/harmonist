@@ -285,6 +285,23 @@ def _derive_state(
         # present — but it's all one state, so the user never round-trips
         # between "review" and "assign".
         return AlbumState.NEEDS_MBID
+    unreadable = sum(1 for sf in fields if sf.unreadable)
+    if unreadable:
+        # A track Harmonist can't open is, for every purpose the user cares
+        # about, a track they don't have — so it lands in the same state as one
+        # that's absent (#112). Checked BEFORE the tagged/untagged branch,
+        # because a correctly tagged album with one corrupt file would otherwise
+        # come out COMPLETE and the corruption would never be shown.
+        #
+        # It also must not read as TAGGING, which is what it did: that invites a
+        # re-tag, i.e. a WRITE to the drive that just failed a read.
+        log.warning(
+            "%d of %d file(s) in %s could not be read — treating the album as incomplete",
+            unreadable,
+            len(fields),
+            album_dir,
+        )
+        return AlbumState.INCOMPLETE
     if _files_tagged_with(fields, sidecar.mb_release_id):
         # INCOMPLETE wins over NEEDS_SYNC when set: the user has explicitly
         # confirmed-as-incomplete (track_count_expected only gets set at
@@ -307,22 +324,6 @@ def _derive_state(
             and not sidecar.purchase_unavailable
         ):
             return AlbumState.NEEDS_SYNC
-        return AlbumState.COMPLETE
-    if any(sf.unreadable for sf in fields):
-        # Files Harmonist could not open don't get to say the album is untagged
-        # (#112). Falling through to TAGGING here meant a COMPLETE album on a
-        # failing disk reappeared in the inbox as stuck mid-tagging — inviting
-        # the user to re-tag, i.e. to WRITE to the drive that just failed to
-        # read. The sidecar is Harmonist's own record of having tagged it, and
-        # trusting that while the evidence is unreadable is both the honest
-        # reading and the non-destructive one.
-        log.warning(
-            "%d of %d file(s) in %s could not be read; keeping the album's "
-            "recorded state rather than treating it as untagged",
-            sum(1 for sf in fields if sf.unreadable),
-            len(fields),
-            album_dir,
-        )
         return AlbumState.COMPLETE
     return AlbumState.TAGGING
 
