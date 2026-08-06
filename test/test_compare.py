@@ -51,13 +51,22 @@ def test_a_majority_wins_and_names_the_outliers():
     assert c.outliers == (("07 Fernwald.mp3", "Benoît Pioulard"), ("08 Halde.mp3", None))
 
 
-def test_a_tie_refuses_to_pick():
-    """The case with no honest answer. Choosing one of two equal halves would
-    state something false about the album."""
-    tracks = [(f"{i}.flac", "A") for i in range(4)] + [(f"{i}.flac", "B") for i in range(4, 8)]
+def test_a_tie_is_broken_by_track_order():
+    """A 4/4 split has no most-common value, so track 1 decides — a rule that
+    fits in one sentence. The count beside it already tells the user this isn't
+    the album's settled answer."""
+    tracks = [(f"{i}.flac", "B") for i in range(4)] + [(f"{i}.flac", "A") for i in range(4, 8)]
     c = consensus(tracks)
-    assert c.value is None
-    assert c.total == 8
+    assert c.value == "B"  # track 1's value, not the alphabetically first
+    assert (c.agreeing, c.total, c.distinct) == (4, 8, 2)
+    assert not c.is_unanimous
+
+
+def test_a_tie_skips_tracks_with_no_value_at_all():
+    """Track 1 means the first track that actually has a value — an untagged
+    opening track shouldn't decide the album has no artist."""
+    tracks: list[tuple[str, str | None]] = [("01.flac", None), ("02.flac", "B"), ("03.flac", "A")]
+    assert consensus(tracks).value == "B"
 
 
 def test_no_tracks_and_no_values_are_distinguishable_from_a_tie_by_total():
@@ -170,12 +179,17 @@ def test_an_unreadable_file_is_neither_matching_nor_absent():
     assert f.differs  # the user has to be told, not quietly shown an absence
 
 
-def test_tracks_that_disagree_with_no_majority_say_so():
+def test_evenly_split_tracks_still_produce_a_comparison():
+    """Uneven tagging must not suppress the row — the comparison is made against
+    track 1's value, and the consensus counts travel alongside so the UI can say
+    how shaky it is."""
     tracks = [(f"{i}.flac", "A") for i in range(2)] + [(f"{i}.flac", "B") for i in range(2, 4)]
     f = compare_field("Artist", disk=consensus(tracks), mb="A")
-    assert f.agreement is Agreement.NO_CONSENSUS
-    assert f.disk is None  # nothing arbitrary was picked
-    assert f.consensus is not None and f.consensus.total == 4
+    assert f.agreement is Agreement.MATCHES  # track 1 says "A", and so does MB
+    assert f.disk == "A"
+    assert f.consensus is not None
+    assert (f.consensus.agreeing, f.consensus.total) == (2, 4)
+    assert not f.consensus.is_unanimous  # ...but only half the album agrees
 
 
 def test_an_untagged_field_is_absent_not_inconsistent():

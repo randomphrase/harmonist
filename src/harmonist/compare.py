@@ -62,9 +62,6 @@ class Agreement(StrEnum):
     #: an unreadable file reported as untagged is how a failing disk gets an
     #: album re-tagged.
     UNREADABLE = "unreadable"
-    #: The tracks disagree with no majority — a 4/4 split. There is no on-disk
-    #: value to compare, and picking one would be a quiet lie.
-    NO_CONSENSUS = "no_consensus"
 
 
 class Kind(StrEnum):
@@ -131,19 +128,23 @@ class FieldComparison:
             Agreement.DIFFERS,
             Agreement.ONLY_MB,
             Agreement.UNREADABLE,
-            Agreement.NO_CONSENSUS,
         )
 
 
 def consensus(values: Sequence[tuple[str, str | None]]) -> Consensus:
-    """What most tracks say for one field, from `(file_name, value)` pairs.
+    """What most tracks say for one field, from `(file_name, value)` pairs, in
+    track order.
 
-    Returns `value=None` on a tie. A 4/4 split has no most-common value, and
-    silently choosing one would state something false about the album.
+    On a tie — a 4/4 split, with no most-common value — **the first track with a
+    value wins**. Deliberately a rule that fits in one sentence: "when your
+    tracks disagree evenly, Harmonist shows what track 1 says." The count beside
+    it (`4 of 8`) already tells the user this isn't the album's settled answer
+    and the outliers are one hover away, so an arbitrary-looking pick is less
+    confusing than a field that refuses to show anything at all.
 
-    Tracks with no value at all are counted in `total` but can't win: a field
-    present on six of eight tracks is "what the album says", with two outliers,
-    not a field with no value.
+    Tracks with no value are counted in `total` but can't win: a field present
+    on six of eight tracks is "what the album says", with two outliers, not a
+    field with no value. `value` is None only when NO track has one.
     """
     total = len(values)
     if total == 0:
@@ -153,10 +154,17 @@ def consensus(values: Sequence[tuple[str, str | None]]) -> Consensus:
         return Consensus(value=None, agreeing=0, total=total, distinct=0)
     ranked = counts.most_common()
     top_count = ranked[0][1]
-    if len([c for _, c in ranked if c == top_count]) > 1:
-        # A tie. Deliberately no winner — see the docstring.
-        return Consensus(value=None, agreeing=0, total=total, distinct=len(counts))
-    winner = ranked[0][0]
+    tied = [v for v, c in ranked if c == top_count]
+    if len(tied) > 1:
+        # Tie broken by track order: the first track carrying one of the joint-
+        # winning values. `Counter.most_common` orders ties by first insertion,
+        # which is close but not the same thing — it ranks by first *occurrence
+        # of that value*, which coincides here only because we scan in order.
+        # Being explicit costs a line and means the rule is the documented one.
+        winner = next(v for _, v in values if v in tied)
+    else:
+        winner = ranked[0][0]
+    top_count = counts[winner]
     outliers = tuple((name, v) for name, v in values if v != winner)
     return Consensus(
         value=winner, agreeing=top_count, total=total, outliers=outliers, distinct=len(counts)
@@ -223,15 +231,11 @@ def compare_field(
     if unreadable:
         return FieldComparison(label, kind, Agreement.UNREADABLE, mb=mb, consensus=disk)
 
+    # `value` is None only when no track carries the field at all — a tie is
+    # resolved in `consensus`, so uneven tagging never suppresses the row. How
+    # united the tracks are travels alongside on `consensus`, for the UI to
+    # annotate; it doesn't change which comparison is made.
     disk_value = disk.value if disk else None
-    # `distinct` is what separates a tie from a field no track carries. Without
-    # it an untagged album reports every field as "inconsistent".
-    tracks_disagree = disk is not None and disk_value is None and disk.distinct > 1
-    if tracks_disagree:
-        # Some tracks may still carry values; there is just no majority. The row
-        # says so rather than showing one arbitrarily.
-        return FieldComparison(label, kind, Agreement.NO_CONSENSUS, mb=mb, consensus=disk)
-
     if disk_value is None and mb is None:
         return FieldComparison(label, kind, Agreement.MATCHES, consensus=disk)
     if disk_value is None:
