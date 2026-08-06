@@ -164,7 +164,9 @@ class VorbisTagger:
         (a constant per Vorbis container — FLAC/Vorbis/Opus)."""
         audio = self._open(path)
         if audio is None:
-            return ScanFields(None, None, None, codec)
+            # Flagged, not silently blank: an unopenable file must not read as
+            # an untagged one (#112).
+            return ScanFields(None, None, None, codec, unreadable=True)
         has_cover = _has_embedded_cover(audio)
         tags = audio.tags
         if tags is None:

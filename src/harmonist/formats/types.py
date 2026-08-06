@@ -25,6 +25,13 @@ class ScanFields(NamedTuple):
     # Album-level artist (Picard: aART / TPE2 / ALBUMARTIST). Authoritative for
     # display; "Various Artists" on a compilation. None when the tag is absent.
     album_artist: str | None = None
+    # True when the file could not be opened at all — a permission error, a
+    # truncated file, a failing disk. WITHOUT this, every field reads None and
+    # the result is byte-identical to a perfectly readable untagged file, so a
+    # COMPLETE album on a dying drive reappears in the inbox as stuck
+    # mid-tagging and invites the user to re-tag it (#112). "I couldn't read
+    # this" and "there's nothing here" are different answers.
+    unreadable: bool = False
 
 
 @dataclass

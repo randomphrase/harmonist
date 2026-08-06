@@ -199,7 +199,11 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
     # The sidecar is kept on disk; once the user fixes the on-disk tags
     # via Picard, the next scan re-derives state from the sidecar.
     inconsistent_tracks = _check_consistency(audio_files, fields)
-    state = AlbumState.INCONSISTENT if inconsistent_tracks else _derive_state(sidecar, fields)
+    state = (
+        AlbumState.INCONSISTENT
+        if inconsistent_tracks
+        else _derive_state(sidecar, fields, album_dir)
+    )
 
     return Album(
         id=_album_id(album_dir, sidecar),
@@ -270,7 +274,9 @@ def _album_id(album_dir: Path, sidecar: Sidecar | None) -> str:
     return id_registry.get_or_mint(album_dir)
 
 
-def _derive_state(sidecar: Sidecar | None, fields: list[formats.ScanFields]) -> AlbumState:
+def _derive_state(
+    sidecar: Sidecar | None, fields: list[formats.ScanFields], album_dir: Path
+) -> AlbumState:
     if sidecar is None:
         return AlbumState.NEW
     if sidecar.mb_release_id is None:
@@ -301,6 +307,22 @@ def _derive_state(sidecar: Sidecar | None, fields: list[formats.ScanFields]) -> 
             and not sidecar.purchase_unavailable
         ):
             return AlbumState.NEEDS_SYNC
+        return AlbumState.COMPLETE
+    if any(sf.unreadable for sf in fields):
+        # Files Harmonist could not open don't get to say the album is untagged
+        # (#112). Falling through to TAGGING here meant a COMPLETE album on a
+        # failing disk reappeared in the inbox as stuck mid-tagging — inviting
+        # the user to re-tag, i.e. to WRITE to the drive that just failed to
+        # read. The sidecar is Harmonist's own record of having tagged it, and
+        # trusting that while the evidence is unreadable is both the honest
+        # reading and the non-destructive one.
+        log.warning(
+            "%d of %d file(s) in %s could not be read; keeping the album's "
+            "recorded state rather than treating it as untagged",
+            sum(1 for sf in fields if sf.unreadable),
+            len(fields),
+            album_dir,
+        )
         return AlbumState.COMPLETE
     return AlbumState.TAGGING
 

@@ -151,7 +151,9 @@ def read_scan_fields(path: Path) -> ScanFields:
     """All scanner-needed fields in one open (album, MB album id, artist, codec)."""
     audio = _open(path)
     if audio is None:
-        return ScanFields(None, None, None, None)
+        # Flagged, not silently blank: an unopenable file must not read as an
+        # untagged one (#112).
+        return ScanFields(None, None, None, None, unreadable=True)
     return ScanFields(
         album_title=_text_atom(audio, ATOM_ALBUM),
         album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),

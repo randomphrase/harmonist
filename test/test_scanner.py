@@ -8,8 +8,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from harmonist import formats, tagger
 from harmonist import sidecar as sc
-from harmonist import tagger
 from harmonist.models import (
     AlbumState,
     BandcampInfo,
@@ -791,3 +791,66 @@ def test_scan_cache_prunes_removed_album(tmp_path):
     shutil.rmtree(d)
     scanner.scan(tmp_path, album_cache=cache)
     assert d not in cache  # stale entry pruned
+
+
+# ---------- an unreadable file is not an untagged one (#112) ----------
+
+
+def _make_unreadable(path: Path) -> None:
+    """Corrupt a file so mutagen can't open it — the observable shape of a
+    permission error, a truncation, or a disk starting to fail."""
+    path.write_bytes(b"not audio at all")
+
+
+def test_a_file_that_cannot_be_read_is_flagged_rather_than_read_as_untagged(tmp_path):
+    """The root of #112: an unopenable file returned all-None fields, which is
+    byte-identical to a readable file carrying no tags."""
+    d = _make_album_dir(tmp_path, "Artist", "Corrupt", n_tracks=1)
+    f = min(d.glob("*.m4a"))
+    _make_unreadable(f)
+
+    fields = formats.read_scan_fields(f)
+    assert fields.unreadable is True
+    assert fields.album_id is None  # …and it still looks empty, which is the trap
+
+
+def test_a_readable_untagged_file_is_not_flagged_unreadable(tmp_path):
+    """The control. Without it the flag could simply be always-on."""
+    d = _make_album_dir(tmp_path, "Artist", "Untagged", n_tracks=1)
+    fields = formats.read_scan_fields(min(d.glob("*.m4a")))
+    assert fields.unreadable is False
+    assert fields.album_id is None
+
+
+def test_a_tagged_album_with_one_unreadable_file_does_not_revert_to_tagging(tmp_path, caplog):
+    """The user-visible bug: a COMPLETE album on a failing disk reappeared in
+    the inbox as stuck mid-tagging, inviting a re-tag — i.e. inviting a WRITE to
+    the drive that just failed to read."""
+    from mutagen.mp4 import MP4
+
+    d = _make_album_dir(tmp_path, "Artist", "Failing", n_tracks=3)
+    for f in sorted(d.glob("*.m4a")):
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-failing"]
+        audio.save()
+    sc.write(d, Sidecar(mb_release_id="rel-failing", tagged_at=datetime.now(UTC)))
+    assert scan(tmp_path)[0].state == AlbumState.COMPLETE  # before the disk trouble
+
+    for f in sorted(d.glob("*.m4a")):
+        _make_unreadable(f)
+
+    with caplog.at_level("WARNING"):
+        album = scan(tmp_path)[0]
+
+    assert album.state is not AlbumState.TAGGING
+    assert album.state == AlbumState.COMPLETE
+    assert any("could not be read" in r.message for r in caplog.records)
+
+
+def test_a_genuinely_untagged_album_still_reads_as_tagging(tmp_path):
+    """Control for the fix: unreadable files must stop the downgrade, but a
+    readable album that really isn't tagged yet still has to reach TAGGING, or
+    the fix would strand albums mid-pipeline."""
+    d = _make_album_dir(tmp_path, "Artist", "NotYet", n_tracks=2)
+    sc.write(d, Sidecar(mb_release_id="rel-notyet", tagged_at=datetime.now(UTC)))
+    assert scan(tmp_path)[0].state == AlbumState.TAGGING
