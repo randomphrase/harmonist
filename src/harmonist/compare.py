@@ -30,6 +30,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # keeps this module free of runtime imports — it stays pure
+    from .formats.types import TagSet, TrackTags
 
 # Emphasis is dropped only when a change is BOTH large and scattered. Size alone
 # is the wrong test: "2019" -> "2019-03-15" changes 60% of the characters and is
@@ -257,6 +261,61 @@ def compare_field(
         mb_runs=mb_runs,
         consensus=disk,
     )
+
+
+#: The album-level fields the page shows, in display order, as
+#: `(label, TrackTags attribute, TagSet attribute, kind)`.
+#:
+#: `comment` is here with no MusicBrainz counterpart on purpose: it carries the
+#: recovered Bandcamp URL, MusicBrainz has no opinion on it, and comparing would
+#: invent a difference. Absent from this table entirely would be worse — the
+#: user can't see a tag Harmonist is keeping for them.
+_ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = (
+    ("Album", "album", "album", Kind.TEXT),
+    ("Album artist", "album_artist", "album_artist", Kind.TEXT),
+    ("Date", "date", "date", Kind.SCALAR),
+    ("Label", "label", "label", Kind.TEXT),
+    ("Cat. no.", "catalog_number", "catalog_number", Kind.SCALAR),
+    ("Barcode", "barcode", "barcode", Kind.SCALAR),
+    ("Media", "media", "media", Kind.SCALAR),
+    ("Genre", "genre", None, Kind.TEXT),
+    ("Comment", "comment", None, Kind.TEXT),
+)
+
+
+def album_fields(
+    tracks: Sequence[tuple[str, TrackTags]],
+    mb: TagSet | None,
+) -> tuple[FieldComparison, ...]:
+    """Compare an album's per-track tags against what tagging would write.
+
+    `tracks` is `(file_name, tags)` in track order — per-track rather than a
+    single album value because the tracks are what actually exist, and their
+    agreement is itself information.
+
+    `mb` is any one track's TagSet: every field here is album-level, so they're
+    identical across tracks. None when there's no MusicBrainz release to compare
+    against, which leaves every field ONLY_DISK rather than pretending MB
+    disagrees.
+    """
+    unreadable = all(t.unreadable for _, t in tracks) if tracks else False
+    out: list[FieldComparison] = []
+    for label, disk_attr, mb_attr, kind in _ALBUM_FIELDS:
+        # Unreadable files contribute no value — they'd otherwise vote "absent"
+        # and drag a field to ONLY_MB, reporting a tag as missing when the truth
+        # is that Harmonist couldn't look (#112).
+        values = [(name, getattr(t, disk_attr)) for name, t in tracks if not t.unreadable]
+        mb_value = getattr(mb, mb_attr) if (mb is not None and mb_attr) else None
+        out.append(
+            compare_field(
+                label,
+                kind=kind,
+                disk=consensus(values),
+                mb=mb_value or None,
+                unreadable=unreadable,
+            )
+        )
+    return tuple(out)
 
 
 @dataclass(frozen=True)

@@ -8,11 +8,16 @@ featured credit MB keeps out of the title.
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
+from harmonist import formats
 from harmonist.compare import (
     Agreement,
     AlbumComparison,
     Consensus,
     Kind,
+    album_fields,
     compare_field,
     consensus,
     diff_runs,
@@ -228,6 +233,93 @@ def test_summary_counts_only_real_findings():
     # Artist and Label; NOT the matching album title, NOT the comment.
     assert len(album.differing) == 2
     assert album.summary == "2 of 4 fields differ"
+
+
+# ---------- end to end: real files against a real release ----------
+
+
+def _release() -> dict:
+    """A MusicBrainz release with the fields the album panel shows."""
+    return {
+        "id": "rel-obreel",
+        "title": "Obreel",
+        "date": "2019-03-15",
+        "barcode": "4053804203319",
+        "artist-credit": [{"artist": {"id": "a1", "name": "Galán, Spieth & Guentner"}}],
+        "release-group": {"id": "rg-1", "primary-type": "Album"},
+        "label-info-list": [{"label": {"name": "Dial Records"}, "catalog-number": "DIAL 042"}],
+        "medium-list": [
+            {
+                "position": "1",
+                "format": "Digital Media",
+                "track-list": [
+                    {"id": "t1", "title": "Kaskade", "recording": {"id": "r1", "title": "Kaskade"}}
+                ],
+            }
+        ],
+    }
+
+
+def test_a_tagged_album_compares_clean_against_the_release_it_was_tagged_from(tmp_path):
+    """The end-to-end guarantee, and the one most worth having: tag an album
+    FROM a release, compare it BACK against that release, and nothing should
+    differ. Any mismatch between what the tagger writes and what the reader
+    reads shows up here as a difference the user would be told to fix — against
+    tags Harmonist itself just wrote."""
+    from harmonist.tagger import tag_album, tagsets_for
+
+    d = tmp_path / "Artist" / "Obreel"
+    d.mkdir(parents=True)
+    shutil.copy(Path(__file__).parent / "fixtures" / "sine.m4a", d / "01 Kaskade.m4a")
+
+    release = _release()
+    assert tag_album(d, release) == 1
+
+    tracks = [(f.name, formats.read_tags(f)) for f in sorted(d.glob("*.m4a"))]
+    fields = album_fields(tracks, tagsets_for(release)[0])
+
+    differing = [f.label for f in fields if f.differs]
+    assert differing == [], f"tagging then comparing reported a difference: {differing}"
+
+    by_label = {f.label: f for f in fields}
+    assert by_label["Label"].disk == "Dial Records"  # …and it really did read them
+    assert by_label["Cat. no."].disk == "DIAL 042"
+    assert by_label["Date"].agreement is Agreement.MATCHES
+
+
+def test_an_untagged_album_shows_musicbrainz_values_as_additions(tmp_path):
+    """Nothing on disk to disagree with, so every MB field is ONLY_MB — the
+    'lone purple line' case, not a conflict."""
+    from harmonist.tagger import tagsets_for
+
+    d = tmp_path / "Artist" / "Untagged"
+    d.mkdir(parents=True)
+    shutil.copy(Path(__file__).parent / "fixtures" / "sine.m4a", d / "01 Track.m4a")
+
+    tracks = [(f.name, formats.read_tags(f)) for f in sorted(d.glob("*.m4a"))]
+    by_label = {f.label: f for f in album_fields(tracks, tagsets_for(_release())[0])}
+
+    assert by_label["Label"].agreement is Agreement.ONLY_MB
+    assert by_label["Label"].mb == "Dial Records"
+    assert by_label["Label"].disk is None
+
+
+def test_an_unreadable_track_does_not_report_its_tags_as_missing(tmp_path):
+    """#112 reaching the comparison: a file Harmonist couldn't open must not
+    vote 'absent' and drag every field to ONLY_MB, which would tell the user
+    their tags are gone when the truth is Harmonist couldn't look."""
+    from harmonist.tagger import tagsets_for
+
+    d = tmp_path / "Artist" / "Broken"
+    d.mkdir(parents=True)
+    shutil.copy(Path(__file__).parent / "fixtures" / "sine.m4a", d / "01 Track.m4a")
+    (d / "01 Track.m4a").write_bytes(b"not audio at all")
+
+    tracks = [(f.name, formats.read_tags(f)) for f in sorted(d.glob("*.m4a"))]
+    fields = album_fields(tracks, tagsets_for(_release())[0])
+
+    assert all(f.agreement is Agreement.UNREADABLE for f in fields)
+    assert not any(f.agreement is Agreement.ONLY_MB for f in fields)
 
 
 def test_summary_when_everything_matches():

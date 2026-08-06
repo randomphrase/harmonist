@@ -211,6 +211,27 @@ def _has_per_track_art(files: list[Path]) -> bool:
     return False
 
 
+def tagsets_for(release: Release) -> list[TagSet]:
+    """Every track's TagSet for `release`, in track order — what tagging WOULD
+    write, without writing it.
+
+    Exists for the album comparison (#106), and deliberately routes through the
+    same `_build_tagset` the tagger uses rather than re-deriving the fields.
+    A second mapping would drift: read "label" from a different corner of the
+    release than the writer does and the page reports a difference against tags
+    Harmonist itself wrote, which is worse than showing nothing.
+
+    That also gives the comparison its exact meaning — not "do my files match
+    MusicBrainz" in the abstract, but "do my files match what Harmonist would
+    write from this release", which is the question the user can act on.
+    """
+    media_total = len(release.get("medium-list", [])) or 1
+    return [
+        _build_tagset(release, medium, pos, track, media_total)
+        for medium, pos, track in _flatten_tracks(release)
+    ]
+
+
 def _build_tagset(
     release: Release,
     medium: dict[str, Any],
