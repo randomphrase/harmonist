@@ -218,6 +218,39 @@ def test_inbox_card_lazy_loads_cover_when_present(client, cfg):
     assert 'loading="lazy"' in r.text
 
 
+def test_inbox_card_shows_the_path_relative_to_the_library(client, cfg):
+    """Under Docker the library prefix is a container path that means nothing to
+    the user, and the tail is what identifies the album — the reason audit
+    records went relative in #98. The inbox card was the last place still
+    printing it in full (#121). Absolute stays available on hover."""
+    d = _make_album(cfg, "RelativeMe")
+    body = client.get("/tasks").text
+
+    assert f'title="{d}"' in body  # absolute, one hover away
+    rel = str(d.relative_to(cfg.paths.music_dir))
+    assert f">{rel}</p>" in body
+    # The visible text must not be the absolute path. Checked on the rendered
+    # <p> rather than the whole page, since `title` legitimately carries it.
+    assert f">{d}</p>" not in body
+
+
+def test_no_template_renders_a_bare_library_path(cfg):
+    """A guard for the whole class, not just the card #121 fixed: `{{ album.path }}`
+    is the absolute path, and every place showing it to the user wants
+    `rel_path(...)`. Cheap to keep, and it fails on the next one added."""
+    import re
+    from pathlib import Path
+
+    offenders = []
+    for tpl in (Path(__file__).resolve().parents[1] / "templates").rglob("*.html"):
+        for n, line in enumerate(tpl.read_text().splitlines(), 1):
+            # `{{ album.path }}` used as content. A `title="{{ album.path }}"`
+            # attribute is the intended escape hatch and is exempt.
+            if re.search(r"(?<!title=\")\{\{\s*album\.path\s*\}\}(?!\")", line):
+                offenders.append(f"{tpl.name}:{n}")
+    assert not offenders, f"render these via rel_path(...): {offenders}"
+
+
 def test_consolidated_status_endpoint(client):
     """One poll returns sync + reconcile + scan + counts, replacing separate polls."""
     r = client.get("/status")

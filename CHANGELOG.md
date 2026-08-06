@@ -14,6 +14,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Inbox cards show the album's path relative to your music library, like the
+  rest of the UI, instead of in full (#121).
 - The Activity feed no longer greys itself out every couple of seconds, and an
   unchanged feed is no longer re-sent — on a large library that was 154 KB every
   2 seconds (#118).
