@@ -20,7 +20,7 @@ from typing import Any
 
 from mutagen.flac import Picture
 
-from .types import ScanFields, TagSet
+from .types import ScanFields, TagSet, TrackTags
 
 # Vorbis comment keys (uppercase by convention; lookups are case-insensitive).
 KEY_ALBUM_ID = "MUSICBRAINZ_ALBUMID"
@@ -54,6 +54,9 @@ KEY_BARCODE = "BARCODE"
 KEY_ASIN = "ASIN"
 KEY_MEDIA = "MEDIA"
 KEY_COMMENT = "COMMENT"
+# Read-only: Harmonist doesn't write a genre (that's #12), but files tagged
+# elsewhere carry one and the album comparison should show it.
+KEY_GENRE = "GENRE"
 KEY_DESCRIPTION = "DESCRIPTION"
 
 # Keys this tagger manages on write (cleared then rewritten). COMMENT /
@@ -183,6 +186,39 @@ class VorbisTagger:
             codec=codec,
             has_cover=has_cover,
             album_artist=first(KEY_ALBUM_ARTIST),
+        )
+
+    def read_tags(self, path: Path) -> TrackTags:
+        """Everything the album comparison needs from one file, in one open."""
+        audio = self._open(path)
+        if audio is None:
+            return TrackTags(unreadable=True)
+        duration = round(audio.info.length * 1000) if audio.info.length else None
+        tags = audio.tags
+        if tags is None:
+            # Opened fine, carries no tag block: genuinely untagged, not
+            # unreadable. The duration is still real.
+            return TrackTags(duration_ms=duration)
+
+        def first(key: str) -> str | None:
+            values = tags.get(key)
+            return (str(values[0]) or None) if values else None
+
+        track_num = first(KEY_TRACK_NUMBER)
+        return TrackTags(
+            album=first(KEY_ALBUM),
+            album_artist=first(KEY_ALBUM_ARTIST),
+            date=first(KEY_DATE),
+            label=first(KEY_LABEL),
+            catalog_number=first(KEY_CATALOG),
+            barcode=first(KEY_BARCODE),
+            media=first(KEY_MEDIA),
+            genre=first(KEY_GENRE),
+            title=first(KEY_TITLE),
+            artist=first(KEY_ARTIST),
+            track_num=int(track_num.split("/")[0]) if track_num else None,
+            duration_ms=duration,
+            comment=first(KEY_COMMENT),
         )
 
     def read_cover(self, path: Path) -> tuple[bytes, str] | None:

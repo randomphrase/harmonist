@@ -12,7 +12,7 @@ from pathlib import Path
 from mutagen.oggopus import OggOpus
 
 from . import _vorbis
-from .types import ScanFields
+from .types import ScanFields, TrackTags
 
 EXTENSIONS = (".opus",)
 
@@ -42,3 +42,7 @@ read_cover = _impl.read_cover
 
 def read_scan_fields(path: Path) -> ScanFields:
     return _impl.read_scan_fields(path, "Opus")
+
+
+def read_tags(path: Path) -> TrackTags:
+    return _impl.read_tags(path)

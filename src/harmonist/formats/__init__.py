@@ -14,7 +14,7 @@ from pathlib import Path
 from types import ModuleType
 
 from . import flac, m4a, mp3, ogg, opus
-from .types import ScanFields, TagSet, UnsupportedFormatError
+from .types import ScanFields, TagSet, TrackTags, UnsupportedFormatError
 
 _MODULES: tuple[ModuleType, ...] = (m4a, mp3, flac, ogg, opus)
 
@@ -87,6 +87,22 @@ def read_scan_fields(path: Path) -> ScanFields:
     return fields
 
 
+def read_tags(path: Path) -> TrackTags:
+    """Everything the album comparison needs from one file, in a single open
+    (#106). Unlike `read_scan_fields` this reads the album-level metadata a user
+    would recognise — label, catalogue number, date — not just what the scanner
+    needs to derive state.
+
+    An unsupported extension is not a read failure, so it comes back empty
+    rather than flagged: nothing was wrong, there is simply nothing to read.
+    """
+    mod = _module_for(path)
+    if mod is None:
+        return TrackTags()
+    tags: TrackTags = mod.read_tags(path)
+    return tags
+
+
 def read_cover(path: Path) -> tuple[bytes, str] | None:
     """Extract the file's embedded cover art as (image_bytes, mime_type), or
     None when there's no cover / no module for the extension."""
@@ -110,6 +126,7 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
 __all__ = [
     "ScanFields",
     "TagSet",
+    "TrackTags",
     "UnsupportedFormatError",
     "describe",
     "is_supported",
@@ -120,6 +137,7 @@ __all__ = [
     "read_cover",
     "read_duration_ms",
     "read_scan_fields",
+    "read_tags",
     "read_track_title",
     "supported_extensions",
     "write_tags",

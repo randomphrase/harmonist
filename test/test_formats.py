@@ -142,6 +142,72 @@ def test_read_scan_fields_matches_individual_reads(tmp_path, ext, fixture):
     assert sf.codec == formats.describe(f)
 
 
+# ---------- the read side of the comparison (#106) ----------
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_read_tags_recovers_what_the_tagger_wrote(tmp_path, ext, fixture):
+    """The real test of the read side: tag a file from a MusicBrainz release,
+    read it back, and check every field survived the round trip.
+
+    Each format stores these somewhere different — MP4 freeform `----` atoms,
+    ID3 `TPUB` and `TXXX` frames, Vorbis comments — so a mapping that's wrong in
+    one direction only shows up here. Comparing against MusicBrainz with a
+    field Harmonist can't read back would report a difference that isn't real.
+    """
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+
+    t = formats.read_tags(f)
+    assert t.unreadable is False
+    assert t.album == "Format Album"
+    assert t.album_artist == "Format Artist"
+    assert t.artist == "Format Artist"
+    assert t.title == "The Track"
+    assert t.date == "2022-03-04"
+    assert t.label == "Test Label"
+    assert t.catalog_number == "CAT-9"
+    assert t.barcode == "5051234567890"
+    assert t.track_num == 1
+    assert t.duration_ms is not None and 900 <= t.duration_ms <= 1200
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_read_tags_reports_absent_fields_as_none_not_empty_string(tmp_path, ext, fixture):
+    """An untagged file must come back with None, not "" — the comparison
+    treats None as "absent" and would render an empty string as a value that
+    differs from MusicBrainz."""
+    d = _make_album(tmp_path, fixture)
+    t = formats.read_tags(next(d.glob(f"*{ext}")))
+
+    assert t.unreadable is False  # readable, just untagged
+    for name in ("album", "album_artist", "artist", "title", "label", "catalog_number"):
+        assert getattr(t, name) is None, f"{name} came back {getattr(t, name)!r}"
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_read_tags_flags_a_file_it_cannot_open(tmp_path, ext, fixture):
+    """#112's distinction, at the field-read layer this time."""
+    d = _make_album(tmp_path, fixture)
+    f = next(d.glob(f"*{ext}"))
+    f.write_bytes(b"not audio at all")
+
+    t = formats.read_tags(f)
+    assert t.unreadable is True
+    assert t.album is None  # …and still looks empty, which is the trap
+
+
+def test_read_tags_on_an_unsupported_extension_is_empty_not_unreadable(tmp_path):
+    """Nothing went wrong — there's simply nothing to read. Flagging it would
+    put a "couldn't read this" notice on a stray text file."""
+    p = tmp_path / "notes.txt"
+    p.write_text("sleeve notes")
+    t = formats.read_tags(p)
+    assert t.unreadable is False
+    assert t.album is None
+
+
 _TINY_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00" + b"\x00" * 40
 
 

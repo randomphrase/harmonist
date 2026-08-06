@@ -11,7 +11,7 @@ from pathlib import Path
 from mutagen.flac import FLAC
 
 from . import _vorbis
-from .types import ScanFields
+from .types import ScanFields, TrackTags
 
 EXTENSIONS = (".flac",)
 
@@ -46,3 +46,7 @@ read_cover = _impl.read_cover
 
 def read_scan_fields(path: Path) -> ScanFields:
     return _impl.read_scan_fields(path, "FLAC")
+
+
+def read_tags(path: Path) -> TrackTags:
+    return _impl.read_tags(path)

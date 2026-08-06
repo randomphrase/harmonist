@@ -41,7 +41,7 @@ from mutagen.id3 import (
 )
 from mutagen.mp3 import MP3
 
-from .types import ScanFields, TagSet
+from .types import ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".mp3",)
 
@@ -152,6 +152,51 @@ def read_scan_fields(path: Path) -> ScanFields:
         has_cover=bool(tags and tags.getall("APIC")),
         album_artist=_text(tags, "TPE2"),
     )
+
+
+def read_tags(path: Path) -> TrackTags:
+    """Everything the album comparison needs from one file, in a single open."""
+    audio = _open(path)
+    if audio is None:
+        return TrackTags(unreadable=True)
+    tags = audio.tags
+    track_num = _text(tags, "TRCK")
+    return TrackTags(
+        album=_text(tags, "TALB"),
+        album_artist=_text(tags, "TPE2"),
+        date=_text(tags, "TDRC"),
+        label=_text(tags, "TPUB"),  # a real frame, unlike the two below
+        catalog_number=_txxx(tags, TXXX_CATALOG),
+        barcode=_txxx(tags, TXXX_BARCODE),
+        media=_txxx(tags, "MEDIA"),
+        genre=_text(tags, "TCON"),
+        title=_text(tags, "TIT2"),
+        artist=_text(tags, "TPE1"),
+        # TRCK is "5" or "5/12" — the total belongs to the album, not the track.
+        track_num=_first_int(track_num),
+        duration_ms=round(audio.info.length * 1000) if audio.info.length else None,
+        comment=_comment_text(tags),
+    )
+
+
+def _first_int(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        return int(value.split("/")[0])
+    except ValueError:
+        return None
+
+
+def _comment_text(tags: Any) -> str | None:
+    """The COMM frame Harmonist leaves alone on write, so a recovered Bandcamp
+    URL survives a retag. Read back for display only — never compared to MB."""
+    if tags is None:
+        return None
+    for frame in tags.getall("COMM"):
+        if frame.text and frame.text[0]:
+            return str(frame.text[0])
+    return None
 
 
 def read_cover(path: Path) -> tuple[bytes, str] | None:

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from mutagen.mp4 import MP4, MP4Cover
 
-from .types import ScanFields, TagSet
+from .types import ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".m4a", ".mp4")
 
@@ -161,6 +161,30 @@ def read_scan_fields(path: Path) -> ScanFields:
         codec=_codec_label(audio),
         has_cover=bool(audio.get(ATOM_COVER)),
         album_artist=_text_atom(audio, ATOM_ALBUM_ARTIST),
+    )
+
+
+def read_tags(path: Path) -> TrackTags:
+    """Everything the album comparison needs from one file, in a single open."""
+    audio = _open(path)
+    if audio is None:
+        return TrackTags(unreadable=True)
+    trkn = audio.get(ATOM_TRACK_NUM) or []
+    return TrackTags(
+        album=_text_atom(audio, ATOM_ALBUM),
+        album_artist=_text_atom(audio, ATOM_ALBUM_ARTIST),
+        date=_text_atom(audio, ATOM_DATE),
+        # Freeform (----) atoms, so they come back as bytes.
+        label=_binary_atom_str(audio, ATOM_LABEL),
+        catalog_number=_binary_atom_str(audio, ATOM_CATALOG),
+        barcode=_binary_atom_str(audio, ATOM_BARCODE),
+        media=_binary_atom_str(audio, ATOM_MEDIA),
+        genre=_text_atom(audio, ATOM_GENRE),
+        title=_text_atom(audio, ATOM_TITLE),
+        artist=_text_atom(audio, ATOM_ARTIST),
+        track_num=trkn[0][0] if trkn and trkn[0] else None,
+        duration_ms=int(audio.info.length * 1000) if audio.info else None,
+        comment=_text_atom(audio, ATOM_COMMENT),
     )
 
 

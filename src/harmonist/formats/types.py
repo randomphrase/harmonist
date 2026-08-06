@@ -91,5 +91,46 @@ class TagSet:
     media: str | None = None
 
 
+@dataclass(frozen=True)
+class TrackTags:
+    """What one file actually carries, for comparison against MusicBrainz (#106).
+
+    The read-side counterpart to `TagSet`. Separate from it on purpose: `TagSet`
+    is what Harmonist *writes* and every field is required or defaulted, whereas
+    this is what it *finds*, where every field is legitimately absent and the
+    difference between "absent" and "unreadable" is the whole point.
+
+    Deliberately narrower than `TagSet` too. It carries the fields a user would
+    recognise on an album page — not MusicBrainz ids, which are plumbing, and
+    not sort names. Arbitrary/unknown tags are a later addition (see #106); the
+    shape here doesn't preclude them.
+    """
+
+    #: The file could not be opened at all. Every other field is then None, and
+    #: that is NOT the same as an untagged file — see ScanFields.unreadable.
+    unreadable: bool = False
+
+    # Album-level: the same on every track, which is what makes disagreement
+    # between tracks meaningful rather than expected.
+    album: str | None = None
+    album_artist: str | None = None
+    date: str | None = None
+    label: str | None = None
+    catalog_number: str | None = None
+    barcode: str | None = None
+    media: str | None = None
+    genre: str | None = None
+
+    # Per-track: expected to vary.
+    title: str | None = None
+    artist: str | None = None
+    track_num: int | None = None
+    duration_ms: int | None = None
+
+    #: Harmonist-owned. Carries the recovered Bandcamp URL, so MusicBrainz has
+    #: no counterpart and it must never be rendered as a difference.
+    comment: str | None = None
+
+
 class UnsupportedFormatError(Exception):
     """Raised when no audio module handles a given file extension."""
