@@ -26,6 +26,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Re-tagging an album you'd confirmed as incomplete no longer fails (#133).
 - Inbox cards show the album's path relative to your music library, like the
   rest of the UI, instead of in full (#121).
 - The Activity feed no longer greys itself out every couple of seconds, and an

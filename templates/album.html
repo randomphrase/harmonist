@@ -110,4 +110,17 @@
         {% endif %}
     </section>
 </div>
+
+{# A re-tag rewrites the files, so everything on this page is now stale — the
+   tag comparison, the TAGGED timestamp, the tracklist and the history all
+   change. Reloading is the honest response; patching four regions from one
+   response would be more machinery for a worse guarantee.
+
+   The modal handles the same event by re-fetching itself (library_detail.html);
+   it must not do both, or the page would ALSO pop a dialog. #}
+<script>
+    document.body.addEventListener('album-retagged', function () {
+        window.location.reload();
+    });
+</script>
 {% endblock %}

@@ -2552,6 +2552,15 @@ def _register_routes(app: FastAPI) -> None:
                 sc.mb_release_id,
                 request.app.state.cfg,
                 request.app.state.tagger,
+                # An album the user already confirmed as incomplete has to be
+                # re-tagged in incomplete mode, or the tagger's file-count guard
+                # refuses it and re-tagging is impossible for exactly the albums
+                # a MusicBrainz correction is most likely to affect (#133).
+                #
+                # Keyed on the persisted confirmation, NOT on comparing the file
+                # count to the release: that would silently accept any mismatch,
+                # which is what the guard exists to prevent (design §15.3).
+                incomplete=sc.track_count_expected is not None,
                 overwrite_art=overwrite_art,
             )
         except Exception as e:

@@ -2230,6 +2230,47 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
     assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=UTC)
 
 
+def test_retag_works_on_an_album_confirmed_as_incomplete(client, cfg, monkeypatch):
+    """#133: the tagger refuses file_count < track_count unless told the album is
+    knowingly incomplete. /retag never told it, so re-tagging failed for exactly
+    the albums a MusicBrainz correction is most likely to affect."""
+    d = _make_tagged_album(cfg, "Partial", mbid="rel-part", tagged_at=datetime.now(UTC))
+    # One file on disk, but the user confirmed the release has four tracks.
+    sc.write(
+        d,
+        Sidecar(
+            mb_release_id="rel-part",
+            tagged_at=datetime.now(UTC),
+            track_count_expected=4,
+        ),
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=4)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}")
+    assert r.status_code == 200
+    assert "Re-tagged" in r.text
+    assert "Re-tag failed" not in r.text
+
+
+def test_retag_still_refuses_an_unconfirmed_short_album(client, cfg, monkeypatch):
+    """The control, and the reason this keys on the sidecar rather than on
+    counting files: an album the user has NOT confirmed as incomplete must still
+    be refused, or the guard against tagging a partial download by accident is
+    gone (design §15.3)."""
+    d = _make_tagged_album(cfg, "Unconfirmed", mbid="rel-unc", tagged_at=datetime.now(UTC))
+    sc.write(d, Sidecar(mb_release_id="rel-unc", tagged_at=datetime.now(UTC)))  # no expectation
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=4)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}")
+    assert "Re-tag failed" in r.text
+
+
 def test_album_action_records_activity_against_that_album(client, cfg, monkeypatch):
     """End-to-end for #33: a per-album action tags its activity entry with the
     album's id, so the album's history is queryable (and other albums' events
@@ -2541,7 +2582,11 @@ def test_action_records_an_id_that_still_resolves_after_tagging(client, cfg, mon
     r = client.get(f"/?album={entry.album_id}")
     assert r.status_code == 200
     assert "isn't in your library any more" not in r.text
-    assert f'hx-get="/library/{entry.album_id}/detail"' in r.text
+    # Anchored on the album page's own MB-comparison fetch, which carries the
+    # resolved id. (It used to check the retag-refresh span, but that was a
+    # modal-only element that leaked onto the page — see the album-retagged
+    # gating in library_detail.html.)
+    assert f'hx-get="/library/{entry.album_id}/compare"' in r.text
 
 
 def test_missing_album_notice_is_dismissible_and_clears_the_url(client, cfg):
@@ -2559,14 +2604,17 @@ def test_missing_album_notice_is_dismissible_and_clears_the_url(client, cfg):
 
 
 def test_successful_deep_link_keeps_the_url_parameter(client, cfg):
-    """The counterpart to #71: a WORKING deep link must keep ?album= so it stays
-    bookmarkable and reopens the modal on reload. Only the broken one is
-    stripped."""
+    """The counterpart to #71: a WORKING deep link must resolve to its album
+    rather than being stripped. Only the broken one is.
+
+    Anchored on the re-tag control, which every album page carries whatever its
+    state — unlike the MB comparison, which an untagged album has nothing to
+    show for."""
     d = _make_album(cfg, "Keeper")
     aid = _id_for(cfg, d)
 
     body = client.get(f"/?album={aid}").text
-    assert f'hx-get="/library/{aid}/detail"' in body
+    assert f'hx-post="/retag/{aid}"' in body
     assert "searchParams.delete('album')" not in body
     assert 'id="deep-link-notice"' not in body
 
@@ -2593,7 +2641,7 @@ def test_deep_link_resolves_through_the_alias_chain_after_a_restart(client, cfg)
     assert r.status_code == 200
     assert "isn't in your library any more" not in r.text
     # Resolved forward to the album's CURRENT id.
-    assert 'hx-get="/library/rel-al/detail"' in r.text
+    assert 'hx-get="/library/rel-al/compare"' in r.text
 
 
 def test_post_sync_auto_tag_entry_links_to_the_album(cfg, monkeypatch):
@@ -2693,7 +2741,7 @@ def test_deep_link_follows_moved_album_id(client, cfg):
     r = client.get(f"/?album={original_id}")
     assert r.status_code == 200
     # Resolved forward to the album's CURRENT id, so the fragment fetch works.
-    assert f'hx-get="/library/{current_id}/detail"' in r.text
+    assert f'hx-get="/library/{current_id}/compare"' in r.text
 
 
 def test_retag_emits_album_retagged_trigger(client, cfg, monkeypatch):
@@ -2726,16 +2774,36 @@ def test_retag_failure_does_not_emit_refresh_trigger(client, cfg, monkeypatch):
 
 
 def test_album_page_wires_retag_progress_and_refresh(client, cfg):
-    """The re-tag button shows a tagging indicator and a listener that reloads on
-    album-retagged (#34). On the PAGE now, not the modal: mutations moved there
-    with #103, leaving the modal to answer "is this the right release?"."""
+    """The re-tag button shows a tagging indicator, disables the whole action
+    group while it runs, and refreshes the page when it lands.
+
+    The page must NOT carry the modal's `album-retagged` listener: that fetches
+    the detail fragment into #modal, which base.html opens as a dialog — so
+    re-tagging from the page popped up the dialog the page replaced."""
     d = _make_tagged_album(cfg, "DetailWiring", mbid="rel-1", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
     r = client.get(f"/album/{aid}")
     assert r.status_code == 200
     assert f'hx-indicator="#tagging-{aid}"' in r.text  # progress spinner target
     assert f'id="tagging-{aid}"' in r.text  # the overlay itself
-    assert "album-retagged from:body" in r.text  # the reload listener
+    # `this`, not a group selector: htmx disables matching elements before it
+    # issues the request, so a selector covering the trigger stops the request
+    # firing at all. The overlay is what blocks the other buttons.
+    assert 'hx-disabled-elt="this"' in r.text
+    # The page reloads itself, and the modal's refresh listener stays out.
+    # Asserted on the listener, not on `hx-target="#modal"` — the header's
+    # Bandcamp-setup button legitimately targets the modal on every page.
+    assert "album-retagged from:body" not in r.text
+    assert "window.location.reload()" in r.text
+
+
+def test_the_modal_keeps_its_own_retag_refresh(client, cfg):
+    """Control for the gating above: the dialog still re-fetches itself on
+    album-retagged, or its disk-vs-MB comparison would go stale (#34)."""
+    d = _make_tagged_album(cfg, "ModalWiring", mbid="rel-1", tagged_at=datetime.now(UTC))
+    body = client.get(f"/library/{_id_for(cfg, d)}/detail").text
+    assert "album-retagged from:body" in body
+    assert 'hx-target="#modal"' in body
 
 
 def test_modal_title_links_to_the_page_and_dates_are_relative(client, cfg):
