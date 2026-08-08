@@ -17,7 +17,12 @@
         </svg>
         MusicBrainz
     </span>
-    <span class="mb-note__legend">— your tags above, <b>theirs below</b>. {{ comparison.summary }}.</span>
+    {# Just the count. The earlier "your tags above, theirs below" described
+       something that only exists when a field is actually stacked — which is
+       neither the all-matching album nor the one whose differences are all
+       MusicBrainz-only additions. A header that's false in two of three states
+       is worse than a plainer one. #}
+    <span class="mb-note__legend">{{ comparison.summary }}</span>
     <span class="mb-note__when">read {{ ago(mb_read_at) }}</span>
 </div>
 
@@ -33,22 +38,29 @@
         {% elif f.agreement == 'only_mb' %}
         {# An addition, not a conflict: there is nothing of yours to disagree
            with, so it gets a lone MusicBrainz line and nothing struck through. #}
-        <span class="tag-fields__mb">{{ f.mb }}</span>
+        {% with value = f.mb, runs = none, why = "Not in your files — this is MusicBrainz's value" %}
+        {% include 'partials/_mb_value.html' %}
+        {% endwith %}
 
         {% elif f.agreement == 'differs' and f.kind == 'scalar' %}
         {# Short values sit inline — an arrow reads correctly when MB is simply
            more precise (a bare year against a full date). #}
         <span>{% with runs = f.disk_runs, value = f.disk %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
         <span class="tag-fields__arrow">→</span>
-        <span class="tag-fields__mb">{% with runs = f.mb_runs, value = f.mb %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
+        {% with value = f.mb, runs = f.mb_runs, why = "MusicBrainz's value" %}
+        {% include 'partials/_mb_value.html' %}
+        {% endwith %}
 
         {% elif f.agreement == 'differs' %}
         {# Long text stacks, both flush left, so a change is a vertical scan. No
-           "MB" prefix: it breaks that alignment, and the legend above plus the
-           colour already say which line is which. #}
+           prefix on either line: that shared left edge is what makes the
+           difference a glance rather than a comparison. The hexagon goes after
+           the value instead. #}
         <span class="tag-pair">
             <span>{% with runs = f.disk_runs, value = f.disk %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
-            <span class="tag-fields__mb">{% with runs = f.mb_runs, value = f.mb %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
+            {% with value = f.mb, runs = f.mb_runs, why = "MusicBrainz's value" %}
+            {% include 'partials/_mb_value.html' %}
+            {% endwith %}
         </span>
 
         {% elif f.disk %}

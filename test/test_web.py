@@ -3809,8 +3809,11 @@ def test_album_page_compares_tags_field_by_field(client, cfg, monkeypatch):
 
     body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
 
-    assert "your tags above" in body  # the hexagon note's legend
+    assert "fields differ" in body  # the hexagon note's count
     assert "Dial Records" in body and "DIAL 042" in body
+    # A MusicBrainz-only value says so without relying on its colour — someone
+    # who can't distinguish the purple still gets the mark and its tooltip.
+    assert "Not in your files" in body
     for label in ("Album", "Album artist", "Date", "Label", "Cat. no.", "Comment"):
         assert f"<dt>{label}</dt>" in body, f"missing field row: {label}"
 
@@ -3870,7 +3873,7 @@ def test_the_comparison_is_absent_from_the_library_modal(client, cfg, monkeypatc
         "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
     )
     body = client.get(f"/library/{_id_for(cfg, d)}/detail").text
-    assert "your tags above" not in body
+    assert "<dt>Cat. no.</dt>" not in body
 
 
 def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):

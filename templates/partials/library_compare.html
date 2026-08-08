@@ -1,35 +1,28 @@
-{# On-demand "did we tag the right release?" check for a library album.
-   `candidate` is a freshly-computed MatchCandidate (disk vs the tagged MB
-   release) — computed on demand, never persisted (sidecar-minimalism).
+{# On-demand disk-vs-MusicBrainz comparison, from ONE MB fetch.
 
-   The per-field tag comparison rides along on the SAME MusicBrainz fetch (#106).
-   Rendered only when `comparison` is in scope, so the album-detail modal — which
-   loads this fragment too — is unaffected. #}
+   Serves two callers with different needs:
+
+   * the album PAGE (`comparison` in scope) — the per-field tag comparison
+     lands here, inside the album panel, and the tracklist is swapped
+     out-of-band into its own #album-tracks section, because tracks are about
+     the files rather than the album's metadata (#106);
+   * the library MODAL — no `comparison`, so it gets only the track table it
+     has always had. #103 deliberately made the dialog a summary. #}
+
 {% if comparison is defined %}
 {% include 'partials/_tag_comparison.html' %}
 
-<h2 class="text-sm font-bold text-ink uppercase tracking-widest mt-6 mb-2">
-    Tracks <span class="text-muted font-normal normal-case tracking-normal ml-1">· {{ album.track_count }}</span>
-</h2>
+{# Out-of-band: htmx swaps this into the page's Tracks section rather than
+   here. One request, two destinations. #}
+<section id="album-tracks" hx-swap-oob="true"
+         class="border border-line rounded-lg p-4 space-y-3">
+    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
+        Tracks
+        <span class="text-muted font-normal normal-case tracking-normal ml-1">
+            · {{ album.track_count }}</span>
+    </h2>
+    {% include 'partials/_track_table.html' %}
+</section>
+{% else %}
+{% include 'partials/_track_table.html' %}
 {% endif %}
-<div class="mt-2 rounded border border-line p-2 bg-white">
-    {% set title_diffs = candidate.title_mismatch_count %}
-    <div class="text-2xs text-muted mb-1">
-        On disk vs MusicBrainz —
-        {% if candidate.confidence == 'exact' and title_diffs == 0 %}
-        <span class="text-accent font-bold">exact match</span>
-        {% else %}
-        {# "exact" here is purely the length/track-fit verdict; say so plainly
-           rather than "exact match" when the metadata (titles) actually differs. #}
-        {% if candidate.confidence == 'exact' %}
-        <span class="text-muted font-semibold">lengths match</span>
-        {% else %}
-        <span class="text-amber-700 font-bold">{{ candidate.confidence }}</span>
-        {% endif %}
-        {% for note in candidate.notes %}<span> · {{ note }}</span>{% endfor %}
-        {% if title_diffs %}<span class="text-amber-700 font-bold"> · {{ title_diffs }} title difference{{ 's' if title_diffs != 1 }}</span>{% endif %}
-        {% endif %}
-    </div>
-    {% set highlight_titles = true %}
-    {% include 'partials/_track_comparison.html' %}
-</div>

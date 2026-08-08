@@ -1,0 +1,26 @@
+{# The per-track disk-vs-MusicBrainz table and its verdict line.
+
+   `candidate` is a freshly-computed MatchCandidate — computed on demand, never
+   persisted (sidecar-minimalism). Extracted from library_compare so the album
+   page and the library modal can place it differently without duplicating it. #}
+<div class="rounded border border-line p-2 bg-white">
+    {% set title_diffs = candidate.title_mismatch_count %}
+    <div class="text-2xs text-muted mb-1">
+        On disk vs MusicBrainz —
+        {% if candidate.confidence == 'exact' and title_diffs == 0 %}
+        <span class="text-accent font-bold">exact match</span>
+        {% else %}
+        {# "exact" here is purely the length/track-fit verdict; say so plainly
+           rather than "exact match" when the metadata (titles) actually differs. #}
+        {% if candidate.confidence == 'exact' %}
+        <span class="text-muted font-semibold">lengths match</span>
+        {% else %}
+        <span class="text-amber-700 font-bold">{{ candidate.confidence }}</span>
+        {% endif %}
+        {% for note in candidate.notes %}<span> · {{ note }}</span>{% endfor %}
+        {% if title_diffs %}<span class="text-amber-700 font-bold"> · {{ title_diffs }} title difference{{ 's' if title_diffs != 1 }}</span>{% endif %}
+        {% endif %}
+    </div>
+    {% set highlight_titles = true %}
+    {% include 'partials/_track_comparison.html' %}
+</div>

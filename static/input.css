@@ -137,14 +137,22 @@ button[disabled],
 .mb-note__legend b { color: var(--color-mb-purple); font-weight: 600; }
 .mb-note__when { margin-left: auto; font-size: .72rem; color: var(--color-muted); }
 
-.tag-fields { display: grid; grid-template-columns: max-content 1fr; gap: .5rem 1.1rem; align-items: start; }
+/* `align-items: baseline` so the label sits on the same baseline as its value,
+   rather than both being top-aligned and nudged into place with padding. With a
+   stacked pair the row's baseline is the pair's FIRST line, which is the one the
+   label belongs against. */
+.tag-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: .5rem 1.1rem;
+  align-items: baseline;
+}
 .tag-fields dt {
   font-size: .62rem;
   text-transform: uppercase;
   letter-spacing: .1em;
   color: var(--color-muted);
   font-weight: 700;
-  padding-top: .15rem;
 }
 /* Flex + baseline so the consensus pill sits beside the value rather than
    wrapping under it. With a stacked pair (a flex column) baseline resolves to
@@ -165,6 +173,21 @@ button[disabled],
    and the colour plus the legend already say which line is which. */
 .tag-pair { display: flex; flex-direction: column; gap: .05rem; }
 .tag-fields__mb { color: var(--color-mb-purple); }
+
+/* The hexagon beside a MusicBrainz value. Carries the meaning that colour alone
+   can't — someone who can't distinguish the purple still sees a mark, and its
+   tooltip says which KIND of MusicBrainz value it is ("not in your files"
+   vs "MusicBrainz disagrees"), which the colour never could. Muted and slightly
+   raised so it reads as an annotation rather than punctuation in the value. */
+.mb-mark {
+  display: inline-flex;
+  align-items: center;
+  margin-left: .3rem;
+  color: color-mix(in srgb, var(--color-mb-purple) 55%, transparent);
+  vertical-align: baseline;
+  cursor: help;
+}
+.mb-mark:hover, .mb-mark:focus-visible { color: var(--color-mb-purple); }
 .tag-fields__arrow { color: var(--color-muted); margin: 0 .35rem; }
 .tag-fields__absent { color: var(--color-muted); }
 .tag-fields__unreadable { color: var(--color-amber-700); font-style: italic; }
