@@ -1,0 +1,15 @@
+{# One value, with the parts that differ marked in place (#106).
+
+   `runs` is empty when the change is too large and scattered to mark usefully —
+   past that point the highlighting is confetti rather than signal — so the value
+   renders plain. Rendering `value` in that case rather than joining the runs is
+   deliberate: it's the single source of what the user's tag actually says.
+
+   Expects `runs` and `value` from an enclosing {% with %}. #}
+{%- if runs -%}
+    {%- for r in runs -%}
+        {%- if r.changed -%}<em class="diff-run">{{ r.text }}</em>{%- else -%}{{ r.text }}{%- endif -%}
+    {%- endfor -%}
+{%- else -%}
+    {{ value }}
+{%- endif -%}

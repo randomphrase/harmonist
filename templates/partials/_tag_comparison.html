@@ -1,0 +1,74 @@
+{# The album's tags against what tagging would write from its MusicBrainz
+   release (#106). Agreement is the answer, not a diff: a field that matches
+   renders as one plain line, and only differences get a second.
+
+   Deliberately NOT a code diff. Most real differences here are formatting — a
+   Bandcamp "A | B" credit against MusicBrainz's join phrases, a featured credit
+   MB keeps out of the title — so nothing is coloured as a mistake. #}
+
+{# The hexagon note: what this section is comparing against, how much differs,
+   and when Harmonist last read it. The timestamp answers "is my own MusicBrainz
+   edit in here?" — MB exposes no last-edit time of its own (checked), so when
+   WE read it is the answerable version of that question. #}
+<div class="mb-note">
+    <span class="mb-note__key">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
+            <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
+        </svg>
+        MusicBrainz
+    </span>
+    <span class="mb-note__legend">— your tags above, <b>theirs below</b>. {{ comparison.summary }}.</span>
+    <span class="mb-note__when">read {{ ago(mb_read_at) }}</span>
+</div>
+
+<dl class="tag-fields">
+    {% for f in comparison.fields %}
+    <dt>{{ f.label }}</dt>
+    <dd>
+        {% if f.agreement == 'unreadable' %}
+        {# Not "absent" — Harmonist couldn't look. Saying nothing here would
+           report the user's tags as missing when they may be intact (#112). #}
+        <span class="tag-fields__unreadable">couldn't read the file{{ 's' if comparison.fields|length else '' }}</span>
+
+        {% elif f.agreement == 'only_mb' %}
+        {# An addition, not a conflict: there is nothing of yours to disagree
+           with, so it gets a lone MusicBrainz line and nothing struck through. #}
+        <span class="tag-fields__mb">{{ f.mb }}</span>
+
+        {% elif f.agreement == 'differs' and f.kind == 'scalar' %}
+        {# Short values sit inline — an arrow reads correctly when MB is simply
+           more precise (a bare year against a full date). #}
+        <span>{% with runs = f.disk_runs, value = f.disk %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
+        <span class="tag-fields__arrow">→</span>
+        <span class="tag-fields__mb">{% with runs = f.mb_runs, value = f.mb %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
+
+        {% elif f.agreement == 'differs' %}
+        {# Long text stacks, both flush left, so a change is a vertical scan. No
+           "MB" prefix: it breaks that alignment, and the legend above plus the
+           colour already say which line is which. #}
+        <span class="tag-pair">
+            <span>{% with runs = f.disk_runs, value = f.disk %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
+            <span class="tag-fields__mb">{% with runs = f.mb_runs, value = f.mb %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
+        </span>
+
+        {% elif f.disk %}
+        <span>{{ f.disk }}</span>
+
+        {% else %}
+        <span class="tag-fields__absent">—</span>
+        {% endif %}
+
+        {# How united the album's own tracks are about this field. Shown only
+           when they aren't: an album tagged unevenly over decades is normal, so
+           this is a muted count rather than a warning, with the outliers on
+           hover. #}
+        {% set c = f.consensus %}
+        {% if c and c.total > 1 and not c.is_unanimous and c.value %}
+        <span class="tag-fields__odd" tabindex="0"
+              title="{% for name, val in c.outliers[:6] %}{{ name }}: {{ val or '—' }}{{ '\n' if not loop.last }}{% endfor %}{% if c.outliers|length > 6 %}…{% endif %}">
+            {{ c.agreeing }} of {{ c.total }}
+        </span>
+        {% endif %}
+    </dd>
+    {% endfor %}
+</dl>

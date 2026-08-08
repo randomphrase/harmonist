@@ -3777,6 +3777,102 @@ def test_library_compare_renders_side_by_side(client, cfg, monkeypatch):
     assert "Track 1" in r.text
 
 
+# ---------- the per-field tag comparison on the album page (#106) ----------
+
+
+def _release_with_metadata(mbid="rel-cmp"):
+    """A release carrying the album-level fields the panel shows."""
+    return {
+        "id": mbid,
+        "title": "Obreel",
+        "date": "2019-03-15",
+        "artist-credit": [{"artist": {"id": "a1", "name": "Galán, Spieth & Guentner"}}],
+        "release-group": {"id": "rg-1", "primary-type": "Album"},
+        "label-info-list": [{"label": {"name": "Dial Records"}, "catalog-number": "DIAL 042"}],
+        "medium-list": [
+            {
+                "position": "1",
+                "format": "Digital Media",
+                "track-list": [{"id": "t1", "title": "Kaskade", "length": "1000"}],
+            }
+        ],
+    }
+
+
+def test_album_page_compares_tags_field_by_field(client, cfg, monkeypatch):
+    """#106: the album panel shows each field against what tagging would write.
+    Absent-on-disk fields render as MusicBrainz values, not as conflicts."""
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    assert "your tags above" in body  # the hexagon note's legend
+    assert "Dial Records" in body and "DIAL 042" in body
+    for label in ("Album", "Album artist", "Date", "Label", "Cat. no.", "Comment"):
+        assert f"<dt>{label}</dt>" in body, f"missing field row: {label}"
+
+
+def test_a_small_difference_is_marked_inside_the_value(client, cfg, monkeypatch):
+    """The reason in-value emphasis exists: a bare year against a full date
+    differs by six characters that are invisible without marking."""
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    from mutagen.mp4 import MP4
+
+    audio = MP4(min(d.glob("*.m4a")))
+    audio["\xa9day"] = ["2019"]  # MB says 2019-03-15
+    audio.save()
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+    assert '<em class="diff-run">-03-15</em>' in body
+
+
+def test_tracks_disagreeing_about_a_field_are_counted_not_hidden(client, cfg, monkeypatch):
+    """An album tagged unevenly still gets a comparison — annotated with how
+    many tracks back the value shown, and the outliers named on hover."""
+    import shutil
+
+    from mutagen.mp4 import MP4
+
+    d = _make_tagged_album(cfg, "Uneven", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    first = d / "01 Track.m4a"
+    for n in (2, 3):
+        shutil.copy(first, d / f"0{n} Track.m4a")
+    # Two tracks agree with MusicBrainz, the third doesn't.
+    for f in (first, d / "02 Track.m4a"):
+        audio = MP4(f)
+        audio["aART"] = ["Galán, Spieth & Guentner"]
+        audio.save()
+    odd = d / "03 Track.m4a"
+    audio = MP4(odd)
+    audio["aART"] = ["Someone Else"]
+    audio.save()
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+    assert "2 of 3" in body
+    assert odd.name in body  # the outlier is named, for the hover
+
+
+def test_the_comparison_is_absent_from_the_library_modal(client, cfg, monkeypatch):
+    """The modal answers "is this the right release?" and links through for the
+    rest (#103). It loads the same fragment, so the tag comparison must be gated
+    on the page's context rather than leaking into the dialog."""
+    d = _make_tagged_album(cfg, "Modal", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+    body = client.get(f"/library/{_id_for(cfg, d)}/detail").text
+    assert "your tags above" not in body
+
+
 def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     """When on-disk track titles differ from MB (e.g. a featured-artist tidy-up
     on MB after tagging), the verify view must not claim 'exact match' — it

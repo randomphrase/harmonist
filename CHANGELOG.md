@@ -8,6 +8,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- The album page compares your tags against MusicBrainz field by field, showing
+  only what differs — with small changes marked inside the value, and a count
+  when your own tracks disagree (#106).
+
 - Albums Harmonist has never touched are recorded the first time it sees them,
   so an album you already owned has a start to its history rather than beginning
   at whatever first wrote a sidecar (#107).

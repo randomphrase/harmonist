@@ -114,6 +114,89 @@ button[disabled],
   display: none;
 }
 
+/* ---- Album tag comparison (#106) ----------------------------------------
+   Your tags against what tagging would write from the MusicBrainz release.
+   Written here rather than as utilities because the pairing, the alignment and
+   the in-value marking are one idea, and splitting them across a dozen class
+   attributes would make the relationship unreadable. */
+
+/* The hexagon note: what we're comparing against, and when we last read it. */
+.mb-note {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  flex-wrap: wrap;
+  padding: .4rem .6rem;
+  margin-bottom: .85rem;
+  border: 1px solid color-mix(in srgb, var(--color-mb-purple) 28%, transparent);
+  background: color-mix(in srgb, var(--color-mb-purple) 7%, transparent);
+  border-radius: 6px;
+}
+.mb-note__key { display: flex; align-items: center; gap: .35rem; font-weight: 700; font-size: .8rem; }
+.mb-note__legend { font-size: .78rem; color: var(--color-muted); }
+.mb-note__legend b { color: var(--color-mb-purple); font-weight: 600; }
+.mb-note__when { margin-left: auto; font-size: .72rem; color: var(--color-muted); }
+
+.tag-fields { display: grid; grid-template-columns: max-content 1fr; gap: .5rem 1.1rem; align-items: start; }
+.tag-fields dt {
+  font-size: .62rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--color-muted);
+  font-weight: 700;
+  padding-top: .15rem;
+}
+/* Flex + baseline so the consensus pill sits beside the value rather than
+   wrapping under it. With a stacked pair (a flex column) baseline resolves to
+   its FIRST line, which puts "6 of 8" against your value — it describes your
+   tracks, and hanging below MusicBrainz's line reads as if it described theirs. */
+.tag-fields dd {
+  margin: 0;
+  min-width: 0;
+  font-size: .9rem;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 .1rem;
+}
+
+/* The pair: both values flush left, one above the other, so a difference is a
+   vertical scan down a single edge. No "MB" prefix — it breaks that alignment,
+   and the colour plus the legend already say which line is which. */
+.tag-pair { display: flex; flex-direction: column; gap: .05rem; }
+.tag-fields__mb { color: var(--color-mb-purple); }
+.tag-fields__arrow { color: var(--color-muted); margin: 0 .35rem; }
+.tag-fields__absent { color: var(--color-muted); }
+.tag-fields__unreadable { color: var(--color-amber-700); font-style: italic; }
+
+/* The parts that actually differ. A tint rather than a colour change: the line
+   already carries a colour saying whose value it is, and overloading that would
+   make "differs" and "MusicBrainz" the same signal. */
+.diff-run {
+  font-style: normal;
+  border-radius: 2px;
+  padding: 0 .12em;
+  background: color-mix(in srgb, var(--color-ink) 9%, transparent);
+}
+.tag-fields__mb .diff-run { background: color-mix(in srgb, var(--color-mb-purple) 16%, transparent); }
+
+/* "6 of 8" — the album's own tracks disagreeing about a field. Deliberately not
+   a warning colour: an album tagged unevenly over decades is normal, not broken. */
+.tag-fields__odd {
+  display: inline-block;
+  margin-left: .4rem;
+  font-size: .6rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  padding: .02rem .4rem;
+  cursor: help;
+  white-space: nowrap;
+}
+
 /* Album-page history: "Show details" (checked by default) hides the raw audit
    rows, leaving the plain-language entries. Done in CSS because the page already
    holds every row — a round trip to hide what we've fetched would be silly — and
