@@ -141,9 +141,14 @@ button[disabled],
    rather than both being top-aligned and nudged into place with padding. With a
    stacked pair the row's baseline is the pair's FIRST line, which is the one the
    label belongs against. */
+/* A FIXED label column, not max-content: the panel is two separate lists (path
+   and format above the MusicBrainz note, the compared tags below it) and their
+   labels have to line up as one column. max-content sizes each grid
+   independently, so they'd disagree by a few pixels — exactly the kind of
+   near-miss that reads as broken. */
 .tag-fields {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: 7rem 1fr;
   gap: .5rem 1.1rem;
   align-items: baseline;
 }

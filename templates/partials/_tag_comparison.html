@@ -10,18 +10,16 @@
    and when Harmonist last read it. The timestamp answers "is my own MusicBrainz
    edit in here?" — MB exposes no last-edit time of its own (checked), so when
    WE read it is the answerable version of that question. #}
+{# One sentence rather than a name followed by a count. The earlier version also
+   said "your tags above, theirs below", which describes something that only
+   exists when a field is actually stacked — not the all-matching album, and not
+   the one whose differences are all MusicBrainz-only additions. #}
 <div class="mb-note">
     <span class="mb-note__key">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
             <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
         </svg>
-        MusicBrainz
     </span>
-    {# Just the count. The earlier "your tags above, theirs below" described
-       something that only exists when a field is actually stacked — which is
-       neither the all-matching album nor the one whose differences are all
-       MusicBrainz-only additions. A header that's false in two of three states
-       is worse than a plainer one. #}
     <span class="mb-note__legend">{{ comparison.summary }}</span>
     <span class="mb-note__when">read {{ ago(mb_read_at) }}</span>
 </div>

@@ -232,7 +232,7 @@ def test_summary_counts_only_real_findings():
     album = AlbumComparison(fields=fields)
     # Artist and Label; NOT the matching album title, NOT the comment.
     assert len(album.differing) == 2
-    assert album.summary == "2 of 4 fields differ"
+    assert album.summary == "2 of 4 fields differ in MusicBrainz"
 
 
 # ---------- end to end: real files against a real release ----------
@@ -324,5 +324,5 @@ def test_an_unreadable_track_does_not_report_its_tags_as_missing(tmp_path):
 
 def test_summary_when_everything_matches():
     fields = (compare_field("Album", disk=consensus([("1.flac", "Obreel")]), mb="Obreel"),)
-    assert AlbumComparison(fields=fields).summary == "all 1 fields match"
-    assert AlbumComparison().summary == "nothing to compare"
+    assert AlbumComparison(fields=fields).summary == "All 1 fields match MusicBrainz"
+    assert AlbumComparison().summary == "Nothing to compare against MusicBrainz"
