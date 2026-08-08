@@ -330,10 +330,16 @@ class AlbumComparison:
 
     @property
     def summary(self) -> str:
-        """The line beside the MusicBrainz hexagon."""
+        """The line beside the MusicBrainz hexagon.
+
+        A whole sentence rather than a count to be glued to a label, so the two
+        cases can read naturally — "differ in" and "match" want different
+        prepositions, and assembling that in a template would scatter the
+        wording across two files.
+        """
         n = len(self.differing)
         if not self.fields:
-            return "nothing to compare"
+            return "Nothing to compare against MusicBrainz"
         if n == 0:
-            return f"all {len(self.fields)} fields match"
-        return f"{n} of {len(self.fields)} fields differ"
+            return f"All {len(self.fields)} fields match MusicBrainz"
+        return f"{n} of {len(self.fields)} fields differ in MusicBrainz"

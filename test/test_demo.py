@@ -45,6 +45,41 @@ def test_seed_writes_marker_and_albums(music_dir):
     assert "Various Artists" in artists
 
 
+def test_demo_has_an_album_whose_tags_differ_from_musicbrainz(music_dir):
+    """The comparison's most interesting states — a stacked pair, in-value
+    emphasis, and tracks disagreeing with each other — were unreachable in demo,
+    because every seeded album either matched MusicBrainz or simply lacked the
+    field. Demo is where people first meet the feature (#106).
+
+    Also guards the state: the skew uses display fields only. Disagreeing on
+    ©alb or the MB Album Id is what `scanner._check_consistency` watches, so
+    doing it there would flip this album to INCONSISTENT and out of the Library.
+    """
+    from harmonist import formats
+    from harmonist.compare import Agreement, album_fields
+    from harmonist.tagger import tagsets_for
+
+    demo.install()
+    demo.seed(music_dir)
+    album = next(a for a in scanner.scan(music_dir) if a.title == "The Rural Juror (OST)")
+    assert album.state == AlbumState.COMPLETE  # the skew must not change state
+
+    tracks = [(f.name, formats.read_tags(f)) for f in sorted(album.path.glob("*.m4a"))]
+    release = demo.MB_RELEASES["demo-rel-rural-juror"]
+    by_label = {f.label: f for f in album_fields(tracks, tagsets_for(release)[0])}
+
+    # A genuine two-sided difference, not merely a MusicBrainz-only addition.
+    artist = by_label["Album artist"]
+    assert artist.agreement is Agreement.DIFFERS
+    assert artist.disk and artist.mb
+    assert artist.disk_runs, "the difference is too coarse to mark in place"
+
+    # …and one where the album's own tracks disagree, for the consensus pill.
+    date = by_label["Date"]
+    assert date.agreement is Agreement.DIFFERS
+    assert date.consensus is not None and not date.consensus.is_unanimous
+
+
 def test_seed_produces_each_state(music_dir):
     demo.seed(music_dir)
     albums = scanner.scan(music_dir)

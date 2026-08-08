@@ -68,6 +68,11 @@ STEP_DELAY_SECONDS = 0.6
 #   cover: filename in _demo_assets/
 #   file_mbid: optional MB Album Id atom on each .m4a (so reconcile works)
 #   file_comment: optional ©cmt value on each .m4a (Bandcamp evidence)
+#   file_tags: optional {atom: value} written to every track — used to make an
+#     album's tags DISAGREE with its MB release, so the album page's comparison
+#     has something to show (#106)
+#   file_tags_track_one: same, but track 1 only, so the tracks disagree with
+#     each other and the "2 of 3" consensus pill has a case
 #   sidecar: optional sidecar spec (None → NEW state, {} → empty sidecar)
 #
 # Sidecar spec keys mirror the Sidecar dataclass; `mb_match_candidate` if
@@ -189,6 +194,27 @@ LIBRARY: list[dict[str, Any]] = [
         ],
         "cover": "cover-5.jpg",
         "file_mbid": "demo-rel-rural-juror",
+        # The "tags have drifted from MusicBrainz" album. Every difference here
+        # is one a real Bandcamp download actually produces, and each exercises a
+        # different part of the comparison (#106):
+        #   album artist — pipe-joined, as Bandcamp writes multi-artist credits,
+        #                  against MusicBrainz's join phrase. Stacked pair, and
+        #                  the separator is marked in place.
+        #   date         — a bare year against MusicBrainz's full date. Inline,
+        #                  with only the added precision highlighted.
+        # Track 1 keeps the full date, so the tracks disagree with each other and
+        # the "2 of 3" pill has a real case.
+        #
+        # Deliberately NOT skewing ©alb or the MB Album Id: those are what
+        # `scanner._check_consistency` watches, so disagreeing on one flips the
+        # album to INCONSISTENT and out of the Library — changing the state this
+        # album exists to demonstrate. Date and album-artist are display fields
+        # and carry no state.
+        "file_tags": {
+            "aART": "Various | Artists",
+            "\xa9day": "2024",
+        },
+        "file_tags_track_one": {"\xa9day": "2024-01-01"},
         "sidecar": {
             "store_url": "https://variousartists.bandcamp.com/album/the-rural-juror-ost",
             "bandcamp_item_id": 1003,
@@ -894,6 +920,18 @@ def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
             audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
         if cmt := spec.get("file_comment"):
             audio[ATOM_COMMENT] = [cmt]
+        # Tags that deliberately DISAGREE with the MusicBrainz release, so the
+        # album page's comparison has something to compare (#106). Without these
+        # every demo album can only produce additions — MusicBrainz has a label
+        # and a date, the files have neither — and the stacked pair, the
+        # in-value emphasis and the "2 of 3" consensus pill are unreachable in
+        # demo, which is where people first meet the feature.
+        for atom, value in (spec.get("file_tags") or {}).items():
+            audio[atom] = [value]
+        # …and one track that disagrees with its own album, for the pill.
+        if i == 1:
+            for atom, value in (spec.get("file_tags_track_one") or {}).items():
+                audio[atom] = [value]
         audio.save()
 
     cover_asset = ASSETS_DIR / spec.get("cover", "cover-7.jpg")

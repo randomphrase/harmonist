@@ -29,6 +29,7 @@ from harmonist import (
     activity,
     activity_store,
     audit,
+    compare,
     cover_art,
     formats,
     id_registry,
@@ -55,7 +56,7 @@ from harmonist.models import (
     title_words,
     titles_match,
 )
-from harmonist.tagger import PicardCompatibleTagger, Tagger
+from harmonist.tagger import PicardCompatibleTagger, Tagger, tagsets_for
 from harmonist.web import dir_watcher
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.scan_runner import ScanRunner
@@ -607,6 +608,25 @@ def _rel_path(p: Path | str, base: Path | str) -> str:
         return str(Path(p).relative_to(base))
     except ValueError:
         return _display_path(p)
+
+
+def _album_comparison(album_dir: Path, release: Release) -> compare.AlbumComparison:
+    """Read the album's files and compare their tags to `release` (#106).
+
+    Per-track rather than one album-level read, because whether the tracks agree
+    with each other is itself information the panel shows — a field carried by
+    six of eight tracks is what the album says, with two to point at.
+
+    The MusicBrainz side goes through `tagsets_for`, so the comparison is against
+    what tagging WOULD write rather than a second reading of the release. Files
+    are read in track order, which is what breaks a tie.
+    """
+    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
+    tracks = [(f.name, formats.read_tags(f)) for f in files]
+    tagsets = tagsets_for(release)
+    return compare.AlbumComparison(
+        fields=compare.album_fields(tracks, tagsets[0] if tagsets else None)
+    )
 
 
 def _merge_unscoped_audit(events: list[activity.Event], since: datetime) -> list[activity.Event]:
@@ -2418,9 +2438,13 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
     def library_compare(request: Request, album_id: str) -> Response:
-        """On-demand disk-vs-MB track comparison for a tagged album — a sanity
-        check that the right release was applied. Computed live (a fresh MB
-        fetch + assess_match); never persisted."""
+        """On-demand disk-vs-MB comparison for a tagged album — the per-field tag
+        comparison (#106) and the per-track one, from a SINGLE MusicBrainz fetch.
+
+        Both halves need the same release, so they share one request rather than
+        costing two against a 1-req/sec budget (review-gate item 6). Computed
+        live and never persisted; #127 would add a cache underneath.
+        """
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None or not sc.mb_release_id:
@@ -2435,7 +2459,16 @@ def _register_routes(app: FastAPI) -> None:
                 f'<p class="text-2xs text-red-700 mt-2">Couldn\'t fetch from MusicBrainz: {e}</p>'
             )
         candidate = assess_match(album.path, release)
-        ctx = _ctx(request, candidate=candidate)
+        ctx = _ctx(
+            request,
+            candidate=candidate,
+            album=album,
+            comparison=_album_comparison(album.path, release),
+            # What the note beside the hexagon reports. Harmonist has just read
+            # the release, so "now" is honest — #127's cache is what will make
+            # this a genuinely older timestamp worth showing.
+            mb_read_at=datetime.now(UTC),
+        )
         return _templates(request).TemplateResponse(request, "partials/library_compare.html", ctx)
 
     @app.post("/library/{album_id}/unlink", response_class=HTMLResponse)

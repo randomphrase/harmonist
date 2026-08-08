@@ -141,14 +141,23 @@
             </dl>
             </div>{# /badges + dates row #}
 
-            <div class="text-xs">
-                <div class="text-2xs text-muted uppercase tracking-widest">Path</div>
-                <div class="text-muted break-all font-mono text-2xs"
-                     title="{{ album.path }}">{{ rel_path(album.path, cfg.paths.music_dir) }}</div>
-                <div class="text-2xs text-muted mt-0.5">
-                    {{ album.track_count }} track{{ 's' if album.track_count != 1 else '' }}{% if album.audio_format %} · {{ album.audio_format }}{% endif %}
-                </div>
-            </div>
+            {# Path and format read as label/value pairs like the tags below, and
+               share their label column, so the whole panel is one list rather
+               than a paragraph followed by a table. They sit ABOVE the
+               MusicBrainz note because they describe the files, not the release
+               — the note marks where MusicBrainz-derived rows begin.
+
+               The track count is gone: the Tracks section states it, and saying
+               it twice on one page invites them to disagree. #}
+            <dl class="tag-fields">
+                <dt>Path</dt>
+                <dd class="font-mono text-2xs text-muted break-all"
+                    title="{{ album.path }}">{{ rel_path(album.path, cfg.paths.music_dir) }}</dd>
+                {% if album.audio_format %}
+                <dt>Format</dt>
+                <dd>{{ album.audio_format }}</dd>
+                {% endif %}
+            </dl>
 
             {% if sc and sc.mb_release_id and full_page %}
             {# Per-track disk-vs-MB comparison. PAGE ONLY: a full tracklist is

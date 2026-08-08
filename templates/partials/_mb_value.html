@@ -1,0 +1,17 @@
+{# A MusicBrainz value, marked as one without relying on colour.
+
+   The hexagon is what makes this readable to someone who can't distinguish the
+   purple — colour alone would be an accessibility failure, not a style choice.
+   It sits AFTER the value, never before: both values in a stacked pair start at
+   the same left edge, and that shared edge is what turns a difference into a
+   glance rather than a comparison.
+
+   `why` carries the per-row explanation on hover, because "MusicBrainz has this
+   and you don't" and "MusicBrainz disagrees with you" are different facts and
+   the styling is identical for both.
+
+   Expects `value`, `runs` and `why` from an enclosing {% with %}. #}
+<span class="tag-fields__mb">{% with runs = runs, value = value %}{% include 'partials/_diff_runs.html' %}{% endwith %}<span
+    class="mb-mark" tabindex="0" title="{{ why }}" role="img" aria-label="{{ why }}"><svg
+    viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"
+    ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span></span>
