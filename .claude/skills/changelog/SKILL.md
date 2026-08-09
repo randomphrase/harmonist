@@ -67,8 +67,13 @@ When cutting version `X.Y.Z`:
 Do this in the same commit the release tag will point at, so the tagged commit's
 `## [X.Y.Z]` section **is** the release notes (reuse it for the GitHub Release
 body). Never invent entries at release time — they should already be there from
-the work.
+the work. The one exception is an entry that was *owed* and never written: the
+`release` skill's step 1 audits `git log vPREV..main` for exactly that, and
+recovering one there is a repair, not a retrofit.
 
 Read the section before you cut, as the user will: a wall of prose is the moment
 to tighten it, because after the tag the changelog and the published GitHub
 Release have to be edited together to stay in step.
+
+The rest of cutting a release — version bump, commit message, signed tag, the
+GitHub Release, the workflows the tag fires — is the `release` skill.

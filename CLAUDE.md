@@ -20,13 +20,14 @@ then follow the conventions below.
 Reach for `docs/design.md` before answering anything about states, the sidecar,
 matching/linking, or tagging — don't reconstruct it from memory or code alone.
 
-Four further skills are situational rather than always-on, each written up from
+Five further skills are situational rather than always-on, each written up from
 a bug this repo actually paid for — consult them when you're in their territory:
 `web-ui` (anything under `templates/`), `bulk-refactor` (a mechanical edit across
 many call sites), `schema-migration` (the `activity_store` SQLite schema),
 `event-recording` (any `activity.record()` / `audit.record()` call, and any code
 that mutates a sidecar, tags, or files on disk), `error-handling` (any `except`
-clause, fallback return, or broad `except Exception`).
+clause, fallback return, or broad `except Exception`), `release` (cutting a
+version — the changelog audit, the signed tag, the GitHub Release).
 
 ## Review gate — before every commit
 
