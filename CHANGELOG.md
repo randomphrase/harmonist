@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-09
+
 ### Added
 
 - The album page compares your tags against MusicBrainz field by field, showing
@@ -29,6 +31,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- An audio file Harmonist can't read now counts as a missing track rather than
+  an untagged one, so a corrupted file shows up as damage to find instead of
+  quietly making a tagged album look untagged (#112).
 - Re-tagging an album you'd confirmed as incomplete no longer fails (#133).
 - Inbox cards show the album's path relative to your music library, like the
   rest of the UI, instead of in full (#121).

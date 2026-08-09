@@ -72,7 +72,7 @@ the whole reason the `NEEDS_SYNC` state exists.
 ### 2.4 Re-tag from MB
 
 1. User edits a release in MB (track titles, dates, etc.) — or just wants to refresh tags.
-2. User clicks **Re-tag from MB** on a Library album (in the detail modal).
+2. User clicks **Re-tag from MB** on a Library album's page.
 3. Harmonist re-fetches the MB release and rewrites the file tags. Per-track embedded artwork is preserved unless the user forces **Replace artwork**.
 
 ### 2.5 Per-album reconciliation
