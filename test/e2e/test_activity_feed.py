@@ -253,10 +253,9 @@ def test_album_history_details_toggle_hides_the_audit_rows(demo_server: str) -> 
         page = browser.new_page()
         page.goto(demo_server)
         page.click('[data-tab="library"]')
-        tile = page.locator('#panel-library [hx-get*="/detail"]').first
+        tile = page.locator('#panel-library a[href^="/album/"]').first
         tile.wait_for(state="attached")
-        hx_get = tile.get_attribute("hx-get") or ""
-        page.goto(f"{demo_server}/album/{hx_get.split('/library/')[1].split('/detail')[0]}")
+        page.goto(f"{demo_server}{tile.get_attribute('href')}")
 
         audit_rows = page.locator(".album-history__audit")
         audit_rows.first.wait_for(state="attached")

@@ -23,6 +23,9 @@ versions follow [semantic versioning](https://semver.org).
   one big action no longer fills the page (#123).
 - The album page's history has the same "Show details" toggle, on by default
   (#123).
+- Clicking an album in the Library opens its own page instead of a dialog, so
+  every album has an address you can share, bookmark and go back from — the
+  dialog is gone (#129).
 
 ### Fixed
 

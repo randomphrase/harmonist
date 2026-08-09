@@ -1,15 +1,10 @@
-{# On-demand disk-vs-MusicBrainz comparison, from ONE MB fetch.
+{# On-demand disk-vs-MusicBrainz comparison for the album page, from ONE MB
+   fetch: the per-field tag comparison lands here, inside the album panel, and
+   the tracklist is swapped out-of-band into its own #album-tracks section
+   because tracks are about the files rather than the album's metadata (#106).
 
-   Serves two callers with different needs:
-
-   * the album PAGE (`comparison` in scope) — the per-field tag comparison
-     lands here, inside the album panel, and the tracklist is swapped
-     out-of-band into its own #album-tracks section, because tracks are about
-     the files rather than the album's metadata (#106);
-   * the library MODAL — no `comparison`, so it gets only the track table it
-     has always had. #103 deliberately made the dialog a summary. #}
-
-{% if comparison is defined %}
+   This used to branch on whether `comparison` was in scope, so the same
+   fragment could serve a smaller dialog. The dialog is gone (#129). #}
 {% include 'partials/_tag_comparison.html' %}
 
 {# Out-of-band: htmx swaps this into the page's Tracks section rather than
@@ -23,6 +18,3 @@
     </h2>
     {% include 'partials/_track_table.html' %}
 </section>
-{% else %}
-{% include 'partials/_track_table.html' %}
-{% endif %}

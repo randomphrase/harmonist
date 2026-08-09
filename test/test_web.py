@@ -2043,15 +2043,18 @@ def test_library_empty_state(client):
     assert "No fully-tagged albums yet" in r.text
 
 
-def test_library_tile_opens_detail_modal(client, cfg):
-    """The Library grid renders tiles that open the album detail in #modal (the
-    same surface as the potential-download verify modal) — no inline template."""
+def test_library_tile_is_a_link_to_the_album_page(client, cfg):
+    """#129: a tile is an ordinary link, not a dialog trigger — so every click
+    has a real URL that can be shared, bookmarked and gone back from."""
     from datetime import datetime
 
     d = _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
     r = client.get("/library")
-    assert f"/library/{_id_for(cfg, d)}/detail" in r.text
-    # The heavy detail markup is no longer inlined in the grid response.
+    assert f'href="/album/{_id_for(cfg, d)}"' in r.text
+    # Guards the route's re-introduction: a tile must never queue a fragment
+    # fetch to open in place, which is what #129 removed.
+    assert "/detail" not in r.text
+    # The heavy detail markup is still not inlined in the grid response.
     assert "musicbrainz.org/release/abc-123" not in r.text
 
 
@@ -2059,7 +2062,7 @@ def test_library_detail_links_to_musicbrainz(client, cfg):
     from datetime import datetime
 
     d = _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
-    r = client.get(f"/library/{_id_for(cfg, d)}/detail")
+    r = client.get(f"/album/{_id_for(cfg, d)}")
     assert "musicbrainz.org/release/abc-123" in r.text
 
 
@@ -2067,7 +2070,7 @@ def test_library_detail_shows_store_url_and_item_id(client, cfg):
     from datetime import datetime
 
     d = _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
-    r = client.get(f"/library/{_id_for(cfg, d)}/detail")
+    r = client.get(f"/album/{_id_for(cfg, d)}")
     assert "x.bandcamp.com" in r.text
     assert "42" in r.text  # item_id
 
@@ -2080,7 +2083,7 @@ def test_library_detail_omits_bandcamp_removal_controls(client, cfg):
     linked = _make_tagged_album(
         cfg, "IsLinked", mbid="rel-l", tagged_at=datetime.now(UTC), item_id=7
     )
-    html = client.get(f"/library/{_id_for(cfg, linked)}/detail").text
+    html = client.get(f"/album/{_id_for(cfg, linked)}").text
     assert "/unlink" not in html
     assert "forget_url" not in html
 
@@ -2177,30 +2180,30 @@ def test_library_detail_wrong_match_controls_beside_badges(client, cfg):
     forget-link control is temporarily removed pending a re-link path (#42)."""
     d = _make_tagged_album(cfg, "Badges", mbid="rel-b", tagged_at=datetime.now(UTC), item_id=9)
     aid = _id_for(cfg, d)
-    html = client.get(f"/library/{aid}/detail").text
+    html = client.get(f"/album/{aid}").text
     assert f"/library/{aid}/rematch" in html  # MB re-pick control exists
     assert "Wrong MusicBrainz match" in html  # explanatory tooltip
     assert "Wrong match" not in html  # old ambiguous button is gone
     assert "forget_url" not in html  # BC removal control pulled for now (#42)
 
 
-def test_library_detail_modal_actions_close_after_success_not_onclick(client, cfg):
-    """Regression for #40: modal action buttons that close the modal must do so via
-    hx-on::after-request (after htmx has run its confirm + request), NOT via
-    onclick. An onclick that wipes #modal detaches the button before htmx's
-    delegated handler runs, so the confirm never shows and the request never
-    fires — the control silently does nothing but close the modal."""
+def test_album_page_actions_navigate_after_success_not_onclick(client, cfg):
+    """Regression for #40, now on the page instead of the dialog (#129): an
+    action button whose side effect is to leave the page must run that side
+    effect from hx-on::after-request — after htmx has done its confirm and its
+    request — never from onclick. An onclick that navigates detaches the button
+    before htmx's delegated handler runs, so the confirm never shows and the
+    request never fires; the control silently does nothing but move you."""
     import re
 
-    d = _make_tagged_album(cfg, "ModalActs", mbid="rel-ma", tagged_at=datetime.now(UTC), item_id=5)
-    html = client.get(f"/library/{_id_for(cfg, d)}/detail").text
-    assert "/rematch" in html  # the pencil re-pick closes the modal after acting
-    # No hx-post *action* button may use onclick to close (that detaches it before
-    # htmx runs). The modal's own pure-close × button (no hx-post) is fine.
+    d = _make_tagged_album(cfg, "PageActs", mbid="rel-ma", tagged_at=datetime.now(UTC), item_id=5)
+    html = client.get(f"/album/{_id_for(cfg, d)}").text
+    assert "/rematch" in html  # the pencil sends the album out of the Library
+    # No hx-post *action* button may use onclick to navigate.
     action_buttons = re.findall(r"<button[^>]*\shx-post[^>]*>", html)
     assert action_buttons
     assert all("onclick=" not in b for b in action_buttons)
-    # The ones that close after acting use hx-on::after-request instead.
+    # The ones that navigate after acting use hx-on::after-request instead.
     assert any("hx-on::after-request" in b for b in action_buttons)
 
 
@@ -2534,10 +2537,10 @@ def test_deep_link_to_unknown_album_still_renders_page(client, cfg):
     r = client.get("/?album=no-such-album-id")
     assert r.status_code == 200
     assert "isn't in your library any more" in r.text
-    # No album-detail fetch queued — there's nothing to open. (Checked on the
-    # detail URL specifically: the header's Bandcamp-setup button legitimately
-    # targets #modal too, so asserting on the target alone would always match.)
-    assert "/detail" not in r.text
+    # And it stayed put rather than redirecting to a page for an id that
+    # resolves to nothing (TestClient follows redirects, so the final URL is
+    # the honest check that the #103 redirect didn't fire).
+    assert not str(r.url).endswith("/album/no-such-album-id")
 
 
 def test_action_records_an_id_that_still_resolves_after_tagging(client, cfg, monkeypatch):
@@ -2797,52 +2800,36 @@ def test_album_page_wires_retag_progress_and_refresh(client, cfg):
     assert "window.location.reload()" in r.text
 
 
-def test_the_modal_keeps_its_own_retag_refresh(client, cfg):
-    """Control for the gating above: the dialog still re-fetches itself on
-    album-retagged, or its disk-vs-MB comparison would go stale (#34)."""
-    d = _make_tagged_album(cfg, "ModalWiring", mbid="rel-1", tagged_at=datetime.now(UTC))
-    body = client.get(f"/library/{_id_for(cfg, d)}/detail").text
-    assert "album-retagged from:body" in body
-    assert 'hx-target="#modal"' in body
+def test_album_page_dates_are_relative_with_the_exact_value_on_hover(client, cfg):
+    """Dates read as elapsed time, since what they answer is "how recently?",
+    with the exact timestamp on hover so nothing is lost.
 
-
-def test_modal_title_links_to_the_page_and_dates_are_relative(client, cfg):
-    """The album title IS the way through to the page — a plain hyperlink on the
-    thing you're looking at, rather than a separate line restating it. On the
-    page the title is just text, since there's nowhere to go.
-
-    Dates read as elapsed time (what these answer is "how recently?"), with the
-    exact timestamp on hover so nothing is lost."""
+    (The title used to be a link through to this page; on the page itself
+    there's nowhere to go, and since #129 there is no other view.)"""
     d = _make_tagged_album(cfg, "Linked", mbid="rel-l", tagged_at=datetime.now(UTC))
+    body = client.get(f"/album/{_id_for(cfg, d)}").text
+
+    assert "just now" in body  # relative, not a bare date
+    assert datetime.now(UTC).strftime("%Y-%m-%d") in body  # exact value on hover
+
+
+def test_leaving_the_library_returns_you_to_it(client, cfg):
+    """#129: rematch and Forget both send the album OUT of the Library — to
+    Needs MBID and to NEW. The dialog used to close on success, which took you
+    back by construction; a page has to navigate, or it sits there describing an
+    album that moved."""
+    d = _make_tagged_album(cfg, "Departing", mbid="rel-s", tagged_at=datetime.now(UTC))
+    body = client.get(f"/album/{_id_for(cfg, d)}").text
+
+    assert body.count("window.location.href = '/'") == 2  # rematch and Forget
+    # No control still tries to close a dialog. Asserted on the CALL SITE, not
+    # the name: base.html still defines harmonistCloseModal for the Bandcamp
+    # setup modal, which is a different dialog and stays.
+    assert "successful) harmonistCloseModal()" not in body
+    # …and both controls are actually there to navigate from.
     aid = _id_for(cfg, d)
-
-    modal = client.get(f"/library/{aid}/detail").text
-    assert f'href="/album/{aid}"' in modal
-    assert "Linked</a>" in modal  # the title itself carries the link
-    assert "Open full album page" not in modal  # no separate line restating it
-    assert "just now" in modal  # relative, not a bare date
-    assert datetime.now(UTC).strftime("%Y-%m-%d") in modal  # exact value on hover
-
-    page = client.get(f"/album/{aid}").text
-    assert "Linked</a>" not in page  # nowhere to go from the page
-
-
-def test_modal_is_a_summary_without_mutations(client, cfg):
-    """#103: the modal answers "is this the right album/release?" — so the
-    identity-correcting rematch control stays, but Re-tag / Replace artwork /
-    Forget do not. An uncommon, hard-to-undo action shouldn't sit one mis-click
-    from a library tile."""
-    d = _make_tagged_album(cfg, "SummaryOnly", mbid="rel-s", tagged_at=datetime.now(UTC))
-    aid = _id_for(cfg, d)
-
-    modal = client.get(f"/library/{aid}/detail").text
-    assert f"/library/{aid}/rematch" in modal  # "wrong release?" — the modal's job
-    assert f"/retag/{aid}" not in modal
-    assert f"/forget/{aid}" not in modal
-
-    page = client.get(f"/album/{aid}").text
-    assert f"/retag/{aid}" in page
-    assert f"/forget/{aid}" in page
+    assert f"/library/{aid}/rematch" in body
+    assert f"/forget/{aid}" in body
 
 
 def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg, monkeypatch):
@@ -3940,7 +3927,7 @@ def test_the_comparison_is_absent_from_the_library_modal(client, cfg, monkeypatc
     monkeypatch.setattr(
         "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
     )
-    body = client.get(f"/library/{_id_for(cfg, d)}/detail").text
+    body = client.get(f"/album/{_id_for(cfg, d)}").text
     assert "<dt>Cat. no.</dt>" not in body
 
 
@@ -3973,20 +3960,16 @@ def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     assert "exact match" not in r.text
 
 
-def test_album_page_loads_the_track_comparison_and_the_modal_does_not(client, cfg):
-    """#103: the per-track comparison is the page's job. A viewport-constrained
-    dialog can't hold a full tracklist without scrolling and squeezing, so the
-    modal stays the quick "is this the right release?" check and links through."""
+def test_album_page_loads_the_comparison_lazily(client, cfg):
+    """The MusicBrainz comparison is fetched on load rather than rendered with
+    the page: it costs an MB request, and the budget is one per second
+    (review-gate item 6). Lazy keeps that cost to opening the page."""
     d = _make_tagged_album(cfg, "HasVerify", mbid="rel-v2", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
 
     page = client.get(f"/album/{aid}").text
     assert f"/library/{aid}/compare" in page
     assert 'hx-trigger="load"' in page
-
-    modal = client.get(f"/library/{aid}/detail").text
-    assert f"/library/{aid}/compare" not in modal
-    assert f'href="/album/{aid}"' in modal  # ...but links to where it lives
 
 
 def test_library_detail_shows_ambiguous_bandcamp_ids(client, cfg):
@@ -4005,7 +3988,7 @@ def test_library_detail_shows_ambiguous_bandcamp_ids(client, cfg):
             tagged_at=datetime.now(UTC),
         ),
     )
-    r = client.get(f"/library/{_id_for(cfg, d)}/detail")
+    r = client.get(f"/album/{_id_for(cfg, d)}")
     assert "ambiguous: item #111 or #222" in r.text
 
 
@@ -4157,10 +4140,12 @@ def test_pending_match_results_endpoint_searches_library(client, cfg):
     assert "/pending/44/match" in r.text  # each row Links via the match POST
 
 
-def test_library_detail_modal_verifies_and_links(client, cfg):
-    """A pending card's search result is clickable → the album's library detail
-    opens in a modal (verify the release) with a Link action carrying the pending
-    item_id, so verify → link closes in one place."""
+def test_pending_result_opens_the_album_page_to_verify(client, cfg):
+    """#129: verifying a match opens the album's page in a NEW TAB rather than a
+    dialog. You're mid-task in the pending list, and navigating away from it is
+    the one thing the dialog was protecting against — a new tab protects it just
+    as well, without a dialog lifecycle, and the Link button is still right
+    there in the row."""
     from harmonist import pending_downloads as pd
     from harmonist import scanner
     from harmonist import sidecar as scmod
@@ -4173,16 +4158,13 @@ def test_library_detail_modal_verifies_and_links(client, cfg):
     # whose row deep-links into the verify modal.
     pd.replace_all([_pp(77, band=a.artist, title=a.title, url="https://3six.net/album/black-soma")])
 
-    r = client.get(f"/library/{album_id}/detail", params={"pending": 77})
-    assert r.status_code == 200
-    assert "Verify album" in r.text
-    assert "Black Soma" in r.text  # the album detail
-    # The Link action carries the pending item_id and this album.
-    assert "/pending/77/match" in r.text
-    assert f'"album_id": "{album_id}"' in r.text
-    # And the result row itself deep-links into this detail.
     body = client.get("/tasks").text
-    assert f"/library/{album_id}/detail?pending=77" in body
+    # The result row links to the album's page, in a new tab, with noopener —
+    # target=_blank without it hands the opened page a reference back.
+    assert f'href="/album/{album_id}" target="_blank" rel="noopener"' in body
+    # …and Link is still on the row itself, carrying the pending item and album.
+    assert "/pending/77/match" in body
+    assert f'"album_id": "{album_id}"' in body
 
 
 def test_pending_match_link_fills_item_id(client, cfg):

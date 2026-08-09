@@ -1,10 +1,12 @@
-{# One album tile in the Library grid. Clicking opens the album's full detail in
-   the shared #modal (same surface as the potential-download verify modal). #}
+{# One album tile in the Library grid — an ordinary link to the album's page.
+
+   It used to open a dialog holding a smaller version of that page (#129). A
+   plain <a> gives every click a real URL: shareable, bookmarkable, and
+   back-button-able, none of which a dialog is. #}
 {% set sc = album.sidecar %}
 {% set is_new = sc and sc.downloaded_at and (now - sc.downloaded_at).days < 7 %}
-<div id="lib-{{ album.id }}"
-     hx-get="/library/{{ album.id }}/detail" hx-target="#modal" hx-swap="innerHTML"
-     class="lib-tile group cursor-pointer select-none">
+<a id="lib-{{ album.id }}" href="/album/{{ album.id }}"
+   class="lib-tile group cursor-pointer select-none block">
     <div class="relative">
         <img loading="lazy" src="/cover/{{ album.id }}"
              onerror="this.style.visibility='hidden'" alt=""
@@ -25,4 +27,4 @@
     {% if album.partial_tag_count %}
     <div class="text-2xs text-muted">{{ album.partial_tag_count[0] }}/{{ album.partial_tag_count[1] }} tagged</div>
     {% endif %}
-</div>
+</a>

@@ -28,7 +28,7 @@ Two consequences worth knowing:
   sidecar carries its id inside the file, which moves with the directory.
 
 Hashed rather than used raw because the id goes in URL path segments, and most
-routes carry a further segment after it (`/library/{album_id}/detail`) — a value
+routes carry a further segment after it (`/library/{album_id}/compare`) — a value
 containing slashes can't sit there, and `%2F` is routinely mangled by reverse
 proxies.
 """

@@ -36,10 +36,9 @@ def test_old_deep_link_lands_on_the_album_page(demo_server: str) -> None:
 
         # Discover a real album id the way the UI exposes it (tile → detail).
         page.click('[data-tab="library"]')
-        tile = page.locator('#panel-library [hx-get*="/detail"]').first
+        tile = page.locator('#panel-library a[href^="/album/"]').first
         tile.wait_for(state="attached")
-        hx_get = tile.get_attribute("hx-get") or ""
-        album_id = hx_get.split("/library/")[1].split("/detail")[0]
+        album_id = (tile.get_attribute("href") or "").split("/album/")[1]
         assert album_id
 
         page.goto(f"{demo_server}/?album={album_id}")
@@ -96,13 +95,14 @@ def test_activity_album_link_actually_opens_the_album(demo_server: str) -> None:
         page.goto(demo_server)
 
         # An action against a real album, so the feed gets an album-tagged entry.
+        # The tile is a link to the album's page now, not a dialog trigger (#129).
         page.click('[data-tab="library"]')
-        page.locator("#panel-library img").first.click()
-        page.locator("#modal dialog[open]").wait_for(state="visible")
+        page.locator('#panel-library a[href^="/album/"]').first.click()
+        page.locator('button[hx-post*="/rematch"]').wait_for(state="visible")
         page.on("dialog", lambda d: d.accept())
         with page.expect_request(lambda r: "/rematch" in r.url and r.method == "POST"):
             page.click('button[hx-post*="/rematch"]')
-        page.locator("#modal dialog").wait_for(state="detached")
+        page.wait_for_url(f"{demo_server}/")  # rematch sends it out of the Library
 
         # Its Activity entry must carry a link on the album name.
         page.click('[data-tab="activity"]')
@@ -119,25 +119,32 @@ def test_activity_album_link_actually_opens_the_album(demo_server: str) -> None:
         browser.close()
 
 
-def test_album_dialog_rematch_fires_confirm_and_post(demo_server: str) -> None:
+def test_album_page_rematch_fires_confirm_and_post_then_navigates(demo_server: str) -> None:
+    """The #40 regression check, on the page instead of the dialog (#129).
+
+    Still worth having in a browser: the pencil pairs an `hx-confirm` with an
+    `hx-on::after-request` side effect, and #40 was precisely a side effect that
+    ran BEFORE htmx could issue its request. Only a real click through a real
+    confirm proves the POST still happens.
+    """
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page()
         page.goto(demo_server)
 
-        # Library tab → first tile → native dialog opens.
+        # Library tab → first tile → the album's own page.
         page.click('[data-tab="library"]')
-        page.locator("#panel-library img").first.click()
-        dialog = page.locator("#modal dialog[open]")
-        dialog.wait_for(state="visible")
+        page.locator('#panel-library a[href^="/album/"]').first.click()
+        page.locator('button[hx-post*="/rematch"]').wait_for(state="visible")
+        assert "/album/" in page.url
 
         # Accept the hx-confirm, then click the rematch pencil and require
-        # that the POST is actually issued — the #40 regression check.
+        # that the POST is actually issued.
         page.on("dialog", lambda d: d.accept())
         with page.expect_request(lambda r: "/rematch" in r.url and r.method == "POST"):
             page.click('button[hx-post*="/rematch"]')
 
-        # On success the dialog closes (hx-on::after-request) and the mount
-        # is cleared by the close handler in base.html.
-        page.locator("#modal dialog").wait_for(state="detached")
+        # The album has left the Library, so the page navigates back to it
+        # rather than sitting there describing something that moved.
+        page.wait_for_url(f"{demo_server}/")
         browser.close()

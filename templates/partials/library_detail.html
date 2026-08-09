@@ -1,53 +1,23 @@
-{# Full detail for a library album. Rendered into #modal by library_detail_modal
-   (Library tile click) and by the potential-download verify flow. #}
+{# The album panel on /album/<id>. Was also rendered into a dialog for the
+   Library tile and the potential-download verify flow; both are ordinary links
+   to the page now (#129), so every `full_page` branch this carried is gone. #}
 {% set sc = album.sidecar %}
 {% set bc = sc.bandcamp if sc else None %}
 {% set store = store_name(sc.store_url if sc else None) %}
-{# In the modal the panel IS the dialog card — the <dialog> wrapper already
-   supplies the border, rounding and shadow, so repeating them here drew a box
-   inside a box. On the page it stands on the page background and needs its own. #}
-<div class="relative overflow-hidden bg-surface{% if full_page %} border border-line rounded-lg{% endif %}">
+<div class="relative overflow-hidden bg-surface border border-line rounded-lg">
     {# Covers the panel while a multi-second re-tag is in flight (the re-tag
        buttons point their hx-indicator here). #}
     {% include 'partials/_tagging_overlay.html' %}
-    {# On a successful re-tag the endpoint fires `album-retagged`; reload the whole
-       modal so the comparison + metadata below reflect the newly written tags.
-
-       MODAL ONLY. Unconditional, this fired on the album page too — fetching the
-       detail fragment into #modal, which base.html then opens as a dialog. So
-       re-tagging from the page popped up the dialog it was meant to replace.
-       The page refreshes itself instead (album.html). #}
-    {% if not full_page %}
-    <span hx-get="/library/{{ album.id }}/detail" hx-trigger="album-retagged from:body"
-          hx-target="#modal" hx-swap="innerHTML" class="hidden"></span>
-    {% endif %}
 
     {# Title bar. "<Title> — <Artist>" IS the header — a separate "Album" heading
        said nothing the context didn't, and the artist on its own line below the
        bar read as a stray caption. Full-width and shaded so it reads as the
-       panel's header rather than the first line of its contents.
-
-       Only the TITLE is the link: there's no per-artist page to go to, so
-       underlining the artist half would promise a destination that doesn't
-       exist. On the page the title is plain text — you're already there. #}
+       panel's header rather than the first line of its contents. #}
     <div class="flex items-center justify-between gap-3 px-4 py-2.5 bg-line/50 border-b border-line">
         <h1 class="text-lg break-words min-w-0">
-            {% if full_page %}
             <span class="font-bold text-ink">{{ album.title }}</span>
-            {% else %}
-            <a href="/album/{{ album.id }}"
-               class="font-bold text-ink hover:text-accent underline decoration-dotted underline-offset-4 hover:decoration-solid"
-               title="Open the full album page — tracklist, history and actions">{{ album.title }}</a>
-            {% endif %}
             <span class="text-muted font-normal">&mdash; {{ album.artist }}</span>
         </h1>
-        {% if not full_page %}
-        {# Plain onclick, no hx-* on this element — template-lint's dividing line,
-           and there's no request to sequence, just a dialog close. #}
-        <button type="button" onclick="harmonistCloseModal()"
-                class="flex-shrink-0 text-muted hover:text-ink text-2xl leading-none"
-                title="Close" aria-label="Close">&times;</button>
-        {% endif %}
     </div>
 
     <div class="p-4 flex flex-col md:flex-row gap-4">
@@ -82,8 +52,13 @@
                 </a>
                 {# Wrong MB release → back to Needs MBID to re-pick. Rare, so subtle
                    (muted until hover); confirms first to guard against a mis-click. #}
+                {# Back to the library on success, not just a swap: this sends the
+                   album to Needs MBID, so it is no longer a Library album and
+                   this page would sit there describing something that moved.
+                   (It used to close the dialog, which had the same effect.) #}
                 <button type="button" hx-post="/library/{{ album.id }}/rematch"
-                        hx-swap="none" hx-disabled-elt="this" hx-on::after-request="if (event.detail.successful) harmonistCloseModal()"
+                        hx-swap="none" hx-disabled-elt="this"
+                        hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
                         hx-confirm="Wrong MusicBrainz release? The album goes back to Needs MBID so you can pick the correct one. Your files keep their current tags until you re-tag."
                         title="Wrong MusicBrainz match — pick the correct release"
                         aria-label="Wrong MusicBrainz match — pick the correct release"
@@ -166,23 +141,15 @@
                 {% endif %}
             </dl>
 
-            {% if sc and sc.mb_release_id and full_page %}
-            {# Per-track disk-vs-MB comparison. PAGE ONLY: a full tracklist is
-               exactly what a viewport-constrained <dialog> can't hold without
-               scrolling and squeezing (#103). The dialog answers "is this the
-               right release?" and links through for the rest. #}
+            {% if sc and sc.mb_release_id %}
+            {# The tag comparison, and (out of band) the Tracks section. One
+               MusicBrainz fetch serves both. #}
             <div id="compare-{{ album.id }}"
                  hx-get="/library/{{ album.id }}/compare" hx-trigger="load" hx-swap="innerHTML">
                 <p class="text-2xs text-muted italic mt-2">Checking tracks against MusicBrainz…</p>
             </div>
             {% endif %}
 
-            {# Actions are PAGE ONLY too (#103). The dialog is a summary — "is
-               this the right release?" — and shouldn't offer a second route to
-               every mutation, least of all uncommon, hard-to-undo ones like
-               Forget. Individual actions can be bubbled back up to the dialog
-               later if one turns out to be wanted in the flow. #}
-            {% if full_page %}
             {# `hx-disabled-elt="this"` — the documented form, and the one htmx
                special-cases for the triggering element.
 
@@ -206,18 +173,21 @@
                    solves — and it can't be undone. Leaving a control that does
                    the wrong thing confidently is worse than not offering one.
                    The /retag?overwrite_art endpoint stays; only the button goes. #}
+                {# Same reason as the rematch pencil: forgetting reverts the album
+                   to NEW, so it leaves the Library and this page stops describing
+                   anything that exists. #}
                 <button hx-post="/forget/{{ album.id }}"
                         hx-swap="none" hx-disabled-elt="this"
+                        hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
                         hx-confirm="Forget this album? The sidecar is deleted and the album reverts to NEW. Files are not touched."
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Forget
                 </button>
-                {# Unlink (clear the Bandcamp item_id) is temporarily removed alongside
-                   the × — until a Library album can be re-linked, taking a link off is a
-                   dead end. Both come back with the re-link path in #42. The /unlink
-                   endpoint stays for now. #}
+                {# Unlink (clear the Bandcamp item_id) is temporarily removed —
+                   until a Library album can be re-linked, taking a link off is a
+                   dead end. It comes back with the re-link path in #42. The
+                   /unlink endpoint stays for now. #}
             </div>
-            {% endif %}
         </div>
     </div>
 </div>
