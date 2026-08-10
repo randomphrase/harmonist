@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
 import os
@@ -2506,8 +2507,11 @@ def _register_routes(app: FastAPI) -> None:
         try:
             release = mb_lookup.fetch_release(sc.mb_release_id)
         except mb_lookup.MBError as e:
+            # Escaped: an MBError wraps upstream musicbrainzngs text, so the
+            # message originates off-box and must not reach the DOM as markup.
             return HTMLResponse(
-                f'<p class="text-2xs text-red-700 mt-2">Couldn\'t fetch from MusicBrainz: {e}</p>'
+                '<p class="text-2xs text-red-700 mt-2">Couldn\'t fetch from '
+                f"MusicBrainz: {html.escape(str(e))}</p>"
             )
         # No `assess_match` here any more (#135). It re-opened every file in the
         # album for a duration and a title that `_album_comparison` had just
@@ -3124,13 +3128,24 @@ def _process_rss_bytes() -> int | None:
 
 
 def _flash(message: str, *, level: str) -> str:
-    """Render a small flash message fragment for HTMX swap-or-replace."""
+    """Render a small flash message fragment for HTMX swap-or-replace.
+
+    `message` is escaped: it routinely carries `str(e)` from a failed MB call,
+    and album/track text read off disk. Plain text only — no caller passes
+    markup, and any that wanted to would have to render it elsewhere. The
+    client half of this path already escapes (the `esc()` helper behind the
+    `harmonist-status` trigger in index.html); this keeps the server-rendered
+    fragment consistent with it.
+    """
     classes = {
         "info": "bg-bc-teal/10 text-bc-teal border-bc-teal/30",
         "warning": "bg-amber-500/10 text-amber-300 border-amber-500/30",
         "error": "bg-red-500/10 text-red-300 border-red-500/30",
     }.get(level, "bg-slate-700/30 text-slate-200 border-slate-600")
-    return f'<div class="px-4 py-2 border rounded {classes} text-sm font-bold">{message}</div>'
+    return (
+        f'<div class="px-4 py-2 border rounded {classes} text-sm font-bold">'
+        f"{html.escape(message)}</div>"
+    )
 
 
 def _live_album_ref(album: Album) -> tuple[str | None, str]:

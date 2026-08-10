@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
+from harmonist import mb_lookup
 from harmonist import sidecar as sc
 from harmonist.activity_store import Level
 from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
@@ -1670,6 +1671,28 @@ def test_manual_candidates_lists_store_url_releases(client, cfg, monkeypatch):
     assert "(24-bit)" in r.text  # disambiguation rendered distinctly
     assert f"2{cross}CD" in r.text  # media summary
     assert r.text.count('name="mbid"') == 2  # a Use button per release
+
+
+def test_recheck_escapes_mb_error_text_in_the_flash(client, cfg, monkeypatch):
+    """#142: an MBError message reaches the flash fragment as text, not markup.
+
+    The message wraps upstream musicbrainzngs output, so it originates off-box.
+    The diagnostic still has to be readable — this pins escaped, not dropped.
+    """
+    d = _needs_mbid_with_store_url(cfg, "Hostile", "https://x.bandcamp.com/album/y")
+    aid = _id_for(cfg, d)
+
+    def boom(url):
+        raise mb_lookup.MBError('MB request failed: <script>alert(1)</script> & "quoted"')
+
+    monkeypatch.setattr("harmonist.mb_lookup.lookup_by_bandcamp_url", boom)
+
+    r = client.post(f"/recheck/{aid}")
+    assert r.status_code == 200
+    assert "<script>" not in r.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in r.text
+    assert "&amp;" in r.text and "&quot;quoted&quot;" in r.text
+    assert "MB lookup failed" in r.text  # the diagnostic survives, escaped
 
 
 def test_recheck_multiple_matches_shows_picker_not_autopick(client, cfg, monkeypatch):
@@ -3957,6 +3980,22 @@ def test_library_compare_renders_the_tracklist(client, cfg, monkeypatch):
     assert r.status_code == 200
     assert "track-diff" in r.text
     assert "Track 1" in r.text  # MusicBrainz's title for the one track
+
+
+def test_library_compare_escapes_mb_error_text(client, cfg, monkeypatch):
+    """#142: the compare panel's fetch-failure fragment escapes the MB message."""
+    d = _make_tagged_album(cfg, "Hostile", mbid="rel-hostile", tagged_at=datetime.now(UTC))
+
+    def boom(mbid):
+        raise mb_lookup.MBError("MB ResponseError: <img src=x onerror=alert(1)>")
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", boom)
+
+    r = client.get(f"/library/{_id_for(cfg, d)}/compare")
+    assert r.status_code == 200
+    assert "<img" not in r.text
+    assert "&lt;img src=x onerror=alert(1)&gt;" in r.text
+    assert "Couldn't fetch from MusicBrainz" in r.text
 
 
 # ---------- the per-field tag comparison on the album page (#106) ----------

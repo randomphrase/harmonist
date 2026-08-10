@@ -22,6 +22,9 @@ versions follow [semantic versioning](https://semver.org).
 - A track numbered by vinyl side (`A1`, `B2`) no longer breaks the album page
   on FLAC, Ogg and Opus files (#137).
 
+- MusicBrainz error messages are now escaped before being shown, so angle
+  brackets in an upstream error render as text rather than as markup (#142).
+
 ## [1.5.0] - 2026-08-09
 
 ### Added
