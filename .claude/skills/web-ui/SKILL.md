@@ -36,7 +36,12 @@ Known remaining candidate: the sync-options popover in `header.html` is still a
 hover/focus-tracked div. Raise an issue before converting it — it's functional
 work.
 
-## 2. Let HTMX own the click — never `onclick` alongside `hx-*`
+## 2. Let HTMX own the event
+
+Two different ways the browser takes an event back off HTMX. Both leave markup
+that reads correctly and renders correctly, and both have shipped here.
+
+### 2a. Never `onclick` alongside `hx-*`
 
 An inline `onclick` runs **before** HTMX's delegated click handler. If the
 `onclick` detaches the element (closing a modal, re-swapping the container),
@@ -62,6 +67,37 @@ handler on the `<dialog>` itself) is fine — that's the lint's dividing line.
 
 Always gate the side effect on `event.detail.successful`. Closing the dialog on a
 failed request throws away the error the user needed to see.
+
+### 2b. `hx-trigger` on a form REPLACES its default, it doesn't extend it
+
+A `<form>` carrying `hx-get`/`hx-post` triggers on `submit` by default. Write
+`hx-trigger="change"` on it and you have not *added* change — you have **dropped
+submit**. Every submit event then sails past HTMX into a native navigation to the
+form's own `action`.
+
+This is nastier than it sounds, because the fallback usually *works*. The Library
+page-size control (#144) is a real `<form>` so it degrades without JS, so its
+`action` renders the right page anyway — the reader got the albums they asked
+for, via a full page load, with the transient `?anchor=3` stranded in the address
+bar where the resolved `?page=` belonged. Nothing errored. Mouse selection was
+flawless. Only the keyboard path hit it.
+
+```html
+<!-- WRONG: keyboard commit escapes to a native GET on `action` -->
+<form method="get" action="/" hx-get="/library" hx-trigger="change">
+
+<!-- RIGHT: HTMX owns both ways the control can be committed -->
+<form method="get" action="/" hx-get="/library" hx-trigger="change, submit">
+```
+
+Generally: any `hx-trigger` you write replaces the element's default trigger
+(`submit` for forms, `change` for inputs/selects/textareas, `click` for
+everything else). If you name a trigger on an element that already had a useful
+one, name **both**.
+
+`make template-lint` does not catch this — the attribute is well-formed and the
+element is legal. Neither does pytest, which sees a correct-looking string. Only
+a browser does.
 
 ## 3. Rebuild the CSS bundle after every template edit
 
@@ -124,6 +160,14 @@ green suite and 91% coverage.
   stays browser-free.
 - A new browser test must be **mutation-checked**: reintroduce the bug, confirm
   the test fails, restore. A smoke test that cannot fail is worse than none.
+- **A mutation check that passes means your test is wrong, not that the fix is
+  unnecessary.** #144's first attempt drove the 2b bug with a keyboard `Enter` on
+  the `<select>` and stayed green with the bug back in — Chrome only does implicit
+  submission from text-ish controls, so the key press did nothing at all. Driving
+  the same event through `requestSubmit()` reproduced it. Prefer a driver that
+  raises the event **directly** over one that depends on an engine's rules for
+  synthesising it; those rules differ per browser and change under you, and a test
+  resting on them stops reproducing its bug without ever going red.
 
 ## 7. Test-client CSRF
 
@@ -136,7 +180,9 @@ sends it in a browser; `TestClient` does not. New web fixtures must be built as
 1. `make css` run and the regenerated bundle staged.
 2. `make check` green (includes `template-lint`).
 3. No `onclick` on an element that also has `hx-*`.
-4. Side effects gated on `event.detail.successful`.
-5. Exercised in demo mode; browser-layer behavior covered by `test/e2e/` if the
+4. Any `hx-trigger` you wrote names **every** event that must reach HTMX, not just
+   the new one — it replaced the element's default rather than adding to it.
+5. Side effects gated on `event.detail.successful`.
+6. Exercised in demo mode; browser-layer behavior covered by `test/e2e/` if the
    bug class would be invisible to pytest.
-6. User-visible? → `CHANGELOG.md` entry (see the `changelog` skill).
+7. User-visible? → `CHANGELOG.md` entry (see the `changelog` skill).
