@@ -1992,50 +1992,95 @@ def test_library_sorted_by_tagged_at_desc(client, cfg):
     assert text.index("Recent") < text.index("Mid") < text.index("Old")
 
 
-def test_library_pagination_offset_limit(client, cfg):
+def _make_library(cfg, count):
+    """`count` tagged albums, newest first: Album0 is the most recently tagged,
+    so page 1 of the grid holds Album0…Album{limit-1} in order."""
     from datetime import datetime, timedelta
 
     base = datetime.now(UTC)
-    for i in range(5):
+    for i in range(count):
         _make_tagged_album(
             cfg, f"Album{i}", mbid=f"rel-{i}", tagged_at=base - timedelta(days=i), item_id=i + 1
         )
-    r = client.get("/library?offset=0&limit=2")
+
+
+def test_library_first_page_holds_one_limit_of_rows(client, cfg):
+    _make_library(cfg, 5)
+    r = client.get("/library?page=1&limit=2")
     assert r.status_code == 200
-    # First page has 2 rows
     assert r.text.count('id="lib-') == 2
-    # Load more button references offset=2
-    assert "offset=2" in r.text
+    assert "Album0" in r.text and "Album1" in r.text
+    assert "Album2" not in r.text
     # The tab-badge total reflects ALL done albums (5), not the 2 rendered —
     # this is the attribute the Library tab count reads.
     assert 'data-total-done="5"' in r.text
 
 
-def test_library_load_more_button_absent_on_last_page(client, cfg):
-    from datetime import datetime
-
-    _make_tagged_album(cfg, "OnlyOne", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
-    r = client.get("/library?offset=0&limit=10")
-    assert "Load more" not in r.text
-
-
-def test_library_first_page_includes_header(client, cfg):
-    from datetime import datetime
-
-    _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
-    r = client.get("/library?offset=0")
+def test_library_page_two_holds_the_next_slice(client, cfg):
+    _make_library(cfg, 5)
+    r = client.get("/library?page=2&limit=2")
+    assert r.text.count('id="lib-') == 2
+    assert "Album2" in r.text and "Album3" in r.text
+    assert "Album0" not in r.text
+    # Every page is a whole render now, header included — it replaces the grid
+    # rather than appending to it, so page 2 must stand on its own.
     assert "<h2" in r.text
-    assert "Library" in r.text
-    assert "Refresh" in r.text
+    assert 'data-page="2"' in r.text
 
 
-def test_library_second_page_omits_header(client, cfg):
-    from datetime import datetime
+def test_library_pager_links_carry_prev_and_next(client, cfg):
+    _make_library(cfg, 5)
+    body = client.get("/library?page=2&limit=2").text
+    assert 'hx-get="/library?page=1"' in body
+    assert 'hx-get="/library?page=3"' in body
+    # The pushed URL and the href agree, so the address bar names what's on
+    # screen and a middle-click opens the same page.
+    assert 'href="/?tab=library&page=3"' in body
+    assert 'hx-push-url="/?tab=library&page=3"' in body
+    assert "3–4 of 5" in body  # row range readout
+    assert "page 2 of 3" in body
 
-    _make_tagged_album(cfg, "Album", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
-    r = client.get("/library?offset=30&limit=30")
-    # No header on offsets > 0 (the load-more button replaces itself)
-    assert "<h2" not in r.text
+
+def test_library_pager_has_no_link_past_either_end(client, cfg):
+    _make_library(cfg, 5)
+    first = client.get("/library?page=1&limit=2").text
+    assert 'hx-get="/library?page=0"' not in first
+    assert 'aria-disabled="true"' in first  # Previous is inert, not a link
+
+    last = client.get("/library?page=3&limit=2").text
+    assert 'hx-get="/library?page=4"' not in last
+    assert 'aria-disabled="true"' in last
+
+
+def test_library_pager_absent_when_everything_fits_on_one_page(client, cfg):
+    _make_library(cfg, 2)
+    body = client.get("/library?page=1&limit=30").text
+    assert "Previous" not in body
+    assert "Next" not in body
+
+
+def test_library_page_beyond_the_end_clamps_to_the_last_page(client, cfg):
+    """A page number outlives the albums that filled it — a bookmark, or Back
+    after a sync removed some. Clamping keeps a saved link pointing at albums
+    instead of resolving to a blank grid that reads as "my library is gone"."""
+    _make_library(cfg, 5)
+    r = client.get("/library?page=99&limit=2")
+    assert r.status_code == 200
+    assert 'data-page="3"' in r.text
+    assert "Album4" in r.text
+
+
+def test_library_page_below_one_clamps_up(client, cfg):
+    _make_library(cfg, 5)
+    r = client.get("/library?page=-3&limit=2")
+    assert 'data-page="1"' in r.text
+    assert "Album0" in r.text
+
+
+def test_library_empty_still_renders_its_header(client, cfg):
+    r = client.get("/library")
+    assert "No fully-tagged albums yet." in r.text
+    assert 'data-total-done="0"' in r.text
 
 
 def test_library_empty_state(client):
@@ -2513,6 +2558,88 @@ def test_album_page_resolves_a_superseded_id(client, cfg):
 def test_album_page_404s_for_an_unknown_album(client, cfg):
     _make_album(cfg, "Present")
     assert client.get("/album/no-such-id").status_code == 404
+
+
+# --- Library → album → Library round-trip (#139) -----------------------------
+#
+# The three links that have to agree for the trip to land where it started: the
+# tile hands the album page its page number, the album page hands it back to the
+# index, and the index starts the grid there.
+
+
+def test_library_tile_tells_the_album_page_which_page_it_came_from(client, cfg):
+    _make_library(cfg, 5)
+    body = client.get("/library?page=2&limit=2").text
+    assert "?from_page=2" in body
+
+    # Page 1 is what Back means with no hint at all, so the common URL stays bare.
+    assert "from_page" not in client.get("/library?page=1&limit=2").text
+
+
+def test_album_page_back_link_returns_to_the_page_it_came_from(client, cfg):
+    from datetime import datetime
+
+    d = _make_tagged_album(cfg, "Deep", mbid="rel-deep", tagged_at=datetime.now(UTC), item_id=1)
+    aid = _id_for(cfg, d)
+
+    body = client.get(f"/album/{aid}?from_page=4").text
+    assert 'href="/?tab=library&page=4"' in body
+
+    # No hint (a bookmark, or a link out of the Activity feed) → the top of the
+    # grid, but still the Library tab: arriving from Activity leaves the
+    # remembered tab on Inbox, and "Back to library" must not land there.
+    plain = client.get(f"/album/{aid}").text
+    assert 'href="/?tab=library"' in plain
+    assert "page=" not in plain.split("Back to library")[0].rsplit("<a ", 1)[1]
+
+
+def test_index_renders_the_grid_inline_on_the_page_the_url_names(client, cfg, monkeypatch):
+    """The index renders the grid itself rather than fetching it on load, so a
+    `?page=` link is answered by the HTML — no follow-up request that would have
+    to be told which page it is on, and nothing to drift on a reload or a Back."""
+    from harmonist.web import main as web_main
+
+    monkeypatch.setattr(web_main, "_LIBRARY_PAGE_SIZE", 2)
+    _make_library(cfg, 5)
+
+    body = client.get("/?tab=library&page=2").text
+    assert 'data-page="2"' in body
+    assert "Album2" in body and "Album0" not in body
+    assert 'harmonistTab("library")' in body
+
+
+def test_index_ignores_an_unknown_tab_rather_than_reflecting_it(client, cfg):
+    """`?tab=` is interpolated into a `panel-<name>` lookup in the tab script."""
+    body = client.get("/?tab=</script><script>alert(1)</script>").text
+    assert "alert(1)" not in body
+    assert "harmonistTab(" in body  # falls back to the remembered tab
+    assert "localStorage.getItem('harmonist-tab')" in body
+
+
+def test_index_defaults_to_the_remembered_tab_and_page_one(client, cfg):
+    body = client.get("/").text
+    assert "localStorage.getItem('harmonist-tab')" in body
+    assert 'data-page="1"' in body
+
+
+def test_library_pager_links_do_not_inherit_a_competing_page_value(client, cfg):
+    """Regression guard for the bug that made every pager click a no-op.
+
+    The refresh wiring used to sit on #library-rows as an `hx-vals`, which htmx
+    INHERITS: each pager link inside then sent its own `?page=2` *plus* the
+    container's `?page=1`, and the last value won. Keeping the page in each
+    fragment's own `hx-get` is what removes the collision, so no ancestor of the
+    pager may reintroduce an `hx-vals`."""
+    _make_library(cfg, 5)
+    index = client.get("/?tab=library").text
+    assert "hx-vals" not in index.split('id="library-rows"')[1].split("</div>")[0]
+
+    fragment = client.get("/library?page=2&limit=2").text
+    assert "hx-vals" not in fragment
+    # Each render re-requests the page it is showing, so a refresh mid-browse
+    # (every `tasks-changed`) can't yank the user back to the newest 30.
+    assert 'hx-get="/library?page=2"' in fragment
+    assert "tasks-changed from:body" in fragment
 
 
 def test_old_deep_link_redirects_to_the_album_page(client, cfg):

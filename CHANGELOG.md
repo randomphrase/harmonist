@@ -8,6 +8,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- The Library is now paged, with Previous/Next and a "31–60 of 412" readout in
+  place of the Load-more button. The page you're on is part of the address, so
+  opening an album and coming back returns you to it — as do the browser's Back
+  button and a bookmarked link — instead of dropping you at the newest 30 (#139).
+
 - The album page's tracklist now compares every track against MusicBrainz —
   title, artist, number and length — and says which tracks are missing from
   disk, unreadable, or not in MusicBrainz at all (#135).

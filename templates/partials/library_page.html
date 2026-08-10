@@ -1,44 +1,83 @@
-{# One page of the Library grid. The first page opens #library-grid; subsequent
-   pages (Load more) emit just tiles + a fresh Load-more, which replace the old
-   button INSIDE the grid. Clicking a tile opens the album's detail in #modal. #}
-{% if is_first_page %}
+{# One page of the Library grid — header, tiles, pager — rendered as a whole.
+
+   It used to be an accumulator: the first page opened #library-grid and every
+   later page appended tiles plus a fresh Load-more button. That made the grid's
+   position unaddressable (it only existed as DOM you'd built by clicking), so a
+   trip to an album page and back dumped you on the newest 30 (#139). Each page
+   is now a complete, self-describing render that replaces #library-rows.
+
+   The root element below carries the refresh wiring, so each render re-requests
+   the page it is actually showing. Putting that on the #library-rows container
+   instead needs the page in an `hx-vals`, and hx-vals is INHERITED: every pager
+   link inside would then send its own `?page=2` plus the container's `?page=1`,
+   and the last value wins — which silently pinned the grid to page 1. Here there
+   is no inherited value to collide with, and a refresh mid-browse (every
+   `tasks-changed`) keeps you on your page. #}
+<div hx-get="/library?page={{ page }}"
+     hx-trigger="library-refresh from:body, tasks-changed from:body"
+     hx-target="#library-rows" hx-swap="innerHTML">
 <div class="flex justify-between items-baseline mb-3">
     {# data-total-done carries the full terminal-album count (not just this
        page) so the Library tab badge can show the real total — the grid is
        paginated, so counting rendered rows would under-report. #}
-    <h2 id="library-total" data-total-done="{{ total_done }}"
+    <h2 id="library-total" data-total-done="{{ total_done }}" data-page="{{ page }}"
         class="text-sm font-semibold text-muted uppercase tracking-widest">Library
         <span class="ml-1 font-normal normal-case tracking-normal">· {{ total_done }} done</span>
     </h2>
-    <button hx-get="/library?offset=0&limit={{ limit }}"
+    <button hx-get="/library?page={{ page }}"
             hx-target="#library-rows" hx-swap="innerHTML"
             class="text-xs text-muted hover:text-accent transition uppercase tracking-widest font-bold">
         Refresh
     </button>
 </div>
-{% endif %}
 
-{% if is_first_page and not rows %}
+{% if not rows %}
 <div class="p-10 text-center border border-line rounded-lg">
     <p class="text-muted italic">No fully-tagged albums yet.</p>
 </div>
 {% else %}
-{% if is_first_page %}
 <div id="library-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-{% endif %}
-
     {% for album in rows %}{% include 'partials/library_tile.html' %}{% endfor %}
+</div>
 
-    {% if has_more %}
-    <button id="load-more-{{ next_offset }}"
-            class="col-span-full mt-2 px-4 py-2 bg-surface hover:bg-line text-ink border border-line rounded text-sm font-bold transition"
-            hx-get="/library?offset={{ next_offset }}&limit={{ limit }}"
-            hx-target="this" hx-swap="outerHTML">
-        Load more <span class="text-muted font-normal text-xs ml-2">{{ next_offset }} / {{ total_done }}</span>
-    </button>
+{% if total_pages > 1 %}
+{# Pager. Each control is a real <a href> to the index URL for that page AND an
+   hx-get that swaps just the grid: with JS it's an in-place swap that pushes the
+   same URL, without it (or on a middle-click into a new tab) it's an ordinary
+   link that the server renders correctly. The href and hx-push-url agree by
+   construction, so the address bar always names what's on screen.
+   At the ends the control becomes a plain disabled <span> — there is no disabled
+   state for an anchor, and a link to a page that doesn't exist is worse. #}
+<nav class="mt-5 flex items-center justify-between gap-4" aria-label="Library pages">
+    {% set nav_class = "px-3 py-1.5 rounded border border-line text-sm font-bold transition" %}
+    {% if prev_page %}
+    <a href="/?tab=library&page={{ prev_page }}"
+       hx-get="/library?page={{ prev_page }}"
+       hx-target="#library-rows" hx-swap="innerHTML"
+       hx-push-url="/?tab=library&page={{ prev_page }}"
+       class="{{ nav_class }} bg-surface hover:bg-line text-ink">← Previous</a>
+    {% else %}
+    <span class="{{ nav_class }} text-muted opacity-40 cursor-default select-none"
+          aria-disabled="true">← Previous</span>
     {% endif %}
 
-{% if is_first_page %}
+    <span class="text-xs text-muted tabular-nums">
+        {{ first_row }}–{{ last_row }} of {{ total_done }}
+        <span class="mx-1 opacity-50">·</span>
+        page {{ page }} of {{ total_pages }}
+    </span>
+
+    {% if next_page %}
+    <a href="/?tab=library&page={{ next_page }}"
+       hx-get="/library?page={{ next_page }}"
+       hx-target="#library-rows" hx-swap="innerHTML"
+       hx-push-url="/?tab=library&page={{ next_page }}"
+       class="{{ nav_class }} bg-surface hover:bg-line text-ink">Next →</a>
+    {% else %}
+    <span class="{{ nav_class }} text-muted opacity-40 cursor-default select-none"
+          aria-disabled="true">Next →</span>
+    {% endif %}
+</nav>
+{% endif %}
+{% endif %}
 </div>
-{% endif %}
-{% endif %}

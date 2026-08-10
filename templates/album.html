@@ -11,7 +11,12 @@
 {% block content %}
 <div class="space-y-5">
 
-    <a href="/" class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">
+    {# Back to the Library page this album was opened from, not the top of the
+       grid (#139). `?tab=library` is always sent: a link says where it goes, and
+       arriving here from Activity leaves the remembered tab on Inbox, which
+       would otherwise make "Back to library" land on the Inbox. #}
+    <a href="/?tab=library{% if from_page > 1 %}&page={{ from_page }}{% endif %}"
+       class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">
         ← Back to library
     </a>
 

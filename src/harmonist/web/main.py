@@ -100,6 +100,17 @@ AUDIT_DETAIL_LIMIT = 20
 # Terminal states — hidden from the inbox, shown in the library.
 _TERMINAL_STATES = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
 
+# Albums per page of the Library grid. Fixed rather than user-configurable: the
+# page number is the unit the pager and every saved `?page=N` link count in, so a
+# size that changed underneath them would make the same link resolve to different
+# albums.
+_LIBRARY_PAGE_SIZE = 30
+
+# Tabs on the index page. `?tab=` is validated against this before it reaches the
+# template — the value is interpolated into a `panel-<name>` lookup in the tab
+# script, so an unchecked one from the URL would be reflected into the page.
+_INDEX_TABS = ("inbox", "library", "activity")
+
 
 _logging_configured = False
 
@@ -784,6 +795,46 @@ def _templates(request: Request) -> Jinja2Templates:
     typed (Any), so going through here keeps route return types as Response."""
     templates: Jinja2Templates = request.app.state.templates
     return templates
+
+
+def _library_page_vars(albums: list[Album], page: int, limit: int) -> dict[str, Any]:
+    """Everything `partials/library_page.html` needs to render one page of the
+    Library grid (#139).
+
+    Shared by `/library` and by the index, which renders the first page inline
+    rather than fetching it: that keeps the grid's page a property of the
+    server-rendered HTML, so a `?page=` link, a reload and a Back all produce the
+    same thing, with no client-side state to fall out of step.
+    """
+    done = [a for a in albums if a.state in _TERMINAL_STATES]
+    # Newest tagged first; albums missing tagged_at sink to the bottom.
+    _floor = datetime.min.replace(tzinfo=UTC)
+    done.sort(
+        key=lambda a: a.sidecar.tagged_at if a.sidecar and a.sidecar.tagged_at else _floor,
+        reverse=True,
+    )
+    limit = max(1, min(limit, 200))  # clamp; defensive
+    total_pages = max(1, -(-len(done) // limit))  # ceil; always at least one page
+    # Clamp rather than serve an empty grid. A page number outlives the albums that
+    # filled it — bookmarked, restored by Back, or just held while a sync removed a
+    # few — and a saved link resolving to a blank screen reads as "my library is
+    # gone".
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * limit
+    rows = done[start : start + limit]
+    return {
+        "rows": rows,
+        "page": page,
+        "total_pages": total_pages,
+        "prev_page": page - 1 if page > 1 else None,
+        "next_page": page + 1 if page < total_pages else None,
+        "limit": limit,
+        "total_done": len(done),
+        # 1-based inclusive range of this page within the whole list, for the
+        # "31–60 of 412" readout — a bare page number says nothing about scale.
+        "first_row": start + 1 if rows else 0,
+        "last_row": start + len(rows),
+    }
 
 
 def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
@@ -1892,7 +1943,9 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
 def _register_routes(app: FastAPI) -> None:
 
     @app.get("/", response_class=HTMLResponse)
-    def index(request: Request, album: str | None = None) -> Response:
+    def index(
+        request: Request, album: str | None = None, tab: str | None = None, page: int = 1
+    ) -> Response:
         albums = _albums(request)
         # `?album=<id>` was the deep link before there was an album page (#65).
         # Now there is one, so redirect rather than opening a modal — links
@@ -1917,6 +1970,15 @@ def _register_routes(app: FastAPI) -> None:
             total_albums=len(albums),
             sync_status=request.app.state.sync_runner.status(),
             deep_link_missing=deep_link_missing,
+            # `?tab=` / `?page=` make the page the user was looking at a real URL
+            # (#139): the Library pager pushes them, and the album page's Back link
+            # carries them. Unrecognised tab → None, and the script falls back to
+            # the remembered one, so a mangled link still lands somewhere sane.
+            initial_tab=tab if tab in _INDEX_TABS else None,
+            # The Library grid renders inline, so `?page=` is honoured by the HTML
+            # itself rather than by a follow-up fetch that would have to be told
+            # which page it's on.
+            **_library_page_vars(albums, page, _LIBRARY_PAGE_SIZE),
         )
         return _templates(request).TemplateResponse(request, "index.html", ctx)
 
@@ -2376,39 +2438,27 @@ def _register_routes(app: FastAPI) -> None:
         return HTMLResponse("", headers={"HX-Refresh": "true"})
 
     @app.get("/library", response_class=HTMLResponse)
-    def library(request: Request, offset: int = 0, limit: int = 30) -> Response:
-        """Paginated list of terminal albums (Complete + Incomplete),
-        sorted by tagged_at desc."""
-        from datetime import datetime as _dt
+    def library(request: Request, page: int = 1, limit: int = _LIBRARY_PAGE_SIZE) -> Response:
+        """One page of terminal albums (Complete + Incomplete), newest tagged first.
 
-        albums = _albums(request)
-        done = [a for a in albums if a.state in _TERMINAL_STATES]
-        # Newest tagged first; albums missing tagged_at sink to the bottom.
-        _floor = _dt.min.replace(tzinfo=UTC)
-        done.sort(
-            key=lambda a: a.sidecar.tagged_at if a.sidecar and a.sidecar.tagged_at else _floor,
-            reverse=True,
-        )
-        limit = max(1, min(limit, 200))  # clamp; defensive
-        offset = max(0, offset)
-        page = done[offset : offset + limit]
-        has_more = offset + limit < len(done)
-        next_offset = offset + limit if has_more else None
-        ctx = _ctx(
-            request,
-            rows=page,
-            has_more=has_more,
-            next_offset=next_offset,
-            limit=limit,
-            total_done=len(done),
-            is_first_page=(offset == 0),
-        )
+        Paged rather than accumulated (#139). The position is a *parameter*, not
+        DOM built up by clicking Load more, which is what lets the pager push it
+        onto the browser's history and the album page's Back link carry it — so a
+        Library → album → Library round-trip lands where it started instead of
+        snapping back to the newest 30.
+        """
+        ctx = _ctx(request, **_library_page_vars(_albums(request), page, limit))
         return _templates(request).TemplateResponse(request, "partials/library_page.html", ctx)
 
     @app.get("/album/{album_id}", response_class=HTMLResponse)
-    def album_page(request: Request, album_id: str) -> Response:
+    def album_page(request: Request, album_id: str, from_page: int = 1) -> Response:
         """The standalone album page (#103) — full tracklist plus the album's
         history, neither of which fits a viewport-constrained dialog.
+
+        `?from_page=` is the Library page the tile was clicked on, so Back can
+        return there (#139). It is a hint, not identity: absent (a bookmark, a
+        link from Activity) simply means page 1, and the page renders the same
+        either way.
 
         Served for a stale id too: `_find_album` resolves one forward through the
         alias chain, so a link written before the album was re-identified still
@@ -2433,6 +2483,7 @@ def _register_routes(app: FastAPI) -> None:
             album=album,
             history=history,
             history_unavailable=history_unavailable,
+            from_page=max(1, from_page),
         )
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 

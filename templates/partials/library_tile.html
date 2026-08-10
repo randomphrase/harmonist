@@ -2,10 +2,15 @@
 
    It used to open a dialog holding a smaller version of that page (#129). A
    plain <a> gives every click a real URL: shareable, bookmarkable, and
-   back-button-able, none of which a dialog is. #}
+   back-button-able, none of which a dialog is.
+
+   `?from_page=` tells the album page which Library page to send you Back to
+   (#139); omitted on page 1, which is what Back means anyway, so the common
+   URL stays clean. #}
 {% set sc = album.sidecar %}
 {% set is_new = sc and sc.downloaded_at and (now - sc.downloaded_at).days < 7 %}
-<a id="lib-{{ album.id }}" href="/album/{{ album.id }}"
+<a id="lib-{{ album.id }}"
+   href="/album/{{ album.id }}{% if page > 1 %}?from_page={{ page }}{% endif %}"
    class="lib-tile group cursor-pointer select-none block">
     <div class="relative">
         <img loading="lazy" src="/cover/{{ album.id }}"

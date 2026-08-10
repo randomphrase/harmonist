@@ -93,11 +93,13 @@
     </div>
 
     <div id="panel-library" class="hidden">
-        <div id="library-rows"
-             hx-get="/library?offset=0&limit=30"
-             hx-trigger="load, library-refresh from:body, tasks-changed from:body"
-             hx-swap="innerHTML">
-            <div class="text-center py-6 text-muted italic text-sm">Loading library…</div>
+        {# Rendered inline, not fetched on load. The grid's page then lives in the
+           server-rendered HTML, so `/?tab=library&page=3`, a reload of it, and a
+           Back onto it all produce the same page with no client-side state to
+           drift — and the first paint costs one request instead of two. Later
+           pages swap in here; each carries its own refresh wiring (#139). #}
+        <div id="library-rows">
+            {% include 'partials/library_page.html' %}
         </div>
     </div>
 
@@ -156,10 +158,19 @@ function harmonistTab(name, persist = true) {
 
 // Restore last tab (default Inbox) on load. `?album=` no longer lands here at
 // all — it redirects to /album/<id> (#103), so there's no deep-link case left.
+//
+// An explicit `?tab=` outranks the remembered one, and is persisted: it's what
+// the Library pager pushes and what the album page's Back link carries, so the
+// user navigated here deliberately (#139). The value is validated server-side
+// against the known tabs before it reaches this line.
 document.addEventListener('DOMContentLoaded', function () {
+{%- if initial_tab %}
+    harmonistTab({{ initial_tab|tojson }});
+{%- else %}
     let saved = 'inbox';
     try { saved = localStorage.getItem('harmonist-tab') || 'inbox'; } catch (e) {}
     harmonistTab(saved);
+{%- endif %}
 });
 </script>
 
