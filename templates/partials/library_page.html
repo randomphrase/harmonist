@@ -13,22 +13,70 @@
    and the last value wins — which silently pinned the grid to page 1. Here there
    is no inherited value to collide with, and a refresh mid-browse (every
    `tasks-changed`) keeps you on your page. #}
-<div hx-get="/library?page={{ page }}"
+<div hx-get="/library?page={{ page }}&limit={{ limit }}"
      hx-trigger="library-refresh from:body, tasks-changed from:body"
      hx-target="#library-rows" hx-swap="innerHTML">
-<div class="flex justify-between items-baseline mb-3">
+<div class="flex justify-between items-baseline mb-3 gap-3">
     {# data-total-done carries the full terminal-album count (not just this
        page) so the Library tab badge can show the real total — the grid is
        paginated, so counting rendered rows would under-report. #}
     <h2 id="library-total" data-total-done="{{ total_done }}" data-page="{{ page }}"
+        data-limit="{{ limit }}"
         class="text-sm font-semibold text-muted uppercase tracking-widest">Library
         <span class="ml-1 font-normal normal-case tracking-normal">· {{ total_done }} done</span>
     </h2>
-    <button hx-get="/library?page={{ page }}"
-            hx-target="#library-rows" hx-swap="innerHTML"
-            class="text-xs text-muted hover:text-accent transition uppercase tracking-widest font-bold">
-        Refresh
-    </button>
+    <div class="flex items-baseline gap-4">
+        {% if rows %}
+        {# Page size (#144). A real <form> so it works without JS — submitting to
+           the index URL is exactly what the hx-get does, one tab-panel wider. The
+           hx-get lives on the FORM, not the <select>, so HTMX serialises the
+           hidden inputs alongside the chosen size; `change` bubbles up from the
+           select, so no click handler is needed (and none is allowed here — an
+           onclick beside hx-* is what `make template-lint` fails on).
+
+           `submit` is in the trigger list on purpose. A form's DEFAULT hx-trigger
+           is `submit`, and naming `change` REPLACES that default rather than
+           adding to it — so with `change` alone any submit event reaching this
+           form escapes HTMX and the browser navigates to `action` instead. Same
+           albums, but a full page load, and the address bar left reading
+           `?anchor=3&limit=40`: the transient hint stranded where the resolved
+           `?page=` belongs, ready to be bookmarked. Committing the select with the
+           keyboard is enough to do it.
+
+           `anchor` is the first row on screen. The server resolves it against the
+           NEW size and corrects the address bar with an HX-Push-Url header, so
+           picking a bigger page keeps the album you were looking at in view
+           instead of throwing you back to page 1. #}
+        <form method="get" action="/" hx-get="/library" hx-trigger="change, submit"
+              hx-target="#library-rows" hx-swap="innerHTML"
+              class="flex items-baseline gap-1.5">
+            <input type="hidden" name="tab" value="library">
+            <input type="hidden" name="anchor" value="{{ first_row }}">
+            <label for="library-limit"
+                   class="text-xs text-muted uppercase tracking-widest font-bold">Show</label>
+            <select id="library-limit" name="limit"
+                    class="bg-white border border-line rounded px-1.5 py-0.5 text-xs text-ink focus:border-accent outline-none">
+                {# An off-menu size — hand-typed, or remembered from a build that
+                   offered different ones — is shown rather than silently swapped
+                   for a neighbour, so the control never misreports the page. #}
+                {% if limit not in page_sizes %}<option selected>{{ limit }}</option>{% endif %}
+                {% for size in page_sizes %}
+                <option value="{{ size }}" {{ 'selected' if size == limit }}>{{ size }}</option>
+                {% endfor %}
+            </select>
+            <span class="text-xs text-muted">per page</span>
+            {# Without JS the change event can't submit anything; give that reader
+               a button. HTMX users never see it. #}
+            <noscript><button type="submit"
+                    class="text-xs font-bold text-accent">Apply</button></noscript>
+        </form>
+        {% endif %}
+        <button hx-get="/library?page={{ page }}&limit={{ limit }}"
+                hx-target="#library-rows" hx-swap="innerHTML"
+                class="text-xs text-muted hover:text-accent transition uppercase tracking-widest font-bold">
+            Refresh
+        </button>
+    </div>
 </div>
 
 {% if not rows %}
@@ -51,10 +99,10 @@
 <nav class="mt-5 flex items-center justify-between gap-4" aria-label="Library pages">
     {% set nav_class = "px-3 py-1.5 rounded border border-line text-sm font-bold transition" %}
     {% if prev_page %}
-    <a href="/?tab=library&page={{ prev_page }}"
-       hx-get="/library?page={{ prev_page }}"
+    <a href="/?tab=library&page={{ prev_page }}&limit={{ limit }}"
+       hx-get="/library?page={{ prev_page }}&limit={{ limit }}"
        hx-target="#library-rows" hx-swap="innerHTML"
-       hx-push-url="/?tab=library&page={{ prev_page }}"
+       hx-push-url="/?tab=library&page={{ prev_page }}&limit={{ limit }}"
        class="{{ nav_class }} bg-surface hover:bg-line text-ink">← Previous</a>
     {% else %}
     <span class="{{ nav_class }} text-muted opacity-40 cursor-default select-none"
@@ -68,10 +116,10 @@
     </span>
 
     {% if next_page %}
-    <a href="/?tab=library&page={{ next_page }}"
-       hx-get="/library?page={{ next_page }}"
+    <a href="/?tab=library&page={{ next_page }}&limit={{ limit }}"
+       hx-get="/library?page={{ next_page }}&limit={{ limit }}"
        hx-target="#library-rows" hx-swap="innerHTML"
-       hx-push-url="/?tab=library&page={{ next_page }}"
+       hx-push-url="/?tab=library&page={{ next_page }}&limit={{ limit }}"
        class="{{ nav_class }} bg-surface hover:bg-line text-ink">Next →</a>
     {% else %}
     <span class="{{ nav_class }} text-muted opacity-40 cursor-default select-none"

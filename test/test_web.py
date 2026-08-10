@@ -2054,12 +2054,14 @@ def test_library_page_two_holds_the_next_slice(client, cfg):
 def test_library_pager_links_carry_prev_and_next(client, cfg):
     _make_library(cfg, 5)
     body = client.get("/library?page=2&limit=2").text
-    assert 'hx-get="/library?page=1"' in body
-    assert 'hx-get="/library?page=3"' in body
+    assert 'hx-get="/library?page=1&limit=2"' in body
+    assert 'hx-get="/library?page=3&limit=2"' in body
     # The pushed URL and the href agree, so the address bar names what's on
-    # screen and a middle-click opens the same page.
-    assert 'href="/?tab=library&page=3"' in body
-    assert 'hx-push-url="/?tab=library&page=3"' in body
+    # screen and a middle-click opens the same page. Both carry the page SIZE as
+    # well as the number (#144) — without it the same link resolves to different
+    # albums once the reader picks a different size.
+    assert 'href="/?tab=library&page=3&limit=2"' in body
+    assert 'hx-push-url="/?tab=library&page=3&limit=2"' in body
     assert "3–4 of 5" in body  # row range readout
     assert "page 2 of 3" in body
 
@@ -2067,11 +2069,11 @@ def test_library_pager_links_carry_prev_and_next(client, cfg):
 def test_library_pager_has_no_link_past_either_end(client, cfg):
     _make_library(cfg, 5)
     first = client.get("/library?page=1&limit=2").text
-    assert 'hx-get="/library?page=0"' not in first
+    assert 'hx-get="/library?page=0' not in first
     assert 'aria-disabled="true"' in first  # Previous is inert, not a link
 
     last = client.get("/library?page=3&limit=2").text
-    assert 'hx-get="/library?page=4"' not in last
+    assert 'hx-get="/library?page=4' not in last
     assert 'aria-disabled="true"' in last
 
 
@@ -2098,6 +2100,122 @@ def test_library_page_below_one_clamps_up(client, cfg):
     r = client.get("/library?page=-3&limit=2")
     assert 'data-page="1"' in r.text
     assert "Album0" in r.text
+
+
+def test_library_page_size_control_offers_the_sizes_and_marks_the_current_one(client, cfg):
+    _make_library(cfg, 3)
+    body = client.get("/library?limit=40").text
+    for size in (20, 40, 60):
+        assert f'<option value="{size}"' in body
+    assert '<option value="40" selected>' in body
+    assert '<option value="20" selected>' not in body
+    # A real form, so it still works with JS off; and the size control must not
+    # carry an onclick beside its hx-* (template-lint's rule, #40).
+    assert 'method="get" action="/"' in body
+    assert "onclick" not in body
+    # `submit` must stay in the trigger list beside `change`. Naming `change`
+    # alone REPLACES a form's default `submit` trigger, and every submit event
+    # then escapes HTMX into a full page navigation. The browser half of this is
+    # in test/e2e/test_library_page_size.py, which most runs skip — this is the
+    # cheap guard against the attribute being tidied by someone who never sees it.
+    assert 'hx-trigger="change, submit"' in body
+
+
+def test_library_page_size_control_is_absent_when_there_is_nothing_to_size(client, cfg):
+    """An empty Library gets the empty state, not an offer to show 40 of them."""
+    body = client.get("/library").text
+    assert "No fully-tagged albums yet." in body
+    assert 'id="library-limit"' not in body
+
+
+def test_library_page_size_control_shows_an_off_menu_size_rather_than_lying(client, cfg):
+    """A hand-typed `?limit=7` is honoured, so the control has to be able to say
+    so. Snapping the <select> to a neighbouring option would make it report a page
+    size that isn't the one on screen."""
+    _make_library(cfg, 3)
+    body = client.get("/library?limit=7").text
+    assert "<option selected>7</option>" in body
+    assert '<option value="20" selected>' not in body
+
+
+def test_library_default_page_size_is_twenty(client, cfg):
+    _make_library(cfg, 25)
+    r = client.get("/library")
+    assert r.text.count('id="lib-') == 20
+    assert "1–20 of 25" in r.text
+
+
+def test_library_remembers_a_chosen_page_size_for_the_next_bare_visit(client, cfg):
+    """The size the reader picked has to survive the trip to an album page and
+    back, and the URL there carries only `?page=`. The cookie is what makes a
+    later bare request render their size in the FIRST paint, rather than painting
+    the default and correcting it (#144)."""
+    _make_library(cfg, 25)
+    chosen = client.get("/library?limit=40")
+    assert chosen.cookies["harmonist-library-limit"] == "40"
+
+    # TestClient carries the cookie forward, exactly as a browser would.
+    assert client.get("/library").text.count('id="lib-') == 25
+
+
+def test_library_does_not_remember_a_size_the_reader_never_chose(client, cfg):
+    """Only an explicit `?limit=` is a choice. Writing the cookie on every render
+    would pin readers to a default they never picked."""
+    _make_library(cfg, 3)
+    assert "harmonist-library-limit" not in client.get("/library").cookies
+
+
+def test_library_survives_an_unreadable_remembered_size(client, cfg):
+    """The cookie outlives the code that wrote it and anyone can edit it. A bad
+    value must degrade to the default page, never to a 500."""
+    _make_library(cfg, 25)
+    client.cookies.set("harmonist-library-limit", "not-a-number")
+    r = client.get("/library")
+    assert r.status_code == 200
+    assert r.text.count('id="lib-') == 20
+
+
+def test_library_page_size_change_keeps_the_album_you_were_looking_at_on_screen(client, cfg):
+    """Carrying the page NUMBER across a size change teleports the reader: page 3
+    is rows 41–60 at 20 per page and rows 81–120 at 40. The anchor resolves against
+    the new size instead, so the row at the top of the screen stays on screen."""
+    _make_library(cfg, 100)
+    # Reader is on page 3 of 20 — rows 41–60, i.e. Album40 at the top.
+    assert "41–60 of 100" in client.get("/library?page=3&limit=20").text
+    # Switching to 40 per page must land on the page holding row 41, not page 3.
+    r = client.get("/library?limit=40&anchor=41")
+    assert 'data-page="2"' in r.text
+    assert "41–80 of 100" in r.text
+    assert "Album40" in r.text
+    # Only the server knows where the anchor landed, so it corrects the address
+    # bar itself rather than leaving a guessed hx-push-url on the control.
+    assert r.headers["HX-Push-Url"] == "/?tab=library&page=2&limit=40"
+
+
+def test_library_refresh_does_not_push_a_history_entry(client, cfg):
+    """The grid re-requests itself on every `tasks-changed`. Pushing a URL per
+    background refresh would bury the Back button under identical entries — so the
+    header is confined to the anchor case."""
+    _make_library(cfg, 25)
+    assert "HX-Push-Url" not in client.get("/library?page=2&limit=20").headers
+
+
+def test_library_page_size_rides_in_the_index_url(client, cfg):
+    """`?limit=` belongs to the same addressable view as `?tab=` and `?page=`, so
+    a shared link resolves to exactly the albums the sender was looking at."""
+    _make_library(cfg, 100)
+    body = client.get("/?tab=library&page=2&limit=40").text
+    assert body.count('id="lib-') == 40
+    assert "41–80 of 100" in body
+
+
+def test_library_page_size_is_bounded(client, cfg):
+    """An unbounded `?limit=` would put a whole library through the template on
+    one request."""
+    _make_library(cfg, 3)
+    r = client.get("/library?limit=100000")
+    assert r.status_code == 200
+    assert 'data-limit="200"' in r.text
 
 
 def test_library_empty_still_renders_its_header(client, cfg):
@@ -2659,9 +2777,10 @@ def test_library_pager_links_do_not_inherit_a_competing_page_value(client, cfg):
 
     fragment = client.get("/library?page=2&limit=2").text
     assert "hx-vals" not in fragment
-    # Each render re-requests the page it is showing, so a refresh mid-browse
-    # (every `tasks-changed`) can't yank the user back to the newest 30.
-    assert 'hx-get="/library?page=2"' in fragment
+    # Each render re-requests the page it is showing, at the size it is showing,
+    # so a refresh mid-browse (every `tasks-changed`) can't yank the user back to
+    # the newest page or resize the one they're on.
+    assert 'hx-get="/library?page=2&limit=2"' in fragment
     assert "tasks-changed from:body" in fragment
 
 

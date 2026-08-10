@@ -8,6 +8,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Library: a "Show N per page" control offering 20, 40 or 60 albums, remembered
+  between visits. The size rides in the URL beside the page number, and changing
+  it keeps the album at the top of the screen in view rather than returning you
+  to page 1. The default page is now 20 albums, down from 30 (#144).
+
 - The Library is now paged, with Previous/Next and a "31–60 of 412" readout in
   place of the Load-more button. The page you're on is part of the address, so
   opening an album and coming back returns you to it — as do the browser's Back

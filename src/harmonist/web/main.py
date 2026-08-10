@@ -101,11 +101,28 @@ AUDIT_DETAIL_LIMIT = 20
 # Terminal states — hidden from the inbox, shown in the library.
 _TERMINAL_STATES = {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
 
-# Albums per page of the Library grid. Fixed rather than user-configurable: the
-# page number is the unit the pager and every saved `?page=N` link count in, so a
-# size that changed underneath them would make the same link resolve to different
-# albums.
-_LIBRARY_PAGE_SIZE = 30
+# Albums per page of the Library grid, and the sizes the pager's control offers
+# (#144). Each offered size divides evenly by 4 and 5 — the lg/xl column counts
+# of the grid — so a full page never ends in a ragged part-row.
+#
+# This used to be one fixed number, on the grounds that a size changing underneath
+# the reader would make the same `?page=N` link resolve to different albums. That
+# holds only while the size is invisible to the URL: `?page=2&limit=40` names one
+# set of albums for good. So the size is addressable state alongside the page, and
+# the cookie below is only ever consulted for a URL that omits it.
+_LIBRARY_PAGE_SIZES = (20, 40, 60)
+_LIBRARY_PAGE_SIZE = _LIBRARY_PAGE_SIZES[0]
+# Largest page the grid will render, whatever a URL asks for. Off-menu sizes are
+# honoured (a hand-typed `?limit=7` is harmless, and the pager copes), but an
+# unbounded one would put the whole library through a template on one request.
+_LIBRARY_LIMIT_MAX = 200
+# Remembers the reader's chosen page size so a bare visit to `/` renders it in the
+# first paint. A cookie rather than localStorage precisely because the server has
+# to know: the Library grid is server-rendered inline (#139), so a size the client
+# held would mean rendering the default and then replacing it — a visible reflow
+# and a second request on every load.
+_LIBRARY_LIMIT_COOKIE = "harmonist-library-limit"
+_LIBRARY_LIMIT_COOKIE_MAX_AGE = 365 * 24 * 60 * 60
 
 # Tabs on the index page. `?tab=` is validated against this before it reaches the
 # template — the value is interpolated into a `panel-<name>` lookup in the tab
@@ -798,7 +815,52 @@ def _templates(request: Request) -> Jinja2Templates:
     return templates
 
 
-def _library_page_vars(albums: list[Album], page: int, limit: int) -> dict[str, Any]:
+def _library_limit(request: Request, limit: int | None) -> int:
+    """The page size for this render: the URL's `?limit=` when it names one, else
+    the size the reader last chose, else the default (#144).
+
+    The cookie is untrusted input like any other header, and it outlives the code
+    that wrote it — a value from an older build, or one hand-edited — so it is
+    parsed defensively and anything unreadable falls through to the default. A
+    bad cookie must degrade to a normal-looking Library, never to a 500.
+    """
+    if limit is not None:
+        return max(1, min(limit, _LIBRARY_LIMIT_MAX))
+    remembered = request.cookies.get(_LIBRARY_LIMIT_COOKIE)
+    if remembered:
+        try:
+            return max(1, min(int(remembered), _LIBRARY_LIMIT_MAX))
+        except ValueError:
+            pass
+    return _LIBRARY_PAGE_SIZE
+
+
+def _remember_library_limit(response: Response, limit: int | None) -> None:
+    """Persist a page size the URL explicitly named, so the reader's choice
+    survives the next visit.
+
+    Only an explicit `?limit=` is remembered. Writing the cookie on every render
+    would echo the default back at readers who never chose it, and would then keep
+    re-asserting it — a preference nobody set, that nothing but clearing cookies
+    could shift.
+    """
+    if limit is None:
+        return
+    response.set_cookie(
+        _LIBRARY_LIMIT_COOKIE,
+        str(max(1, min(limit, _LIBRARY_LIMIT_MAX))),
+        max_age=_LIBRARY_LIMIT_COOKIE_MAX_AGE,
+        httponly=True,  # read server-side only; no script needs it
+        samesite="lax",
+        # Deliberately NOT `secure`: Harmonist is commonly reached over plain HTTP
+        # on a LAN (http://nas.local:8080). A Secure cookie there is silently never
+        # stored, so the preference would appear to save and never stick.
+    )
+
+
+def _library_page_vars(
+    albums: list[Album], page: int, limit: int, anchor: int | None = None
+) -> dict[str, Any]:
     """Everything `partials/library_page.html` needs to render one page of the
     Library grid (#139).
 
@@ -814,8 +876,16 @@ def _library_page_vars(albums: list[Album], page: int, limit: int) -> dict[str, 
         key=lambda a: a.sidecar.tagged_at if a.sidecar and a.sidecar.tagged_at else _floor,
         reverse=True,
     )
-    limit = max(1, min(limit, 200))  # clamp; defensive
+    limit = max(1, min(limit, _LIBRARY_LIMIT_MAX))  # clamp; defensive
     total_pages = max(1, -(-len(done) // limit))  # ceil; always at least one page
+    # `anchor` is the 1-based position of the first album on screen at the moment
+    # the reader changed the page size (#144), and it wins over `page`. Carrying
+    # the page NUMBER across a size change teleports them — "page 3" is rows 41–60
+    # at 20 per page and rows 81–120 at 40 — whereas resolving the anchor against
+    # the new size leaves the album they were looking at on screen. Like `page`,
+    # it's a hint and not identity: clamped, never trusted to be in range.
+    if anchor is not None:
+        page = (max(1, anchor) - 1) // limit + 1
     # Clamp rather than serve an empty grid. A page number outlives the albums that
     # filled it — bookmarked, restored by Back, or just held while a sync removed a
     # few — and a saved link resolving to a blank screen reads as "my library is
@@ -830,6 +900,11 @@ def _library_page_vars(albums: list[Album], page: int, limit: int) -> dict[str, 
         "prev_page": page - 1 if page > 1 else None,
         "next_page": page + 1 if page < total_pages else None,
         "limit": limit,
+        # The sizes the control offers. An off-menu `limit` (hand-typed, or held
+        # from an older build) is rendered as an extra option by the template
+        # rather than being silently corrected, so the control always shows the
+        # truth about what's on screen.
+        "page_sizes": _LIBRARY_PAGE_SIZES,
         "total_done": len(done),
         # 1-based inclusive range of this page within the whole list, for the
         # "31–60 of 412" readout — a bare page number says nothing about scale.
@@ -1945,7 +2020,12 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/", response_class=HTMLResponse)
     def index(
-        request: Request, album: str | None = None, tab: str | None = None, page: int = 1
+        request: Request,
+        album: str | None = None,
+        tab: str | None = None,
+        page: int = 1,
+        limit: int | None = None,
+        anchor: int | None = None,
     ) -> Response:
         albums = _albums(request)
         # `?album=<id>` was the deep link before there was an album page (#65).
@@ -1976,12 +2056,14 @@ def _register_routes(app: FastAPI) -> None:
             # carries them. Unrecognised tab → None, and the script falls back to
             # the remembered one, so a mangled link still lands somewhere sane.
             initial_tab=tab if tab in _INDEX_TABS else None,
-            # The Library grid renders inline, so `?page=` is honoured by the HTML
-            # itself rather than by a follow-up fetch that would have to be told
-            # which page it's on.
-            **_library_page_vars(albums, page, _LIBRARY_PAGE_SIZE),
+            # The Library grid renders inline, so `?page=` / `?limit=` are honoured
+            # by the HTML itself rather than by a follow-up fetch that would have
+            # to be told which page it's on.
+            **_library_page_vars(albums, page, _library_limit(request, limit), anchor),
         )
-        return _templates(request).TemplateResponse(request, "index.html", ctx)
+        response = _templates(request).TemplateResponse(request, "index.html", ctx)
+        _remember_library_limit(response, limit)
+        return response
 
     @app.get("/tasks", response_class=HTMLResponse)
     def tasks(request: Request) -> Response:
@@ -2439,17 +2521,38 @@ def _register_routes(app: FastAPI) -> None:
         return HTMLResponse("", headers={"HX-Refresh": "true"})
 
     @app.get("/library", response_class=HTMLResponse)
-    def library(request: Request, page: int = 1, limit: int = _LIBRARY_PAGE_SIZE) -> Response:
+    def library(
+        request: Request, page: int = 1, limit: int | None = None, anchor: int | None = None
+    ) -> Response:
         """One page of terminal albums (Complete + Incomplete), newest tagged first.
 
         Paged rather than accumulated (#139). The position is a *parameter*, not
         DOM built up by clicking Load more, which is what lets the pager push it
         onto the browser's history and the album page's Back link carry it — so a
         Library → album → Library round-trip lands where it started instead of
-        snapping back to the newest 30.
+        snapping back to the newest page.
+
+        `?limit=` is the page size and belongs to the same addressable view (#144);
+        `?anchor=` is how the size control asks to keep the album at the top of the
+        screen on screen across a size change.
         """
-        ctx = _ctx(request, **_library_page_vars(_albums(request), page, limit))
-        return _templates(request).TemplateResponse(request, "partials/library_page.html", ctx)
+        vars_ = _library_page_vars(_albums(request), page, _library_limit(request, limit), anchor)
+        response = _templates(request).TemplateResponse(
+            request, "partials/library_page.html", _ctx(request, **vars_)
+        )
+        _remember_library_limit(response, limit)
+        if anchor is not None:
+            # Only the server knows which page the anchor resolved to, so the
+            # address bar is corrected from here rather than by an hx-push-url the
+            # control would have to guess before the answer existed.
+            #
+            # Confined to the anchor case deliberately: this grid re-requests
+            # itself on every `tasks-changed`, and a push per background refresh
+            # would bury the Back button under a stack of identical entries.
+            response.headers["HX-Push-Url"] = (
+                f"/?tab=library&page={vars_['page']}&limit={vars_['limit']}"
+            )
+        return response
 
     @app.get("/album/{album_id}", response_class=HTMLResponse)
     def album_page(request: Request, album_id: str, from_page: int = 1) -> Response:
