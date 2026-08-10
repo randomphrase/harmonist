@@ -1,0 +1,117 @@
+{# The album's tracks against its MusicBrainz release, field by field (#135).
+
+   The table's columns are `compare.TRACK_COLUMNS` and each row's cells are
+   `ComparedTrack.fields` in the same order — so the headings live here and the
+   values come from the model, rather than both being written out twice.
+
+   Two lines per track, not two columns: a track that agrees is one plain line,
+   and a track that differs gains a second beneath it in mb-purple carrying only
+   the cells that actually differ. Both values keep the same left edge and the
+   same column, so a difference is a vertical scan rather than a comparison.
+   Same register as the album panel above — most of these are formatting
+   differences, not errors, and nothing is coloured as a mistake. #}
+
+{# The hexagon note, matching the album section's. Missing, unreadable and extra
+   tracks get their own clause in the summary: they are different problems with
+   different remedies, and folding them into "N tracks differ" would bury the
+   one the user most needs to see. #}
+<div class="mb-note">
+    <span class="mb-note__key">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
+            <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
+        </svg>
+    </span>
+    <span class="mb-note__legend">{{ tracklist.summary }}</span>
+</div>
+
+<div class="overflow-x-auto">
+    <table class="track-diff">
+        <thead>
+            <tr>
+                {# The number and length columns are named so they can be aligned
+                   by class. Not by position: the state notes below span the
+                   value columns and would otherwise be caught by a
+                   `:last-child` rule and flung to the right margin. #}
+                {% for heading in track_columns %}
+                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">{{ heading }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        {# One <tbody> per track, so the rule between tracks sits between the
+           PAIRS of rows. A border on <tr> would draw one through the middle of
+           every stacked pair, splitting the two halves of one difference. #}
+        {% for t in tracklist.tracks %}
+        <tbody class="track-diff__track">
+            {% if t.state == 'present' or t.state == 'extra' %}
+            <tr>
+                {% for f in t.fields %}
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">
+                    {%- if f.disk -%}
+                    {%- with runs = f.disk_runs, value = f.disk %}{% include 'partials/_diff_runs.html' %}{% endwith -%}
+                    {%- endif -%}
+                </td>
+                {% endfor %}
+            </tr>
+
+            {% elif t.state == 'unreadable' %}
+            {# #112's third state. NOT "missing" and emphatically not "untagged":
+               the file is there, so the user's tags may be perfectly intact and
+               Harmonist simply couldn't look. Naming the file is the point —
+               "which one?" is the immediate next question. #}
+            <tr>
+                <td class="track-diff__num"></td>
+                <td colspan="{{ track_columns|length - 1 }}" class="track-diff__unreadable">
+                    Couldn't read {{ t.file_name }}
+                </td>
+            </tr>
+
+            {% else %}
+            {# Missing: MusicBrainz lists the track and no file carries it. Stated
+               plainly and in a muted voice — an album can be legitimately
+               incomplete, and the MusicBrainz line below says what's absent. #}
+            <tr>
+                <td class="track-diff__num"></td>
+                <td colspan="{{ track_columns|length - 1 }}" class="track-diff__absent">
+                    Not on disk
+                </td>
+            </tr>
+            {% endif %}
+
+            {% if t.state == 'extra' %}
+            {# A file MusicBrainz has never heard of. Often perfectly legitimate
+               — a bonus track, a hidden track — so it is stated, not warned
+               about. Deliberately NOT a `track-diff__mb` row: nothing here came
+               from MusicBrainz, and the purple would say it did. #}
+            <tr>
+                <td class="track-diff__num"></td>
+                <td colspan="{{ track_columns|length - 1 }}" class="track-diff__absent">
+                    Not in MusicBrainz
+                </td>
+            </tr>
+
+            {% elif t.shows_mb %}
+            {# The MusicBrainz line. Only the cells that differ carry anything;
+               the rest stay blank so the eye lands on the difference instead of
+               re-reading values it already agreed with. One hexagon for the
+               whole row rather than one per cell — the mark is what carries the
+               meaning for anyone who can't distinguish the purple, and repeating
+               it four times across a table of them is noise. #}
+            <tr class="track-diff__mb">
+                {% for f in t.fields %}
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">
+                    {%- if loop.first -%}
+                    <span class="mb-mark" role="img" aria-label="MusicBrainz" title="MusicBrainz's values for this track"><svg
+                        viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"
+                        ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span>
+                    {%- endif -%}
+                    {%- if f.agreement in ('differs', 'only_mb', 'unreadable') and f.mb -%}
+                    {%- with runs = f.mb_runs, value = f.mb %}{% include 'partials/_diff_runs.html' %}{% endwith -%}
+                    {%- endif -%}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endif %}
+        </tbody>
+        {% endfor %}
+    </table>
+</div>

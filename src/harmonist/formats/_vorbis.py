@@ -95,6 +95,23 @@ _MANAGED_KEYS = (
 )
 
 
+def _first_int(value: str | None) -> int | None:
+    """The leading integer of a "5" / "5/12" Vorbis comment, or None.
+
+    None for anything that isn't a number, rather than an exception: vinyl rips
+    routinely carry TRACKNUMBER="A1", and a whole album page is not allowed to
+    500 because one file is numbered by side. "No usable number" is the honest
+    reading of "A1" here — the tracklist comparison then falls back to file
+    order for that track (#135). Mirrors `mp3._first_int`.
+    """
+    if not value:
+        return None
+    try:
+        return int(value.split("/")[0])
+    except ValueError:
+        return None
+
+
 def _has_embedded_cover(audio: Any) -> bool:
     """True if the file carries cover art — FLAC native pictures or the
     Ogg/Opus base64 METADATA_BLOCK_PICTURE comment."""
@@ -205,6 +222,7 @@ class VorbisTagger:
             return (str(values[0]) or None) if values else None
 
         track_num = first(KEY_TRACK_NUMBER)
+        disc_num = first(KEY_DISC_NUMBER)
         return TrackTags(
             album=first(KEY_ALBUM),
             album_artist=first(KEY_ALBUM_ARTIST),
@@ -216,7 +234,8 @@ class VorbisTagger:
             genre=first(KEY_GENRE),
             title=first(KEY_TITLE),
             artist=first(KEY_ARTIST),
-            track_num=int(track_num.split("/")[0]) if track_num else None,
+            track_num=_first_int(track_num),
+            disc_num=_first_int(disc_num),
             duration_ms=duration,
             comment=first(KEY_COMMENT),
         )

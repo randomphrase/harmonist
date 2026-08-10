@@ -6,6 +6,17 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- The album page's tracklist now compares every track against MusicBrainz —
+  title, artist, number and length — and says which tracks are missing from
+  disk, unreadable, or not in MusicBrainz at all (#135).
+
+### Fixed
+
+- A track numbered by vinyl side (`A1`, `B2`) no longer breaks the album page
+  on FLAC, Ogg and Opus files (#137).
+
 ## [1.5.0] - 2026-08-09
 
 ### Added

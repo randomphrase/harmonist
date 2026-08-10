@@ -170,6 +170,7 @@ def read_tags(path: Path) -> TrackTags:
     if audio is None:
         return TrackTags(unreadable=True)
     trkn = audio.get(ATOM_TRACK_NUM) or []
+    disk = audio.get(ATOM_DISC_NUM) or []
     return TrackTags(
         album=_text_atom(audio, ATOM_ALBUM),
         album_artist=_text_atom(audio, ATOM_ALBUM_ARTIST),
@@ -183,6 +184,7 @@ def read_tags(path: Path) -> TrackTags:
         title=_text_atom(audio, ATOM_TITLE),
         artist=_text_atom(audio, ATOM_ARTIST),
         track_num=trkn[0][0] if trkn and trkn[0] else None,
+        disc_num=disk[0][0] if disk and disk[0] else None,
         duration_ms=int(audio.info.length * 1000) if audio.info else None,
         comment=_text_atom(audio, ATOM_COMMENT),
     )

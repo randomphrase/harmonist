@@ -3809,8 +3809,8 @@ def test_library_new_ribbon_is_time_based(client, cfg):
     assert r.text.count(">New</span>") == 1  # only the fresh download
 
 
-def test_library_compare_renders_side_by_side(client, cfg, monkeypatch):
-    """The on-demand 'verify tagging' view fetches MB + shows a disk-vs-MB table."""
+def test_library_compare_renders_the_tracklist(client, cfg, monkeypatch):
+    """The on-demand comparison fetches MB and renders the per-track table."""
     d = _make_tagged_album(cfg, "Verifyme", mbid="rel-verify", tagged_at=datetime.now(UTC))
 
     def fake_release(mbid):
@@ -3828,8 +3828,8 @@ def test_library_compare_renders_side_by_side(client, cfg, monkeypatch):
     monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
     r = client.get(f"/library/{_id_for(cfg, d)}/compare")
     assert r.status_code == 200
-    assert "On disk vs MusicBrainz" in r.text
-    assert "Track 1" in r.text
+    assert "track-diff" in r.text
+    assert "Track 1" in r.text  # MusicBrainz's title for the one track
 
 
 # ---------- the per-field tag comparison on the album page (#106) ----------
@@ -3933,8 +3933,8 @@ def test_the_comparison_is_absent_from_the_library_modal(client, cfg, monkeypatc
 
 def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     """When on-disk track titles differ from MB (e.g. a featured-artist tidy-up
-    on MB after tagging), the verify view must not claim 'exact match' — it
-    reports the metadata difference even though lengths line up (issue #29)."""
+    on MB after tagging), the tracklist reports the metadata difference even
+    though the lengths line up perfectly (issue #29)."""
     d = _make_tagged_album(cfg, "Mismatch", mbid="rel-mm", tagged_at=datetime.now(UTC))
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_TITLE] = ["Ground Glass [w/ Foxes in Fiction]"]
@@ -3956,8 +3956,12 @@ def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
     r = client.get(f"/library/{_id_for(cfg, d)}/compare")
     assert r.status_code == 200
-    assert "title difference" in r.text
-    assert "exact match" not in r.text
+    # Both titles on the page: the file's, and MusicBrainz's beneath it. The
+    # file's arrives split across diff runs — the featured-artist suffix is
+    # marked in place — so the assertion is on the marked run itself.
+    assert '<em class="diff-run"> [w/ Foxes in Fiction]</em>' in r.text
+    assert "1 of 1 tracks differs from MusicBrainz" in r.text
+    assert "match MusicBrainz" not in r.text
 
 
 def test_album_page_loads_the_comparison_lazily(client, cfg):

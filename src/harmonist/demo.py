@@ -73,6 +73,8 @@ STEP_DELAY_SECONDS = 0.6
 #     has something to show (#106)
 #   file_tags_track_one: same, but track 1 only, so the tracks disagree with
 #     each other and the "2 of 3" consensus pill has a case
+#   file_track_tags: optional {track_number: {atom: value}} — per-track drift, so
+#     the tracklist comparison has real per-track differences to show (#135)
 #   sidecar: optional sidecar spec (None → NEW state, {} → empty sidecar)
 #
 # Sidecar spec keys mirror the Sidecar dataclass; `mb_match_candidate` if
@@ -215,6 +217,27 @@ LIBRARY: list[dict[str, Any]] = [
             "\xa9day": "2024",
         },
         "file_tags_track_one": {"\xa9day": "2024-01-01"},
+        # Per-track drift for the tracklist (#135). Both are differences a real
+        # Bandcamp download produces, and neither is a mistake:
+        #   track 1 — the file kept a featured credit in the title that
+        #             MusicBrainz keeps in the artist credit instead. One
+        #             contiguous run, marked in place.
+        #   track 2 — a pipe-joined credit against MusicBrainz's join phrase.
+        #             Invisible at a glance, which is exactly why the differing
+        #             characters are underlined.
+        # Track 3 is left alone, so most of the tracklist reads as it should:
+        # plain lines, no findings.
+        # Every track names its own artist, because the release does — a file
+        # left carrying the album artist would make all three rows differ, and
+        # "everything is wrong" is the reading this comparison exists to avoid.
+        "file_track_tags": {
+            1: {
+                "\xa9nam": "Main Title (The Rural Juror) [feat. Jenna Maroney]",
+                "\xa9ART": "Jenna Maroney",
+            },
+            2: {"\xa9ART": "Frank Rossitano | Toofer"},
+            3: {"\xa9ART": "Jenna Maroney"},
+        },
         "sidecar": {
             "store_url": "https://variousartists.bandcamp.com/album/the-rural-juror-ost",
             "bandcamp_item_id": 1003,
@@ -335,9 +358,19 @@ def _release(
     *,
     rg: str | None = None,
     disambiguation: str = "",
+    track_artists: list[str] | None = None,
 ) -> Release:
+    """One MusicBrainz release, as the demo's stubbed client returns it.
+
+    `track_artists` gives a track its own artist credit, the way a compilation
+    or an OST really does. Without it every track inherits the release credit,
+    and the tracklist comparison's per-track Artist column can only ever agree —
+    which makes the divergence that matters most (#106 names it) unreachable in
+    the very mode people meet the feature in.
+    """
     if lengths_ms is None:
         lengths_ms = [1000] * len(tracks)
+    credits = track_artists or [artist] * len(tracks)
     return {
         "id": mbid,
         "title": title,
@@ -365,14 +398,20 @@ def _release(
                         "id": f"demo-rt-{mbid}-{i}",
                         "position": str(i),
                         "title": title,
+                        "artist-credit": [
+                            {
+                                "artist": {"id": f"demo-art-{mbid}-{i}", "name": credit},
+                                "name": credit,
+                            },
+                        ],
                         "recording": {
                             "id": f"demo-rec-{mbid}-{i}",
                             "title": title,
                             "length": str(length),
                         },
                     }
-                    for i, (title, length) in enumerate(
-                        zip(tracks, lengths_ms, strict=True), start=1
+                    for i, (title, length, credit) in enumerate(
+                        zip(tracks, lengths_ms, credits, strict=True), start=1
                     )
                 ],
             }
@@ -420,11 +459,20 @@ MB_RELEASES: dict[str, Release] = {
         "Little Bit o' Hoot, Whole Lotta Nanny",
         ["Pavlov's Bell", "Hellmouth Lullaby", "Cordelia's Theme"],
     ),
+    # The drifted album. Real per-track credits, so the tracklist's Artist column
+    # has something to compare — on an OST they legitimately differ from the
+    # album artist, and getting that to read as normal rather than as a fault is
+    # the point of the comparison (#106).
     "demo-rel-rural-juror": _release(
         "demo-rel-rural-juror",
         "Various Artists",
         "The Rural Juror (OST)",
         ["Main Title (The Rural Juror)", "Urban Fervor", "Closing Credits (Urinal Gerber)"],
+        track_artists=[
+            "Jenna Maroney",
+            "Frank Rossitano & Toofer",
+            "Jenna Maroney",
+        ],
     ),
     "demo-rel-cb4": _release(
         "demo-rel-cb4",
@@ -932,6 +980,11 @@ def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
         if i == 1:
             for atom, value in (spec.get("file_tags_track_one") or {}).items():
                 audio[atom] = [value]
+        # Per-track drift, for the tracklist comparison (#135). Written last so
+        # it wins over the title/artist set from the spec above — the whole point
+        # is that the file says something the MusicBrainz release doesn't.
+        for atom, value in (spec.get("file_track_tags") or {}).get(i, {}).items():
+            audio[atom] = [value]
         audio.save()
 
     cover_asset = ASSETS_DIR / spec.get("cover", "cover-7.jpg")

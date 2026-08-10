@@ -125,6 +125,12 @@ class TrackTags:
     title: str | None = None
     artist: str | None = None
     track_num: int | None = None
+    #: Which medium the track belongs to. Load-bearing for the tracklist
+    #: comparison (#135), not decoration: files are lined up against
+    #: MusicBrainz by number, and on a 2-CD release track 4 exists twice.
+    #: Without the disc, the two collide and the comparison pairs the wrong
+    #: halves of the album against each other.
+    disc_num: int | None = None
     duration_ms: int | None = None
 
     #: Harmonist-owned. Carries the recovered Bandcamp URL, so MusicBrainz has

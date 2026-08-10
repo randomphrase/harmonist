@@ -174,6 +174,7 @@ def read_tags(path: Path) -> TrackTags:
         artist=_text(tags, "TPE1"),
         # TRCK is "5" or "5/12" — the total belongs to the album, not the track.
         track_num=_first_int(track_num),
+        disc_num=_first_int(_text(tags, "TPOS")),
         duration_ms=round(audio.info.length * 1000) if audio.info.length else None,
         comment=_comment_text(tags),
     )

@@ -11,10 +11,9 @@
    here. One request, two destinations. #}
 <section id="album-tracks" hx-swap-oob="true"
          class="border border-line rounded-lg p-4 space-y-3">
-    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
-        Tracks
-        <span class="text-muted font-normal normal-case tracking-normal ml-1">
-            · {{ album.track_count }}</span>
-    </h2>
-    {% include 'partials/_track_table.html' %}
+    {# No count beside the heading. It counted FILES, and the table has a row per
+       MusicBrainz track — so an incomplete album read "Tracks · 2" above four
+       rows. The note below states both numbers, and correctly. #}
+    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
+    {% include 'partials/_track_list.html' %}
 </section>

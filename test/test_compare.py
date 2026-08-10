@@ -13,15 +13,21 @@ from pathlib import Path
 
 from harmonist import formats
 from harmonist.compare import (
+    TRACK_COLUMNS,
     Agreement,
     AlbumComparison,
+    ComparedTrack,
     Consensus,
     Kind,
+    MBTrack,
+    TrackState,
     album_fields,
     compare_field,
     consensus,
     diff_runs,
+    tracklist,
 )
+from harmonist.formats.types import TagSet, TrackTags
 
 
 def _text(runs) -> str:
@@ -326,3 +332,235 @@ def test_summary_when_everything_matches():
     fields = (compare_field("Album", disk=consensus([("1.flac", "Obreel")]), mb="Obreel"),)
     assert AlbumComparison(fields=fields).summary == "All 1 fields match MusicBrainz"
     assert AlbumComparison().summary == "Nothing to compare against MusicBrainz"
+
+
+# ---------- the tracklist (#135) ----------
+
+
+def _mb_track(num: int, title: str, *, artist="Kavinsky", length=180_000, disc=1) -> MBTrack:
+    """One MusicBrainz track as the comparison sees it — what tagging would
+    write, plus the length, which is not a tag."""
+    return MBTrack(
+        tags=TagSet(
+            mb_album_id="rel-1",
+            album="OutRun",
+            album_artist="Kavinsky",
+            title=title,
+            artist=artist,
+            track_num=num,
+            track_total=4,
+            disc_num=disc,
+        ),
+        length_ms=length,
+    )
+
+
+def _file(num: int | None, title: str, *, artist="Kavinsky", length=180_000, disc=None):
+    """One file on disk, named after its number the way a tagger would."""
+    name = f"{num:02d} {title}.flac" if num is not None else f"{title}.flac"
+    return name, TrackTags(
+        title=title, artist=artist, track_num=num, disc_num=disc, duration_ms=length
+    )
+
+
+def _labels(track: ComparedTrack) -> list[str]:
+    return [f.label for f in track.fields]
+
+
+def test_every_row_carries_the_columns_in_order():
+    """The template renders one column per field, positionally, and takes its
+    headings from TRACK_COLUMNS — so a field reordered here without the headings
+    would silently put values under the wrong column."""
+    tl = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall")])
+    assert _labels(tl.tracks[0]) == list(TRACK_COLUMNS)
+
+
+def test_a_faithfully_tagged_album_shows_no_differences():
+    tl = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look")],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look")],
+    )
+    assert [t.state for t in tl.tracks] == [TrackState.PRESENT] * 2
+    assert tl.differing == ()
+    assert tl.summary == "All 2 tracks match MusicBrainz"
+
+
+def test_a_differing_title_is_the_only_thing_flagged():
+    """The row reports the title and nothing else — the register is 'here is
+    what differs', not 'this track is wrong'."""
+    tl = tracklist([_file(1, "Odd Look")], [_mb_track(1, "Odd Look (feat. Kaas)")])
+    (row,) = tl.tracks
+    assert row.state is TrackState.PRESENT
+    assert row.differs and row.shows_mb
+    flagged = {f.label: f for f in row.fields if f.differs}
+    assert list(flagged) == ["Title"]
+    assert flagged["Title"].mb == "Odd Look (feat. Kaas)"
+    assert tl.summary == "1 of 1 tracks differs from MusicBrainz"
+
+
+# ---------- pairing files to MusicBrainz tracks ----------
+
+
+def test_a_missing_track_does_not_shift_every_row_after_it():
+    """The reason pairing is by number rather than position. With files 1, 2 and
+    4 against a four-track release, positional pairing would compare file 4
+    against track 3 and report the last two tracks as differing — two false
+    findings from one absent file."""
+    tl = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look"), _file(4, "Blizzard")],
+        [
+            _mb_track(1, "Nightcall"),
+            _mb_track(2, "Odd Look"),
+            _mb_track(3, "Protovision"),
+            _mb_track(4, "Blizzard"),
+        ],
+    )
+    assert [t.state for t in tl.tracks] == [
+        TrackState.PRESENT,
+        TrackState.PRESENT,
+        TrackState.MISSING,
+        TrackState.PRESENT,
+    ]
+    # Exactly one finding: the track that genuinely isn't there.
+    assert len(tl.differing) == 1
+    assert tl.summary == "1 of 4 tracks differs from MusicBrainz · 1 not on disk"
+
+
+def test_a_missing_track_shows_what_musicbrainz_says_is_absent():
+    tl = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look")])
+    missing = tl.tracks[1]
+    assert missing.state is TrackState.MISSING
+    assert missing.file_name is None
+    assert missing.shows_mb  # ...so the row can say WHICH track is gone
+    assert {f.label: f.mb for f in missing.fields}["Title"] == "Odd Look"
+    assert all(f.disk is None for f in missing.fields)
+
+
+def test_files_with_no_track_numbers_fall_back_to_file_order():
+    """An album that was never numbered behaves exactly as positional pairing
+    always did — the heuristic degrades, it doesn't refuse."""
+    tl = tracklist(
+        [_file(None, "Nightcall"), _file(None, "Odd Look")],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look")],
+    )
+    assert [t.state for t in tl.tracks] == [TrackState.PRESENT] * 2
+    # The number itself is a real difference: MB has one, the file doesn't.
+    numbers = [f for t in tl.tracks for f in t.fields if f.label == "#"]
+    assert all(f.agreement is Agreement.ONLY_MB for f in numbers)
+
+
+def test_duplicate_track_numbers_are_not_trusted():
+    """Two files both claiming track 1 is an ambiguity, not an assignment. Both
+    fall back to file order rather than one of them winning the slot."""
+    tl = tracklist(
+        [_file(1, "Nightcall"), ("02 Odd Look.flac", TrackTags(title="Odd Look", track_num=1))],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look")],
+    )
+    assert [t.file_name for t in tl.tracks] == ["01 Nightcall.flac", "02 Odd Look.flac"]
+    assert [t.state for t in tl.tracks] == [TrackState.PRESENT] * 2
+
+
+def test_track_four_of_disc_two_is_not_track_four_of_disc_one():
+    """The disc is part of the key. Without it both discs' track 4 collide and
+    the comparison pairs the wrong halves of the album against each other."""
+    mb = [
+        _mb_track(1, "Nightcall", disc=1),
+        _mb_track(1, "Protovision", disc=2),
+    ]
+    tl = tracklist(
+        [_file(1, "Protovision", disc=2), _file(1, "Nightcall", disc=1)],
+        mb,
+    )
+    assert [t.file_name for t in tl.tracks] == ["01 Nightcall.flac", "01 Protovision.flac"]
+    assert tl.differing == ()
+    # ...and a multi-disc release numbers its rows "disc-track", because "1"
+    # alone doesn't identify a track on it.
+    assert [f.disk for f in tl.tracks[1].fields if f.label == "#"] == ["2-1"]
+
+
+def test_an_extra_file_is_stated_not_warned_about():
+    """A bonus track MusicBrainz doesn't carry. It gets a row of its own with no
+    MusicBrainz line to draw against it."""
+    tl = tracklist([_file(1, "Nightcall"), _file(2, "Untitled Bonus")], [_mb_track(1, "Nightcall")])
+    extra = tl.tracks[1]
+    assert extra.state is TrackState.EXTRA
+    assert extra.differs  # the user should see it
+    assert not extra.shows_mb  # ...but there is nothing to show it against
+    assert tl.summary == "1 of 2 tracks differs from MusicBrainz · 1 not in MusicBrainz"
+
+
+# ---------- lengths ----------
+
+
+def test_a_length_within_tolerance_is_not_a_difference():
+    """Same constant the matcher uses. A page that flagged a 2-second gap would
+    contradict the verdict Harmonist already acted on for this very release."""
+    tl = tracklist(
+        [_file(1, "Nightcall", length=182_000)], [_mb_track(1, "Nightcall", length=180_000)]
+    )
+    (length,) = [f for f in tl.tracks[0].fields if f.label == "Length"]
+    assert length.agreement is Agreement.MATCHES
+    assert length.disk == "3:02"  # the file's own length, which is the audio you have
+    assert not tl.differing
+
+
+def test_a_length_beyond_tolerance_is():
+    tl = tracklist(
+        [_file(1, "Nightcall", length=240_000)], [_mb_track(1, "Nightcall", length=180_000)]
+    )
+    (length,) = [f for f in tl.tracks[0].fields if f.label == "Length"]
+    assert length.agreement is Agreement.DIFFERS
+    assert (length.disk, length.mb) == ("4:00", "3:00")
+
+
+def test_a_length_musicbrainz_does_not_know_is_not_a_difference_either():
+    """MB carries no length for plenty of digital releases. Absent on their side
+    is ONLY_DISK — nothing of theirs to disagree with — not a finding."""
+    tl = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall", length=None)])
+    (length,) = [f for f in tl.tracks[0].fields if f.label == "Length"]
+    assert length.agreement is Agreement.ONLY_DISK
+    assert not tl.differing
+
+
+# ---------- unreadable files (#112, #126) ----------
+
+
+def test_an_unreadable_file_is_not_a_missing_one():
+    """Three distinct answers, three distinct remedies: the file is there and
+    won't open. Reporting it as untagged is #112; reporting it as absent would
+    send the user looking for a track they already have."""
+    tl = tracklist(
+        [("01 Nightcall.flac", TrackTags(unreadable=True))],
+        [_mb_track(1, "Nightcall")],
+    )
+    (row,) = tl.tracks
+    assert row.state is TrackState.UNREADABLE
+    assert row.file_name == "01 Nightcall.flac"  # "which one?" is the next question
+    assert all(f.agreement is Agreement.UNREADABLE for f in row.fields)
+    assert all(f.disk is None for f in row.fields)
+    assert row.shows_mb  # MB still says what the track should be
+    assert tl.summary == "1 of 1 tracks differs from MusicBrainz · 1 unreadable"
+
+
+def test_an_unreadable_file_takes_the_slot_left_free_by_the_numbered_ones():
+    """It carries no tags at all, so it can't be placed by number — but the
+    numbered files around it place themselves, and the gap they leave is where
+    it belongs."""
+    tl = tracklist(
+        [
+            _file(1, "Nightcall"),
+            ("02 Odd Look.flac", TrackTags(unreadable=True)),
+            _file(3, "Protovision"),
+        ],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look"), _mb_track(3, "Protovision")],
+    )
+    assert [t.state for t in tl.tracks] == [
+        TrackState.PRESENT,
+        TrackState.UNREADABLE,
+        TrackState.PRESENT,
+    ]
+    assert tl.tracks[1].file_name == "02 Odd Look.flac"
+
+
+def test_an_album_with_no_release_to_compare_against_says_so():
+    assert tracklist([], []).summary == "Nothing to compare against MusicBrainz"

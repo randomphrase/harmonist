@@ -170,6 +170,7 @@ def test_read_tags_recovers_what_the_tagger_wrote(tmp_path, ext, fixture):
     assert t.catalog_number == "CAT-9"
     assert t.barcode == "5051234567890"
     assert t.track_num == 1
+    assert t.disc_num == 1
     assert t.duration_ms is not None and 900 <= t.duration_ms <= 1200
 
 
@@ -196,6 +197,52 @@ def test_read_tags_flags_a_file_it_cannot_open(tmp_path, ext, fixture):
     t = formats.read_tags(f)
     assert t.unreadable is True
     assert t.album is None  # …and still looks empty, which is the trap
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_a_track_numbered_by_vinyl_side_reads_as_no_number(tmp_path, ext, fixture):
+    """#137: `TRACKNUMBER=A1` used to raise ValueError out of `read_tags`, which
+    took the whole album page down with it — on exactly the hand-numbered vinyl
+    rips an adopted library is full of.
+
+    None is the honest answer: the file carries no number Harmonist can use, so
+    the tracklist falls back to file order for it (#135). Every format has to
+    agree on that, which is why this is parametrised rather than a Vorbis test.
+    """
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+    _set_raw_track_number(f, "A1")
+
+    t = formats.read_tags(f)
+    assert t.unreadable is False  # the file is perfectly fine
+    assert t.track_num is None
+    assert t.title == "The Track"  # …and the rest of the tags still read
+
+
+def _set_raw_track_number(path: Path, value: str) -> None:
+    """Write a non-numeric track number the way a vinyl rip really carries it.
+
+    Goes through each format's native API rather than `write_tags`, which takes
+    an int — the whole point is a value Harmonist itself would never write but
+    has to survive reading.
+    """
+    if path.suffix == ".mp3":
+        from mutagen.id3 import ID3, TRCK, Encoding
+
+        tags = ID3(path)
+        tags.setall("TRCK", [TRCK(encoding=Encoding.UTF8, text=[value])])
+        tags.save(path)
+    elif path.suffix == ".m4a":
+        # MP4 `trkn` is a binary (track, total) pair — it cannot hold "A1" at
+        # all, so the bad-input case simply doesn't exist for this format.
+        pytest.skip("MP4 track numbers are integers by construction")
+    else:
+        from mutagen import File as MutagenFile
+
+        audio = MutagenFile(path)
+        audio["TRACKNUMBER"] = [value]
+        audio.save()
 
 
 def test_read_tags_on_an_unsupported_extension_is_empty_not_unreadable(tmp_path):

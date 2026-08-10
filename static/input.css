@@ -225,6 +225,70 @@ button[disabled],
   white-space: nowrap;
 }
 
+/* The tracklist: the album's files against the MusicBrainz release, two lines
+   per track (#135). A track that agrees is one plain row; a track that differs
+   gains a second row beneath it carrying only the cells that differ, in the same
+   columns, so the difference is a vertical scan down a shared left edge. */
+.track-diff {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .8rem;
+}
+.track-diff th {
+  text-align: left;
+  font-size: .62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--color-muted);
+  padding: 0 .5rem .3rem;
+}
+.track-diff td { padding: .1rem .5rem; vertical-align: baseline; }
+/* The rule belongs BETWEEN tracks, so it goes on the <tbody> that wraps each
+   track's pair of rows. On <tr> it would draw a line through the middle of every
+   stacked pair — splitting the two halves of one difference. */
+.track-diff__track { border-top: 1px solid var(--color-line); }
+.track-diff__track:first-of-type { border-top: 0; }
+.track-diff__track tr:first-child td { padding-top: .3rem; }
+.track-diff__track tr:last-child td { padding-bottom: .3rem; }
+/* Numbers and durations right-aligned and tabular so they form a column the eye
+   can compare down, rather than a ragged edge.
+   By CLASS, not `:last-child`: the "not on disk" and "couldn't read" notes span
+   the value columns and so are a last child too, and they belong under the title
+   they're about, not flung to the right margin. */
+.track-diff__num,
+.track-diff__len {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.track-diff__num { width: 1%; }
+/* Differing runs are UNDERLINED here, not tinted as they are in the album panel:
+   the tint reads well on two or three rows and turns into confetti down a table
+   of twelve. Both lines of a pair, so the marking means the same thing on each. */
+.track-diff .diff-run {
+  background: none;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--color-ink) 40%, transparent);
+}
+.track-diff__mb td { color: var(--color-mb-purple); }
+.track-diff__mb .diff-run {
+  text-decoration-color: color-mix(in srgb, var(--color-mb-purple) 55%, transparent);
+}
+/* "Not on disk" / "Not in MusicBrainz" — statements, not warnings. An album can
+   be legitimately incomplete and a bonus track legitimately unknown to MB.
+   These span the value columns and carry neither alignment class, so they sit
+   under the title they're about. */
+.track-diff__absent,
+.track-diff__unreadable { font-style: italic; }
+.track-diff__absent { color: var(--color-muted); }
+/* "Couldn't read" is the one that IS a warning: the file is there and won't
+   open, which is a failing disk or a bad download, not a tagging question. */
+.track-diff__unreadable { color: var(--color-amber-700); }
+
 /* Album-page history: "Show details" (checked by default) hides the raw audit
    rows, leaving the plain-language entries. Done in CSS because the page already
    holds every row — a round trip to hide what we've fetched would be silly — and

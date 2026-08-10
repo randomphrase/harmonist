@@ -48,6 +48,17 @@ MAX_CHANGED_RUNS = 2
 # one-character fragments that reads worse than the difference it marks.
 _MERGE_GAP = 3
 
+# Per-track length tolerance. Anything within this is "close enough" — small
+# encoder differences, gapless playback edits, a fade trimmed differently.
+#
+# Lives HERE, in the pure module, and is imported by `match`: the matcher uses
+# it to decide whether a release fits the files at all, and the tracklist
+# comparison uses it to decide whether a length is worth showing as a
+# difference. Two constants would let the album page report a track as differing
+# from the very release Harmonist accepted as an exact match — the page
+# contradicting a decision Harmonist has already made and acted on.
+LENGTH_TOLERANCE_MS = 4000
+
 
 class Agreement(StrEnum):
     """What the comparison found for one field."""
@@ -219,6 +230,44 @@ def _merge(runs: list[Run]) -> tuple[Run, ...]:
     return tuple(out)
 
 
+def compare_value(
+    label: str,
+    *,
+    kind: Kind = Kind.TEXT,
+    disk: str | None = None,
+    mb: str | None = None,
+    unreadable: bool = False,
+    tracks: Consensus | None = None,
+) -> FieldComparison:
+    """Compare one on-disk value against one MusicBrainz value.
+
+    The core of the model. A per-track field has exactly one on-disk value, so
+    this is what the tracklist uses directly; `compare_field` wraps it for the
+    album panel, where the on-disk value is a consensus across the tracks.
+    """
+    if unreadable:
+        return FieldComparison(label, kind, Agreement.UNREADABLE, mb=mb, consensus=tracks)
+    if disk is None and mb is None:
+        return FieldComparison(label, kind, Agreement.MATCHES, consensus=tracks)
+    if disk is None:
+        return FieldComparison(label, kind, Agreement.ONLY_MB, mb=mb, consensus=tracks)
+    if mb is None:
+        return FieldComparison(label, kind, Agreement.ONLY_DISK, disk=disk, consensus=tracks)
+    if disk == mb:
+        return FieldComparison(label, kind, Agreement.MATCHES, disk=disk, mb=mb, consensus=tracks)
+    disk_runs, mb_runs = diff_runs(disk, mb)
+    return FieldComparison(
+        label,
+        kind,
+        Agreement.DIFFERS,
+        disk=disk,
+        mb=mb,
+        disk_runs=disk_runs,
+        mb_runs=mb_runs,
+        consensus=tracks,
+    )
+
+
 def compare_field(
     label: str,
     *,
@@ -227,39 +276,23 @@ def compare_field(
     mb: str | None = None,
     unreadable: bool = False,
 ) -> FieldComparison:
-    """Build one comparison row.
+    """Build one row of the ALBUM panel.
 
     `disk` is a `Consensus` rather than a bare value so the row can report both
     what the album says and how united it is about it.
-    """
-    if unreadable:
-        return FieldComparison(label, kind, Agreement.UNREADABLE, mb=mb, consensus=disk)
 
-    # `value` is None only when no track carries the field at all — a tie is
-    # resolved in `consensus`, so uneven tagging never suppresses the row. How
-    # united the tracks are travels alongside on `consensus`, for the UI to
-    # annotate; it doesn't change which comparison is made.
-    disk_value = disk.value if disk else None
-    if disk_value is None and mb is None:
-        return FieldComparison(label, kind, Agreement.MATCHES, consensus=disk)
-    if disk_value is None:
-        return FieldComparison(label, kind, Agreement.ONLY_MB, mb=mb, consensus=disk)
-    if mb is None:
-        return FieldComparison(label, kind, Agreement.ONLY_DISK, disk=disk_value, consensus=disk)
-    if disk_value == mb:
-        return FieldComparison(
-            label, kind, Agreement.MATCHES, disk=disk_value, mb=mb, consensus=disk
-        )
-    disk_runs, mb_runs = diff_runs(disk_value, mb)
-    return FieldComparison(
+    A consensus `value` is None only when no track carries the field at all — a
+    tie is resolved in `consensus`, so uneven tagging never suppresses the row.
+    How united the tracks are travels alongside for the UI to annotate; it
+    doesn't change which comparison is made.
+    """
+    return compare_value(
         label,
-        kind,
-        Agreement.DIFFERS,
-        disk=disk_value,
+        kind=kind,
+        disk=disk.value if disk else None,
         mb=mb,
-        disk_runs=disk_runs,
-        mb_runs=mb_runs,
-        consensus=disk,
+        unreadable=unreadable,
+        tracks=disk,
     )
 
 
@@ -343,3 +376,320 @@ class AlbumComparison:
         if n == 0:
             return f"All {len(self.fields)} fields match MusicBrainz"
         return f"{n} of {len(self.fields)} fields differ in MusicBrainz"
+
+
+# ---------------------------------------------------------------------------
+# The tracklist (#135)
+# ---------------------------------------------------------------------------
+
+
+class TrackState(StrEnum):
+    """What a row of the tracklist IS, before any field is compared.
+
+    The album panel needs no equivalent: an album is always there. A track may
+    not be, and the four cases have four different remedies — which is why they
+    are four states rather than an "ok / not ok" flag.
+    """
+
+    PRESENT = "present"
+    #: MusicBrainz lists the track; no file on disk carries it.
+    MISSING = "missing"
+    #: The file is there and would not open (#112, #126). NOT "untagged", and
+    #: not "missing" either: the bytes exist, so the remedy is a re-download or
+    #: a look at the disk, not a re-rip.
+    UNREADABLE = "unreadable"
+    #: A file with no counterpart in the MusicBrainz tracklist. Often legitimate
+    #: (a bonus track MusicBrainz doesn't carry), so it is stated, not warned
+    #: about.
+    EXTRA = "extra"
+
+
+@dataclass(frozen=True)
+class MBTrack:
+    """One MusicBrainz track, as the comparison needs it.
+
+    `tags` is what tagging WOULD write for this track (a `tagger.TagSet`), so
+    the comparison is against Harmonist's own output rather than a second
+    reading of the release — the same guarantee `album_fields` gets, for the
+    same reason.
+
+    `length_ms` rides alongside instead of inside because a length is not a tag:
+    nothing writes it to a file, and MusicBrainz doesn't always know it.
+    """
+
+    tags: TagSet
+    length_ms: int | None = None
+
+
+@dataclass(frozen=True)
+class ComparedTrack:
+    """One row of the tracklist: what state it's in, and its fields compared.
+
+    `fields` is always the full set, in a fixed order, whatever the state — a
+    missing track's fields are all ONLY_MB and an unreadable one's are all
+    UNREADABLE. Uniform rows are what let the table keep its columns aligned
+    instead of special-casing its own shape per row.
+    """
+
+    state: TrackState
+    fields: tuple[FieldComparison, ...] = field(default_factory=tuple)
+    #: The file this row is about, for the rows that need to name it — the
+    #: unreadable one especially, where "which file?" is the user's next
+    #: question. None when there is no file.
+    file_name: str | None = None
+
+    @property
+    def differs(self) -> bool:
+        """Whether this row is something the user should look at.
+
+        Any state other than PRESENT counts on its own: an extra file's fields
+        are all ONLY_DISK, which is deliberately not a field-level finding (it's
+        how the Bandcamp comment stays quiet), but a whole track MusicBrainz has
+        never heard of is one.
+        """
+        return self.state is not TrackState.PRESENT or any(f.differs for f in self.fields)
+
+    @property
+    def shows_mb(self) -> bool:
+        """Whether there is a MusicBrainz line worth drawing beneath this row.
+
+        Not the same as `differs`: an extra file, and an unreadable one that
+        matched no MusicBrainz track, have nothing on the MusicBrainz side to
+        put there. Drawing the line anyway would give them an empty purple row
+        carrying only a hexagon — a difference marked against nothing.
+        """
+        return any(f.differs and f.mb for f in self.fields)
+
+
+@dataclass(frozen=True)
+class TracklistComparison:
+    """Every track of one album, plus the headline the section needs."""
+
+    tracks: tuple[ComparedTrack, ...] = field(default_factory=tuple)
+
+    @property
+    def differing(self) -> tuple[ComparedTrack, ...]:
+        return tuple(t for t in self.tracks if t.differs)
+
+    @property
+    def summary(self) -> str:
+        """The line beside the Tracks section's hexagon.
+
+        Missing, unreadable and extra tracks get their own clause rather than
+        being folded into the count: "3 of 10 tracks differ" is true of an album
+        with a dead file, but it isn't what the user needs to be told.
+        """
+        total = len(self.tracks)
+        if not total:
+            return "Nothing to compare against MusicBrainz"
+        n = len(self.differing)
+        if n == 0:
+            return f"All {total} tracks match MusicBrainz" if total > 1 else "Matches MusicBrainz"
+        verb = "differs" if n == 1 else "differ"
+        clauses = [f"{n} of {total} tracks {verb} from MusicBrainz"]
+        for state, phrase in (
+            (TrackState.MISSING, "not on disk"),
+            (TrackState.UNREADABLE, "unreadable"),
+            (TrackState.EXTRA, "not in MusicBrainz"),
+        ):
+            count = sum(1 for t in self.tracks if t.state is state)
+            if count:
+                clauses.append(f"{count} {phrase}")
+        return " · ".join(clauses)
+
+
+#: The per-track fields the tracklist compares, in display order, as
+#: `(label, TrackTags attribute, TagSet attribute, kind)`. Track number and
+#: length are handled separately — they aren't plain attribute reads.
+#:
+#: The ORDER is load-bearing: `_track_list.html` renders one column per entry
+#: and takes its headings from `TRACK_COLUMNS`, so a field added here without a
+#: heading would put values under the wrong column.
+_TRACK_FIELDS: tuple[tuple[str, str, str, Kind], ...] = (
+    ("Title", "title", "title", Kind.TEXT),
+    ("Artist", "artist", "artist", Kind.TEXT),
+)
+
+#: Column headings for the tracklist table: the number, `_TRACK_FIELDS`, then
+#: the length — the order `_track_fields` emits.
+TRACK_COLUMNS: tuple[str, ...] = ("#", "Title", "Artist", "Length")
+
+
+def tracklist(
+    tracks: Sequence[tuple[str, TrackTags]],
+    mb: Sequence[MBTrack],
+) -> TracklistComparison:
+    """Compare an album's files, track by track, against its MusicBrainz release.
+
+    `tracks` is `(file_name, tags)` in file order; `mb` is the release's tracks
+    in MusicBrainz order. Neither is authoritative about which file IS which
+    track — see `_assign`.
+    """
+    multi_disc = any((t.tags.disc_num or 1) > 1 for t in mb)
+    assigned, extras = _assign(tracks, mb)
+
+    rows: list[ComparedTrack] = []
+    for i, mb_track in enumerate(mb):
+        entry = assigned.get(i)
+        if entry is None:
+            rows.append(
+                ComparedTrack(TrackState.MISSING, _track_fields(None, mb_track, multi_disc))
+            )
+            continue
+        name, tags = entry
+        if tags.unreadable:
+            rows.append(
+                ComparedTrack(
+                    TrackState.UNREADABLE,
+                    _track_fields(None, mb_track, multi_disc, unreadable=True),
+                    file_name=name,
+                )
+            )
+            continue
+        rows.append(
+            ComparedTrack(
+                TrackState.PRESENT, _track_fields(tags, mb_track, multi_disc), file_name=name
+            )
+        )
+
+    for name, tags in extras:
+        rows.append(
+            ComparedTrack(
+                TrackState.UNREADABLE if tags.unreadable else TrackState.EXTRA,
+                _track_fields(
+                    None if tags.unreadable else tags, None, multi_disc, unreadable=tags.unreadable
+                ),
+                file_name=name,
+            )
+        )
+    return TracklistComparison(tracks=tuple(rows))
+
+
+def _assign(
+    tracks: Sequence[tuple[str, TrackTags]],
+    mb: Sequence[MBTrack],
+) -> tuple[dict[int, tuple[str, TrackTags]], list[tuple[str, TrackTags]]]:
+    """Decide which file is which MusicBrainz track.
+
+    **By the file's own track number first, by file order only as a fallback.**
+    Position alone is what the matcher uses, and it is wrong the moment anything
+    is absent: one missing track three shifts every later file up a slot, and
+    the page then reports the whole rest of the album as differing — the
+    crying-wolf failure the comparison exists to avoid.
+
+    A number is only trusted when it is unambiguous: unique among the files,
+    unique among MusicBrainz's tracks, and paired with the disc, because track 4
+    exists on both halves of a 2-CD release. Everything left over — files with
+    no number, duplicate numbers, numbers MusicBrainz doesn't have, and
+    unreadable files, which have no tags to read at all — is dealt into the
+    slots still free, in file order. An album with no track numbers anywhere
+    therefore behaves exactly as positional pairing always did.
+
+    It is still a guess, and it trusts the tag: a file mis-numbered as track 1
+    when it is really track 2 will be compared against the wrong track, and so
+    will the one it displaced. The page has no way to say "these two are
+    swapped", only that both disagree. #136 is the escape hatch — letting the
+    user re-assign a file to the track it actually is.
+
+    Returns `{mb_index: (file_name, tags)}` and the files that found no slot.
+    """
+    mb_keys = [(t.tags.disc_num or 1, t.tags.track_num) for t in mb]
+    mb_counts = Counter(mb_keys)
+    slot_of: dict[tuple[int, int], int] = {
+        key: i for i, key in enumerate(mb_keys) if mb_counts[key] == 1
+    }
+
+    keyed: list[tuple[int, int] | None] = [
+        (t.disc_num or 1, t.track_num) if t.track_num is not None and not t.unreadable else None
+        for _, t in tracks
+    ]
+    file_counts = Counter(k for k in keyed if k is not None)
+
+    assigned: dict[int, tuple[str, TrackTags]] = {}
+    leftover: list[tuple[str, TrackTags]] = []
+    for (name, tags), key in zip(tracks, keyed, strict=True):
+        slot = slot_of.get(key) if key is not None and file_counts[key] == 1 else None
+        if slot is None or slot in assigned:
+            leftover.append((name, tags))
+        else:
+            assigned[slot] = (name, tags)
+
+    free = [i for i in range(len(mb)) if i not in assigned]
+    for slot, entry in zip(free, leftover, strict=False):
+        assigned[slot] = entry
+    return assigned, leftover[len(free) :]
+
+
+def _track_fields(
+    tags: TrackTags | None,
+    mb: MBTrack | None,
+    multi_disc: bool,
+    *,
+    unreadable: bool = False,
+) -> tuple[FieldComparison, ...]:
+    """The four compared fields of one row, always in `TRACK_COLUMNS` order."""
+    fields = [
+        compare_value(
+            "#",
+            kind=Kind.SCALAR,
+            disk=_number(tags.disc_num, tags.track_num, multi_disc) if tags else None,
+            mb=_number(mb.tags.disc_num, mb.tags.track_num, multi_disc) if mb else None,
+            unreadable=unreadable,
+        )
+    ]
+    for label, disk_attr, mb_attr, kind in _TRACK_FIELDS:
+        fields.append(
+            compare_value(
+                label,
+                kind=kind,
+                disk=getattr(tags, disk_attr) or None if tags else None,
+                mb=getattr(mb.tags, mb_attr) or None if mb else None,
+                unreadable=unreadable,
+            )
+        )
+    fields.append(
+        _length_field(
+            tags.duration_ms if tags else None,
+            mb.length_ms if mb else None,
+            unreadable=unreadable,
+        )
+    )
+    return tuple(fields)
+
+
+def _length_field(disk_ms: int | None, mb_ms: int | None, *, unreadable: bool) -> FieldComparison:
+    """Length, compared through LENGTH_TOLERANCE_MS *before* anything is shown.
+
+    Within tolerance is not a difference at all — it's the same audio, encoded
+    or trimmed a shade differently — so it renders as one plain line. Applying
+    the tolerance first, rather than diffing "3:47" against "3:49" and hoping
+    the user forgives it, is what keeps this page from contradicting the
+    matcher's verdict on the very same release.
+    """
+    within_tolerance = (
+        disk_ms is not None and mb_ms is not None and abs(disk_ms - mb_ms) <= LENGTH_TOLERANCE_MS
+    )
+    if within_tolerance and not unreadable:
+        return FieldComparison(
+            "Length", Kind.SCALAR, Agreement.MATCHES, disk=_mmss(disk_ms), mb=_mmss(mb_ms)
+        )
+    return compare_value(
+        "Length", kind=Kind.SCALAR, disk=_mmss(disk_ms), mb=_mmss(mb_ms), unreadable=unreadable
+    )
+
+
+def _number(disc: int | None, track: int | None, multi_disc: bool) -> str | None:
+    """A track's position as one displayable value — "4", or "2-4" on a release
+    with more than one medium, where the number alone doesn't identify it."""
+    if track is None:
+        return None
+    return f"{disc or 1}-{track}" if multi_disc else str(track)
+
+
+def _mmss(ms: int | None) -> str | None:
+    """A duration as "3:47". Rounded to the nearest second, so a length shown as
+    equal to MusicBrainz's is equal to the second displayed."""
+    if ms is None:
+        return None
+    seconds = (ms + 500) // 1000
+    return f"{seconds // 60}:{seconds % 60:02d}"

@@ -34,6 +34,7 @@ from harmonist import (
     formats,
     id_registry,
     live_counts,
+    match,
     mb_lookup,
     mb_search,
     pending_downloads,
@@ -44,7 +45,7 @@ from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
 from harmonist.activity_store import Level
 from harmonist.bandcamp_hook import HarmonistSyncer, album_slug
-from harmonist.match import assess_match, best_match
+from harmonist.match import best_match
 from harmonist.models import (
     Album,
     AlbumState,
@@ -427,6 +428,11 @@ def create_app(
     templates.env.globals["rel_path"] = _rel_path
     templates.env.globals["ago"] = _ago
     templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
+    # The tracklist table's headings. A global rather than a per-route context
+    # value because it must stay in lockstep with the field order the model
+    # emits — one source, so a column can't be added to the table without one
+    # being added to the row (#135).
+    templates.env.globals["track_columns"] = compare.TRACK_COLUMNS
     templates.env.globals["demo_mode"] = cfg.demo_mode
     # Evaluated per-render (callable, not a constant) so the header's
     # Sync/Set-up button flips the moment cookies are saved.
@@ -610,8 +616,10 @@ def _rel_path(p: Path | str, base: Path | str) -> str:
         return _display_path(p)
 
 
-def _album_comparison(album_dir: Path, release: Release) -> compare.AlbumComparison:
-    """Read the album's files and compare their tags to `release` (#106).
+def _album_comparison(
+    album_dir: Path, release: Release
+) -> tuple[compare.AlbumComparison, compare.TracklistComparison]:
+    """Read the album's files and compare their tags to `release` (#106, #135).
 
     Per-track rather than one album-level read, because whether the tracks agree
     with each other is itself information the panel shows — a field carried by
@@ -620,12 +628,24 @@ def _album_comparison(album_dir: Path, release: Release) -> compare.AlbumCompari
     The MusicBrainz side goes through `tagsets_for`, so the comparison is against
     what tagging WOULD write rather than a second reading of the release. Files
     are read in track order, which is what breaks a tie.
+
+    Both halves of the page come out of this ONE pass over the files. The album
+    panel and the tracklist want the same tags, and this is a full open of every
+    file in the album — the read cost #106 flags, and the same cost problem as
+    #44 / #74. Reading them twice for one page view would be careless.
     """
     files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
     tracks = [(f.name, formats.read_tags(f)) for f in files]
     tagsets = tagsets_for(release)
-    return compare.AlbumComparison(
-        fields=compare.album_fields(tracks, tagsets[0] if tagsets else None)
+    mb_tracks = [
+        compare.MBTrack(tags=ts, length_ms=length)
+        for ts, length in zip(tagsets, match.mb_track_lengths(release), strict=True)
+    ]
+    return (
+        compare.AlbumComparison(
+            fields=compare.album_fields(tracks, tagsets[0] if tagsets else None)
+        ),
+        compare.tracklist(tracks, mb_tracks),
     )
 
 
@@ -2438,12 +2458,18 @@ def _register_routes(app: FastAPI) -> None:
             return HTMLResponse(
                 f'<p class="text-2xs text-red-700 mt-2">Couldn\'t fetch from MusicBrainz: {e}</p>'
             )
-        candidate = assess_match(album.path, release)
+        # No `assess_match` here any more (#135). It re-opened every file in the
+        # album for a duration and a title that `_album_comparison` had just
+        # read, to produce a release-fit verdict that is stale news on an album
+        # already linked to that release — the tracklist now says what actually
+        # differs, track by track. It stays where it earns its keep: behind the
+        # Needs MBID suggestion card, deciding whether to link at all.
+        comparison, tracks = _album_comparison(album.path, release)
         ctx = _ctx(
             request,
-            candidate=candidate,
             album=album,
-            comparison=_album_comparison(album.path, release),
+            comparison=comparison,
+            tracklist=tracks,
             # What the note beside the hexagon reports. Harmonist has just read
             # the release, so "now" is honest — #127's cache is what will make
             # this a genuinely older timestamp worth showing.

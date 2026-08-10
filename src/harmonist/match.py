@@ -14,13 +14,11 @@ from itertools import zip_longest
 from pathlib import Path
 
 from . import formats
+from .compare import LENGTH_TOLERANCE_MS
 from .models import MatchCandidate, MatchConfidence, Release, Track, TrackComparison
 from .tagger import _flatten_tracks, _track_title
 
-# Per-track length tolerance. Anything within this is "close enough" — covers
-# small encoder differences, gapless playback edits, etc. Anything beyond
-# requires user confirmation.
-LENGTH_TOLERANCE_MS = 4000
+__all__ = ["LENGTH_TOLERANCE_MS", "assess_match", "best_match", "mb_track_lengths"]
 
 
 def assess_match(album_dir: Path, release: Release) -> MatchCandidate:
@@ -152,6 +150,18 @@ def _file_duration_ms(file_path: Path) -> int:
 def _file_title(file_path: Path) -> str | None:
     """Read the track title tag from the file, if present."""
     return formats.read_track_title(file_path)
+
+
+def mb_track_lengths(release: Release) -> list[int | None]:
+    """Every track's length in ms, in the same order as `tagger.tagsets_for`.
+
+    The tracklist comparison (#135) needs lengths beside the TagSets, and a
+    length is not a tag — nothing writes it to a file — so it can't ride along
+    inside `TagSet`. Sharing `_flatten_tracks` with `tagsets_for` is what
+    guarantees the two lists line up; zipping two independently-ordered
+    sequences would silently compare each file against the wrong track.
+    """
+    return [_mb_track_length_ms(track) for _, _, track in _flatten_tracks(release)]
 
 
 def _mb_track_length_ms(track: Track) -> int | None:

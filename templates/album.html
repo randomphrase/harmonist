@@ -25,11 +25,7 @@
        careless against a 1-req/sec budget. #}
     {% if album.sidecar and album.sidecar.mb_release_id %}
     <section id="album-tracks" class="border border-line rounded-lg p-4 space-y-3">
-        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
-            Tracks
-            <span class="text-muted font-normal normal-case tracking-normal ml-1">
-                · {{ album.track_count }}</span>
-        </h2>
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
         <p class="text-2xs text-muted italic">Checking tracks against MusicBrainz…</p>
     </section>
     {% endif %}
