@@ -609,11 +609,13 @@ src/harmonist/
   mb_lookup.py          MB by-id / by-url fetch (1 req/sec budget)
   mb_search.py          MB free-text search (manual-ingest path)
   match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
+  compare.py            Field-by-field tag-vs-MB comparison primitives (album panel + tracklist)
   tagger.py             Picard-compatible tag writer (+ embedded cover)
   cover_art.py          Cover Art Archive fetch + cover.* writing
   formats/              Per-format tag I/O (m4a, mp3, flac, ogg, opus; _vorbis shared; types)
   activity.py           In-memory ring-buffer log for the Activity tab
   audit.py              Audit log for destructive ops (downloads, moves, sidecar rewrites, …)
+  activity_store.py     SQLite persistence behind the activity/audit log
   live_counts.py        Single source of truth for state counts (reset per scan + live moves)
   library_index.py      In-memory sidecar/dedup index (one update point)
   id_registry.py        Stable UUID for albums without an MBID
@@ -983,7 +985,7 @@ tagged*.
 as tagged). The scanner's Album object gains a `partial_tag_count` field
 (`"N/M"`-style) — not persisted, just derived at scan time.
 
-**UI:** library expanded view shows a "5/6 tracks tagged" badge. In v1
+**UI:** the album page shows a "5/6 tracks tagged" badge. In v1
 this is informational only; the in-app resolution (a Re-tag button that
 re-runs the tagger across all files, backfilling untagged ones
 idempotently) ships with the §2.4 Re-tag use case post-v1. In the
@@ -1062,7 +1064,7 @@ without a matched file are skipped.
 **State after Confirm as Incomplete:** `INCOMPLETE`. This is a distinct
 terminal state, not a flagged variant of `COMPLETE` — the state enum
 alone tells the UI what to render, no sidecar metadata peek required.
-The library expanded view shows a small "incomplete" badge plus a
+The album page shows a small "incomplete" badge plus a
 per-track list of which MB tracks weren't on disk.
 
 **Promotion to Complete:** if the user later adds the missing tracks
@@ -1153,9 +1155,8 @@ them. (Re-tag from MB and the Activity feed have since shipped — §2.4, §6.)
   dedup mechanisms that normally prevent re-downloads — the sidecar
   `store_url` short-circuit in `bandcamp_hook.sync_item` *and* the
   item's entry in `ignores.txt` — for that one album only, while still
-  respecting the per-sync download cap. Surfaces in the library
-  expanded view alongside Re-tag / Forget. Deferred for that
-  complexity.
+  respecting the per-sync download cap. Surfaces on the album page
+  alongside Re-tag / Forget. Deferred for that complexity.
 - **Ignored-but-not-present items** — a sync skips purchases listed in
   `ignores.txt` (already downloaded). If an ignored item is no longer in
   the library (deleted, or ignored without ever being kept), it's

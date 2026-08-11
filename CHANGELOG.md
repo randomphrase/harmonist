@@ -6,29 +6,25 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-10
+
 ### Added
 
-- Library: a "Show N per page" control offering 20, 40 or 60 albums, remembered
-  between visits. The size rides in the URL beside the page number, and changing
-  it keeps the album at the top of the screen in view rather than returning you
-  to page 1. The default page is now 20 albums, down from 30 (#144).
-
-- The Library is now paged, with Previous/Next and a "31–60 of 412" readout in
-  place of the Load-more button. The page you're on is part of the address, so
-  opening an album and coming back returns you to it — as do the browser's Back
-  button and a bookmarked link — instead of dropping you at the newest 30 (#139).
-
-- The album page's tracklist now compares every track against MusicBrainz —
-  title, artist, number and length — and says which tracks are missing from
-  disk, unreadable, or not in MusicBrainz at all (#135).
+- The Library is now paged: Previous/Next replace Load more, and the page rides
+  in the URL, so Back, a bookmark and returning from an album all land you where
+  you left off (#139).
+- A "Show N per page" control offering 20, 40 or 60 albums, remembered between
+  visits; the default is now 20, down from 30 (#144).
+- The album page's tracklist compares every track against MusicBrainz — title,
+  artist, number and length — and flags tracks that are missing, unreadable, or
+  absent from MusicBrainz (#135).
 
 ### Fixed
 
-- A track numbered by vinyl side (`A1`, `B2`) no longer breaks the album page
-  on FLAC, Ogg and Opus files (#137).
-
-- MusicBrainz error messages are now escaped before being shown, so angle
-  brackets in an upstream error render as text rather than as markup (#142).
+- A track numbered by vinyl side (`A1`, `B2`) no longer breaks the album page on
+  FLAC, Ogg and Opus files (#137).
+- MusicBrainz error messages are escaped before being shown, so angle brackets
+  in an upstream error render as text rather than as markup (#142).
 
 ## [1.5.0] - 2026-08-09
 
