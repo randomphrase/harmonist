@@ -10,7 +10,7 @@ dependencies = ["mutagen", "bandcampsync~=0.8.0", "fastapi", "jinja2", "httpx", 
 # ruff + mypy are pinned exactly: an unpinned formatter/linter drifts between
 # a dev machine and CI (a patch bump reformats code), which fails the format
 # check on a green-locally branch. Bump deliberately, like TAILWINDCSS_VERSION.
-dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff==0.16.1", "mypy==2.3.0", "coverage"]
+dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff==0.16.2", "mypy==2.3.0", "coverage"]
 # Browser smoke tests (opt-in; see test/e2e/). Needs `playwright install chromium`.
 e2e = ["pytest-playwright"]
 
