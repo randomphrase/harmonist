@@ -45,18 +45,24 @@ def set_library_root(path: Path | None) -> None:
     _library_root = path
 
 
-def record(event: str, *, album_id: str | None = None, **fields: object) -> None:
+def record(event: str, *, album_id: str | None = None, **fields: object) -> int | None:
     """Record one audit event as ``event key=value …`` — to the server log and to
-    the durable store.
+    the durable store. Returns the stored row's id, or None if nothing was stored.
 
     ``album_id`` (an album's ``Album.id``) is a structured column, not part of the
     message: it ties the row to an album so per-album history spans activity+audit
     (#33). Values containing whitespace (album paths!) are quoted so each event
     stays a single, parseable line. None is rendered as ``-``.
+
+    The row id is what lets a caller attach structured detail to the line it just
+    wrote — the per-field before/after of a tagged file (#86). Callers that only
+    want the line, which is nearly all of them, ignore it.
     """
     line = event if not fields else f"{event} {_detail(fields)}"
     log.info("%s", line)
-    activity_store.append(message=line, level=Level.INFO, source=Source.AUDIT, album_id=album_id)
+    return activity_store.append(
+        message=line, level=Level.INFO, source=Source.AUDIT, album_id=album_id
+    )
 
 
 def _detail(fields: dict[str, object]) -> str:

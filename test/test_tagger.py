@@ -147,6 +147,116 @@ def test_tag_album_writes_audit_records(album_with_tracks, tmp_path):
     assert any("01 Track 1.m4a" in m for m in tracks)
 
 
+def _detail():
+    """Every stored tag-change record, in the order it was written.
+
+    Goes to the table directly for the ids because `recent()` deliberately
+    doesn't expose row ids — the page gets them from the join, not the feed.
+    """
+    from harmonist import activity_store
+
+    conn = activity_store._ensure()
+    ids = [r[0] for r in conn.execute("SELECT event_id FROM tag_changes ORDER BY event_id")]
+    detail = activity_store.tag_changes_for(ids)
+    return [detail[i] for i in ids]
+
+
+def test_tagging_records_every_field_it_set_on_an_untagged_album(album_with_tracks, tmp_path):
+    """The first tag of an untagged album records each field as absent-to-value,
+    per file. That is what a revert would need to strip it all back off."""
+    from harmonist import activity_store
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+
+    rows = _detail()
+    assert len(rows) == 2  # one per file, not one per album
+    first = rows[0]
+    assert first.changes["title"][0] is None  # absent before
+    assert first.changes["title"][1] == "Track 1"
+    assert first.changes["album"] == [None, "Test Album"]
+    # Identity travels with the record so a later revert can find the file
+    # again after a rename or a renumber.
+    assert first.position == "1"
+    assert first.track_ref is not None
+    assert first.rec_ref is not None
+
+
+def test_retagging_the_same_release_records_nothing(album_with_tracks, tmp_path):
+    """The no-op case, and the reason the gardener (#32) won't flood history:
+    a re-tag that finds MusicBrainz unchanged writes no detail at all."""
+    from harmonist import activity_store
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    release = _release_2_tracks()
+
+    tagger.tag_album(album_dir, release)
+    after_first = len(_detail())
+    tagger.tag_album(album_dir, release)
+
+    assert len(_detail()) == after_first
+    # The album line still records that it ran — silence is about the per-field
+    # detail, not about hiding that Harmonist touched the files.
+    from harmonist.activity_store import Source
+
+    album_lines = [
+        e.message
+        for e in activity_store.recent(50, source=Source.AUDIT)
+        if e.message.startswith("tag.album")
+    ]
+    assert len(album_lines) == 2
+
+
+def test_tagging_records_a_field_the_new_release_removed(album_with_tracks, tmp_path):
+    """#149 made a re-tag REMOVE tags the new release lacks. This is what makes
+    that removal visible: without it the audit says a track was rewritten but
+    not that its label was taken away."""
+    from harmonist import activity_store
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    with_label = _release_2_tracks()
+    tagger.tag_album(album_dir, with_label)
+    before = len(_detail())
+
+    tagger.tag_album(album_dir, {**with_label, "label-info-list": []})
+
+    removals = _detail()[before:]
+    assert len(removals) == 2
+    assert removals[0].changes["label"][1] is None
+    assert removals[0].changes["label"][0]  # there WAS a label, and we know it
+    # Only what changed — the untouched fields stay out of the record.
+    assert "title" not in removals[0].changes
+
+
+def test_tagging_records_artwork_replacement_by_digest(album_with_tracks, tmp_path):
+    """Artwork isn't an owned tag, but replacing it is destructive and belongs
+    in the record. The digests are what #131 will store the images under."""
+    from harmonist import activity_store
+    from harmonist.formats import owned
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(b"\xff\xd8\xff" + b"first" * 40)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover)
+    first = _detail()[0].changes[owned.ARTWORK]
+    assert first[0] is None  # no embedded art before
+    assert len(first[1]) == 64  # sha256 hex
+
+    newer = tmp_path / "cover2.jpg"
+    newer.write_bytes(b"\xff\xd8\xff" + b"second" * 40)
+    before = len(_detail())
+    tagger.tag_album(album_dir, _release_2_tracks(), newer)
+
+    replaced = _detail()[before:][0].changes[owned.ARTWORK]
+    assert replaced[0] == first[1]  # what was there is what we recorded before
+    assert replaced[1] != replaced[0]
+
+
 def test_tag_album_audits_the_album_line_before_writing(album_with_tracks, tmp_path, monkeypatch):
     """Recorded BEFORE the loop, per the gate's "before/as it acts": a crash
     part-way must leave evidence of what was attempted, not silence."""

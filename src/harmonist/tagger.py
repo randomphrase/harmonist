@@ -16,9 +16,9 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from . import audit, formats
+from . import activity_store, audit, formats
 from . import sidecar as sidecar_mod
-from .formats import TagSet
+from .formats import TagSet, owned
 from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_ALBUM,
     ATOM_ALBUM_ARTIST,
@@ -151,11 +151,12 @@ def tag_album(
         pairs = list(zip(files, flat_tracks, strict=True))
 
     cover = cover_path.read_bytes() if cover_path else None
+    art_before = _art_digests(files)
     # DATA SAFETY: if the tracks carry DIFFERENT embedded art (a per-track-art
     # album, e.g. a compilation), embedding one album cover would destroy those
     # images. Preserve them — pass cover=None (write_tags leaves the existing
     # embedded cover untouched); the folder cover.* is still written separately.
-    if cover is not None and not overwrite_art and _has_per_track_art(files):
+    if cover is not None and not overwrite_art and _has_per_track_art(art_before):
         log.warning(
             "%s: tracks have per-track embedded artwork — keeping it, NOT embedding "
             "the album cover (folder cover.* is still written). Re-tag with "
@@ -169,10 +170,6 @@ def tag_album(
     # audit log — it was the one core mutation with no record at all. The album
     # line is written BEFORE the loop so a crash part-way leaves evidence of what
     # was attempted, not silence.
-    #
-    # This is deliberately coarse for now: which tracks were rewritten, not which
-    # individual TAGS changed. Per-field before/after diffs (Picard-style) need a
-    # read-compare-write pass that doesn't exist yet — see #86.
     album_id = sidecar_mod.album_id_for(album_dir)
     audit.record(
         "tag.album",
@@ -183,32 +180,92 @@ def tag_album(
         art="embedded" if cover is not None else "preserved",
         mode="incomplete" if incomplete else "full",
     )
+    art_after = _digest(cover) if cover is not None else None
     for file_path, (medium, track_pos_in_medium, track) in pairs:
         tagset = _build_tagset(release, medium, track_pos_in_medium, track, media_total)
-        formats.write_tags(file_path, tagset, cover)
-        audit.record(
+        # The write hands back what was there before, read from the handle it
+        # already had open — so the per-field record (#86) costs no second pass.
+        before = formats.write_tags(file_path, tagset, cover)
+        # The `tag.track` line comes AFTER the write, and the detail hangs off
+        # it: a record claiming a change that never landed would make a future
+        # revert restore a value that was never overwritten.
+        event_id = audit.record(
             "tag.track",
             album_id=album_id,
             file=file_path.name,
             track=track_pos_in_medium,
             title=_track_title(track),
         )
+        if event_id is not None:
+            _record_changes(event_id, file_path, tagset, before, art_before, art_after)
 
     return len(files)
 
 
-def _has_per_track_art(files: list[Path]) -> bool:
+def _record_changes(
+    event_id: int,
+    file_path: Path,
+    tagset: TagSet,
+    before: dict[str, Any],
+    art_before: dict[Path, str | None],
+    art_after: str | None,
+) -> None:
+    """Attach this file's per-field before/after to its `tag.track` audit line.
+
+    Writes nothing when nothing changed. A re-tag that finds MusicBrainz
+    unchanged is a no-op the user should not have to scroll past, and the
+    gardener (#32) will run one nightly per album — so silence is the feature,
+    not an omission. The `tag.album` line above still records that it ran.
+    """
+    changes = owned.diff(before, {f.value: getattr(tagset, f.value) for f in owned.Owned})
+
+    # Artwork rides alongside the owned fields but is not one of them: the
+    # tagger, not `write_tags`, decides whether art is replaced or preserved,
+    # and `cover=None` means "leave it alone" rather than "remove it".
+    was = art_before.get(file_path)
+    if art_after is not None and art_after != was:
+        changes[owned.ARTWORK] = [was, art_after]
+
+    if not changes:
+        return
+    activity_store.record_tag_changes(
+        event_id,
+        file=file_path.name,
+        changes=changes,
+        track_ref=tagset.mb_release_track_id,
+        rec_ref=tagset.mb_track_id,
+        position=(
+            f"{tagset.disc_num}-{tagset.track_num}"
+            if tagset.disc_total > 1
+            else str(tagset.track_num)
+        ),
+    )
+
+
+def _art_digests(files: list[Path]) -> dict[Path, str | None]:
+    """Each file's embedded cover as a sha256, or None where it has none.
+
+    One read per file, at tag time, when the files are being opened anyway. The
+    same pass answers two questions that used to need separate machinery: whether
+    the album carries per-track artwork worth preserving, and what each track's
+    art WAS, so a tagging can record that it replaced it (#86).
+
+    sha256 rather than the sha1 this used before #86: the digest is now recorded,
+    and #131 will store the images content-addressed under it, so the two must
+    agree on the algorithm.
+    """
+    return {f: _digest(art[0]) if (art := formats.read_cover(f)) else None for f in files}
+
+
+def _digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _has_per_track_art(digests: dict[Path, str | None]) -> bool:
     """True when the album's tracks carry DIFFERENT embedded cover images — i.e.
-    per-track artwork worth preserving. Reads each file's existing cover once (at
-    tag time, when we're opening the files anyway) and compares hashes."""
-    seen: set[str] = set()
-    for f in files:
-        art = formats.read_cover(f)
-        if art is not None:
-            seen.add(hashlib.sha1(art[0]).hexdigest())
-        if len(seen) > 1:
-            return True
-    return False
+    per-track artwork worth preserving. A compilation's per-track images are user
+    data a re-tag must not destroy."""
+    return len({d for d in digests.values() if d is not None}) > 1
 
 
 def tagsets_for(release: Release) -> list[TagSet]:

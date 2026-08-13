@@ -30,7 +30,9 @@ here. See #131.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
+from typing import Any
 
 
 class Scope(StrEnum):
@@ -131,3 +133,45 @@ SCOPE: dict[Owned, Scope] = {
 
 ALBUM_FIELDS: tuple[Owned, ...] = tuple(f for f in Owned if SCOPE[f] is Scope.ALBUM)
 TRACK_FIELDS: tuple[Owned, ...] = tuple(f for f in Owned if SCOPE[f] is Scope.TRACK)
+
+#: Key under which a tagging records an artwork change, alongside the owned
+#: fields but deliberately NOT one of them — see the module docstring. Named
+#: here so the writer and the renderer can't drift on the spelling, and kept
+#: distinct from every `Owned` value so a reader iterating `Owned` skips it
+#: rather than trying to render a sha256 as a tag.
+ARTWORK = "artwork"
+
+
+def _absent(value: object) -> bool:
+    """Whether a value counts as "this tag isn't there".
+
+    `None`, `""` and `[]` all mean the same thing, because Harmonist never
+    writes an empty tag — so a field with no value is removed rather than
+    blanked, and reverting one restores its absence. Collapsing them here is
+    what stops a first tag of an untagged album recording `None -> ""` on every
+    field it didn't actually set.
+    """
+    return value is None or value == "" or value == []
+
+
+def diff(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, list[Any]]:
+    """What changed between two owned-field snapshots, as `{field: [before, after]}`.
+
+    Only fields that actually changed appear. That is what keeps a re-tag with
+    no MusicBrainz changes silent instead of writing a record saying nothing
+    happened — the difference between a history worth reading and one the
+    gardener (#32) floods nightly.
+
+    Values are stored raw, exactly as they were read and written: the
+    normalisation above decides *whether* something changed, but the record
+    keeps `[]` as `[]` and `None` as `None`, because a revert has to restore
+    what was really there rather than a tidied version of it.
+    """
+    changed: dict[str, list[Any]] = {}
+    for field in Owned:
+        was, now = before.get(field.value), after.get(field.value)
+        if _absent(was) and _absent(now):
+            continue
+        if was != now:
+            changed[field.value] = [was, now]
+    return changed
