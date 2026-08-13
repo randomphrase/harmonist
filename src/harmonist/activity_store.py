@@ -20,16 +20,18 @@ ephemeral, exactly like the old ring buffer.
 from __future__ import annotations
 
 import contextvars
+import json
 import logging
 import sqlite3
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -142,6 +144,56 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
     (
         "ALTER TABLE events ADD COLUMN action_id TEXT",
         "CREATE INDEX idx_events_action_id ON events (action_id, id)",
+    ),
+    # 5 -> 6: per-field before/after detail for one tagged file (#86). A side
+    # table rather than a column on `events`, because `events` is scanned on
+    # every feed poll and SQLite stores rows contiguously — a multi-KB JSON
+    # payload would inflate the pages the feed walks past even though the feed
+    # never selects it. Here it costs the feed nothing and joins only when an
+    # album page asks.
+    #
+    # ONE ROW PER FILE, not per album. An album-level field (label, barcode)
+    # changes identically across every track, so it looks wasteful — but the
+    # BEFORE values need not be identical: an album tagged unevenly over the
+    # years is exactly why `compare.consensus` exists. Recording the album's
+    # "before" once would have to pick one, and a revert would then write that
+    # guess over the tracks it didn't come from. Aggregation to "album" vs
+    # "all 18 tracks" happens at render time from `owned.Scope`, where being
+    # approximate is free.
+    #
+    # event_id is the PK: it details exactly one `tag.track` audit row, which
+    # also gives the join its index. `changes` is JSON {field: [before, after]},
+    # keyed by `owned.Owned` values.
+    #
+    # FOUR WAYS TO NAME THE SAME TRACK, because each fails differently and this
+    # table is append-only — a row cannot gain a better identifier later, and
+    # which file carried which MusicBrainz identity is observable only at the
+    # instant it is written (the same argument the 3->4 album_aliases migration
+    # makes, one level down):
+    #
+    #   file       — breaks on a rename (#13 renames files deliberately)
+    #   track_ref  — mb_release_track_id: breaks when re-matched to another release
+    #   rec_ref    — mb_track_id (recording): usually survives that re-match, but
+    #                can repeat within one release, so it can't identify alone
+    #   position   — breaks on a renumber
+    #
+    # No two fail together. Only `file` has a reader today (the per-track
+    # expansion displays it); the rest are what will let Revert (#32) find the
+    # file a record belongs to, and without them every row written before that
+    # lands would be permanently unrevertable. All nullable — a release where
+    # MusicBrainz carries no track ids legitimately has neither ref.
+    #
+    # Identity lives in columns, not in `changes`: the JSON keys are the owned-
+    # field vocabulary, and mixing identity into them would corrupt it.
+    (
+        """CREATE TABLE tag_changes (
+            event_id  INTEGER PRIMARY KEY REFERENCES events (id),
+            file      TEXT NOT NULL,
+            track_ref TEXT,
+            rec_ref   TEXT,
+            position  TEXT,
+            changes   TEXT NOT NULL
+        )""",
     ),
 )
 
@@ -299,20 +351,28 @@ def append(
     source: Source,
     album_id: str | None = None,
     album_label: str | None = None,
-) -> None:
-    """Append one event. `album_id` (an album's `Album.id`) ties the event to an
+) -> int | None:
+    """Append one event, returning its row id — or None when nothing was written.
+
+    `album_id` (an album's `Album.id`) ties the event to an
     album so per-album history spans both sources; None when it isn't about one
     album. `album_label` is that album's human name, stored alongside because the
     id can stop resolving later (see the 2->3 migration). Best-effort: a failure here (e.g. a teardown race in tests) must never
-    crash the caller or the logging path."""
+    crash the caller or the logging path.
+
+    The row id exists so a caller can attach structured detail to the row it
+    just wrote (`record_tag_changes`, #86). None is therefore not just "nothing
+    happened" — it means there is no row to hang detail off, and the caller must
+    not treat the write as having succeeded.
+    """
     message = (message or "").strip()
     if not message:
-        return
+        return None
     ts = datetime.now(UTC).isoformat()
     try:
         conn = _ensure()
         with _LOCK:
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO events "
                 "(ts, level, source, message, album_id, album_label, action_id) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -327,6 +387,7 @@ def append(
                 ),
             )
             conn.commit()
+            return int(cur.lastrowid) if cur.lastrowid else None
     except sqlite3.Error:
         # ERROR, not debug: this is the single sink for BOTH activity and audit,
         # so a dropped row here can be the only record that Harmonist rewrote the
@@ -337,6 +398,110 @@ def append(
         # `extra={"_activity": True}` is load-bearing — it stops the feed's log
         # mirror re-entering record() and looping (activity._ActivityLogHandler).
         log.exception("activity_store append failed", extra=_QUIET_MIRROR)
+    return None
+
+
+@dataclass(frozen=True)
+class TagChanges:
+    """One file's per-field before/after detail, and four ways to find that file
+    again (see the 5->6 migration for why four)."""
+
+    file: str
+    changes: dict[str, Any]
+    track_ref: str | None = None
+    rec_ref: str | None = None
+    position: str | None = None
+
+
+def record_tag_changes(
+    event_id: int,
+    *,
+    file: str,
+    changes: Mapping[str, object],
+    track_ref: str | None = None,
+    rec_ref: str | None = None,
+    position: str | None = None,
+) -> None:
+    """Attach one file's per-field before/after detail to the `tag.track` row
+    `event_id` (#86).
+
+    `changes` is `{owned_field: [before, after]}` and must be non-empty — a file
+    whose tags didn't change writes no audit row at all, so there is nothing for
+    a diff to hang off. Values are whatever the field holds: a string, None for
+    absent, or a list for the multi-valued fields (`artists`, `isrcs`).
+
+    The three refs identify the file as it stands *after* the write, which is
+    what a later revert has to match against.
+
+    Best-effort for the same reason `append` is: recording must never abort the
+    tagging it records. A lost detail row costs the *disclosure*, not the audit
+    line above it, which is already committed.
+    """
+    if not changes:
+        return
+    try:
+        conn = _ensure()
+        with _LOCK:
+            conn.execute(
+                "INSERT INTO tag_changes "
+                "(event_id, file, track_ref, rec_ref, position, changes) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    event_id,
+                    file,
+                    track_ref,
+                    rec_ref,
+                    position,
+                    json.dumps(changes, ensure_ascii=False, sort_keys=True),
+                ),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        log.exception("activity_store record_tag_changes failed", extra=_QUIET_MIRROR)
+
+
+def tag_changes_for(event_ids: Sequence[int]) -> dict[int, TagChanges]:
+    """The stored detail for `event_ids`, keyed by event id.
+
+    Takes the ids in one call rather than one query per row: an album's history
+    can carry a `tag.track` row per file per tagging, and the page renders them
+    together. Rows with no detail — every event that isn't a tagged file — are
+    simply absent from the result.
+
+    A payload that won't parse is skipped with a warning rather than raised: the
+    records are permanent and unversioned, so one malformed row from a future or
+    corrupted write must not take a whole album page down with it.
+    """
+    if not event_ids:
+        return {}
+    placeholders = ",".join("?" * len(event_ids))
+    out: dict[int, TagChanges] = {}
+    try:
+        conn = _ensure()
+        with _LOCK:
+            rows = conn.execute(
+                "SELECT event_id, file, track_ref, rec_ref, position, changes "
+                f"FROM tag_changes WHERE event_id IN ({placeholders})",
+                list(event_ids),
+            ).fetchall()
+    except sqlite3.Error:
+        log.exception("activity_store tag_changes_for failed", extra=_QUIET_MIRROR)
+        return {}
+    for event_id, file, track_ref, rec_ref, position, payload in rows:
+        try:
+            parsed = json.loads(payload)
+        except (TypeError, ValueError):
+            log.warning("tag_changes row %s has unreadable JSON — skipping", event_id)
+            continue
+        if isinstance(parsed, dict):
+            out[int(event_id)] = TagChanges(
+                file=str(file),
+                changes=parsed,
+                track_ref=track_ref,
+                rec_ref=rec_ref,
+                position=position,
+            )
+    return out
 
 
 def recent(

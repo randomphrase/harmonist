@@ -265,13 +265,64 @@ class VorbisTagger:
 
     # ---- write ----
 
-    def write_tags(self, path: Path, tagset: TagSet, cover: bytes | None) -> None:
+    def _read_owned(self, tags: Any) -> dict[str, Any]:
+        """The current value of every owned field, shaped exactly like the
+        matching `TagSet` attribute (#86). See `m4a._read_owned` on why the
+        shape rather than just the value has to line up."""
+
+        def one(key: str) -> str | None:
+            values = tags.get(key) or []
+            return str(values[0]) if values else None
+
+        def many(key: str) -> list[str]:
+            return [str(v) for v in (tags.get(key) or [])]
+
+        def num(key: str) -> int | None:
+            return _first_int(one(key))
+
+        return {
+            Owned.MB_ALBUM_ID: one(KEY_ALBUM_ID),
+            Owned.ALBUM: one(KEY_ALBUM),
+            Owned.ALBUM_ARTIST: one(KEY_ALBUM_ARTIST),
+            Owned.ALBUM_ARTIST_SORT: one(KEY_ALBUM_ARTIST_SORT),
+            Owned.MB_ALBUM_ARTIST_IDS: many(KEY_ALBUM_ARTIST_ID),
+            Owned.MB_RELEASE_GROUP_ID: one(KEY_RELEASE_GROUP_ID),
+            Owned.MB_ALBUM_TYPE: one(KEY_RELEASE_TYPE),
+            Owned.MB_ALBUM_STATUS: one(KEY_RELEASE_STATUS),
+            Owned.MB_ALBUM_COUNTRY: one(KEY_RELEASE_COUNTRY),
+            Owned.DATE: one(KEY_DATE),
+            Owned.ORIGINAL_DATE: one(KEY_ORIGINAL_DATE),
+            Owned.SCRIPT: one(KEY_SCRIPT),
+            Owned.LABEL: one(KEY_LABEL),
+            Owned.CATALOG_NUMBER: one(KEY_CATALOG),
+            Owned.BARCODE: one(KEY_BARCODE),
+            Owned.ASIN: one(KEY_ASIN),
+            Owned.DISC_TOTAL: num(KEY_DISC_TOTAL),
+            Owned.TITLE: one(KEY_TITLE),
+            Owned.ARTIST: one(KEY_ARTIST),
+            Owned.ARTIST_SORT: one(KEY_ARTIST_SORT),
+            Owned.ARTISTS: many(KEY_ARTISTS),
+            Owned.TRACK_NUM: num(KEY_TRACK_NUMBER),
+            Owned.TRACK_TOTAL: num(KEY_TRACK_TOTAL),
+            Owned.DISC_NUM: num(KEY_DISC_NUMBER),
+            Owned.MEDIA: one(KEY_MEDIA),
+            Owned.MB_TRACK_ID: one(KEY_TRACK_ID),
+            Owned.MB_RELEASE_TRACK_ID: one(KEY_RELEASE_TRACK_ID),
+            Owned.MB_ARTIST_IDS: many(KEY_ARTIST_ID),
+            Owned.ISRCS: many(KEY_ISRC),
+        }
+
+    def write_tags(self, path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
+        """Write `tagset` to `path`, returning the owned fields as they were
+        BEFORE the write — read from the handle already open here, so the
+        tagging audit (#86) costs no second pass over the file."""
         audio = self._open(path)
         if audio is None:
             raise OSError(f"could not open {path} for tagging")
         if audio.tags is None:
             audio.add_tags()
         tags = audio.tags
+        before = self._read_owned(tags)
 
         # Clear every owned key before writing, so a field absent from this
         # TagSet is REMOVED rather than left stale from a previous tagging
@@ -341,3 +392,4 @@ class VorbisTagger:
             self._set_cover(audio, cover)
 
         audio.save()
+        return before

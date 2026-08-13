@@ -8,6 +8,7 @@ Picard-compatible atom naming throughout. Custom atoms use the
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from mutagen.mp4 import MP4, MP4Cover
 
@@ -251,13 +252,74 @@ def read_cover(path: Path) -> tuple[bytes, str] | None:
 # ---------------------------------------------------------------------------
 
 
-def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
+def _binary_atom_list(audio: MP4, atom: str) -> list[str]:
+    """Every value of a freeform (`----`) atom, decoded. Freeform atoms come
+    back as bytes and may legitimately repeat — ARTISTS, ISRC and the artist-id
+    atoms are all multi-valued."""
+    out: list[str] = []
+    for value in audio.get(atom) or []:
+        try:
+            out.append(bytes(value).decode("utf-8"))
+        except (AttributeError, UnicodeDecodeError):
+            continue
+    return out
+
+
+def _read_owned(audio: MP4) -> dict[str, Any]:
+    """The current value of every owned field, shaped exactly like the matching
+    `TagSet` attribute (#86).
+
+    Shape matters more than it looks: these values are diffed straight against
+    the TagSet about to be written, so a track number read as "5" when the
+    TagSet holds `5` would report a change on every re-tag forever.
+    """
+    trkn = (audio.get(ATOM_TRACK_NUM) or [(None, None)])[0]
+    disk = (audio.get(ATOM_DISC_NUM) or [(None, None)])[0]
+    return {
+        Owned.MB_ALBUM_ID: _binary_atom_str(audio, ATOM_MB_ALBUM_ID),
+        Owned.ALBUM: _text_atom(audio, ATOM_ALBUM),
+        Owned.ALBUM_ARTIST: _text_atom(audio, ATOM_ALBUM_ARTIST),
+        Owned.ALBUM_ARTIST_SORT: _text_atom(audio, ATOM_ALBUM_ARTIST_SORT),
+        Owned.MB_ALBUM_ARTIST_IDS: _binary_atom_list(audio, ATOM_MB_ALBUM_ARTIST_ID),
+        Owned.MB_RELEASE_GROUP_ID: _binary_atom_str(audio, ATOM_MB_RELEASE_GROUP_ID),
+        Owned.MB_ALBUM_TYPE: _binary_atom_str(audio, ATOM_MB_ALBUM_TYPE),
+        Owned.MB_ALBUM_STATUS: _binary_atom_str(audio, ATOM_MB_ALBUM_STATUS),
+        Owned.MB_ALBUM_COUNTRY: _binary_atom_str(audio, ATOM_MB_ALBUM_COUNTRY),
+        Owned.DATE: _text_atom(audio, ATOM_DATE),
+        Owned.ORIGINAL_DATE: _binary_atom_str(audio, ATOM_ORIGINAL_DATE),
+        Owned.SCRIPT: _binary_atom_str(audio, ATOM_SCRIPT),
+        Owned.LABEL: _binary_atom_str(audio, ATOM_LABEL),
+        Owned.CATALOG_NUMBER: _binary_atom_str(audio, ATOM_CATALOG),
+        Owned.BARCODE: _binary_atom_str(audio, ATOM_BARCODE),
+        Owned.ASIN: _binary_atom_str(audio, ATOM_ASIN),
+        Owned.DISC_TOTAL: disk[1] if disk else None,
+        Owned.TITLE: _text_atom(audio, ATOM_TITLE),
+        Owned.ARTIST: _text_atom(audio, ATOM_ARTIST),
+        Owned.ARTIST_SORT: _text_atom(audio, ATOM_ARTIST_SORT),
+        Owned.ARTISTS: _binary_atom_list(audio, ATOM_ARTISTS),
+        Owned.TRACK_NUM: trkn[0] if trkn else None,
+        Owned.TRACK_TOTAL: trkn[1] if trkn else None,
+        Owned.DISC_NUM: disk[0] if disk else None,
+        Owned.MEDIA: _binary_atom_str(audio, ATOM_MEDIA),
+        Owned.MB_TRACK_ID: _binary_atom_str(audio, ATOM_MB_TRACK_ID),
+        Owned.MB_RELEASE_TRACK_ID: _binary_atom_str(audio, ATOM_MB_RELEASE_TRACK_ID),
+        Owned.MB_ARTIST_IDS: _binary_atom_list(audio, ATOM_MB_ARTIST_ID),
+        Owned.ISRCS: _binary_atom_list(audio, ATOM_ISRC),
+    }
+
+
+def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
     """Serialise the TagSet to MP4 atoms on `path`, plus optional cover.
+
+    Returns the owned fields as they were BEFORE the write, read from the handle
+    this function already holds — so the tagging audit (#86) gets its before
+    state without a second open of every file.
 
     The comment atom (`©cmt`) is intentionally NOT touched here so the
     Bandcamp-URL fallback the user may have placed there survives a retag.
     """
     audio = MP4(path)
+    before = _read_owned(audio)
 
     # Clear every owned atom before writing, so a field absent from this TagSet
     # is REMOVED rather than left stale from a previous tagging (#149). Anything
@@ -334,3 +396,4 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     # ATOM_COMMENT is intentionally NOT touched.
 
     audio.save()
+    return before

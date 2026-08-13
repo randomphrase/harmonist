@@ -468,6 +468,217 @@ def test_migrates_a_v4_database_in_place_keeping_its_rows(tmp_path):
     assert events[0].action_id is None
 
 
+def test_migrates_a_v5_database_in_place_keeping_its_rows(tmp_path):
+    """5 -> 6 (tag_changes): gains the side table in place and keeps existing
+    rows. Nothing is back-filled — records written before this migration have no
+    per-field detail, and inventing one would be worse than admitting that."""
+    db = tmp_path / "v5.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for step in activity_store._MIGRATIONS[:5]:
+        for stmt in step:
+            conn.execute(stmt)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message, album_id) VALUES (?, ?, ?, ?, ?)",
+        ("2026-07-01T00:00:00+00:00", "info", "audit", "tag.track file=01.flac", "rel-old"),
+    )
+    conn.execute("PRAGMA user_version = 5")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    events = activity_store.recent()
+    assert [e.message for e in events] == ["tag.track file=01.flac"]
+    assert events[0].album_id == "rel-old"  # pre-existing data intact
+    # The old row has no detail, and asking for it is not an error.
+    assert activity_store.tag_changes_for([1]) == {}
+
+
+def test_a_failing_migration_leaves_the_database_exactly_as_it_was(tmp_path, monkeypatch):
+    """No half-migrated databases. This runs on someone's NAS with no way to
+    fix it remotely, so a step that dies part-way must leave nothing behind.
+
+    Three things make it hold, two of which are easy to break by accident:
+    SQLite has transactional DDL; `_open` uses isolation_level=None, WITHOUT
+    which Python's sqlite3 runs DDL outside the surrounding BEGIN and it would
+    survive the ROLLBACK; and `PRAGMA user_version` lives in the database header
+    and rolls back too, so the schema and its version can't disagree.
+    """
+    db = tmp_path / "v5.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for step in activity_store._MIGRATIONS[:5]:
+        for stmt in step:
+            conn.execute(stmt)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message) VALUES (?, ?, ?, ?)",
+        ("2026-07-01T00:00:00+00:00", "info", "activity", "precious user data"),
+    )
+    conn.execute("PRAGMA user_version = 5")
+    conn.close()
+
+    # A step whose SECOND statement fails, after the first has already run.
+    broken = (
+        "CREATE TABLE half_built (id INTEGER PRIMARY KEY)",
+        "CREATE INDEX idx_boom ON no_such_table (nope)",
+    )
+    monkeypatch.setattr(activity_store, "_MIGRATIONS", (*activity_store._MIGRATIONS[:5], broken))
+    monkeypatch.setattr(activity_store, "SCHEMA_VERSION", 6)
+
+    conn = sqlite3.connect(db, check_same_thread=False, isolation_level=None)
+    with pytest.raises(sqlite3.OperationalError):
+        activity_store._migrate(conn)
+    conn.close()
+
+    check = sqlite3.connect(db)
+    tables = {r[0] for r in check.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    rows = [r[0] for r in check.execute("SELECT message FROM events")]
+    (version,) = check.execute("PRAGMA user_version").fetchone()
+    check.close()
+
+    assert version == 5, "version advanced past a step that failed"
+    assert "half_built" not in tables, "the failed step's first statement survived"
+    assert rows == ["precious user data"]
+
+
+def test_a_database_left_by_a_failed_migration_still_upgrades_later(tmp_path, monkeypatch):
+    """The other half of the guarantee: rolling back must leave the database
+    upgradeable, not merely intact. A user who hits a bad build should be fixed
+    by the next one, with their history still there."""
+    db = tmp_path / "v5.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for step in activity_store._MIGRATIONS[:5]:
+        for stmt in step:
+            conn.execute(stmt)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message) VALUES (?, ?, ?, ?)",
+        ("2026-07-01T00:00:00+00:00", "info", "activity", "survives a bad build"),
+    )
+    conn.execute("PRAGMA user_version = 5")
+    conn.close()
+
+    broken = ("CREATE INDEX idx_boom ON no_such_table (nope)",)
+    with monkeypatch.context() as m:
+        m.setattr(activity_store, "_MIGRATIONS", (*activity_store._MIGRATIONS[:5], broken))
+        m.setattr(activity_store, "SCHEMA_VERSION", 6)
+        bad = sqlite3.connect(db, check_same_thread=False, isolation_level=None)
+        with pytest.raises(sqlite3.OperationalError):
+            activity_store._migrate(bad)
+        bad.close()
+
+    # The real migrations, as a later build would apply them.
+    activity_store.init(db)
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    assert [e.message for e in activity_store.recent()] == ["survives a bad build"]
+
+
+def test_append_returns_the_row_id_it_wrote(tmp_path):
+    """The id is what lets a caller attach detail to the row it just wrote. A
+    write that produced no row returns None, so the caller can tell."""
+    activity_store.init(tmp_path / "a.db")
+    first = activity_store.append(
+        message="tag.track file=01.flac",
+        level=activity_store.Level.INFO,
+        source=activity_store.Source.AUDIT,
+    )
+    second = activity_store.append(
+        message="tag.track file=02.flac",
+        level=activity_store.Level.INFO,
+        source=activity_store.Source.AUDIT,
+    )
+    assert isinstance(first, int) and isinstance(second, int)
+    assert second > first
+    # An empty message is not recorded, so there is no row to hang detail off.
+    assert (
+        activity_store.append(
+            message="   ",
+            level=activity_store.Level.INFO,
+            source=activity_store.Source.AUDIT,
+        )
+        is None
+    )
+
+
+def test_tag_changes_round_trip_with_every_identifier(tmp_path):
+    """All four ways of naming the track survive the round trip — each fails
+    under a different future edit (rename, re-match, renumber), so a record that
+    kept only one would be unrevertable after that edit."""
+    activity_store.init(tmp_path / "a.db")
+    event_id = activity_store.append(
+        message="tag.track file=01.flac",
+        level=activity_store.Level.INFO,
+        source=activity_store.Source.AUDIT,
+        album_id="rel-1",
+    )
+    assert event_id is not None
+    activity_store.record_tag_changes(
+        event_id,
+        file="01 Wildlife Analysis.flac",
+        changes={
+            "artist": ["Boards Of Canada", "Boards of Canada"],
+            "label": [None, "Warp Records"],
+            "isrcs": [[], ["GBAAA9800001"]],
+        },
+        track_ref="rt-1",
+        rec_ref="rec-1",
+        position="1",
+    )
+
+    got = activity_store.tag_changes_for([event_id])[event_id]
+    assert got.file == "01 Wildlife Analysis.flac"
+    assert got.track_ref == "rt-1"
+    assert got.rec_ref == "rec-1"
+    assert got.position == "1"
+    assert got.changes["artist"] == ["Boards Of Canada", "Boards of Canada"]
+    # Absent-before round-trips as null, distinct from an empty string.
+    assert got.changes["label"] == [None, "Warp Records"]
+    # Multi-valued fields stay lists rather than being flattened at write time.
+    assert got.changes["isrcs"] == [[], ["GBAAA9800001"]]
+
+
+def test_tag_changes_records_nothing_when_nothing_changed(tmp_path):
+    """A file whose tags are identical writes no row. Otherwise a nightly
+    gardener run (#32) fills history with empty entries."""
+    activity_store.init(tmp_path / "a.db")
+    event_id = activity_store.append(
+        message="tag.track file=01.flac",
+        level=activity_store.Level.INFO,
+        source=activity_store.Source.AUDIT,
+    )
+    assert event_id is not None
+    activity_store.record_tag_changes(event_id, file="01.flac", changes={})
+    assert activity_store.tag_changes_for([event_id]) == {}
+
+
+def test_tag_changes_skips_an_unreadable_payload_without_losing_the_rest(tmp_path):
+    """These records are permanent and unversioned, so one row written by a
+    future (or corrupted) build must not take a whole album page down."""
+    db = tmp_path / "a.db"
+    activity_store.init(db)
+    good = activity_store.append(
+        message="tag.track file=01.flac",
+        level=activity_store.Level.INFO,
+        source=activity_store.Source.AUDIT,
+    )
+    bad = activity_store.append(
+        message="tag.track file=02.flac",
+        level=activity_store.Level.INFO,
+        source=activity_store.Source.AUDIT,
+    )
+    assert good is not None and bad is not None
+    activity_store.record_tag_changes(good, file="01.flac", changes={"title": ["a", "b"]})
+
+    conn = activity_store._ensure()
+    conn.execute(
+        "INSERT INTO tag_changes (event_id, file, changes) VALUES (?, ?, ?)",
+        (bad, "02.flac", "{not json"),
+    )
+    conn.commit()
+
+    out = activity_store.tag_changes_for([good, bad])
+    assert set(out) == {good}
+    assert out[good].changes == {"title": ["a", "b"]}
+
+
 def test_action_scope_correlates_activity_with_its_audit_records(tmp_path):
     """The whole point: one action's activity entry and the audit records
     underneath it share an id, and unscoped events stay uncorrelated."""

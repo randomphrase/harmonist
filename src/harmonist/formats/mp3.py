@@ -271,11 +271,82 @@ def _set_txxx(tags: ID3, desc: str, values: list[str]) -> None:
     tags.add(TXXX(encoding=Encoding.UTF8, desc=desc, text=values))
 
 
-def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
+def _txxx_list(tags: Any, desc: str) -> list[str]:
+    """Every value of a TXXX user-text frame. ARTISTS and the artist-id frames
+    are multi-valued, and ID3 carries them as several strings in one frame."""
+    if tags is None:
+        return []
+    frame = tags.get(f"TXXX:{desc}")
+    return [str(v) for v in frame.text] if frame is not None and frame.text else []
+
+
+def _split_pair(value: str | None) -> tuple[int | None, int | None]:
+    """ "5/12" -> (5, 12). ID3 packs number and total into one frame, so both
+    owned fields are read from it. Anything unparseable reads as absent rather
+    than raising — a vinyl rip numbered "A1" must not break a re-tag."""
+    if not value:
+        return None, None
+    head, _, tail = value.partition("/")
+    try:
+        num = int(head)
+    except ValueError:
+        return None, None
+    try:
+        total = int(tail) if tail else None
+    except ValueError:
+        total = None
+    return num, total
+
+
+def _read_owned(tags: Any) -> dict[str, Any]:
+    """The current value of every owned field, shaped exactly like the matching
+    `TagSet` attribute (#86). See `m4a._read_owned` on why shape matters."""
+    track_num, track_total = _split_pair(_text(tags, "TRCK"))
+    disc_num, disc_total = _split_pair(_text(tags, "TPOS"))
+    ufid = tags.get(f"UFID:{UFID_OWNER}") if tags is not None else None
+    isrc = tags.get("TSRC") if tags is not None else None
+    return {
+        Owned.MB_ALBUM_ID: _txxx(tags, TXXX_ALBUM_ID),
+        Owned.ALBUM: _text(tags, "TALB"),
+        Owned.ALBUM_ARTIST: _text(tags, "TPE2"),
+        Owned.ALBUM_ARTIST_SORT: _text(tags, "TSO2"),
+        Owned.MB_ALBUM_ARTIST_IDS: _txxx_list(tags, TXXX_ALBUM_ARTIST_ID),
+        Owned.MB_RELEASE_GROUP_ID: _txxx(tags, TXXX_RELEASE_GROUP_ID),
+        Owned.MB_ALBUM_TYPE: _txxx(tags, TXXX_ALBUM_TYPE),
+        Owned.MB_ALBUM_STATUS: _txxx(tags, TXXX_ALBUM_STATUS),
+        Owned.MB_ALBUM_COUNTRY: _txxx(tags, TXXX_ALBUM_COUNTRY),
+        Owned.DATE: _text(tags, "TDRC"),
+        Owned.ORIGINAL_DATE: _text(tags, "TDOR"),
+        Owned.SCRIPT: _txxx(tags, TXXX_SCRIPT),
+        Owned.LABEL: _text(tags, "TPUB"),
+        Owned.CATALOG_NUMBER: _txxx(tags, TXXX_CATALOG),
+        Owned.BARCODE: _txxx(tags, TXXX_BARCODE),
+        Owned.ASIN: _txxx(tags, TXXX_ASIN),
+        Owned.DISC_TOTAL: disc_total,
+        Owned.TITLE: _text(tags, "TIT2"),
+        Owned.ARTIST: _text(tags, "TPE1"),
+        Owned.ARTIST_SORT: _text(tags, "TSOP"),
+        Owned.ARTISTS: _txxx_list(tags, TXXX_ARTISTS),
+        Owned.TRACK_NUM: track_num,
+        Owned.TRACK_TOTAL: track_total,
+        Owned.DISC_NUM: disc_num,
+        Owned.MEDIA: _text(tags, "TMED"),
+        Owned.MB_TRACK_ID: ufid.data.decode("ascii", "replace") if ufid is not None else None,
+        Owned.MB_RELEASE_TRACK_ID: _txxx(tags, TXXX_RELEASE_TRACK_ID),
+        Owned.MB_ARTIST_IDS: _txxx_list(tags, TXXX_ARTIST_ID),
+        Owned.ISRCS: [str(v) for v in isrc.text] if isrc is not None and isrc.text else [],
+    }
+
+
+def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
+    """Write `tagset` to `path`, returning the owned fields as they were BEFORE
+    the write — read from the handle already open here, so the tagging audit
+    (#86) costs no second pass over the file."""
     audio = MP3(path)
     if audio.tags is None:
         audio.add_tags()
     tags = audio.tags
+    before = _read_owned(tags)
 
     # Clear every owned frame before writing, so a field absent from this
     # TagSet is REMOVED rather than left stale from a previous tagging (#149).
@@ -359,3 +430,4 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     # COMM intentionally NOT touched — preserves a recovered Bandcamp URL.
 
     audio.save()
+    return before

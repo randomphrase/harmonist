@@ -650,6 +650,90 @@ def test_media_round_trips(tmp_path, ext, fixture):
     assert formats.read_tags(path).media == '12" Vinyl'
 
 
+def _full_tagset() -> Any:
+    """A TagSet with every owned field populated — nothing left at its default,
+    so a round trip exercises all of them."""
+    from harmonist.formats.types import TagSet
+
+    return TagSet(
+        mb_album_id="alb-1",
+        album="Music Has the Right to Children",
+        album_artist="Boards of Canada",
+        title="Roygbiv",
+        artist="Boards of Canada",
+        track_num=9,
+        track_total=18,
+        album_artist_sort="Boards of Canada",
+        artist_sort="Boards of Canada",
+        artists=["Boards of Canada"],
+        original_date="1998-04-20",
+        script="Latn",
+        mb_album_artist_ids=["aa-1"],
+        mb_release_group_id="rg-1",
+        mb_album_type="Album",
+        mb_album_status="official",
+        mb_album_country="GB",
+        mb_track_id="rec-1",
+        mb_release_track_id="rt-1",
+        mb_artist_ids=["ar-1"],
+        isrcs=["GBAAA9800001"],
+        date="1998-04-20",
+        disc_num=1,
+        disc_total=1,
+        label="Warp Records",
+        catalog_number="WARP55",
+        barcode="5021603055520",
+        asin="B000024T4T",
+        media="CD",
+    )
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_every_owned_field_round_trips_through_write_and_back(tmp_path, ext, fixture):
+    """`write_tags` returns the owned fields as they were before it wrote, and
+    for every one of them that value must come back **identical in type as well
+    as content** to what the previous write put there.
+
+    This is the load-bearing test of #86, and it is really a test of silence:
+    the tagging audit records a field only when it changed, so any field that
+    fails to round-trip — read back as "9" where the TagSet held `9`, or missing
+    entirely as `media` did before #149 — reports a phantom change on every
+    re-tag forever, and the history fills with edits that never happened.
+    """
+    from harmonist.formats.owned import Owned
+
+    tagset = _full_tagset()
+    path = _copy_fixture(tmp_path, fixture)
+
+    formats.write_tags(path, tagset, None)
+    before = formats.write_tags(path, tagset, None)  # returns what the first wrote
+
+    mismatched = {
+        f.value: (getattr(tagset, f.value), before.get(f.value))
+        for f in Owned
+        if getattr(tagset, f.value) != before.get(f.value)
+    }
+    assert not mismatched
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_write_reports_an_untagged_file_as_empty_not_as_matching(tmp_path, ext, fixture):
+    """The first tag of a fresh file must report every owned field as absent.
+
+    Absent is `None` for scalars and `[]` for the multi-valued fields, matching
+    the TagSet defaults — so "this album had no label" and "this album's label
+    was empty" collapse to one state, which is the decision #86 took on empty
+    versus missing.
+    """
+    from harmonist.formats.owned import Owned
+
+    path = _copy_fixture(tmp_path, fixture)
+    before = formats.write_tags(path, _full_tagset(), None)
+
+    assert set(before) == {f.value for f in Owned}
+    assert all(v in (None, [], 0) for v in before.values()), before
+
+
 def _set_unowned_tags(path: Path, *, comment: str, genre: str) -> None:
     """Put a comment, a genre and a ReplayGain tag on `path`, natively."""
     if path.suffix == ".mp3":

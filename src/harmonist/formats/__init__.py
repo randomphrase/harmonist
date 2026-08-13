@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 from . import flac, m4a, mp3, ogg, opus
 from .types import ScanFields, TagSet, TrackTags, UnsupportedFormatError
@@ -113,14 +114,21 @@ def read_cover(path: Path) -> tuple[bytes, str] | None:
     return result
 
 
-def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
+def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
     """Write `tagset` to `path` in its native format. `cover` is raw image
     bytes (jpeg/png) or None to leave existing cover untouched.
+
+    Returns the owned fields (`formats.owned.Owned`) as they were BEFORE the
+    write, each shaped like the matching `TagSet` attribute. The backend reads
+    them from the handle it already has open, so the tagging audit (#86) gets
+    its before state without a second pass over every file — which was the
+    original objection to recording per-field diffs at all.
     """
     mod = _module_for(path)
     if mod is None:
         raise UnsupportedFormatError(f"no audio module handles {path.suffix}")
-    mod.write_tags(path, tagset, cover)
+    before: dict[str, Any] = mod.write_tags(path, tagset, cover)
+    return before
 
 
 __all__ = [
