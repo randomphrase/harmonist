@@ -574,6 +574,23 @@ The existing `©cmt` (Bandcamp comment) is **preserved** if present — it's the
 
 The current code's `MUSICBRAINZ_RELEASEID` atom is **non-Picard** and gets removed by the tagger when it writes the correct atoms.
 
+### The tags Harmonist owns
+
+`formats/owned.py` names them, and the list is the concrete form of the promise not to touch tags Harmonist doesn't understand: **these fields, and only these, are the ones it writes, overwrites, and removes.** Each backend maps `Owned` to its native keys and clears that mapping before writing, so a field absent from the new `TagSet` — a release with no catalogue number, say — is *removed* rather than left stale from a previous tagging. Before #149 only the Vorbis backend did this, so a mis-tag correction left the wrong release's label on MP3 and M4A files indefinitely.
+
+Everything not in the set is left exactly as found: the comment carrying a recovered Bandcamp URL, a genre tagged elsewhere (Harmonist writes none — see #12), and any arbitrary tag another tool put there (ReplayGain, encoder settings, user ratings).
+
+`Owned` is split by **scope** — whether a field's value depends on which track it is:
+
+- **Album** — `mb_album_id`, `album`, `album_artist`, `album_artist_sort`, `mb_album_artist_ids`, `mb_release_group_id`, `mb_album_type`, `mb_album_status`, `mb_album_country`, `date`, `original_date`, `script`, `label`, `catalog_number`, `barcode`, `asin`, `disc_total`.
+- **Track** — `title`, `artist`, `artist_sort`, `artists`, `track_num`, `track_total`, `disc_num`, `media`, `mb_track_id`, `mb_release_track_id`, `mb_artist_ids`, `isrcs`.
+
+`media`, `disc_num` and `track_total` are derived from the *medium*, so they are track-scoped even though they look album-level: on a 2-disc release, or a CD+DVD set, they genuinely differ between tracks. The scope drives the tagging audit records (#86), which record an album-level change once per album rather than once per track.
+
+The `Owned` member values are exactly the `TagSet` attribute names, and a test asserts the two sets match. That guards drift in both directions: a new `TagSet` field nobody classified would be written but never cleared, and an `Owned` member with no field behind it would clear a tag Harmonist never writes.
+
+**Artwork is deliberately not in the set.** Embedded cover art is not a tag here — `tagger.tag_album` passes `cover=None` when the tracks carry differing per-track images precisely so `write_tags` leaves them alone, and clearing artwork with the owned set would make that protection a no-op. Per-track artwork is a third category that fits neither scope, which neither MusicBrainz nor Picard really models; it is handled in the tagger. See #131.
+
 ### Cover art (mandatory)
 
 Plex with the MusicBrainz agent can fetch its own artwork from external sources, but **Navidrome does not** — it reads from embedded tags and `cover.jpg` only. Navidrome is the strict consumer; we design for it.

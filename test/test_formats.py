@@ -520,3 +520,231 @@ def test_scanner_audio_format_mixed(tmp_path):
     d = _make_album(tmp_path, "sine.flac", name="a")
     shutil.copy(FIXTURES_DIR / "sine.mp3", d / "02 b.mp3")
     assert scan(tmp_path)[0].audio_format == "Mixed"
+
+
+# ---------- the owned-tag set (#149) ----------
+
+
+def _copy_fixture(tmp_path: Path, fixture: str) -> Path:
+    dst = tmp_path / fixture
+    shutil.copy(FIXTURES_DIR / fixture, dst)
+    return dst
+
+
+def _tagset(**overrides: Any) -> Any:
+    """A minimal valid TagSet, plus whatever the test wants to vary."""
+    from harmonist.formats.types import TagSet
+
+    base: dict[str, Any] = {
+        "mb_album_id": "album-mbid",
+        "album": "Album",
+        "album_artist": "Album Artist",
+        "title": "Title",
+        "artist": "Artist",
+        "track_num": 1,
+        "track_total": 1,
+    }
+    return TagSet(**{**base, **overrides})
+
+
+def test_owned_fields_match_tagset_exactly():
+    """`Owned` and `TagSet` name the same set of fields.
+
+    The guard against silent drift in both directions: a new TagSet field that
+    nobody classified would be written and never cleared (the #149 bug, back
+    again for one field), and an Owned member with no TagSet field behind it
+    would clear a tag Harmonist never writes — destroying user data.
+    """
+    from dataclasses import fields as dc_fields
+
+    from harmonist.formats.owned import Owned
+    from harmonist.formats.types import TagSet
+
+    assert {f.name for f in dc_fields(TagSet)} == {f.value for f in Owned}
+
+
+def test_every_owned_field_has_a_scope():
+    from harmonist.formats.owned import ALBUM_FIELDS, SCOPE, TRACK_FIELDS, Owned
+
+    assert set(SCOPE) == set(Owned)
+    assert set(ALBUM_FIELDS) | set(TRACK_FIELDS) == set(Owned)
+    assert not set(ALBUM_FIELDS) & set(TRACK_FIELDS)
+
+
+@pytest.mark.parametrize(
+    ("module_name", "table"),
+    [
+        ("m4a", "OWNED_ATOMS"),
+        ("mp3", "OWNED_FRAMES"),
+        ("_vorbis", "OWNED_KEYS"),
+    ],
+)
+def test_every_backend_maps_every_owned_field(module_name: str, table: str):
+    """A backend that forgets a field stops clearing it — which is exactly the
+    bug this set exists to prevent, reintroduced one format at a time."""
+    import importlib
+
+    from harmonist.formats.owned import Owned
+
+    mod = importlib.import_module(f"harmonist.formats.{module_name}")
+    assert set(getattr(mod, table)) == set(Owned)
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_retag_removes_owned_tags_the_new_release_lacks(tmp_path, ext, fixture):
+    """The #149 bug: a re-tag onto a release with no label/catalogue number
+    must REMOVE the old ones, not leave them attributed to a release that never
+    carried them. FLAC did this; MP3 and M4A silently didn't."""
+    path = _copy_fixture(tmp_path, fixture)
+
+    formats.write_tags(path, _tagset(label="Warp", catalog_number="WARP1", media="CD"), None)
+    assert formats.read_tags(path).label == "Warp"
+
+    formats.write_tags(path, _tagset(), None)  # same album, release has no label
+    after = formats.read_tags(path)
+    assert after.label is None
+    assert after.catalog_number is None
+    assert after.media is None
+    assert after.album == "Album"  # the fields that ARE written still land
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_write_preserves_tags_harmonist_does_not_own(tmp_path, ext, fixture):
+    """The promise not to touch what it doesn't understand. The comment carries
+    a recovered Bandcamp URL, the genre is #12's territory, and ReplayGain
+    stands in for arbitrary third-party tags."""
+    path = _copy_fixture(tmp_path, fixture)
+    _set_unowned_tags(path, comment="https://artist.bandcamp.com/album/x", genre="Ambient")
+
+    formats.write_tags(path, _tagset(), None)
+
+    assert formats.read_comment(path) == "https://artist.bandcamp.com/album/x"
+    kept = _read_unowned_tags(path)
+    assert kept["genre"] == "Ambient"
+    assert kept["replaygain"] == "-3.20 dB"
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_write_with_no_cover_preserves_embedded_art(tmp_path, ext, fixture):
+    """DATA SAFETY: `cover=None` means "leave the art alone" — the path
+    `tag_album` uses to protect a compilation's per-track images. Clearing the
+    owned set must not touch artwork, which is why it isn't in that set."""
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    path = _copy_fixture(tmp_path, fixture)
+
+    formats.write_tags(path, _tagset(), png)
+    embedded = formats.read_cover(path)
+    assert embedded is not None
+
+    formats.write_tags(path, _tagset(title="Retagged"), None)
+    assert formats.read_cover(path) == embedded
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_media_round_trips(tmp_path, ext, fixture):
+    """Regression for #149: MP3 wrote `media` to TMED and read it back from
+    TXXX:MEDIA, so every MP3 Harmonist tagged reported Media missing on the
+    album page — a permanent false difference against MusicBrainz."""
+    path = _copy_fixture(tmp_path, fixture)
+    formats.write_tags(path, _tagset(media='12" Vinyl'), None)
+    assert formats.read_tags(path).media == '12" Vinyl'
+
+
+def _set_unowned_tags(path: Path, *, comment: str, genre: str) -> None:
+    """Put a comment, a genre and a ReplayGain tag on `path`, natively."""
+    if path.suffix == ".mp3":
+        from mutagen.id3 import COMM, TCON, TXXX, Encoding
+        from mutagen.mp3 import MP3
+
+        audio = MP3(path)
+        if audio.tags is None:
+            audio.add_tags()
+        audio.tags.add(COMM(encoding=Encoding.UTF8, lang="eng", desc="", text=[comment]))
+        audio.tags.add(TCON(encoding=Encoding.UTF8, text=[genre]))
+        audio.tags.add(
+            TXXX(encoding=Encoding.UTF8, desc="REPLAYGAIN_TRACK_GAIN", text=["-3.20 dB"])
+        )
+        audio.save()
+    elif path.suffix in (".m4a", ".mp4"):
+        from mutagen.mp4 import MP4
+
+        audio = MP4(path)
+        audio["\xa9cmt"] = [comment]
+        audio["\xa9gen"] = [genre]
+        audio["----:com.apple.iTunes:replaygain_track_gain"] = [b"-3.20 dB"]
+        audio.save()
+    else:
+        audio = _vorbis_open(path)
+        audio["COMMENT"] = [comment]
+        audio["GENRE"] = [genre]
+        audio["REPLAYGAIN_TRACK_GAIN"] = ["-3.20 dB"]
+        audio.save()
+
+
+def _read_unowned_tags(path: Path) -> dict[str, str | None]:
+    if path.suffix == ".mp3":
+        from mutagen.mp3 import MP3
+
+        tags = MP3(path).tags
+        gain = tags.get("TXXX:REPLAYGAIN_TRACK_GAIN")
+        genre = tags.get("TCON")
+        return {
+            "genre": genre.text[0] if genre else None,
+            "replaygain": gain.text[0] if gain else None,
+        }
+    if path.suffix in (".m4a", ".mp4"):
+        from mutagen.mp4 import MP4
+
+        audio = MP4(path)
+        gain = audio.get("----:com.apple.iTunes:replaygain_track_gain")
+        genre = audio.get("\xa9gen")
+        return {
+            "genre": genre[0] if genre else None,
+            "replaygain": bytes(gain[0]).decode() if gain else None,
+        }
+    audio = _vorbis_open(path)
+    return {
+        "genre": (audio.get("GENRE") or [None])[0],
+        "replaygain": (audio.get("REPLAYGAIN_TRACK_GAIN") or [None])[0],
+    }
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_tagging_result_does_not_depend_on_what_was_tagged_before(tmp_path, ext, fixture):
+    """Tagging is idempotent, and — the stronger property clearing buys — its
+    result is independent of the file's tagging history.
+
+    Re-tagging onto a different release used to leave the previous one's
+    residue on MP3 and M4A, so a file tagged A-then-B differed from one tagged
+    B outright. That made the operation non-idempotent in the way that matters:
+    the outcome depended on what had happened to the file before.
+    """
+    release_a = _tagset(album="First", label="Warp", catalog_number="WARP1", media="CD")
+    release_b = _tagset(album="Second", barcode="5099999999999")
+
+    history = _copy_fixture(tmp_path, fixture)
+    formats.write_tags(history, release_a, None)
+    formats.write_tags(history, release_b, None)
+
+    fresh_dir = tmp_path / "fresh"
+    fresh_dir.mkdir()
+    fresh = fresh_dir / fixture
+    shutil.copy(FIXTURES_DIR / fixture, fresh)
+    formats.write_tags(fresh, release_b, None)
+
+    assert formats.read_tags(history) == formats.read_tags(fresh)
+
+    # And tagging the same release twice changes nothing the second time.
+    before = formats.read_tags(history)
+    formats.write_tags(history, release_b, None)
+    assert formats.read_tags(history) == before
+
+
+def _vorbis_open(path: Path) -> Any:
+    if path.suffix == ".flac":
+        from mutagen.flac import FLAC
+
+        return FLAC(path)
+    from mutagen.oggopus import OggOpus
+
+    return OggOpus(path)

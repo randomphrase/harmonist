@@ -20,6 +20,7 @@ from typing import Any
 
 from mutagen.flac import Picture
 
+from .owned import Owned
 from .types import ScanFields, TagSet, TrackTags
 
 # Vorbis comment keys (uppercase by convention; lookups are case-insensitive).
@@ -59,40 +60,42 @@ KEY_COMMENT = "COMMENT"
 KEY_GENRE = "GENRE"
 KEY_DESCRIPTION = "DESCRIPTION"
 
-# Keys this tagger manages on write (cleared then rewritten). COMMENT /
-# DESCRIPTION are deliberately excluded so a recovered Bandcamp URL survives.
-_MANAGED_KEYS = (
-    KEY_ALBUM_ID,
-    KEY_ALBUM_ARTIST_ID,
-    KEY_RELEASE_GROUP_ID,
-    KEY_TRACK_ID,
-    KEY_RELEASE_TRACK_ID,
-    KEY_ARTIST_ID,
-    KEY_ISRC,
-    KEY_RELEASE_TYPE,
-    KEY_RELEASE_STATUS,
-    KEY_RELEASE_COUNTRY,
-    KEY_TITLE,
-    KEY_ALBUM,
-    KEY_ARTIST,
-    KEY_ALBUM_ARTIST,
-    KEY_ARTIST_SORT,
-    KEY_ALBUM_ARTIST_SORT,
-    KEY_ARTISTS,
-    KEY_DATE,
-    KEY_ORIGINAL_DATE,
-    KEY_ORIGINAL_YEAR,
-    KEY_SCRIPT,
-    KEY_TRACK_NUMBER,
-    KEY_TRACK_TOTAL,
-    KEY_DISC_NUMBER,
-    KEY_DISC_TOTAL,
-    KEY_LABEL,
-    KEY_CATALOG,
-    KEY_BARCODE,
-    KEY_ASIN,
-    KEY_MEDIA,
-)
+# The Vorbis keys behind each owned field (#149). COMMENT / DESCRIPTION are
+# absent so a recovered Bandcamp URL survives a retag, GENRE because Harmonist
+# doesn't write one (#12), and the picture block because per-track artwork is
+# preserved deliberately — see `owned.py`.
+OWNED_KEYS: dict[Owned, tuple[str, ...]] = {
+    Owned.MB_ALBUM_ID: (KEY_ALBUM_ID,),
+    Owned.ALBUM: (KEY_ALBUM,),
+    Owned.ALBUM_ARTIST: (KEY_ALBUM_ARTIST,),
+    Owned.ALBUM_ARTIST_SORT: (KEY_ALBUM_ARTIST_SORT,),
+    Owned.MB_ALBUM_ARTIST_IDS: (KEY_ALBUM_ARTIST_ID,),
+    Owned.MB_RELEASE_GROUP_ID: (KEY_RELEASE_GROUP_ID,),
+    Owned.MB_ALBUM_TYPE: (KEY_RELEASE_TYPE,),
+    Owned.MB_ALBUM_STATUS: (KEY_RELEASE_STATUS,),
+    Owned.MB_ALBUM_COUNTRY: (KEY_RELEASE_COUNTRY,),
+    Owned.DATE: (KEY_DATE,),
+    # One field, two keys: Picard writes the year alongside the full date.
+    Owned.ORIGINAL_DATE: (KEY_ORIGINAL_DATE, KEY_ORIGINAL_YEAR),
+    Owned.SCRIPT: (KEY_SCRIPT,),
+    Owned.LABEL: (KEY_LABEL,),
+    Owned.CATALOG_NUMBER: (KEY_CATALOG,),
+    Owned.BARCODE: (KEY_BARCODE,),
+    Owned.ASIN: (KEY_ASIN,),
+    Owned.DISC_TOTAL: (KEY_DISC_TOTAL,),
+    Owned.TITLE: (KEY_TITLE,),
+    Owned.ARTIST: (KEY_ARTIST,),
+    Owned.ARTIST_SORT: (KEY_ARTIST_SORT,),
+    Owned.ARTISTS: (KEY_ARTISTS,),
+    Owned.TRACK_NUM: (KEY_TRACK_NUMBER,),
+    Owned.TRACK_TOTAL: (KEY_TRACK_TOTAL,),
+    Owned.DISC_NUM: (KEY_DISC_NUMBER,),
+    Owned.MEDIA: (KEY_MEDIA,),
+    Owned.MB_TRACK_ID: (KEY_TRACK_ID,),
+    Owned.MB_RELEASE_TRACK_ID: (KEY_RELEASE_TRACK_ID,),
+    Owned.MB_ARTIST_IDS: (KEY_ARTIST_ID,),
+    Owned.ISRCS: (KEY_ISRC,),
+}
 
 
 def _first_int(value: str | None) -> int | None:
@@ -270,11 +273,14 @@ class VorbisTagger:
             audio.add_tags()
         tags = audio.tags
 
-        # Clear the keys we manage; leave COMMENT/DESCRIPTION (and anything
-        # else) alone.
-        for key in _MANAGED_KEYS:
-            if key in tags:
-                del tags[key]
+        # Clear every owned key before writing, so a field absent from this
+        # TagSet is REMOVED rather than left stale from a previous tagging
+        # (#149). Anything not owned — COMMENT/DESCRIPTION, GENRE, arbitrary
+        # user tags, the picture block — is untouched.
+        for keys in OWNED_KEYS.values():
+            for key in keys:
+                if key in tags:
+                    del tags[key]
 
         tags[KEY_ALBUM_ID] = [tagset.mb_album_id]
         if tagset.mb_album_artist_ids:

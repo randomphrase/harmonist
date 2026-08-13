@@ -41,6 +41,7 @@ from mutagen.id3 import (
 )
 from mutagen.mp3 import MP3
 
+from .owned import Owned
 from .types import ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".mp3",)
@@ -61,6 +62,51 @@ TXXX_BARCODE = "BARCODE"
 TXXX_ASIN = "ASIN"
 TXXX_ARTISTS = "ARTISTS"
 TXXX_SCRIPT = "SCRIPT"
+
+
+# The ID3 frames behind each owned field (#149), by mutagen HashKey — which for
+# a user-text frame is "TXXX:<description>" and for the recording MBID is
+# "UFID:<owner>". COMM is absent so a recovered Bandcamp URL survives a retag,
+# TCON because Harmonist doesn't write a genre (#12), and APIC because per-track
+# artwork is preserved deliberately — see `owned.py`.
+#
+# This table is the single definition the read and write paths share. They
+# disagreed before it existed: `media` was written to TMED and read back from
+# TXXX:MEDIA, so it never round-tripped.
+OWNED_FRAMES: dict[Owned, tuple[str, ...]] = {
+    Owned.MB_ALBUM_ID: (f"TXXX:{TXXX_ALBUM_ID}",),
+    Owned.ALBUM: ("TALB",),
+    Owned.ALBUM_ARTIST: ("TPE2",),
+    Owned.ALBUM_ARTIST_SORT: ("TSO2",),
+    Owned.MB_ALBUM_ARTIST_IDS: (f"TXXX:{TXXX_ALBUM_ARTIST_ID}",),
+    Owned.MB_RELEASE_GROUP_ID: (f"TXXX:{TXXX_RELEASE_GROUP_ID}",),
+    Owned.MB_ALBUM_TYPE: (f"TXXX:{TXXX_ALBUM_TYPE}",),
+    Owned.MB_ALBUM_STATUS: (f"TXXX:{TXXX_ALBUM_STATUS}",),
+    Owned.MB_ALBUM_COUNTRY: (f"TXXX:{TXXX_ALBUM_COUNTRY}",),
+    Owned.DATE: ("TDRC",),
+    Owned.ORIGINAL_DATE: ("TDOR",),
+    Owned.SCRIPT: (f"TXXX:{TXXX_SCRIPT}",),
+    Owned.LABEL: ("TPUB",),
+    Owned.CATALOG_NUMBER: (f"TXXX:{TXXX_CATALOG}",),
+    Owned.BARCODE: (f"TXXX:{TXXX_BARCODE}",),
+    Owned.ASIN: (f"TXXX:{TXXX_ASIN}",),
+    # TRCK and TPOS each carry "n/total" in one frame, so two owned fields map
+    # to the same frame. Clearing is idempotent, and both are always written
+    # together below.
+    Owned.DISC_TOTAL: ("TPOS",),
+    Owned.TITLE: ("TIT2",),
+    Owned.ARTIST: ("TPE1",),
+    Owned.ARTIST_SORT: ("TSOP",),
+    Owned.ARTISTS: (f"TXXX:{TXXX_ARTISTS}",),
+    Owned.TRACK_NUM: ("TRCK",),
+    Owned.TRACK_TOTAL: ("TRCK",),
+    Owned.DISC_NUM: ("TPOS",),
+    Owned.MEDIA: ("TMED",),
+    Owned.MB_TRACK_ID: (f"UFID:{UFID_OWNER}",),
+    Owned.MB_RELEASE_TRACK_ID: (f"TXXX:{TXXX_RELEASE_TRACK_ID}",),
+    Owned.MB_ARTIST_IDS: (f"TXXX:{TXXX_ARTIST_ID}",),
+    Owned.ISRCS: ("TSRC",),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +214,10 @@ def read_tags(path: Path) -> TrackTags:
         label=_text(tags, "TPUB"),  # a real frame, unlike the two below
         catalog_number=_txxx(tags, TXXX_CATALOG),
         barcode=_txxx(tags, TXXX_BARCODE),
-        media=_txxx(tags, "MEDIA"),
+        # TMED — the frame `write_tags` actually writes. Read as TXXX:MEDIA
+        # until #149, so `media` never round-tripped and every MP3 Harmonist
+        # had tagged reported it missing on the album page.
+        media=_text(tags, "TMED"),
         genre=_text(tags, "TCON"),
         title=_text(tags, "TIT2"),
         artist=_text(tags, "TPE1"),
@@ -227,6 +276,13 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     if audio.tags is None:
         audio.add_tags()
     tags = audio.tags
+
+    # Clear every owned frame before writing, so a field absent from this
+    # TagSet is REMOVED rather than left stale from a previous tagging (#149).
+    # Anything not owned — COMM, TCON, arbitrary frames, APIC — is untouched.
+    for frames in OWNED_FRAMES.values():
+        for frame_id in frames:
+            tags.delall(frame_id)
 
     # ---- Album-level MB IDs ----
     _set_txxx(tags, TXXX_ALBUM_ID, [tagset.mb_album_id])

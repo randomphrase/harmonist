@@ -6,6 +6,17 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- Re-tagging an MP3 or M4A now **removes** Harmonist's tags that the new release
+  doesn't carry, instead of leaving them behind. Correcting a mis-tag previously
+  left the wrong release's label, catalogue number, barcode and release country
+  on the files indefinitely; FLAC and Opus were already correct (#149).
+- The Media field (CD, Vinyl, …) now reads back correctly from MP3 files.
+  Harmonist wrote it to one frame and read it from another, so every MP3 album it
+  had tagged showed Media as missing on the album page, permanently flagged as
+  differing from MusicBrainz (#149).
+
 ## [1.6.0] - 2026-08-10
 
 ### Added

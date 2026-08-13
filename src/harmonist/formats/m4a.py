@@ -11,6 +11,7 @@ from pathlib import Path
 
 from mutagen.mp4 import MP4, MP4Cover
 
+from .owned import Owned
 from .types import ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".m4a", ".mp4")
@@ -65,6 +66,48 @@ ATOM_ALBUM_ARTIST_SORT = "soaa"
 ATOM_TRACK_NUM = "trkn"
 ATOM_DISC_NUM = "disk"
 ATOM_COVER = "covr"
+
+
+# The MP4 atoms behind each owned field (#149). ATOM_COMMENT is absent so a
+# recovered Bandcamp URL survives a retag, ATOM_GENRE because Harmonist doesn't
+# write one (#12), and ATOM_COVER because per-track artwork is preserved
+# deliberately — see `owned.py`.
+OWNED_ATOMS: dict[Owned, tuple[str, ...]] = {
+    # The legacy atom rides along with the id it was an older spelling of, so
+    # the cleanup happens by construction rather than as a separate step.
+    Owned.MB_ALBUM_ID: (ATOM_MB_ALBUM_ID, LEGACY_RELEASE_ID),
+    Owned.ALBUM: (ATOM_ALBUM,),
+    Owned.ALBUM_ARTIST: (ATOM_ALBUM_ARTIST,),
+    Owned.ALBUM_ARTIST_SORT: (ATOM_ALBUM_ARTIST_SORT,),
+    Owned.MB_ALBUM_ARTIST_IDS: (ATOM_MB_ALBUM_ARTIST_ID,),
+    Owned.MB_RELEASE_GROUP_ID: (ATOM_MB_RELEASE_GROUP_ID,),
+    Owned.MB_ALBUM_TYPE: (ATOM_MB_ALBUM_TYPE,),
+    Owned.MB_ALBUM_STATUS: (ATOM_MB_ALBUM_STATUS,),
+    Owned.MB_ALBUM_COUNTRY: (ATOM_MB_ALBUM_COUNTRY,),
+    Owned.DATE: (ATOM_DATE,),
+    Owned.ORIGINAL_DATE: (ATOM_ORIGINAL_DATE, ATOM_ORIGINAL_YEAR),
+    Owned.SCRIPT: (ATOM_SCRIPT,),
+    Owned.LABEL: (ATOM_LABEL,),
+    Owned.CATALOG_NUMBER: (ATOM_CATALOG,),
+    Owned.BARCODE: (ATOM_BARCODE,),
+    Owned.ASIN: (ATOM_ASIN,),
+    # `trkn` and `disk` each carry the (number, total) pair in one atom, so two
+    # owned fields map to the same atom. Clearing is idempotent, and both are
+    # always written together below.
+    Owned.DISC_TOTAL: (ATOM_DISC_NUM,),
+    Owned.TITLE: (ATOM_TITLE,),
+    Owned.ARTIST: (ATOM_ARTIST,),
+    Owned.ARTIST_SORT: (ATOM_ARTIST_SORT,),
+    Owned.ARTISTS: (ATOM_ARTISTS,),
+    Owned.TRACK_NUM: (ATOM_TRACK_NUM,),
+    Owned.TRACK_TOTAL: (ATOM_TRACK_NUM,),
+    Owned.DISC_NUM: (ATOM_DISC_NUM,),
+    Owned.MEDIA: (ATOM_MEDIA,),
+    Owned.MB_TRACK_ID: (ATOM_MB_TRACK_ID,),
+    Owned.MB_RELEASE_TRACK_ID: (ATOM_MB_RELEASE_TRACK_ID,),
+    Owned.MB_ARTIST_IDS: (ATOM_MB_ARTIST_ID,),
+    Owned.ISRCS: (ATOM_ISRC,),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +259,14 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
     """
     audio = MP4(path)
 
+    # Clear every owned atom before writing, so a field absent from this TagSet
+    # is REMOVED rather than left stale from a previous tagging (#149). Anything
+    # not owned — the comment, genre, arbitrary atoms, the cover — is untouched.
+    for atoms in OWNED_ATOMS.values():
+        for atom in atoms:
+            if atom in audio:
+                del audio[atom]
+
     # ---- Album-level MBID atoms ----
     audio[ATOM_MB_ALBUM_ID] = [tagset.mb_album_id.encode("utf-8")]
     if tagset.mb_album_artist_ids:
@@ -279,10 +330,7 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> None:
         fmt = MP4Cover.FORMAT_PNG if cover[:4] == b"\x89PNG" else MP4Cover.FORMAT_JPEG
         audio[ATOM_COVER] = [MP4Cover(cover, imageformat=fmt)]
 
-    # ---- Cleanup legacy atom ----
-    if LEGACY_RELEASE_ID in audio:
-        del audio[LEGACY_RELEASE_ID]
-
+    # The legacy atom is cleared with the owned set above, not here.
     # ATOM_COMMENT is intentionally NOT touched.
 
     audio.save()
