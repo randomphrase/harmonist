@@ -12,8 +12,10 @@ versions follow [semantic versioning](https://semver.org).
   back the tag values the files carried before it. A field you've changed since
   — in Picard, or by a later re-tag — is left alone and named, and the undo is
   itself recorded, so it can be undone in turn (#157).
-  - The MusicBrainz release id is deliberately kept, so the album stays linked
-    to its release rather than stranding itself mid-tagging; the flash says so.
+  - Undoing the tagging that linked an album to MusicBrainz now unlinks it too,
+    so the files and the album's state can't disagree. It moves to Needs MBID
+    with its release kept as a one-click suggestion, the same place the "wrong
+    match" pencil leaves it (#158).
   - Artwork keeps its own separate Undo, since it has its own store.
 
 ### Changed

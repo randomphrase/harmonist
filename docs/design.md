@@ -366,6 +366,12 @@ without, it leads with the find/assign tools. This avoids a confusing
 round-trip (reject → re-assign) when the user just wants to swap a wrong
 MBID — they can do that inline, and dismissing a suggestion stays put.
 
+**A suggestion need not carry per-track rows.** `track_comparisons` comes from
+an MB fetch, and two paths attach a candidate without one: an unlink after an
+undo (#158) suggests the album's own former release, and nothing here makes a
+network call. The card renders the Confirm and the notes and omits the
+side-by-side, rather than drawing a comparison table with no rows in it.
+
 **Two refinements from the purchase-matcher (§2.5):**
 
 - **Ambiguous link → Complete, not Needs Link.** A bandcamp album with
@@ -419,9 +425,12 @@ stateDiagram-v2
     NEEDS_SYNC --> NEEDS_SYNC: Update URL<br/>(retry on next sync)
 
     COMPLETE --> NEW: Forget<br/>(sidecar deleted)
+    COMPLETE --> NEEDS_MBID: Wrong match<br/>(pencil — tags left on disk)
+    COMPLETE --> NEEDS_MBID: Undo the linking<br/>tagging (#157/#158)
 
     INCOMPLETE --> NEW: Forget
     INCOMPLETE --> NEEDS_MBID: Recheck<br/>(MB tracklist changed → suggestion)
+    INCOMPLETE --> NEEDS_MBID: Wrong match / undo<br/>the linking tagging
     INCOMPLETE --> COMPLETE: Recheck<br/>(missing tracks now on disk)
 
     INCONSISTENT --> NEW: user fixes on-disk<br/>tags via Picard
@@ -639,7 +648,13 @@ The records above exist to be readable, but they were shaped to be *reversible*:
 
 **The undo records itself** as `tag.revert` with its own per-field detail, so it appears in History and is undoable in turn.
 
-**`mb_album_id` is not reverted while the sidecar still holds that release.** Removing it would leave the files carrying no MusicBrainz id while the sidecar claims one, which derives as `TAGGING` (§3) — a spinner in the inbox forever. The outcome says so rather than hiding it. Making the sidecar follow the files is #158; when it lands, the guard lifts and the album drops to `NEEDS_MBID` with the unlinked release kept as its suggestion.
+**`mb_album_id` is all-or-nothing, and the sidecar follows it** (#158). Identity is the one field that isn't per-file: the sidecar records exactly one release, so a revert that moved the id on some files and left it on others would derive as `INCONSISTENT` and leave nothing coherent to write down. So `_identity_revert` decides it once for the album — every file in the plan must agree on the before-value, still carry the after-value, and account for every file in the directory — or the field is left alone and reported stale.
+
+When it does move, the sidecar goes with it: `mb_release_id`, `tagged_at` and `track_count_expected` are cleared and the album derives as `NEEDS_MBID`. Leaving the sidecar naming a release the files no longer carry would derive as `TAGGING` (§3) — the transient spinner, with no action on it and no way out.
+
+**The release is kept as a confirmable suggestion**, not discarded: the Needs MBID card then offers Confirm & Tag, which is the one-click way back, with a note saying why the album is there. Undoing a *re-match* reverts the files to the older release, and that older release — not whichever one the sidecar was holding — is what gets suggested, because it is what the user asked to return to. The candidate carries no `track_comparisons`: building them needs an MB fetch, and an undo makes no network call. Confirming re-tags through the ordinary path, which fetches the release and writes a fresh `track_count_expected`, so nothing here has to guess a track count.
+
+This is the same transition the "wrong match" pencil makes, and deliberately so — it differs only in that the pencil leaves the on-disk tags alone and discards the candidate, since there the release was *wrong* rather than merely undone. See #166 on sharing the mutation between them.
 
 Artwork is not in the plan: it is not an owned tag, and it has its own store, its own availability check and its own button (#131). One button per store, each honest about what it can do.
 

@@ -718,12 +718,20 @@ def _minimal_jpeg() -> bytes:
 # ---------- undoing a tagging (#157) ----------
 
 
-def _plan():
+def _plan(last: int | None = None):
     """The revert plan for the tagging that just ran, built the way the route
-    builds it — from the stored records, through the shared grouping."""
+    builds it — from the stored records, through the shared grouping.
+
+    `last` takes only the final N records, which is how a test with more than one
+    tagging names the most recent one. `_detail()` returns every stored record,
+    and `activity_store.clear()` does not remove them (#165), so slicing is the
+    honest way to say "the tagging that just ran" here. The route doesn't need
+    this — it groups by action id.
+    """
     from harmonist import tag_history
 
-    return tag_history.revert_plan(_detail())
+    records = _detail()
+    return tag_history.revert_plan(records[-last:] if last else records)
 
 
 def test_reverting_a_first_tagging_strips_the_tags_back_off(album_with_tracks, tmp_path):
@@ -738,7 +746,7 @@ def test_reverting_a_first_tagging_strips_the_tags_back_off(album_with_tracks, t
     tagged = formats.read_owned(next(album_dir.glob("*.m4a")))
     assert tagged["album"] == "Test Album"
 
-    outcome = tagger.revert_tags(album_dir, _plan(), keep_release_id=None)
+    outcome = tagger.revert_tags(album_dir, _plan())
 
     assert outcome.files == 2
     assert "album" in outcome.restored
@@ -766,7 +774,7 @@ def test_reverting_leaves_a_field_that_changed_since_alone(album_with_tracks, tm
         formats.write_owned(f, {**formats.read_owned(f), "album": "Edited By Hand"})
     f = next(album_dir.glob("*.m4a"))
 
-    outcome = tagger.revert_tags(album_dir, plan, keep_release_id=None)
+    outcome = tagger.revert_tags(album_dir, plan)
 
     assert "album" in outcome.stale
     assert "album" not in outcome.restored
@@ -775,22 +783,70 @@ def test_reverting_leaves_a_field_that_changed_since_alone(album_with_tracks, tm
     assert after["title"] is None, "everything else still went back"
 
 
-def test_reverting_keeps_the_release_id_while_the_sidecar_claims_it(album_with_tracks, tmp_path):
-    """#158's stated limit, made visible. Removing mb_album_id while the sidecar
-    still holds the release derives as TAGGING — a spinner in the Inbox forever
-    — so the field is left in place and the outcome says so."""
+def test_reverting_reports_the_release_id_it_removed(album_with_tracks, tmp_path):
+    """The caller has to keep the sidecar in step (#158), so the outcome says
+    both that identity moved and what the files carry now. None is a real
+    answer — the id was removed — so the flag can't be folded into the value."""
     from harmonist import activity_store, formats
 
     activity_store.init(tmp_path / "audit.db")
     album_dir = album_with_tracks(2)
     tagger.tag_album(album_dir, _release_2_tracks())
 
-    outcome = tagger.revert_tags(album_dir, _plan(), keep_release_id="rel-aaa")
+    outcome = tagger.revert_tags(album_dir, _plan())
 
-    assert outcome.kept_release_id is True
-    after = formats.read_owned(next(album_dir.glob("*.m4a")))
-    assert after["mb_album_id"] == "rel-aaa", "still linked"
-    assert after["album"] is None, "everything else went back"
+    assert outcome.release_id_reverted is True
+    assert outcome.release_id_now is None, "a first tagging had no id before it"
+    assert formats.read_owned(next(album_dir.glob("*.m4a")))["mb_album_id"] is None
+
+
+def test_reverting_a_rematch_puts_back_the_older_release_id(album_with_tracks, tmp_path):
+    """Undoing a re-match reverts identity to the release the album had BEFORE
+    it — not to nothing. That older release is what the sidecar must follow, and
+    what the user asked to go back to."""
+    from harmonist import activity_store, formats
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+
+    other = _release_2_tracks()
+    other["id"] = "rel-bbb"
+    tagger.tag_album(album_dir, other)
+    assert formats.read_owned(next(album_dir.glob("*.m4a")))["mb_album_id"] == "rel-bbb"
+
+    # The last two records are the re-match's — one per file. Undoing the FIRST
+    # tagging is a different question, and this test asks about the re-match.
+    outcome = tagger.revert_tags(album_dir, _plan(last=2))
+
+    assert outcome.release_id_reverted is True
+    assert outcome.release_id_now == "rel-aaa"
+    assert formats.read_owned(next(album_dir.glob("*.m4a")))["mb_album_id"] == "rel-aaa"
+
+
+def test_reverting_leaves_identity_alone_when_the_files_disagree(album_with_tracks, tmp_path):
+    """Identity is all-or-nothing. If one file has been re-tagged since, moving
+    the others would split the album between two releases — INCONSISTENT, which
+    the user then has to repair by hand — and would leave the caller no single
+    id to write to the sidecar."""
+    from harmonist import activity_store, formats
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+    plan = _plan()
+
+    odd = min(album_dir.glob("*.m4a"))
+    formats.write_owned(odd, {**formats.read_owned(odd), "mb_album_id": "rel-elsewhere"})
+
+    outcome = tagger.revert_tags(album_dir, plan)
+
+    assert outcome.release_id_reverted is False
+    assert "mb_album_id" in outcome.stale
+    assert formats.read_owned(odd)["mb_album_id"] == "rel-elsewhere"
+    other = sorted(album_dir.glob("*.m4a"))[1]
+    assert formats.read_owned(other)["mb_album_id"] == "rel-aaa", "not split in two"
+    assert formats.read_owned(other)["album"] is None, "the rest still went back"
 
 
 def test_reverting_twice_is_a_no_op(album_with_tracks, tmp_path):
@@ -803,9 +859,9 @@ def test_reverting_twice_is_a_no_op(album_with_tracks, tmp_path):
     tagger.tag_album(album_dir, _release_2_tracks())
     plan = _plan()
 
-    first = tagger.revert_tags(album_dir, plan, keep_release_id=None)
+    first = tagger.revert_tags(album_dir, plan)
     snapshot = formats.read_owned(next(album_dir.glob("*.m4a")))
-    second = tagger.revert_tags(album_dir, plan, keep_release_id=None)
+    second = tagger.revert_tags(album_dir, plan)
 
     assert first.files == 2
     assert second.files == 0, "nothing left to put back"
@@ -828,7 +884,7 @@ def test_reverting_refuses_before_writing_when_a_file_is_gone(album_with_tracks,
     before = formats.read_owned(survivor)
 
     with pytest.raises(tagger.RevertUnavailableError):
-        tagger.revert_tags(album_dir, plan, keep_release_id=None)
+        tagger.revert_tags(album_dir, plan)
 
     assert formats.read_owned(survivor) == before, "the surviving file was not touched"
 
@@ -845,7 +901,7 @@ def test_reverting_records_what_it_undid(album_with_tracks, tmp_path):
     tagger.tag_album(album_dir, _release_2_tracks())
     before_rows = len(_detail())
 
-    tagger.revert_tags(album_dir, _plan(), keep_release_id=None)
+    tagger.revert_tags(album_dir, _plan())
 
     lines = [e.message for e in activity_store.recent(50, source=Source.AUDIT)]
     per_file = [m for m in lines if m.startswith("tag.revert.track")]
@@ -877,6 +933,6 @@ def test_reverting_does_not_touch_the_artwork(album_with_tracks, tmp_path):
     embedded = formats.read_cover(f)
     assert embedded is not None
 
-    tagger.revert_tags(album_dir, _plan(), keep_release_id=None)
+    tagger.revert_tags(album_dir, _plan())
 
     assert formats.read_cover(f) == embedded

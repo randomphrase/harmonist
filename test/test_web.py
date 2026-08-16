@@ -2983,18 +2983,62 @@ def test_undo_puts_back_the_tags_a_tagging_changed(client, cfg):
     assert after["album"] is None
 
 
-def test_undo_keeps_the_release_id_and_says_so(client, cfg):
-    """#158's limit surfaced in the flash, not hidden: the album stays linked,
-    so it can't strand itself in TAGGING with a spinner in the Inbox."""
+def test_undo_unlinks_the_album_and_keeps_its_release_as_a_suggestion(client, cfg):
+    """#158: the sidecar follows the files. Leaving `mb_release_id` set while
+    the files carry no id derives as TAGGING — a spinner with no way out — so
+    the link goes too, and the release stays on the card so Confirm puts it
+    back in one click."""
     from harmonist import formats
 
-    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagKeep")
+    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagUnlink")
     path = min(p for p in d.iterdir() if formats.is_supported(p))
 
     r = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
 
-    assert "MusicBrainz id kept" in r.text
-    assert formats.read_owned(path)["mb_album_id"] == "rel-TagKeep"
+    assert "now Needs MBID" in r.text
+    assert formats.read_owned(path)["mb_album_id"] is None
+
+    after = sc.read(d)
+    assert after is not None
+    assert after.mb_release_id is None, "unlinked"
+    assert after.tagged_at is None
+    assert after.track_count_expected is None
+    assert after.mb_match_candidate is not None
+    assert after.mb_match_candidate.mb_release_id == "rel-TagUnlink", "kept as a suggestion"
+    assert after.mb_match_candidate.notes, "and says why the album is back here"
+    # Confirmable, unlike a surrender — the whole point is a one-click way back.
+    assert after.mb_match_candidate.unmatched_purchase is False
+
+
+def test_undo_unlink_derives_the_album_back_to_needs_mbid(client, cfg):
+    """The transition the sidecar change exists to produce, asserted on the
+    state itself rather than on the fields behind it."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+
+    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagState")
+    client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+
+    # NEEDS_MBID, specifically not TAGGING — which is what a sidecar still
+    # naming a release the files no longer carry would derive as, and which has
+    # no action on it and no way out.
+    album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert album.state is AlbumState.NEEDS_MBID
+
+
+def test_undo_unlink_keeps_the_albums_history_reachable(client, cfg):
+    """Unlinking changes the album's id back to its path-derived temp_uid, so
+    the alias row is what stops its whole tagged-era history disappearing from
+    the page (#33)."""
+    from harmonist import activity_store
+
+    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagAlias")
+    client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+
+    new_id = _id_for(cfg, d)
+    assert new_id != album_id, "identity moved"
+    messages = [e.message for e in activity_store.album_history(new_id)]
+    assert any("Re-tagged" in m for m in messages), "the pre-unlink history came with it"
 
 
 def test_undo_names_the_fields_it_left_alone(client, cfg):
@@ -3019,10 +3063,10 @@ def test_undo_tags_button_appears_on_a_tagging_that_changed_tags(client, cfg):
     assert "tag-changes__undo--tags" in client.get(f"/album/{album_id}").text
 
 
-def test_undo_tags_button_is_absent_when_only_the_release_id_changed(client, cfg):
-    """While #158 is pending, the MB id is never reverted — so a tagging whose
-    only tag change was that id has nothing this build can undo, and gets no
-    button rather than one that would do nothing."""
+def test_undo_tags_button_appears_when_only_the_release_id_changed(client, cfg):
+    """A tagging whose only change was the MusicBrainz id is now undoable like
+    any other — that used to be the one case with nothing to offer, because the
+    id was the one field the revert refused (#158)."""
     from harmonist import activity, activity_store, audit
 
     d = _make_album(cfg, "OnlyId")
@@ -3036,7 +3080,7 @@ def test_undo_tags_button_is_absent_when_only_the_release_id_changed(client, cfg
             event_id, file="01 a.m4a", changes={"mb_album_id": [None, "rel-onlyid"]}
         )
 
-    assert "tag-changes__undo--tags" not in client.get(f"/album/{album_id}").text
+    assert "tag-changes__undo--tags" in client.get(f"/album/{album_id}").text
 
 
 def test_undo_tags_rebuilds_its_plan_from_the_albums_own_history(client, cfg):

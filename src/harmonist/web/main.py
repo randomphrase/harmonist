@@ -1414,7 +1414,73 @@ def _revert_plan(album: Album, event_id: int) -> tuple[tag_history.FileRevert, .
     return tag_history.revert_plan(records) if records else ()
 
 
-def _revert_detail(outcome: tagger_mod.RevertOutcome) -> str:
+def _unlink_after_revert(album: Album, outcome: tagger_mod.RevertOutcome) -> bool:
+    """Make the sidecar follow the files after an undo moved `mb_album_id` (#158).
+
+    A sidecar naming a release the files no longer carry derives as **TAGGING**
+    (`scanner._derive_state`) — the transient spinner state, with no action on
+    it and no way out. So when the undo changes the album's identity, the
+    sidecar's release id goes with it and the album derives as NEEDS_MBID.
+
+    **The release is kept as a suggestion**, not thrown away: the card then
+    offers Confirm & Tag, which is the one-click way back, and a note says why
+    the album is there. Without it the user would have to know an MBID by heart
+    to undo their own undo.
+
+    **Which release to suggest** is whatever the files now say, falling back to
+    the one being unlinked when they say nothing. Undoing a re-match reverts the
+    files to the *older* release, and that older release — not the one the
+    sidecar happened to be holding — is what the user just asked to go back to.
+
+    Confirming re-tags through the ordinary path, which fetches the release and
+    writes a fresh `track_count_expected`, so nothing here has to guess a track
+    count it has no lookup for.
+
+    Returns whether the sidecar was rewritten.
+    """
+    sc = album.sidecar
+    if not outcome.release_id_reverted or sc is None:
+        return False
+    if not owned.values_differ(sc.mb_release_id, outcome.release_id_now):
+        return False  # already agrees — nothing to do
+
+    suggest = outcome.release_id_now or sc.mb_release_id
+    files = len([p for p in album.path.iterdir() if formats.is_supported(p)])
+    candidate = (
+        MatchCandidate(
+            mb_release_id=suggest,
+            # It WAS the confirmed release — this is not a fresh guess, and
+            # calling it approximate would invite the user to re-check a match
+            # they made themselves.
+            confidence="exact",
+            file_count=files,
+            # The count recorded when it was tagged, so the card offers the same
+            # Confirm it would have before. `track_comparisons` stays empty: it
+            # would need an MB fetch, and an undo makes no network call.
+            track_count=sc.track_count_expected or files,
+            proposed_at=datetime.now(UTC),
+            notes=["Unlinked when you undid the tagging that linked this album"],
+        )
+        if suggest
+        else None
+    )
+    # `mb_release_id=None` makes `sidecar.write` mint the path-derived temp_uid
+    # and record the MBID -> temp_uid alias, which is what keeps the album's
+    # pre-unlink history reachable from its new id (#33).
+    sidecar_mod.write(
+        album.path,
+        replace(
+            sc,
+            mb_release_id=None,
+            tagged_at=None,
+            track_count_expected=None,
+            mb_match_candidate=candidate,
+        ),
+    )
+    return True
+
+
+def _revert_detail(outcome: tagger_mod.RevertOutcome, *, unlinked: bool = False) -> str:
     """What the undo did, as one line under the flash heading.
 
     Counts what went back, but NAMES what didn't. The fields that were put back
@@ -1432,8 +1498,11 @@ def _revert_detail(outcome: tagger_mod.RevertOutcome) -> str:
         )
     if outcome.stale:
         parts.append(f"{_named_fields(outcome.stale)} left alone (changed since)")
-    if outcome.kept_release_id:
-        parts.append("MusicBrainz id kept, so the album stays linked")
+    if unlinked:
+        # The one consequence that isn't a tag: the album has left the Library.
+        # Saying where it went, and that the release is still on offer, is the
+        # difference between an undo and an album that vanished.
+        parts.append("now Needs MBID — its release is kept as a suggestion")
     return "; ".join(parts)
 
 
@@ -1453,8 +1522,6 @@ def _named_fields(fields: tuple[str, ...]) -> str:
 def _revertable_anchors(
     history: list[activity_store.StoredEvent],
     detail: dict[int, activity_store.TagChanges],
-    *,
-    keep_release_id: str | None,
 ) -> set[int]:
     """Which history rows are worth offering an Undo on.
 
@@ -1468,20 +1535,11 @@ def _revertable_anchors(
     So the button appears when the tagging changed something revertable at all,
     and a revert that finds every field already changed says so when clicked —
     "nothing left to put back" rather than a silent success.
-
-    `keep_release_id` mirrors `tagger.revert_tags`: while it is set, a tagging
-    whose only tag change was the MusicBrainz id has nothing this build can
-    undo, so it gets no button rather than one that would do nothing (#158).
     """
     out: set[int] = set()
     for anchor, records in tag_history.group_records(history, detail).items():
-        for item in tag_history.revert_plan(records):
-            fields = set(item.fields)
-            if keep_release_id is not None:
-                fields.discard(owned.Owned.MB_ALBUM_ID)
-            if fields:
-                out.add(anchor)
-                break
+        if any(item.fields for item in tag_history.revert_plan(records)):
+            out.add(anchor)
     return out
 
 
@@ -2723,11 +2781,7 @@ def _register_routes(app: FastAPI) -> None:
             # Only offer Undo where the images are actually still there (#131).
             restorable = _restorable_anchors(history, detail)
             # And where the tagging changed a tag this build can put back (#157).
-            revertable = _revertable_anchors(
-                history,
-                detail,
-                keep_release_id=album.sidecar.mb_release_id if album.sidecar else None,
-            )
+            revertable = _revertable_anchors(history, detail)
         except activity_store.StoreUnavailableError:
             history_unavailable = True  # already logged with a traceback in the store
         ctx = _ctx(
@@ -2967,14 +3021,7 @@ def _register_routes(app: FastAPI) -> None:
                 status.HTTP_404_NOT_FOUND, "no tag change to undo on that history entry"
             )
         try:
-            outcome = tagger_mod.revert_tags(
-                album.path,
-                plan,
-                # Until #158 lets the sidecar follow the files, removing the MB
-                # id would leave the album deriving as TAGGING — a spinner in
-                # the Inbox forever. Stated in the outcome, not hidden.
-                keep_release_id=album.sidecar.mb_release_id if album.sidecar else None,
-            )
+            outcome = tagger_mod.revert_tags(album.path, plan)
         except tagger_mod.RevertUnavailableError as e:
             # Expected, not exceptional: files get renamed and deleted, and
             # saying so plainly beats a stack trace.
@@ -3001,9 +3048,12 @@ def _register_routes(app: FastAPI) -> None:
                 # reciting every field in the album.
                 record_activity=False,
             )
+        unlinked = _unlink_after_revert(album, outcome)
+        if unlinked:
+            request.app.state.scan_runner.request_scan()
         return _flash_response(
             "Tags put back",
-            _revert_detail(outcome),
+            _revert_detail(outcome, unlinked=unlinked),
             extra_triggers={"album-retagged": True},
             album=album,
         )

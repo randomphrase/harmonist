@@ -129,7 +129,13 @@
         </div>
         {% endif %}
 
+        {# Only when there is something to compare. A candidate can legitimately
+           carry no per-track rows — an unlink after an undo (#158) suggests the
+           album's own release without an MB fetch to build them from — and the
+           table would otherwise render as a header with nothing under it. #}
+        {% if candidate.track_comparisons %}
         <div class="mb-3">{% include 'partials/_track_comparison.html' %}</div>
+        {% endif %}
 
         <div class="flex gap-2 flex-wrap">
             {% if exact_count %}

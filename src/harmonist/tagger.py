@@ -328,20 +328,77 @@ class RevertOutcome:
     #: since the message names fields rather than file-field pairs.
     restored: tuple[str, ...] = ()
     stale: tuple[str, ...] = ()
-    #: True when the MusicBrainz release id was deliberately left in place.
-    kept_release_id: bool = False
+    #: Set when the revert moved `mb_album_id`, with what the files carry now —
+    #: None meaning the id was removed altogether. The caller needs both facts
+    #: to keep the sidecar in step: a sidecar still naming a release the files
+    #: no longer carry derives as TAGGING, which is a spinner with no way out
+    #: (#158). `None` for `release_id_now` is a real answer, so the boolean has
+    #: to be separate from it.
+    release_id_reverted: bool = False
+    release_id_now: str | None = None
 
     @property
     def changed(self) -> bool:
         return bool(self.files)
 
 
-def revert_tags(
-    album_dir: Path,
-    plan: Sequence[tag_history.FileRevert],
-    *,
-    keep_release_id: str | None,
-) -> RevertOutcome:
+@dataclass(frozen=True)
+class _IdentityRevert:
+    """The album's `mb_album_id` revert, decided once for the whole album."""
+
+    value: str | None
+
+
+def _identity_revert(
+    album_dir: Path, plan: Sequence[tag_history.FileRevert]
+) -> _IdentityRevert | None:
+    """What `mb_album_id` should become, or None to leave it alone entirely.
+
+    Answered for the album rather than per file, because it is the album's
+    identity: the sidecar records exactly one release, so a revert that moved it
+    on some files and not others would leave nothing coherent to write there —
+    and would derive as INCONSISTENT, a state the user then has to repair by
+    hand in Picard.
+
+    So it is all-or-nothing, and every one of these has to hold:
+
+    * every file in the plan agrees on what the id was before the tagging;
+    * every one of them still carries what the tagging wrote, i.e. nothing has
+      re-tagged or re-matched the album since;
+    * every file is readable, and there is no file in the album that the plan
+      doesn't cover — a tagging that touched half the album can't speak for the
+      identity of the other half.
+    """
+    field = owned.Owned.MB_ALBUM_ID
+    # Keyed by file name, never by position: the plan's order and the
+    # directory's are both file order today, but pairing two lists that merely
+    # happen to agree is how the wrong track's id gets written.
+    changes = {item.file: item.fields[field] for item in plan if field in item.fields}
+    if not changes or len(changes) != len(plan):
+        return None
+    befores = {before for before, _after in changes.values()}
+    if len(befores) != 1:
+        return None
+
+    on_disk = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
+    if {p.name for p in on_disk} != set(changes):
+        # Files have appeared or gone since. Any the plan doesn't name would
+        # keep whatever id they carry, so moving the rest would split the
+        # album's identity between two releases.
+        return None
+    for path in on_disk:
+        try:
+            current = formats.read_owned(path)
+        except Exception as e:
+            raise RevertUnavailableError(f"could not read the tags on {path.name}: {e}") from e
+        if owned.values_differ(current.get(field), changes[path.name][1]):
+            return None
+
+    before = next(iter(befores))
+    return _IdentityRevert(value=before if isinstance(before, str) and before else None)
+
+
+def revert_tags(album_dir: Path, plan: Sequence[tag_history.FileRevert]) -> RevertOutcome:
     """Put back the tags one tagging changed, and report what actually moved.
 
     `plan` comes from `tag_history.revert_plan` — the same records the History
@@ -353,12 +410,13 @@ def revert_tags(
     reached past the change it names into someone else's would be the confident
     lie the artwork restore was careful to avoid.
 
-    **`keep_release_id` names a release the sidecar still points at**, and while
-    it is set `mb_album_id` is never reverted. Removing it would leave the files
-    carrying no MusicBrainz id while the sidecar still claims one, which derives
-    as TAGGING (`scanner._derive_state`) — a spinner in the Inbox forever.
-    Making the sidecar follow the files instead is #158; until then this is a
-    stated limit rather than a silent one. Pass None once that lands.
+    **`mb_album_id` is all-or-nothing**, unlike every other field. It is the
+    album's identity, and the sidecar has to follow it (#158) — so it must come
+    out of here single-valued. Reverting it on the files whose value still
+    matches while leaving the rest would leave the album's tracks disagreeing
+    about which release they belong to, which derives as INCONSISTENT and hands
+    the caller no id to write down. So it moves on every file or on none, and
+    the outcome reports what the album now carries.
 
     **Everything resolves before anything is written**, like `restore_artwork`:
     every file is opened and read first, and a missing or unreadable one raises
@@ -370,7 +428,7 @@ def revert_tags(
     targets: dict[Path, tuple[dict[str, Any], dict[str, Any]]] = {}
     restored: set[str] = set()
     stale: set[str] = set()
-    kept_release_id = False
+    identity = _identity_revert(album_dir, plan)
 
     for item in plan:
         # `item.file` reaches here from a stored record and is joined to a path.
@@ -389,8 +447,13 @@ def revert_tags(
 
         target = dict(current)
         for field, (before, after) in item.fields.items():
-            if field == owned.Owned.MB_ALBUM_ID and keep_release_id is not None:
-                kept_release_id = True
+            if field == owned.Owned.MB_ALBUM_ID:
+                # Decided once for the album, above — not per file.
+                if identity is not None:
+                    target[field] = identity.value
+                    restored.add(field)
+                else:
+                    stale.add(field)
                 continue
             if field not in current:
                 # A field this build no longer owns. The records are permanent
@@ -419,7 +482,7 @@ def revert_tags(
             files=len(targets),
             fields=len(restored),
             stale=len(stale),
-            release_id="kept" if kept_release_id else "-",
+            release_id=(identity.value or "removed") if identity is not None else "-",
         )
     for path, (target, _current) in targets.items():
         before = formats.write_owned(path, target)
@@ -442,7 +505,11 @@ def revert_tags(
         files=files,
         restored=tuple(sorted(restored)),
         stale=tuple(sorted(stale)),
-        kept_release_id=kept_release_id,
+        # Reported only when files were actually written: an identity decided
+        # but not carried out (every field already back) must not send the
+        # caller off to rewrite a sidecar that is already correct.
+        release_id_reverted=identity is not None and bool(files),
+        release_id_now=identity.value if identity is not None else None,
     )
 
 
