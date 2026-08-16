@@ -397,6 +397,34 @@ def test_clear_drops_aliases_too(tmp_path):
     assert activity_store.resolve_alias("old") is None
 
 
+def test_clear_drops_tag_change_detail_too(tmp_path):
+    """Detail hangs off an event id, so clearing the events without it leaves
+    rows attached to nothing — invisible, since every reader joins from an event
+    that no longer exists, and never collected either (#165).
+
+    These are the widest rows in the store: a whole owned-field snapshot per
+    file per tagging. A demo reset a few times over leaks the fastest-growing
+    table in it.
+    """
+    from harmonist import audit
+
+    activity_store.init(tmp_path / "a.db")
+    event_id = audit.record("tag.track", album_id="alb-1", file="01 a.m4a")
+    assert event_id is not None
+    activity_store.record_tag_changes(
+        event_id, file="01 a.m4a", changes={"album": [None, "Something"]}
+    )
+    assert activity_store.tag_changes_for([event_id])
+
+    activity_store.clear()
+
+    # Asked of the table directly, not through the join: the join would report
+    # these gone whether they were deleted or merely orphaned, which is the
+    # distinction under test.
+    conn = activity_store._ensure()
+    assert conn.execute("SELECT COUNT(*) FROM tag_changes").fetchone()[0] == 0
+
+
 def test_sidecar_write_records_the_identity_change(tmp_path):
     """Capture happens at the sidecar write — the only moment the pair is
     knowable, since normalisation erases temp_uid once an MBID lands."""

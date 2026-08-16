@@ -833,15 +833,28 @@ def _alias_ancestors(album_id: str, *, max_hops: int = 20) -> list[str]:
 
 
 def clear() -> None:
-    """Drop all stored state — events AND aliases (tests / demo reset).
+    """Drop all stored state — events, their tag detail, AND aliases (tests /
+    demo reset).
 
     Aliases go too: they describe albums in the library this store was recording,
     so after a demo re-seed (or between tests) they'd point at identities that no
     longer exist, and could mis-resolve a deep link to the wrong album.
+
+    `tag_changes` goes too, and used not to. Its rows hang off an event id, so
+    clearing the events without them left detail attached to nothing: invisible,
+    because every reader reaches it by joining from an event that no longer
+    exists, but never collected either — and these are the widest rows in the
+    store, a whole owned-field snapshot per file per tagging. A demo reset a few
+    times over is a slow leak of the one table that grows fastest (#165).
+
+    Child first, so the declared `REFERENCES events (id)` would hold even if the
+    store ever turns on `PRAGMA foreign_keys` — which it does not today, and is
+    why the orphans were possible at all.
     """
     try:
         conn = _ensure()
         with _LOCK:
+            conn.execute("DELETE FROM tag_changes")
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM album_aliases")
             conn.commit()

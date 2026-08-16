@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- Resetting demo mode now clears the per-field tagging detail along with
+  everything else, instead of leaving it in the history store attached to
+  entries that no longer exist (#165).
+
 ### Added
 
 - Any tagging in an album's History can now be undone: "Undo tag changes" puts
