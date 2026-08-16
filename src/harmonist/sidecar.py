@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import uuid
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -279,16 +278,23 @@ def _normalise_identity(s: Sidecar, album_dir: Path) -> Sidecar:
     """Enforce identity invariant: exactly one of (mb_release_id, temp_uid)
     is non-null. MBID always wins; temp_uid is minted iff there's no MBID.
 
-    When minting, prefer the registry's UUID for this path (set by the
-    scanner when it first saw a NEW album) so the inbox URL the user
-    interacted with stays valid across the first sidecar write.
+    The id comes from `id_registry`, which derives it from the album's path —
+    so the inbox URL the user interacted with before any sidecar existed stays
+    valid across the first write, and stays valid across restarts.
+
+    Nothing is randomly minted here any more. There used to be a
+    `or uuid.uuid4().hex` fallback for a registry that could miss, from when
+    ids were random UUIDs in a per-process dict; ids became a hash of the path
+    in #114 and the branch has been unreachable ever since. A fallback that
+    cannot run is worse than none: it suggests an id may be arbitrary when in
+    fact it is always derived, which is the property the alias chain leans on.
     """
     if s.mb_release_id:
         if s.temp_uid is None:
             return s
         return replace(s, temp_uid=None)
     if s.temp_uid is None:
-        return replace(s, temp_uid=id_registry.peek(album_dir) or uuid.uuid4().hex)
+        return replace(s, temp_uid=id_registry.peek(album_dir))
     return s
 
 

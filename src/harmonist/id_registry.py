@@ -71,10 +71,16 @@ def get_or_mint(path: Path) -> str:
     return hashlib.sha256(_key(path).encode("utf-8")).hexdigest()[:_ID_LENGTH]
 
 
-def peek(path: Path) -> str | None:
+def peek(path: Path) -> str:
     """Same as `get_or_mint`; retained because `sidecar.write()` reads it to
     persist an album's existing id as its `temp_uid`, so the id doesn't change
-    when the first sidecar appears."""
+    when the first sidecar appears.
+
+    Returns `str`, not `str | None`. It never could return None — the id is a
+    hash of the path — but the optional signature outlived the dict-backed
+    version that could miss, and left `sidecar` carrying a fallback that was
+    unreachable the moment ids became deterministic.
+    """
     return get_or_mint(path)
 
 
