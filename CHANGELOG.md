@@ -8,6 +8,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Demo mode's album awaiting confirmation now starts untagged, like a real one:
+  confirming it genuinely assigns its MusicBrainz id rather than re-writing tags
+  it already had, so the tagging and undo flows can be tried end to end (#168).
 - Resetting demo mode now clears the per-field tagging detail along with
   everything else, instead of leaving it in the history store attached to
   entries that no longer exist (#165).

@@ -122,14 +122,24 @@ LIBRARY: list[dict[str, Any]] = [
         "sidecar": {},
     },
     {
-        # State: NEEDS_MBID (with suggestion) — files tagged, candidate stashed but
-        # confidence is "approximate" (lengths off). Side-by-side renders.
+        # State: NEEDS_MBID (with suggestion) — candidate stashed but confidence
+        # is "approximate" (lengths off). Side-by-side renders.
         # Confirm → tags from MB; Reject → back to NEEDS_MBID.
+        #
+        # NO `file_mbid`, deliberately: an album awaiting confirmation has not
+        # been tagged yet — tagging happens ON confirm (§3.1) — so its files
+        # carry no MusicBrainz id. This used to seed one, which made Confirm
+        # re-tag fields that were already there without ever ESTABLISHING the
+        # album's identity, and left the demo with no way to exercise the
+        # commonest first tagging of all (#168).
+        #
+        # The tagged-files-but-unlinked shape is real — it is what the "wrong
+        # match" pencil leaves behind — but it needs no fixture: click the
+        # pencil on any Library album to reach it.
         "artist": "The Thamesmen",
         "album": "Gimme Some Money",
         "tracks": ["Gimme Some Money", "(Listen to the) Flower People", "Cups and Cakes"],
         "cover": "cover-3.jpg",
-        "file_mbid": "demo-rel-thamesmen",
         "sidecar": {
             "store_url": "https://thamesmen.bandcamp.com/album/gimme-some-money",
             "bandcamp_item_id": 1002,
