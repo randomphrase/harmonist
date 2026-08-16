@@ -2683,6 +2683,70 @@ def test_album_page_shows_history_from_before_the_album_was_re_identified(client
     assert "Discovered" in [e.message for e in activity_store.album_history(new_id)]
 
 
+def test_album_page_shows_what_a_tagging_changed_under_its_activity_entry(client, cfg):
+    """#86: the per-field record, rendered field-first under the tagging's
+    user-facing entry rather than under any one file's audit line."""
+    from harmonist import activity, activity_store, audit
+
+    d = _make_album(cfg, "Changed")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/c", mb_release_id="rel-chg"))
+    album_id = _id_for(cfg, d)
+    activity_store.clear()
+
+    with activity_store.action():
+        activity.record("Re-tagged", album_id=album_id, album_label="Artist — Changed")
+        for i, name in enumerate(("01 a.m4a", "02 b.m4a"), start=1):
+            event_id = audit.record("tag.track", album_id=album_id, file=name)
+            assert event_id is not None
+            activity_store.record_tag_changes(
+                event_id,
+                file=name,
+                changes={
+                    "label": [None, "Warp Records"],
+                    "artist": ["Boards Of Canada", "Boards of Canada"],
+                    "mb_track_id": [None, f"rec-{i}"],
+                },
+                position=str(i),
+            )
+
+    body = client.get(f"/album/{album_id}").text
+
+    assert "Warp Records" in body
+    # The capitalisation fix is marked in place, so the value is SPLIT around
+    # the changed character — `Boards <em class="diff-run">o</em>f Canada`. The
+    # whole string deliberately doesn't appear; that's the emphasis working.
+    assert "diff-run" in body
+    assert "f Canada" in body
+    # Album-scoped and track-scoped changes are annotated differently — the
+    # #149 split made visible.
+    assert "album" in body and "all tracks" in body
+    # A field that differs per track gets the expansion; one that doesn't, doesn't.
+    assert "Show which tracks" in body
+    assert "rec-1" in body and "rec-2" in body
+
+    # Anchored to the activity entry, so it renders ONCE, not once per file.
+    assert body.count('class="tag-changes"') == 1
+
+
+def test_album_page_shows_no_change_detail_when_a_tagging_changed_nothing(client, cfg):
+    """A re-tag that found MusicBrainz unchanged writes no detail, so the page
+    shows the audit line and nothing else. #32 will run one of these nightly."""
+    from harmonist import activity, activity_store, audit
+
+    d = _make_album(cfg, "Unchanged")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/u", mb_release_id="rel-unc"))
+    album_id = _id_for(cfg, d)
+    activity_store.clear()
+    with activity_store.action():
+        activity.record("Re-tagged", album_id=album_id, album_label="Artist — Unchanged")
+        audit.record("tag.track", album_id=album_id, file="01 a.m4a")
+
+    body = client.get(f"/album/{album_id}").text
+
+    assert "Re-tagged" in body
+    assert 'class="tag-changes"' not in body
+
+
 def test_album_page_resolves_a_superseded_id(client, cfg):
     """A link written before the album was re-identified must still land on the
     page rather than 404 — the same forward walk `_find_album` already does."""

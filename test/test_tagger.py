@@ -257,6 +257,34 @@ def test_tagging_records_artwork_replacement_by_digest(album_with_tracks, tmp_pa
     assert replaced[1] != replaced[0]
 
 
+def test_tagging_without_a_cover_does_not_read_the_files_artwork(
+    album_with_tracks, tmp_path, monkeypatch
+):
+    """With no cover to embed, `write_tags` leaves existing art alone — so
+    nothing about artwork can change, and reading it would be a wasted pass over
+    every file on the path where scanning is already the slow part (#44, #74).
+
+    This used to be free: the read sat behind `cover is not None and ...` and
+    Python short-circuited it. Hoisting the digests out for #86 silently removed
+    that guard, which is the kind of regression no assertion about OUTPUT can
+    see."""
+    from harmonist import formats
+
+    reads: list[str] = []
+    real = formats.read_cover
+
+    def counting_read_cover(path):
+        reads.append(path.name)
+        return real(path)
+
+    monkeypatch.setattr(formats, "read_cover", counting_read_cover)
+
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())  # no cover_path
+
+    assert reads == []
+
+
 def test_tag_album_audits_the_album_line_before_writing(album_with_tracks, tmp_path, monkeypatch):
     """Recorded BEFORE the loop, per the gate's "before/as it acts": a crash
     part-way must leave evidence of what was attempted, not silence."""

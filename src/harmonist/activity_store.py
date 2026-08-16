@@ -243,8 +243,19 @@ def current_action() -> str | None:
     return _current_action.get()
 
 
+#: The columns every event query selects, in the order `_event` unpacks them.
+#: One definition rather than four copies of the same list: the id was added
+#: for #86's history join, and adding it to three of four call sites would have
+#: been an unpleasant way to find out which one was missed.
+_EVENT_COLUMNS = "id, ts, level, source, message, album_id, album_label, action_id"
+
+
 @dataclass(frozen=True)
 class StoredEvent:
+    #: This row's id. Load-bearing for #86: the per-field tag detail is keyed by
+    #: it, so the album page joins its history rows to their detail in one query
+    #: rather than parsing the audit message text back apart.
+    id: int
     ts: datetime
     level: Level
     source: Source
@@ -256,6 +267,21 @@ class StoredEvent:
     # The action that produced this row — shared with every other row from the
     # same user-visible outcome (#84). None outside an action scope.
     action_id: str | None = None
+
+
+def _event(row: tuple[Any, ...]) -> StoredEvent:
+    """One `_EVENT_COLUMNS` row as a StoredEvent."""
+    row_id, ts, level, src, msg, album_id, label, action_id = row
+    return StoredEvent(
+        id=int(row_id),
+        ts=datetime.fromisoformat(ts),
+        level=Level(level),
+        source=Source(src),
+        message=msg,
+        album_id=album_id,
+        album_label=label,
+        action_id=action_id,
+    )
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -519,7 +545,7 @@ def recent(
     more exist should ask for `limit + 1` and check the length rather than
     issuing a COUNT: this table grows without bound and is re-read every couple
     of seconds, so a full count per page would be the expensive part."""
-    q = "SELECT ts, level, source, message, album_id, album_label, action_id FROM events"
+    q = f"SELECT {_EVENT_COLUMNS} FROM events"
     where: list[str] = []
     args: list[object] = []
     if source is not None:
@@ -542,18 +568,7 @@ def recent(
             "activity_store recent() failed — the feed cannot be read", extra=_QUIET_MIRROR
         )
         raise StoreUnavailableError("could not read the activity store") from exc
-    return [
-        StoredEvent(
-            ts=datetime.fromisoformat(ts),
-            level=Level(level),
-            source=Source(src),
-            message=msg,
-            album_id=aid,
-            album_label=label,
-            action_id=act,
-        )
-        for ts, level, src, msg, aid, label, act in rows
-    ]
+    return [_event(row) for row in rows]
 
 
 def version() -> str:
@@ -626,7 +641,7 @@ def audit_by_action(action_ids: list[str]) -> dict[str, list[StoredEvent]]:
         return {}
     placeholders = ",".join("?" * len(action_ids))
     q = (
-        "SELECT ts, level, source, message, album_id, album_label, action_id "
+        f"SELECT {_EVENT_COLUMNS} "
         f"FROM events WHERE source = ? AND action_id IN ({placeholders}) ORDER BY id"
     )
     try:
@@ -637,18 +652,12 @@ def audit_by_action(action_ids: list[str]) -> dict[str, list[StoredEvent]]:
         log.exception("activity_store audit_by_action() failed", extra=_QUIET_MIRROR)
         raise StoreUnavailableError("could not read the audit detail") from exc
     out: dict[str, list[StoredEvent]] = {}
-    for ts, level, src, msg, aid, label, act in rows:
-        out.setdefault(act, []).append(
-            StoredEvent(
-                ts=datetime.fromisoformat(ts),
-                level=Level(level),
-                source=Source(src),
-                message=msg,
-                album_id=aid,
-                album_label=label,
-                action_id=act,
-            )
-        )
+    for row in rows:
+        event = _event(row)
+        # action_id can't be None here — the WHERE clause matched it against a
+        # supplied id — but mypy doesn't know that, and the key must be a str.
+        assert event.action_id is not None
+        out.setdefault(event.action_id, []).append(event)
     return out
 
 
@@ -669,7 +678,7 @@ def audit_without_action(since: datetime, limit: int = 200) -> list[StoredEvent]
     orphan would surface at the top of page 1 forever.
     """
     q = (
-        "SELECT ts, level, source, message, album_id, album_label, action_id "
+        f"SELECT {_EVENT_COLUMNS} "
         "FROM events WHERE source = ? AND action_id IS NULL AND ts >= ? "
         "ORDER BY id DESC LIMIT ?"
     )
@@ -680,18 +689,7 @@ def audit_without_action(since: datetime, limit: int = 200) -> list[StoredEvent]
     except sqlite3.Error as exc:
         log.exception("activity_store audit_without_action() failed", extra=_QUIET_MIRROR)
         raise StoreUnavailableError("could not read the unscoped audit rows") from exc
-    return [
-        StoredEvent(
-            ts=datetime.fromisoformat(ts),
-            level=Level(level),
-            source=Source(src),
-            message=msg,
-            album_id=aid,
-            album_label=label,
-            action_id=act,
-        )
-        for ts, level, src, msg, aid, label, act in rows
-    ]
+    return [_event(row) for row in rows]
 
 
 def record_alias(old_id: str, new_id: str) -> None:
@@ -777,7 +775,7 @@ def album_history(album_id: str, limit: int = 200, *, offset: int = 0) -> list[S
     ids = [album_id, *_alias_ancestors(album_id)]
     placeholders = ",".join("?" * len(ids))
     q = (
-        "SELECT ts, level, source, message, album_id, album_label, action_id "
+        f"SELECT {_EVENT_COLUMNS} "
         f"FROM events WHERE album_id IN ({placeholders}) "
         "ORDER BY id DESC LIMIT ? OFFSET ?"
     )
@@ -793,18 +791,7 @@ def album_history(album_id: str, limit: int = 200, *, offset: int = 0) -> list[S
     except sqlite3.Error as exc:
         log.exception("activity_store album_history(%s) failed", album_id, extra=_QUIET_MIRROR)
         raise StoreUnavailableError("could not read this album's history") from exc
-    return [
-        StoredEvent(
-            ts=datetime.fromisoformat(ts),
-            level=Level(level),
-            source=Source(src),
-            message=msg,
-            album_id=aid,
-            album_label=label,
-            action_id=act,
-        )
-        for ts, level, src, msg, aid, label, act in rows
-    ]
+    return [_event(row) for row in rows]
 
 
 def _alias_ancestors(album_id: str, *, max_hops: int = 20) -> list[str]:

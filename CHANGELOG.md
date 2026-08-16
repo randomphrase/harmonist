@@ -6,6 +6,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- An album's History now shows **what each tagging actually changed**, field by
+  field — `Boards Of Canada → Boards of Canada`, a label added, a catalogue
+  number removed — with the differing characters marked in place. One line per
+  field rather than per track, annotated with how far the change reached
+  ("album", "all tracks", "3 of 18 tracks"), and the per-track breakdown behind
+  a "Show which tracks" disclosure. A re-tag that changed nothing says nothing
+  (#86).
+
 ### Fixed
 
 - Re-tagging an MP3 or M4A now **removes** Harmonist's tags that the new release

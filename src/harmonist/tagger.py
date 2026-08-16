@@ -151,7 +151,13 @@ def tag_album(
         pairs = list(zip(files, flat_tracks, strict=True))
 
     cover = cover_path.read_bytes() if cover_path else None
-    art_before = _art_digests(files)
+    # Only when there IS a cover to embed. With `cover=None` write_tags leaves
+    # the existing art alone, so nothing changes and there is nothing to record
+    # — reading every file's cover would be a wasted pass over the album, on the
+    # path where scanning is already the slow part (#44, #74). Guarding here
+    # rather than relying on the `and` below, which used to short-circuit this
+    # read and stopped doing so when the digests were hoisted out.
+    art_before = _art_digests(files) if cover is not None else {}
     # DATA SAFETY: if the tracks carry DIFFERENT embedded art (a per-track-art
     # album, e.g. a compilation), embedding one album cover would destroy those
     # images. Preserve them — pass cover=None (write_tags leaves the existing

@@ -21,7 +21,7 @@ way in history would read as two different kinds of fact.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -141,6 +141,65 @@ class FieldChange:
         if self.scope is Scope.ALBUM:
             return "album"
         return "all tracks" if self.total > 1 else "1 track"
+
+
+def group_by_action(
+    events: Sequence[Any],
+    detail: Mapping[int, Any],
+) -> dict[int, tuple[FieldChange, ...]]:
+    """Attach each tagging's field-first summary to the history row that should
+    carry it, as `{event_id: rows}`.
+
+    One tagging writes one `tag.track` row per file, all sharing an `action_id`
+    with the activity entry above them (#84). The summary hangs off **that
+    activity entry** — "Re-tagged" — rather than off any one file's audit line.
+
+    Two reasons, both learned from looking at the rendered page. History is
+    newest-first, so anchoring to the earliest audit row put the summary at the
+    BOTTOM of the group, reading as though it described only the last file
+    listed. And the activity entry is the user-facing record of the action,
+    so the summary survives the "Show details" toggle that hides raw audit text
+    — which is right, because a plain-language list of what changed is exactly
+    the kind of thing that toggle is meant to leave visible.
+
+    Falls back to the earliest audit row when an action has no activity entry
+    (a background pass with no user-facing outcome).
+
+    Rows written before #84 landed carry no `action_id` at all. They degrade to
+    per-event summaries — each file's changes against its own audit line —
+    which is honest about what was recorded at the time and needs no back-fill
+    of data nobody captured.
+    """
+    if not detail:
+        return {}
+
+    with_detail: dict[str, list[Any]] = {}
+    anchors: dict[str, Any] = {}
+    out: dict[int, tuple[FieldChange, ...]] = {}
+    for event in events:
+        action_id = event.action_id
+        if action_id is None:
+            if event.id in detail:
+                rows = summarise([detail[event.id]])
+                if rows:
+                    out[event.id] = rows
+            continue
+        if event.source == "activity":
+            # The action's user-facing outcome. First one wins; there is only
+            # ever one per action, but a defensive `setdefault` beats assuming.
+            anchors.setdefault(action_id, event)
+        elif event.id in detail:
+            with_detail.setdefault(action_id, []).append(event)
+
+    for action_id, grouped in with_detail.items():
+        # In file order — the order they were recorded — so the per-track
+        # expansion reads down the album rather than however the page sorted.
+        ordered = sorted(grouped, key=lambda e: e.id)
+        rows = summarise([detail[e.id] for e in ordered])
+        if rows:
+            anchor = anchors.get(action_id) or ordered[0]
+            out[anchor.id] = rows
+    return out
 
 
 def display(value: Any) -> str | None:

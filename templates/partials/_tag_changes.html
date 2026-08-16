@@ -1,0 +1,80 @@
+{# What one tagging changed, field by field (#86).
+
+   Field-first, not track-first: the records are stored per FILE so they stay
+   exactly reversible, but nobody reads history asking "what happened to track
+   9?" — they ask "what did it change?". An 18-track album answering the first
+   question buries the second under 18 near-identical rows, so `summarise`
+   inverts them and the height here is bounded by the number of fields that
+   moved rather than by the size of the album.
+
+   Open by default. A record nobody expands is close to a record that doesn't
+   exist, and the whole point of these rows is that a re-tag stops being opaque.
+   The per-track breakdown IS behind a disclosure — it's the part that scales
+   with the tracklist.
+
+   Expects `changes` (a tuple of tag_history.FieldChange) from the caller. #}
+<dl class="tag-changes">
+    {% for c in changes %}
+    <dt>{{ c.label }}</dt>
+    <dd>
+        {% if c.opaque %}
+        {# Artwork. The digests are how #131 will find the images again; showing
+           two sha256s here would dominate every row around them and tell the
+           reader nothing they can act on. #}
+        <span class="tag-changes__opaque">{{ c.summary }}</span>
+
+        {% else %}
+        {% if c.before is none %}
+        <span class="tag-changes__absent" title="Not present before this tagging">—</span>
+        {% else %}
+        <span class="tag-changes__before">{% with runs = c.before_runs, value = c.before %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
+        {% endif %}
+
+        <span class="tag-changes__arrow" aria-label="became">→</span>
+
+        {% if c.after is none %}
+        <span class="tag-changes__absent" title="Removed by this tagging">removed</span>
+        {% else %}
+        <span class="tag-changes__after">{% with runs = c.after_runs, value = c.after %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
+        {% endif %}
+        {% endif %}
+
+        {# How far the change reached. An album-scoped field that moved
+           everywhere reads "album" — one logical change; "all 18 tracks" would
+           invite the reader to go and check 18 things. Anything partial gets
+           the count, because that's where the album has no single answer. #}
+        <span class="tag-changes__reach">{{ c.reach }}</span>
+    </dd>
+    {% endfor %}
+</dl>
+
+{% set varied = changes | selectattr('variants') | list %}
+{% if varied %}
+{# <details>, not a click handler toggling `hidden` — the native element brings
+   its own keyboard handling and disclosure semantics (web-ui rule 1). #}
+<details class="tag-changes__tracks">
+    <summary>Show which tracks</summary>
+    <table>
+        <thead>
+            <tr>
+                <th scope="col">#</th>
+                <th scope="col">Field</th>
+                <th scope="col">Before</th>
+                <th scope="col">After</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in varied %}
+            {% for v in c.variants %}
+            <tr>
+                <td class="tag-changes__num" title="{{ v.file }}">{{ v.position or '—' }}</td>
+                <td>{{ c.label }}</td>
+                <td>{% if v.before is none %}<span class="tag-changes__absent">—</span>{% else %}{{ v.before }}{% endif %}</td>
+                <td class="tag-changes__after">{% if v.after is none %}<span class="tag-changes__absent">removed</span>{% else %}{{ v.after }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+</details>
+{% endif %}

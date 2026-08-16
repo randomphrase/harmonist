@@ -41,6 +41,7 @@ from harmonist import (
     pending_downloads,
     reconcile,
     scanner,
+    tag_history,
 )
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
@@ -2575,11 +2576,19 @@ def _register_routes(app: FastAPI) -> None:
         # album yet", which is the confident lie #104 is about.
         history: list[activity_store.StoredEvent] = []
         history_unavailable = False
+        tag_changes: dict[int, tuple[tag_history.FieldChange, ...]] = {}
         try:
             # Keyed on the album's CURRENT id — album_history unions backwards
             # over the chain from there, so passing the (possibly stale) URL id
             # would find only the tail of its own history.
             history = activity_store.album_history(album.id)
+            # What each tagging actually changed, field by field (#86). ONE
+            # query for the whole page rather than one per row: an album
+            # re-tagged a few times has a `tag.track` row per file per tagging,
+            # and this table only grows.
+            tag_changes = tag_history.group_by_action(
+                history, activity_store.tag_changes_for([e.id for e in history])
+            )
         except activity_store.StoreUnavailableError:
             history_unavailable = True  # already logged with a traceback in the store
         ctx = _ctx(
@@ -2587,6 +2596,7 @@ def _register_routes(app: FastAPI) -> None:
             album=album,
             history=history,
             history_unavailable=history_unavailable,
+            tag_changes=tag_changes,
             from_page=max(1, from_page),
         )
         return _templates(request).TemplateResponse(request, "album.html", ctx)

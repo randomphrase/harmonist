@@ -591,6 +591,26 @@ The `Owned` member values are exactly the `TagSet` attribute names, and a test a
 
 **Artwork is deliberately not in the set.** Embedded cover art is not a tag here — `tagger.tag_album` passes `cover=None` when the tracks carry differing per-track images precisely so `write_tags` leaves them alone, and clearing artwork with the owned set would make that protection a no-op. Per-track artwork is a third category that fits neither scope, which neither MusicBrainz nor Picard really models; it is handled in the tagger. See #131.
 
+### Recording what a tagging changed
+
+Every tagging records its per-field before/after, so an album's History can say `artist: Boards Of Canada → Boards of Canada` rather than just "this track was rewritten" (#86). The record is complete rather than filtered: Harmonist only writes fields it owns, so "everything we wrote" is already bounded, and noise control belongs in the rendering rather than in what gets kept.
+
+**The before state costs nothing to capture.** `write_tags` returns the owned fields as they were, read from the mutagen handle it already holds for the write. There is no separate read pass, which was the original objection to recording diffs at all.
+
+**Absent is one state.** `None`, `""` and `[]` all mean "this tag isn't there", because Harmonist never writes an empty tag — a field with no value is removed rather than blanked, and reverting one restores its absence. The stored record still keeps the raw values on both sides, since a revert has to restore what was really there rather than a normalised version of it.
+
+**Nothing is recorded when nothing changed.** A re-tag that finds MusicBrainz unchanged writes no detail at all. The `tag.album` line still records that it ran. This matters most for #32, which will run one tagging per album per night.
+
+**Storage: one row per file**, in the `tag_changes` side table (`activity_store`), keyed to the `tag.track` audit row it details. A side table rather than a column on `events` because that table is scanned on every feed poll. Per file rather than per album because the *before* values need not be identical across tracks — an album tagged unevenly over the years is exactly what `compare.consensus` exists for, so recording one album-level "before" would have to pick one, and a revert would then write that guess over the tracks it didn't come from.
+
+Each row carries **four ways to name its track** — the file name, the release-track MBID, the recording MBID, and the disc-track position — because each fails under a different future edit (a rename, a re-match to another release, a renumber) and no two fail together. The table is append-only, so a row cannot gain a better identifier later, and which file held which MusicBrainz identity is observable only at the instant it is written. This is the same argument the `album_aliases` table makes, one level down.
+
+**Artwork is recorded as sha256 digests** alongside the owned fields, under its own key. `_has_per_track_art` already reads every cover to decide whether per-track art needs preserving, so keeping the hashes is free, and #131 will store the images content-addressed under exactly those digests.
+
+**Rendering is field-first** (`tag_history`): per-file rows are inverted into one row per *field*, annotated with how far the change reached — "album", "all tracks", "3 of 18 tracks", straight from `owned.Scope`. The height of the result is bounded by the number of fields that moved rather than by the size of the album. Where files disagree, the row shows the most common `(before, after)` **pair**, tie broken by file order — the same rule `compare.consensus` uses, kept as a pair so that resolving the two sides independently can't manufacture a transition no track made.
+
+The stored JSON keys are `Owned` values, which makes them a **persisted vocabulary**: these records are permanent and unversioned, so a payload written today may name a field a later build has renamed or dropped. The renderer falls back to the raw key for names it doesn't recognise and skips malformed entries, rather than letting one old row take an album page down.
+
 ### Cover art (mandatory)
 
 Plex with the MusicBrainz agent can fetch its own artwork from external sources, but **Navidrome does not** — it reads from embedded tags and `cover.jpg` only. Navidrome is the strict consumer; we design for it.

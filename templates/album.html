@@ -97,7 +97,12 @@
                       title="{{ e.ts.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
                     {{ e.ts.strftime('%Y-%m-%d %H:%M') }}
                 </time>
-                <span class="flex-shrink-0 w-1.5 h-1.5 rounded-full self-center
+                {# self-START, not self-center: a row carrying a tag-change
+                   summary (#86) is many lines tall, and centring left the dot
+                   floating in the middle of the block with nothing beside it.
+                   The margin puts it on the first line's optical centre, where
+                   it looks identical on the ordinary one-line rows. #}
+                <span class="flex-shrink-0 w-1.5 h-1.5 rounded-full self-start mt-[0.4rem]
                     {% if e.source == 'audit' %}bg-line
                     {% elif e.level == 'error' %}bg-red-500
                     {% elif e.level == 'warning' %}bg-amber-500
@@ -107,7 +112,21 @@
                     {% if e.source == 'audit' %}font-mono text-2xs text-muted
                     {% elif e.level == 'error' %}text-red-700
                     {% elif e.level == 'warning' %}text-amber-700
-                    {% else %}text-ink{% endif %}">{{ e.message }}</span>
+                    {% else %}text-ink{% endif %}">{{ e.message }}
+                    {# What this tagging actually changed, field by field (#86).
+                       Hangs off the tagging's ACTIVITY entry ("Re-tagged"), not
+                       off any one file's audit line — see
+                       tag_history.group_by_action. So it sits at the top of the
+                       group rather than under the last file listed, and it
+                       survives "Show details", which is right: a plain-language
+                       list of what changed is what that toggle should leave
+                       visible, not raw audit text. #}
+                    {% if tag_changes and e.id in tag_changes %}
+                    {% with changes = tag_changes[e.id] %}
+                    {% include 'partials/_tag_changes.html' %}
+                    {% endwith %}
+                    {% endif %}
+                </span>
             </li>
             {% endfor %}
         </ul>

@@ -598,6 +598,22 @@ def test_append_returns_the_row_id_it_wrote(tmp_path):
     )
 
 
+def test_stored_events_carry_the_row_id_every_query_returns_it(tmp_path):
+    """The album page joins history rows to their per-field tag detail by id, so
+    every path that returns events has to carry it — not just `recent()`. Reading
+    the id off the row beats parsing it back out of the audit message text."""
+    activity_store.init(tmp_path / "a.db")
+    written = activity_store.append(
+        message="tag.track file=01.flac",
+        level=Level.INFO,
+        source=Source.AUDIT,
+        album_id="rel-1",
+    )
+
+    assert activity_store.recent()[0].id == written
+    assert activity_store.album_history("rel-1")[0].id == written
+
+
 def test_tag_changes_round_trip_with_every_identifier(tmp_path):
     """All four ways of naming the track survive the round trip — each fails
     under a different future edit (rename, re-match, renumber), so a record that
