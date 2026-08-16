@@ -3026,6 +3026,60 @@ def test_undo_unlink_derives_the_album_back_to_needs_mbid(client, cfg):
     assert album.state is AlbumState.NEEDS_MBID
 
 
+def test_undo_unlink_after_a_directory_rename_mints_the_new_paths_id(client, cfg):
+    """A tagged album's id is its release, so a rename doesn't move it — but an
+    unlink has to mint one from the path, and the path has changed.
+
+    The id it mints must be the one the SCANNER will derive for the directory as
+    it now stands. Minting from a remembered path would hand the album an id
+    nothing on disk agrees with, and its history would split at the rename.
+    """
+    from harmonist import activity_store, id_registry
+
+    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagRenamed")
+    moved = d.parent / "Renamed After Tagging"
+    d.rename(moved)
+
+    r = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+    assert "now Needs MBID" in r.text
+
+    after = sc.read(moved)
+    assert after is not None
+    assert after.mb_release_id is None
+    assert after.temp_uid == id_registry.get_or_mint(moved), "the id the scanner will derive"
+
+    # And the history came with it, across both identity changes.
+    messages = [e.message for e in activity_store.album_history(after.temp_uid)]
+    assert any("Re-tagged" in m for m in messages)
+
+
+def test_undo_refuses_when_a_file_has_been_renamed(client, cfg):
+    """Records name their file, so renaming one puts it out of the undo's reach.
+
+    It refuses rather than doing part of the job: the album is left exactly as
+    it was, tags and link both. The record carries three other ways to name the
+    track (`track_ref`, `rec_ref`, `position`) that would find it anyway — that
+    lookup isn't built yet (#167), and until it is, a clear refusal is the right
+    failure.
+    """
+    from harmonist import formats
+
+    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagFileRenamed")
+    path = min(p for p in d.iterdir() if formats.is_supported(p))
+    before = formats.read_owned(path)
+    path.rename(path.with_name("99 Renamed.m4a"))
+
+    r = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+
+    # The apostrophe is escaped in the rendered flash (#142).
+    assert "Couldn&#x27;t undo" in r.text
+    assert "no longer in this album" in r.text
+    # Nothing was written, and the album is still linked.
+    assert formats.read_owned(d / "99 Renamed.m4a") == before
+    after = sc.read(d)
+    assert after is not None and after.mb_release_id == "rel-TagFileRenamed"
+
+
 def test_undo_unlink_keeps_the_albums_history_reachable(client, cfg):
     """Unlinking changes the album's id back to its path-derived temp_uid, so
     the alias row is what stops its whole tagged-era history disappearing from
