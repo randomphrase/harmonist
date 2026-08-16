@@ -41,13 +41,15 @@
         {% endif %}
 
         {% else %}
-        {% if c.before is none %}
-        <span class="tag-changes__absent" title="Not present before this tagging">—</span>
-        {% else %}
+        {# A field with nothing before it shows only what was written. On a first
+           tagging that is EVERY row, so "— →" would prefix the whole list with
+           two columns of chrome, and the em-dash reads as a value rather than as
+           the absence of one. The arrow stays where it carries the meaning: a
+           replacement has two real sides, and a removal has to say what went. #}
+        {% if c.before is not none %}
         <span class="tag-changes__before">{% with runs = c.before_runs, value = c.before %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
-        {% endif %}
-
         <span class="tag-changes__arrow" aria-label="became">→</span>
+        {% endif %}
 
         {% if c.after is none %}
         <span class="tag-changes__absent" title="Removed by this tagging">removed</span>

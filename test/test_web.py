@@ -2728,6 +2728,69 @@ def test_album_page_shows_what_a_tagging_changed_under_its_activity_entry(client
     assert body.count('class="tag-changes"') == 1
 
 
+def test_added_tags_render_without_a_before_arrow(client, cfg):
+    """#159: a field with nothing before it shows only what was written.
+
+    The fixture changes three fields — two additions (`label`, `mb_track_id`)
+    and one replacement (`artist`) — so exactly one arrow should survive. On a
+    FIRST tagging every row is an addition, which is what made the old "— →"
+    prefix two columns of chrome on the whole list.
+    """
+    from harmonist import activity, activity_store, audit
+
+    d = _make_album(cfg, "Added")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/a", mb_release_id="rel-add"))
+    album_id = _id_for(cfg, d)
+    activity_store.clear()
+
+    with activity_store.action():
+        activity.record("Re-tagged", album_id=album_id, album_label="Artist — Added")
+        event_id = audit.record("tag.track", album_id=album_id, file="01 a.m4a")
+        assert event_id is not None
+        activity_store.record_tag_changes(
+            event_id,
+            file="01 a.m4a",
+            changes={
+                "label": [None, "Warp Records"],
+                "artist": ["Boards Of Canada", "Boards of Canada"],
+                "mb_track_id": [None, "rec-1"],
+            },
+            position="1",
+        )
+
+    body = client.get(f"/album/{album_id}").text
+
+    assert body.count("tag-changes__arrow") == 1, "only the replacement keeps its arrow"
+    assert "Warp Records" in body, "the added value is still shown"
+    # The em-dash standing in for "absent" is gone from the change rows. It
+    # remains legitimate in the per-track table, which has a Before column.
+    assert 'class="tag-changes__absent" title="Not present before this tagging"' not in body
+
+
+def test_removed_tags_keep_their_arrow(client, cfg):
+    """A removal has to say what went, so it keeps both sides (#159)."""
+    from harmonist import activity, activity_store, audit
+
+    d = _make_album(cfg, "Removed")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/r", mb_release_id="rel-rem"))
+    album_id = _id_for(cfg, d)
+    activity_store.clear()
+
+    with activity_store.action():
+        activity.record("Re-tagged", album_id=album_id, album_label="Artist — Removed")
+        event_id = audit.record("tag.track", album_id=album_id, file="01 a.m4a")
+        assert event_id is not None
+        activity_store.record_tag_changes(
+            event_id, file="01 a.m4a", changes={"label": ["Warp Records", None]}, position="1"
+        )
+
+    body = client.get(f"/album/{album_id}").text
+
+    assert body.count("tag-changes__arrow") == 1
+    assert "Warp Records" in body
+    assert "removed" in body
+
+
 def test_album_page_shows_no_change_detail_when_a_tagging_changed_nothing(client, cfg):
     """A re-tag that found MusicBrainz unchanged writes no detail, so the page
     shows the audit line and nothing else. #32 will run one of these nightly."""

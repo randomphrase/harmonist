@@ -306,7 +306,11 @@ button[disabled],
    rows are reset to a proportional face because they're values, not log text. */
 .tag-changes {
   display: grid;
-  grid-template-columns: 7rem 1fr;
+  /* Wide enough for the longest label ("MusicBrainz release", "Album artist
+     sort") to sit on one line. Fixed rather than max-content because a History
+     stacks several of these lists, and sizing each to its own longest label
+     would step the value column in and out down the page. */
+  grid-template-columns: 9.5rem 1fr;
   gap: .15rem .9rem;
   align-items: baseline;
   margin: .35rem 0 0;

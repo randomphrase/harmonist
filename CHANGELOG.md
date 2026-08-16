@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+
+- An album's History reads more cleanly: a tag that wasn't there before shows
+  just the value it was given, instead of prefixing every row with "— →", and
+  the longest field labels no longer wrap onto a second line (#159).
+
 ## [1.7.0] - 2026-08-16
 
 ### Added
