@@ -41,6 +41,8 @@ read_track_title = _impl.read_track_title
 read_comment = _impl.read_comment
 read_duration_ms = _impl.read_duration_ms
 write_tags = _impl.write_tags
+write_owned = _impl.write_owned
+read_owned = _impl.read_owned
 write_cover = _impl.write_cover
 read_cover = _impl.read_cover
 

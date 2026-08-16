@@ -2919,6 +2919,184 @@ def test_undo_rebuilds_its_plan_from_the_albums_own_history(client, cfg, tmp_pat
     assert r.status_code == 404
 
 
+# --- undoing a tagging's tags (#157) -----------------------------------------
+
+
+def _tagging_with_tag_changes(cfg, name, *, release_id=None):
+    """An album whose files are really tagged, with one recorded tagging saying
+    so — the shape an Undo acts on. Returns (album_id, dir, anchor)."""
+    from harmonist import activity, activity_store, audit, formats
+    from harmonist.formats.types import TagSet
+
+    d = _make_album(cfg, name)
+    sc.write(
+        d,
+        Sidecar(
+            store_url=f"https://x.bandcamp.com/album/{name}",
+            mb_release_id=release_id or f"rel-{name}",
+        ),
+    )
+    album_id = _id_for(cfg, d)
+    files = sorted(p for p in d.iterdir() if formats.is_supported(p))
+
+    with activity_store.action():
+        activity.record("Re-tagged", album_id=album_id, album_label=f"Artist — {name}")
+        for i, path in enumerate(files):
+            before = formats.write_tags(
+                path,
+                TagSet(
+                    mb_album_id=release_id or f"rel-{name}",
+                    album=name,
+                    album_artist="A",
+                    title=f"T{i + 1}",
+                    artist="A",
+                    track_num=i + 1,
+                    track_total=len(files),
+                    label="Warp Records",
+                ),
+                None,
+            )
+            event_id = audit.record("tag.track", album_id=album_id, file=path.name)
+            assert event_id is not None
+            activity_store.record_tag_changes(
+                event_id,
+                file=path.name,
+                changes=formats.owned.diff(before, formats.read_owned(path)),
+            )
+    anchor = next(e.id for e in activity_store.album_history(album_id) if e.message == "Re-tagged")
+    return album_id, d, anchor
+
+
+def test_undo_puts_back_the_tags_a_tagging_changed(client, cfg):
+    from harmonist import formats
+
+    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagUndo")
+    path = min(p for p in d.iterdir() if formats.is_supported(p))
+    assert formats.read_owned(path)["label"] == "Warp Records"
+
+    r = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+
+    assert r.status_code == 200
+    assert "Tags put back" in r.text
+    after = formats.read_owned(path)
+    assert after["label"] is None, "the added tag was removed, not blanked"
+    assert after["album"] is None
+
+
+def test_undo_keeps_the_release_id_and_says_so(client, cfg):
+    """#158's limit surfaced in the flash, not hidden: the album stays linked,
+    so it can't strand itself in TAGGING with a spinner in the Inbox."""
+    from harmonist import formats
+
+    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagKeep")
+    path = min(p for p in d.iterdir() if formats.is_supported(p))
+
+    r = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+
+    assert "MusicBrainz id kept" in r.text
+    assert formats.read_owned(path)["mb_album_id"] == "rel-TagKeep"
+
+
+def test_undo_names_the_fields_it_left_alone(client, cfg):
+    """The count is for what moved; the names are for what didn't. A field
+    changed since is the surprise, and a bare count would leave the reader
+    guessing which one."""
+    from harmonist import formats
+
+    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagStale")
+    for path in sorted(p for p in d.iterdir() if formats.is_supported(p)):
+        formats.write_owned(path, {**formats.read_owned(path), "label": "Changed Since"})
+
+    r = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+
+    assert "Label left alone (changed since)" in r.text
+    path = min(p for p in d.iterdir() if formats.is_supported(p))
+    assert formats.read_owned(path)["label"] == "Changed Since"
+
+
+def test_undo_tags_button_appears_on_a_tagging_that_changed_tags(client, cfg):
+    album_id, _, _ = _tagging_with_tag_changes(cfg, "TagButton")
+    assert "tag-changes__undo--tags" in client.get(f"/album/{album_id}").text
+
+
+def test_undo_tags_button_is_absent_when_only_the_release_id_changed(client, cfg):
+    """While #158 is pending, the MB id is never reverted — so a tagging whose
+    only tag change was that id has nothing this build can undo, and gets no
+    button rather than one that would do nothing."""
+    from harmonist import activity, activity_store, audit
+
+    d = _make_album(cfg, "OnlyId")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/o", mb_release_id="rel-onlyid"))
+    album_id = _id_for(cfg, d)
+    with activity_store.action():
+        activity.record("Re-tagged", album_id=album_id, album_label="Artist — OnlyId")
+        event_id = audit.record("tag.track", album_id=album_id, file="01 a.m4a")
+        assert event_id is not None
+        activity_store.record_tag_changes(
+            event_id, file="01 a.m4a", changes={"mb_album_id": [None, "rel-onlyid"]}
+        )
+
+    assert "tag-changes__undo--tags" not in client.get(f"/album/{album_id}").text
+
+
+def test_undo_tags_rebuilds_its_plan_from_the_albums_own_history(client, cfg):
+    """The form names a history row, never files or values. A row belonging to
+    another album — or to nothing — is a 404, not a reach for whatever the
+    caller asked for."""
+    mine, _, _ = _tagging_with_tag_changes(cfg, "TagMine")
+    _theirs, _, theirs_anchor = _tagging_with_tag_changes(cfg, "TagTheirs")
+
+    assert client.post(f"/tags/restore/{mine}", data={"event_id": theirs_anchor}).status_code == 404
+    assert client.post(f"/tags/restore/{mine}", data={"event_id": 999999}).status_code == 404
+
+
+def test_undo_tags_twice_reports_nothing_left_to_do(client, cfg):
+    """And writes no history line for the second click. A no-op that recorded
+    itself would leave a permanent entry whose whole content is that nothing
+    happened — the rule a re-tag finding MusicBrainz unchanged already follows
+    (#86) — and it would state it by reciting every field in the album."""
+    from harmonist import activity_store
+
+    album_id, _, anchor = _tagging_with_tag_changes(cfg, "TagTwice")
+
+    first = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+    entries = len(activity_store.album_history(album_id))
+    second = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+
+    assert "Tags put back" in first.text
+    assert "Nothing to undo" in second.text
+    assert "these tags have changed since" in second.text
+    assert len(activity_store.album_history(album_id)) == entries, "the no-op stayed quiet"
+
+
+def test_undo_caps_the_fields_it_names(client, cfg):
+    """Naming the outliers is the point; reciting the whole owned set is not.
+    An undo whose fields have all moved on would otherwise put twenty labels in
+    the status bar."""
+    from harmonist import formats
+
+    album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagMany")
+    for path in sorted(p for p in d.iterdir() if formats.is_supported(p)):
+        current = formats.read_owned(path)
+        # Five fields the tagging actually wrote, so all five read as stale —
+        # one past the cap.
+        formats.write_owned(
+            path,
+            {
+                **current,
+                "label": "X",
+                "album": "Y",
+                "title": "Z",
+                "artist": "W",
+                "album_artist": "V",
+            },
+        )
+
+    r = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
+
+    assert " and 1 more" in r.text, "named up to the cap, then counted"
+
+
 def test_album_page_resolves_a_superseded_id(client, cfg):
     """A link written before the album was re-identified must still land on the
     page rather than 404 — the same forward walk `_find_album` already does."""

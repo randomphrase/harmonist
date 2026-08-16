@@ -14,7 +14,7 @@ Mapping follows the MusicBrainz Picard Vorbis spec.
 from __future__ import annotations
 
 import base64
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +95,45 @@ OWNED_KEYS: dict[Owned, tuple[str, ...]] = {
     Owned.MB_RELEASE_TRACK_ID: (KEY_RELEASE_TRACK_ID,),
     Owned.MB_ARTIST_IDS: (KEY_ARTIST_ID,),
     Owned.ISRCS: (KEY_ISRC,),
+}
+
+
+#: Owned fields carried by a single Vorbis comment each. Numbers are written as
+#: their decimal string, which is how `_read_owned` reads them back.
+_SINGLE_KEYS: dict[Owned, str] = {
+    Owned.MB_ALBUM_ID: KEY_ALBUM_ID,
+    Owned.ALBUM: KEY_ALBUM,
+    Owned.ALBUM_ARTIST: KEY_ALBUM_ARTIST,
+    Owned.ALBUM_ARTIST_SORT: KEY_ALBUM_ARTIST_SORT,
+    Owned.MB_RELEASE_GROUP_ID: KEY_RELEASE_GROUP_ID,
+    Owned.MB_ALBUM_TYPE: KEY_RELEASE_TYPE,
+    Owned.MB_ALBUM_STATUS: KEY_RELEASE_STATUS,
+    Owned.MB_ALBUM_COUNTRY: KEY_RELEASE_COUNTRY,
+    Owned.DATE: KEY_DATE,
+    Owned.ORIGINAL_DATE: KEY_ORIGINAL_DATE,
+    Owned.SCRIPT: KEY_SCRIPT,
+    Owned.LABEL: KEY_LABEL,
+    Owned.CATALOG_NUMBER: KEY_CATALOG,
+    Owned.BARCODE: KEY_BARCODE,
+    Owned.ASIN: KEY_ASIN,
+    Owned.DISC_TOTAL: KEY_DISC_TOTAL,
+    Owned.TITLE: KEY_TITLE,
+    Owned.ARTIST: KEY_ARTIST,
+    Owned.ARTIST_SORT: KEY_ARTIST_SORT,
+    Owned.TRACK_NUM: KEY_TRACK_NUMBER,
+    Owned.TRACK_TOTAL: KEY_TRACK_TOTAL,
+    Owned.DISC_NUM: KEY_DISC_NUMBER,
+    Owned.MEDIA: KEY_MEDIA,
+    Owned.MB_TRACK_ID: KEY_TRACK_ID,
+    Owned.MB_RELEASE_TRACK_ID: KEY_RELEASE_TRACK_ID,
+}
+
+#: Owned fields carried as several values under one key.
+_LIST_KEYS: dict[Owned, str] = {
+    Owned.MB_ALBUM_ARTIST_IDS: KEY_ALBUM_ARTIST_ID,
+    Owned.ARTISTS: KEY_ARTISTS,
+    Owned.MB_ARTIST_IDS: KEY_ARTIST_ID,
+    Owned.ISRCS: KEY_ISRC,
 }
 
 
@@ -403,3 +442,61 @@ class VorbisTagger:
 
         audio.save()
         return before
+
+    def read_owned(self, path: Path) -> dict[str, Any]:
+        """Every owned field as it currently stands on disk (#157's undo).
+
+        Raises rather than returning blanks when the file can't be opened — see
+        `mp3.read_owned`.
+        """
+        audio = self._open(path)
+        if audio is None:
+            raise OSError(f"could not open {path} to read its tags")
+        return self._read_owned(audio.tags)
+
+    def write_owned(self, path: Path, values: Mapping[str, Any]) -> dict[str, Any]:
+        """Set every owned field to `values`, removing those absent (#157's undo).
+
+        `values` is a complete owned snapshot shaped like `_read_owned`'s
+        result. Vorbis is the straightforward case of the three: every owned
+        field has a key to itself, so nothing has to be written in pairs the way
+        ID3's TRCK and MP4's `trkn` do. See `mp3.write_owned` for why this is
+        separate from `write_tags`.
+        """
+        audio = self._open(path)
+        if audio is None:
+            raise OSError(f"could not open {path} for tagging")
+        if audio.tags is None:
+            audio.add_tags()
+        tags = audio.tags
+        before = self._read_owned(tags)
+
+        for keys in OWNED_KEYS.values():
+            for key in keys:
+                if key in tags:
+                    del tags[key]
+        self._apply_owned(tags, values)
+
+        # COMMENT/DESCRIPTION and the picture block untouched, as in `write_tags`.
+        audio.save()
+        return before
+
+    def _apply_owned(self, tags: Any, values: Mapping[str, Any]) -> None:
+        """Write an owned snapshot into already-cleared Vorbis comments.
+
+        Each field lands under the key `OWNED_KEYS` and `_read_owned` name for
+        it; a test writes the same values through here and through `write_tags`
+        and asserts both read back identically, so the two cannot drift.
+        """
+        for fld, key in _SINGLE_KEYS.items():
+            if (value := values.get(fld)) not in (None, ""):
+                tags[key] = [str(value)]
+        for fld, key in _LIST_KEYS.items():
+            if value := values.get(fld):
+                tags[key] = [str(v) for v in value]
+
+        # ORIGINALYEAR is derived from the date rather than stored separately —
+        # `_read_owned` reads only ORIGINALDATE, so taking the year from
+        # anywhere else could disagree with the date beside it.
+        if original := values.get(Owned.ORIGINAL_DATE):
+            tags[KEY_ORIGINAL_YEAR] = [str(original)[:4]]

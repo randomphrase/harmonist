@@ -128,6 +128,48 @@ def write_cover(path: Path, cover: bytes) -> None:
     mod.write_cover(path, cover)
 
 
+def read_owned(path: Path) -> dict[str, Any]:
+    """Every field Harmonist owns, as `path` currently carries it.
+
+    Shaped like the matching `TagSet` attribute, so the result can be diffed
+    against a stored record or handed straight back to `write_owned`.
+
+    The read-side counterpart to `write_owned`, and distinct from `read_tags`:
+    that returns `TrackTags`, which is deliberately narrower — no MusicBrainz
+    ids, no sort names — because it exists to be shown to a person. A revert
+    needs every field it might have to put back.
+    """
+    mod = _module_for(path)
+    if mod is None:
+        raise UnsupportedFormatError(f"no audio module handles {path.suffix}")
+    values: dict[str, Any] = mod.read_owned(path)
+    return values
+
+
+def write_owned(path: Path, values: dict[str, Any]) -> dict[str, Any]:
+    """Set every owned field on `path` to `values`, removing those absent.
+
+    `values` is a COMPLETE owned snapshot — read one with `read_owned`, change
+    what you mean to change, and pass the whole thing back. Not a patch: ID3
+    packs track number and total into one TRCK frame and MP4 packs them into one
+    `trkn` atom, so a writer handed half a pair would drop the other half.
+
+    Separate from `write_tags` because a `TagSet` cannot express absence — its
+    `title`, `album` and `artist` are required and written unconditionally — and
+    restoring absence is exactly what undoing a first tagging has to do (#157).
+    Nothing outside the owned set is touched, so the comment field and embedded
+    artwork survive, as they do in `write_tags`.
+
+    Returns the owned fields as they were BEFORE the write, so the caller can
+    record what it changed without a second read.
+    """
+    mod = _module_for(path)
+    if mod is None:
+        raise UnsupportedFormatError(f"no audio module handles {path.suffix}")
+    before: dict[str, Any] = mod.write_owned(path, values)
+    return before
+
+
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
     """Write `tagset` to `path` in its native format. `cover` is raw image
     bytes (jpeg/png) or None to leave existing cover untouched.
@@ -158,10 +200,12 @@ __all__ = [
     "read_comment",
     "read_cover",
     "read_duration_ms",
+    "read_owned",
     "read_scan_fields",
     "read_tags",
     "read_track_title",
     "supported_extensions",
     "write_cover",
+    "write_owned",
     "write_tags",
 ]

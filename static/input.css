@@ -358,6 +358,12 @@ button[disabled],
   cursor: pointer;
   transition: color .12s, border-color .12s;
 }
+/* The tagging-level Undo (#157) sits above the field list rather than in a row,
+   so it needs its own spacing — and no left margin, since nothing precedes it. */
+.tag-changes__undo--tags {
+  margin: .3rem 0 0;
+  float: right;
+}
 .tag-changes__undo:hover { color: var(--color-accent); border-color: var(--color-accent); }
 .tag-changes__undo:focus-visible {
   outline: 2px solid var(--color-accent);

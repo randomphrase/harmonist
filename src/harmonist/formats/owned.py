@@ -154,6 +154,19 @@ def _absent(value: object) -> bool:
     return value is None or value == "" or value == []
 
 
+def values_differ(a: object, b: object) -> bool:
+    """Whether two values of one owned field are meaningfully different.
+
+    The single answer to that question, shared by `diff` and by the undo's
+    staleness check (#157). They must not disagree: if the undo decided a file
+    had changed on a distinction `diff` didn't record, it would refuse to put
+    back a field that the history says it changed.
+    """
+    if _absent(a) and _absent(b):
+        return False
+    return a != b
+
+
 def diff(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, list[Any]]:
     """What changed between two owned-field snapshots, as `{field: [before, after]}`.
 
@@ -170,8 +183,6 @@ def diff(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, list[
     changed: dict[str, list[Any]] = {}
     for field in Owned:
         was, now = before.get(field.value), after.get(field.value)
-        if _absent(was) and _absent(now):
-            continue
-        if was != now:
+        if values_differ(was, now):
             changed[field.value] = [was, now]
     return changed

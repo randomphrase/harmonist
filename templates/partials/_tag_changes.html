@@ -13,6 +13,32 @@
    with the tracklist.
 
    Expects `changes` (a tuple of tag_history.FieldChange) from the caller. #}
+
+{# Undo, on the TAGGING rather than on any one field row (#157). A field row
+   isn't a stored thing — records are per file, and `summarise` inverts them for
+   reading — and putting one field back while its neighbours keep the new value
+   builds a state that never existed: revert `artist` alone and `artist sort`
+   and the artist ids still say otherwise, which Harmonist would then report as
+   drift against MusicBrainz forever. The tagging is what happened, so it's what
+   gets undone.
+
+   The artwork row keeps its own button, which is not an inconsistency to iron
+   out: it's a different store with its own availability, so it can be undoable
+   when this is not, and the other way round. Hence the wording — "these tags"
+   against the artwork row's "Undo". #}
+{% if revertable and anchor_id in revertable %}
+{# hx-swap="none": the response is a flash delivered by HX-Trigger, and the
+   album-retagged event reloads the page so every stale region comes back
+   correct — the same handling the artwork restore gets. #}
+<button hx-post="/tags/restore/{{ album.id }}"
+        hx-vals='{"event_id": "{{ anchor_id }}"}'
+        hx-swap="none" hx-disabled-elt="this"
+        hx-confirm="Put back the tags this tagging changed? Fields changed since are left alone, and the undo is itself recorded, so it can be undone in turn."
+        class="tag-changes__undo tag-changes__undo--tags"
+        title="Restore the tag values these files carried before this tagging"
+        aria-label="Undo this tagging's tag changes">Undo tag changes</button>
+{% endif %}
+
 <dl class="tag-changes">
     {% for c in changes %}
     <dt>{{ c.label }}</dt>

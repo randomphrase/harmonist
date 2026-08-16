@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from . import activity_store, artwork_store, audit, formats
+from . import activity_store, artwork_store, audit, formats, tag_history
 from . import sidecar as sidecar_mod
 from .formats import TagSet, owned
 from .formats.m4a import (  # noqa: F401 — back-compat re-exports
@@ -302,6 +303,147 @@ def _has_per_track_art(digests: dict[Path, str | None]) -> bool:
     per-track artwork worth preserving. A compilation's per-track images are user
     data a re-tag must not destroy."""
     return len({d for d in digests.values() if d is not None}) > 1
+
+
+class RevertUnavailableError(Exception):
+    """An undo can't be carried out as recorded — a file the tagging wrote is
+    gone, or can't be read. Raised before anything is written, so the album is
+    never left half-reverted: a state that was never real, with neither half
+    undoable, is worse than a refusal that explains itself."""
+
+
+@dataclass(frozen=True)
+class RevertOutcome:
+    """What an undo actually did, in the terms the user asked the question in.
+
+    Not just a count. A revert that skipped half its fields because a later
+    re-tag moved them is a *different* outcome from one that put everything
+    back, and reporting both as "12 files" would hide the part the user most
+    needs to know.
+    """
+
+    files: int
+    #: Field names put back, and field names left alone because the file no
+    #: longer carried what this tagging wrote. Unioned across files and sorted,
+    #: since the message names fields rather than file-field pairs.
+    restored: tuple[str, ...] = ()
+    stale: tuple[str, ...] = ()
+    #: True when the MusicBrainz release id was deliberately left in place.
+    kept_release_id: bool = False
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.files)
+
+
+def revert_tags(
+    album_dir: Path,
+    plan: Sequence[tag_history.FileRevert],
+    *,
+    keep_release_id: str | None,
+) -> RevertOutcome:
+    """Put back the tags one tagging changed, and report what actually moved.
+
+    `plan` comes from `tag_history.revert_plan` — the same records the History
+    page described, so the button undoes what the user just read.
+
+    **Per-field, not per-file.** A field is put back only when the file still
+    carries the value this tagging wrote. Anything changed since — a later
+    re-tag, an edit in Picard — is left alone and reported, because an undo that
+    reached past the change it names into someone else's would be the confident
+    lie the artwork restore was careful to avoid.
+
+    **`keep_release_id` names a release the sidecar still points at**, and while
+    it is set `mb_album_id` is never reverted. Removing it would leave the files
+    carrying no MusicBrainz id while the sidecar still claims one, which derives
+    as TAGGING (`scanner._derive_state`) — a spinner in the Inbox forever.
+    Making the sidecar follow the files instead is #158; until then this is a
+    stated limit rather than a silent one. Pass None once that lands.
+
+    **Everything resolves before anything is written**, like `restore_artwork`:
+    every file is opened and read first, and a missing or unreadable one raises
+    rather than leaving the album half-reverted.
+
+    Writes its own per-file records, so the undo appears in History with its own
+    field list and is itself undoable.
+    """
+    targets: dict[Path, tuple[dict[str, Any], dict[str, Any]]] = {}
+    restored: set[str] = set()
+    stale: set[str] = set()
+    kept_release_id = False
+
+    for item in plan:
+        # `item.file` reaches here from a stored record and is joined to a path.
+        # Records are permanent and unversioned, so a malformed one will turn up
+        # eventually; a bare filename is the only thing ever written here, and
+        # anything else must not become a write outside the album.
+        if item.file != Path(item.file).name or item.file in ("", ".", ".."):
+            raise RevertUnavailableError(f"{item.file!r} is not a file name in this album")
+        path = album_dir / item.file
+        if not path.exists():
+            raise RevertUnavailableError(f"{item.file} is no longer in this album")
+        try:
+            current = formats.read_owned(path)
+        except Exception as e:
+            raise RevertUnavailableError(f"could not read the tags on {item.file}: {e}") from e
+
+        target = dict(current)
+        for field, (before, after) in item.fields.items():
+            if field == owned.Owned.MB_ALBUM_ID and keep_release_id is not None:
+                kept_release_id = True
+                continue
+            if field not in current:
+                # A field this build no longer owns. The records are permanent
+                # and unversioned, so one written by a future build may name it;
+                # writing it back would put a tag under a key nothing reads.
+                continue
+            if owned.values_differ(current[field], after):
+                stale.add(field)
+                continue
+            if not owned.values_differ(current[field], before):
+                continue  # already back where it started
+            target[field] = before
+            restored.add(field)
+        if target != current:
+            targets[path] = (target, current)
+
+    files = 0
+    album_id = sidecar_mod.album_id_for(album_dir)
+    if targets:
+        # Written BEFORE the loop, like `tag.album`, so a crash part-way leaves
+        # evidence of what was attempted rather than only of what completed.
+        audit.record(
+            "tag.revert",
+            album_id=album_id,
+            album=album_dir,
+            files=len(targets),
+            fields=len(restored),
+            stale=len(stale),
+            release_id="kept" if kept_release_id else "-",
+        )
+    for path, (target, _current) in targets.items():
+        before = formats.write_owned(path, target)
+        # The per-file line comes AFTER its write and the detail hangs off it,
+        # as in `tag_album`: a record claiming a change that never landed would
+        # make a future revert restore a value that was never overwritten.
+        event_id = audit.record(
+            "tag.revert.track",
+            album_id=album_id,
+            album=album_dir,
+            file=path.name,
+        )
+        if event_id is not None:
+            changes = owned.diff(before, target)
+            if changes:
+                activity_store.record_tag_changes(event_id, file=path.name, changes=changes)
+        files += 1
+
+    return RevertOutcome(
+        files=files,
+        restored=tuple(sorted(restored)),
+        stale=tuple(sorted(stale)),
+        kept_release_id=kept_release_id,
+    )
 
 
 class ArtworkUnavailableError(Exception):

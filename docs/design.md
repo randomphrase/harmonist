@@ -625,6 +625,24 @@ The plan is rebuilt server-side from the album's own stored records, keyed by th
 
 The stored JSON keys are `Owned` values, which makes them a **persisted vocabulary**: these records are permanent and unversioned, so a payload written today may name a field a later build has renamed or dropped. The renderer falls back to the raw key for names it doesn't recognise and skips malformed entries, rather than letting one old row take an album page down.
 
+### Undoing a tagging
+
+The records above exist to be readable, but they were shaped to be *reversible*: raw values on both sides, one row per file, four ways to name each track. `tagger.revert_tags` is what spends that (#157).
+
+**The tagging is the unit, not the field.** One Undo per history row, put back everything that tagging changed. A field row on the page is a rendering — records are per file, and `summarise` inverts them — so undoing one field would build a state that never existed: revert `artist` while `artist_sort` and `mb_artist_ids` keep the new value and Harmonist reports the album as drifted against MusicBrainz forever.
+
+**Per-field staleness guard.** A field goes back only when the file still carries what that tagging wrote; anything changed since — a later re-tag, an edit in Picard — is left alone and named in the outcome. That is what makes an *old* row safe to offer rather than a way to overwrite newer work. `owned.values_differ` answers "changed?" for both this and `diff`, because a revert that refused a field the history says it changed would be the two disagreeing.
+
+**`write_owned`, not `write_tags`.** A `TagSet` cannot express absence — `title`, `album` and `artist` are required and written unconditionally — so reverting a first tagging through it would write empty tags instead of removing them. `formats.write_owned` takes a complete owned snapshot and sets or removes each field. It takes the *whole* snapshot rather than a patch because ID3 packs number and total into one `TRCK` frame and MP4 into one `trkn` atom, so a writer handed half a pair would drop the other half. A test replays one snapshot through both paths and asserts they read back identically; without it the two mappings would drift, which is exactly how `media` broke in #149.
+
+**Resolve everything before writing anything**, as the artwork restore does: every file is read first, and a missing or unreadable one raises `RevertUnavailableError` rather than leaving the album half-reverted. Running it twice is a no-op, and a no-op writes no history entry — the same silence a re-tag that changed nothing keeps.
+
+**The undo records itself** as `tag.revert` with its own per-field detail, so it appears in History and is undoable in turn.
+
+**`mb_album_id` is not reverted while the sidecar still holds that release.** Removing it would leave the files carrying no MusicBrainz id while the sidecar claims one, which derives as `TAGGING` (§3) — a spinner in the inbox forever. The outcome says so rather than hiding it. Making the sidecar follow the files is #158; when it lands, the guard lifts and the album drops to `NEEDS_MBID` with the unlinked release kept as its suggestion.
+
+Artwork is not in the plan: it is not an owned tag, and it has its own store, its own availability check and its own button (#131). One button per store, each honest about what it can do.
+
 ### Cover art (mandatory)
 
 Plex with the MusicBrainz agent can fetch its own artwork from external sources, but **Navidrome does not** — it reads from embedded tags and `cover.jpg` only. Navidrome is the strict consumer; we design for it.
@@ -661,11 +679,12 @@ src/harmonist/
   mb_search.py          MB free-text search (manual-ingest path)
   match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
   compare.py            Field-by-field tag-vs-MB comparison primitives (album panel + tracklist)
-  tagger.py             Picard-compatible tag writer (+ embedded cover)
+  tagger.py             Picard-compatible tag writer (+ embedded cover), and the undo of one (#157)
   cover_art.py          Cover Art Archive fetch + cover.* writing
   formats/              Per-format tag I/O (m4a, mp3, flac, ogg, opus; _vorbis shared; types)
                         owned.py names the tags Harmonist writes, per-album vs per-track
-  tag_history.py        Invert per-file tag-change records into one row per field
+                        write_owned sets/removes a whole owned snapshot — what a revert needs
+  tag_history.py        Invert per-file tag-change records into one row per field; build a revert plan
   artwork_store.py      Content-addressed copies of overwritten cover art (undo for #131)
   activity.py           In-memory ring-buffer log for the Activity tab
   audit.py              Audit log for destructive ops (downloads, moves, sidecar rewrites, …)

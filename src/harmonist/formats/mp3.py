@@ -15,6 +15,7 @@ recovered into it survives a retag — mirrors the M4A behaviour.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -336,6 +337,131 @@ def _read_owned(tags: Any) -> dict[str, Any]:
         Owned.MB_ARTIST_IDS: _txxx_list(tags, TXXX_ARTIST_ID),
         Owned.ISRCS: [str(v) for v in isrc.text] if isrc is not None and isrc.text else [],
     }
+
+
+def read_owned(path: Path) -> dict[str, Any]:
+    """Every owned field as it currently stands on disk (#157's undo).
+
+    Raises rather than returning blanks when the file can't be opened: a revert
+    that read an unreadable file as an untagged one would decide every field had
+    already been changed and quietly do nothing (#112's lesson, one layer down).
+    """
+    return _read_owned(MP3(path).tags)
+
+
+def write_owned(path: Path, values: Mapping[str, Any]) -> dict[str, Any]:
+    """Set every owned field to `values`, removing those absent (#157's undo).
+
+    `values` is a COMPLETE owned snapshot, shaped exactly like `_read_owned`'s
+    result — not a patch. It has to be: TRCK and TPOS each pack two owned fields
+    into one frame, so writing `track_num` without `track_total` in hand would
+    drop the total. The caller reads the file's current state and overlays what
+    it wants changed.
+
+    Separate from `write_tags` rather than folded into it because a `TagSet`
+    cannot express absence: `title`, `album` and `artist` are required there and
+    are written unconditionally, so reverting a first tagging through it would
+    write empty frames instead of removing them. Absence is a value here (see
+    `owned._absent`), and the undo has to be able to restore it.
+
+    Returns the owned fields as they were BEFORE the write, like `write_tags`,
+    so an undo can record its own before/after without a second read.
+    """
+    audio = MP3(path)
+    if audio.tags is None:
+        audio.add_tags()
+    tags = audio.tags
+    before = _read_owned(tags)
+
+    for frames in OWNED_FRAMES.values():
+        for frame_id in frames:
+            tags.delall(frame_id)
+    _apply_owned(tags, values)
+
+    # COMM and APIC are untouched, as everywhere else: a revert of tags must not
+    # disturb a recovered Bandcamp URL or the embedded artwork, which has its
+    # own undo (#131).
+    audio.save()
+    return before
+
+
+def _apply_owned(tags: ID3, values: Mapping[str, Any]) -> None:
+    """Write an owned snapshot into already-cleared ID3 tags.
+
+    Every field is written only when present, so absence stays absence. The
+    frame each field lands in must match `OWNED_FRAMES` and `_read_owned` — a
+    test writes the same values through here and through `write_tags` and
+    asserts both read back identically, which is what stops the two paths
+    drifting the way TMED once did.
+    """
+    for fld, frame in _TEXT_FRAMES.items():
+        if (value := values.get(fld)) not in (None, ""):
+            tags.setall(frame.__name__, [frame(encoding=Encoding.UTF8, text=[str(value)])])
+    for fld, desc in _TXXX_FIELDS.items():
+        if (value := values.get(fld)) not in (None, ""):
+            _set_txxx(tags, desc, [str(value)])
+    for fld, desc in _TXXX_LIST_FIELDS.items():
+        if value := values.get(fld):
+            _set_txxx(tags, desc, [str(v) for v in value])
+
+    if track_id := values.get(Owned.MB_TRACK_ID):
+        tags.add(UFID(owner=UFID_OWNER, data=str(track_id).encode("ascii")))
+    if isrcs := values.get(Owned.ISRCS):
+        tags.setall("TSRC", [TSRC(encoding=Encoding.UTF8, text=[str(v) for v in isrcs])])
+
+    _set_pair(tags, "TRCK", TRCK, values.get(Owned.TRACK_NUM), values.get(Owned.TRACK_TOTAL))
+    _set_pair(tags, "TPOS", TPOS, values.get(Owned.DISC_NUM), values.get(Owned.DISC_TOTAL))
+
+
+def _set_pair(tags: ID3, frame_id: str, frame: Any, num: Any, total: Any) -> None:
+    """Write ID3's packed "n/total" frames.
+
+    A total with no number writes nothing: `_split_pair` reads the number first
+    and returns `(None, None)` for anything it can't parse, so "/12" would not
+    round-trip and writing it would lose the total silently.
+    """
+    if num is None:
+        return
+    text = f"{num}/{total}" if total is not None else str(num)
+    tags.setall(frame_id, [frame(encoding=Encoding.UTF8, text=[text])])
+
+
+#: Owned fields that are a single standard text frame, by frame class. The class
+#: doubles as the frame id (`TALB.__name__ == "TALB"`), which is what mutagen's
+#: `setall` keys on.
+_TEXT_FRAMES: dict[Owned, Any] = {
+    Owned.ALBUM: TALB,
+    Owned.ALBUM_ARTIST: TPE2,
+    Owned.ALBUM_ARTIST_SORT: TSO2,
+    Owned.DATE: TDRC,
+    Owned.ORIGINAL_DATE: TDOR,
+    Owned.LABEL: TPUB,
+    Owned.TITLE: TIT2,
+    Owned.ARTIST: TPE1,
+    Owned.ARTIST_SORT: TSOP,
+    Owned.MEDIA: TMED,
+}
+
+#: Owned fields carried in a single-valued TXXX user-text frame.
+_TXXX_FIELDS: dict[Owned, str] = {
+    Owned.MB_ALBUM_ID: TXXX_ALBUM_ID,
+    Owned.MB_RELEASE_GROUP_ID: TXXX_RELEASE_GROUP_ID,
+    Owned.MB_ALBUM_TYPE: TXXX_ALBUM_TYPE,
+    Owned.MB_ALBUM_STATUS: TXXX_ALBUM_STATUS,
+    Owned.MB_ALBUM_COUNTRY: TXXX_ALBUM_COUNTRY,
+    Owned.SCRIPT: TXXX_SCRIPT,
+    Owned.CATALOG_NUMBER: TXXX_CATALOG,
+    Owned.BARCODE: TXXX_BARCODE,
+    Owned.ASIN: TXXX_ASIN,
+    Owned.MB_RELEASE_TRACK_ID: TXXX_RELEASE_TRACK_ID,
+}
+
+#: Owned fields carried as several strings in one TXXX frame.
+_TXXX_LIST_FIELDS: dict[Owned, str] = {
+    Owned.MB_ALBUM_ARTIST_IDS: TXXX_ALBUM_ARTIST_ID,
+    Owned.ARTISTS: TXXX_ARTISTS,
+    Owned.MB_ARTIST_IDS: TXXX_ARTIST_ID,
+}
 
 
 def _apic(cover: bytes) -> APIC:

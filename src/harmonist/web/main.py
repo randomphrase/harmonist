@@ -49,6 +49,7 @@ from harmonist import sidecar as sidecar_mod
 from harmonist import tagger as tagger_mod
 from harmonist.activity_store import Level
 from harmonist.bandcamp_hook import HarmonistSyncer, album_slug
+from harmonist.formats import owned
 from harmonist.match import best_match
 from harmonist.models import (
     Album,
@@ -1399,6 +1400,91 @@ def _restorable_anchors(
     return out
 
 
+def _revert_plan(album: Album, event_id: int) -> tuple[tag_history.FileRevert, ...]:
+    """The per-file revert for the tagging shown under `event_id`.
+
+    Rebuilt from this album's own stored records — never from client input —
+    and grouped by exactly the function that produced the summary the user is
+    looking at, so Undo cannot act on a different set of files from the one it
+    described. Same contract as `_artwork_plan`.
+    """
+    history = activity_store.album_history(album.id)
+    detail = activity_store.tag_changes_for([e.id for e in history])
+    records = tag_history.group_records(history, detail).get(event_id)
+    return tag_history.revert_plan(records) if records else ()
+
+
+def _revert_detail(outcome: tagger_mod.RevertOutcome) -> str:
+    """What the undo did, as one line under the flash heading.
+
+    Counts what went back, but NAMES what didn't. The fields that were put back
+    are the ones the user just read in the summary and expected to move; the
+    ones left alone are the surprise, and a bare count of those would leave them
+    guessing which. Usually there are none, sometimes one or two, and the case
+    where a later re-tag moved everything is exactly the case worth spelling out.
+    """
+    parts: list[str] = []
+    if outcome.files:
+        fields = len(outcome.restored)
+        parts.append(
+            f"{fields} field{'s' if fields != 1 else ''} across "
+            f"{outcome.files} file{'s' if outcome.files != 1 else ''}"
+        )
+    if outcome.stale:
+        parts.append(f"{_named_fields(outcome.stale)} left alone (changed since)")
+    if outcome.kept_release_id:
+        parts.append("MusicBrainz id kept, so the album stays linked")
+    return "; ".join(parts)
+
+
+#: How many field names a message spells out before it starts counting. Naming
+#: the outliers is the point, but a re-tag that moved everything would otherwise
+#: put the whole owned set in the status bar.
+_NAMED_FIELD_LIMIT = 4
+
+
+def _named_fields(fields: tuple[str, ...]) -> str:
+    """Field names for prose, capped so a long list stays a sentence."""
+    named = [tag_history.label_for(f) for f in fields[:_NAMED_FIELD_LIMIT]]
+    rest = len(fields) - len(named)
+    return ", ".join(named) + (f" and {rest} more" if rest else "")
+
+
+def _revertable_anchors(
+    history: list[activity_store.StoredEvent],
+    detail: dict[int, activity_store.TagChanges],
+    *,
+    keep_release_id: str | None,
+) -> set[int]:
+    """Which history rows are worth offering an Undo on.
+
+    Deliberately a WEAKER check than `_restorable_anchors` does for artwork,
+    and the asymmetry is the point. Artwork availability is one `glob` per
+    digest — cheap enough to answer before rendering, so no button is offered
+    that would fail. Whether a tag revert would still apply can only be
+    answered by reading every file's tags, which is a full pass over the album
+    per tagging on the page, on the request path. Not worth it.
+
+    So the button appears when the tagging changed something revertable at all,
+    and a revert that finds every field already changed says so when clicked —
+    "nothing left to put back" rather than a silent success.
+
+    `keep_release_id` mirrors `tagger.revert_tags`: while it is set, a tagging
+    whose only tag change was the MusicBrainz id has nothing this build can
+    undo, so it gets no button rather than one that would do nothing (#158).
+    """
+    out: set[int] = set()
+    for anchor, records in tag_history.group_records(history, detail).items():
+        for item in tag_history.revert_plan(records):
+            fields = set(item.fields)
+            if keep_release_id is not None:
+                fields.discard(owned.Owned.MB_ALBUM_ID)
+            if fields:
+                out.add(anchor)
+                break
+    return out
+
+
 def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
     """Extract embedded cover art (bytes, mime) from the album's first audio
     file, or None. Used by /cover to serve art without writing it to disk."""
@@ -2622,6 +2708,7 @@ def _register_routes(app: FastAPI) -> None:
         history_unavailable = False
         tag_changes: dict[int, tuple[tag_history.FieldChange, ...]] = {}
         restorable: set[int] = set()
+        revertable: set[int] = set()
         try:
             # Keyed on the album's CURRENT id — album_history unions backwards
             # over the chain from there, so passing the (possibly stale) URL id
@@ -2635,6 +2722,12 @@ def _register_routes(app: FastAPI) -> None:
             tag_changes = tag_history.group_by_action(history, detail)
             # Only offer Undo where the images are actually still there (#131).
             restorable = _restorable_anchors(history, detail)
+            # And where the tagging changed a tag this build can put back (#157).
+            revertable = _revertable_anchors(
+                history,
+                detail,
+                keep_release_id=album.sidecar.mb_release_id if album.sidecar else None,
+            )
         except activity_store.StoreUnavailableError:
             history_unavailable = True  # already logged with a traceback in the store
         ctx = _ctx(
@@ -2644,6 +2737,7 @@ def _register_routes(app: FastAPI) -> None:
             history_unavailable=history_unavailable,
             tag_changes=tag_changes,
             restorable=restorable,
+            revertable=revertable,
             from_page=max(1, from_page),
         )
         return _templates(request).TemplateResponse(request, "album.html", ctx)
@@ -2842,6 +2936,74 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response(
             "Artwork restored",
             f"{restored} file{'s' if restored != 1 else ''}",
+            extra_triggers={"album-retagged": True},
+            album=album,
+        )
+
+    @app.post("/tags/restore/{album_id}", response_class=HTMLResponse)
+    def restore_tags(request: Request, album_id: str, event_id: int = Form(...)) -> Response:
+        """Put back the tags one tagging changed (#157).
+
+        `event_id` names the history row the change is shown under, not the
+        fields — so the button undoes exactly the tagging the user just read,
+        and the plan is rebuilt server-side from the stored records rather than
+        trusted from the form. A client cannot name a file, a field or a value;
+        only a row of this album's own history. Same contract as the artwork
+        restore beside it.
+        """
+        album = _find_album(request, album_id)
+        try:
+            plan = _revert_plan(album, event_id)
+        except activity_store.StoreUnavailableError:
+            return _flash_response(
+                "Couldn't undo",
+                "this album's history can't be read right now",
+                level=Level.ERROR,
+                tasks_changed=False,
+                album=album,
+            )
+        if not plan:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, "no tag change to undo on that history entry"
+            )
+        try:
+            outcome = tagger_mod.revert_tags(
+                album.path,
+                plan,
+                # Until #158 lets the sidecar follow the files, removing the MB
+                # id would leave the album deriving as TAGGING — a spinner in
+                # the Inbox forever. Stated in the outcome, not hidden.
+                keep_release_id=album.sidecar.mb_release_id if album.sidecar else None,
+            )
+        except tagger_mod.RevertUnavailableError as e:
+            # Expected, not exceptional: files get renamed and deleted, and
+            # saying so plainly beats a stack trace.
+            return _flash_response(
+                "Couldn't undo", str(e), level=Level.ERROR, tasks_changed=False, album=album
+            )
+        except Exception as e:
+            log.exception("tag revert failed")
+            return _flash_response(
+                "Couldn't undo", str(e), level=Level.ERROR, tasks_changed=False, album=album
+            )
+        if not outcome.changed:
+            return _flash_response(
+                "Nothing to undo",
+                "these tags have changed since that tagging"
+                if outcome.stale
+                else "these tags are already back",
+                tasks_changed=False,
+                album=album,
+                # A no-op writes no history line — the same "silence is the
+                # feature" rule a re-tag that changed nothing follows (#86).
+                # Without this, undoing twice leaves a permanent entry whose
+                # whole content is that nothing happened, and it does it by
+                # reciting every field in the album.
+                record_activity=False,
+            )
+        return _flash_response(
+            "Tags put back",
+            _revert_detail(outcome),
             extra_triggers={"album-retagged": True},
             album=album,
         )

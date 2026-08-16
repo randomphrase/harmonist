@@ -234,6 +234,79 @@ def artwork_replaced(records: Sequence[Any]) -> dict[str, str]:
     return out
 
 
+def label_for(field: str) -> str:
+    """The human name of one owned field, for prose outside the change table.
+
+    Falls back to the raw key for the same reason `_LABELS` does: these records
+    are permanent and unversioned, so a field this build has since renamed must
+    degrade to showing its name rather than raising.
+    """
+    return _LABELS.get(field, field)
+
+
+@dataclass(frozen=True)
+class FileRevert:
+    """One file's share of an undo: what to put back, and how to find the file.
+
+    `fields` is `{owned_field: (before, after)}` — both sides, because the
+    *after* is what proves the file still carries what this tagging wrote. A
+    field changed since (a later re-tag, an edit in Picard) must be left alone,
+    and only the recorded after-value can tell the difference.
+    """
+
+    file: str
+    fields: dict[str, tuple[Any, Any]]
+    #: The other three ways this record names its track (see the 5->6 migration).
+    #: Unused while files are found by name; they are what a rename-aware lookup
+    #: would fall back to, and they are recorded now because the table is
+    #: append-only and a row cannot gain a better identifier later.
+    track_ref: str | None = None
+    rec_ref: str | None = None
+    position: str | None = None
+
+
+def revert_plan(records: Sequence[Any]) -> tuple[FileRevert, ...]:
+    """What an Undo of one tagging would put back, per file.
+
+    Built from the same `group_records` output the page's summary is built from,
+    so Undo cannot act on a different set of files from the one the user just
+    read — the reason that grouping is a shared function rather than inlined
+    into `group_by_action`.
+
+    Two fields are deliberately absent:
+
+    * **artwork**, which is not an owned tag and has its own undo and its own
+      store (#131). One button per store, each honest about what it can do.
+    * nothing else here — the `mb_album_id` guard lives in `tagger.revert_tags`,
+      because whether reverting it would strand the album is a question about
+      the sidecar, which this module has no business reading.
+
+    Files whose record holds no revertable field are dropped rather than
+    returned empty, so a caller can treat an empty result as "nothing to undo".
+    """
+    plan: list[FileRevert] = []
+    for record in records:
+        fields: dict[str, tuple[Any, Any]] = {}
+        for field, entry in record.changes.items():
+            if field == ARTWORK:
+                continue
+            pair = _pair(entry)
+            if pair is None:
+                continue
+            fields[field] = (pair[0], pair[1])
+        if fields:
+            plan.append(
+                FileRevert(
+                    file=record.file,
+                    fields=fields,
+                    track_ref=record.track_ref,
+                    rec_ref=record.rec_ref,
+                    position=record.position,
+                )
+            )
+    return tuple(plan)
+
+
 def display(value: Any) -> str | None:
     """One stored value as the page shows it, or None when it was absent.
 

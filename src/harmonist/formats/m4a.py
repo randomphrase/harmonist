@@ -7,6 +7,7 @@ Picard-compatible atom naming throughout. Custom atoms use the
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -306,6 +307,115 @@ def _read_owned(audio: MP4) -> dict[str, Any]:
         Owned.MB_ARTIST_IDS: _binary_atom_list(audio, ATOM_MB_ARTIST_ID),
         Owned.ISRCS: _binary_atom_list(audio, ATOM_ISRC),
     }
+
+
+def read_owned(path: Path) -> dict[str, Any]:
+    """Every owned field as it currently stands on disk (#157's undo).
+
+    Raises rather than returning blanks when the file can't be opened — see
+    `mp3.read_owned`.
+    """
+    return _read_owned(MP4(path))
+
+
+def write_owned(path: Path, values: Mapping[str, Any]) -> dict[str, Any]:
+    """Set every owned field to `values`, removing those absent (#157's undo).
+
+    `values` is a COMPLETE owned snapshot shaped like `_read_owned`'s result,
+    not a patch — `trkn` and `disk` each pack a (number, total) pair into one
+    atom, so writing half of one without the other in hand would drop the other
+    half. See `mp3.write_owned` for why this is separate from `write_tags`.
+    """
+    audio = MP4(path)
+    before = _read_owned(audio)
+
+    for atoms in OWNED_ATOMS.values():
+        for atom in atoms:
+            if atom in audio:
+                del audio[atom]
+    _apply_owned(audio, values)
+
+    # ATOM_COMMENT and ATOM_COVER untouched, as in `write_tags`.
+    audio.save()
+    return before
+
+
+def _apply_owned(audio: MP4, values: Mapping[str, Any]) -> None:
+    """Write an owned snapshot into already-cleared MP4 atoms.
+
+    Each field lands in the atom `OWNED_ATOMS` and `_read_owned` name for it; a
+    test writes the same values through here and through `write_tags` and
+    asserts both read back identically, so the two paths cannot drift apart.
+    """
+    for fld, atom in _TEXT_ATOMS.items():
+        if (value := values.get(fld)) not in (None, ""):
+            audio[atom] = [str(value)]
+    for fld, atom in _BINARY_ATOMS.items():
+        if (value := values.get(fld)) not in (None, ""):
+            audio[atom] = [str(value).encode("utf-8")]
+    for fld, atom in _BINARY_LIST_ATOMS.items():
+        if value := values.get(fld):
+            audio[atom] = [str(v).encode("utf-8") for v in value]
+
+    # ORIGINALYEAR is derived rather than stored: `_read_owned` reads only
+    # ORIGINALDATE, so writing the year from anywhere else could disagree with
+    # the date beside it.
+    if original := values.get(Owned.ORIGINAL_DATE):
+        audio[ATOM_ORIGINAL_YEAR] = [str(original)[:4].encode("utf-8")]
+
+    _set_pair(audio, ATOM_TRACK_NUM, values.get(Owned.TRACK_NUM), values.get(Owned.TRACK_TOTAL))
+    _set_pair(audio, ATOM_DISC_NUM, values.get(Owned.DISC_NUM), values.get(Owned.DISC_TOTAL))
+
+
+def _set_pair(audio: MP4, atom: str, num: Any, total: Any) -> None:
+    """Write MP4's packed (number, total) atoms.
+
+    A total with no number writes nothing — `_read_owned` takes the number from
+    the same tuple, so a pair with no number can't round-trip. mutagen requires
+    both halves to be ints, so a missing total is written as 0, which is how it
+    reads an absent total back.
+    """
+    if num is None:
+        return
+    audio[atom] = [(int(num), int(total) if total is not None else 0)]
+
+
+#: Owned fields stored as plain MP4 text atoms.
+_TEXT_ATOMS: dict[Owned, str] = {
+    Owned.ALBUM: ATOM_ALBUM,
+    Owned.ALBUM_ARTIST: ATOM_ALBUM_ARTIST,
+    Owned.ALBUM_ARTIST_SORT: ATOM_ALBUM_ARTIST_SORT,
+    Owned.DATE: ATOM_DATE,
+    Owned.TITLE: ATOM_TITLE,
+    Owned.ARTIST: ATOM_ARTIST,
+    Owned.ARTIST_SORT: ATOM_ARTIST_SORT,
+}
+
+#: Owned fields stored as single-valued freeform (`----:`) atoms, UTF-8 bytes.
+_BINARY_ATOMS: dict[Owned, str] = {
+    Owned.MB_ALBUM_ID: ATOM_MB_ALBUM_ID,
+    Owned.MB_RELEASE_GROUP_ID: ATOM_MB_RELEASE_GROUP_ID,
+    Owned.MB_ALBUM_TYPE: ATOM_MB_ALBUM_TYPE,
+    Owned.MB_ALBUM_STATUS: ATOM_MB_ALBUM_STATUS,
+    Owned.MB_ALBUM_COUNTRY: ATOM_MB_ALBUM_COUNTRY,
+    Owned.ORIGINAL_DATE: ATOM_ORIGINAL_DATE,
+    Owned.SCRIPT: ATOM_SCRIPT,
+    Owned.LABEL: ATOM_LABEL,
+    Owned.CATALOG_NUMBER: ATOM_CATALOG,
+    Owned.BARCODE: ATOM_BARCODE,
+    Owned.ASIN: ATOM_ASIN,
+    Owned.MEDIA: ATOM_MEDIA,
+    Owned.MB_TRACK_ID: ATOM_MB_TRACK_ID,
+    Owned.MB_RELEASE_TRACK_ID: ATOM_MB_RELEASE_TRACK_ID,
+}
+
+#: Owned fields stored as multi-valued freeform atoms.
+_BINARY_LIST_ATOMS: dict[Owned, str] = {
+    Owned.MB_ALBUM_ARTIST_IDS: ATOM_MB_ALBUM_ARTIST_ID,
+    Owned.ARTISTS: ATOM_ARTISTS,
+    Owned.MB_ARTIST_IDS: ATOM_MB_ARTIST_ID,
+    Owned.ISRCS: ATOM_ISRC,
+}
 
 
 def _cover_atom(cover: bytes) -> MP4Cover:

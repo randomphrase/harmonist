@@ -6,6 +6,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- Any tagging in an album's History can now be undone: "Undo tag changes" puts
+  back the tag values the files carried before it. A field you've changed since
+  — in Picard, or by a later re-tag — is left alone and named, and the undo is
+  itself recorded, so it can be undone in turn (#157).
+  - The MusicBrainz release id is deliberately kept, so the album stays linked
+    to its release rather than stranding itself mid-tagging; the flash says so.
+  - Artwork keeps its own separate Undo, since it has its own store.
+
 ### Changed
 
 - The album page's tag comparison is now its own Tags section, a peer of Tracks

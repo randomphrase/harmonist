@@ -713,3 +713,170 @@ def _single_track_release() -> dict:
 def _minimal_jpeg() -> bytes:
     """Arbitrary bytes with a JPEG magic header — mutagen doesn't validate."""
     return b"\xff\xd8\xff\xe0" + b"FAKE_JPEG_BODY" * 8 + b"\xff\xd9"
+
+
+# ---------- undoing a tagging (#157) ----------
+
+
+def _plan():
+    """The revert plan for the tagging that just ran, built the way the route
+    builds it — from the stored records, through the shared grouping."""
+    from harmonist import tag_history
+
+    return tag_history.revert_plan(_detail())
+
+
+def test_reverting_a_first_tagging_strips_the_tags_back_off(album_with_tracks, tmp_path):
+    """The commonest undo: an album tagged for the first time, put back to how
+    it arrived. Every field was absent before, so reverting means REMOVING the
+    tags — which is exactly what a TagSet can't express and `write_owned` can."""
+    from harmonist import activity_store, formats
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+    tagged = formats.read_owned(next(album_dir.glob("*.m4a")))
+    assert tagged["album"] == "Test Album"
+
+    outcome = tagger.revert_tags(album_dir, _plan(), keep_release_id=None)
+
+    assert outcome.files == 2
+    assert "album" in outcome.restored
+    after = formats.read_owned(next(album_dir.glob("*.m4a")))
+    assert after["album"] is None
+    assert after["title"] is None
+    assert after["mb_album_id"] is None
+    assert after["isrcs"] == []
+
+
+def test_reverting_leaves_a_field_that_changed_since_alone(album_with_tracks, tmp_path):
+    """The staleness guard. An undo names one tagging; reaching past it into a
+    later change — or into an edit the user made in Picard — would undo
+    something the button never claimed to."""
+    from harmonist import activity_store, formats
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+    plan = _plan()
+
+    # Someone edits the album title afterwards — Picard, or another tool. Both
+    # files, so the field is uniformly stale and the outcome has one answer.
+    for f in album_dir.glob("*.m4a"):
+        formats.write_owned(f, {**formats.read_owned(f), "album": "Edited By Hand"})
+    f = next(album_dir.glob("*.m4a"))
+
+    outcome = tagger.revert_tags(album_dir, plan, keep_release_id=None)
+
+    assert "album" in outcome.stale
+    assert "album" not in outcome.restored
+    after = formats.read_owned(f)
+    assert after["album"] == "Edited By Hand", "the later edit survived"
+    assert after["title"] is None, "everything else still went back"
+
+
+def test_reverting_keeps_the_release_id_while_the_sidecar_claims_it(album_with_tracks, tmp_path):
+    """#158's stated limit, made visible. Removing mb_album_id while the sidecar
+    still holds the release derives as TAGGING — a spinner in the Inbox forever
+    — so the field is left in place and the outcome says so."""
+    from harmonist import activity_store, formats
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+
+    outcome = tagger.revert_tags(album_dir, _plan(), keep_release_id="rel-aaa")
+
+    assert outcome.kept_release_id is True
+    after = formats.read_owned(next(album_dir.glob("*.m4a")))
+    assert after["mb_album_id"] == "rel-aaa", "still linked"
+    assert after["album"] is None, "everything else went back"
+
+
+def test_reverting_twice_is_a_no_op(album_with_tracks, tmp_path):
+    """Idempotent, like every other transition here — and it must be, because
+    the second click of a double-click would otherwise report a second undo."""
+    from harmonist import activity_store, formats
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+    plan = _plan()
+
+    first = tagger.revert_tags(album_dir, plan, keep_release_id=None)
+    snapshot = formats.read_owned(next(album_dir.glob("*.m4a")))
+    second = tagger.revert_tags(album_dir, plan, keep_release_id=None)
+
+    assert first.files == 2
+    assert second.files == 0, "nothing left to put back"
+    assert formats.read_owned(next(album_dir.glob("*.m4a"))) == snapshot
+
+
+def test_reverting_refuses_before_writing_when_a_file_is_gone(album_with_tracks, tmp_path):
+    """Resolve everything before writing anything, like the artwork restore: a
+    half-reverted album is a state that was never real, with neither half
+    undoable."""
+    from harmonist import activity_store, formats
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+    plan = _plan()
+
+    survivor = album_dir / "01 Track 1.m4a"
+    (album_dir / "02 Track 2.m4a").unlink()
+    before = formats.read_owned(survivor)
+
+    with pytest.raises(tagger.RevertUnavailableError):
+        tagger.revert_tags(album_dir, plan, keep_release_id=None)
+
+    assert formats.read_owned(survivor) == before, "the surviving file was not touched"
+
+
+def test_reverting_records_what_it_undid(album_with_tracks, tmp_path):
+    """An undo is a destructive write like any other, so it lands in the audit
+    log with its own per-field detail — which is also what makes it undoable in
+    turn, the same guarantee `restore_artwork` gives."""
+    from harmonist import activity_store
+    from harmonist.activity_store import Source
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    tagger.tag_album(album_dir, _release_2_tracks())
+    before_rows = len(_detail())
+
+    tagger.revert_tags(album_dir, _plan(), keep_release_id=None)
+
+    lines = [e.message for e in activity_store.recent(50, source=Source.AUDIT)]
+    per_file = [m for m in lines if m.startswith("tag.revert.track")]
+    assert len(per_file) == 2, "one per file, like the tagging it undoes"
+    assert any("01 Track 1.m4a" in m for m in per_file)
+
+    # And one album-level line, written BEFORE the writes, so a crash part-way
+    # leaves evidence of what was attempted — the same shape as `tag.album`.
+    album_line = next(m for m in lines if m.startswith("tag.revert "))
+    assert "files=2" in album_line
+
+    rows = _detail()
+    assert len(rows) == before_rows + 2
+    # The undo's own record is the mirror image of the tagging's.
+    assert rows[-1].changes["album"] == ["Test Album", None]
+
+
+def test_reverting_does_not_touch_the_artwork(album_with_tracks, tmp_path):
+    """Artwork has its own undo and its own store (#131). One button per store,
+    each honest about what it can do — and a tag revert that silently changed
+    the cover would do more than it says."""
+    from harmonist import activity_store, formats
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    cover = _cover(tmp_path, "cover.jpg", _minimal_jpeg())
+    tagger.tag_album(album_dir, _release_2_tracks(), cover)
+    f = next(album_dir.glob("*.m4a"))
+    embedded = formats.read_cover(f)
+    assert embedded is not None
+
+    tagger.revert_tags(album_dir, _plan(), keep_release_id=None)
+
+    assert formats.read_cover(f) == embedded

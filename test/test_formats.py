@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from mutagen import MutagenError
 
 from harmonist import formats
 from harmonist.tagger import tag_album
@@ -822,6 +823,133 @@ def test_tagging_result_does_not_depend_on_what_was_tagged_before(tmp_path, ext,
     before = formats.read_tags(history)
     formats.write_tags(history, release_b, None)
     assert formats.read_tags(history) == before
+
+
+# ---------- the partial write an undo needs (#157) ----------
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_write_owned_lands_the_same_values_as_write_tags(tmp_path, ext, fixture):
+    """The anti-drift test for the two write paths.
+
+    `write_owned` re-implements the field -> frame/atom/key mapping that
+    `write_tags` performs, and if the two ever disagree an undo would write a
+    value somewhere the reader doesn't look — the exact failure #149 fixed for
+    `media`, where the writer used TMED and the reader TXXX:MEDIA so the field
+    never round-tripped.
+
+    Tag one copy through the tagger, snapshot it, and replay that snapshot onto
+    a fresh copy through `write_owned`. Reading both back must give the same
+    answer for every owned field.
+    """
+    tagged_dir = _make_album(tmp_path / "tagged", fixture)
+    tag_album(tagged_dir, _release_one_track())
+    tagged = next(tagged_dir.glob(f"*{ext}"))
+    snapshot = formats.read_owned(tagged)
+
+    replayed_dir = _make_album(tmp_path / "replayed", fixture)
+    replayed = next(replayed_dir.glob(f"*{ext}"))
+    formats.write_owned(replayed, snapshot)
+
+    assert formats.read_owned(replayed) == snapshot
+    # And through the user-facing reader too, which looks at a different subset.
+    assert formats.read_tags(replayed) == formats.read_tags(tagged)
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_write_owned_removes_a_field_it_is_given_as_absent(tmp_path, ext, fixture):
+    """Absence is a value: reverting a tag that wasn't there before has to
+    REMOVE it, not blank it. `write_tags` can't express this — `TagSet.title`
+    and friends are required and written unconditionally — which is why the
+    undo needs its own primitive."""
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+
+    snapshot = formats.read_owned(f)
+    assert snapshot["label"] == "Test Label"
+    assert snapshot["isrcs"] == ["GBFMT2100001"]
+
+    formats.write_owned(f, {**snapshot, "label": None, "isrcs": []})
+
+    after = formats.read_owned(f)
+    assert after["label"] is None
+    assert after["isrcs"] == []
+    # Absent, not present-and-empty: the comparison would render "" as a value.
+    assert formats.read_tags(f).label is None
+    # Everything else is untouched.
+    assert after["album"] == "Format Album"
+    assert after["mb_album_id"] == "rel-fmt-1"
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_write_owned_is_idempotent(tmp_path, ext, fixture):
+    """Replaying a snapshot onto a file that already matches changes nothing —
+    an undo run twice must be a no-op, like every other transition here."""
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+
+    snapshot = formats.read_owned(f)
+    formats.write_owned(f, snapshot)
+    assert formats.read_owned(f) == snapshot
+    formats.write_owned(f, snapshot)
+    assert formats.read_owned(f) == snapshot
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_write_owned_returns_the_state_it_replaced(tmp_path, ext, fixture):
+    """Like `write_tags`, so an undo can record what IT changed without a
+    second read — and so the undo is itself undoable."""
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+
+    snapshot = formats.read_owned(f)
+    before = formats.write_owned(f, {**snapshot, "album": "Something Else"})
+
+    assert before == snapshot
+    assert formats.read_owned(f)["album"] == "Something Else"
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_write_owned_leaves_the_comment_and_the_artwork_alone(tmp_path, ext, fixture):
+    """The undo must not destroy what it isn't undoing: a recovered Bandcamp
+    URL in the comment, and the embedded artwork, which has its own undo (#131)
+    and its own store. Same guarantee `write_tags` gives."""
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    d = _make_album(tmp_path, fixture)
+    f = next(d.glob(f"*{ext}"))
+    _set_unowned_tags(f, comment="https://artist.bandcamp.com/album/x", genre="Ambient")
+    tag_album(d, _release_one_track())
+    formats.write_cover(f, png)
+    embedded = formats.read_cover(f)
+    assert embedded is not None
+
+    snapshot = formats.read_owned(f)
+    formats.write_owned(f, {**snapshot, "album": "Renamed"})
+
+    assert formats.read_owned(f)["album"] == "Renamed"
+    assert formats.read_comment(f) == "https://artist.bandcamp.com/album/x"
+    assert formats.read_cover(f) == embedded
+    kept = _read_unowned_tags(f)
+    assert kept["genre"] == "Ambient"
+    assert kept["replaygain"] == "-3.20 dB"
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_read_owned_raises_on_a_file_it_cannot_open(tmp_path, ext, fixture):
+    """Not blanks. A revert that read an unreadable file as an untagged one
+    would decide every field had already changed and silently do nothing —
+    #112's lesson, one layer down."""
+    broken = tmp_path / f"broken{ext}"
+    broken.write_bytes(b"not audio at all")
+
+    # MutagenError from the formats that open the file directly, OSError from
+    # the Vorbis ones, whose `_open` swallows and returns None. Either is a
+    # refusal, which is the property under test.
+    with pytest.raises((OSError, MutagenError)):
+        formats.read_owned(broken)
 
 
 def _vorbis_open(path: Path) -> Any:
