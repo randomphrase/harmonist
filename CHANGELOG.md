@@ -6,34 +6,22 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-16
+
 ### Added
 
-- **Replacing an album's embedded artwork can now be undone.** Harmonist keeps a
-  copy of any embedded image a re-tag overwrites, and the Artwork row in the
-  album's History gains an **Undo** button that puts it back. Copies are
-  deduplicated, so an album whose tracks share one cover costs one file. Bounded
-  by a size cap (500 MB by default, shown in Settings, `artwork_store.max_bytes`
-  to change) — the oldest copies go first, so a change old enough to have been
-  evicted offers no Undo rather than a button that would fail (#131).
-
-- An album's History now shows **what each tagging actually changed**, field by
-  field — `Boards Of Canada → Boards of Canada`, a label added, a catalogue
-  number removed — with the differing characters marked in place. One line per
-  field rather than per track, annotated with how far the change reached
-  ("album", "all tracks", "3 of 18 tracks"), and the per-track breakdown behind
-  a "Show which tracks" disclosure. A re-tag that changed nothing says nothing
-  (#86).
+- An album's History now shows what each tagging changed, field by field, with
+  how far each change reached and a per-track breakdown behind a disclosure — and
+  a re-tag that changed nothing says nothing (#86).
+- Artwork that a re-tag overwrites is now kept, and can be put back from the
+  Artwork row in an album's History, within a 500 MB store (#131).
 
 ### Fixed
 
-- Re-tagging an MP3 or M4A now **removes** Harmonist's tags that the new release
-  doesn't carry, instead of leaving them behind. Correcting a mis-tag previously
-  left the wrong release's label, catalogue number, barcode and release country
-  on the files indefinitely; FLAC and Opus were already correct (#149).
-- The Media field (CD, Vinyl, …) now reads back correctly from MP3 files.
-  Harmonist wrote it to one frame and read it from another, so every MP3 album it
-  had tagged showed Media as missing on the album page, permanently flagged as
-  differing from MusicBrainz (#149).
+- Re-tagging an MP3 or M4A now removes Harmonist's tags that the new release
+  doesn't carry, instead of leaving the wrong release's values behind (#149).
+- The Media field (CD, Vinyl, …) now reads back correctly from MP3 files, which
+  had made every MP3 album show Media as missing on the album page (#149).
 
 ## [1.6.0] - 2026-08-10
 

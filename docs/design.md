@@ -664,6 +664,9 @@ src/harmonist/
   tagger.py             Picard-compatible tag writer (+ embedded cover)
   cover_art.py          Cover Art Archive fetch + cover.* writing
   formats/              Per-format tag I/O (m4a, mp3, flac, ogg, opus; _vorbis shared; types)
+                        owned.py names the tags Harmonist writes, per-album vs per-track
+  tag_history.py        Invert per-file tag-change records into one row per field
+  artwork_store.py      Content-addressed copies of overwritten cover art (undo for #131)
   activity.py           In-memory ring-buffer log for the Activity tab
   audit.py              Audit log for destructive ops (downloads, moves, sidecar rewrites, …)
   activity_store.py     SQLite persistence behind the activity/audit log
