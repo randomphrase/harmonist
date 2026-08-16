@@ -338,6 +338,23 @@ def _read_owned(tags: Any) -> dict[str, Any]:
     }
 
 
+def _apic(cover: bytes) -> APIC:
+    mime = "image/png" if cover[:4] == b"\x89PNG" else "image/jpeg"
+    return APIC(
+        encoding=Encoding.UTF8, mime=mime, type=PictureType.COVER_FRONT, desc="", data=cover
+    )
+
+
+def write_cover(path: Path, cover: bytes) -> None:
+    """Replace the embedded image, touching nothing else (#131's restore)."""
+    audio = MP3(path)
+    if audio.tags is None:
+        audio.add_tags()
+    audio.tags.delall("APIC")
+    audio.tags.add(_apic(cover))
+    audio.save()
+
+
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
     """Write `tagset` to `path`, returning the owned fields as they were BEFORE
     the write — read from the handle already open here, so the tagging audit
@@ -419,13 +436,8 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
 
     # ---- Cover art ----
     if cover is not None:
-        mime = "image/png" if cover[:4] == b"\x89PNG" else "image/jpeg"
         tags.delall("APIC")
-        tags.add(
-            APIC(
-                encoding=Encoding.UTF8, mime=mime, type=PictureType.COVER_FRONT, desc="", data=cover
-            )
-        )
+        tags.add(_apic(cover))
 
     # COMM intentionally NOT touched — preserves a recovered Bandcamp URL.
 

@@ -59,6 +59,18 @@ def reset_audit_library_root():
     audit.set_library_root(None)
 
 
+@pytest.fixture(autouse=True)
+def reset_artwork_store():
+    """Same hazard as the audit root, one module along: `create_app` points the
+    artwork store (#131) at a config dir, and a test that built an app would
+    otherwise leave a LATER test writing images into a tmp_path that has since
+    been removed. Unconfigured is the safe default — every call is a no-op."""
+    from harmonist import artwork_store
+
+    yield
+    artwork_store.configure(None)
+
+
 @pytest.fixture
 def album_with_tracks(tmp_path):
     """Factory: build an album dir with N copies of the sine fixture, named NN Title.m4a."""

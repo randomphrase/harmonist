@@ -312,6 +312,16 @@ class VorbisTagger:
             Owned.ISRCS: many(KEY_ISRC),
         }
 
+    def write_cover(self, path: Path, cover: bytes) -> None:
+        """Replace the embedded image, touching nothing else (#131's restore)."""
+        audio = self._open(path)
+        if audio is None:
+            raise OSError(f"could not open {path} to write its cover")
+        if audio.tags is None:
+            audio.add_tags()
+        self._set_cover(audio, cover)
+        audio.save()
+
     def write_tags(self, path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
         """Write `tagset` to `path`, returning the owned fields as they were
         BEFORE the write — read from the handle already open here, so the

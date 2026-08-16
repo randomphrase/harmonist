@@ -129,6 +129,28 @@
     {# ---- Won't download (#19) ---- #}
     {% include 'partials/_ignored.html' %}
 
+    {# ---- Kept artwork (#131) ----
+       Stated rather than left to be discovered: this is the one part of
+       Harmonist's state that grows with use and holds binary data, and "how
+       much disk is this costing me" is the question the cap exists to answer.
+       Read-only for now — the cap moves in the config file, and a control that
+       could shrink it would need to explain which images it was about to
+       destroy. #}
+    {% set used, cap = artwork_usage %}
+    <section class="border border-line rounded-lg p-4 space-y-2">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Kept artwork</h2>
+        <p class="text-sm text-muted">
+            Harmonist keeps a copy of any embedded artwork a re-tag overwrites, so
+            replacing it can be undone from the album's History.
+            Using <span class="font-bold text-ink">{{ (used / 1048576) | round(1) }} MB</span>
+            of {{ (cap / 1048576) | round(0) | int }} MB.
+            {% if used > cap * 0.9 and cap %}
+            The oldest copies are removed first, so the oldest artwork changes are
+            no longer undoable.
+            {% endif %}
+        </p>
+    </section>
+
     {# ---- Maintenance (destructive) ---- #}
     <section class="border border-red-300 rounded-lg p-4 space-y-3">
         <h2 class="text-sm font-bold text-red-700 uppercase tracking-widest">Maintenance</h2>

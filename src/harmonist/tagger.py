@@ -16,7 +16,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from . import activity_store, audit, formats
+from . import activity_store, artwork_store, audit, formats
 from . import sidecar as sidecar_mod
 from .formats import TagSet, owned
 from .formats.m4a import (  # noqa: F401 — back-compat re-exports
@@ -187,6 +187,10 @@ def tag_album(
         mode="incomplete" if incomplete else "full",
     )
     art_after = _digest(cover) if cover is not None else None
+    if art_after is not None:
+        # Only now is it settled that the embed is really happening — the
+        # per-track-art guard above may have cancelled it.
+        _keep_doomed_art(art_before, art_after)
     for file_path, (medium, track_pos_in_medium, track) in pairs:
         tagset = _build_tagset(release, medium, track_pos_in_medium, track, media_total)
         # The write hands back what was there before, read from the handle it
@@ -256,11 +260,37 @@ def _art_digests(files: list[Path]) -> dict[Path, str | None]:
     the album carries per-track artwork worth preserving, and what each track's
     art WAS, so a tagging can record that it replaced it (#86).
 
-    sha256 rather than the sha1 this used before #86: the digest is now recorded,
-    and #131 will store the images content-addressed under it, so the two must
-    agree on the algorithm.
+    sha256 rather than the sha1 this used before #86: the digest is recorded, and
+    #131 stores the images content-addressed under it, so the two must agree.
     """
     return {f: _digest(art[0]) if (art := formats.read_cover(f)) else None for f in files}
+
+
+def _keep_doomed_art(digests: dict[Path, str | None], incoming: str) -> None:
+    """Copy every image this tagging is about to overwrite into the artwork
+    store, so replacing it can be undone (#131).
+
+    Runs AFTER the per-track-art decision, not during the digest pass, and that
+    ordering is the point: `_has_per_track_art` can still cancel the embed, and
+    an image that survives is not being destroyed and has no business being
+    backed up. So this re-reads the doomed files — but only the doomed ones, and
+    only when something really is about to be lost. An album whose art already
+    matches the incoming cover, or has none, reads nothing at all.
+
+    Deduplicated by digest inside the store, so tracks sharing one cover cost
+    one file rather than one each.
+    """
+    seen: set[str] = set()
+    for path, key in digests.items():
+        if key is None or key == incoming or key in seen:
+            continue
+        seen.add(key)
+        art = formats.read_cover(path)
+        if art is None:  # vanished between the two passes; nothing to keep
+            continue
+        # Best-effort: a copy that can't be written is a reason to warn, not to
+        # abandon the re-tag the user asked for. `keep` logs and returns None.
+        artwork_store.keep(art[0], mime=art[1])
 
 
 def _digest(data: bytes) -> str:
@@ -272,6 +302,64 @@ def _has_per_track_art(digests: dict[Path, str | None]) -> bool:
     per-track artwork worth preserving. A compilation's per-track images are user
     data a re-tag must not destroy."""
     return len({d for d in digests.values() if d is not None}) > 1
+
+
+class ArtworkUnavailableError(Exception):
+    """The image a restore needs is no longer in the store — evicted by the size
+    cap, or never kept because the store was full or disabled. Raised rather
+    than silently doing nothing, because "undo" that quietly succeeds without
+    restoring anything is the confident lie the design forbids."""
+
+
+def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
+    """Put back the artwork `digests` names, and return how many files changed.
+
+    `digests` maps a file name to the sha256 of the image that file should carry
+    — straight out of a tagging's `artwork` before-values (#86). Restoring by
+    digest rather than "the album's old cover" is what makes a compilation's
+    per-track art come back to the right tracks.
+
+    Every image is checked to be present BEFORE anything is written: a partial
+    restore would leave the album in a state that was never real, and neither
+    half of it revertable. Files whose art already matches are skipped, so the
+    operation is idempotent.
+    """
+    resolved: dict[Path, bytes] = {}
+    for name, key in digests.items():
+        # `name` comes out of a stored record and is joined to a path. Records
+        # are permanent and unversioned, so a malformed one will turn up
+        # eventually; a bare filename is the only thing that was ever written
+        # here, and anything else must not become a write outside the album.
+        if name != Path(name).name or name in ("", ".", ".."):
+            raise ArtworkUnavailableError(f"{name!r} is not a file name in this album")
+        path = album_dir / name
+        if not path.exists():
+            raise ArtworkUnavailableError(f"{name} is no longer in this album")
+        stored = artwork_store.path_for(key)
+        if stored is None:
+            raise ArtworkUnavailableError(
+                f"the image {name} used to carry is no longer kept "
+                "(the artwork store evicted it, or never held it)"
+            )
+        try:
+            resolved[path] = stored.read_bytes()
+        except OSError as e:
+            raise ArtworkUnavailableError(f"could not read the kept image for {name}: {e}") from e
+
+    restored = 0
+    for path, data in resolved.items():
+        current = formats.read_cover(path)
+        if current is not None and _digest(current[0]) == _digest(data):
+            continue  # already correct — restoring twice is a no-op
+        # Keep what we are about to overwrite, exactly as a tagging would: an
+        # undo is itself a destructive write, and must be as undoable as the
+        # thing it undoes.
+        if current is not None:
+            artwork_store.keep(current[0], mime=current[1])
+        formats.write_cover(path, data)
+        audit.record("artwork.restore", album=album_dir, file=path.name, digest=_digest(data))
+        restored += 1
+    return restored
 
 
 def tagsets_for(release: Release) -> list[TagSet]:

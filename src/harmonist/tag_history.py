@@ -170,19 +170,36 @@ def group_by_action(
     which is honest about what was recorded at the time and needs no back-fill
     of data nobody captured.
     """
+    return {
+        anchor: rows
+        for anchor, records in group_records(events, detail).items()
+        if (rows := summarise(records))
+    }
+
+
+def group_records(events: Sequence[Any], detail: Mapping[int, Any]) -> dict[int, list[Any]]:
+    """The per-file records of each tagging, keyed by the history row that
+    should carry them.
+
+    Separated from `group_by_action` because two callers need this grouping and
+    they must not disagree about it: the page renders a summary from it, and
+    Undo acts on it. If Undo restored a different set of records from the ones
+    the summary described, the button would do something other than what the
+    user just read.
+
+    Records come back in file order — the order they were written.
+    """
     if not detail:
         return {}
 
     with_detail: dict[str, list[Any]] = {}
     anchors: dict[str, Any] = {}
-    out: dict[int, tuple[FieldChange, ...]] = {}
+    out: dict[int, list[Any]] = {}
     for event in events:
         action_id = event.action_id
         if action_id is None:
             if event.id in detail:
-                rows = summarise([detail[event.id]])
-                if rows:
-                    out[event.id] = rows
+                out[event.id] = [detail[event.id]]
             continue
         if event.source == "activity":
             # The action's user-facing outcome. First one wins; there is only
@@ -192,13 +209,28 @@ def group_by_action(
             with_detail.setdefault(action_id, []).append(event)
 
     for action_id, grouped in with_detail.items():
-        # In file order — the order they were recorded — so the per-track
-        # expansion reads down the album rather than however the page sorted.
         ordered = sorted(grouped, key=lambda e: e.id)
-        rows = summarise([detail[e.id] for e in ordered])
-        if rows:
-            anchor = anchors.get(action_id) or ordered[0]
-            out[anchor.id] = rows
+        anchor = anchors.get(action_id) or ordered[0]
+        out[anchor.id] = [detail[e.id] for e in ordered]
+    return out
+
+
+def artwork_replaced(records: Sequence[Any]) -> dict[str, str]:
+    """`{file_name: digest}` for the artwork one tagging overwrote.
+
+    The plan an Undo executes. Only files whose artwork actually changed AND had
+    something there before appear: a track that gained art it never had is not
+    restored to "no art", because removing an image the user has since been
+    looking at is not what "undo" reads as on a row that says *added*.
+    """
+    out: dict[str, str] = {}
+    for record in records:
+        pair = _pair(record.changes.get(ARTWORK))
+        if pair is None:
+            continue
+        before, _after = pair
+        if isinstance(before, str) and before:
+            out[record.file] = before
     return out
 
 

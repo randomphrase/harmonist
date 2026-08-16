@@ -8,6 +8,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- **Replacing an album's embedded artwork can now be undone.** Harmonist keeps a
+  copy of any embedded image a re-tag overwrites, and the Artwork row in the
+  album's History gains an **Undo** button that puts it back. Copies are
+  deduplicated, so an album whose tracks share one cover costs one file. Bounded
+  by a size cap (500 MB by default, shown in Settings, `artwork_store.max_bytes`
+  to change) — the oldest copies go first, so a change old enough to have been
+  evicted offers no Undo rather than a button that would fail (#131).
+
 - An album's History now shows **what each tagging actually changed**, field by
   field — `Boards Of Canada → Boards of Canada`, a label added, a catalogue
   number removed — with the differing characters marked in place. One line per

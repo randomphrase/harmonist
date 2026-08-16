@@ -29,6 +29,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from harmonist import (
     activity,
     activity_store,
+    artwork_store,
     audit,
     compare,
     cover_art,
@@ -45,6 +46,7 @@ from harmonist import (
 )
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
+from harmonist import tagger as tagger_mod
 from harmonist.activity_store import Level
 from harmonist.bandcamp_hook import HarmonistSyncer, album_slug
 from harmonist.match import best_match
@@ -255,6 +257,10 @@ def create_app(
         activity_store.init_memory()
     else:
         activity_store.init(cfg.paths.config_dir / "activity.db")
+    # Copies of artwork a re-tag overwrote, so replacing it can be undone (#131).
+    # `artwork_dir` sandboxes itself in demo mode rather than switching off, so
+    # the demo exercises the real path.
+    artwork_store.configure(cfg.artwork_dir, max_bytes=cfg.artwork_store.max_bytes)
     # Audit paths are recorded relative to the library (#98). Demo mode already
     # has its sandbox substituted into cfg, so this follows it automatically.
     audit.set_library_root(cfg.paths.music_dir)
@@ -1360,6 +1366,39 @@ def _report_unmatched_after_sync(
             )
 
 
+def _artwork_plan(album: Album, event_id: int) -> dict[str, str]:
+    """`{file_name: digest}` for the artwork change shown under `event_id`.
+
+    Rebuilt from this album's own stored records — never from client input —
+    and grouped by exactly the function that produced the summary the user is
+    looking at, so Undo cannot act on a different set of files from the one it
+    described.
+    """
+    history = activity_store.album_history(album.id)
+    detail = activity_store.tag_changes_for([e.id for e in history])
+    records = tag_history.group_records(history, detail).get(event_id)
+    return tag_history.artwork_replaced(records) if records else {}
+
+
+def _restorable_anchors(
+    history: list[activity_store.StoredEvent],
+    detail: dict[int, activity_store.TagChanges],
+) -> set[int]:
+    """Which history rows can actually have their artwork undone.
+
+    Checked before rendering rather than on click: the store evicts oldest
+    first, so an old enough change has no images left, and offering a button
+    that would fail is worse than offering none. One `path_for` glob per
+    distinct digest — cheap enough for a page render.
+    """
+    out: set[int] = set()
+    for anchor, records in tag_history.group_records(history, detail).items():
+        plan = tag_history.artwork_replaced(records)
+        if plan and all(artwork_store.path_for(d) is not None for d in set(plan.values())):
+            out.add(anchor)
+    return out
+
+
 def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
     """Extract embedded cover art (bytes, mime) from the album's first audio
     file, or None. Used by /cover to serve art without writing it to disk."""
@@ -2285,16 +2324,29 @@ def _register_routes(app: FastAPI) -> None:
         ctx = _ctx(request, app_version=_app_version(), git_sha=_git_sha(), credits=_credits())
         return _templates(request).TemplateResponse(request, "about.html", ctx)
 
-    @app.get("/settings", response_class=HTMLResponse)
-    def settings_page(request: Request) -> Response:
-        cfg: config_mod.Config = request.app.state.cfg
-        ctx = _ctx(
+    def _settings_ctx(request: Request, cfg: config_mod.Config, **extra: Any) -> dict[str, Any]:
+        """The settings page's context, in one place.
+
+        Three routes render this template — the page, a save, and a rejected
+        save — and each used to assemble this by hand. A key added to only some
+        of them is a template that renders on the paths you tested and raises on
+        the one you didn't, which is exactly what adding the artwork figure did.
+        """
+        return _ctx(
             request,
             bandcamp_ok=_bandcamp_configured(cfg),
             sidecar_count=sidecar_mod.count_all(cfg.paths.music_dir),
             ignored=_read_user_ignores(cfg.ignores_file),
+            artwork_usage=artwork_store.usage(),
+            **extra,
         )
-        return _templates(request).TemplateResponse(request, "settings.html", ctx)
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request) -> Response:
+        cfg: config_mod.Config = request.app.state.cfg
+        return _templates(request).TemplateResponse(
+            request, "settings.html", _settings_ctx(request, cfg)
+        )
 
     @app.post("/settings/erase-sidecars", response_class=HTMLResponse)
     def erase_sidecars(request: Request) -> Response:
@@ -2352,13 +2404,9 @@ def _register_routes(app: FastAPI) -> None:
                 }
             )
         except (PydanticValidationError, ValueError) as e:
-            ctx = _ctx(
-                request,
-                bandcamp_ok=_bandcamp_configured(cfg),
-                sidecar_count=sidecar_mod.count_all(cfg.paths.music_dir),
-                error=str(e),
+            return _templates(request).TemplateResponse(
+                request, "settings.html", _settings_ctx(request, cfg, error=str(e))
             )
-            return _templates(request).TemplateResponse(request, "settings.html", ctx)
 
         config_mod.write_settings(
             cfg.paths.config_dir,
@@ -2376,13 +2424,9 @@ def _register_routes(app: FastAPI) -> None:
         mb_lookup.configure(new_cfg.musicbrainz.user_agent)
         activity.info("Settings updated")
 
-        ctx = _ctx(
-            request,
-            bandcamp_ok=_bandcamp_configured(new_cfg),
-            sidecar_count=sidecar_mod.count_all(new_cfg.paths.music_dir),
-            saved=True,
+        return _templates(request).TemplateResponse(
+            request, "settings.html", _settings_ctx(request, new_cfg, saved=True)
         )
-        return _templates(request).TemplateResponse(request, "settings.html", ctx)
 
     @app.get("/sync/status")
     def sync_status(request: Request) -> Response:
@@ -2577,6 +2621,7 @@ def _register_routes(app: FastAPI) -> None:
         history: list[activity_store.StoredEvent] = []
         history_unavailable = False
         tag_changes: dict[int, tuple[tag_history.FieldChange, ...]] = {}
+        restorable: set[int] = set()
         try:
             # Keyed on the album's CURRENT id — album_history unions backwards
             # over the chain from there, so passing the (possibly stale) URL id
@@ -2586,9 +2631,10 @@ def _register_routes(app: FastAPI) -> None:
             # query for the whole page rather than one per row: an album
             # re-tagged a few times has a `tag.track` row per file per tagging,
             # and this table only grows.
-            tag_changes = tag_history.group_by_action(
-                history, activity_store.tag_changes_for([e.id for e in history])
-            )
+            detail = activity_store.tag_changes_for([e.id for e in history])
+            tag_changes = tag_history.group_by_action(history, detail)
+            # Only offer Undo where the images are actually still there (#131).
+            restorable = _restorable_anchors(history, detail)
         except activity_store.StoreUnavailableError:
             history_unavailable = True  # already logged with a traceback in the store
         ctx = _ctx(
@@ -2597,6 +2643,7 @@ def _register_routes(app: FastAPI) -> None:
             history=history,
             history_unavailable=history_unavailable,
             tag_changes=tag_changes,
+            restorable=restorable,
             from_page=max(1, from_page),
         )
         return _templates(request).TemplateResponse(request, "album.html", ctx)
@@ -2747,6 +2794,56 @@ def _register_routes(app: FastAPI) -> None:
         # reflect the just-written tags (tasks-changed only refreshes the tiles).
         return _flash_response(
             "Re-tagged", details, extra_triggers={"album-retagged": True}, album=album
+        )
+
+    @app.post("/artwork/restore/{album_id}", response_class=HTMLResponse)
+    def restore_artwork(request: Request, album_id: str, event_id: int = Form(...)) -> Response:
+        """Put back the artwork one tagging replaced (#131).
+
+        `event_id` names the history row the change is shown under, not the
+        images — so the button undoes exactly the change the user just read,
+        and the plan is rebuilt server-side from the stored records rather than
+        trusted from the form. A client cannot ask for arbitrary files or
+        digests; it can only name a row of this album's own history.
+        """
+        album = _find_album(request, album_id)
+        try:
+            plan = _artwork_plan(album, event_id)
+        except activity_store.StoreUnavailableError:
+            return _flash_response(
+                "Couldn't undo",
+                "this album's history can't be read right now",
+                level=Level.ERROR,
+                tasks_changed=False,
+                album=album,
+            )
+        if not plan:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, "no artwork change to undo on that history entry"
+            )
+        try:
+            restored = tagger_mod.restore_artwork(album.path, plan)
+        except tagger_mod.ArtworkUnavailableError as e:
+            # Expected, not exceptional: the store evicts oldest-first, so an
+            # old enough change is genuinely unrevertable and saying so plainly
+            # beats a stack trace.
+            return _flash_response(
+                "Couldn't undo", str(e), level=Level.ERROR, tasks_changed=False, album=album
+            )
+        except Exception as e:
+            log.exception("artwork restore failed")
+            return _flash_response(
+                "Couldn't undo", str(e), level=Level.ERROR, tasks_changed=False, album=album
+            )
+        if not restored:
+            return _flash_response(
+                "Nothing to undo", "the artwork already matches", tasks_changed=False, album=album
+            )
+        return _flash_response(
+            "Artwork restored",
+            f"{restored} file{'s' if restored != 1 else ''}",
+            extra_triggers={"album-retagged": True},
+            album=album,
         )
 
     @app.post("/forget/{album_id}", response_class=HTMLResponse)

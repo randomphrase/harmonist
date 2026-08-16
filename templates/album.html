@@ -122,7 +122,7 @@
                        list of what changed is what that toggle should leave
                        visible, not raw audit text. #}
                     {% if tag_changes and e.id in tag_changes %}
-                    {% with changes = tag_changes[e.id] %}
+                    {% with changes = tag_changes[e.id], anchor_id = e.id %}
                     {% include 'partials/_tag_changes.html' %}
                     {% endwith %}
                     {% endif %}

@@ -308,6 +308,18 @@ def _read_owned(audio: MP4) -> dict[str, Any]:
     }
 
 
+def _cover_atom(cover: bytes) -> MP4Cover:
+    fmt = MP4Cover.FORMAT_PNG if cover[:4] == b"\x89PNG" else MP4Cover.FORMAT_JPEG
+    return MP4Cover(cover, imageformat=fmt)
+
+
+def write_cover(path: Path, cover: bytes) -> None:
+    """Replace the embedded image, touching nothing else (#131's restore)."""
+    audio = MP4(path)
+    audio[ATOM_COVER] = [_cover_atom(cover)]
+    audio.save()
+
+
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
     """Serialise the TagSet to MP4 atoms on `path`, plus optional cover.
 
@@ -389,8 +401,7 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
 
     # ---- Cover art ----
     if cover is not None:
-        fmt = MP4Cover.FORMAT_PNG if cover[:4] == b"\x89PNG" else MP4Cover.FORMAT_JPEG
-        audio[ATOM_COVER] = [MP4Cover(cover, imageformat=fmt)]
+        audio[ATOM_COVER] = [_cover_atom(cover)]
 
     # The legacy atom is cleared with the owned set above, not here.
     # ATOM_COMMENT is intentionally NOT touched.

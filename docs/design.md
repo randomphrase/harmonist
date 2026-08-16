@@ -609,6 +609,20 @@ Each row carries **four ways to name its track** — the file name, the release-
 
 **Rendering is field-first** (`tag_history`): per-file rows are inverted into one row per *field*, annotated with how far the change reached — "album", "all tracks", "3 of 18 tracks", straight from `owned.Scope`. The height of the result is bounded by the number of fields that moved rather than by the size of the album. Where files disagree, the row shows the most common `(before, after)` **pair**, tie broken by file order — the same rule `compare.consensus` uses, kept as a pair so that resolving the two sides independently can't manufacture a transition no track made.
 
+### Keeping the artwork a tagging overwrote
+
+Embedding a cover overwrites whatever image the track already carried, and that image used to be gone for good. `artwork_store` keeps it so the change can be undone (#131).
+
+**Content-addressed files, not database rows.** Cover art runs 200 KB–5 MB per track and is mostly identical between tracks of one album, so the natural handling is dedup by digest: an eight-track album usually costs one file, not eight. Keeping the bytes out of `activity.db` also keeps that store cheap to poll, since it is read on every feed refresh. The digest recorded by the tagging audit *is* the lookup key, so the store needs no index of its own.
+
+**Only what is about to be destroyed.** The copy is taken *after* the per-track-art decision, not during the digest pass — `_has_per_track_art` can still cancel the embed, and an image that survives has no business being backed up. So `_keep_doomed_art` re-reads only the files whose art differs from the incoming cover, and an album already carrying that cover reads nothing at all.
+
+**Bounded, and honest about it.** The store has a size cap (default 500 MB) and evicts oldest-first, which makes restore best-effort by design: an old enough change becomes unrevertable. The album page checks availability *before* rendering, so no Undo button is offered for a change whose image has gone — a button that would fail is worse than none. Usage is shown in Settings, because "how much disk is this costing me" is the question the cap exists to answer.
+
+**Restore resolves everything before writing anything.** A partial restore would leave the album in a state that never existed and neither half revertable, so `restore_artwork` reads every image first and raises `ArtworkUnavailableError` if any is missing. It keeps what it overwrites — an undo is itself a destructive write — and skips files already correct, so running it twice is a no-op. It writes through `formats.write_cover`, deliberately separate from `write_tags`: undoing an artwork change must not silently rewrite tags as well.
+
+The plan is rebuilt server-side from the album's own stored records, keyed by the history row the user clicked, so a client can name a row but never a file or a digest.
+
 The stored JSON keys are `Owned` values, which makes them a **persisted vocabulary**: these records are permanent and unversioned, so a payload written today may name a field a later build has renamed or dropped. The renderer falls back to the raw key for names it doesn't recognise and skips malformed entries, rather than letting one old row take an album page down.
 
 ### Cover art (mandatory)

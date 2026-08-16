@@ -338,6 +338,29 @@ button[disabled],
 /* Artwork: what happened, not two sha256s that would swamp every row near it. */
 .tag-changes__opaque { color: var(--color-ink); }
 
+/* Undo, on the row that says what happened. Rare and reversible, so it is
+   muted until hover rather than competing with the values beside it. */
+.tag-changes__undo {
+  margin-left: .5rem;
+  padding: 0 .4rem;
+  font-size: .62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color .12s, border-color .12s;
+}
+.tag-changes__undo:hover { color: var(--color-accent); border-color: var(--color-accent); }
+.tag-changes__undo:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+.tag-changes__undo:disabled { opacity: .5; cursor: default; }
+
 /* How far the change reached — "album", "all tracks", "3 of 18 tracks". Muted
    and set apart: an album tagged unevenly is normal, so this states a fact
    rather than flagging a problem. Same register as .tag-fields__odd. */

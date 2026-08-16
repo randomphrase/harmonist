@@ -57,6 +57,24 @@ class CoverArtConfig(BaseModel):
     size: CoverArtSize = "original"
 
 
+class ArtworkStoreConfig(BaseModel):
+    """Kept copies of artwork a tagging overwrote, so it can be put back (#131).
+
+    A size cap rather than an age cap: "how much disk is this costing me" is the
+    question a user actually asks, and an age cap places no upper bound at all —
+    a month of heavy re-tagging could still be tens of gigabytes on a NAS nobody
+    is watching. Oldest is evicted first, which makes a restore best-effort by
+    design; the UI offers no undo for a change whose image has gone rather than
+    a button that would fail.
+
+    Zero disables the store: no copies are kept and artwork replacement stops
+    being reversible, which is a legitimate choice on a volume with no room to
+    spare.
+    """
+
+    max_bytes: int = Field(default=500 * 1024 * 1024, ge=0)
+
+
 class LibraryConfig(BaseModel):
     # Seconds the music dir must stay quiet after a change before the file
     # watcher triggers a rescan — long enough that a manual copy of many files
@@ -77,10 +95,28 @@ class Config(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     cover_art: CoverArtConfig = Field(default_factory=CoverArtConfig)
+    artwork_store: ArtworkStoreConfig = Field(default_factory=ArtworkStoreConfig)
     library: LibraryConfig = Field(default_factory=LibraryConfig)
     test: TestConfig = Field(default_factory=TestConfig)
     log_level: str = "info"
     demo_mode: bool = False
+
+    @property
+    def artwork_dir(self) -> Path:
+        """Where overwritten artwork is kept (#131). Beside `activity.db` in the
+        config dir, which under Docker is the bind-mounted `/config` — so the
+        undo history survives a container rebuild, like the rest of the state.
+
+        Demo mode gets its own directory under the temp sandbox: it shares the
+        REAL config dir (only the music dir is sandboxed), so writing there
+        would deposit demo images among the user's genuine ones. Sandboxed
+        rather than disabled, because a demo that can't exercise the flow is
+        exactly the demo that stops catching bugs in it. Beside the sandboxed
+        library rather than inside it — the images are not music.
+        """
+        if self.demo_mode:
+            return self.paths.music_dir.parent / "harmonist-demo-artwork"
+        return self.paths.config_dir / "artwork"
 
     @property
     def ignores_file(self) -> Path:

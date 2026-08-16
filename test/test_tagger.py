@@ -285,6 +285,94 @@ def test_tagging_without_a_cover_does_not_read_the_files_artwork(
     assert reads == []
 
 
+def _cover(tmp_path, name: str, body: bytes):
+    p = tmp_path / name
+    p.write_bytes(b"\xff\xd8\xff" + body)
+    return p
+
+
+def test_replacing_embedded_art_keeps_a_copy_of_what_it_destroyed(album_with_tracks, tmp_path):
+    """#131: embedding a cover overwrites whatever the track carried, and until
+    now that image was simply gone. The copy is what makes it undoable."""
+    from harmonist import activity_store, artwork_store, formats
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "a.jpg", b"first" * 40))
+    original = formats.read_cover(min(album_dir.iterdir()))
+    assert original is not None
+    was = artwork_store.digest(original[0])
+
+    tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "b.jpg", b"second" * 40))
+
+    kept = artwork_store.path_for(was)
+    assert kept is not None, "the overwritten image was not kept"
+    assert kept.read_bytes() == original[0]
+
+
+def test_the_shared_cover_of_an_album_is_kept_once_not_once_per_track(album_with_tracks, tmp_path):
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "a.jpg", b"first" * 40))
+    tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "b.jpg", b"second" * 40))
+
+    assert len(list((tmp_path / "artwork").iterdir())) == 1
+
+
+def test_re_tagging_with_the_same_cover_keeps_nothing(album_with_tracks, tmp_path):
+    """Nothing is being destroyed, so nothing is backed up — and the doomed-art
+    pass does no reads at all."""
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    cover = _cover(tmp_path, "a.jpg", b"first" * 40)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover)
+    tagger.tag_album(album_dir, _release_2_tracks(), cover)
+
+    assert not (tmp_path / "artwork").exists() or not list((tmp_path / "artwork").iterdir())
+
+
+def test_art_that_is_preserved_rather_than_replaced_is_not_backed_up(album_with_tracks, tmp_path):
+    """Per-track art cancels the embed, so nothing is destroyed. Backing it up
+    anyway would fill the store with images that were never at risk — which is
+    why the copy happens AFTER that decision, not during the digest pass."""
+    from harmonist import activity_store, artwork_store, formats
+    from harmonist.formats.types import TagSet
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+
+    # Give the two tracks DIFFERENT embedded images.
+    for i, path in enumerate(sorted(album_dir.iterdir())):
+        formats.write_tags(
+            path,
+            TagSet(
+                mb_album_id="m",
+                album="A",
+                album_artist="AA",
+                title="T",
+                artist="Ar",
+                track_num=i + 1,
+                track_total=2,
+            ),
+            b"\xff\xd8\xff" + f"per-track-{i}".encode() * 20,
+        )
+
+    tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "album.jpg", b"x" * 100))
+
+    assert not (tmp_path / "artwork").exists() or not list((tmp_path / "artwork").iterdir())
+
+
 def test_tag_album_audits_the_album_line_before_writing(album_with_tracks, tmp_path, monkeypatch):
     """Recorded BEFORE the loop, per the gate's "before/as it acts": a crash
     part-way must leave evidence of what was attempted, not silence."""

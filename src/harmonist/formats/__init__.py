@@ -114,6 +114,20 @@ def read_cover(path: Path) -> tuple[bytes, str] | None:
     return result
 
 
+def write_cover(path: Path, cover: bytes) -> None:
+    """Replace `path`'s embedded image, leaving every tag alone.
+
+    Separate from `write_tags` because restoring artwork (#131) must not rewrite
+    tags as a side effect: the user is undoing an artwork change, and silently
+    re-applying a TagSet at the same time would make the undo do more than it
+    says.
+    """
+    mod = _module_for(path)
+    if mod is None:
+        raise UnsupportedFormatError(f"no audio module handles {path.suffix}")
+    mod.write_cover(path, cover)
+
+
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
     """Write `tagset` to `path` in its native format. `cover` is raw image
     bytes (jpeg/png) or None to leave existing cover untouched.
@@ -148,5 +162,6 @@ __all__ = [
     "read_tags",
     "read_track_title",
     "supported_extensions",
+    "write_cover",
     "write_tags",
 ]

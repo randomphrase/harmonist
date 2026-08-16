@@ -2747,6 +2747,115 @@ def test_album_page_shows_no_change_detail_when_a_tagging_changed_nothing(client
     assert 'class="tag-changes"' not in body
 
 
+def _tagging_with_artwork_change(cfg, name, *, keep_image=True):
+    """An album with one recorded tagging that replaced its artwork, and the
+    old image in the store (unless `keep_image` says otherwise)."""
+    from harmonist import activity_store, artwork_store, audit, formats
+    from harmonist.formats.types import TagSet
+
+    d = _make_album(cfg, name)
+    # A release id per album: the album id derives from it, so sharing one would
+    # make two albums the same album and their histories indistinguishable.
+    sc.write(
+        d, Sidecar(store_url=f"https://x.bandcamp.com/album/{name}", mb_release_id=f"rel-{name}")
+    )
+    album_id = _id_for(cfg, d)
+
+    # Unique per album: the store is content-addressed, so an identical image
+    # from another album's setup would satisfy this one's lookup and the
+    # "evicted" case could never be reproduced.
+    old = b"\xff\xd8\xff" + f"OLD-{name}".encode() * 20
+    files = sorted(p for p in d.iterdir() if formats.is_supported(p))
+    for i, path in enumerate(files):
+        formats.write_tags(
+            path,
+            TagSet(
+                mb_album_id=f"rel-{name}",
+                album=name,
+                album_artist="A",
+                title="T",
+                artist="A",
+                track_num=i + 1,
+                track_total=len(files),
+            ),
+            b"\xff\xd8\xff" + b"NEW" * 60,
+        )
+    was = artwork_store.digest(old)
+    if keep_image:
+        artwork_store.keep(old, mime="image/jpeg")
+
+    with activity_store.action():
+        from harmonist import activity
+
+        activity.record("Re-tagged", album_id=album_id, album_label=f"Artist — {name}")
+        for path in files:
+            event_id = audit.record("tag.track", album_id=album_id, file=path.name)
+            assert event_id is not None
+            activity_store.record_tag_changes(
+                event_id,
+                file=path.name,
+                changes={"artwork": [was, artwork_store.digest(b"\xff\xd8\xff" + b"NEW" * 60)]},
+            )
+    anchor = next(e.id for e in activity_store.album_history(album_id) if e.message == "Re-tagged")
+    return album_id, d, anchor, old
+
+
+def test_undo_restores_the_artwork_a_tagging_replaced(client, cfg, tmp_path):
+    from harmonist import artwork_store, formats
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_id, d, anchor, old = _tagging_with_artwork_change(cfg, "ArtUndo")
+
+    r = client.post(f"/artwork/restore/{album_id}", data={"event_id": anchor})
+
+    assert r.status_code == 200
+    for path in sorted(p for p in d.iterdir() if formats.is_supported(p)):
+        current = formats.read_cover(path)
+        assert current is not None and current[0] == old
+
+
+def test_undo_is_offered_only_while_the_image_is_still_kept(client, cfg, tmp_path):
+    """The store evicts oldest-first, so an old enough change is genuinely
+    unrevertable. Offering a button that would fail is worse than none."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    kept_id, _, _, _ = _tagging_with_artwork_change(cfg, "ArtKept")
+    assert "tag-changes__undo" in client.get(f"/album/{kept_id}").text
+
+    gone_id, _, _, _ = _tagging_with_artwork_change(cfg, "ArtGone", keep_image=False)
+    assert "tag-changes__undo" not in client.get(f"/album/{gone_id}").text
+
+
+def test_undo_says_so_plainly_when_the_image_has_been_evicted(client, cfg, tmp_path):
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_id, _, anchor, _ = _tagging_with_artwork_change(cfg, "ArtEvicted", keep_image=False)
+
+    r = client.post(f"/artwork/restore/{album_id}", data={"event_id": anchor})
+
+    assert r.status_code == 200  # a flash, not a stack trace
+    assert "no longer kept" in r.text
+
+
+def test_undo_rebuilds_its_plan_from_the_albums_own_history(client, cfg, tmp_path):
+    """The form names a history row, never files or digests. A row belonging to
+    a different album — or to nothing — restores nothing rather than reaching
+    for whatever the caller asked for."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    mine, _, _, _ = _tagging_with_artwork_change(cfg, "ArtMine")
+    _theirs_id, _, theirs_anchor, _ = _tagging_with_artwork_change(cfg, "ArtTheirs")
+
+    r = client.post(f"/artwork/restore/{mine}", data={"event_id": theirs_anchor})
+    assert r.status_code == 404
+
+    r = client.post(f"/artwork/restore/{mine}", data={"event_id": 999999})
+    assert r.status_code == 404
+
+
 def test_album_page_resolves_a_superseded_id(client, cfg):
     """A link written before the album was re-identified must still land on the
     page rather than 404 — the same forward walk `_find_album` already does."""
