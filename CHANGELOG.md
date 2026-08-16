@@ -8,6 +8,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- The album page's tag comparison is now its own Tags section, a peer of Tracks
+  and History, so the panel at the top holds what the album is and what you can
+  do to it — and the actions no longer sit below a long field list (#160).
 - An album's History reads more cleanly: a tag that wasn't there before shows
   just the value it was given, instead of prefixing every row with "— →", and
   the longest field labels no longer wrap onto a second line (#159).

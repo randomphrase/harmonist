@@ -141,14 +141,10 @@
                 {% endif %}
             </dl>
 
-            {% if sc and sc.mb_release_id %}
-            {# The tag comparison, and (out of band) the Tracks section. One
-               MusicBrainz fetch serves both. #}
-            <div id="compare-{{ album.id }}"
-                 hx-get="/library/{{ album.id }}/compare" hx-trigger="load" hx-swap="innerHTML">
-                <p class="text-2xs text-muted italic mt-2">Checking tracks against MusicBrainz…</p>
-            </div>
-            {% endif %}
+            {# The tag comparison used to sit here. It moved out to its own
+               section on the album page (#160): this panel is what the album IS
+               and what you can do to it, and a full field-by-field comparison
+               dwarfed both, pushing the actions below the fold. #}
 
             {# `hx-disabled-elt="this"` — the documented form, and the one htmx
                special-cases for the triggering element.

@@ -1,13 +1,12 @@
 {% extends 'base.html' %}
 
-{# The standalone album page (#103). A real page, not a fragment: the two things
-   worth adding — the full tracklist and the album's history — are exactly what a
-   viewport-constrained <dialog> can't hold. The dialog stays as the quick
-   "is this the right release?" check and links here.
+{# The standalone album page (#103). A real page, not a fragment: the things
+   worth adding — the tag comparison, the full tracklist, the album's history —
+   are exactly what a viewport-constrained <dialog> couldn't hold, which is why
+   the dialog it replaced is gone (#129).
 
-   Shares `library_detail.html` with the dialog rather than duplicating it, and
-   passes `show_tracks` so the per-track MusicBrainz comparison renders only
-   here. #}
+   `library_detail.html` is still a partial rather than inline markup because it
+   is the album panel's definition, not because anything else includes it. #}
 {% block content %}
 <div class="space-y-5">
 
@@ -27,13 +26,27 @@
 
     {% include 'partials/library_detail.html' %}
 
-    {# Tracks stand as their own section, a sibling of Album and History rather
-       than an indented block inside the album panel — they're about the files,
-       not the album's metadata. Filled OUT OF BAND by the same single
-       /compare fetch that fills the tag comparison above: both halves need the
-       same MusicBrainz release, and two requests for one page view would be
+    {# Tags and Tracks each stand as their own section, siblings of the album
+       panel and History rather than blocks inside it (#160). The panel above is
+       what the album IS — its state, where it lives, what you can do to it —
+       and the comparison is much the larger of the two, so leaving it in there
+       pushed the actions below the fold.
+
+       This section is the in-band target of the /compare fetch; Tracks below is
+       filled OUT OF BAND by the same single request, because both halves need
+       the same MusicBrainz release and two fetches for one page view would be
        careless against a 1-req/sec budget. #}
     {% if album.sidecar and album.sidecar.mb_release_id %}
+    <section id="album-tags" class="border border-line rounded-lg p-4 space-y-3">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tags</h2>
+        {# Titled rather than anonymous: its two neighbours are, and an untitled
+           box between them reads as belonging to whichever one it touches. #}
+        <div id="compare-{{ album.id }}"
+             hx-get="/library/{{ album.id }}/compare" hx-trigger="load" hx-swap="innerHTML">
+            <p class="text-2xs text-muted italic">Checking tags against MusicBrainz…</p>
+        </div>
+    </section>
+
     <section id="album-tracks" class="border border-line rounded-lg p-4 space-y-3">
         <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
         <p class="text-2xs text-muted italic">Checking tracks against MusicBrainz…</p>
@@ -135,12 +148,12 @@
 </div>
 
 {# A re-tag rewrites the files, so everything on this page is now stale — the
-   tag comparison, the TAGGED timestamp, the tracklist and the history all
-   change. Reloading is the honest response; patching four regions from one
-   response would be more machinery for a worse guarantee.
-
-   The modal handles the same event by re-fetching itself (library_detail.html);
-   it must not do both, or the page would ALSO pop a dialog. #}
+   Tags section, the TAGGED timestamp, the tracklist and the history all change.
+   Reloading is the honest response; patching four regions from one response
+   would be more machinery for a worse guarantee. It also means the tagging
+   overlay covering the panel doesn't have to reach the sections beside it:
+   nothing outside the panel is interactive while a re-tag is in flight, and
+   what they show is replaced wholesale the moment it finishes. #}
 <script>
     document.body.addEventListener('album-retagged', function () {
         window.location.reload();

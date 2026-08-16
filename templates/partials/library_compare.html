@@ -1,7 +1,8 @@
 {# On-demand disk-vs-MusicBrainz comparison for the album page, from ONE MB
-   fetch: the per-field tag comparison lands here, inside the album panel, and
-   the tracklist is swapped out-of-band into its own #album-tracks section
-   because tracks are about the files rather than the album's metadata (#106).
+   fetch: the per-field tag comparison lands here, in the page's Tags section,
+   and the tracklist is swapped out-of-band into its own #album-tracks section.
+   Tags and tracks are separate sections because they answer different questions
+   — what the release says versus what the files are (#106, #160).
 
    This used to branch on whether `comparison` was in scope, so the same
    fragment could serve a smaller dialog. The dialog is gone (#129). #}
