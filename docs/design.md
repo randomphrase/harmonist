@@ -448,6 +448,15 @@ Notes:
   via Picard (§13.2). No sidecar action needed.
 - Forget adds the path to an in-memory exemption set so auto-reconcile
   doesn't immediately reverse it.
+- **Unlinking is one operation, `sidecar.unlink`**, reached two ways: the
+  "wrong match" pencil, and undoing the tagging that linked the album (§4.x,
+  #158). It clears everything that describes the release — `mb_release_id`,
+  `tagged_at`, `track_count_expected` — and keeps the store link, which is not
+  a claim about which MusicBrainz release this is. The two differ only in the
+  `mb_match_candidate` they pass, and that difference is the point: the pencil
+  passes none, because re-offering a release the user just called wrong would
+  undo their own judgement, while the undo passes the release it unlinked so
+  Confirm is the one-click way back.
 
 ### Match confidence (when MB has the URL but the files might not match)
 
@@ -654,7 +663,7 @@ When it does move, the sidecar goes with it: `mb_release_id`, `tagged_at` and `t
 
 **The release is kept as a confirmable suggestion**, not discarded: the Needs MBID card then offers Confirm & Tag, which is the one-click way back, with a note saying why the album is there. Undoing a *re-match* reverts the files to the older release, and that older release — not whichever one the sidecar was holding — is what gets suggested, because it is what the user asked to return to. The candidate carries no `track_comparisons`: building them needs an MB fetch, and an undo makes no network call. Confirming re-tags through the ordinary path, which fetches the release and writes a fresh `track_count_expected`, so nothing here has to guess a track count.
 
-This is the same transition the "wrong match" pencil makes, and deliberately so — it differs only in that the pencil leaves the on-disk tags alone and discards the candidate, since there the release was *wrong* rather than merely undone. See #166 on sharing the mutation between them.
+This is the same transition the "wrong match" pencil makes, and deliberately so: both go through `sidecar.unlink` (§3). It differs only in that the pencil leaves the on-disk tags alone and passes no candidate, since there the release was *wrong* rather than merely undone.
 
 Artwork is not in the plan: it is not an owned tag, and it has its own store, its own availability check and its own button (#131). One button per store, each honest about what it can do.
 

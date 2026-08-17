@@ -1436,6 +1436,10 @@ def _unlink_after_revert(album: Album, outcome: tagger_mod.RevertOutcome) -> boo
     writes a fresh `track_count_expected`, so nothing here has to guess a track
     count it has no lookup for.
 
+    The mutation itself is `sidecar.unlink`, shared with the "wrong match"
+    pencil (#166) — the two differ only in the candidate they pass, which is
+    exactly the part that should differ.
+
     Returns whether the sidecar was rewritten.
     """
     sc = album.sidecar
@@ -1464,19 +1468,7 @@ def _unlink_after_revert(album: Album, outcome: tagger_mod.RevertOutcome) -> boo
         if suggest
         else None
     )
-    # `mb_release_id=None` makes `sidecar.write` mint the path-derived temp_uid
-    # and record the MBID -> temp_uid alias, which is what keeps the album's
-    # pre-unlink history reachable from its new id (#33).
-    sidecar_mod.write(
-        album.path,
-        replace(
-            sc,
-            mb_release_id=None,
-            tagged_at=None,
-            track_count_expected=None,
-            mb_match_candidate=candidate,
-        ),
-    )
+    sidecar_mod.unlink(album.path, sc, candidate=candidate)
     return True
 
 
@@ -2878,12 +2870,18 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post("/library/{album_id}/rematch", response_class=HTMLResponse)
     def library_rematch(request: Request, album_id: str) -> Response:
-        """Mark the MusicBrainz match as wrong. Clears `mb_release_id` (and
-        `tagged_at`), which derives the album back to Needs MBID — where the
-        manual search / store-URL-candidate tools let the user pick the correct
-        release and re-tag. `sidecar.write` mints a `temp_uid` and audits the
-        identity change; the Bandcamp link (`store_url` / `item_id`) is kept, and
-        the on-disk tags are left untouched until the user re-tags. Non-destructive."""
+        """Mark the MusicBrainz match as wrong, deriving the album back to Needs
+        MBID — where the manual search / store-URL-candidate tools let the user
+        pick the correct release and re-tag.
+
+        Unlinks through `sidecar.unlink`, shared with the undo that removes a
+        release id (#158/#166): it mints the path-derived `temp_uid`, audits the
+        identity change, and keeps the Bandcamp link (`store_url` / `item_id`).
+        No candidate — re-offering the release the user just called wrong would
+        undo their own judgement, which is the one way this differs from the undo.
+
+        The on-disk tags are left untouched until the user re-tags.
+        Non-destructive."""
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None or not sc.mb_release_id:
@@ -2894,8 +2892,7 @@ def _register_routes(app: FastAPI) -> None:
                 album=album,
             )
         old_mbid = sc.mb_release_id
-        new_sc = replace(sc, mb_release_id=None, tagged_at=None, mb_match_candidate=None)
-        sidecar_mod.write(album.path, new_sc)
+        sidecar_mod.unlink(album.path, sc)
         activity.record(
             f"Cleared MB match for {album.artist} — {album.title} "
             f"(was {old_mbid}): Library → Needs MBID"

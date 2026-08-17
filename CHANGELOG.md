@@ -8,6 +8,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Marking a MusicBrainz match as wrong now clears the track count that came
+  with it, instead of leaving a count describing a release the album is no
+  longer linked to (#166).
 - Demo mode's album awaiting confirmation now starts untagged, like a real one:
   confirming it genuinely assigns its MusicBrainz id rather than re-writing tags
   it already had, so the tagging and undo flows can be tried end to end (#168).

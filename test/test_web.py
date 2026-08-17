@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import shutil
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
@@ -2350,6 +2351,50 @@ def test_rematch_clears_mbid_and_demotes_to_needs_mbid(client, cfg):
     # Non-destructive: the on-disk tag is untouched until the user re-tags.
     assert MP4(d / "01 Track.m4a")[ATOM_MB_ALBUM_ID][0].decode() == "rel-wrong"
     assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.NEEDS_MBID
+
+
+def test_rematch_clears_the_track_count_of_the_release_it_dropped(client, cfg):
+    """`track_count_expected` describes the MB release, so it goes with it (#166).
+
+    It used to survive a re-match, leaving a count describing a release the
+    sidecar no longer named. Nothing read it while the album was unlinked —
+    `_derive_state` only consults it inside the `mb_release_id` branch — so it
+    was harmless, and it was still a stored fact that had stopped being true.
+    """
+    d = _make_tagged_album(
+        cfg, "Counted", mbid="rel-counted", tagged_at=datetime.now(UTC), item_id=7
+    )
+    before = sc.read(d)
+    assert before is not None
+    sc.write(d, replace(before, track_count_expected=9))
+
+    client.post(f"/library/{_id_for(cfg, d)}/rematch")
+
+    loaded = sc.read(d)
+    assert loaded is not None
+    assert loaded.mb_release_id is None
+    assert loaded.track_count_expected is None, "the count went with the release"
+    assert loaded.tagged_at is None
+    assert loaded.store_url is not None, "the store link is not a claim about the release"
+
+
+def test_rematch_offers_no_suggestion_but_an_undo_does(client, cfg):
+    """The one thing the two unlink paths must NOT share (#166).
+
+    A re-match means the release was wrong, so putting it straight back as a
+    suggestion would undo the user's own judgement. An undo means "put it back",
+    so keeping it is the one-click way home.
+    """
+    d = _make_tagged_album(cfg, "NoSuggestion", mbid="rel-nosug", tagged_at=datetime.now(UTC))
+
+    client.post(f"/library/{_id_for(cfg, d)}/rematch")
+
+    loaded = sc.read(d)
+    assert loaded is not None
+    assert loaded.mb_match_candidate is None
+
+    # The undo's side of the contract is covered by
+    # test_undo_unlinks_the_album_and_keeps_its_release_as_a_suggestion.
 
 
 def test_rematch_warns_when_no_mb_release(client, cfg):

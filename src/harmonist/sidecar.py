@@ -159,6 +159,48 @@ def write(album_dir: Path, sidecar: Sidecar) -> None:
     library_index.upsert(album_dir, sidecar)
 
 
+def unlink(album_dir: Path, sidecar: Sidecar, *, candidate: MatchCandidate | None = None) -> None:
+    """Drop the album's MusicBrainz release, sending it back to NEEDS_MBID.
+
+    The one definition of what "unlinked" means, because two paths reach it and
+    they disagreed about it before this existed (#166):
+
+    * the **"wrong match" pencil** — this release is wrong, help me pick another;
+      the on-disk tags are deliberately left alone until the user re-tags;
+    * **undoing the tagging that linked the album** (#158) — the tags have just
+      been put back, so the sidecar follows them.
+
+    Everything that describes the release goes: `mb_release_id`, `tagged_at`,
+    and `track_count_expected`. That last one used to survive a pencil, leaving
+    a track count describing a release the sidecar no longer named — harmless
+    while it went unread (`_derive_state` only consults it inside the
+    `mb_release_id` branch) but untrue, and untrue stored facts are what this
+    codebase spends its time not having.
+
+    The store link (`store_url`, `bandcamp`) stays: which shop it came from is
+    not a claim about which MusicBrainz release it is.
+
+    `candidate` is the caller's, because it is the one thing the two paths must
+    NOT share. The pencil passes None — re-offering a release the user just
+    rejected would undo their own judgement. The undo passes the release it
+    unlinked, so Confirm is the one-click way back.
+
+    Writes through `write()`, so identity is normalised to the path-derived
+    `temp_uid` and the MBID -> temp_uid alias is recorded — which is what keeps
+    the album's history reachable from its new id (#33).
+    """
+    write(
+        album_dir,
+        replace(
+            sidecar,
+            mb_release_id=None,
+            tagged_at=None,
+            track_count_expected=None,
+            mb_match_candidate=candidate,
+        ),
+    )
+
+
 def album_id_for(album_dir: Path) -> str | None:
     """The album's canonical id as recorded ON DISK right now, or None if it has
     no sidecar yet.
