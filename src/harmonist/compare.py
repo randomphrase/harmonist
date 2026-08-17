@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -119,6 +119,41 @@ class Consensus:
     def is_unanimous(self) -> bool:
         return self.total > 0 and self.agreeing == self.total
 
+    @property
+    def missing_count(self) -> int:
+        """Outliers that carry no value at all, as opposed to a different one.
+
+        The distinction the old `title=` tooltip couldn't express: it rendered
+        both as a filename followed by a dash, so "this track says Ambient too,
+        just spelled differently" and "this track has no genre" looked alike.
+        """
+        return sum(1 for _, value in self.outliers if value is None)
+
+    @property
+    def odd_summary(self) -> str:
+        """What the pill says: the finding, not a ratio (#164).
+
+        "6 of 7" states arithmetic and leaves the reader to work out both what
+        was counted and what is wrong with it — and, sitting under a note about
+        matching MusicBrainz, invites them to read it as a second opinion on
+        that. Naming the anomaly can't be misread the same way.
+
+        Absence and disagreement get different words because they need
+        different fixes: a missing tag is filled in, a differing one is
+        reconciled.
+        """
+        odd = len(self.outliers)
+        one = odd == 1
+        tracks = "track" if one else "tracks"
+        if self.missing_count == odd:
+            return f"missing on {odd} {tracks}"
+        # The verb agrees with the count too, not just the noun — "1 track
+        # differ" is the kind of thing a plural helper produces when only the
+        # noun is asked about.
+        if self.missing_count:
+            return f"{odd} {tracks} {'differs or is' if one else 'differ or are'} missing"
+        return f"{odd} {tracks} {'differs' if one else 'differ'}"
+
 
 @dataclass(frozen=True)
 class FieldComparison:
@@ -134,6 +169,16 @@ class FieldComparison:
     disk_runs: tuple[Run, ...] = ()
     mb_runs: tuple[Run, ...] = ()
     consensus: Consensus | None = None
+    #: Whether MusicBrainz has a counterpart for this field at all. False for
+    #: `genre` and `comment`, which are in the table deliberately but have no MB
+    #: attribute behind them (#12, and the recovered Bandcamp URL).
+    #:
+    #: NOT derivable from `agreement`: a field with no MB counterpart lands in
+    #: ONLY_DISK, but so does a comparable field MusicBrainz happens to have no
+    #: value for — an album whose barcode MB doesn't know. Treating those the
+    #: same is what let "All 9 fields match MusicBrainz" count two fields
+    #: MusicBrainz was never asked about (#164).
+    comparable: bool = True
 
     @property
     def differs(self) -> bool:
@@ -339,15 +384,18 @@ def album_fields(
         # is that Harmonist couldn't look (#112).
         values = [(name, getattr(t, disk_attr)) for name, t in tracks if not t.unreadable]
         mb_value = getattr(mb, mb_attr) if (mb is not None and mb_attr) else None
-        out.append(
-            compare_field(
-                label,
-                kind=kind,
-                disk=consensus(values),
-                mb=mb_value or None,
-                unreadable=unreadable,
-            )
+        row = compare_field(
+            label,
+            kind=kind,
+            disk=consensus(values),
+            mb=mb_value or None,
+            unreadable=unreadable,
         )
+        # Marked here rather than threaded through `compare_value`, because THIS
+        # table is where the knowledge lives: a field is comparable iff it names
+        # a TagSet attribute. The comparison functions only ever see values, and
+        # an absent MB value is not the same fact as an absent MB counterpart.
+        out.append(row if mb_attr else replace(row, comparable=False))
     return tuple(out)
 
 
@@ -362,6 +410,16 @@ class AlbumComparison:
         return tuple(f for f in self.fields if f.differs)
 
     @property
+    def comparable(self) -> tuple[FieldComparison, ...]:
+        """The fields MusicBrainz actually has an opinion on.
+
+        Genre and the comment are shown but never compared, so counting them in
+        a sentence about matching MusicBrainz overstates what was checked — see
+        `FieldComparison.comparable` (#164).
+        """
+        return tuple(f for f in self.fields if f.comparable)
+
+    @property
     def summary(self) -> str:
         """The line beside the MusicBrainz hexagon.
 
@@ -369,13 +427,20 @@ class AlbumComparison:
         cases can read naturally — "differ in" and "match" want different
         prepositions, and assembling that in a template would scatter the
         wording across two files.
+
+        Counted over `comparable` on BOTH sides. It used to say "All 9 fields
+        match MusicBrainz" for an album whose genre and comment MusicBrainz had
+        never been asked about — and, with unreadable files, could reach
+        "9 of 7 differ", since every field goes UNREADABLE while only seven of
+        them were ever comparable.
         """
-        n = len(self.differing)
-        if not self.fields:
+        fields = self.comparable
+        n = len([f for f in fields if f.differs])
+        if not fields:
             return "Nothing to compare against MusicBrainz"
         if n == 0:
-            return f"All {len(self.fields)} fields match MusicBrainz"
-        return f"{n} of {len(self.fields)} fields differ in MusicBrainz"
+            return f"All {len(fields)} fields match MusicBrainz"
+        return f"{n} of {len(fields)} fields differ in MusicBrainz"
 
 
 # ---------------------------------------------------------------------------

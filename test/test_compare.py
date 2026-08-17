@@ -9,6 +9,7 @@ featured credit MB keeps out of the title.
 from __future__ import annotations
 
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 from harmonist import formats
@@ -228,17 +229,112 @@ def test_a_majority_value_is_still_compared_against_musicbrainz():
 # ---------- the album headline ----------
 
 
+def _tagset(**overrides: object) -> TagSet:
+    """A minimal MusicBrainz-side TagSet — the required fields, plus whatever
+    the caller is actually asserting about."""
+    base: dict[str, object] = {
+        "mb_album_id": "rel-1",
+        "album": "Obreel",
+        "album_artist": "A",
+        "title": "T",
+        "artist": "A",
+        "track_num": 1,
+        "track_total": 1,
+    }
+    return TagSet(**{**base, **overrides})  # type: ignore[arg-type]
+
+
 def test_summary_counts_only_real_findings():
     fields = (
         compare_field("Album", disk=consensus([("1.flac", "Obreel")]), mb="Obreel"),
         compare_field("Artist", disk=consensus([("1.flac", "A | B")]), mb="A, B"),
         compare_field("Label", disk=consensus([("1.flac", None)]), mb="Dial Records"),
-        compare_field("Comment", disk=consensus([("1.flac", "https://x")]), mb=None),
+        # No MusicBrainz counterpart at all — marked as `album_fields` marks it.
+        replace(
+            compare_field("Comment", disk=consensus([("1.flac", "https://x")]), mb=None),
+            comparable=False,
+        ),
     )
     album = AlbumComparison(fields=fields)
     # Artist and Label; NOT the matching album title, NOT the comment.
     assert len(album.differing) == 2
-    assert album.summary == "2 of 4 fields differ in MusicBrainz"
+    # Three in the denominator, not four: MusicBrainz was never asked about the
+    # comment, so counting it in a sentence about matching MusicBrainz claims a
+    # check that didn't happen (#164).
+    assert album.summary == "2 of 3 fields differ in MusicBrainz"
+
+
+def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
+    """End to end, through `album_fields`, where the flag is really set.
+
+    Genre and comment are in the field table deliberately — the user should see
+    a tag Harmonist is keeping for them — but MusicBrainz has no counterpart for
+    either, so "All N fields match MusicBrainz" must not count them.
+    """
+    tags = TrackTags(
+        album="Obreel", album_artist="A", genre="Ambient", comment="https://x.bandcamp.com"
+    )
+    mb = _tagset(album="Obreel", album_artist="A")
+
+    fields = album_fields([("1.flac", tags)], mb)
+    by_label = {f.label: f for f in fields}
+
+    assert by_label["Genre"].comparable is False
+    assert by_label["Comment"].comparable is False
+    assert by_label["Album"].comparable is True
+    # Nine rows shown, seven of them actually compared.
+    assert len(fields) == 9
+    assert len(AlbumComparison(fields=fields).comparable) == 7
+    assert AlbumComparison(fields=fields).summary == "All 7 fields match MusicBrainz"
+
+
+def test_unreadable_files_cannot_push_the_count_past_the_total():
+    """The arithmetic that used to be possible: every field goes UNREADABLE,
+    including the two that were never comparable, so a naive count could reach
+    "9 of 7 differ" (#164)."""
+    fields = album_fields([("1.flac", TrackTags(unreadable=True))], _tagset(album="Obreel"))
+    album = AlbumComparison(fields=fields)
+
+    n = len([f for f in album.comparable if f.differs])
+    assert n <= len(album.comparable)
+    assert album.summary == "7 of 7 fields differ in MusicBrainz"
+
+
+# ---------- what the consensus pill says (#164) ----------
+
+
+def test_pill_names_a_missing_tag_as_missing():
+    """Absence and disagreement need different words because they need
+    different fixes: a missing tag is filled in, a differing one reconciled."""
+    c = consensus([("1.flac", "Ambient"), ("2.flac", "Ambient"), ("3.flac", None)])
+    assert c.missing_count == 1
+    assert c.odd_summary == "missing on 1 track"
+
+
+def test_pill_names_a_differing_tag_as_differing():
+    c = consensus([("1.flac", "Ambient"), ("2.flac", "Ambient"), ("3.flac", "Drone")])
+    assert c.missing_count == 0
+    assert c.odd_summary == "1 track differs"
+
+
+def test_pill_agrees_with_itself_in_number():
+    """The verb has to agree with the count, not just the noun — "1 track
+    differ" is what a helper that only pluralises the noun produces."""
+    two_differ = consensus([("1.flac", "A"), ("2.flac", "A"), ("3.flac", "B"), ("4.flac", "C")])
+    assert two_differ.odd_summary == "2 tracks differ"
+
+    two_missing = consensus([("1.flac", "A"), ("2.flac", "A"), ("3.flac", None), ("4.flac", None)])
+    assert two_missing.odd_summary == "missing on 2 tracks"
+
+
+def test_pill_says_so_when_the_outliers_are_a_mix():
+    """One absent and one different is neither of the simple cases, and calling
+    it either would be wrong about half of it."""
+    c = consensus([("1.flac", "A"), ("2.flac", "A"), ("3.flac", "B"), ("4.flac", None)])
+    assert c.odd_summary == "2 tracks differ or are missing"
+
+    one_each = consensus([("1.flac", "A"), ("2.flac", "A"), ("3.flac", None)])
+    assert one_each.odd_summary == "missing on 1 track"
 
 
 # ---------- end to end: real files against a real release ----------

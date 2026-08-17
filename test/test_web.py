@@ -4757,8 +4757,18 @@ def test_tracks_disagreeing_about_a_field_are_counted_not_hidden(client, cfg, mo
     )
 
     body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
-    assert "2 of 3" in body
-    assert odd.name in body  # the outlier is named, for the hover
+    # The pill names the finding rather than reciting a ratio (#164) — a ratio
+    # under "All N fields match MusicBrainz" reads as a second opinion on that
+    # comparison, when it is a different one entirely.
+    assert "1 track differs" in body
+    assert "2 of your 3 tracks agree" in body  # the popover still has the count
+    assert odd.name in body  # the outlier is named
+    assert "Someone Else" in body  # and what it carries instead
+    # Verb agrees with the count — one outlier is "The other differs", not
+    # "The other differ". Easy to get wrong in a template, which is why it's
+    # asserted rather than eyeballed.
+    assert "The other differs." in body
+    assert "The others differ." not in body
 
 
 def test_the_comparison_is_absent_from_the_library_modal(client, cfg, monkeypatch):

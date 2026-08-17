@@ -208,21 +208,82 @@ button[disabled],
 }
 .tag-fields__mb .diff-run { background: color-mix(in srgb, var(--color-mb-purple) 16%, transparent); }
 
-/* "6 of 8" — the album's own tracks disagreeing about a field. Deliberately not
-   a warning colour: an album tagged unevenly over decades is normal, not broken. */
+/* "missing on 1 track" — the album's own tracks disagreeing about a field.
+   Deliberately not a warning colour: an album tagged unevenly over decades is
+   normal, not broken. A button rather than a hover target since #164, because
+   what it opens has to be reachable from the keyboard. */
 .tag-fields__odd {
   display: inline-block;
   margin-left: .4rem;
+  font-family: inherit;
   font-size: .6rem;
   font-weight: 700;
   letter-spacing: .06em;
   text-transform: uppercase;
   color: var(--color-muted);
+  background: none;
   border: 1px solid var(--color-line);
   border-radius: 999px;
   padding: .02rem .4rem;
-  cursor: help;
+  cursor: pointer;
   white-space: nowrap;
+  transition: color .12s, border-color .12s;
+}
+.tag-fields__odd:hover { color: var(--color-accent); border-color: var(--color-accent); }
+.tag-fields__odd:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+
+/* Which tracks disagree, and what they carry instead (#164). In the top layer,
+   so it can't be clipped by the panel's overflow the way an absolutely
+   positioned div would be. */
+.odd-pop {
+  /* Fallback for browsers without anchor positioning (Firefox, Safari as of
+     writing): a centred panel. Deliberately not the UA default, which drops it
+     in the top-left corner — an explanation of the Date row appearing in the
+     corner of the window reads as a bug. Centred at least looks meant. */
+  inset: 0;
+  margin: auto;
+  max-width: min(30rem, 90vw);
+  height: fit-content;
+  padding: .7rem .85rem;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 6px 24px rgb(0 0 0 / .14);
+  font-size: .8rem;
+}
+.odd-pop::backdrop { background: rgb(0 0 0 / .06); }
+.odd-pop__title { margin: 0 0 .2rem; font-weight: 700; }
+.odd-pop__sub { margin: 0 0 .5rem; font-size: .75rem; color: var(--color-muted); }
+.odd-pop__list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .3rem; }
+.odd-pop__list li { display: flex; flex-wrap: wrap; gap: .15rem .5rem; align-items: baseline; }
+/* The file name is the thing the user acts on, so it stays whole and wraps
+   rather than being truncated into ambiguity. */
+.odd-pop__file { font-size: .72rem; color: var(--color-muted); word-break: break-word; }
+.odd-pop__val { font-weight: 600; }
+/* "no genre" is a finding, not a value — italic so it never reads as one. */
+.odd-pop__none { font-style: italic; color: var(--color-mb-orange); }
+.odd-pop__more { margin: .45rem 0 0; font-size: .72rem; color: var(--color-muted); }
+
+/* Where the browser can, put it against the pill that opened it — an
+   annotation belongs beside the thing it annotates. The anchor NAME is set
+   inline per pill (see the template): one shared name would bind every popover
+   to the last pill on the page. `position-try-fallbacks` flips it above or
+   inward rather than letting it hang off the viewport on the bottom row.
+
+   The @supports tests the EXACT value used, not just the property. Testing
+   `(position-area: bottom)` and then declaring `bottom span-inline-end` — which
+   is invalid, since it mixes a physical keyword with a logical one — passed the
+   guard, dropped the declaration, and still applied the `inset: auto` beside
+   it, so the popover lost its centred fallback and landed in the corner.
+   All-logical keywords here, so it follows writing direction. */
+@supports (position-area: block-end span-inline-end) {
+  .odd-pop {
+    inset: auto;
+    margin: .3rem 0 0;
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline;
+  }
 }
 
 /* The tracklist: the album's files against the MusicBrainz release, two lines

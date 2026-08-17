@@ -70,14 +70,56 @@
 
         {# How united the album's own tracks are about this field. Shown only
            when they aren't: an album tagged unevenly over decades is normal, so
-           this is a muted count rather than a warning, with the outliers on
-           hover. #}
+           this states a fact rather than flagging a problem.
+
+           It says WHAT is odd, not "6 of 7" (#164). A ratio sitting under a
+           note about matching MusicBrainz reads as a second opinion on that
+           comparison, when it is a different one entirely — your files against
+           each other, on a field MusicBrainz may have no opinion about at all.
+
+           A native popover, not a `title=`: the attribute can't lay out a list,
+           can't be reached without a mouse, and rendered "no value" and "a
+           different value" identically as a trailing dash. `popover` brings its
+           own dismiss, Escape handling and top-layer placement (web-ui rule 1). #}
         {% set c = f.consensus %}
         {% if c and c.total > 1 and not c.is_unanimous and c.value %}
-        <span class="tag-fields__odd" tabindex="0"
-              title="{% for name, val in c.outliers[:6] %}{{ name }}: {{ val or '—' }}{{ '\n' if not loop.last }}{% endfor %}{% if c.outliers|length > 6 %}…{% endif %}">
-            {{ c.agreeing }} of {{ c.total }}
-        </span>
+        {% set pop_id = 'odd-' ~ f.label|replace(' ', '-')|replace('.', '')|lower %}
+        {# The anchor name has to be unique per pill, so it is data-driven and
+           therefore inline: a shared name would bind every popover on the page
+           to whichever pill came last in the DOM, and Tailwind cannot generate
+           a class per field. Browsers without anchor positioning ignore both
+           properties and fall back to the centred panel in the stylesheet. #}
+        <button type="button" class="tag-fields__odd" popovertarget="{{ pop_id }}"
+                style="anchor-name: --{{ pop_id }}"
+                aria-label="Which of your tracks disagree about {{ f.label|lower }}">
+            {{ c.odd_summary }}
+        </button>
+        <div id="{{ pop_id }}" popover class="odd-pop"
+             style="position-anchor: --{{ pop_id }}">
+            <p class="odd-pop__title">{{ f.label }} — {{ c.agreeing }} of your {{ c.total }} tracks agree</p>
+            <p class="odd-pop__sub">
+                {{ c.agreeing }} carry “{{ c.value }}”.
+                {% if c.missing_count == c.outliers|length %}
+                {{ 'The other has' if c.outliers|length == 1 else 'The others have' }} none at all.
+                {% else %}
+                {{ 'The other differs.' if c.outliers|length == 1 else 'The others differ.' }}
+                {% endif %}
+            </p>
+            <ul class="odd-pop__list">
+                {# Capped, like the tooltip was: a compilation can disagree on
+                   every track, and a popover listing forty files is a wall. #}
+                {% for name, val in c.outliers[:8] %}
+                <li>
+                    <span class="odd-pop__file">{{ name }}</span>
+                    {% if val %}<span class="odd-pop__val">{{ val }}</span>
+                    {% else %}<span class="odd-pop__none">no {{ f.label|lower }}</span>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% if c.outliers|length > 8 %}
+            <p class="odd-pop__more">and {{ c.outliers|length - 8 }} more</p>
+            {% endif %}
+        </div>
         {% endif %}
     </dd>
     {% endfor %}

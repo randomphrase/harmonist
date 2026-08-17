@@ -6,8 +6,18 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+
+- When your own tracks disagree about a tag, the album page now says what is
+  wrong — "missing on 1 track" rather than "6 of 7" — and clicking it lists the
+  tracks and what each carries, telling a missing tag apart from a different
+  one. It used to be a hover-only tooltip that showed both as a dash (#164).
+
 ### Fixed
 
+- "All N fields match MusicBrainz" no longer counts Genre and Comment, which
+  MusicBrainz has no counterpart for and which were never compared — an album
+  with 7 comparable fields said 9 (#164).
 - Marking a MusicBrainz match as wrong now clears the track count that came
   with it, instead of leaving a count describing a release the album is no
   longer linked to (#166).
