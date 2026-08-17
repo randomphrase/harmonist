@@ -96,6 +96,38 @@ def test_seed_produces_each_state(music_dir):
     assert states["Fever Dog"] == AlbumState.NEEDS_SYNC
     # The Awesome Album: non-Bandcamp comment → Library, unlinked (COMPLETE).
     assert states["The Awesome Album"] == AlbumState.COMPLETE
+    # Two Library albums that are terminal and wrong anyway — the population the
+    # Library's filters exist to find (#174).
+    assert states["Rawhide"] == AlbumState.COMPLETE
+    assert states["Shout"] == AlbumState.COMPLETE
+
+
+def test_seed_has_an_album_the_library_filters_can_find(music_dir):
+    """Demo seeds one album per *state*, which left the Library filters with
+    nothing to show: a partially tagged album and a coverless one are both
+    COMPLETE, so neither existed here until #174.
+
+    Both assertions are on scanner-derived fields, which is the point — the
+    filters read what the scan already worked out, and store nothing.
+    """
+    demo.seed(music_dir)
+    by_title = {a.title: a for a in scanner.scan(music_dir)}
+
+    # Partially tagged: COMPLETE (not INCONSISTENT — an untagged file doesn't vote
+    # on consistency), with only track 1 carrying the MB Album Id atom.
+    rawhide = by_title["Rawhide"]
+    assert rawhide.state == AlbumState.COMPLETE
+    assert rawhide.partial_tag_count == (1, 3)
+
+    # No artwork: no folder cover.*, and the fixture audio carries no embedded art.
+    shout = by_title["Shout"]
+    assert shout.state == AlbumState.COMPLETE
+    assert not shout.has_cover
+    assert not list(shout.path.glob("cover.*"))
+
+    # …and the rest of the library still has its covers — `"cover": None` must not
+    # have become the default for everyone.
+    assert by_title["The Rural Juror (OST)"].has_cover
 
 
 def test_seed_new_has_mbid_and_comment_for_reconcile(music_dir):
@@ -110,12 +142,18 @@ def test_seed_new_has_mbid_and_comment_for_reconcile(music_dir):
 
 
 def test_seed_writes_cover_jpgs(music_dir):
+    """Every seeded album gets artwork except the one that is deliberately
+    without it — the Library's No-artwork filter needs something to find (#174).
+    Named explicitly rather than skipped by a rule, so a cover going missing by
+    accident still fails this."""
     demo.seed(music_dir)
+    deliberately_bare = {"Shout"}
     for artist_dir in music_dir.iterdir():
         if artist_dir.is_dir():
             for album_dir in artist_dir.iterdir():
                 if album_dir.is_dir():
-                    assert (album_dir / "cover.jpg").exists()
+                    has_cover = (album_dir / "cover.jpg").exists()
+                    assert has_cover is (album_dir.name not in deliberately_bare), album_dir
 
 
 def test_reset_refuses_when_marker_missing(music_dir):

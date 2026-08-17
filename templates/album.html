@@ -18,8 +18,13 @@
        No `&limit=`: the page size the reader chose is in a cookie the index reads
        when the URL omits one (#144), so `page` alone lands on the same albums.
        Threading it through the tile as well would add a second copy of the same
-       fact, free to disagree with the first. #}
-    <a href="/?tab=library{% if from_page > 1 %}&page={{ from_page }}{% endif %}"
+       fact, free to disagree with the first.
+
+       `&filter=` IS threaded through, for the opposite reason (#174): a filter is
+       deliberately never remembered anywhere, so this link is the only thing that
+       can carry it. Drop it and Back silently widens the view — the reader
+       working through "the 12 albums with no artwork" returns to all 400. #}
+    <a href="/?tab=library{% if from_page > 1 %}&page={{ from_page }}{% endif %}{% if from_filter %}&filter={{ from_filter }}{% endif %}"
        class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">
         ← Back to library
     </a>

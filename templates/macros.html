@@ -9,3 +9,25 @@
 {% macro release_name(name, disambiguation) -%}
 {{ name }}{% if disambiguation %} <span class="text-muted font-normal">({{ disambiguation }})</span>{% endif %}
 {%- endmacro %}
+
+{# The query string naming one Library view: which page, at what size, under which
+   filter. ONE definition because the Library page renders this string in six
+   places — the container's refresh wiring, the Refresh button, both pager arrows
+   (as an href AND an hx-push-url each), the page-size form, and the tile links —
+   and a parameter dropped from any one of them is a control that silently throws
+   away part of the view. That is not hypothetical: the set has grown from `page`
+   to `page + limit` to `page + limit + filter` in three issues (#139, #144, #174),
+   and it will grow again when search lands.
+
+   `filter` is omitted when falsy so All keeps the short URL — absence IS All, so
+   there is no `filter=all` to spell. The slug is interpolated raw; that is safe
+   because it reaches here only via `_library_filter`, which checks it against the
+   known set.
+
+   `page` is omitted when falsy too, which is how the filter controls ask for one:
+   choosing a filter asks a new question and starts at the first page of the
+   answer, and the route's default is 1. Passing the current page across would
+   request page 7 of a 3-album result. #}
+{% macro library_query(page, limit, filter) -%}
+{% if page %}page={{ page }}&{% endif %}limit={{ limit }}{% if filter %}&filter={{ filter }}{% endif %}
+{%- endmacro %}

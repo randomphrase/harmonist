@@ -13,7 +13,8 @@
    and the last value wins — which silently pinned the grid to page 1. Here there
    is no inherited value to collide with, and a refresh mid-browse (every
    `tasks-changed`) keeps you on your page. #}
-<div hx-get="/library?page={{ page }}&limit={{ limit }}"
+{% from 'macros.html' import library_query %}
+<div hx-get="/library?{{ library_query(page, limit, filter) }}"
      hx-trigger="library-refresh from:body, tasks-changed from:body"
      hx-target="#library-rows" hx-swap="innerHTML">
 <div class="flex justify-between items-baseline mb-3 gap-3">
@@ -52,6 +53,9 @@
               class="flex items-baseline gap-1.5">
             <input type="hidden" name="tab" value="library">
             <input type="hidden" name="anchor" value="{{ first_row }}">
+            {# The filter travels with the size, or picking "40 per page" would
+               quietly answer a different question than the one on screen. #}
+            {% if filter %}<input type="hidden" name="filter" value="{{ filter }}">{% endif %}
             <label for="library-limit"
                    class="text-xs text-muted uppercase tracking-widest font-bold">Show</label>
             <select id="library-limit" name="limit"
@@ -71,7 +75,7 @@
                     class="text-xs font-bold text-accent">Apply</button></noscript>
         </form>
         {% endif %}
-        <button hx-get="/library?page={{ page }}&limit={{ limit }}"
+        <button hx-get="/library?{{ library_query(page, limit, filter) }}"
                 hx-target="#library-rows" hx-swap="innerHTML"
                 class="text-xs text-muted hover:text-accent transition uppercase tracking-widest font-bold">
             Refresh
@@ -79,9 +83,77 @@
     </div>
 </div>
 
+{# Filters (#174). Everything in this grid is terminal, but terminal is not the
+   same as right: an INCOMPLETE album, one where only some files carry the MBID
+   atom, and one with no artwork at all are each finished as far as the state
+   machine is concerned, and each invisible in a wall of tiles.
+
+   Links, not a <select>, and deliberately: an href + hx-get + hx-push-url agree
+   by construction (the pager below is the precedent), so the address bar always
+   names what is on screen, the browser's own history does the navigating, JS-off
+   and middle-click both work, and there is no form whose default `submit` trigger
+   can be dropped by naming another one (#144's bug). Nothing here needs an event
+   handler, so nothing here has one.
+
+   Gated on `total_done`, NOT on `rows`: a filter matching nothing still has to
+   render its own row, or the only way back to All would be the Back button.
+
+   Each option carries the count it would yield, and one worth nothing becomes an
+   inert <span> — the same treatment the pager gives an end stop. A link that
+   promises an empty grid is worse than a number saying so up front. #}
+{% if total_done %}
+{% set chip = "px-2 py-0.5 rounded-full border text-xs font-bold transition" %}
+{% set chip_on = chip ~ " bg-accent border-accent text-white" %}
+{% set chip_off = chip ~ " bg-surface border-line text-muted hover:text-accent hover:border-accent" %}
+{% set chip_dead = chip ~ " border-transparent text-muted opacity-40 cursor-default select-none" %}
+<nav class="mb-3 flex flex-wrap items-center gap-1.5" aria-label="Library filters">
+    {% if filter %}
+    <a href="/?tab=library&{{ library_query(none, limit, none) }}"
+       hx-get="/library?{{ library_query(none, limit, none) }}"
+       hx-target="#library-rows" hx-swap="innerHTML"
+       hx-push-url="/?tab=library&{{ library_query(none, limit, none) }}"
+       class="{{ chip_off }}">All <span class="font-normal tabular-nums">{{ total_done }}</span></a>
+    {% else %}
+    <span class="{{ chip_on }}" aria-current="true">All
+        <span class="font-normal tabular-nums">{{ total_done }}</span></span>
+    {% endif %}
+
+    {% for f in filters %}
+    {% if f.slug == filter %}
+    <span class="{{ chip_on }}" aria-current="true">{{ f.label }}
+        <span class="font-normal tabular-nums">{{ f.count }}</span></span>
+    {% elif f.count %}
+    {# No `page`, so this starts at the first page of the new answer — see the
+       macro. The reader's page SIZE does travel: that is a standing preference,
+       and resetting it because they asked a different question would be rude. #}
+    <a href="/?tab=library&{{ library_query(none, limit, f.slug) }}"
+       hx-get="/library?{{ library_query(none, limit, f.slug) }}"
+       hx-target="#library-rows" hx-swap="innerHTML"
+       hx-push-url="/?tab=library&{{ library_query(none, limit, f.slug) }}"
+       class="{{ chip_off }}">{{ f.label }}
+        <span class="font-normal tabular-nums">{{ f.count }}</span></a>
+    {% else %}
+    <span class="{{ chip_dead }}" aria-disabled="true">{{ f.label }}
+        <span class="font-normal tabular-nums">0</span></span>
+    {% endif %}
+    {% endfor %}
+</nav>
+{% endif %}
+
 {% if not rows %}
 <div class="p-10 text-center border border-line rounded-lg">
+    {% if filter %}
+    {# The library isn't empty — this question's answer is. Say which, and give
+       the way back, so a filter can never look like data loss. #}
+    <p class="text-muted italic">No albums match this filter.</p>
+    <a href="/?tab=library&{{ library_query(none, limit, none) }}"
+       hx-get="/library?{{ library_query(none, limit, none) }}"
+       hx-target="#library-rows" hx-swap="innerHTML"
+       hx-push-url="/?tab=library&{{ library_query(none, limit, none) }}"
+       class="mt-2 inline-block text-xs font-bold text-accent">Show all {{ total_done }} albums</a>
+    {% else %}
     <p class="text-muted italic">No fully-tagged albums yet.</p>
+    {% endif %}
 </div>
 {% else %}
 <div id="library-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -99,27 +171,30 @@
 <nav class="mt-5 flex items-center justify-between gap-4" aria-label="Library pages">
     {% set nav_class = "px-3 py-1.5 rounded border border-line text-sm font-bold transition" %}
     {% if prev_page %}
-    <a href="/?tab=library&page={{ prev_page }}&limit={{ limit }}"
-       hx-get="/library?page={{ prev_page }}&limit={{ limit }}"
+    <a href="/?tab=library&{{ library_query(prev_page, limit, filter) }}"
+       hx-get="/library?{{ library_query(prev_page, limit, filter) }}"
        hx-target="#library-rows" hx-swap="innerHTML"
-       hx-push-url="/?tab=library&page={{ prev_page }}&limit={{ limit }}"
+       hx-push-url="/?tab=library&{{ library_query(prev_page, limit, filter) }}"
        class="{{ nav_class }} bg-surface hover:bg-line text-ink">← Previous</a>
     {% else %}
     <span class="{{ nav_class }} text-muted opacity-40 cursor-default select-none"
           aria-disabled="true">← Previous</span>
     {% endif %}
 
+    {# `total_shown`, not `total_done`: this readout describes the list being paged,
+       which under a filter is a subset. The header keeps reporting the whole
+       library — one number cannot honestly be both (#174). #}
     <span class="text-xs text-muted tabular-nums">
-        {{ first_row }}–{{ last_row }} of {{ total_done }}
+        {{ first_row }}–{{ last_row }} of {{ total_shown }}
         <span class="mx-1 opacity-50">·</span>
         page {{ page }} of {{ total_pages }}
     </span>
 
     {% if next_page %}
-    <a href="/?tab=library&page={{ next_page }}&limit={{ limit }}"
-       hx-get="/library?page={{ next_page }}&limit={{ limit }}"
+    <a href="/?tab=library&{{ library_query(next_page, limit, filter) }}"
+       hx-get="/library?{{ library_query(next_page, limit, filter) }}"
        hx-target="#library-rows" hx-swap="innerHTML"
-       hx-push-url="/?tab=library&page={{ next_page }}&limit={{ limit }}"
+       hx-push-url="/?tab=library&{{ library_query(next_page, limit, filter) }}"
        class="{{ nav_class }} bg-surface hover:bg-line text-ink">Next →</a>
     {% else %}
     <span class="{{ nav_class }} text-muted opacity-40 cursor-default select-none"

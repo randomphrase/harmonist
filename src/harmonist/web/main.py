@@ -133,6 +133,25 @@ _LIBRARY_LIMIT_COOKIE_MAX_AGE = 365 * 24 * 60 * 60
 # script, so an unchecked one from the URL would be reflected into the page.
 _INDEX_TABS = ("inbox", "library", "activity")
 
+# Library filters (#174), slug → (label, predicate). Every predicate reads a field
+# the SCANNER already derived, so filtering costs no lookup and no rescan (#140's
+# no-MB-on-the-request-path constraint) and persists nothing — the grid asks a
+# question about state it can already see, it does not record an answer.
+#
+# All three pick out albums that are *terminal but wrong*, which is the whole
+# point: the Library is where a defect goes to be forgotten. INCOMPLETE at least
+# has a tile badge; a partially tagged album derives COMPLETE (`_files_tagged_with`
+# is an `any()`) and shows nothing but a 10-pixel "8/10 tagged" line, and a
+# coverless album shows nothing at all. Neither is findable at library scale.
+#
+# Insertion order is the order the control offers them. Slugs are URL-visible and
+# outlive any wording change, so they are not derived from the labels.
+_LIBRARY_FILTERS: dict[str, tuple[str, Callable[[Album], bool]]] = {
+    "incomplete": ("Incomplete", lambda a: a.state == AlbumState.INCOMPLETE),
+    "partial": ("Partially tagged", lambda a: a.partial_tag_count is not None),
+    "no-artwork": ("No artwork", lambda a: not a.has_cover),
+}
+
 
 _logging_configured = False
 
@@ -866,8 +885,35 @@ def _remember_library_limit(response: Response, limit: int | None) -> None:
     )
 
 
+def _library_filter(value: str | None) -> str | None:
+    """The validated filter slug for this render, or None for "All" (#174).
+
+    `?filter=` is untrusted input reflected into the page (the `<select>`'s state,
+    and every pager URL), so it is checked against the known set exactly as `?tab=`
+    is. An unrecognised value degrades to All rather than to an empty grid: a slug
+    from an older build, or a mangled link, should show the reader their library.
+    """
+    return value if value in _LIBRARY_FILTERS else None
+
+
+def _library_index_url(page: int, limit: int, filter_: str | None) -> str:
+    """The index URL naming one Library view. The template's `library_query` macro
+    builds the same string for links it renders; this is for the one case only the
+    server can answer — where an `?anchor=` landed (#144).
+
+    `filter_` is omitted when None so that All keeps the short URL. The slug is
+    interpolated raw, which is safe *because* it came through `_library_filter`.
+    """
+    url = f"/?tab=library&page={page}&limit={limit}"
+    return f"{url}&filter={filter_}" if filter_ else url
+
+
 def _library_page_vars(
-    albums: list[Album], page: int, limit: int, anchor: int | None = None
+    albums: list[Album],
+    page: int,
+    limit: int,
+    anchor: int | None = None,
+    filter_: str | None = None,
 ) -> dict[str, Any]:
     """Everything `partials/library_page.html` needs to render one page of the
     Library grid (#139).
@@ -884,6 +930,23 @@ def _library_page_vars(
         key=lambda a: a.sidecar.tagged_at if a.sidecar and a.sidecar.tagged_at else _floor,
         reverse=True,
     )
+    # How many terminal albums exist, before any filter — the Library's own count,
+    # and the number the header reports. Captured here because `shown` below is a
+    # DIFFERENT number once a filter is on, and the two must not be conflated: the
+    # header says how big the library is, the pager says how much of it is on
+    # screen (#174).
+    total_done = len(done)
+    # The options the control offers, each with the count it would yield. Counted
+    # off the same `done` list the grid pages, so a count can never describe a
+    # different population than selecting it would show. Computed on every render,
+    # filtered or not — an option worth 0 albums should say so before it's picked
+    # rather than answering with an empty grid.
+    filters = [
+        {"slug": slug, "label": label, "count": sum(1 for a in done if pred(a))}
+        for slug, (label, pred) in _LIBRARY_FILTERS.items()
+    ]
+    if filter_ is not None:
+        done = [a for a in done if _LIBRARY_FILTERS[filter_][1](a)]
     limit = max(1, min(limit, _LIBRARY_LIMIT_MAX))  # clamp; defensive
     total_pages = max(1, -(-len(done) // limit))  # ceil; always at least one page
     # `anchor` is the 1-based position of the first album on screen at the moment
@@ -913,7 +976,18 @@ def _library_page_vars(
         # rather than being silently corrected, so the control always shows the
         # truth about what's on screen.
         "page_sizes": _LIBRARY_PAGE_SIZES,
-        "total_done": len(done),
+        # The whole Library, unfiltered — the header's "· N done" and the
+        # `data-total-done` attribute both read this. A filtered grid must not let
+        # it start reporting the rows it happens to be rendering (#140).
+        "total_done": total_done,
+        # How many albums the CURRENT view holds: the same number when nothing is
+        # filtered, the matching subset when something is. Only the pager reads it.
+        "total_shown": len(done),
+        # The active filter slug, already validated — None means All. Rides in every
+        # pager URL, the size form and the tile links, so the whole view stays one
+        # set of parameters (#174).
+        "filter": filter_,
+        "filters": filters,
         # 1-based inclusive range of this page within the whole list, for the
         # "31–60 of 412" readout — a bare page number says nothing about scale.
         "first_row": start + 1 if rows else 0,
@@ -2202,6 +2276,10 @@ def _register_routes(app: FastAPI) -> None:
         page: int = 1,
         limit: int | None = None,
         anchor: int | None = None,
+        # Named for the URL parameter it binds, `?filter=` — FastAPI takes the
+        # query key from the parameter name, and the shadowed builtin is not one
+        # this function has any use for.
+        filter: str | None = None,
     ) -> Response:
         albums = _albums(request)
         # `?album=<id>` was the deep link before there was an album page (#65).
@@ -2232,10 +2310,12 @@ def _register_routes(app: FastAPI) -> None:
             # carries them. Unrecognised tab → None, and the script falls back to
             # the remembered one, so a mangled link still lands somewhere sane.
             initial_tab=tab if tab in _INDEX_TABS else None,
-            # The Library grid renders inline, so `?page=` / `?limit=` are honoured
-            # by the HTML itself rather than by a follow-up fetch that would have
-            # to be told which page it's on.
-            **_library_page_vars(albums, page, _library_limit(request, limit), anchor),
+            # The Library grid renders inline, so `?page=` / `?limit=` / `?filter=`
+            # are honoured by the HTML itself rather than by a follow-up fetch that
+            # would have to be told which page it's on.
+            **_library_page_vars(
+                albums, page, _library_limit(request, limit), anchor, _library_filter(filter)
+            ),
         )
         response = _templates(request).TemplateResponse(request, "index.html", ctx)
         _remember_library_limit(response, limit)
@@ -2703,7 +2783,14 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/library", response_class=HTMLResponse)
     def library(
-        request: Request, page: int = 1, limit: int | None = None, anchor: int | None = None
+        request: Request,
+        page: int = 1,
+        limit: int | None = None,
+        anchor: int | None = None,
+        # Named for the URL parameter it binds, `?filter=` — FastAPI takes the
+        # query key from the parameter name, and the shadowed builtin is not one
+        # this function has any use for.
+        filter: str | None = None,
     ) -> Response:
         """One page of terminal albums (Complete + Incomplete), newest tagged first.
 
@@ -2716,8 +2803,20 @@ def _register_routes(app: FastAPI) -> None:
         `?limit=` is the page size and belongs to the same addressable view (#144);
         `?anchor=` is how the size control asks to keep the album at the top of the
         screen on screen across a size change.
+
+        `?filter=` narrows the grid to terminal albums that are nonetheless wrong —
+        incomplete, partially tagged, missing artwork (#174). Unlike `?limit=` it is
+        deliberately NOT remembered: a page size is a standing preference, whereas a
+        filter is a question asked once, and one silently restored weeks later reads
+        as "my library has shrunk".
         """
-        vars_ = _library_page_vars(_albums(request), page, _library_limit(request, limit), anchor)
+        vars_ = _library_page_vars(
+            _albums(request),
+            page,
+            _library_limit(request, limit),
+            anchor,
+            _library_filter(filter),
+        )
         response = _templates(request).TemplateResponse(
             request, "partials/library_page.html", _ctx(request, **vars_)
         )
@@ -2730,13 +2829,15 @@ def _register_routes(app: FastAPI) -> None:
             # Confined to the anchor case deliberately: this grid re-requests
             # itself on every `tasks-changed`, and a push per background refresh
             # would bury the Back button under a stack of identical entries.
-            response.headers["HX-Push-Url"] = (
-                f"/?tab=library&page={vars_['page']}&limit={vars_['limit']}"
+            response.headers["HX-Push-Url"] = _library_index_url(
+                vars_["page"], vars_["limit"], vars_["filter"]
             )
         return response
 
     @app.get("/album/{album_id}", response_class=HTMLResponse)
-    def album_page(request: Request, album_id: str, from_page: int = 1) -> Response:
+    def album_page(
+        request: Request, album_id: str, from_page: int = 1, from_filter: str | None = None
+    ) -> Response:
         """The standalone album page (#103) — full tracklist plus the album's
         history, neither of which fits a viewport-constrained dialog.
 
@@ -2744,6 +2845,13 @@ def _register_routes(app: FastAPI) -> None:
         return there (#139). It is a hint, not identity: absent (a bookmark, a
         link from Activity) simply means page 1, and the page renders the same
         either way.
+
+        `?from_filter=` is the same idea for the Library's filter (#174), and it
+        has to be carried explicitly: the page size survives this round trip in a
+        cookie, but a filter is deliberately not remembered anywhere, so without
+        this the trip out to an album and back would silently drop it — landing the
+        reader in the whole library, one album into a list they were working
+        through. Validated here too; this value reaches an href.
 
         Served for a stale id too: `_find_album` resolves one forward through the
         alias chain, so a link written before the album was re-identified still
@@ -2785,6 +2893,7 @@ def _register_routes(app: FastAPI) -> None:
             restorable=restorable,
             revertable=revertable,
             from_page=max(1, from_page),
+            from_filter=_library_filter(from_filter),
         )
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 

@@ -2201,6 +2201,278 @@ def test_library_refresh_does_not_push_a_history_entry(client, cfg):
     assert "HX-Push-Url" not in client.get("/library?page=2&limit=20").headers
 
 
+# ---------- library filters (#174) ----------
+#
+# Every album these helpers build is terminal — it lives in the Library, the state
+# machine considers it finished — and every one is nonetheless wrong in a way the
+# grid does not show. That is the whole premise of the filters.
+
+
+def _make_incomplete_album(cfg, name, *, mbid, tagged_at, expected=4) -> Path:
+    """Tagged against an MB release of `expected` tracks with one file on disk."""
+    d = _make_tagged_album(cfg, name, mbid=mbid, tagged_at=tagged_at)
+    stored = sc.read(d)
+    assert stored is not None
+    stored.track_count_expected = expected
+    sc.write(d, stored)
+    return d
+
+
+def _make_partially_tagged_album(cfg, name, *, mbid, tagged_at) -> Path:
+    """Two files, one carrying the MB Album Id atom and one bare.
+
+    This derives **COMPLETE**, not INCONSISTENT: `_files_tagged_with` is an
+    `any()`, and a file missing the field doesn't vote on consistency. So it sits
+    in the grid looking finished, which is exactly why it needs a filter.
+    """
+    d = _make_tagged_album(cfg, name, mbid=mbid, tagged_at=tagged_at)
+    shutil.copy(SINE_M4A, d / "02 Track.m4a")
+    return d
+
+
+def _give_cover(album_dir: Path) -> Path:
+    """A folder cover, so the album stops matching the No-artwork filter. The
+    fixture audio carries no embedded art, so every test album lacks one until
+    this is called."""
+    (album_dir / "cover.jpg").write_bytes(b"\xff\xd8\xff\xdb not really a jpeg")
+    return album_dir
+
+
+def test_library_filter_narrows_the_grid_to_incomplete_albums(client, cfg):
+    from datetime import datetime
+
+    base = datetime.now(UTC)
+    _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=base)
+    _make_incomplete_album(cfg, "Short", mbid="rel-short", tagged_at=base)
+    body = client.get("/library?filter=incomplete").text
+    assert "Short" in body
+    assert "Whole" not in body
+
+
+def test_library_filter_finds_partially_tagged_albums(client, cfg):
+    """The filter that earns its place: these albums are COMPLETE, so nothing but
+    a 10-pixel "1/2 tagged" line distinguishes them from a finished one."""
+    from datetime import datetime
+
+    from harmonist import scanner
+
+    base = datetime.now(UTC)
+    _make_tagged_album(cfg, "Clean", mbid="rel-clean", tagged_at=base)
+    d = _make_partially_tagged_album(cfg, "Half", mbid="rel-half", tagged_at=base)
+    # Precondition: the album really is terminal, or the filter is picking over
+    # the inbox's population rather than the Library's.
+    assert next(a.state for a in scanner.scan(cfg.paths.music_dir) if a.path == d) == "complete"
+    body = client.get("/library?filter=partial").text
+    assert "Half" in body
+    assert "Clean" not in body
+
+
+def test_library_filter_finds_albums_with_no_artwork(client, cfg):
+    from datetime import datetime
+
+    base = datetime.now(UTC)
+    _give_cover(_make_tagged_album(cfg, "Pictured", mbid="rel-pic", tagged_at=base))
+    _make_tagged_album(cfg, "Bare", mbid="rel-bare", tagged_at=base)
+    body = client.get("/library?filter=no-artwork").text
+    assert "Bare" in body
+    assert "Pictured" not in body
+
+
+def test_library_filter_counts_come_from_the_whole_library_not_the_page(client, cfg):
+    """A count is a promise about what selecting the option would show. Counting
+    only the current page would break that promise on every page but the first."""
+    from datetime import datetime, timedelta
+
+    base = datetime.now(UTC)
+    for i in range(5):
+        _make_incomplete_album(
+            cfg, f"Short{i}", mbid=f"rel-short-{i}", tagged_at=base - timedelta(days=i)
+        )
+    body = client.get("/library?limit=2").text
+    assert body.count('id="lib-') == 2  # page 1 holds two albums
+    assert re.search(r"Incomplete\s*<span[^>]*>5</span>", body)  # all five, not the two shown
+
+
+def test_library_header_total_ignores_the_filter(client, cfg):
+    """#140's constraint: the header (and the `data-total-done` the tab count
+    reads) reports the whole library. A filtered grid must not let it start
+    reporting the rows it happens to be rendering."""
+    from datetime import datetime
+
+    base = datetime.now(UTC)
+    _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=base)
+    _make_incomplete_album(cfg, "Short", mbid="rel-short", tagged_at=base)
+    body = client.get("/library?filter=incomplete").text
+    assert 'data-total-done="2"' in body
+    assert "· 2 done" in body
+
+
+def test_library_filtered_pager_reports_the_filtered_total(client, cfg):
+    """The other half of the same split: the row-range readout describes the list
+    being paged, which under a filter is a subset."""
+    from datetime import datetime, timedelta
+
+    base = datetime.now(UTC)
+    for i in range(3):
+        _make_tagged_album(cfg, f"Whole{i}", mbid=f"rel-w-{i}", tagged_at=base - timedelta(days=i))
+    for i in range(3):
+        _make_incomplete_album(
+            cfg, f"Short{i}", mbid=f"rel-s-{i}", tagged_at=base - timedelta(days=10 + i)
+        )
+    body = client.get("/library?filter=incomplete&limit=2").text
+    assert "1–2 of 3" in body  # three incomplete albums, not the six on disk
+    assert 'data-total-done="6"' in body
+
+
+def test_library_filter_rides_in_every_pager_url(client, cfg):
+    """A pager arrow that dropped the filter would widen the view mid-browse —
+    silently, since the grid still renders albums."""
+    from datetime import datetime, timedelta
+
+    base = datetime.now(UTC)
+    for i in range(5):
+        _make_incomplete_album(
+            cfg, f"Short{i}", mbid=f"rel-short-{i}", tagged_at=base - timedelta(days=i)
+        )
+    body = client.get("/library?page=2&limit=2&filter=incomplete").text
+    assert 'hx-get="/library?page=1&limit=2&filter=incomplete"' in body
+    assert 'hx-get="/library?page=3&limit=2&filter=incomplete"' in body
+    assert 'href="/?tab=library&page=3&limit=2&filter=incomplete"' in body
+    assert 'hx-push-url="/?tab=library&page=3&limit=2&filter=incomplete"' in body
+    # The container's own refresh wiring too — every `tasks-changed` re-requests
+    # this view, and without the filter the grid would quietly widen on its own.
+    assert 'hx-get="/library?page=2&limit=2&filter=incomplete"' in body
+    # And the page-size form, or picking "40 per page" answers a different
+    # question than the one on screen.
+    assert '<input type="hidden" name="filter" value="incomplete">' in body
+
+
+def test_library_filter_links_start_at_the_first_page(client, cfg):
+    """Filtering asks a new question, so it starts at the first page of the answer.
+    Carrying `page` across would ask for page 7 of a 3-album result."""
+    from datetime import datetime, timedelta
+
+    base = datetime.now(UTC)
+    for i in range(5):
+        _make_incomplete_album(
+            cfg, f"Short{i}", mbid=f"rel-short-{i}", tagged_at=base - timedelta(days=i)
+        )
+    body = client.get("/library?page=3&limit=2").text
+    assert 'hx-get="/library?limit=2&filter=incomplete"' in body
+    assert "filter=incomplete&page=" not in body
+
+
+def test_library_filter_offering_nothing_is_inert_rather_than_a_link(client, cfg):
+    """An option worth zero albums says so instead of promising an empty grid."""
+    from datetime import datetime
+
+    _give_cover(_make_tagged_album(cfg, "Fine", mbid="rel-fine", tagged_at=datetime.now(UTC)))
+    body = client.get("/library").text
+    assert "filter=incomplete" not in body  # nothing incomplete → no link to it
+    assert 'aria-disabled="true"' in body
+    assert "Incomplete" in body  # still named, still counted
+
+
+def test_library_filter_matching_nothing_says_so_and_offers_the_way_back(client, cfg):
+    """A filter must never be mistakable for data loss. The empty-library wording
+    would be a lie here — the library is fine, this question's answer is empty."""
+    from datetime import datetime
+
+    _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=datetime.now(UTC))
+    body = client.get("/library?filter=incomplete").text
+    assert "No albums match this filter." in body
+    assert "No fully-tagged albums yet." not in body
+    assert "Show all 1 albums" in body
+
+
+def test_library_ignores_an_unknown_filter(client, cfg):
+    """`?filter=` is untrusted and reflected into the page. An unrecognised slug —
+    a mangled link, or one from an older build — shows the library, never an empty
+    grid and never its own text back."""
+    from datetime import datetime
+
+    _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=datetime.now(UTC))
+    body = client.get("/library?filter=<script>alert(1)</script>").text
+    assert "Whole" in body
+    assert "alert(1)" not in body
+    # Fell through to All, which is what the control reports.
+    assert 'aria-current="true">All' in body
+
+
+def test_library_does_not_remember_a_filter(client, cfg):
+    """Page size is a standing preference and gets a cookie (#144). A filter is a
+    question asked once — restoring it weeks later reads as "my library shrank"."""
+    from datetime import datetime
+
+    base = datetime.now(UTC)
+    _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=base)
+    _make_incomplete_album(cfg, "Short", mbid="rel-short", tagged_at=base)
+    filtered = client.get("/library?filter=incomplete")
+    assert not any("filter" in name for name in filtered.cookies)
+    # The next bare visit is the whole library again.
+    assert "Whole" in client.get("/library").text
+
+
+def test_library_filter_rides_in_the_index_url(client, cfg):
+    """The inline first paint honours `?filter=`, so a shared link resolves to the
+    same view rather than painting the whole library and correcting it."""
+    from datetime import datetime
+
+    base = datetime.now(UTC)
+    _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=base)
+    _make_incomplete_album(cfg, "Short", mbid="rel-short", tagged_at=base)
+    body = client.get("/?tab=library&filter=incomplete").text
+    assert "Short" in body
+    assert "Whole" not in body
+
+
+def test_library_filter_survives_the_trip_out_to_an_album_and_back(client, cfg):
+    """The round trip #140 exists for. The page size survives it in a cookie; the
+    filter has nothing but these two links, so both have to carry it."""
+    from datetime import datetime
+
+    d = _make_incomplete_album(cfg, "Short", mbid="rel-short", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+    grid = client.get("/library?filter=incomplete").text
+    assert f'href="/album/{album_id}?from_filter=incomplete"' in grid
+
+    back = client.get(f"/album/{album_id}?from_filter=incomplete").text
+    assert 'href="/?tab=library&filter=incomplete"' in back
+
+
+def test_album_page_ignores_an_unknown_back_filter(client, cfg):
+    """`?from_filter=` reaches an href, so it is validated like every other
+    reflected parameter rather than trusted because it looks internal."""
+    from datetime import datetime
+
+    d = _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=datetime.now(UTC))
+    body = client.get(f"/album/{_id_for(cfg, d)}?from_filter=nonsense").text
+    assert 'href="/?tab=library"' in body
+    assert "nonsense" not in body
+
+
+def test_library_filter_anchor_push_url_keeps_the_filter(client, cfg):
+    """Changing the page size inside a filtered view corrects the address bar from
+    the server (#144). That correction has to name the filtered view, not drop back
+    to the whole library."""
+    from datetime import datetime, timedelta
+
+    base = datetime.now(UTC)
+    for i in range(5):
+        _make_incomplete_album(
+            cfg, f"Short{i}", mbid=f"rel-short-{i}", tagged_at=base - timedelta(days=i)
+        )
+    r = client.get("/library?limit=2&anchor=3&filter=incomplete")
+    assert r.headers["HX-Push-Url"] == "/?tab=library&page=2&limit=2&filter=incomplete"
+
+
+def test_library_filter_row_is_absent_when_the_library_is_empty(client, cfg):
+    """Nothing to filter, so no filters — the empty state stands alone."""
+    body = client.get("/library").text
+    assert "No fully-tagged albums yet." in body
+    assert 'aria-label="Library filters"' not in body
+
+
 def test_library_page_size_rides_in_the_index_url(client, cfg):
     """`?limit=` belongs to the same addressable view as `?tab=` and `?page=`, so
     a shared link resolves to exactly the albums the sender was looking at."""

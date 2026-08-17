@@ -6,6 +6,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- The Library can be filtered to the albums that are finished but not right:
+  Incomplete, Partially tagged (only some files carry the MusicBrainz id), and
+  No artwork. Each option shows how many albums it holds, the filter rides in
+  the URL beside the page and page size so a filtered view is a link you can
+  share, and the trip out to an album page and back keeps it (#174).
+
 ### Changed
 
 - When your own tracks disagree about a tag, the album page now says what is

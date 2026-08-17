@@ -65,8 +65,13 @@ STEP_DELAY_SECONDS = 0.6
 # Every album spec is a dict so it serialises cleanly to JSON if we ever
 # want to externalise. Fields:
 #   artist, album, tracks: track titles
-#   cover: filename in _demo_assets/
+#   cover: filename in _demo_assets/; None for an album that deliberately has no
+#     artwork at all (the Library's No-artwork filter needs one to find, #174)
 #   file_mbid: optional MB Album Id atom on each .m4a (so reconcile works)
+#   file_mbid_tracks: optional [track_number, …] — write `file_mbid` to ONLY these
+#     tracks, leaving the rest bare. Produces a partially tagged album: COMPLETE,
+#     because a file missing the atom neither counts as tagged nor votes on
+#     consistency, yet plainly unfinished (#174)
 #   file_comment: optional ©cmt value on each .m4a (Bandcamp evidence)
 #   file_tags: optional {atom: value} written to every track — used to make an
 #     album's tags DISAGREE with its MB release, so the album page's comparison
@@ -311,6 +316,47 @@ LIBRARY: list[dict[str, Any]] = [
             # No store_url + no item_id → COMPLETE (Library), unlinked.
         },
     },
+    {
+        # State: COMPLETE — and wrong anyway. Only track 1 carries the MB Album Id
+        # atom, which derives COMPLETE rather than INCONSISTENT: `_files_tagged_with`
+        # is an `any()`, and a file missing the field doesn't vote on consistency.
+        # So it sits in the Library looking finished, with nothing but a "1/3
+        # tagged" line on the tile to say otherwise — the exact shape the
+        # Partially-tagged filter exists to find (#174). A half-finished tagging
+        # run, or Picard applied to some of a folder, leaves this behind.
+        "artist": "The Blues Brothers",
+        "album": "Rawhide",
+        "tracks": ["Rawhide", "Stand By Your Man", "Minnie the Moocher"],
+        "cover": "cover-5.jpg",
+        "file_mbid": "demo-rel-blues-brothers",
+        "file_mbid_tracks": [1],
+        "sidecar": {
+            "store_url": "https://bluesbrothers.bandcamp.com/album/rawhide",
+            # 1006 is the Stillwater live edition's; item_id is the dedup key, so
+            # two albums sharing one would collide in `library_index`.
+            "bandcamp_item_id": 1007,
+            "mb_release_id": "demo-rel-blues-brothers",
+            "tagged": True,
+        },
+    },
+    {
+        # State: COMPLETE with NO cover art — `cover: None` skips the artwork the
+        # other albums get. Terminal, correctly tagged, fully linked, and still a
+        # grey square in Plex/Navidrome, which is what the No-artwork filter is
+        # for (#174). Common in an adopted library: a rip or an old download that
+        # never had a folder image.
+        "artist": "Otis Day and the Knights",
+        "album": "Shout",
+        "tracks": ["Shout", "Shama Lama Ding Dong"],
+        "cover": None,
+        "file_mbid": "demo-rel-otis-day",
+        "sidecar": {
+            "store_url": "https://otisday.bandcamp.com/album/shout",
+            "bandcamp_item_id": 1008,
+            "mb_release_id": "demo-rel-otis-day",
+            "tagged": True,
+        },
+    },
 ]
 
 
@@ -526,6 +572,18 @@ MB_RELEASES: dict[str, Release] = {
         "The Awesome Album",
         ["5000 Candles in the Wind", "The Pit", "Sex Hair"],
     ),
+    "demo-rel-blues-brothers": _release(
+        "demo-rel-blues-brothers",
+        "The Blues Brothers",
+        "Rawhide",
+        ["Rawhide", "Stand By Your Man", "Minnie the Moocher"],
+    ),
+    "demo-rel-otis-day": _release(
+        "demo-rel-otis-day",
+        "Otis Day and the Knights",
+        "Shout",
+        ["Shout", "Shama Lama Ding Dong"],
+    ),
 }
 
 
@@ -543,6 +601,8 @@ URL_RELS: dict[str, str] = {
     # detection can browse the release group and spot the owned (live) sibling.
     "https://stillwater.bandcamp.com/album/fever-dog": "demo-rel-fever-std",
     "https://stillwater.bandcamp.com/album/fever-dog-live": "demo-rel-fever-live",
+    "https://bluesbrothers.bandcamp.com/album/rawhide": "demo-rel-blues-brothers",
+    "https://otisday.bandcamp.com/album/shout": "demo-rel-otis-day",
 }
 
 
@@ -974,7 +1034,11 @@ def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
         audio[ATOM_ALBUM] = [spec["album"]]
         audio[ATOM_ARTIST] = [spec["artist"]]
         audio[ATOM_TRACK_NUM] = [(i, n_tracks)]
-        if mbid := spec.get("file_mbid"):
+        # `file_mbid_tracks` narrows the atom to some of the tracks, so demo has a
+        # partially tagged album for the Library filter to find (#174). Absent —
+        # the normal case — means every track carries it.
+        only_tracks = spec.get("file_mbid_tracks")
+        if (mbid := spec.get("file_mbid")) and (only_tracks is None or i in only_tracks):
             audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
         if cmt := spec.get("file_comment"):
             audio[ATOM_COMMENT] = [cmt]
@@ -997,9 +1061,14 @@ def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
             audio[atom] = [value]
         audio.save()
 
-    cover_asset = ASSETS_DIR / spec.get("cover", "cover-7.jpg")
-    if cover_asset.exists():
-        shutil.copy(cover_asset, album_dir / "cover.jpg")
+    # An explicit `"cover": None` means "this album has no artwork" and must not
+    # fall through to the default asset — that is the whole point of the album
+    # seeding it (#174). Only an ABSENT key takes the default.
+    cover_name = spec.get("cover", "cover-7.jpg")
+    if cover_name:
+        cover_asset = ASSETS_DIR / cover_name
+        if cover_asset.exists():
+            shutil.copy(cover_asset, album_dir / "cover.jpg")
 
     # Distinguish "no sidecar" (sentinel None) from "empty sidecar" ({}).
     sc_spec = spec.get("sidecar")
