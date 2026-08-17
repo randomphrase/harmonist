@@ -164,6 +164,24 @@ EOF
 )"
 ```
 
+## Tracking issues: no hand-written checklists
+
+An epic tracks its children through **GitHub's own sub-issue system**, not through a
+`- [ ]` list in its body. Link a child with `gh issue edit <child> --parent <epic>`;
+the epic then shows a live `sub-issues: 2/3` roll-up that updates itself when a child
+closes.
+
+A checklist in the body cannot do that. It goes stale the moment a child merges, and
+the only way to keep it honest is to **edit the epic's body** — reaching into someone
+else's issue to tick a box, which is off-putting to watchers and noisy in the
+timeline. The roll-up is maintained by the same merge that closes the child, for free.
+
+Work that isn't an issue yet still belongs in the body — an epic is where a direction
+gets thought through, and filing a stub per idea is worse than describing it. Write it
+as **prose or a plain bulleted list**, with no checkboxes: a bullet is a note, a
+checkbox is a promise to come back and edit. Give an item its own issue when someone
+picks it up, and the parent link puts it in the roll-up from then on.
+
 ## Why this exists
 
 Commit messages scroll away and get squashed; issues are searchable, linkable, and
