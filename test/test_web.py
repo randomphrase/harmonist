@@ -2262,6 +2262,29 @@ def test_library_detail_shows_store_url_and_item_id(client, cfg):
     assert "42" in r.text  # item_id
 
 
+def test_album_page_says_when_only_some_files_carry_the_mb_id(client, cfg):
+    """#175: the Library tile has said "1/3 tagged" since #139, but the album page
+    said nothing — and its Tracks section reports "All N tracks match MusicBrainz",
+    because the MB Album Id is identity rather than a compared field, so a file
+    missing it produces no finding there. The album is legitimately COMPLETE; that
+    is exactly why it has to be said out loud."""
+    from datetime import datetime
+
+    d = _make_tagged_album(cfg, "Half", mbid="abc-123", tagged_at=datetime.now(UTC))
+    shutil.copy(SINE_M4A, d / "02 Track.m4a")  # second file, no MB Album Id atom
+    body = client.get(f"/album/{_id_for(cfg, d)}").text
+    assert "MusicBrainz id on 1 of 2 tracks" in body
+
+
+def test_album_page_stays_quiet_when_every_file_is_tagged(client, cfg):
+    """The normal case must not grow a warning — `partial_tag_count` is None both
+    when every file carries the id and when none does."""
+    from datetime import datetime
+
+    d = _make_tagged_album(cfg, "Whole", mbid="abc-123", tagged_at=datetime.now(UTC))
+    assert "MusicBrainz id on" not in client.get(f"/album/{_id_for(cfg, d)}").text
+
+
 def test_library_detail_omits_bandcamp_removal_controls(client, cfg):
     """#42 interim: the Bandcamp link-removal controls (× forget-URL and Unlink) are
     temporarily pulled — with no way to re-link a Library album, removing a link is a

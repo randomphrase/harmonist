@@ -15,6 +15,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- An album whose files don't all carry the MusicBrainz id now says so on its own
+  page — "MusicBrainz id on 1 of 3 tracks", beside the Re-tag from MB button that
+  fixes it. Only the Library tile mentioned it, and the album page's Tracks
+  section reported "All 3 tracks match MusicBrainz" (#175).
 - "All N fields match MusicBrainz" no longer counts Genre and Comment, which
   MusicBrainz has no counterpart for and which were never compared — an album
   with 7 comparable fields said 9 (#164).
