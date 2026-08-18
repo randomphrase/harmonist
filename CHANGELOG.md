@@ -6,60 +6,42 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
-### Added
-
-- The Library can be filtered to the albums that are finished but not right:
-  Incomplete, Partially tagged (only some files carry the MusicBrainz id), and
-  No artwork. Each option shows how many albums it holds, the filter rides in
-  the URL beside the page and page size so a filtered view is a link you can
-  share, and the trip out to an album page and back keeps it (#174).
-
-### Changed
-
-- When your own tracks disagree about a tag, the album page now says what is
-  wrong — "missing on 1 track" rather than "6 of 7" — and clicking it lists the
-  tracks and what each carries, telling a missing tag apart from a different
-  one. It used to be a hover-only tooltip that showed both as a dash (#164).
-
-### Fixed
-
-- An album whose files don't all carry the MusicBrainz id now says so on its own
-  page — "MusicBrainz id on 1 of 3 tracks", beside the Re-tag from MB button that
-  fixes it. Only the Library tile mentioned it, and the album page's Tracks
-  section reported "All 3 tracks match MusicBrainz" (#175).
-- "All N fields match MusicBrainz" no longer counts Genre and Comment, which
-  MusicBrainz has no counterpart for and which were never compared — an album
-  with 7 comparable fields said 9 (#164).
-- Marking a MusicBrainz match as wrong now clears the track count that came
-  with it, instead of leaving a count describing a release the album is no
-  longer linked to (#166).
-- Demo mode's album awaiting confirmation now starts untagged, like a real one:
-  confirming it genuinely assigns its MusicBrainz id rather than re-writing tags
-  it already had, so the tagging and undo flows can be tried end to end (#168).
-- Resetting demo mode now clears the per-field tagging detail along with
-  everything else, instead of leaving it in the history store attached to
-  entries that no longer exist (#165).
+## [1.8.0] - 2026-08-18
 
 ### Added
 
 - Any tagging in an album's History can now be undone: "Undo tag changes" puts
-  back the tag values the files carried before it. A field you've changed since
-  — in Picard, or by a later re-tag — is left alone and named, and the undo is
-  itself recorded, so it can be undone in turn (#157).
+  back the values the files carried before it, leaving alone — and naming — any
+  field you've changed since (#157).
   - Undoing the tagging that linked an album to MusicBrainz now unlinks it too,
-    so the files and the album's state can't disagree. It moves to Needs MBID
-    with its release kept as a one-click suggestion, the same place the "wrong
-    match" pencil leaves it (#158).
-  - Artwork keeps its own separate Undo, since it has its own store.
+    so it moves to Needs MBID with its release kept as a one-click suggestion
+    (#158).
+- The Library can be filtered to the albums that are finished but not right —
+  Incomplete, Partially tagged, or No artwork — each with a count, and the
+  filter rides in the URL so a filtered view is a link you can share (#174).
 
 ### Changed
 
 - The album page's tag comparison is now its own Tags section, a peer of Tracks
-  and History, so the panel at the top holds what the album is and what you can
-  do to it — and the actions no longer sit below a long field list (#160).
-- An album's History reads more cleanly: a tag that wasn't there before shows
-  just the value it was given, instead of prefixing every row with "— →", and
-  the longest field labels no longer wrap onto a second line (#159).
+  and History, so the actions no longer sit below a long field list (#160).
+- When your own tracks disagree about a tag, the album page now says what is
+  wrong — "missing on 1 track" rather than "6 of 7" — and clicking it lists the
+  tracks (#164).
+- An album's History no longer prefixes a newly added tag with "— →", and the
+  longest field labels no longer wrap onto a second line (#159).
+
+### Fixed
+
+- An album whose files don't all carry the MusicBrainz id now says so on its own
+  page, beside the Re-tag from MB button that fixes it (#175).
+- "All N fields match MusicBrainz" no longer counts Genre and Comment, which have
+  no MusicBrainz counterpart — an album with 7 comparable fields said 9 (#164).
+- Marking a MusicBrainz match as wrong now clears the track count that came with
+  it, instead of describing a release the album is no longer linked to (#166).
+- Demo mode's album awaiting confirmation now starts untagged, like a real one,
+  so the tagging and undo flows can be tried end to end (#168).
+- Resetting demo mode now clears the per-field tagging detail along with
+  everything else (#165).
 
 ## [1.7.0] - 2026-08-16
 

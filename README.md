@@ -24,6 +24,9 @@ gets mislabeled.
 - **A full record of every change** — Harmonist never edits your files silently.
   Each entry in the Activity feed expands to show exactly what it did underneath
   (see [Nothing happens silently](#nothing-happens-silently)).
+- **See what a tagging changed — and undo it.** Every tag write is recorded field
+  by field, so an album's History shows what moved and can put it back, cover art
+  included (see [Nothing is a one-way door](#nothing-is-a-one-way-door)).
 
 The UI is a single page with **Inbox / Library / Activity** tabs, built with
 HTMX — no SPA, no build step at runtime.
@@ -121,6 +124,47 @@ The properties that make it trustworthy rather than decorative:
 Album names in the feed link straight to that album's page, where the same
 history is gathered in one place — including the records written before the
 album was last re-identified.
+
+## Nothing is a one-way door
+
+Recording a change is half the promise; being able to take it back is the other
+half. Every tagging is stored field by field — the value before and the value
+after, for each file — so an album's page can show you what a re-tag actually
+did, and put it back.
+
+The **Tags** section compares what your files carry against MusicBrainz, showing
+only what differs. **History** below it shows what each tagging changed, one line
+per field rather than one per track, with how far the change reached:
+
+```
+Re-tagged                                          ▾ Undo tag changes
+    Album artist   Boards Of Canada → Boards of Canada       album
+    Label          Warp Records                              album
+    Cat. no.       WARPCD101 → WARP101CD               all tracks
+                                              ▸ Show which tracks
+```
+
+**Undo tag changes** puts back the values those files carried before:
+
+- **The tagging is the unit, not the field.** Putting one field back while its
+  neighbours kept the new value would build a state your files never had.
+- **It won't overwrite newer work.** A field you've changed since — in Picard, or
+  by a later re-tag — is left alone and named in the outcome, so an old row is
+  safe to offer rather than a trap.
+- **All-or-nothing.** Every file is read before any is written, so a failure
+  leaves the album as it was rather than half-reverted. Running it twice is a
+  no-op.
+- **Undoing the tagging that linked an album to MusicBrainz unlinks it too**, so
+  your files and Harmonist's own record can't quietly disagree. The album goes
+  back to Needs MBID with that release kept as a one-click suggestion.
+- **The undo is itself recorded**, so it can be undone in turn.
+- **Cover art has its own Undo.** Harmonist keeps a copy of any embedded image a
+  re-tag overwrote, so replacing artwork is reversible too — bounded by a 500 MB
+  store, and no button is offered for a change whose image has been evicted.
+
+<!-- Screenshot to add, e.g.
+![Undoing a tagging](docs/screenshots/undo-tags.png)
+-->
 
 ## Demo
 

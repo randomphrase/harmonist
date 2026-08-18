@@ -702,7 +702,7 @@ src/harmonist/
   mb_lookup.py          MB by-id / by-url fetch (1 req/sec budget)
   mb_search.py          MB free-text search (manual-ingest path)
   match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
-  compare.py            Field-by-field tag-vs-MB comparison primitives (album panel + tracklist)
+  compare.py            Field-by-field tag-vs-MB comparison primitives (Tags section + tracklist)
   tagger.py             Picard-compatible tag writer (+ embedded cover), and the undo of one (#157)
   cover_art.py          Cover Art Archive fetch + cover.* writing
   formats/              Per-format tag I/O (m4a, mp3, flac, ogg, opus; _vorbis shared; types)
