@@ -9,8 +9,16 @@ then follow the conventions below.
 
 ## Read these first (don't duplicate them here)
 
-- **`README.md`** — what Harmonist is and where it fits, running it (Docker /
-  from source / demo mode), configuration, deployment & security, the tech stack.
+- **`README.md`** — the pitch: what Harmonist is, where it fits against Picard /
+  Lidarr / beets, the two guarantees it makes, the tech stack. It links out
+  rather than explaining; keep it that way.
+- **`docs/usage.md`** — the user guide: onboarding an existing library, the
+  inbox, syncing, the Library and its filters, an album's page, undo, activity.
+  User-visible behavior gets documented **here**, not in the README.
+- **`docs/installation.md`** — Docker (incl. Synology/ACL permissions), from
+  source, demo mode, the `harmonist.toml` reference, uninstall.
+- **`docs/deployment.md`** — the security posture: reverse proxy, allowed hosts,
+  built-in Basic auth.
 - **`docs/design.md`** — the design spec and source of truth for *how it's meant
   to work*: use cases, the album **state machine** (states + transition diagram),
   the **sidecar schema**, the tagging contract, cover art, the **module map**,

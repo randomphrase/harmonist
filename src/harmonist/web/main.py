@@ -630,7 +630,7 @@ def _install_security_middleware(app: FastAPI, cfg: config_mod.Config) -> None:
         log.warning(
             "server.host=%s but server.allowed_hosts=['*']. For non-loopback "
             "binds, set allowed_hosts to your actual hostname(s) to enable "
-            "DNS-rebinding protection. See README §Security.",
+            "DNS-rebinding protection. See docs/deployment.md.",
             cfg.server.host,
         )
 

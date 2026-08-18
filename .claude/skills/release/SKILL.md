@@ -44,10 +44,11 @@ retroactively.
 
 ## 2. Sweep the docs for staleness
 
-A release is when someone new reads `README.md` and `docs/design.md`. Grep them
-for whatever this cycle removed or renamed — states, routes, UI surfaces,
-flags. 1.5.0 was about to ship with `docs/design.md` still telling users to
-click Re-tag from MB "in the detail modal", a surface deleted an hour earlier.
+A release is when someone new reads `README.md`, `docs/usage.md` and
+`docs/design.md`. Grep them for whatever this cycle removed or renamed — states,
+routes, UI surfaces, flags. 1.5.0 was about to ship with `docs/design.md` still
+telling users to click Re-tag from MB "in the detail modal", a surface deleted an
+hour earlier. `docs/usage.md` is the likeliest to rot: it names buttons.
 
 ## 3. Roll the changelog and bump the version
 
@@ -127,7 +128,7 @@ Confirm from the workflow run, not the registry: reading published tags via
 ## Done when
 
 - [ ] every commit since the last tag is in the changelog or genuinely internal
-- [ ] `README.md` and `docs/design.md` describe what actually shipped
+- [ ] `README.md`, `docs/usage.md` and `docs/design.md` describe what shipped
 - [ ] `pyproject.toml` bumped, `make check` green
 - [ ] `Release X.Y.Z` commit, GPG-signed tag verified locally
 - [ ] commit pushed, then tag

@@ -19,17 +19,59 @@ gets mislabeled.
   releases straight to [Harmony](https://harmony.pulsewidth.org.uk).
 - **Picard-compatible tagging** across `.m4a`, `.mp3`, `.flac`, `.ogg`, and
   `.opus`, embedding the MusicBrainz Release ID and cover art.
-- **Library view** of everything done, with an on-demand "verify tagging vs
-  MusicBrainz" check.
-- **A full record of every change** — Harmonist never edits your files silently.
-  Each entry in the Activity feed expands to show exactly what it did underneath
-  (see [Nothing happens silently](#nothing-happens-silently)).
-- **See what a tagging changed — and undo it.** Every tag write is recorded field
-  by field, so an album's History shows what moved and can put it back, cover art
-  included (see [Nothing is a one-way door](#nothing-is-a-one-way-door)).
+- **A library view** that finds the albums that are finished but not *right* —
+  incomplete, partially tagged, or missing artwork — and compares any album's
+  tags and tracklist against MusicBrainz, field by field.
+- **A full record of every change**, and a way back from it: Harmonist never edits
+  your files silently, and every tagging can be undone (see
+  [Nothing happens silently](#nothing-happens-silently) and
+  [Nothing is a one-way door](#nothing-is-a-one-way-door)).
 
 The UI is a single page with **Inbox / Library / Activity** tabs, built with
 HTMX — no SPA, no build step at runtime.
+
+## Demo
+
+A short walk-through of the flow — inbox triage, matching, and a link-only sync:
+
+https://github.com/user-attachments/assets/dc08c85f-43f8-402a-85a5-09388200c239
+
+Or try it yourself against a sandboxed sample library, with no Bandcamp account
+and no real network traffic:
+
+```bash
+HARMONIST_DEMO_MODE=1 uvicorn harmonist.web.main:app --reload
+```
+
+## Quickstart
+
+```yaml
+# docker-compose.yml — edit the two paths and the uid:gid, then `docker compose up -d`
+services:
+  harmonist:
+    image: ghcr.io/randomphrase/harmonist:latest
+    restart: unless-stopped
+    ports: ["8000:8000"]
+    volumes:
+      - /path/to/music:/music     # your music library
+      - /path/to/config:/config   # settings, cookies, history
+    user: "1000:1000"             # the OWNER of those two dirs
+```
+
+Then visit `http://<host>:8000`. Full instructions — permissions, Synology/ACL
+shares, running from source, configuration — are in
+**[docs/installation.md](docs/installation.md)**.
+
+## Documentation
+
+- **[Usage guide](docs/usage.md)** — onboarding an existing library, working the
+  inbox, syncing, the Library and its filters, an album's page, undo, activity.
+- **[Installation](docs/installation.md)** — Docker, from source, demo mode,
+  configuration, uninstall.
+- **[Deployment & security](docs/deployment.md)** — reverse proxy, hostname
+  allow-listing, built-in auth. **Read this before exposing Harmonist.**
+- **[Design](docs/design.md)** — the internal spec: state machine, sidecar schema,
+  tagging contract, module map. Written for people changing the code.
 
 ## Where Harmonist fits
 
@@ -104,26 +146,12 @@ show precisely what:
                  cover.write  file=cover.jpg source=caa overwrote=False
 ```
 
-The properties that make it trustworthy rather than decorative:
-
-- **Durable.** Kept in SQLite in your config dir, so it survives restarts and
-  isn't evicted. Nothing is pruned.
-- **Complete.** Tag writes, sidecar rewrites, file moves and overwrites, cover
-  art, checkpoint clears, surrenders — and erasing sidecars names every album
-  that lost one, because that's the most destructive thing Harmonist can do.
-- **Attributable.** Every record is tied to the action that caused it, so the
-  detail under an entry is *that* action's work, not everything that happened
-  around the same moment.
-- **Still readable later.** Entries keep the album's name as it was, and follow
-  an album across re-identification — so history doesn't rot when a release is
-  re-matched or renamed.
-- **Honest when it can't answer.** If Harmonist can't read its own history it
-  says so, rather than showing you an empty feed. "Nothing happened" and "I
-  couldn't tell you" are different claims, and only one of them is ever a guess.
-
-Album names in the feed link straight to that album's page, where the same
-history is gathered in one place — including the records written before the
-album was last re-identified.
+It's durable (SQLite in your config dir, nothing pruned), complete (down to
+sidecar rewrites, file moves and every album that loses a sidecar), attributable
+to the action that caused it, still readable after an album is re-matched or
+renamed — and honest when it *can't* answer, because "nothing happened" and "I
+couldn't tell you" are different claims and only one of them is ever a guess.
+[More in the usage guide](docs/usage.md#activity).
 
 ## Nothing is a one-way door
 
@@ -145,226 +173,7 @@ files and Harmonist's own record can't quietly disagree: the album returns to
 Needs MBID with that release kept as a one-click suggestion. The undo is itself
 recorded, so it can be undone in turn. Cover art has its own Undo, from a bounded
 store of the images that re-tags have overwritten.
-
-## Demo
-
-A short walk-through of the flow — inbox triage, matching, and a link-only sync:
-
-https://github.com/user-attachments/assets/dc08c85f-43f8-402a-85a5-09388200c239
-
-<!-- Stills can be added later, e.g.
-![Inbox](docs/screenshots/inbox.png)
-![Library](docs/screenshots/library.png)
-![Activity](docs/screenshots/activity.png)
--->
-
-
-## Running
-
-### Docker (recommended)
-
-Copy this into a `docker-compose.yml`, edit the two host paths and the `user:`,
-then `docker compose up -d` and visit `http://<host>:8000`:
-
-```yaml
-services:
-  harmonist:
-    image: ghcr.io/randomphrase/harmonist:latest   # published to GHCR, linux/amd64
-    container_name: harmonist
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    volumes:
-      - /path/to/music:/music     # your music library
-      - /path/to/config:/config   # persistent: harmonist.toml, cookies.txt, ignores.txt, id registry, activity.db
-    # Run as the OWNER of the two host dirs above, so sidecars, tags and cover.*
-    # files aren't written as root. `id -u` / `id -g` to find yours; omit to run
-    # as root. (Synology: usually a 1026+ uid and gid 100 — the `users` group.)
-    user: "1000:1000"
-    # Only if you expose Harmonist beyond localhost: restrict the hostname
-    # allow-list (DNS-rebinding protection). Loopback is always allowed.
-    # environment:
-    #   - HARMONIST_ALLOWED_HOSTS=harmonist.example.com,nas.local
-```
-
-**Permissions.** Make the host `music`/`config` dirs writable by that `user:`
-*before* starting — Docker won't `chown` them for you (`sudo chown -R 1000:1000
-/path/to/music /path/to/config`). On startup Harmonist probe-writes both and
-fails fast with a clear message if either isn't writable, so a permission problem
-announces itself instead of looking like a stuck scan.
-
-**Synology / ACL shares:** `user:` sets the uid and *primary* gid only — not
-your supplementary groups. So `1026:100` has `groups=[100]` even though your
-login is also in `administrators` (101); if the share grants write via that
-group or a DSM ACL, the container is denied despite the "right" uid. Cleanest
-fix: grant **Authenticated Users** (or the `users` group) Read/Write
-**recursively** on the music + config shared folders.
-
-### From source (dev)
-
-```bash
-pip install -e ".[dev]"
-uvicorn harmonist.web.main:app --reload      # http://127.0.0.1:8000
-```
-
-### Demo mode
-
-Explore with a mocked, sandboxed sample library — no real Bandcamp/MusicBrainz
-traffic, and your real `music_dir` is never touched:
-
-```bash
-HARMONIST_DEMO_MODE=1 uvicorn harmonist.web.main:app --reload
-```
-
-## Configuration
-
-Config is read at startup from `harmonist.toml` in the config dir
-(`~/.config/harmonist/` by default, `/config` in Docker), overridable by
-`HARMONIST_*` environment variables. Most settings (download format, MB
-user-agent, cover-art size, download cap, log level) are editable live from the
-**Settings** page; library/config paths require a restart.
-
-```toml
-# ~/.config/harmonist/harmonist.toml
-[paths]
-music_dir = "/path/to/music"      # absolute (TOML doesn't expand ~)
-
-[bandcamp]
-download_format = "flac"
-max_downloads_per_sync = 25       # safety cap
-
-[musicbrainz]
-user_agent = "Harmonist/1.0 ( you@example.com )"
-```
-
-Bandcamp sync needs a `cookies.txt` (exported from a logged-in browser) — paste
-or upload it via the in-app **Set up Bandcamp sync** prompt.
-
-## Onboarding an existing library
-
-Point Harmonist at a music library you already have and it does its best to
-**adopt** it — recognizing what's already tagged, linking your previous Bandcamp
-downloads to your purchases, and flagging the rest for review — all **without
-re-downloading anything you own**.
-
-It works best on a library that's already in reasonable shape. Harmonist assumes:
-
-- **One album per folder** — each directory of audio files is treated as a single
-  album. A folder mixing several albums is flagged **Inconsistent**; split it with
-  [Picard](https://picard.musicbrainz.org) first.
-- **Already tagged** — ideally Picard-tagged. Harmonist reads the MusicBrainz
-  Album ID from your files to recognize what's matched; anything untagged lands in
-  the inbox for you to match by hand.
-
-**What to expect on the first scan.** Every album is sorted into the inbox by what
-it needs:
-
-- **Library** — already tagged and matched; nothing to do.
-- **Needs MBID** — not matched to a MusicBrainz release yet. Resolve it from the
-  inbox: search by name, paste an MBID, or seed a missing release via
-  [Harmony](https://harmony.pulsewidth.org.uk).
-- **Needs Link** — a Bandcamp-sourced album that's tagged but not yet tied to its
-  purchase (a sync fills that in).
-
-**Recommended order:**
-
-1. **Get everything matched first.** Work through **Needs MBID** — this is the one
-   step that genuinely needs you; untagged/unmatched albums are the main thing
-   Harmonist can't do on its own. Aim to clear it *before* your first sync.
-2. **Then run your first Sync.** While unlinked albums remain, that sync runs in
-   **link-only** mode: it links your on-disk albums to your Bandcamp purchases and
-   **downloads nothing new**. Anything it can't confidently match surfaces as a
-   *potential download* to Match / Download / skip.
-3. Once everything's linked, later syncs fetch genuinely new purchases as normal.
-
-## Deployment & security
-
-Harmonist stores a Bandcamp session cookie (a real credential — it's how the
-sync logs in to your account) and exposes destructive actions: bulk tagging,
-"Forget", and "erase all sidecars". It is **not** built to face the public
-internet directly. The expected deployment is single-user, on a private network
-or behind a reverse proxy that handles authentication.
-
-**What ships in the box.** Three layers of defense apply automatically:
-
-1. **Loopback by default.** `server.host = 127.0.0.1` unless you change it.
-   (The Docker image overrides this to `0.0.0.0` because container networking
-   requires it — see below.)
-2. **CSRF protection.** All state-changing requests require an `HX-Request:
-   true` header (sent by HTMX, not by a malicious cross-origin form) plus a
-   matching `Origin`/`Referer`. This blocks drive-by CSRF even if you're
-   already logged in.
-3. **Hostname allow-listing** via `server.allowed_hosts` (DNS-rebinding
-   protection). Default is `["*"]` (permissive — see below).
-
-**Recommended deployment:** put Harmonist behind a reverse proxy on its own
-hostname, with TLS (e.g. Let's Encrypt) and authentication handled by the
-proxy. Caddy, nginx, Traefik, Authelia, Authentik, and Tailscale Serve all
-work; pick what you already run. Then lock down the hostname allow-list to
-match:
-
-```toml
-[server]
-host = "0.0.0.0"                              # for Docker / LAN bind
-allowed_hosts = ["harmonist.example.com",     # your real hostname
-                 "localhost", "127.0.0.1"]    # keep healthchecks working
-```
-
-**If you can't put a proxy in front**, enable the built-in HTTP Basic auth as
-a fallback:
-
-```bash
-python -m harmonist.web.security
-# Password: ********
-# Confirm:  ********
-#
-# password_hash = "pbkdf2_sha256$600000$...$..."
-```
-
-```toml
-[auth]
-enabled = true
-username = "alice"
-password_hash = "pbkdf2_sha256$600000$...$..."   # paste from the CLI above
-```
-
-Restart, and every request except `/healthz` is gated by Basic auth.
-Basic auth without TLS sends the password in plaintext on every request —
-**always pair it with HTTPS** (i.e. with a reverse proxy or a Tailscale tunnel).
-
-**Do not expose Harmonist's raw port to the internet.** The combination of a
-credential-holding tagger and destructive endpoints is not something you want
-behind nothing but luck.
-
-## Uninstall
-
-All of Harmonist's state lives in `.harmonist.json` **sidecar** files next to your
-albums — your audio, its MusicBrainz tags, and `cover.*` art are just your library
-and carry nothing Harmonist-specific. To remove it cleanly:
-
-1. **Settings → Erase sidecars.** This deletes every `.harmonist.json`; your
-   tagged audio and cover files are not touched.
-2. **Stop the app straight away — don't return to the Inbox.** Opening the inbox
-   triggers a re-scan and reconcile, which would re-derive the sidecars from your
-   files' tags. Shut down first (e.g. `docker compose down`) and the library is
-   left sidecar-free.
-
-Your music stays fully tagged and Picard-compatible, with no trace of Harmonist.
-To also drop the stored Bandcamp cookie and settings, delete the config dir.
-
-## Development
-
-```bash
-make check     # ruff lint + format check + mypy --strict + pytest
-make css       # rebuild static/harmonist.css (Tailwind v4, no Node)
-```
-
-CI (GitHub Actions) runs the same gate on Python 3.12 / 3.13 plus a CSS-drift
-check. The Tailwind CLI is pinned for reproducible output.
-
-**Tech:** Python 3.12+, FastAPI, HTMX + Jinja2, Tailwind CSS (via
-`pytailwindcss`), `mutagen`, `musicbrainzngs`, `bandcampsync`, `httpx` +
-BeautifulSoup, Pydantic, `tomlkit`.
+[More in the usage guide](docs/usage.md#undoing-a-tagging).
 
 ## How it's built
 
@@ -384,6 +193,20 @@ helped *build* it; it has no part in *running* it — which is exactly the idea
 behind "asks before it guesses": exact, auditable matches, never a model's guess.
 
 If something falls short of that bar, please open an issue.
+
+**Tech:** Python 3.12+, FastAPI, HTMX + Jinja2, Tailwind CSS (via
+`pytailwindcss`), `mutagen`, `musicbrainzngs`, `bandcampsync`, `httpx` +
+BeautifulSoup, Pydantic, `tomlkit`.
+
+## Contributing
+
+```bash
+make check     # ruff lint + format check + mypy --strict + pytest
+make css       # rebuild static/harmonist.css (Tailwind v4, no Node)
+```
+
+CI runs the same gate on Python 3.12 / 3.13 plus a CSS-drift check. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
