@@ -23,8 +23,10 @@
        `&filter=` IS threaded through, for the opposite reason (#174): a filter is
        deliberately never remembered anywhere, so this link is the only thing that
        can carry it. Drop it and Back silently widens the view — the reader
-       working through "the 12 albums with no artwork" returns to all 400. #}
-    <a href="/?tab=library{% if from_page > 1 %}&page={{ from_page }}{% endif %}{% if from_filter %}&filter={{ from_filter }}{% endif %}"
+       working through "the 12 albums with no artwork" returns to all 400. `&q=`
+       rides along for exactly the same reason (#180), urlencoded because unlike
+       the filter's slug it is free text. #}
+    <a href="/?tab=library{% if from_page > 1 %}&page={{ from_page }}{% endif %}{% if from_filter %}&filter={{ from_filter }}{% endif %}{% if from_q %}&q={{ from_q | urlencode }}{% endif %}"
        class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">
         ← Back to library
     </a>

@@ -12,12 +12,14 @@ import os
 # out of the production import path entirely.
 import re
 import sys
+import unicodedata
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -151,6 +153,24 @@ _LIBRARY_FILTERS: dict[str, tuple[str, Callable[[Album], bool]]] = {
     "partial": ("Partially tagged", lambda a: a.partial_tag_count is not None),
     "no-artwork": ("No artwork", lambda a: not a.has_cover),
 }
+
+# Longest search query the Library will act on (#180). Unlike `?filter=`'s slug,
+# `q` is free text, and it is reflected into every URL this page builds — seventeen
+# of them — so an unbounded one bloats the whole render. A hundred characters is
+# past any album or artist name; beyond it, someone pasted something.
+_LIBRARY_QUERY_MAX = 100
+
+# The header that tells `/library` to name the resolved view in the address bar
+# (#180). The search form cannot spell its own `hx-push-url`: it does not know the
+# query until the reader types it, and the page size and filter it must carry come
+# from the server anyway.
+#
+# A header rather than a hidden input, precisely so it stays OUT of the URL. The
+# form degrades to a real GET on `action` without JS, and a marker in the field set
+# would strand itself in the address bar there — the same wart `?anchor=` leaves,
+# which is the bug `web-ui` rule 2b was written about. Nothing to strand if it was
+# never a field.
+_LIBRARY_PUSH_HEADER = "x-harmonist-push-url"
 
 
 _logging_configured = False
@@ -896,16 +916,80 @@ def _library_filter(value: str | None) -> str | None:
     return value if value in _LIBRARY_FILTERS else None
 
 
-def _library_index_url(page: int, limit: int, filter_: str | None) -> str:
-    """The index URL naming one Library view. The template's `library_query` macro
-    builds the same string for links it renders; this is for the one case only the
-    server can answer — where an `?anchor=` landed (#144).
+def _library_search(value: str | None) -> str | None:
+    """The search query for this render, or None for "not searching" (#180).
 
-    `filter_` is omitted when None so that All keeps the short URL. The slug is
-    interpolated raw, which is safe *because* it came through `_library_filter`.
+    `?filter=` could be checked against a known set; `q` is free text and cannot
+    be, so it is normalised instead: stripped, length-clamped, and reduced to None
+    when nothing is left. That last step matters more than it looks — it makes a
+    blank box indistinguishable from no box at all, so `?q=` never appears in a URL
+    promising a search that isn't happening, and every "is a search on?" test in
+    the template is a plain truthiness check.
+    """
+    if value is None:
+        return None
+    # Clamp between two strips, so a cut landing mid-space doesn't leave a trailing
+    # one to show up in the box and in every URL.
+    return value.strip()[:_LIBRARY_QUERY_MAX].strip() or None
+
+
+def _search_key(text: str) -> str:
+    """`text` folded for searching: accents stripped, casefolded, anything that
+    isn't a word character flattened to a space.
+
+    So `Bjork` finds *Björk*, `dont` finds *Don't*, and `85 92` finds
+    *…Works 85-92*. Deliberately its OWN function rather than `models.title_words`:
+    those are the approximate-matching primitives that decide what gets LINKED to a
+    MusicBrainz release, and they are safe only because their callers wrap them in a
+    uniqueness guard. Sharing them here would create a path where loosening a search
+    box loosens what Harmonist is willing to tag.
+    """
+    decomposed = unicodedata.normalize("NFKD", text)
+    unaccented = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return re.sub(r"\W+", " ", unaccented).casefold()
+
+
+def _search_matches(albums: list[Album], q: str) -> list[Album]:
+    """`albums` narrowed to those whose artist or title matches `q` (#180).
+
+    Every whitespace-separated term must appear somewhere in the folded
+    "artist title" — so `aphex ambient` finds *Aphex Twin — Selected Ambient
+    Works*, and word order doesn't matter. Substring, not prefix: `ambient` should
+    find *Ambient* wherever it sits.
+
+    Costs one fold per album per request and touches no disk and no network — the
+    artist and title are already in the scanned `Album` (#140's constraint).
+    """
+    terms = _search_key(q).split()
+    if not terms:
+        # Folding left nothing word-like — and bands called `!!!` or `†††` are real,
+        # so this is not a hypothetical. Matching everything (which `all([])` would
+        # do) would silently ignore a query the reader can still see in the box, so
+        # fall back to a raw case-insensitive substring test, which is exactly right
+        # for a name made entirely of punctuation.
+        needle = q.casefold()
+        return [a for a in albums if needle in f"{a.artist} {a.title}".casefold()]
+    return [a for a in albums if all(t in _search_key(f"{a.artist} {a.title}") for t in terms)]
+
+
+def _library_index_url(page: int, limit: int, filter_: str | None, q: str | None = None) -> str:
+    """The index URL naming one Library view. The template's `library_query` macro
+    builds the same string for links it renders; this is for the two cases only the
+    server can answer — where an `?anchor=` landed (#144), and what the search form
+    just asked for (#180).
+
+    `filter_` and `q` are omitted when empty so that the default view keeps the
+    short URL. The slug is interpolated raw, which is safe *because* it came through
+    `_library_filter`; `q` is free text, so it is percent-encoded — an unencoded `&`
+    or `#` in a query would truncate this URL and silently drop the parameters after
+    it.
     """
     url = f"/?tab=library&page={page}&limit={limit}"
-    return f"{url}&filter={filter_}" if filter_ else url
+    if filter_:
+        url += f"&filter={filter_}"
+    if q:
+        url += f"&q={quote(q)}"
+    return url
 
 
 def _library_page_vars(
@@ -914,6 +998,7 @@ def _library_page_vars(
     limit: int,
     anchor: int | None = None,
     filter_: str | None = None,
+    q: str | None = None,
 ) -> dict[str, Any]:
     """Everything `partials/library_page.html` needs to render one page of the
     Library grid (#139).
@@ -936,6 +1021,16 @@ def _library_page_vars(
     # header says how big the library is, the pager says how much of it is on
     # screen (#174).
     total_done = len(done)
+    # Search narrows BEFORE the filter, and the filter counts below are taken after
+    # it, so every chip reports what it would yield *within this search* (#180).
+    # The other order would have "No artwork · 40" sitting above a searched grid and
+    # deliver 2 when clicked — a count that describes a population the reader can't
+    # see is worse than no count.
+    if q:
+        done = _search_matches(done, q)
+    # After the search, before the filter: the All chip's number, and the
+    # denominator every other chip is a subset of.
+    total_matched = len(done)
     # The options the control offers, each with the count it would yield. Counted
     # off the same `done` list the grid pages, so a count can never describe a
     # different population than selecting it would show. Computed on every render,
@@ -980,6 +1075,10 @@ def _library_page_vars(
         # `data-total-done` attribute both read this. A filtered grid must not let
         # it start reporting the rows it happens to be rendering (#140).
         "total_done": total_done,
+        # How many albums the search left, before the filter — what the All chip
+        # says, and what the chips beside it are subsets of. Equal to `total_done`
+        # when nothing is being searched for (#180).
+        "total_matched": total_matched,
         # How many albums the CURRENT view holds: the same number when nothing is
         # filtered, the matching subset when something is. Only the pager reads it.
         "total_shown": len(done),
@@ -987,7 +1086,14 @@ def _library_page_vars(
         # pager URL, the size form and the tile links, so the whole view stays one
         # set of parameters (#174).
         "filter": filter_,
+        # Its human label, for the sentence the search box uses to say what it is
+        # searching over. Resolved here so the template doesn't have to hunt through
+        # `filters` for the active one (#180).
+        "filter_label": _LIBRARY_FILTERS[filter_][0] if filter_ else None,
         "filters": filters,
+        # The search query, normalised — None means no search. Rides in every URL
+        # this page builds, and is echoed back into the box (#180).
+        "q": q,
         # 1-based inclusive range of this page within the whole list, for the
         # "31–60 of 412" readout — a bare page number says nothing about scale.
         "first_row": start + 1 if rows else 0,
@@ -2280,6 +2386,7 @@ def _register_routes(app: FastAPI) -> None:
         # query key from the parameter name, and the shadowed builtin is not one
         # this function has any use for.
         filter: str | None = None,
+        q: str | None = None,
     ) -> Response:
         albums = _albums(request)
         # `?album=<id>` was the deep link before there was an album page (#65).
@@ -2310,11 +2417,16 @@ def _register_routes(app: FastAPI) -> None:
             # carries them. Unrecognised tab → None, and the script falls back to
             # the remembered one, so a mangled link still lands somewhere sane.
             initial_tab=tab if tab in _INDEX_TABS else None,
-            # The Library grid renders inline, so `?page=` / `?limit=` / `?filter=`
-            # are honoured by the HTML itself rather than by a follow-up fetch that
-            # would have to be told which page it's on.
+            # The Library grid renders inline, so `?page=` / `?limit=` / `?filter=` /
+            # `?q=` are honoured by the HTML itself rather than by a follow-up fetch
+            # that would have to be told which page it's on.
             **_library_page_vars(
-                albums, page, _library_limit(request, limit), anchor, _library_filter(filter)
+                albums,
+                page,
+                _library_limit(request, limit),
+                anchor,
+                _library_filter(filter),
+                _library_search(q),
             ),
         )
         response = _templates(request).TemplateResponse(request, "index.html", ctx)
@@ -2791,6 +2903,7 @@ def _register_routes(app: FastAPI) -> None:
         # query key from the parameter name, and the shadowed builtin is not one
         # this function has any use for.
         filter: str | None = None,
+        q: str | None = None,
     ) -> Response:
         """One page of terminal albums (Complete + Incomplete), newest tagged first.
 
@@ -2809,6 +2922,10 @@ def _register_routes(app: FastAPI) -> None:
         deliberately NOT remembered: a page size is a standing preference, whereas a
         filter is a question asked once, and one silently restored weeks later reads
         as "my library has shrunk".
+
+        `?q=` searches artist and title (#180). It composes with `?filter=` rather
+        than replacing it, and is remembered exactly as little — for the same
+        reason.
         """
         vars_ = _library_page_vars(
             _albums(request),
@@ -2816,27 +2933,34 @@ def _register_routes(app: FastAPI) -> None:
             _library_limit(request, limit),
             anchor,
             _library_filter(filter),
+            _library_search(q),
         )
         response = _templates(request).TemplateResponse(
             request, "partials/library_page.html", _ctx(request, **vars_)
         )
         _remember_library_limit(response, limit)
-        if anchor is not None:
-            # Only the server knows which page the anchor resolved to, so the
+        if anchor is not None or request.headers.get(_LIBRARY_PUSH_HEADER):
+            # Only the server knows which page the anchor resolved to, and only the
+            # server knows the whole view the search form just asked for, so the
             # address bar is corrected from here rather than by an hx-push-url the
             # control would have to guess before the answer existed.
             #
-            # Confined to the anchor case deliberately: this grid re-requests
-            # itself on every `tasks-changed`, and a push per background refresh
-            # would bury the Back button under a stack of identical entries.
+            # Confined to those two cases deliberately: this grid re-requests itself
+            # on every `tasks-changed`, and a push per background refresh would bury
+            # the Back button under a stack of identical entries. Every other control
+            # here is a link that already spells its own URL.
             response.headers["HX-Push-Url"] = _library_index_url(
-                vars_["page"], vars_["limit"], vars_["filter"]
+                vars_["page"], vars_["limit"], vars_["filter"], vars_["q"]
             )
         return response
 
     @app.get("/album/{album_id}", response_class=HTMLResponse)
     def album_page(
-        request: Request, album_id: str, from_page: int = 1, from_filter: str | None = None
+        request: Request,
+        album_id: str,
+        from_page: int = 1,
+        from_filter: str | None = None,
+        from_q: str | None = None,
     ) -> Response:
         """The standalone album page (#103) — full tracklist plus the album's
         history, neither of which fits a viewport-constrained dialog.
@@ -2852,6 +2976,10 @@ def _register_routes(app: FastAPI) -> None:
         this the trip out to an album and back would silently drop it — landing the
         reader in the whole library, one album into a list they were working
         through. Validated here too; this value reaches an href.
+
+        `?from_q=` carries the search the same way and for the same reason (#180) —
+        an album opened from a search of "aphex" goes Back to that search, not to
+        the whole library.
 
         Served for a stale id too: `_find_album` resolves one forward through the
         alias chain, so a link written before the album was re-identified still
@@ -2894,6 +3022,7 @@ def _register_routes(app: FastAPI) -> None:
             revertable=revertable,
             from_page=max(1, from_page),
             from_filter=_library_filter(from_filter),
+            from_q=_library_search(from_q),
         )
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 

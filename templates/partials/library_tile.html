@@ -6,15 +6,18 @@
 
    `?from_page=` tells the album page which Library page to send you Back to
    (#139); omitted on page 1, which is what Back means anyway, so the common
-   URL stays clean. `?from_filter=` does the same for the active filter (#174) —
-   it has to be carried explicitly, because unlike the page size there is no
-   cookie holding it, so without this Back would drop the reader into the whole
-   library one album into a list they were working through. #}
+   URL stays clean. `?from_filter=` does the same for the active filter (#174)
+   and `?from_q=` for the active search (#180) — both have to be carried
+   explicitly, because unlike the page size there is no cookie holding either, so
+   without this Back would drop the reader into the whole library one album into a
+   list they were working through. `from_q` is urlencoded; it is free text, and an
+   `&` in an album name would otherwise end this href early. #}
 {% set sc = album.sidecar %}
 {% set is_new = sc and sc.downloaded_at and (now - sc.downloaded_at).days < 7 %}
 {% set from_params = [] %}
 {% if page > 1 %}{% set _ = from_params.append('from_page=' ~ page) %}{% endif %}
 {% if filter %}{% set _ = from_params.append('from_filter=' ~ filter) %}{% endif %}
+{% if q %}{% set _ = from_params.append('from_q=' ~ (q | urlencode)) %}{% endif %}
 <a id="lib-{{ album.id }}"
    href="/album/{{ album.id }}{% if from_params %}?{{ from_params | join('&') }}{% endif %}"
    class="lib-tile group cursor-pointer select-none block">

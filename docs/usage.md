@@ -16,8 +16,8 @@ described below.
 One page, three tabs, plus Settings:
 
 - **Inbox** — albums that need something from you, grouped by what they need.
-- **Library** — albums that are done, with filters for the ones that are done but
-  not *right*.
+- **Library** — albums that are done, searchable, with filters for the ones that
+  are done but not *right*.
 - **Activity** — everything Harmonist has changed, newest first.
 
 **Sync** lives in the header and is available from any tab.
@@ -129,6 +129,11 @@ Everything that's finished. Tiles are paged — **Previous**/**Next**, with a
 in the URL, so Back, a bookmark, and returning from an album all land you where
 you left off.
 
+**Search** finds an album by artist or title. Type and press Enter; every term
+has to match, but where and in what order doesn't, so `aphex ambient` finds
+*Aphex Twin — Selected Ambient Works*. Case, accents and punctuation are ignored
+(`bjork` finds Björk, `85 92` finds *…Works 85-92*).
+
 <!-- screenshot: docs/screenshots/library-filters.png -->
 
 Finished isn't the same as right, so the filter chips find the albums that are
@@ -141,8 +146,15 @@ done but still wrong, each with its count:
 - **No artwork** — correctly tagged, fully linked, and still a grey square in
   Plex or Navidrome.
 
-The active filter rides in the URL too, so a filtered view is a link you can share
-or bookmark.
+Search and the filters compose: searching inside a filter narrows within it, and
+the chip counts follow the search, so each one tells you what it would actually
+show. When both are on, the box says which filter it's searching inside, and an
+empty result offers a way out of each separately.
+
+The active filter and the search ride in the URL too, so either view is a link you
+can share or bookmark. Neither is remembered between visits — a page size is a
+standing preference, but a filter or a search is a question you asked once, and
+one silently restored weeks later just looks like your library has shrunk.
 
 ## An album's page
 

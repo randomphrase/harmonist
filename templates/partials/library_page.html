@@ -14,7 +14,7 @@
    is no inherited value to collide with, and a refresh mid-browse (every
    `tasks-changed`) keeps you on your page. #}
 {% from 'macros.html' import library_query %}
-<div hx-get="/library?{{ library_query(page, limit, filter) }}"
+<div hx-get="/library?{{ library_query(page, limit, filter, q) }}"
      hx-trigger="library-refresh from:body, tasks-changed from:body"
      hx-target="#library-rows" hx-swap="innerHTML">
 <div class="flex justify-between items-baseline mb-3 gap-3">
@@ -53,9 +53,11 @@
               class="flex items-baseline gap-1.5">
             <input type="hidden" name="tab" value="library">
             <input type="hidden" name="anchor" value="{{ first_row }}">
-            {# The filter travels with the size, or picking "40 per page" would
-               quietly answer a different question than the one on screen. #}
+            {# The filter and the search travel with the size, or picking "40 per
+               page" would quietly answer a different question than the one on
+               screen. #}
             {% if filter %}<input type="hidden" name="filter" value="{{ filter }}">{% endif %}
+            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
             <label for="library-limit"
                    class="text-xs text-muted uppercase tracking-widest font-bold">Show</label>
             <select id="library-limit" name="limit"
@@ -75,13 +77,88 @@
                     class="text-xs font-bold text-accent">Apply</button></noscript>
         </form>
         {% endif %}
-        <button hx-get="/library?{{ library_query(page, limit, filter) }}"
+        <button hx-get="/library?{{ library_query(page, limit, filter, q) }}"
                 hx-target="#library-rows" hx-swap="innerHTML"
                 class="text-xs text-muted hover:text-accent transition uppercase tracking-widest font-bold">
             Refresh
         </button>
     </div>
 </div>
+
+{# Search (#180). The filters below find albums that are *wrong*; this finds the
+   album you have in mind, which at library scale is the more common errand and
+   the one paging cannot help with.
+
+   `hx-preserve` on the input, and it is load-bearing: this whole partial is
+   replaced on every `tasks-changed` and `library-refresh`, so without it a scan
+   finishing while someone types eats what they had typed, mid-word. Preserving the
+   node carries the value and the caret position across the swap — htmx moves the
+   live node into the new content rather than rebuilding it. Focus itself is still
+   dropped (the node is detached and reattached), so a background refresh mid-typing
+   costs one click to resume; it no longer costs the query.
+
+   The form could have gone OUTSIDE #library-rows instead, which would keep focus
+   too — but then the hidden `filter` below would never re-render, and a chip click
+   would leave the form submitting searches scoped to the filter *before* the one on
+   screen. A rare lost focus beats a silently wrong search.
+
+   The cost of preserving is that the server can no longer change what is in the
+   box, which is why the two controls that clear a search are plain links with no
+   `hx-get` — a full navigation, which rebuilds the DOM and so genuinely empties it.
+   (A clamped over-length query is the one case the box can disagree with what was
+   searched; 100 characters in, it is not a disagreement anyone will notice.)
+
+   `submit` is named in the trigger list, not assumed: naming `search` alone would
+   REPLACE the form's default rather than extend it, and every Enter would escape
+   htmx into a native navigation (#144's bug, `web-ui` rule 2b). `search` is there
+   for the native clear button `type="search"` gives us in Chrome and Safari — it
+   fires that event, so clearing the box re-runs the query with nothing in it.
+
+   No `limit` field: the page size lives in a cookie the route falls back to, kept
+   in step with every explicit `?limit=`, so sending it here would be a second copy
+   of the same fact, free to disagree with the first.
+
+   `hx-headers` rather than a hidden input, because this is a message to the server
+   and not part of the view: it asks for an `HX-Push-Url` naming the resolved URL,
+   which the form cannot spell itself (it knows neither the size nor the page the
+   query will land on). A hidden field would strand the marker in the address bar
+   on the no-JS path, which is exactly the wart `?anchor=` leaves. #}
+{% if total_done %}
+<form method="get" action="/" hx-get="/library" hx-trigger="submit, search"
+      hx-target="#library-rows" hx-swap="innerHTML"
+      hx-headers='{"X-Harmonist-Push-Url": "1"}'
+      class="mb-3 flex items-baseline gap-2">
+    <input type="hidden" name="tab" value="library">
+    {# The filter travels with the query: searching is a narrowing of the view on
+       screen, not a fresh start. The chips below stay in charge of widening it. #}
+    {% if filter %}<input type="hidden" name="filter" value="{{ filter }}">{% endif %}
+    <label for="library-search" class="sr-only">Search the library</label>
+    <input type="search" id="library-search" name="q" value="{{ q or '' }}"
+           hx-preserve="true" autocomplete="off"
+           placeholder="Search artist or album"
+           class="flex-1 min-w-0 bg-white border border-line rounded px-2 py-1 text-sm text-ink placeholder:text-muted focus:border-accent outline-none">
+    <button type="submit"
+            class="px-3 py-1 rounded border border-line bg-surface hover:bg-line text-sm font-bold text-ink transition">
+        Search
+    </button>
+</form>
+
+{# What the search is searching over. The chips below carry counts, and a count
+   changing is too quiet a signal for a state the reader assembled in two moves —
+   so when a search and a filter are both on, say so in words, at the place they
+   are typing. Only then: with no filter, the box searches the library and needs no
+   caption. #}
+{% if q and filter_label %}
+<p class="-mt-2 mb-3 text-xs text-muted">
+    Searching only the “{{ filter_label }}” albums.
+    <a href="/?tab=library&{{ library_query(none, limit, none, q) }}"
+       hx-get="/library?{{ library_query(none, limit, none, q) }}"
+       hx-target="#library-rows" hx-swap="innerHTML"
+       hx-push-url="/?tab=library&{{ library_query(none, limit, none, q) }}"
+       class="font-bold text-accent">Search all {{ total_done }}</a>
+</p>
+{% endif %}
+{% endif %}
 
 {# Filters (#174). Everything in this grid is terminal, but terminal is not the
    same as right: an INCOMPLETE album, one where only some files carry the MBID
@@ -106,16 +183,20 @@
 {% set chip_on = chip ~ " bg-accent border-accent text-white" %}
 {% set chip_off = chip ~ " bg-surface border-line text-muted hover:text-accent hover:border-accent" %}
 {% set chip_dead = chip ~ " border-transparent text-muted opacity-40 cursor-default select-none" %}
+{# Every count here is `total_matched`-relative, not library-relative: under a
+   search the chips report what they would yield *within it* (#180). All says how
+   many the search left; the rest are subsets of that. The header above is the one
+   number that stays library-wide. #}
 <nav class="mb-3 flex flex-wrap items-center gap-1.5" aria-label="Library filters">
     {% if filter %}
-    <a href="/?tab=library&{{ library_query(none, limit, none) }}"
-       hx-get="/library?{{ library_query(none, limit, none) }}"
+    <a href="/?tab=library&{{ library_query(none, limit, none, q) }}"
+       hx-get="/library?{{ library_query(none, limit, none, q) }}"
        hx-target="#library-rows" hx-swap="innerHTML"
-       hx-push-url="/?tab=library&{{ library_query(none, limit, none) }}"
-       class="{{ chip_off }}">All <span class="font-normal tabular-nums">{{ total_done }}</span></a>
+       hx-push-url="/?tab=library&{{ library_query(none, limit, none, q) }}"
+       class="{{ chip_off }}">All <span class="font-normal tabular-nums">{{ total_matched }}</span></a>
     {% else %}
     <span class="{{ chip_on }}" aria-current="true">All
-        <span class="font-normal tabular-nums">{{ total_done }}</span></span>
+        <span class="font-normal tabular-nums">{{ total_matched }}</span></span>
     {% endif %}
 
     {% for f in filters %}
@@ -125,11 +206,13 @@
     {% elif f.count %}
     {# No `page`, so this starts at the first page of the new answer — see the
        macro. The reader's page SIZE does travel: that is a standing preference,
-       and resetting it because they asked a different question would be rude. #}
-    <a href="/?tab=library&{{ library_query(none, limit, f.slug) }}"
-       hx-get="/library?{{ library_query(none, limit, f.slug) }}"
+       and resetting it because they asked a different question would be rude. So
+       does the SEARCH, for the stronger reason that dropping it would widen the
+       view without being asked — the thing #174 refused to do with the filter. #}
+    <a href="/?tab=library&{{ library_query(none, limit, f.slug, q) }}"
+       hx-get="/library?{{ library_query(none, limit, f.slug, q) }}"
        hx-target="#library-rows" hx-swap="innerHTML"
-       hx-push-url="/?tab=library&{{ library_query(none, limit, f.slug) }}"
+       hx-push-url="/?tab=library&{{ library_query(none, limit, f.slug, q) }}"
        class="{{ chip_off }}">{{ f.label }}
         <span class="font-normal tabular-nums">{{ f.count }}</span></a>
     {% else %}
@@ -142,15 +225,36 @@
 
 {% if not rows %}
 <div class="p-10 text-center border border-line rounded-lg">
-    {% if filter %}
-    {# The library isn't empty — this question's answer is. Say which, and give
-       the way back, so a filter can never look like data loss. #}
-    <p class="text-muted italic">No albums match this filter.</p>
-    <a href="/?tab=library&{{ library_query(none, limit, none) }}"
-       hx-get="/library?{{ library_query(none, limit, none) }}"
-       hx-target="#library-rows" hx-swap="innerHTML"
-       hx-push-url="/?tab=library&{{ library_query(none, limit, none) }}"
-       class="mt-2 inline-block text-xs font-bold text-accent">Show all {{ total_done }} albums</a>
+    {% if q or filter %}
+    {# The library isn't empty — this question's answer is. Name the question, and
+       when two were asked at once name both, with a separate way out of each: a
+       reader who cannot tell which narrowing emptied the grid cannot tell an empty
+       answer from data loss, and undoing the wrong one leaves them still staring at
+       nothing. #}
+    <p class="text-muted italic">
+        {% if q and filter %}No “{{ filter_label }}” albums match “{{ q }}”.
+        {% elif q %}No albums match “{{ q }}”.
+        {% else %}No albums match this filter.{% endif %}
+    </p>
+    <div class="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-bold">
+        {% if filter %}
+        {# Drops the filter, keeps the search — an ordinary swap, because it does not
+           have to change what is in the search box. #}
+        <a href="/?tab=library&{{ library_query(none, limit, none, q) }}"
+           hx-get="/library?{{ library_query(none, limit, none, q) }}"
+           hx-target="#library-rows" hx-swap="innerHTML"
+           hx-push-url="/?tab=library&{{ library_query(none, limit, none, q) }}"
+           class="text-accent">{% if q %}Search all {{ total_done }} albums{% else %}Show all {{ total_done }} albums{% endif %}</a>
+        {% endif %}
+        {% if q %}
+        {# Drops the search. A plain link with NO `hx-get`, deliberately: the box is
+           `hx-preserve`d, so only a full navigation actually empties it — a swap
+           would clear the query from the grid and leave it sitting in the input,
+           which is the worst of both. #}
+        <a href="/?tab=library&{{ library_query(none, limit, filter, none) }}"
+           class="text-accent">Clear the search</a>
+        {% endif %}
+    </div>
     {% else %}
     <p class="text-muted italic">No fully-tagged albums yet.</p>
     {% endif %}
@@ -171,10 +275,10 @@
 <nav class="mt-5 flex items-center justify-between gap-4" aria-label="Library pages">
     {% set nav_class = "px-3 py-1.5 rounded border border-line text-sm font-bold transition" %}
     {% if prev_page %}
-    <a href="/?tab=library&{{ library_query(prev_page, limit, filter) }}"
-       hx-get="/library?{{ library_query(prev_page, limit, filter) }}"
+    <a href="/?tab=library&{{ library_query(prev_page, limit, filter, q) }}"
+       hx-get="/library?{{ library_query(prev_page, limit, filter, q) }}"
        hx-target="#library-rows" hx-swap="innerHTML"
-       hx-push-url="/?tab=library&{{ library_query(prev_page, limit, filter) }}"
+       hx-push-url="/?tab=library&{{ library_query(prev_page, limit, filter, q) }}"
        class="{{ nav_class }} bg-surface hover:bg-line text-ink">← Previous</a>
     {% else %}
     <span class="{{ nav_class }} text-muted opacity-40 cursor-default select-none"
@@ -191,10 +295,10 @@
     </span>
 
     {% if next_page %}
-    <a href="/?tab=library&{{ library_query(next_page, limit, filter) }}"
-       hx-get="/library?{{ library_query(next_page, limit, filter) }}"
+    <a href="/?tab=library&{{ library_query(next_page, limit, filter, q) }}"
+       hx-get="/library?{{ library_query(next_page, limit, filter, q) }}"
        hx-target="#library-rows" hx-swap="innerHTML"
-       hx-push-url="/?tab=library&{{ library_query(next_page, limit, filter) }}"
+       hx-push-url="/?tab=library&{{ library_query(next_page, limit, filter, q) }}"
        class="{{ nav_class }} bg-surface hover:bg-line text-ink">Next →</a>
     {% else %}
     <span class="{{ nav_class }} text-muted opacity-40 cursor-default select-none"

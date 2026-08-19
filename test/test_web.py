@@ -2473,6 +2473,308 @@ def test_library_filter_row_is_absent_when_the_library_is_empty(client, cfg):
     assert 'aria-label="Library filters"' not in body
 
 
+# ---------- library search (#180) ----------
+#
+# The filters above find albums that are *wrong*; search finds the album you have
+# in mind. Both narrow the same list, and they compose — so most of what is worth
+# testing here is that neither silently drops the other.
+
+
+def _make_searchable_album(cfg, artist: str, title: str, *, mbid: str, tagged_at) -> Path:
+    """A terminal album with a real artist tag, so search has both fields to match.
+
+    `_make_tagged_album` files everything under one hardcoded "Artist" parent and
+    tags no artist at all, which is fine for paging but makes every album
+    indistinguishable to a search over artist names.
+    """
+    d = cfg.paths.music_dir / artist / title
+    d.mkdir(parents=True)
+    shutil.copy(SINE_M4A, d / "01 Track.m4a")
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
+    audio["aART"] = [artist]
+    audio.save()
+    from harmonist.models import Sidecar
+
+    sc.write(d, Sidecar(mb_release_id=mbid, tagged_at=tagged_at))
+    return d
+
+
+def _make_two_albums(cfg):
+    """One Aphex Twin album and one Björk album — different artists, different
+    titles, so any test can tell which one a query found."""
+    from datetime import datetime, timedelta
+
+    base = datetime.now(UTC)
+    _make_searchable_album(
+        cfg, "Aphex Twin", "Selected Ambient Works 85-92", mbid="rel-saw", tagged_at=base
+    )
+    _make_searchable_album(
+        cfg, "Björk", "Post", mbid="rel-post", tagged_at=base - timedelta(days=1)
+    )
+
+
+def test_library_search_narrows_by_album_title(client, cfg):
+    _make_two_albums(cfg)
+    body = client.get("/library?q=ambient").text
+    assert "Selected Ambient Works" in body
+    assert "Post" not in body
+
+
+def test_library_search_narrows_by_artist(client, cfg):
+    """The other half of the promise — and the half a title-only search would fail
+    silently, since it still returns albums."""
+    _make_two_albums(cfg)
+    body = client.get("/library?q=aphex").text
+    assert "Selected Ambient Works" in body
+    assert ">Björk<" not in body
+
+
+def test_library_search_terms_may_span_both_fields_in_any_order(client, cfg):
+    """`aphex ambient` is an artist word and a title word, and nobody types them
+    in tag order. Every term must match; where it matches is not the reader's
+    problem."""
+    _make_two_albums(cfg)
+    assert "Selected Ambient Works" in client.get("/library?q=ambient+aphex").text
+    assert "Selected Ambient Works" in client.get("/library?q=aphex+ambient").text
+    # Both terms have to land, though, or the search would just be an OR.
+    assert "Selected Ambient Works" not in client.get("/library?q=aphex+post").text
+
+
+def test_library_search_ignores_case_accents_and_punctuation(client, cfg):
+    """Nobody types the umlaut, and nobody types the hyphen in `85-92`."""
+    _make_two_albums(cfg)
+    assert ">Post<" in client.get("/library?q=bjork").text
+    assert ">Post<" in client.get("/library?q=BJORK").text
+    assert "Selected Ambient Works" in client.get("/library?q=85+92").text
+
+
+def test_library_search_handles_a_name_made_only_of_punctuation(client, cfg):
+    """Bands called `!!!` and `†††` are real. Folding a query to nothing and then
+    matching everything would quietly ignore a query still visible in the box."""
+    from datetime import datetime
+
+    base = datetime.now(UTC)
+    _make_searchable_album(cfg, "!!!", "Louden Up Now", mbid="rel-chk", tagged_at=base)
+    _make_searchable_album(cfg, "Aphex Twin", "Drukqs", mbid="rel-drukqs", tagged_at=base)
+    body = client.get("/library?q=%21%21%21").text
+    assert "Louden Up Now" in body
+    assert "Drukqs" not in body
+
+
+def test_library_search_matching_nothing_names_the_query(client, cfg):
+    """An empty answer must never read as an empty library, and must say which
+    question emptied it."""
+    _make_two_albums(cfg)
+    body = client.get("/library?q=zzzz").text
+    assert "No albums match “zzzz”." in body
+    assert "No fully-tagged albums yet." not in body
+    assert "Clear the search" in body
+
+
+def test_library_header_total_ignores_the_search(client, cfg):
+    """`data-total-done` feeds the Library tab badge, which reports the whole
+    library. A searched grid must not let it start reporting its own rows (#140)."""
+    _make_two_albums(cfg)
+    body = client.get("/library?q=aphex").text
+    assert 'data-total-done="2"' in body
+    # The All chip, though, reports what the search left — it is the number the
+    # other chips are subsets of, and it is not the library's size any more.
+    assert re.search(r'aria-current="true">All\s*<span[^>]*>1</span>', body)
+
+
+def test_library_filter_counts_are_taken_within_the_search(client, cfg):
+    """A chip promising 2 and delivering 1 describes a population the reader
+    cannot see. Search narrows first; the counts follow it."""
+    from datetime import datetime
+
+    base = datetime.now(UTC)
+    # Two coverless albums, only one of them an Aphex one.
+    _make_searchable_album(cfg, "Aphex Twin", "Drukqs", mbid="rel-drukqs", tagged_at=base)
+    _make_searchable_album(cfg, "Björk", "Post", mbid="rel-post", tagged_at=base)
+    assert re.search(r"No artwork\s*<span[^>]*>2</span>", client.get("/library").text)
+    assert re.search(r"No artwork\s*<span[^>]*>1</span>", client.get("/library?q=aphex").text)
+
+
+def test_library_search_composes_with_a_filter(client, cfg):
+    """They ask different questions — "what is broken" and "where is this record" —
+    so one must not silently cancel the other."""
+    from datetime import datetime
+
+    base = datetime.now(UTC)
+    _give_cover(_make_searchable_album(cfg, "Aphex Twin", "Drukqs", mbid="rel-d", tagged_at=base))
+    _make_searchable_album(cfg, "Aphex Twin", "Syro", mbid="rel-syro", tagged_at=base)
+    body = client.get("/library?q=aphex&filter=no-artwork").text
+    assert "Syro" in body  # matches the search AND the filter
+    assert "Drukqs" not in body  # matches the search, has a cover
+
+
+def test_library_search_inside_a_filter_says_so(client, cfg):
+    """The compound state the reader assembled in two moves, named in words at the
+    place they are typing — a chip count changing is too quiet a signal for it."""
+    from datetime import datetime
+
+    _make_searchable_album(cfg, "Aphex Twin", "Syro", mbid="rel-syro", tagged_at=datetime.now(UTC))
+    body = client.get("/library?q=aphex&filter=no-artwork").text
+    assert "Searching only the “No artwork” albums." in body
+    # And with no filter there is nothing to disambiguate, so no caption.
+    assert "Searching only the" not in client.get("/library?q=aphex").text
+
+
+def test_library_search_inside_a_filter_offers_both_ways_out(client, cfg):
+    """Two narrowings, two escape hatches. A reader who undoes the wrong one is
+    still staring at an empty grid and no wiser about why."""
+    from datetime import datetime
+
+    _make_searchable_album(cfg, "Björk", "Post", mbid="rel-post", tagged_at=datetime.now(UTC))
+    body = client.get("/library?q=zzzz&filter=no-artwork").text
+    assert "No “No artwork” albums match “zzzz”." in body
+    assert "Search all 1 albums" in body  # drops the filter, keeps the search
+    assert "Clear the search" in body  # drops the search, keeps the filter
+
+
+def test_library_search_rides_in_every_library_url(client, cfg):
+    """A control that dropped `q` would widen the view mid-browse, silently, since
+    the grid still renders albums. Seventeen call sites; this is the net under
+    them (`make template-lint` is the other half)."""
+    from datetime import datetime, timedelta
+
+    base = datetime.now(UTC)
+    for i in range(5):
+        _make_searchable_album(
+            cfg, "Aphex Twin", f"Album{i}", mbid=f"rel-{i}", tagged_at=base - timedelta(days=i)
+        )
+    body = client.get("/library?page=2&limit=2&q=aphex").text
+    # Both pager arrows, as href and as hx-push-url.
+    assert 'hx-get="/library?page=1&limit=2&q=aphex"' in body
+    assert 'href="/?tab=library&page=3&limit=2&q=aphex"' in body
+    assert 'hx-push-url="/?tab=library&page=3&limit=2&q=aphex"' in body
+    # The container's own refresh wiring — every `tasks-changed` re-requests this
+    # view, and without `q` the grid would quietly widen on its own.
+    assert 'hx-get="/library?page=2&limit=2&q=aphex"' in body
+    # The page-size form, or picking "40 per page" answers a different question.
+    assert '<input type="hidden" name="q" value="aphex">' in body
+    # And the filter chips, which are supposed to narrow the search, not replace it.
+    assert 'hx-get="/library?limit=2&filter=no-artwork&q=aphex"' in body
+
+
+def test_library_search_links_start_at_the_first_page(client, cfg):
+    """Searching asks a new question, so the chips start at the first page of the
+    answer rather than asking for page 3 of a one-album result."""
+    from datetime import datetime, timedelta
+
+    base = datetime.now(UTC)
+    for i in range(5):
+        _make_searchable_album(
+            cfg, "Aphex Twin", f"Album{i}", mbid=f"rel-{i}", tagged_at=base - timedelta(days=i)
+        )
+    body = client.get("/library?page=3&limit=2&q=aphex").text
+    assert 'hx-get="/library?limit=2&filter=no-artwork&q=aphex"' in body
+
+
+def test_library_search_is_urlencoded_in_every_url(client, cfg):
+    """`q` is free text, unlike the filter's whitelisted slug. A bare `&` would end
+    every URL on this page early and silently drop the parameters after it."""
+    from datetime import datetime
+
+    _make_searchable_album(
+        cfg, "Belle & Sebastian", "Tigermilk", mbid="rel-tiger", tagged_at=datetime.now(UTC)
+    )
+    body = client.get("/library?q=belle+%26+seb").text
+    assert "Tigermilk" in body
+    assert "q=belle%20%26%20seb" in body or "q=belle+%26+seb" in body
+    assert "q=belle & seb" not in body
+
+
+def test_library_search_does_not_reflect_markup(client, cfg):
+    """`q` is untrusted and, unlike a rejected filter slug, it is echoed back into
+    the box and into the empty state. It has to arrive as text."""
+    _make_two_albums(cfg)
+    body = client.get("/library?q=%3Cscript%3Ealert(1)%3C/script%3E").text
+    assert "<script>alert(1)" not in body
+    assert "&lt;script&gt;" in body
+
+
+def test_library_blank_search_is_indistinguishable_from_no_search(client, cfg):
+    """`?q=` with nothing in it must not render as a search that found everything —
+    no caption, no `q=` trailing through the page's URLs."""
+    _make_two_albums(cfg)
+    body = client.get("/library?q=+++").text
+    assert "Selected Ambient Works" in body and ">Post<" in body
+    assert "q=" not in body
+
+
+def test_library_search_is_length_clamped(client, cfg):
+    """`q` is reflected into seventeen URLs, so an unbounded one bloats the whole
+    render. Past a hundred characters it is a paste accident, not a search."""
+    _make_two_albums(cfg)
+    r = client.get("/library?q=" + "z" * 500)
+    assert r.status_code == 200
+    assert "z" * 200 not in r.text
+
+
+def test_library_does_not_remember_a_search(client, cfg):
+    """Same reasoning as the filter (#174): a page size is a standing preference, a
+    search is a question asked once."""
+    _make_two_albums(cfg)
+    searched = client.get("/library?q=aphex")
+    assert not any("q" == name for name in searched.cookies)
+    assert ">Post<" in client.get("/library").text
+
+
+def test_library_search_rides_in_the_index_url(client, cfg):
+    """The grid paints inline, so a shared link resolves to the same albums rather
+    than painting the whole library and correcting it."""
+    _make_two_albums(cfg)
+    body = client.get("/?tab=library&q=aphex").text
+    assert "Selected Ambient Works" in body
+    assert ">Post<" not in body
+    # And the box shows what is being searched for, rather than looking unsearched.
+    assert 'name="q" value="aphex"' in body
+
+
+def test_library_search_survives_the_trip_out_to_an_album_and_back(client, cfg):
+    """The round trip #140 exists for. Nothing remembers a search, so these two
+    links are the only things that can carry it."""
+    from datetime import datetime
+
+    d = _make_searchable_album(
+        cfg, "Aphex Twin", "Syro", mbid="rel-syro", tagged_at=datetime.now(UTC)
+    )
+    album_id = _id_for(cfg, d)
+    assert f'href="/album/{album_id}?from_q=aphex"' in client.get("/library?q=aphex").text
+    back = client.get(f"/album/{album_id}?from_q=aphex").text
+    assert 'href="/?tab=library&q=aphex"' in back
+
+
+def test_library_search_pushes_the_resolved_url_only_when_asked(client, cfg):
+    """The search form cannot spell its own `hx-push-url` — it knows neither the
+    page size nor the page its query will land on — so it asks the server for one
+    with a header. Every other control here is a link that already names its URL,
+    and this grid re-requests itself on every `tasks-changed`: pushing on those
+    would bury the Back button under identical entries."""
+    _make_two_albums(cfg)
+    asked = client.get("/library?q=aphex", headers={"X-Harmonist-Push-Url": "1"})
+    assert asked.headers["HX-Push-Url"] == "/?tab=library&page=1&limit=20&q=aphex"
+    assert "HX-Push-Url" not in client.get("/library?q=aphex").headers
+
+
+def test_library_search_push_url_encodes_the_query(client, cfg):
+    """The server builds this one itself rather than through the template macro, so
+    it needs its own encoding — an unencoded `&` would truncate the address bar."""
+    _make_two_albums(cfg)
+    r = client.get("/library?q=belle+%26+seb", headers={"X-Harmonist-Push-Url": "1"})
+    assert r.headers["HX-Push-Url"] == "/?tab=library&page=1&limit=20&q=belle%20%26%20seb"
+
+
+def test_library_search_box_is_absent_when_the_library_is_empty(client, cfg):
+    """Nothing to search, so no box — the empty state stands alone, as it does for
+    the filters."""
+    body = client.get("/library").text
+    assert "No fully-tagged albums yet." in body
+    assert 'id="library-search"' not in body
+
+
 def test_library_page_size_rides_in_the_index_url(client, cfg):
     """`?limit=` belongs to the same addressable view as `?tab=` and `?page=`, so
     a shared link resolves to exactly the albums the sender was looking at."""

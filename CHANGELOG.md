@@ -6,6 +6,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- The Library can be searched by artist or album title, matching loosely enough
+  to forgive case, accents and punctuation. The search rides in the URL and
+  narrows the filters alongside it, so "the albums with no artwork by Aphex Twin"
+  is a link you can share (#180).
+
 ## [1.8.0] - 2026-08-18
 
 ### Added
