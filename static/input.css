@@ -400,7 +400,9 @@ button[disabled],
 .tag-changes__after { color: var(--color-mb-purple); }
 .tag-changes__arrow { color: var(--color-muted); margin: 0 .35rem; }
 .tag-changes__absent { color: var(--color-muted); font-style: italic; }
-/* Artwork: what happened, not two sha256s that would swamp every row near it. */
+/* Stands in for the values on a row that has none to show: artwork (what
+   happened, not two sha256s that would swamp every row near it) and a field
+   whose files disagree (how many answers there are, not one track's). */
 .tag-changes__opaque { color: var(--color-ink); }
 
 /* Undo, on the row that says what happened. Rare and reversible, so it is

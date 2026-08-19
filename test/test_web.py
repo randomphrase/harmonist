@@ -3365,6 +3365,10 @@ def test_album_page_shows_what_a_tagging_changed_under_its_activity_entry(client
     # A field that differs per track gets the expansion; one that doesn't, doesn't.
     assert "Show which tracks" in body
     assert "rec-1" in body and "rec-2" in body
+    # ...and its own row states how many answers there are rather than passing
+    # track 1's off as the album's (#185). The values live in the expansion.
+    assert "2 different values" in body
+    assert body.index("2 different values") < body.index("rec-1")
 
     # Anchored to the activity entry, so it renders ONCE, not once per file.
     assert body.count('class="tag-changes"') == 1

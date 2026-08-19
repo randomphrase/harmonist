@@ -72,8 +72,7 @@ def test_album_fields_sort_before_track_fields_and_artwork_sits_last():
 
 def test_a_field_that_changed_differently_per_track_keeps_every_version():
     """A compilation where each track's artist changed to something different
-    has no album-wide answer. Showing one track's as if it were everyone's is
-    the quiet lie the count pill exists to prevent."""
+    has no album-wide answer."""
     records = _album(4, lambda i: {"artist": [f"old {i}", f"new {i}"]})
 
     row = _row(summarise(records), "artist")
@@ -82,15 +81,46 @@ def test_a_field_that_changed_differently_per_track_keeps_every_version():
     assert len(row.variants) == 4
     assert row.variants[0].before == "old 1"
     assert row.variants[0].position == "1"
-    # A representative pair is still shown — a row with no value at all reads as
-    # broken, and the variants are one disclosure away.
-    assert row.before is not None and row.after is not None
 
 
-def test_an_even_split_shows_the_first_file_the_same_rule_as_the_album_panel():
-    """`compare.consensus` breaks a tie by track order and says so in one
-    sentence. A reader who learned that rule on the album panel must not meet a
-    different one here."""
+def test_a_field_whose_files_disagree_counts_the_answers_instead_of_picking_one():
+    """#185: 38 tracks legitimately carry 38 different recording MBIDs, and
+    printing the first one beside "all tracks" reads as though the whole album
+    got it. The reach can't take that back — it says the same thing whether the
+    value was the same on every track or different on every track."""
+    records = _album(38, lambda i: {"mb_track_id": [None, f"mbid-{i}"]})
+
+    row = _row(summarise(records), "mb_track_id")
+
+    assert row.varied_summary == "38 different values"
+    assert row.reach == "all tracks"
+    # No emphasis runs either: there is no pair on show to emphasise.
+    assert row.before_runs == () and row.after_runs == ()
+
+
+def test_the_answer_count_is_of_distinct_values_not_of_files():
+    """Four tracks that moved two different ways is two answers, not four —
+    the count says how many things happened, not how many files there were."""
+    records = _album(4, lambda i: {"artist": ["A", "X" if i < 3 else "Y"]})
+
+    assert _row(summarise(records), "artist").varied_summary == "2 different values"
+
+
+def test_a_uniform_field_still_shows_its_value():
+    """The suppression is for disagreement only. An album that moved as one has
+    exactly one answer, and hiding it behind a count would make the common case
+    unreadable to save the rare one."""
+    row = _row(summarise(_album(18, lambda i: {"artist": ["A", "B"]})), "artist")
+
+    assert row.uniform
+    assert (row.before, row.after) == ("A", "B")
+
+
+def test_an_even_split_resolves_to_the_first_files_pair():
+    """The tie rule behind `_representative`, which since #185 the value cell no
+    longer consults — it survives for the artwork row below. Kept the same rule
+    `compare.consensus` uses on the album panel: a reader who learned it there
+    must not find a different one here."""
     records = [
         TagChanges(file="01.flac", changes={"artist": ["A", "X"]}, position="1"),
         TagChanges(file="02.flac", changes={"artist": ["B", "Y"]}, position="2"),
@@ -117,6 +147,25 @@ def test_the_representative_pair_is_a_transition_some_track_actually_made():
     row = _row(summarise(records), "artist")
 
     assert (row.before, row.after) in {("A", "X"), ("A", "Y"), ("B", "Z"), ("C", "Z")}
+
+
+def test_the_artwork_row_keeps_the_image_most_of_the_album_lost():
+    """Artwork is the one row that still needs a representative on a disagreeing
+    album: it shows what happened rather than a value, and `before` is what
+    decides whether the restore button is offered (#131). A track that never had
+    an image must not talk the other three out of getting theirs back."""
+    records = [
+        TagChanges(file="01.flac", changes={ARTWORK: [None, "b" * 64]}, position="1"),
+        *(
+            TagChanges(file=f"0{i}.flac", changes={ARTWORK: ["a" * 64, "b" * 64]}, position=str(i))
+            for i in (2, 3, 4)
+        ),
+    ]
+
+    row = _row(summarise(records), ARTWORK)
+
+    assert not row.uniform
+    assert row.before == "a" * 64
 
 
 def test_artwork_states_what_happened_instead_of_reciting_digests():

@@ -66,6 +66,14 @@
                 aria-label="Undo this artwork change">Undo</button>
         {% endif %}
 
+        {% elif not c.uniform %}
+        {# The files disagree, so there is no value to put here — 38 tracks
+           legitimately carry 38 different recording MBIDs, and printing the
+           first one beside "all tracks" reads as though the whole album got it
+           (#185). The count is the fact that holds for the row; the values are
+           in the disclosure below, which is where a list that long belongs. #}
+        <span class="tag-changes__opaque">{{ c.varied_summary }}</span>
+
         {% else %}
         {# A field with nothing before it shows only what was written. On a first
            tagging that is EVERY row, so "— →" would prefix the whole list with

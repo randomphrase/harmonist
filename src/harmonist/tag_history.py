@@ -107,13 +107,32 @@ class FieldChange:
     after_runs: tuple[Run, ...] = ()
     #: Every file's version of this change, in the order recorded. Populated
     #: only when they DIFFER — when the whole album moved the same way, the
-    #: representative pair above already says everything.
+    #: pair above already says everything. When they differ, these are the only
+    #: honest values there are: the row shows `varied_summary` instead.
     variants: tuple[TrackChange, ...] = ()
 
     @property
     def uniform(self) -> bool:
         """Whether every file that changed changed the same way."""
         return not self.variants
+
+    @property
+    def varied_summary(self) -> str:
+        """What to show in place of the values when the files DON'T agree.
+
+        Showing one file's pair as though it were the album's is a guess
+        dressed as a fact, and `reach` can't take it back — a field that
+        reached every track with a different value each time is annotated
+        exactly like one that reached every track with the same value (#185).
+        Identifier fields make it plainest: 38 tracks legitimately carry 38
+        different recording MBIDs, and none of them is the album's.
+
+        So the count goes where the value would be. It's a fact about the
+        change that holds for the whole row, and the per-track disclosure
+        underneath carries the values themselves — which is where a list that
+        long belongs anyway.
+        """
+        return f"{len({(v.before, v.after) for v in self.variants})} different values"
 
     @property
     def summary(self) -> str:
@@ -365,9 +384,9 @@ def _row(field: str, entries: list[tuple[str, str | None, Any, Any]], total: int
     variants: tuple[TrackChange, ...] = ()
     if len(set(pairs)) > 1:
         # Only when they actually differ — a compilation where every track's
-        # artist changed to something different has no single answer, and
-        # showing one track's as if it were the album's would be the quiet lie
-        # the count pill exists to prevent.
+        # artist changed to something different has no single answer, so the
+        # row states how many answers there are (`varied_summary`) and these
+        # carry the values.
         variants = tuple(
             TrackChange(file=f, position=p, before=display(b), after=display(a))
             for f, p, b, a in entries
@@ -376,9 +395,10 @@ def _row(field: str, entries: list[tuple[str, str | None, Any, Any]], total: int
     opaque = field == ARTWORK
     before_runs: tuple[Run, ...] = ()
     after_runs: tuple[Run, ...] = ()
-    if before is not None and after is not None and not opaque:
+    if before is not None and after is not None and not opaque and not variants:
         # Two sha256 digests differ in nearly every character, so emphasis on
-        # them would be noise on top of noise.
+        # them would be noise on top of noise — and a row whose files disagree
+        # shows no pair to emphasise.
         before_runs, after_runs = diff_runs(before, after)
 
     return FieldChange(
@@ -397,17 +417,22 @@ def _row(field: str, entries: list[tuple[str, str | None, Any, Any]], total: int
 
 
 def _representative(pairs: list[tuple[str | None, str | None]]) -> tuple[str | None, str | None]:
-    """The change to show when the files don't all agree.
+    """The album's `(before, after)` for this field, where it has one.
 
-    The most common `(before, after)` pair; on a tie, **the first file's**.
-    Deliberately the same rule `compare.consensus` uses for the album panel,
-    stated the same way — "when your tracks disagree evenly, Harmonist shows
-    what the first one says" — because a reader who has learned it in one place
-    should not find a different rule in the other.
+    When every file agrees this is trivially that pair — the ordinary case, and
+    the only one the value cell renders since #185: a row whose files disagree
+    shows `varied_summary` instead, because no single pair is the album's.
+
+    It still resolves the disagreeing case for **artwork**, whose row shows
+    what happened rather than a value, and whose `before` decides whether the
+    restore button is offered at all. There the most common `(before, after)`
+    is the right answer — an album where one track never had an image should
+    still offer to put back the image the other seventeen lost.
 
     The pair is kept together rather than resolved field-by-field: taking the
     most common `before` and the most common `after` independently could
-    manufacture a transition that no track actually made.
+    manufacture a transition that no track actually made. On a tie it is **the
+    first file's**, the same rule `compare.consensus` uses for the album panel.
     """
     counts = Counter(pairs)
     top = max(counts.values())

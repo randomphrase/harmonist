@@ -18,6 +18,10 @@ versions follow [semantic versioning](https://semver.org).
 - Artist sort and Album artist sort no longer run a collaboration's artists
   together — "zakè & rhubiqs" was tagged as "zakèrhubiqs". Re-tag an affected
   album to correct it (#183).
+- An album's history no longer shows one track's value as though the whole album
+  got it. A field that changed differently on each track — Recording and Release
+  track always do — now reads "38 different values", with the values themselves
+  under "Show which tracks" (#185).
 
 ## [1.8.0] - 2026-08-18
 
