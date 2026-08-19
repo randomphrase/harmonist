@@ -34,6 +34,13 @@ It works best on a library that's already in reasonable shape. Harmonist assumes
 - **One album per folder** — each directory of audio files is treated as a single
   album. A folder mixing several albums is flagged **Inconsistent**; split it with
   [Picard](https://picard.musicbrainz.org) first.
+- **Per-disc subfolders are fine** — a multi-disc release filed as
+  `Album/CD1` + `Album/CD2` is recognised as one album. Harmonist spots it when
+  both folders are tagged to the same MusicBrainz release and carry different
+  disc numbers, then writes a sidecar into the parent folder; your files are
+  never moved. If you'd rather it stayed as separate albums, delete that parent
+  `.harmonist.json`. (The now-redundant sidecars in the disc folders are left
+  alone — harmless, and yours to remove.)
 - **Already tagged** — ideally Picard-tagged. Harmonist reads the MusicBrainz
   Album ID from your files to recognize what's matched; anything untagged lands in
   the inbox for you to match by hand.

@@ -246,6 +246,13 @@ class Album:
     # sidecar from the tag MBID. Untagged orphans (no MBID) are never
     # reconcilable, so the inbox uses this to avoid kicking reconcile for them.
     has_tag_mbid: bool = False
+    # The one disc number every file here carries, or None when they disagree
+    # or none is tagged. Scanner-derived; not persisted. This is what tells a
+    # split release (#16) from a duplicate: two directories of the same MB
+    # release are its disc 1 and disc 2 if their numbers DIFFER, and are two
+    # copies of the same disc if they don't. Absent that, "same release, two
+    # folders" describes both, and merging a duplicate would be a fabrication.
+    disc_num: int | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -198,6 +198,8 @@ def read_scan_fields(path: Path) -> ScanFields:
         codec="MP3",
         has_cover=bool(tags and tags.getall("APIC")),
         album_artist=_text(tags, "TPE2"),
+        # TPOS is "2" or "2/2" — take the disc, discard the total.
+        disc_num=_first_int(_text(tags, "TPOS")),
     )
 
 

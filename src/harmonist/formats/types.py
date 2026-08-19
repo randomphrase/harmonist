@@ -32,6 +32,13 @@ class ScanFields(NamedTuple):
     # mid-tagging and invites the user to re-tag it (#112). "I couldn't read
     # this" and "there's nothing here" are different answers.
     unreadable: bool = False
+    # Disc number (Picard: disk / TPOS / DISCNUMBER). None when the tag is
+    # absent, which is the norm for a single-disc release. Read here — in the
+    # scan's one open per file — rather than via `read_tags`, because it is what
+    # separates the two folders of a split release (disc 1, disc 2) from two
+    # duplicate copies of the same one (both disc 1), and that question is asked
+    # of every album in the library, not of one the user opened (#16).
+    disc_num: int | None = None
 
 
 @dataclass

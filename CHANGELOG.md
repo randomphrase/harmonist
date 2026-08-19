@@ -6,6 +6,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- A release you filed as per-disc folders (`Album/CD1`, `Album/CD2`) is now
+  recognised as one album instead of one per disc. Nothing on disk moves — the
+  folders stay where they are, and deleting the sidecar Harmonist adds to the
+  parent folder undoes it (#16).
+
 ## [1.9.0] - 2026-08-19
 
 ### Added

@@ -245,6 +245,7 @@ class VorbisTagger:
             codec=codec,
             has_cover=has_cover,
             album_artist=first(KEY_ALBUM_ARTIST),
+            disc_num=_first_int(first(KEY_DISC_NUMBER)),
         )
 
     def read_tags(self, path: Path) -> TrackTags:

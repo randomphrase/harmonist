@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from itertools import zip_longest
 from pathlib import Path
 
-from . import formats
+from . import album_files, formats
 from .compare import LENGTH_TOLERANCE_MS
 from .models import MatchCandidate, MatchConfidence, Release, Track, TrackComparison
 from .tagger import _flatten_tracks, _track_title
@@ -32,7 +32,7 @@ def assess_match(album_dir: Path, release: Release) -> MatchCandidate:
         or out of tolerance.
       - "no_match": file count differs from MB track count.
     """
-    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
+    files = album_files.audio_files(album_dir)
     tracks = list(_flatten_tracks(release))
 
     file_count = len(files)

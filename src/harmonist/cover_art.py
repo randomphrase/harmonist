@@ -14,7 +14,7 @@ from pathlib import Path
 
 import httpx
 
-from . import audit, formats
+from . import album_files, audit, formats
 
 CAA_BASE = "https://coverartarchive.org"
 DEFAULT_TIMEOUT = 30.0
@@ -64,7 +64,7 @@ def ensure_cover(
 def _extract_embedded_cover(album_dir: Path) -> Path | None:
     """Write a folder cover from the first audio file that carries embedded
     art. Ensures a `cover.*` exists on disk even when CAA has no match."""
-    for path in sorted(p for p in album_dir.iterdir() if formats.is_supported(p)):
+    for path in album_files.audio_files(album_dir):
         result = formats.read_cover(path)
         if result is None:
             continue

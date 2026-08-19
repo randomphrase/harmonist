@@ -695,6 +695,7 @@ src/harmonist/
   models.py             Album, Sidecar, AlbumState, MatchCandidate, BandcampInfo, …
   sidecar.py            Read/write .harmonist.json sidecars atomically
   scanner.py            Walk music dir → Album objects (state derived per-album)
+  album_files.py        Which audio files belong to one album — incl. a release split across disc dirs (#16)
   reconcile.py          Derive a sidecar from MBID tag + ©cmt + MB url-rels (orphan recovery)
   url_recovery.py       Recover an embedded Bandcamp URL from ©cmt (precise or artist-root; no scraping)
   bandcamp_hook.py      bandcampsync Syncer subclass: download cap, sidecar capture, purchase↔album linking
@@ -1182,8 +1183,67 @@ class as inconsistent; user resolves externally.
 - **Tag editing of individual files** outside MB lookups: Picard's job.
 - **Recursive directory disagreement** (nested album dirs): scanner
   treats every dir with audio files as a single album. Atypical layouts
-  must be flattened first.
+  must be flattened first — with the one exception of a release split
+  across per-disc directories, covered in §13.5.
 - **Format conversion**: Harmonist never transcodes.
+
+### 13.5 A release split across per-disc directories
+
+A library assembled over decades has multi-disc releases filed as
+`Album/CD1` + `Album/CD2` — one MusicBrainz release, two directories.
+Treated as two albums they are two Library tiles, each with half a
+tracklist, and each wrong about what it has (#16).
+
+**Grouping, not merging.** A directory that declares itself an album with
+a sidecar, while holding no audio of its own, owns every audio file
+beneath it (`album_files.audio_files`). Nothing on disk moves: the layout
+Plex and Navidrome already index is untouched, and there is no migration.
+
+**Forget is the way out.** It deletes the parent's sidecar, which puts the
+parts back exactly as they were, and exempts the parent so the next
+reconcile pass does not re-group it.
+
+The rule is deliberately narrow. **A directory with audio of its own is
+an album, full stop**, even when it also has audio-bearing
+subdirectories. So no album that exists today can change shape: Harmonist
+has never written a sidecar into a directory containing no audio, making
+the grouped shape unreachable by accident.
+
+**Detection** runs in the reconcile pass and writes that parent sidecar.
+It is an identity match, not a best fit — every one of these must hold,
+and any that doesn't leaves the directories alone:
+
+- the parent is not the library root, and is not an album itself;
+- it has no sidecar yet (one already there means it is grouped, and
+  re-promoting it each pass would break idempotence);
+- at least two audio-bearing subdirectories, **all** of them accounted
+  for — a leftover means a container directory that happens to hold two
+  discs;
+- every part is tagged to the **same** `mb_release_id`;
+- every part carries a **distinct disc number**.
+
+That last one is what separates a split release from a duplicate: two
+directories of the same release are its disc 1 and disc 2 if their disc
+numbers differ, and are two copies of the same disc if they don't.
+Without a disc number on every part there is no evidence either way, so
+nothing is merged.
+
+Detection makes **no MusicBrainz call** and reads no tags of its own — it
+runs over the whole library, which §6's budget puts out of reach for a
+per-album lookup. Everything it needs the scan has already read
+(`Album.disc_num`).
+
+The parent's sidecar inherits from the parts (earliest `added_at`, latest
+`tagged_at`, the widest `track_count_expected`, any `store_url`, and
+`purchase_unavailable` if any part was surrendered). **No alias row is
+written**: an album's id *is* its `mb_release_id` once it has one, and
+detection only groups parts that already agree on the release, so the id
+is unchanged by grouping and the parts' history is already reachable.
+
+The parts' own sidecars are left in place. They are stale descriptions of
+directories that are no longer albums, and deleting them would be a
+destructive write to user data on the strength of a derived rule; the
+scanner never descends into a grouped album, so they cost only clutter.
 
 ## 14. Store support
 

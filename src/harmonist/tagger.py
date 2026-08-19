@@ -14,10 +14,10 @@ import hashlib
 import logging
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Protocol, runtime_checkable
 
-from . import activity_store, artwork_store, audit, formats, tag_history
+from . import activity_store, album_files, artwork_store, audit, formats, tag_history
 from . import sidecar as sidecar_mod
 from .formats import TagSet, owned
 from .formats.m4a import (  # noqa: F401 — back-compat re-exports
@@ -130,7 +130,7 @@ def tag_album(
     differing per-track artwork (which is otherwise preserved) — the user's
     explicit "replace the artwork" override.
     """
-    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
+    files = album_files.audio_files(album_dir)
     flat_tracks = list(_flatten_tracks(release))
 
     if not incomplete and len(files) != len(flat_tracks):
@@ -203,18 +203,19 @@ def tag_album(
         event_id = audit.record(
             "tag.track",
             album_id=album_id,
-            file=file_path.name,
+            file=album_files.rel_name(album_dir, file_path),
             track=track_pos_in_medium,
             title=_track_title(track),
         )
         if event_id is not None:
-            _record_changes(event_id, file_path, tagset, before, art_before, art_after)
+            _record_changes(event_id, album_dir, file_path, tagset, before, art_before, art_after)
 
     return len(files)
 
 
 def _record_changes(
     event_id: int,
+    album_dir: Path,
     file_path: Path,
     tagset: TagSet,
     before: dict[str, Any],
@@ -241,7 +242,7 @@ def _record_changes(
         return
     activity_store.record_tag_changes(
         event_id,
-        file=file_path.name,
+        file=album_files.rel_name(album_dir, file_path),
         changes=changes,
         track_ref=tagset.mb_release_track_id,
         rec_ref=tagset.mb_track_id,
@@ -380,22 +381,48 @@ def _identity_revert(
     if len(befores) != 1:
         return None
 
-    on_disk = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
-    if {p.name for p in on_disk} != set(changes):
+    on_disk = {album_files.rel_name(album_dir, p): p for p in album_files.audio_files(album_dir)}
+    if set(on_disk) != set(changes):
         # Files have appeared or gone since. Any the plan doesn't name would
         # keep whatever id they carry, so moving the rest would split the
         # album's identity between two releases.
         return None
-    for path in on_disk:
+    for name, path in on_disk.items():
         try:
             current = formats.read_owned(path)
         except Exception as e:
-            raise RevertUnavailableError(f"could not read the tags on {path.name}: {e}") from e
-        if owned.values_differ(current.get(field), changes[path.name][1]):
+            raise RevertUnavailableError(f"could not read the tags on {name}: {e}") from e
+        if owned.values_differ(current.get(field), changes[name][1]):
             return None
 
     before = next(iter(befores))
     return _IdentityRevert(value=before if isinstance(before, str) and before else None)
+
+
+def _resolve_in_album(album_dir: Path, name: str, error: type[Exception]) -> Path:
+    """Join a stored record's file name onto the album directory, refusing
+    anything that could name a file outside it.
+
+    Raises the caller's own "this undo can't be done" exception rather than a
+    bare ValueError, so a malformed record surfaces to the user as a declined
+    undo instead of a 500.
+
+    Since #16 the name may carry a disc directory ("CD2/01 - Intro.m4a"), so a
+    bare-filename test no longer works — but relaxing the SHAPE must not relax
+    the guarantee. Every component is checked, and the joined path is confirmed
+    to still be inside the album afterwards, which is what actually holds on a
+    case-insensitive or symlinked filesystem.
+    """
+    rel = PurePosixPath(name)
+    if not name or rel.is_absolute() or any(part in ("", ".", "..") for part in rel.parts):
+        raise error(f"{name!r} is not a file name in this album")
+    path = album_dir / rel
+    # The component check above rejects the obvious escapes; this rejects the
+    # ones a filesystem invents — a symlinked disc directory pointing out of the
+    # album. `resolve()` follows links, so it is the real target being tested.
+    if not path.resolve().is_relative_to(album_dir.resolve()):
+        raise error(f"{name!r} is not a file name in this album")
+    return path
 
 
 def revert_tags(album_dir: Path, plan: Sequence[tag_history.FileRevert]) -> RevertOutcome:
@@ -433,11 +460,8 @@ def revert_tags(album_dir: Path, plan: Sequence[tag_history.FileRevert]) -> Reve
     for item in plan:
         # `item.file` reaches here from a stored record and is joined to a path.
         # Records are permanent and unversioned, so a malformed one will turn up
-        # eventually; a bare filename is the only thing ever written here, and
-        # anything else must not become a write outside the album.
-        if item.file != Path(item.file).name or item.file in ("", ".", ".."):
-            raise RevertUnavailableError(f"{item.file!r} is not a file name in this album")
-        path = album_dir / item.file
+        # eventually, and this join must not become a write outside the album.
+        path = _resolve_in_album(album_dir, item.file, RevertUnavailableError)
         if not path.exists():
             raise RevertUnavailableError(f"{item.file} is no longer in this album")
         try:
@@ -493,12 +517,14 @@ def revert_tags(album_dir: Path, plan: Sequence[tag_history.FileRevert]) -> Reve
             "tag.revert.track",
             album_id=album_id,
             album=album_dir,
-            file=path.name,
+            file=album_files.rel_name(album_dir, path),
         )
         if event_id is not None:
             changes = owned.diff(before, target)
             if changes:
-                activity_store.record_tag_changes(event_id, file=path.name, changes=changes)
+                activity_store.record_tag_changes(
+                    event_id, file=album_files.rel_name(album_dir, path), changes=changes
+                )
         files += 1
 
     return RevertOutcome(
@@ -537,11 +563,8 @@ def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
     for name, key in digests.items():
         # `name` comes out of a stored record and is joined to a path. Records
         # are permanent and unversioned, so a malformed one will turn up
-        # eventually; a bare filename is the only thing that was ever written
-        # here, and anything else must not become a write outside the album.
-        if name != Path(name).name or name in ("", ".", ".."):
-            raise ArtworkUnavailableError(f"{name!r} is not a file name in this album")
-        path = album_dir / name
+        # eventually, and this join must not become a write outside the album.
+        path = _resolve_in_album(album_dir, name, ArtworkUnavailableError)
         if not path.exists():
             raise ArtworkUnavailableError(f"{name} is no longer in this album")
         stored = artwork_store.path_for(key)
@@ -566,7 +589,12 @@ def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
         if current is not None:
             artwork_store.keep(current[0], mime=current[1])
         formats.write_cover(path, data)
-        audit.record("artwork.restore", album=album_dir, file=path.name, digest=_digest(data))
+        audit.record(
+            "artwork.restore",
+            album=album_dir,
+            file=album_files.rel_name(album_dir, path),
+            digest=_digest(data),
+        )
         restored += 1
     return restored
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from stat import S_ISREG
 from typing import NamedTuple
 
-from . import formats, id_registry
+from . import album_files, formats, id_registry
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecarError, UnsupportedSchemaVersionError
 from .sidecar import read as read_sidecar
@@ -40,9 +40,11 @@ AlbumCache = dict[Path, tuple[AlbumSignature, Album, list["formats.ScanFields"]]
 def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Album]:
     """Return one Album for every album directory under music_dir.
 
-    An "album directory" is any directory that contains at least one
-    audio file in a supported format. State is derived from the sidecar
-    (if present) plus a file-tag check for confirming "tagged" status.
+    An "album directory" is any directory that contains at least one audio
+    file in a supported format — plus, per `album_files`, a sidecar'd parent
+    whose audio lives in per-disc subdirectories (#16). State is derived from
+    the sidecar (if present) plus a file-tag check for confirming "tagged"
+    status.
 
     Pass a persistent ``album_cache`` dict to skip re-reading tags for
     albums whose on-disk fingerprint (file mtimes/sizes + sidecar + cover)
@@ -60,8 +62,15 @@ def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Albu
 
 
 def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], AlbumSignature]]:
-    """Yield (album_dir, sorted_audio_files, signature) for every directory
-    containing supported audio, ONE DIRECTORY AT A TIME.
+    """Yield (album_dir, sorted_audio_files, signature) for every album
+    directory under `root`, ONE DIRECTORY AT A TIME.
+
+    An album directory is one containing supported audio — or, per
+    `album_files`, one that declares itself an album with a sidecar while
+    holding its audio in per-disc subdirectories (#16). A grouped album is
+    yielded ONCE, for the parent, carrying every file beneath it; the
+    subdirectories are then not albums in their own right and are skipped, so
+    the two halves of a split release stop appearing as two Library tiles.
 
     Uses ``os.walk`` (not ``rglob`` + groupby) so a caller can interleave work
     between directories — the async scan runner yields to the event loop here.
@@ -70,8 +79,15 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], AlbumSignatu
     """
     if not root.exists():
         return
+    # Parents already yielded as grouped albums. Everything below one of these
+    # belongs to it, so it must not also be yielded on its own account. os.walk
+    # is top-down, which is what makes a parent reliably known before its
+    # children are reached.
+    grouped_roots: list[Path] = []
     for dirpath, _dirnames, filenames in os.walk(root):
         d = Path(dirpath)
+        if any(r in d.parents for r in grouped_roots):
+            continue
         audio: list[tuple[Path, int, int]] = []
         sidecar_mtime: int | None = None
         cover_mtime: int | None = None
@@ -90,15 +106,43 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], AlbumSignatu
             elif name in ("cover.jpg", "cover.png"):
                 cover_mtime = st.st_mtime_ns
         if not audio:
-            continue
-        audio.sort(key=lambda e: e[0].name)
+            # No audio of its own. A sidecar here declares a release split
+            # across per-disc subdirectories — collect their files under this
+            # directory. Anything else is an ordinary artist/container dir.
+            if sidecar_mtime is None:
+                continue
+            grouped = _grouped_entries(d)
+            if not grouped:
+                continue  # sidecar but nothing beneath it — not an album
+            grouped_roots.append(d)
+            audio = grouped
+        else:
+            audio.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
         files = [e[0] for e in audio]
         signature: AlbumSignature = (
-            tuple((e[0].name, e[1], e[2]) for e in audio),
+            # Keyed on the path RELATIVE to the album dir, not the bare name:
+            # a grouped album has a "01 - …" in every disc directory, and bare
+            # names would collide into one indistinguishable signature entry.
+            tuple((str(e[0].relative_to(d)), e[1], e[2]) for e in audio),
             sidecar_mtime,
             cover_mtime,
         )
         yield d, files, signature
+
+
+def _grouped_entries(album_dir: Path) -> list[tuple[Path, int, int]]:
+    """(path, mtime_ns, size) for every audio file below a grouped album dir,
+    in track order. Unstattable files are dropped, exactly as in the walk above.
+    """
+    entries = []
+    for f in album_files.descendant_audio_files(album_dir):
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        if S_ISREG(st.st_mode):
+            entries.append((f, st.st_mtime_ns, st.st_size))
+    return entries
 
 
 def resolve_album(
@@ -224,7 +268,18 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         # reconcile.reconcile_album reads). Lets the inbox skip kicking
         # reconcile for untagged orphans it could never resolve.
         has_tag_mbid=any(sf.album_id for sf in fields),
+        disc_num=_consistent_disc_num(fields),
     )
+
+
+def _consistent_disc_num(fields: list[formats.ScanFields]) -> int | None:
+    """The single disc number all this album's files carry, or None when they
+    disagree or none is tagged. Untagged is the norm for a single-disc release,
+    so None means "don't know", never "disc 0"."""
+    discs = {sf.disc_num for sf in fields if sf.disc_num is not None}
+    if len(discs) != 1 or any(sf.disc_num is None for sf in fields):
+        return None
+    return next(iter(discs))
 
 
 def _audio_format(fields: list[formats.ScanFields]) -> str | None:

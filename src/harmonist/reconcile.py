@@ -26,14 +26,14 @@ Pure: no globals. Caller injects `fetch_urls` (MB lookup) and `recover_url`
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from dataclasses import replace
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from . import formats, url_recovery
+from . import album_files, audit, formats, url_recovery
 from . import sidecar as sidecar_mod
-from .models import Sidecar, is_bandcamp_url
+from .models import Album, Sidecar, is_bandcamp_url
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def reconcile_album(
         file MBID → **adopt the file tags** (the user re-tagged in Picard, as we
         ask them to). Otherwise leave an existing sidecar untouched.
     """
-    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
+    files = album_files.audio_files(album_dir)
     if not files:
         return None
 
@@ -190,7 +190,7 @@ def store_url_for_tagging(
     Everything is gated by Bandcamp evidence in the `©cmt`: with no Bandcamp URL
     in the comment at all, returns None (a CD rip stays Complete, not Needs Link).
     """
-    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
+    files = album_files.audio_files(album_dir)
     if not files:
         return None
     comment = formats.read_comment(files[0]) or ""
@@ -244,3 +244,192 @@ def matching_bandcamp_url(
         if is_bandcamp_url(url):
             return url
     return None
+
+
+# ---------------------------------------------------------------------------
+# Split releases: one MB release living in several per-disc directories (#16)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SplitRelease:
+    """A release whose discs the user filed in sibling directories.
+
+    `parent` is the directory that should own the album; `parts` are the
+    per-disc directories beneath it, in disc order. Detection only — promoting
+    it is a separate, audited step.
+    """
+
+    parent: Path
+    mb_release_id: str
+    parts: tuple[Path, ...]
+
+    @property
+    def track_count(self) -> int:
+        return sum(len(album_files.audio_files(p)) for p in self.parts)
+
+
+def find_split_releases(albums: list[Album], music_dir: Path) -> list[SplitRelease]:
+    """Directories whose subdirectories hold the discs of one MB release.
+
+    The test is an identity match, not a best fit — every one of these has to
+    hold, and any that doesn't leaves the directories exactly as they are:
+
+    * the parent is not the library root, and is not an album itself (it has no
+      audio of its own, or the scanner would have yielded it);
+    * it has no sidecar yet — one already there means it is grouped already,
+      and re-promoting it every pass would be the oscillating rewrite the
+      idempotence rule forbids;
+    * at least two audio-bearing subdirectories, and EVERY one of them is
+      accounted for — a leftover means this is a container directory that
+      happens to hold two discs, not a release that occupies the whole of it;
+    * every part is tagged to the same `mb_release_id` — the exact-scoped-unique
+      match, scoped to this one parent, from sidecars that already exist;
+    * every part carries a distinct disc number. This is what separates the two
+      halves of a split release from two duplicate copies of it, which agree on
+      the release and on the disc. Without a disc number on every part there is
+      no evidence either way, so nothing is merged.
+
+    Deliberately makes NO MusicBrainz call and reads no tags of its own: it runs
+    over the whole library, and the budget rule (§6) puts a per-album lookup out
+    of reach. Everything it needs the scan has already read.
+    """
+    by_parent: dict[Path, list[Album]] = {}
+    album_paths = {a.path for a in albums}
+    for album in albums:
+        parent = album.path.parent
+        if parent == music_dir or parent in album_paths:
+            continue
+        by_parent.setdefault(parent, []).append(album)
+
+    found = []
+    for parent, parts in sorted(by_parent.items()):
+        if len(parts) < 2 or sidecar_mod.has_sidecar(parent):
+            continue
+        if any(a.sidecar is None for a in parts):
+            continue
+        mbids = {a.sidecar.mb_release_id for a in parts if a.sidecar is not None}
+        if len(mbids) != 1:
+            continue
+        mbid = next(iter(mbids))
+        if mbid is None:
+            continue
+        discs = [a.disc_num for a in parts]
+        if any(d is None for d in discs) or len(set(discs)) != len(discs):
+            continue
+        # Left until last deliberately: it is the only check that touches the
+        # filesystem, and this runs over every directory that holds two or more
+        # albums — i.e. every artist directory in the library, on every
+        # reconcile pass. The release check above rejects those for free (two
+        # albums by one artist are two releases), so the walk only ever happens
+        # for a directory that is already, on the evidence, a split release.
+        if _has_unaccounted_audio(parent, {a.path for a in parts}):
+            continue
+        ordered = sorted(parts, key=lambda a: a.disc_num or 0)
+        found.append(
+            SplitRelease(
+                parent=parent,
+                mb_release_id=mbid,
+                parts=tuple(a.path for a in ordered),
+            )
+        )
+    return found
+
+
+def _has_unaccounted_audio(parent: Path, parts: set[Path]) -> bool:
+    """True when audio lives under `parent` outside the candidate parts —
+    directly in it, or in a subdirectory the scan did not yield as an album
+    (an unreadable sidecar, say). Such a directory is a container that happens
+    to hold two discs, and absorbing the rest of it would be a guess.
+    """
+    try:
+        entries = list(parent.iterdir())
+    except OSError:
+        return True  # can't rule it out → don't merge
+    for entry in entries:
+        if entry.is_file() and formats.is_supported(entry):
+            return True
+        if entry.is_dir() and entry not in parts and album_files.descendant_audio_files(entry):
+            return True
+    return False
+
+
+def promote_split_release(split: SplitRelease) -> Sidecar:
+    """Write the parent's sidecar so the discs read as one album, and return it.
+
+    **Nothing on disk moves.** The files stay exactly where the user filed them,
+    keeping the layout Plex and Navidrome already index; all that changes is
+    which directory carries the `.harmonist.json`, and from the next scan the
+    parent answers for the whole release (see `album_files`). Removing that
+    sidecar is what undoes it — the parts then stand on their own again,
+    unchanged — so this needs no migration and offers a way back out.
+
+    The parts' own sidecars are left alone. They are stale descriptions of
+    directories that are no longer albums, and deleting them would be a
+    destructive write to user data on the strength of a derived rule; the
+    scanner ignores them (it never descends into a grouped album), so they cost
+    nothing but a little clutter.
+
+    The parent's sidecar inherits from the parts rather than being re-derived,
+    which is what keeps this off the MusicBrainz budget: they already agree on
+    the release, and the store link, purchase state and timestamps are the same
+    album's history however many directories it was living in.
+    """
+    sidecars = [sc for p in split.parts if (sc := sidecar_mod.read(p)) is not None]
+    merged = Sidecar(
+        store_url=_first(sc.store_url for sc in sidecars),
+        bandcamp=_first(sc.bandcamp for sc in sidecars),
+        downloaded_at=_earliest(sc.downloaded_at for sc in sidecars),
+        # The album has existed since the first of its discs did.
+        added_at=_earliest(sc.added_at for sc in sidecars) or datetime.now(UTC),
+        mb_release_id=split.mb_release_id,
+        # Last tagged is when the album — all of it — was last brought up to
+        # date; a disc tagged earlier does not make the album older.
+        tagged_at=_latest(sc.tagged_at for sc in sidecars),
+        # Each part that Harmonist tagged recorded the WHOLE release's track
+        # count (see `_tag_with_release`), not its own disc's, so the maximum is
+        # that count and not a sum. Parts adopted at onboarding have none at all
+        # (#187), in which case this stays None and the album derives COMPLETE
+        # exactly as its parts did.
+        track_count_expected=_max(sc.track_count_expected for sc in sidecars),
+        notes=_first(sc.notes for sc in sidecars),
+        purchase_unavailable=any(sc.purchase_unavailable for sc in sidecars),
+    )
+    sidecar_mod.write(split.parent, merged)
+    # NO alias row, and that is not an omission. #16 assumed one was needed —
+    # an absorbed directory's id normally stops naming anything on disk, which
+    # is exactly what `album_aliases` exists for (#33). It doesn't arise here:
+    # an album's id IS its `mb_release_id` once it has one (`_album_id_of`), and
+    # detection only groups parts that already agree on that release. So every
+    # part and the parent share one id throughout, and the history recorded
+    # against "CD2" is already reachable from the album that survives.
+    audit.record(
+        "album.group",
+        album_id=split.mb_release_id,
+        album=split.parent,
+        release=split.mb_release_id,
+        parts=len(split.parts),
+        tracks=split.track_count,
+    )
+    return merged
+
+
+def _first[T](values: Iterable[T | None]) -> T | None:
+    """The first value that is set, or None. The parts describe one album, so
+    "any of them knows" is the honest reading of a field only some carry."""
+    return next((v for v in values if v is not None), None)
+
+
+def _earliest(values: Iterable[datetime | None]) -> datetime | None:
+    present = [v for v in values if v is not None]
+    return min(present) if present else None
+
+
+def _latest(values: Iterable[datetime | None]) -> datetime | None:
+    present = [v for v in values if v is not None]
+    return max(present) if present else None
+
+
+def _max(values: Iterable[int | None]) -> int | None:
+    present = [v for v in values if v is not None]
+    return max(present) if present else None

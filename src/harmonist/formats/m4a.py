@@ -199,6 +199,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         # Flagged, not silently blank: an unopenable file must not read as an
         # untagged one (#112).
         return ScanFields(None, None, None, None, unreadable=True)
+    disk = audio.get(ATOM_DISC_NUM) or []
     return ScanFields(
         album_title=_text_atom(audio, ATOM_ALBUM),
         album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),
@@ -206,6 +207,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         codec=_codec_label(audio),
         has_cover=bool(audio.get(ATOM_COVER)),
         album_artist=_text_atom(audio, ATOM_ALBUM_ARTIST),
+        disc_num=disk[0][0] if disk and disk[0] else None,
     )
 
 

@@ -31,6 +31,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from harmonist import (
     activity,
     activity_store,
+    album_files,
     artwork_store,
     audit,
     compare,
@@ -710,8 +711,11 @@ def _album_comparison(
     file in the album — the read cost #106 flags, and the same cost problem as
     #44 / #74. Reading them twice for one page view would be careless.
     """
-    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
-    tracks = [(f.name, formats.read_tags(f)) for f in files]
+    files = album_files.audio_files(album_dir)
+    # Named by path relative to the album, so the two "01 - Intro.m4a" of a
+    # split release (#16) stay distinguishable in the tracklist. Identical to
+    # the bare name for a flat album, which is every album Harmonist creates.
+    tracks = [(str(f.relative_to(album_dir)), formats.read_tags(f)) for f in files]
     tagsets = tagsets_for(release)
     mb_tracks = [
         compare.MBTrack(tags=ts, length_ms=length)
@@ -1632,7 +1636,7 @@ def _unlink_after_revert(album: Album, outcome: tagger_mod.RevertOutcome) -> boo
         return False  # already agrees — nothing to do
 
     suggest = outcome.release_id_now or sc.mb_release_id
-    files = len([p for p in album.path.iterdir() if formats.is_supported(p)])
+    files = len(album_files.audio_files(album.path))
     candidate = (
         MatchCandidate(
             mb_release_id=suggest,
@@ -1722,7 +1726,7 @@ def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
     """Extract embedded cover art (bytes, mime) from the album's first audio
     file, or None. Used by /cover to serve art without writing it to disk."""
     try:
-        files = sorted(p for p in album_path.iterdir() if formats.is_supported(p))
+        files = album_files.audio_files(album_path)
     except OSError:
         return None
     if not files:

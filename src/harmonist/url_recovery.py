@@ -22,7 +22,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import formats
+from . import album_files, formats
 from .models import is_bandcamp_url
 
 log = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ def recover_store_url(album_dir: Path) -> str | None:
     marks the album a Bandcamp purchase → Needs MBID, and the sync links it by
     title later). None when the comment has no Bandcamp link at all.
     """
-    files = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
+    files = album_files.audio_files(album_dir)
     if not files:
         return None
     return extract_bandcamp_url(formats.read_comment(files[0]) or "")
