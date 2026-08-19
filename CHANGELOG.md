@@ -6,12 +6,20 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-08-19
+
 ### Added
 
 - The Library can be searched by artist or album title, matching loosely enough
   to forgive case, accents and punctuation. The search rides in the URL and
   narrows the filters alongside it, so "the albums with no artwork by Aphex Twin"
   is a link you can share (#180).
+
+### Changed
+
+- The README is now the pitch alone; running and using Harmonist are documented
+  in `docs/` — a new `usage.md` guide, plus `installation.md` and
+  `deployment.md` (#178).
 
 ### Fixed
 
