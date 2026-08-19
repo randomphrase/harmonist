@@ -104,7 +104,9 @@ def test_falls_back_to_artist_credit_when_phrase_absent(monkeypatch):
                 "id": "rel-aaa",
                 "title": "X",
                 "artist-credit": [
-                    {"name": "A", "joinphrase": " feat. "},
+                    {"name": "A"},
+                    # musicbrainzngs emits join phrases as bare strings.
+                    " feat. ",
                     {"name": "B"},
                 ],
             }
@@ -112,7 +114,7 @@ def test_falls_back_to_artist_credit_when_phrase_absent(monkeypatch):
     }
     monkeypatch.setattr(musicbrainzngs, "search_releases", lambda **kw: response)
     results = search_releases("A", "X")
-    assert results[0]["artist"] == "AB"
+    assert results[0]["artist"] == "A feat. B"
 
 
 def test_handles_missing_optional_fields(monkeypatch):

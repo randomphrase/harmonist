@@ -739,7 +739,13 @@ def _artist_ids(artist_credit: list[Any] | None) -> list[str]:
 
 
 def _artist_phrase(artist_credit: list[Any] | None) -> str:
-    """Build a display string from an MB artist-credit list."""
+    """Build a display string from an MB artist-credit list.
+
+    musicbrainzngs emits each join phrase as a **bare string element** between the
+    artist dicts (`[{...}, ' & ', {...}]`), not as a `joinphrase` key on the dict —
+    the key is the JSON web service's shape, which Picard consumes but we never see.
+    Every walker over an artist-credit must handle the string elements or it will
+    silently concatenate the artists with no separator (#183)."""
     if not artist_credit:
         return ""
     parts: list[str] = []
@@ -762,7 +768,9 @@ def _artist_sort_phrase(artist_credit: list[Any] | None) -> str:
     parts: list[str] = []
     any_sort = False
     for ac in artist_credit:
-        if isinstance(ac, dict):
+        if isinstance(ac, str):
+            parts.append(ac)
+        elif isinstance(ac, dict):
             sort = (ac.get("artist") or {}).get("sort-name")
             if sort:
                 any_sort = True

@@ -1207,7 +1207,10 @@ def _release_name_parts(release: Release) -> tuple[str, str]:
     if not artist:
         parts = []
         for ac in release.get("artist-credit") or []:
-            if isinstance(ac, dict):
+            # Bare strings are the join phrases — see `_artist_phrase` in tagger.py.
+            if isinstance(ac, str):
+                parts.append(ac)
+            elif isinstance(ac, dict):
                 parts.append(ac.get("name") or ac.get("artist", {}).get("name", ""))
         artist = "".join(parts).strip()
     title = (release.get("title") or "").strip()

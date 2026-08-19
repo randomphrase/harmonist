@@ -112,8 +112,9 @@ def _fully_populated_release() -> dict:
                                     "sort-name": "Guest",
                                 },
                                 "name": "Guest",
-                                "joinphrase": " feat. ",
                             },
+                            # musicbrainzngs emits join phrases as bare strings.
+                            " feat. ",
                             {
                                 "artist": {
                                     "id": "host11111-1111-1111-1111-111111111111",

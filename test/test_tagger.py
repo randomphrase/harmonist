@@ -99,8 +99,9 @@ def _release_2_tracks() -> dict:
                                     "sort-name": "Featured Artist",
                                 },
                                 "name": "Featured Artist",
-                                "joinphrase": " feat. ",
                             },
+                            # musicbrainzngs emits join phrases as bare strings.
+                            " feat. ",
                             {
                                 "artist": {
                                     "id": "art-ccc",
@@ -462,6 +463,41 @@ def test_tag_album_writes_sort_artists_original_date_script(album_with_tracks):
     track2 = MP4(album_dir / "02 Track 2.m4a")
     assert track2[ATOM_ARTIST_SORT] == ["Featured Artist feat. Other, The"]
     assert _atom_strs(track2, ATOM_ARTISTS) == ["Featured Artist", "Other"]
+
+
+@pytest.mark.parametrize(
+    "credit",
+    [
+        # The shape musicbrainzngs actually returns: join phrases are bare strings.
+        pytest.param(
+            [
+                {"artist": {"name": "zakè", "sort-name": "zakè"}, "name": "zakè"},
+                " & ",
+                {"artist": {"name": "rhubiqs", "sort-name": "rhubiqs"}, "name": "rhubiqs"},
+            ],
+            id="sibling-string",
+        ),
+        # The JSON web service's shape, tolerated in case the client is swapped (#26).
+        pytest.param(
+            [
+                {
+                    "artist": {"name": "zakè", "sort-name": "zakè"},
+                    "name": "zakè",
+                    "joinphrase": " & ",
+                },
+                {"artist": {"name": "rhubiqs", "sort-name": "rhubiqs"}, "name": "rhubiqs"},
+            ],
+            id="joinphrase-key",
+        ),
+    ],
+)
+def test_artist_phrases_keep_the_join_phrase(credit):
+    """#183: the sort phrase dropped the join phrase entirely, because it only read
+    `joinphrase` off the dict — the shape musicbrainzngs never produces. Both walkers
+    must agree, whichever shape the credit arrives in."""
+    assert tagger._artist_phrase(credit) == "zakè & rhubiqs"
+    assert tagger._artist_sort_phrase(credit) == "zakè & rhubiqs"
+    assert tagger._artist_names(credit) == ["zakè", "rhubiqs"]
 
 
 def test_tag_album_track_artist_credit_overrides_release(album_with_tracks):

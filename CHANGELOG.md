@@ -13,6 +13,12 @@ versions follow [semantic versioning](https://semver.org).
   narrows the filters alongside it, so "the albums with no artwork by Aphex Twin"
   is a link you can share (#180).
 
+### Fixed
+
+- Artist sort and Album artist sort no longer run a collaboration's artists
+  together — "zakè & rhubiqs" was tagged as "zakèrhubiqs". Re-tag an affected
+  album to correct it (#183).
+
 ## [1.8.0] - 2026-08-18
 
 ### Added
