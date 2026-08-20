@@ -343,6 +343,40 @@ button[disabled],
    be legitimately incomplete and a bonus track legitimately unknown to MB.
    These span the value columns and carry neither alignment class, so they sit
    under the title they're about. */
+/* Disc headings (#216). A multi-disc release is grouped rather than prefixing
+   every row with "2-4" for the reader to decode; a single-disc album gets no
+   heading at all, which is nearly every album. */
+.track-diff__disc-head {
+  text-align: left;
+  padding: .75rem .5rem .25rem;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--color-ink);
+  border-bottom: 1px solid var(--color-line);
+}
+.track-diff__disc-meta,
+.track-diff__disc-absent {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-muted);
+}
+.track-diff__disc-meta::before { content: "· "; }
+/* The one part of a disc heading that is a statement about the user's library
+   rather than about the release, so it is the one part that carries colour. */
+.track-diff__disc-absent {
+  margin-left: .35rem;
+  color: var(--color-mb-purple);
+}
+.track-diff__disc-list {
+  margin: .35rem 0 0 1.1rem;
+  list-style: decimal;
+  font-style: normal;
+}
+.track-diff__disc-list li { padding: .05rem 0; }
+
 .track-diff__absent,
 .track-diff__unreadable { font-style: italic; }
 .track-diff__absent { color: var(--color-muted); }

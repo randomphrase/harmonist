@@ -498,6 +498,11 @@ class ComparedTrack:
 
     state: TrackState
     fields: tuple[FieldComparison, ...] = field(default_factory=tuple)
+    #: Which medium of the release this track belongs to. Carried structurally
+    #: rather than left encoded in the rendered "2-4" position string, so the
+    #: tracklist can be GROUPED by disc (#216) instead of prefixing every row
+    #: with a number the reader has to decode.
+    disc: int = 1
     #: The file this row is about, for the rows that need to name it — the
     #: unreadable one especially, where "which file?" is the user's next
     #: question. None when there is no file.
@@ -527,10 +532,74 @@ class ComparedTrack:
 
 
 @dataclass(frozen=True)
+class Medium:
+    """One disc of the release, as MusicBrainz describes it.
+
+    `title` is the medium's own name where it has one — MusicBrainz calls
+    Hybrid's two discs *Wide Angle* and *Live Angle*, which is a good deal more
+    use than "Disc 1" and "Disc 2" (#216). Most releases have none.
+    """
+
+    position: int
+    title: str | None = None
+    format: str | None = None
+
+    @property
+    def label(self) -> str:
+        """ "Disc 2 — Live Angle", or plain "Disc 2" when it has no name."""
+        return f"Disc {self.position} — {self.title}" if self.title else f"Disc {self.position}"
+
+
+@dataclass(frozen=True)
+class DiscGroup:
+    """A disc and the tracklist rows belonging to it."""
+
+    medium: Medium
+    tracks: tuple[ComparedTrack, ...]
+
+    @property
+    def absent(self) -> bool:
+        """True when NOT ONE of this disc's tracks is on disk.
+
+        The whole disc is missing rather than the album being short — a bonus
+        DVD never ripped, a box set half copied. Worth distinguishing because
+        the reading is different, and because spelling out forty-four "Not on
+        disk" rows for a disc the user knowingly does not have buries the
+        album's actual tracks under it.
+        """
+        return bool(self.tracks) and all(t.state is TrackState.MISSING for t in self.tracks)
+
+    @property
+    def summary(self) -> str:
+        n = len(self.tracks)
+        return f"{self.medium.format or 'Disc'}, {n} track{'s' if n != 1 else ''}"
+
+
+@dataclass(frozen=True)
 class TracklistComparison:
     """Every track of one album, plus the headline the section needs."""
 
     tracks: tuple[ComparedTrack, ...] = field(default_factory=tuple)
+    #: The release's media, in position order. Empty for a caller that has none
+    #: to give, in which case `discs` falls back to what the tracks say.
+    media: tuple[Medium, ...] = field(default_factory=tuple)
+
+    @property
+    def discs(self) -> tuple[DiscGroup, ...]:
+        """The tracks grouped by disc, in position order.
+
+        A single-disc album comes back as ONE group, and the template renders no
+        heading for it — nearly every album is one disc, and a heading above the
+        only disc is noise.
+        """
+        by_position: dict[int, list[ComparedTrack]] = {}
+        for t in self.tracks:
+            by_position.setdefault(t.disc, []).append(t)
+        known = {m.position: m for m in self.media}
+        return tuple(
+            DiscGroup(known.get(pos, Medium(position=pos)), tuple(rows))
+            for pos, rows in sorted(by_position.items())
+        )
 
     @property
     def differing(self) -> tuple[ComparedTrack, ...]:
@@ -544,20 +613,36 @@ class TracklistComparison:
         being folded into the count: "3 of 10 tracks differ" is true of an album
         with a dead file, but it isn't what the user needs to be told.
         """
-        total = len(self.tracks)
-        if not total:
+        if not self.tracks:
             return "Nothing to compare against MusicBrainz"
-        n = len(self.differing)
-        if n == 0:
-            return f"All {total} tracks match MusicBrainz" if total > 1 else "Matches MusicBrainz"
-        verb = "differs" if n == 1 else "differ"
-        clauses = [f"{n} of {total} tracks {verb} from MusicBrainz"]
+
+        # A disc with NOTHING on disk is reported ONCE, as an absent disc, and
+        # its tracks are excluded from every count here. Counted individually
+        # they made a bonus DVD the user knowingly never ripped into the album's
+        # dominant problem — "44 of 60 tracks differ" — and buried the sixteen
+        # they actually have (#216).
+        absent_discs = [g for g in self.discs if g.absent]
+        absent_positions = {g.medium.position for g in absent_discs}
+        counted = [t for t in self.tracks if t.disc not in absent_positions]
+
+        clauses: list[str] = []
+        total = len(counted)
+        n = sum(1 for t in counted if t.differs)
+        if total and n == 0:
+            clauses.append(
+                f"All {total} tracks match MusicBrainz" if total > 1 else "Matches MusicBrainz"
+            )
+        elif total:
+            verb = "differs" if n == 1 else "differ"
+            clauses.append(f"{n} of {total} tracks {verb} from MusicBrainz")
+        if absent_discs:
+            clauses.append(f"{', '.join(g.medium.label for g in absent_discs)} not on disk")
         for state, phrase in (
             (TrackState.MISSING, "not on disk"),
             (TrackState.UNREADABLE, "unreadable"),
             (TrackState.EXTRA, "not in MusicBrainz"),
         ):
-            count = sum(1 for t in self.tracks if t.state is state)
+            count = sum(1 for t in counted if t.state is state)
             if count:
                 clauses.append(f"{count} {phrase}")
         return " · ".join(clauses)
@@ -583,22 +668,33 @@ TRACK_COLUMNS: tuple[str, ...] = ("#", "Title", "Artist", "Length")
 def tracklist(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: Sequence[MBTrack],
+    media: Sequence[Medium] = (),
 ) -> TracklistComparison:
     """Compare an album's files, track by track, against its MusicBrainz release.
 
     `tracks` is `(file_name, tags)` in file order; `mb` is the release's tracks
     in MusicBrainz order. Neither is authoritative about which file IS which
     track — see `_assign`.
+
+    `media` describes the release's discs, so the result can be grouped by disc
+    and each one named (#216). Optional: without it the discs are still grouped,
+    from what the tracks themselves say, just unnamed.
     """
     multi_disc = any((t.tags.disc_num or 1) > 1 for t in mb)
     assigned, extras = _assign(tracks, mb)
 
     rows: list[ComparedTrack] = []
     for i, mb_track in enumerate(mb):
+        # From MusicBrainz, never from the file: a row exists for every track the
+        # RELEASE has, including ones with no file at all, and a missing track
+        # has no tags to ask.
+        disc = mb_track.tags.disc_num or 1
         entry = assigned.get(i)
         if entry is None:
             rows.append(
-                ComparedTrack(TrackState.MISSING, _track_fields(None, mb_track, multi_disc))
+                ComparedTrack(
+                    TrackState.MISSING, _track_fields(None, mb_track, multi_disc), disc=disc
+                )
             )
             continue
         name, tags = entry
@@ -608,12 +704,16 @@ def tracklist(
                     TrackState.UNREADABLE,
                     _track_fields(None, mb_track, multi_disc, unreadable=True),
                     file_name=name,
+                    disc=disc,
                 )
             )
             continue
         rows.append(
             ComparedTrack(
-                TrackState.PRESENT, _track_fields(tags, mb_track, multi_disc), file_name=name
+                TrackState.PRESENT,
+                _track_fields(tags, mb_track, multi_disc),
+                file_name=name,
+                disc=disc,
             )
         )
 
@@ -627,7 +727,7 @@ def tracklist(
                 file_name=name,
             )
         )
-    return TracklistComparison(tracks=tuple(rows))
+    return TracklistComparison(tracks=tuple(rows), media=tuple(media))
 
 
 def _assign(

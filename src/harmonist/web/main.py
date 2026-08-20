@@ -741,7 +741,7 @@ def _album_comparison(
         compare.AlbumComparison(
             fields=compare.album_fields(tracks, tagsets[0] if tagsets else None)
         ),
-        compare.tracklist(tracks, mb_tracks),
+        compare.tracklist(tracks, mb_tracks, _media_of(release)),
     )
 
 
@@ -1736,6 +1736,30 @@ def _revertable_anchors(
     return out
 
 
+def _media_of(release: Release) -> list[compare.Medium]:
+    """The release's discs, in position order — position, name, format.
+
+    MusicBrainz names a medium where it has a name, and the names are often
+    better than "Disc 2": Hybrid's two are *Wide Angle* and *Live Angle*. Most
+    releases have none, in which case the tracklist heading falls back to the
+    number (#216).
+    """
+    out: list[compare.Medium] = []
+    for medium in release.get("medium-list") or []:
+        try:
+            position = int(medium.get("position", 0))
+        except (TypeError, ValueError):
+            continue
+        out.append(
+            compare.Medium(
+                position=position,
+                title=(medium.get("title") or None),
+                format=(medium.get("format") or None),
+            )
+        )
+    return out
+
+
 def _shape_mismatch(album: Album, release: Release) -> tuple[int, int] | None:
     """`(what the files say, what MusicBrainz says)` when they disagree about how
     many media the release has — else None.
@@ -1786,7 +1810,7 @@ def _absent_media_summary(album: Album, release: Release) -> list[tuple[int, str
     return out
 
 
-def _album_folders(album: Album) -> list[tuple[str, int]]:
+def _album_folders(album: Album, music_dir: Path) -> list[tuple[str, int]]:
     """Every directory this album's files come from, as (relative path, count).
 
     An album can span several directories since #16, and the page's single Path
@@ -1795,24 +1819,22 @@ def _album_folders(album: Album) -> list[tuple[str, int]]:
     invisible, and the only alternative check is counting tracks and hoping
     (#198).
 
-    Computed per request rather than carried on `Album`: this is a single-album
-    view that already opens every file for the tag comparison, so one more
-    directory listing is free, where a field on every album in the snapshot is
-    memory the Library page would never read (#15).
+    Reads `album.folders`, which is the album's own answer since #197 — NOT
+    `audio_files(album.path)`, which is directory-scoped and therefore sees only
+    the primary folder. Getting that wrong made this feature silently report a
+    single folder for exactly the albums it was built for.
 
-    Returns [] for the ordinary flat album — one directory, already named by the
-    Path row above, so there is nothing for the list to add.
+    Returns [] for the ordinary one-folder album — the Path row above already
+    names it, so there is nothing to add.
+
+    Paths are relative to the LIBRARY ROOT rather than to the album, because
+    since #197 an album's folders need not share a parent at all: `Hybrid/Wide
+    Angle` and `Live Albums/Hybrid/Live Angle` is a supported layout, and a path
+    relative to one of them would be nonsense.
     """
-    files = album_files.audio_files(album.path)
-    counts: dict[Path, int] = {}
-    for f in files:
-        counts[f.parent] = counts.get(f.parent, 0) + 1
-    if len(counts) <= 1:
+    if len(album.folders) <= 1:
         return []
-    # Relative to the ALBUM, not the library root: the album's own path is right
-    # above in the Path row, so "CD1" reads better than repeating the whole
-    # prefix on every line.
-    return [(_rel_to(d, album.path), n) for d, n in counts.items()]
+    return [(_rel_to(d, music_dir), len(album_files.audio_files(d))) for d in sorted(album.folders)]
 
 
 def _rel_to(path: Path, root: Path) -> str:
@@ -3125,7 +3147,7 @@ def _register_routes(app: FastAPI) -> None:
         ctx = _ctx(
             request,
             album=album,
-            folders=_album_folders(album),
+            folders=_album_folders(album, request.app.state.cfg.paths.music_dir),
             history=history,
             history_unavailable=history_unavailable,
             tag_changes=tag_changes,

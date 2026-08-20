@@ -37,10 +37,50 @@
                 {% endfor %}
             </tr>
         </thead>
+        {% for group in tracklist.discs %}
+        {# A heading per disc, but ONLY on a multi-disc release: nearly every
+           album is one disc, and a heading above the only disc is noise (#216).
+           MusicBrainz often names a medium — Hybrid's two are "Wide Angle" and
+           "Live Angle" — which is a good deal more use than "Disc 2". #}
+        {% if tracklist.discs | length > 1 %}
+        <tbody class="track-diff__disc">
+            <tr>
+                <th scope="colgroup" colspan="{{ track_columns|length }}" class="track-diff__disc-head">
+                    {{ group.medium.label }}
+                    <span class="track-diff__disc-meta">{{ group.summary }}</span>
+                    {% if group.absent %}<span class="track-diff__disc-absent">not on disk</span>{% endif %}
+                </th>
+            </tr>
+        </tbody>
+        {% endif %}
+
+        {% if group.absent and tracklist.discs | length > 1 %}
+        {# The whole disc is missing — a bonus DVD never ripped, a box set half
+           copied. Spelling out forty-four "Not on disk" rows made that disc the
+           page's dominant content and buried the tracks the user actually has,
+           so the rows go behind a disclosure. <details> rather than a scripted
+           toggle: focus, keyboard and the open/closed state come free. #}
+        <tbody class="track-diff__track">
+            <tr>
+                <td class="track-diff__num"></td>
+                <td colspan="{{ track_columns|length - 1 }}" class="track-diff__absent">
+                    <details>
+                        <summary>None of this disc's {{ group.tracks | length }} tracks are on disk</summary>
+                        <ol class="track-diff__disc-list">
+                            {% for t in group.tracks %}
+                            <li>{{ t.fields[1].mb or t.fields[1].disk or '—' }}</li>
+                            {% endfor %}
+                        </ol>
+                    </details>
+                </td>
+            </tr>
+        </tbody>
+        {% else %}
+
         {# One <tbody> per track, so the rule between tracks sits between the
            PAIRS of rows. A border on <tr> would draw one through the middle of
            every stacked pair, splitting the two halves of one difference. #}
-        {% for t in tracklist.tracks %}
+        {% for t in group.tracks %}
         <tbody class="track-diff__track">
             {% if t.state == 'present' or t.state == 'extra' %}
             <tr>
@@ -112,6 +152,8 @@
             </tr>
             {% endif %}
         </tbody>
+        {% endfor %}
+        {% endif %}
         {% endfor %}
     </table>
 </div>

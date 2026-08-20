@@ -163,25 +163,22 @@
                The track count is gone: the Tracks section states it, and saying
                it twice on one page invites them to disagree. #}
             <dl class="tag-fields">
-                <dt>Path</dt>
-                <dd class="font-mono text-2xs text-muted break-all"
-                    title="{{ album.path }}">{{ rel_path(album.path, cfg.paths.music_dir) }}</dd>
-                {# An album can span several folders (#16), and the Path row above can
-                   only name one of them. Listing the rest is how the reader confirms
-                   Harmonist picked up ALL the files — otherwise the grouping is
-                   invisible and the only check is counting tracks and hoping (#198).
-
-                   Absent entirely for the ordinary one-folder album: the row would say
-                   nothing the Path row hasn't. Paths are relative to the album, so the
-                   shared prefix isn't repeated on every line. #}
-                {% if folders %}
-                <dt>Folders</dt>
+                {# Every folder the album's files come from, not just the primary
+                   one (#216). Since #197 an album is the files that name its
+                   release wherever they sit, so one path is at best a partial
+                   answer — and listing them is how the reader confirms Harmonist
+                   found them all. A one-folder album, which is nearly all of
+                   them, reads exactly as it always did. #}
+                <dt>{{ "Paths" if folders else "Path" }}</dt>
                 <dd class="font-mono text-2xs text-muted break-all">
+                    {% if folders %}
                     {% for name, count in folders %}
                     <div>{{ name }} <span class="text-muted/70">· {{ count }} track{{ 's' if count != 1 else '' }}</span></div>
                     {% endfor %}
+                    {% else %}
+                    <span title="{{ album.path }}">{{ rel_path(album.path, cfg.paths.music_dir) }}</span>
+                    {% endif %}
                 </dd>
-                {% endif %}
                 {% if album.audio_format %}
                 <dt>Format</dt>
                 <dd>{{ album.audio_format }}</dd>

@@ -8,6 +8,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- A multi-disc album's tracks are now grouped by disc, with the disc's name where
+  MusicBrainz has one. A disc you don't have at all is reported once instead of
+  listing every one of its tracks — a bonus DVD no longer buries the album you
+  do have. The album's page also lists every folder its tracks came from, not
+  just the first (#216).
 - Albums that are incomplete *on purpose* can now be accepted as finished — you
   ripped only part of a box set, or the missing track is on a CD you no longer
   have. **No more tracks to get** on the album's page keeps it out of the
