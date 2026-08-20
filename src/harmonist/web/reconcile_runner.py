@@ -181,6 +181,7 @@ def reconcile_pending_orphans(
     music_dir: Path,
     *,
     fetch_urls: Callable[[str], list[str]],
+    fetch_track_count: Callable[[str], int] | None = None,
     recover_url: Callable[[Path], str | None] | None = None,
     status_updater: Callable[..., None] | None = None,
     rate_limit_seconds: float = MB_RATE_LIMIT_SECONDS,
@@ -194,6 +195,13 @@ def reconcile_pending_orphans(
     scanner just finished, so a second full scan is pure wasted minutes (and a
     second copy of the snapshot in memory). Only falls back to scanning when no
     snapshot is supplied (e.g. direct callers / tests).
+
+    `fetch_track_count` is injected, and omitting it SKIPS the track-count
+    backfill rather than falling back to the real lookup. Defaulting it to
+    `mb_lookup.fetch_release_track_count` reads as a convenience and behaves as
+    a trap: every test that reconciles anything would start talking to
+    MusicBrainz at one request per second, having asked for no such thing. The
+    one caller that wants the network says so.
 
     Albums whose path is in `exempt_paths` are skipped. This is the
     mechanism that respects user intent after a Forget — without it, the
@@ -265,6 +273,17 @@ def reconcile_pending_orphans(
     # ran on a library that also happened to have something new in it.
     grouped = _promote_split_releases(albums, music_dir, exempt)
 
+    # Expected track counts (#187), also before the early return: the albums
+    # missing one are adopted COMPLETE albums, not orphans. AFTER the grouping
+    # above, and that order is load-bearing — backfilling first would measure
+    # each half of a split release against the whole release's track count and
+    # flag both halves incomplete, which is true of neither.
+    counted, newly_incomplete = (
+        _backfill_track_counts(albums, exempt, fetch_track_count)
+        if fetch_track_count is not None
+        else (0, 0)
+    )
+
     if not total:
         # Nothing to do. Reconcile runs on startup and after every sync, so
         # announcing a no-op made it the feed's most frequent content — three
@@ -278,6 +297,8 @@ def reconcile_pending_orphans(
             "recovered_url": 0,
             "adopted": 0,
             "grouped": grouped,
+            "counted": counted,
+            "newly_incomplete": newly_incomplete,
             "skipped": 0,
             "errors": 0,
         }
@@ -374,6 +395,8 @@ def reconcile_pending_orphans(
         "recovered_url": recovered_url,
         "adopted": adopted,
         "grouped": grouped,
+        "counted": counted,
+        "newly_incomplete": newly_incomplete,
         "skipped": skipped,
         "errors": errors,
     }
@@ -425,3 +448,73 @@ def _promote_split_releases(albums: list[Album], music_dir: Path, exempt: set[Pa
                 album_label=split.parent.name,
             )
     return grouped
+
+
+def _backfill_track_counts(
+    albums: list[Album],
+    exempt: set[Path],
+    fetch_count: Callable[[str], int],
+) -> tuple[int, int]:
+    """Record the MB track count on every tagged album that has none, so the
+    scanner can finally derive INCOMPLETE for it. Returns
+    `(counted, newly_incomplete)`.
+
+    One MusicBrainz request per album, which is a lot of requests — but bounded
+    by the albums that lack the field, not by library size, and each one that
+    succeeds removes itself from the candidate set permanently. So this is a
+    long first pass over an adopted library and nothing at all thereafter. It
+    reaches for the `media`-only lookup rather than the full release, which is
+    ~25x smaller for the one number it needs.
+
+    A failed lookup leaves the album alone and retries next pass. That is the
+    right default for the overwhelmingly likely cause — the network, or MB
+    being briefly unavailable — and the cost of being wrong is one repeated
+    request per pass for a release MusicBrainz genuinely can't answer for.
+
+    **No per-album activity entry for the ordinary case.** Reconcile runs on
+    startup and after every sync, and several hundred "recorded a track count"
+    lines is the flood the skip case is already careful to avoid; the sidecar
+    write audits itself (`track_count_expected` is load-bearing), so the detail
+    is on each album's own history page. An album that turns out to be
+    INCOMPLETE does get its own entry — that is a defect the user has been
+    unable to see until now, and it is the whole reason for the pass.
+    """
+    from harmonist import reconcile
+    from harmonist.models import AlbumState
+
+    pending = [a for a in albums if reconcile.needs_track_count(a) and a.path not in exempt]
+    if not pending:
+        log.debug("Track counts: nothing to backfill")
+        return (0, 0)
+
+    activity.record(f"Checking MusicBrainz for expected track counts — {len(pending)} album(s)")
+    counted = 0
+    newly_incomplete = 0
+    for album in pending:
+        with activity_store.action():
+            try:
+                count = reconcile.backfill_track_count(album.path, fetch_count=fetch_count)
+            except Exception as e:
+                # Warning, not exception: on a library-wide pass a stack trace
+                # per unreachable album buries the run. The summary reports how
+                # many were left, and the next pass retries them.
+                log.warning("could not fetch the track count for %s: %s", album.path, e)
+                continue
+            if count is None:
+                continue
+            counted += 1
+            if album.track_count < count:
+                newly_incomplete += 1
+                # COMPLETE until this instant only because nothing had ever
+                # asked; keep the Library's counts honest between scans.
+                live_counts.move(AlbumState.COMPLETE, AlbumState.INCOMPLETE)
+                activity.record(
+                    f"Missing {count - album.track_count} of {count} tracks",
+                    album_id=sidecar.album_id_for(album.path),
+                    album_label=f"{album.artist} — {album.title}".strip(" —"),
+                )
+    activity.record(
+        f"Track counts recorded for {counted} album(s)"
+        + (f" — {newly_incomplete} turned out to be incomplete" if newly_incomplete else "")
+    )
+    return (counted, newly_incomplete)

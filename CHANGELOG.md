@@ -13,6 +13,14 @@ versions follow [semantic versioning](https://semver.org).
   folders stay where they are, and deleting the sidecar Harmonist adds to the
   parent folder undoes it (#16).
 
+### Fixed
+
+- Albums adopted from an existing library can now be found with the Library's
+  **Incomplete** filter. They never could before: onboarding recorded no
+  expected track count, so an album with half its tracks read as complete.
+  Harmonist fills the gap in behind you on the next reconcile, and says which
+  albums turned out to be short (#187).
+
 ## [1.9.0] - 2026-08-19
 
 ### Added

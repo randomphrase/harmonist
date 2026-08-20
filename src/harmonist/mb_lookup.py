@@ -109,6 +109,44 @@ def fetch_release(mbid: str) -> Release:
     return release
 
 
+def fetch_release_track_count(mbid: str) -> int:
+    """Return how many tracks the MB release has, across every medium.
+
+    Much lighter than `fetch_release` — asks for `media` alone, which comes back
+    as a per-medium `track-count` with no track data at all. Measured on a
+    2-disc release: 719 bytes against 17,835 for the full fetch. That ratio is
+    the whole point, because the caller is the expected-track-count backfill
+    (#187), which runs this once for EVERY adopted album in the library; pulling
+    the full release for a number MusicBrainz will state directly would move
+    tens of megabytes to learn nothing more.
+
+    Still one rate-limited request like any other — lighter, not free.
+    """
+    try:
+        result = musicbrainzngs.get_release_by_id(mbid, includes=["media"])
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.ResponseError,
+        musicbrainzngs.AuthenticationError,
+    ) as e:
+        raise MBError(f"MB request failed: {e}") from e
+
+    media = result["release"].get("medium-list") or []
+    total = 0
+    for medium in media:
+        try:
+            total += int(medium.get("track-count", 0))
+        except (TypeError, ValueError):
+            # A medium whose count won't parse makes the TOTAL wrong, and a
+            # wrong total is worse than no total: it is what COMPLETE vs
+            # INCOMPLETE is derived from, so it would mislabel the album
+            # permanently. Refuse the whole answer rather than return a partial.
+            raise MBError(f"release {mbid} has an unreadable track count") from None
+    if not total:
+        raise MBError(f"release {mbid} reports no tracks")
+    return total
+
+
 def fetch_release_urls(mbid: str) -> list[str]:
     """Return the list of URL relationships attached to an MB release.
 

@@ -498,3 +498,39 @@ def test_demo_mode_off_no_demo_routes(tmp_path):
     # No banner
     home = client.get("/")
     assert "Demo Mode" not in home.text
+
+
+def test_demo_mode_patches_every_musicbrainz_entry_point():
+    """Demo mode's whole promise is that no request leaves the machine. A new
+    lookup added to `mb_lookup` and not patched here breaks that silently — the
+    demo goes on working, just slowly and against the real MusicBrainz, which
+    is how #187's `fetch_release_track_count` shipped un-patched for an hour.
+
+    Enumerated rather than listed, so the next one is caught by this test
+    instead of by someone noticing the test suite got slower.
+    """
+    import inspect
+
+    from harmonist import mb_lookup
+
+    network = {
+        name
+        for name, fn in inspect.getmembers(mb_lookup, inspect.isfunction)
+        if (name.startswith(("fetch_", "lookup_", "browse_", "search_")))
+        and fn.__module__ == mb_lookup.__name__
+    }
+    assert network, "the detector itself must not silently match nothing"
+
+    demo.install()
+
+    unpatched = {n for n in network if getattr(mb_lookup, n).__module__ == mb_lookup.__name__}
+    assert not unpatched, f"demo mode leaves these talking to the real MusicBrainz: {unpatched}"
+
+
+def test_demo_track_count_matches_the_seeded_release():
+    from harmonist import demo as demo_mod
+
+    mbid, release = next(iter(demo_mod.MB_RELEASES.items()))
+    expected = sum(len(m.get("track-list", [])) for m in release.get("medium-list", []))
+
+    assert demo_mod.fetch_release_track_count(mbid) == expected

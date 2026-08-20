@@ -526,6 +526,25 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   (`file_count < track_count_expected`). There is no `incomplete` flag;
   state is the marker, and `track_count_expected` is what persists user
   intent across MB upstream changes.
+
+  **Absent means "not yet asked", not "complete"** — and the difference is
+  load-bearing. `reconcile_album` leaves it unset (one rate-limited MB call per
+  album would put the whole-library walk out of budget), and the external-re-tag
+  branch clears it, so albums keep arriving without one. While it is absent the
+  scanner has nothing to compare against and derives **Complete** however many
+  tracks are missing, which made the Library's Incomplete filter report zero for
+  an entire adopted library (#187).
+
+  So the reconcile pass **backfills it**: for every tagged album with no count,
+  one `media`-only lookup (`mb_lookup.fetch_release_track_count`, ~25x smaller
+  than a full release fetch) records the number. Bounded by the albums that lack
+  the field rather than by library size, and each success removes itself from
+  the candidate set permanently — a long first pass over an adopted library and
+  nothing at all thereafter. A failed lookup writes nothing and retries next
+  pass, because a wrong count mislabels the album permanently and is worse than
+  no count. It runs **after** split-release grouping (§13.5), which is
+  load-bearing: measuring each half of a split release against the whole
+  release's count would flag both halves incomplete, which is true of neither.
 - `purchase_unavailable` (optional, bool) is set when the user accepts a
   **surrendered** album via **Move to Library** — a full sync found no purchase
   and there is none to find (the Bandcamp release was withdrawn, or it was bought

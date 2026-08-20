@@ -926,6 +926,15 @@ def fetch_release_urls(mbid: str) -> list[str]:
     return [url for url, m in URL_RELS.items() if m == mbid]
 
 
+def fetch_release_track_count(mbid: str) -> int:
+    """Demo counterpart of the media-only lookup the track-count backfill uses
+    (#187). Counted off the same seeded releases the rest of demo mode serves,
+    so a demo library backfills exactly as a real one does — and, crucially,
+    without a single request leaving the machine."""
+    release = fetch_release(mbid)
+    return sum(len(m.get("track-list", [])) for m in release.get("medium-list", []))
+
+
 def lookup_by_bandcamp_url(bandcamp_url: str) -> list[str]:
     mbid = URL_RELS.get(bandcamp_url)
     return [mbid] if mbid else []
@@ -1003,6 +1012,7 @@ def install() -> None:
 
     mb_lookup.fetch_release = fetch_release
     mb_lookup.fetch_release_urls = fetch_release_urls
+    mb_lookup.fetch_release_track_count = fetch_release_track_count
     mb_lookup.lookup_by_bandcamp_url = lookup_by_bandcamp_url
     mb_lookup.browse_release_group_releases = browse_release_group_releases
     mb_search.search_releases = search_releases

@@ -482,6 +482,7 @@ def create_app(
         reconcile_pending_orphans(
             cfg.paths.music_dir,
             fetch_urls=mb_lookup.fetch_release_urls,
+            fetch_track_count=mb_lookup.fetch_release_track_count,
             status_updater=status_updater,
             exempt_paths=forgotten_paths,
             albums=snapshot,
