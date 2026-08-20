@@ -12,11 +12,12 @@ versions follow [semantic versioning](https://semver.org).
   ripped only part of a box set, or the missing track is on a CD you no longer
   have. **No more tracks to get** on the album's page keeps it out of the
   Library's Incomplete list without pretending the tracks are there (#196).
-- A release you filed as per-disc folders (`Album/CD1`, `Album/CD2`) is now
-  recognised as one album instead of one per disc. Nothing on disk moves — the
-  folders stay where they are, and deleting the sidecar Harmonist adds to the
-  parent folder undoes it (#16). The album's page lists every folder its tracks
-  came from, so you can see it picked up all of them (#198).
+- A release you keep in several folders — `Album/CD1` + `Album/CD2`, a box set
+  filed disc by disc, a compilation split into its component EPs — is now
+  recognised as one album, wherever those folders are. Nothing on disk moves, and
+  two copies of the same release are left alone (#16, #197). The album's page
+  lists every folder its tracks came from, so you can see it found them all
+  (#198).
 
 ### Fixed
 

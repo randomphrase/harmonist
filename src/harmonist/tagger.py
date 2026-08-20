@@ -86,6 +86,7 @@ class Tagger(Protocol):
         *,
         incomplete: bool = False,
         overwrite_art: bool = False,
+        files: list[Path] | None = None,
     ) -> int: ...
 
 
@@ -101,9 +102,15 @@ class PicardCompatibleTagger:
         *,
         incomplete: bool = False,
         overwrite_art: bool = False,
+        files: list[Path] | None = None,
     ) -> int:
         return tag_album(
-            album_dir, release, cover_path, incomplete=incomplete, overwrite_art=overwrite_art
+            album_dir,
+            release,
+            cover_path,
+            incomplete=incomplete,
+            overwrite_art=overwrite_art,
+            files=files,
         )
 
 
@@ -114,8 +121,14 @@ def tag_album(
     *,
     incomplete: bool = False,
     overwrite_art: bool = False,
+    files: list[Path] | None = None,
 ) -> int:
     """Tag every supported audio file in `album_dir`.
+
+    `files` overrides which files those are, and a caller holding an `Album`
+    should pass them: since #197 an album can span several directories, and
+    `album_dir` is only its primary one — tagging what is under that alone would
+    silently leave the rest of the album on its old tags.
 
     `release` is the unwrapped MusicBrainz release dict, i.e. what
     `musicbrainzngs.get_release_by_id()` returns under the "release" key.
@@ -130,7 +143,7 @@ def tag_album(
     differing per-track artwork (which is otherwise preserved) — the user's
     explicit "replace the artwork" override.
     """
-    files = album_files.audio_files(album_dir)
+    files = files if files is not None else album_files.audio_files(album_dir)
     flat_tracks = list(_flatten_tracks(release))
 
     if not incomplete and len(files) != len(flat_tracks):

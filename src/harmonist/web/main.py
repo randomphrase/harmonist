@@ -13,7 +13,7 @@ import os
 import re
 import sys
 import unicodedata
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -709,7 +709,7 @@ def _rel_path(p: Path | str, base: Path | str) -> str:
 
 
 def _album_comparison(
-    album_dir: Path, release: Release
+    album_dir: Path, release: Release, paths: Sequence[Path] | None = None
 ) -> tuple[compare.AlbumComparison, compare.TracklistComparison]:
     """Read the album's files and compare their tags to `release` (#106, #135).
 
@@ -726,11 +726,11 @@ def _album_comparison(
     file in the album — the read cost #106 flags, and the same cost problem as
     #44 / #74. Reading them twice for one page view would be careless.
     """
-    files = album_files.audio_files(album_dir)
+    files = album_files.for_paths(paths) if paths else album_files.audio_files(album_dir)
     # Named by path relative to the album, so the two "01 - Intro.m4a" of a
-    # split release (#16) stay distinguishable in the tracklist. Identical to
-    # the bare name for a flat album, which is every album Harmonist creates.
-    tracks = [(str(f.relative_to(album_dir)), formats.read_tags(f)) for f in files]
+    # multi-folder album (#197) stay distinguishable in the tracklist. Identical
+    # to the bare name for a one-folder album.
+    tracks = [(_rel_to(f, album_dir), formats.read_tags(f)) for f in files]
     tagsets = tagsets_for(release)
     mb_tracks = [
         compare.MBTrack(tags=ts, length_ms=length)
@@ -2316,6 +2316,7 @@ def _tag_with_release(
     incomplete: bool = False,
     store_url_override: str | None = None,
     overwrite_art: bool = False,
+    paths: Sequence[Path] | None = None,
 ) -> None:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
@@ -2344,6 +2345,10 @@ def _tag_with_release(
         cover_path=cover_path,
         incomplete=incomplete,
         overwrite_art=overwrite_art,
+        # An album can span several directories (#197); `album_path` is only its
+        # primary one, so tagging what is under that alone would leave the rest
+        # of the album on its old tags.
+        files=album_files.for_paths(paths) if paths else None,
     )
 
     sc = sidecar_mod.read(album_path)
@@ -3132,7 +3137,7 @@ def _register_routes(app: FastAPI) -> None:
         # already linked to that release — the tracklist now says what actually
         # differs, track by track. It stays where it earns its keep: behind the
         # Needs MBID suggestion card, deciding whether to link at all.
-        comparison, tracks = _album_comparison(album.path, release)
+        comparison, tracks = _album_comparison(album.path, release, album.folders)
         ctx = _ctx(
             request,
             album=album,
@@ -3246,6 +3251,7 @@ def _register_routes(app: FastAPI) -> None:
                 # `incomplete=False` and the §15.3 guard still applies to it.
                 incomplete=album.state == AlbumState.INCOMPLETE,
                 overwrite_art=overwrite_art,
+                paths=album.folders,
             )
         except mb_lookup.ReleaseGoneError:
             # Not a failure to report as one: MusicBrainz has deleted the release
@@ -3581,7 +3587,13 @@ def _register_routes(app: FastAPI) -> None:
 
         if candidate.confidence == "exact":
             try:
-                _tag_with_release(album.path, mbid, request.app.state.cfg, request.app.state.tagger)
+                _tag_with_release(
+                    album.path,
+                    mbid,
+                    request.app.state.cfg,
+                    request.app.state.tagger,
+                    paths=album.folders,
+                )
                 return _flash_response("Tagged", "match found via Recheck", album=album)
             except Exception as e:
                 log.exception("tag after recheck failed")
@@ -3613,6 +3625,7 @@ def _register_routes(app: FastAPI) -> None:
                 # Mis-tag confirm: adopt the owned edition's purchase URL so the
                 # album can link to that purchase on the next sync.
                 store_url_override=sc.mb_match_candidate.mistag_owned_url,
+                paths=album.folders,
             )
         except Exception as e:
             log.exception("tag failed")
@@ -3640,6 +3653,7 @@ def _register_routes(app: FastAPI) -> None:
                 request.app.state.tagger,
                 incomplete=True,
                 store_url_override=sc.mb_match_candidate.mistag_owned_url,
+                paths=album.folders,
             )
         except Exception as e:
             log.exception("incomplete tag failed")

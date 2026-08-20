@@ -260,6 +260,7 @@ class VorbisTagger:
             # fall back to the "n/total" form some taggers put in TRACKNUMBER.
             track_total=_first_int(first(KEY_TRACK_TOTAL)) or _total_int(first(KEY_TRACK_NUMBER)),
             disc_total=_first_int(first(KEY_DISC_TOTAL)) or _total_int(first(KEY_DISC_NUMBER)),
+            release_track_id=first(KEY_RELEASE_TRACK_ID),
         )
 
     def read_tags(self, path: Path) -> TrackTags:

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from stat import S_ISREG
 from typing import NamedTuple
@@ -34,7 +34,10 @@ AlbumSignature = tuple[tuple[tuple[str, int, int], ...], int | None, int | None]
 # cached `fields` (the mutagen tag reads) are REUSED and only the cheap sidecar +
 # cover are re-read. So a sidecar-only change (a sync link, a reconcile) no longer
 # forces a full tag re-read of the album.
-AlbumCache = dict[Path, tuple[AlbumSignature, Album, list["formats.ScanFields"]]]
+# The third element is the whole `AlbumIO`, not just the tag fields: merging by
+# identity (#197) rebuilds an album from its parts' combined reads, and that needs
+# the cover and the video fields too.
+AlbumCache = dict[Path, tuple[AlbumSignature, Album, "AlbumIO"]]
 
 
 def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Album]:
@@ -51,14 +54,14 @@ def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Albu
     is unchanged since the last scan — the big win on slow filesystems.
     Omit it (the default) for a full, uncached scan.
     """
-    albums: list[Album] = []
+    scanned: list[ScannedDir] = []
     for album_dir, audio, videos, signature in iter_album_dirs(music_dir):
-        album = resolve_album(album_dir, audio, videos, signature, album_cache)
-        if album is not None:
-            albums.append(album)
+        entry = resolve_dir(album_dir, audio, videos, signature, album_cache)
+        if entry is not None:
+            scanned.append(entry)
     if album_cache is not None:
-        prune_cache(album_cache, {a.path for a in albums})
-    return albums
+        prune_cache(album_cache, {e.album.path for e in scanned})
+    return merge_by_identity(scanned)
 
 
 def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], AlbumSignature]]:
@@ -69,12 +72,10 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], 
     writes them (#193, #66): they count toward whether an album is complete, and
     must stay out of everything that tags.
 
-    An album directory is one containing supported audio — or, per
-    `album_files`, one that declares itself an album with a sidecar while
-    holding its audio in per-disc subdirectories (#16). A grouped album is
-    yielded ONCE, for the parent, carrying every file beneath it; the
-    subdirectories are then not albums in their own right and are skipped, so
-    the two halves of a split release stop appearing as two Library tiles.
+    An album directory is simply one containing supported audio. Which
+    directories belong to the SAME album is not decided here — that is
+    `merge_by_identity`, afterwards, from the release ids in the tags (#197).
+    Keeping the walk per-directory is what lets the cache stay per-directory too.
 
     Uses ``os.walk`` (not ``rglob`` + groupby) so a caller can interleave work
     between directories — the async scan runner yields to the event loop here.
@@ -83,15 +84,8 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], 
     """
     if not root.exists():
         return
-    # Parents already yielded as grouped albums. Everything below one of these
-    # belongs to it, so it must not also be yielded on its own account. os.walk
-    # is top-down, which is what makes a parent reliably known before its
-    # children are reached.
-    grouped_roots: list[Path] = []
     for dirpath, _dirnames, filenames in os.walk(root):
         d = Path(dirpath)
-        if any(r in d.parents for r in grouped_roots):
-            continue
         audio: list[tuple[Path, int, int]] = []
         video: list[tuple[Path, int, int]] = []
         sidecar_mtime: int | None = None
@@ -114,20 +108,9 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], 
             elif name in ("cover.jpg", "cover.png"):
                 cover_mtime = st.st_mtime_ns
         if not audio:
-            # No audio of its own. A sidecar here declares a release split
-            # across per-disc subdirectories — collect their files under this
-            # directory. Anything else is an ordinary artist/container dir.
-            if sidecar_mtime is None:
-                continue
-            grouped = _grouped_entries(d, album_files.descendant_audio_files)
-            if not grouped:
-                continue  # sidecar but nothing beneath it — not an album
-            grouped_roots.append(d)
-            audio = grouped
-            video = _grouped_entries(d, album_files.descendant_video_files)
-        else:
-            audio.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
-            video.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
+            continue  # not an album directory
+        audio.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
+        video.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
         files = [e[0] for e in audio]
         videos = [e[0] for e in video]
         signature: AlbumSignature = (
@@ -146,42 +129,45 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], 
         yield d, files, videos, signature
 
 
-def _grouped_entries(
-    album_dir: Path, collect: Callable[[Path], list[Path]]
-) -> list[tuple[Path, int, int]]:
-    """(path, mtime_ns, size) for every file `collect` finds below a grouped
-    album dir, in track order. Unstattable files are dropped, exactly as in the
-    walk above.
+class ScannedDir(NamedTuple):
+    """One directory's worth of scan output, before identity grouping.
+
+    The files and fields ride along with the Album because `merge_by_identity`
+    has to REBUILD a merged album from the combined tags — state, the expected
+    track count and the partial-tag count are all derived from the whole album's
+    files, and re-reading them to merge would undo the caching this scan exists
+    to preserve.
     """
-    entries = []
-    for f in collect(album_dir):
-        try:
-            st = f.stat()
-        except OSError:
-            continue
-        if S_ISREG(st.st_mode):
-            entries.append((f, st.st_mtime_ns, st.st_size))
-    return entries
+
+    album: Album
+    files: list[Path]
+    io: AlbumIO
 
 
-def resolve_album(
+def resolve_dir(
     album_dir: Path,
     audio_files: list[Path],
     video_files: list[Path],
     signature: AlbumSignature,
     album_cache: AlbumCache | None,
-) -> Album | None:
-    """Return the Album for one directory: from the cache when its signature
-    is unchanged, else freshly built (reading tags). Returns None — logging a
-    warning — when the album can't be built (bad sidecar, I/O error).
+) -> ScannedDir | None:
+    """Return one directory's scan output: from the cache when its signature is
+    unchanged, else freshly built (reading tags). Returns None — logging a
+    warning — when it can't be built (bad sidecar, I/O error).
+
+    One DIRECTORY, not one album: since #197 an album can span several, and
+    which ones go together is decided afterwards by `merge_by_identity`. The
+    walk and the cache stay per-directory precisely so that decision costs no
+    extra I/O.
     """
     cached = album_cache.get(album_dir) if album_cache is not None else None
     if cached is not None and cached[0] == signature:
-        return cached[1]  # nothing changed → cached Album, zero I/O
+        # Nothing changed → cached Album, zero I/O.
+        return ScannedDir(cached[1], audio_files, cached[2])
     # Audio unchanged (only the sidecar/cover moved)? Reuse the cached tag fields
     # so we skip the per-track mutagen reads — only the cheap sidecar + cover are
     # re-read below.
-    reuse = cached[2] if (cached is not None and cached[0][0] == signature[0]) else None
+    reuse = cached[2].fields if (cached is not None and cached[0][0] == signature[0]) else None
     try:
         io = read_album_io(album_dir, audio_files, video_files, reuse)
         album = build_album(album_dir, audio_files, io)
@@ -192,8 +178,184 @@ def resolve_album(
         log.warning("error scanning %s: %s", album_dir, e)
         return None
     if album_cache is not None:
-        album_cache[album_dir] = (signature, album, io.fields)
-    return album
+        album_cache[album_dir] = (signature, album, io)
+    return ScannedDir(album, audio_files, io)
+
+
+def merge_by_identity(scanned: list[ScannedDir]) -> list[Album]:
+    """Fold directories that hold parts of ONE MusicBrainz release into one album.
+
+    An album is the files that name its release, wherever they sit (#197). The
+    directory is where they happen to live; the `MusicBrainz Album Id` in the
+    tags is what the album IS, and the scan has already read it for every file.
+
+    Two real layouts this exists for, both from a dogfooded library and both
+    refused by the directory-based rule it replaces:
+
+    * `Hybrid/Wide Angle` (disc 1) + `Hybrid/Live Angle_ Sydney` (disc 2), with
+      two OTHER Hybrid albums alongside them;
+    * eleven folders of Autechre EPs that are one compilation, under an
+      `Autechre/` directory holding unrelated albums too.
+
+    In both cases the old rule refused because the parent had "leftovers" — which
+    were simply other albums, which is what an artist directory contains.
+
+    **No containment.** Files claiming release X are that album wherever they
+    are, because a boundary would rule out `Hybrid/Wide Angle` +
+    `Live Albums/Hybrid/Live Angle`, which is a perfectly reasonable way to
+    organise a library, to prevent merges that are correct anyway.
+
+    **Duplicates do not merge**, and that is what makes dropping the boundary
+    safe: two copies of one release share release-track ids, so they are not
+    disjoint — see `_holds_different_tracks`. A backup copy, a second rip, the
+    same album in a FLAC tree and an ALAC tree all stay separate.
+
+    Untagged directories have no identity and are returned untouched.
+    """
+    by_release: dict[str, list[ScannedDir]] = {}
+    singles: list[Album] = []
+    for entry in scanned:
+        sc = entry.album.sidecar
+        mbid = sc.mb_release_id if sc else None
+        if mbid is None:
+            singles.append(entry.album)  # no identity to group on
+        else:
+            by_release.setdefault(mbid, []).append(entry)
+
+    merged: list[Album] = []
+    for mbid, parts in by_release.items():
+        if len(parts) == 1:
+            merged.append(parts[0].album)
+            continue
+        groups = _disjoint_groups(parts)
+        if len(groups) == len(parts):
+            # Nothing could be merged — every part overlaps every other, i.e.
+            # they are duplicates of each other, not pieces of one album.
+            merged.extend(p.album for p in parts)
+            continue
+        for group in groups:
+            merged.append(group[0].album if len(group) == 1 else _combine(mbid, group))
+    return singles + merged
+
+
+def _disjoint_groups(parts: list[ScannedDir]) -> list[list[ScannedDir]]:
+    """Partition parts naming one release into groups that can merge.
+
+    Greedy and order-independent in the case that matters: a part joins the
+    first group none of whose members it overlaps. Two copies of a release
+    therefore end up in different groups, and three folders that are its three
+    discs end up in one.
+    """
+    groups: list[list[ScannedDir]] = []
+    for part in sorted(parts, key=lambda p: p.album.path):
+        for group in groups:
+            if all(_holds_different_tracks(part, other) for other in group):
+                group.append(part)
+                break
+        else:
+            groups.append([part])
+    return groups
+
+
+def _holds_different_tracks(a: ScannedDir, b: ScannedDir) -> bool:
+    """True when two directories hold different tracks of the same release.
+
+    Release-track ids when the files carry them: every track of a release has
+    its own, so different discs have DISJOINT sets and two copies of one disc
+    have identical ones. This reads the thing in question rather than a proxy
+    for it — it establishes not that the parts *claim* to be different but that
+    they *are*.
+
+    Falls back to distinct disc numbers when neither side carries track ids (a
+    pre-2011 rip). A MIXTURE is refused: with ids on one side and not the other
+    there is nothing to compare, and answering with the weaker evidence a
+    question the better evidence could settle is how a duplicate gets merged.
+    """
+    ids_a, ids_b = _release_track_ids(a), _release_track_ids(b)
+    if ids_a and ids_b:
+        return not (ids_a & ids_b)
+    if ids_a or ids_b:
+        return False
+    discs_a, discs_b = _disc_numbers(a), _disc_numbers(b)
+    if not discs_a or not discs_b:
+        return False  # no evidence either way, so no merge
+    return not (discs_a & discs_b)
+
+
+def _release_track_ids(entry: ScannedDir) -> frozenset[str]:
+    """Every file's release-track id, or empty if ANY file lacks one.
+
+    All-or-nothing: a partial set makes disjointness meaningless, since two
+    copies of a disc with half their files untagged would compare as disjoint
+    on the tagged half.
+    """
+    ids = {f.release_track_id for f in entry.io.fields}
+    if not ids or None in ids:
+        return frozenset()
+    return frozenset(i for i in ids if i is not None)
+
+
+def _disc_numbers(entry: ScannedDir) -> frozenset[int]:
+    """The disc numbers this directory's files carry, or empty if any lacks one."""
+    discs = {f.disc_num for f in entry.io.fields}
+    if not discs or None in discs:
+        return frozenset()
+    return frozenset(d for d in discs if d is not None)
+
+
+def _combine(mbid: str, group: list[ScannedDir]) -> Album:
+    """Rebuild one album from the directories that hold its parts.
+
+    Rebuilt rather than patched: state, the expected track count and the
+    partial-tag count are all derived from the WHOLE album's tags, and a merged
+    album whose state was copied from one of its parts would report that part's
+    answer — a two-disc release assembled from two "incomplete" halves has to
+    come out complete.
+
+    The primary directory (the one that becomes `Album.path`) is whichever holds
+    the most tracks, ties broken by path so the choice is stable across scans.
+    Something has to answer "where is this album" in one line; `paths` carries
+    the truth and the album page lists all of them (#198).
+    """
+    ordered = sorted(group, key=lambda e: (-len(e.files), e.album.path))
+    primary = ordered[0]
+    files = sorted(
+        (f for e in group for f in e.files),
+        key=lambda f: (str(f.parent), album_files.sort_key(Path(f.name))),
+    )
+    io = AlbumIO(
+        sidecar=_merge_sidecars([e.album.sidecar for e in group], mbid),
+        fields=[f for e in ordered for f in e.io.fields],
+        cover_path=next((e.io.cover_path for e in ordered if e.io.cover_path), None),
+        video_fields=tuple(f for e in ordered for f in e.io.video_fields),
+    )
+    return build_album(primary.album.path, files, io)
+
+
+def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
+    """One sidecar describing the whole album, from its parts'.
+
+    Every part keeps its own file on disk — none is a shard, none is primary, and
+    a folder moved out of the group is still a complete album on its own (#197).
+    This is only the album's VIEW of them.
+
+    The rules follow from each field being a fact about the album rather than
+    about a folder: it has existed since the first of its parts did, it was last
+    tagged when the last of them was, and a decision recorded on any part (a
+    surrender, an accepted incompleteness) was made about the album.
+    """
+    present = [s for s in sidecars if s is not None]
+    return Sidecar(
+        store_url=next((s.store_url for s in present if s.store_url), None),
+        bandcamp=next((s.bandcamp for s in present if s.bandcamp), None),
+        downloaded_at=min((s.downloaded_at for s in present if s.downloaded_at), default=None),
+        added_at=min((s.added_at for s in present if s.added_at), default=None),
+        mb_release_id=mbid,
+        tagged_at=max((s.tagged_at for s in present if s.tagged_at), default=None),
+        notes=next((s.notes for s in present if s.notes), None),
+        purchase_unavailable=any(s.purchase_unavailable for s in present),
+        tracks_unavailable=any(s.tracks_unavailable for s in present),
+    )
 
 
 def prune_cache(album_cache: AlbumCache, seen: set[Path]) -> None:
@@ -299,6 +461,7 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         has_tag_mbid=any(sf.album_id for sf in fields),
         disc_num=_consistent_disc_num(fields),
         expected_track_count=expected.total,
+        paths=tuple(sorted({f.parent for f in audio_files})) or (album_dir,),
     )
 
 

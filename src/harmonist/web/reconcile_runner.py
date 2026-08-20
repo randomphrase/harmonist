@@ -263,8 +263,6 @@ def reconcile_pending_orphans(
     # per-disc directories is made of COMPLETE albums, not of the orphans this
     # pass otherwise exists for, so gating it on `total` would mean it only ever
     # ran on a library that also happened to have something new in it.
-    grouped = _promote_split_releases(albums, music_dir, exempt)
-
     if not total:
         # Nothing to do. Reconcile runs on startup and after every sync, so
         # announcing a no-op made it the feed's most frequent content — three
@@ -277,7 +275,6 @@ def reconcile_pending_orphans(
             "reconciled_manual": 0,
             "recovered_url": 0,
             "adopted": 0,
-            "grouped": grouped,
             "skipped": 0,
             "errors": 0,
         }
@@ -373,55 +370,6 @@ def reconcile_pending_orphans(
         "reconciled_manual": reconciled_manual,
         "recovered_url": recovered_url,
         "adopted": adopted,
-        "grouped": grouped,
         "skipped": skipped,
         "errors": errors,
     }
-
-
-def _promote_split_releases(albums: list[Album], music_dir: Path, exempt: set[Path]) -> int:
-    """Give each release found split across per-disc directories a sidecar on
-    the parent, so the next scan reads it as one album. Returns how many.
-
-    Idempotent by construction: `find_split_releases` skips any parent that
-    already has a sidecar, so a second pass over the same library finds nothing
-    and writes nothing. That matters because reconcile runs on startup and after
-    every sync.
-
-    `exempt` carries the same Forget intent the orphan pass respects — a parent
-    the user just un-grouped must not be re-grouped underneath them.
-
-    One activity entry per release, inside its own action scope so the audit row
-    the promotion writes hangs off the entry describing it (#84). Failure of one
-    release must not take down the reconcile pass around it — the albums stay
-    exactly as they were, which is a state the app already handles, being the
-    one it has always been in.
-    """
-    from harmonist import reconcile
-
-    grouped = 0
-    for split in reconcile.find_split_releases(albums, music_dir):
-        if split.parent in exempt:
-            # Forget on a grouped album deletes the parent's sidecar, which is
-            # precisely how a user un-groups one. Re-grouping it on the very
-            # next pass would make that button do nothing — the same reason
-            # reconcile skips exempt orphans rather than re-deriving them.
-            log.debug("split release at %s is forgotten — not re-grouping", split.parent)
-            continue
-        with activity_store.action():
-            try:
-                reconcile.promote_split_release(split)
-            except Exception:
-                log.exception("could not group the split release at %s", split.parent)
-                activity.warning(
-                    f"Could not group the discs of {split.label} — left as separate albums"
-                )
-                continue
-            grouped += 1
-            activity.record(
-                f"Grouped {len(split.parts)} disc folder(s) into one album "
-                f"({split.track_count} tracks)",
-                album_id=split.mb_release_id,
-                album_label=split.label,
-            )
-    return grouped

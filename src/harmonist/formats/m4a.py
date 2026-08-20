@@ -211,6 +211,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         disc_num=disk[0][0] if disk and disk[0] else None,
         track_total=trkn[0][1] if trkn and trkn[0] and len(trkn[0]) > 1 else None,
         disc_total=disk[0][1] if disk and disk[0] and len(disk[0]) > 1 else None,
+        release_track_id=_binary_atom_str(audio, ATOM_MB_RELEASE_TRACK_ID),
     )
 
 

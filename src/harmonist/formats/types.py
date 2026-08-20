@@ -49,6 +49,15 @@ class ScanFields(NamedTuple):
     # asking it once per album is a rate-limited request per album.
     track_total: int | None = None
     disc_total: int | None = None
+    # This track's `MusicBrainz Release Track Id` — unique to its position in the
+    # release, unlike the recording id, which a release can repeat.
+    #
+    # What tells two DIFFERENT parts of one album from two COPIES of it (#197):
+    # different discs have disjoint sets of these, duplicates have identical
+    # ones. Read here, in the scan's single open per file, because the question
+    # is asked of any directory that shares a release with another — which the
+    # scan cannot know in advance.
+    release_track_id: str | None = None
 
 
 @dataclass

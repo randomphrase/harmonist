@@ -1,91 +1,73 @@
 """Which audio files belong to one album — the single definition of that.
 
-Nearly every album operation starts by asking "what are this album's tracks?",
-and until #16 each of them answered it independently with the same one-liner:
-``sorted(p for p in album_dir.iterdir() if formats.is_supported(p))``. That
-answer is right for the flat layout Harmonist creates, and wrong for a release
-the user split across per-disc subdirectories, which is a shape a decades-old
-adopted library is full of.
+Nearly every album operation starts by asking "what are this album's tracks?".
+Until #16 each answered it with the same one-liner over `album_dir.iterdir()`;
+#16 added a directory-grouping rule on top, and #197 replaced that rule entirely.
 
-So the rule lives here once, and the call sites ask rather than re-deriving:
+An album is now **the files that name its MusicBrainz release**, wherever they
+sit (`scanner.merge_by_identity`) — so which files those are is a property of
+the ALBUM, not of any directory, and the answer comes from `Album.files`.
 
-    a directory that DECLARES itself an album (it has a sidecar) but holds no
-    audio of its own owns every audio file beneath it.
+What is left here is the directory-scoped question, which is still the right one
+in two places:
 
-Nothing else about the library changes: no file moves, no renames, no migration.
-The declaration is the sidecar the user (or `reconcile.promote_split_release`)
-puts in the parent directory, and removing that sidecar is what undoes it —
-which is the escape hatch, since the per-disc directories then answer for
-themselves again exactly as before.
+* **discovery** — reconcile and url_recovery meet a directory before anything
+  knows what album it belongs to;
+* **the scan itself**, which walks directories and only afterwards decides which
+  of them go together.
 
-Deliberately narrow. A directory with audio of its own is an album, full stop,
-even when it also has audio-bearing subdirectories — so no album that exists
-today can change shape under this rule. Harmonist has never written a sidecar
-into a directory containing no audio (`reconcile_album` returns early, and
-tagging is only ever aimed at an album path), so the grouped shape is
-unreachable by accident: it only arises where something deliberately created it.
+So `audio_files(dir)` means exactly "the audio in this directory", with no
+grouping cleverness. Nothing here reads a sidecar any more, which is also what
+broke the import cycle in #200.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 from . import formats
-from .models import SIDECAR_FILENAME
 
 
 def audio_files(album_dir: Path) -> list[Path]:
-    """This album's audio files, in track order.
+    """The audio files IN this directory, in track order.
 
-    The directory's own files when it has any (the flat case, which is every
-    album Harmonist creates), else — when the directory declares itself an
-    album with a sidecar — every audio file beneath it, disc directory by disc
-    directory. Returns [] for a directory that is not an album at all.
+    Directory-scoped, deliberately: an album's own file list spans whatever
+    directories its release's files occupy and belongs to the `Album` (#197).
+    Use this when a directory is all you have.
     """
-    own = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
-    if own or not (album_dir / SIDECAR_FILENAME).exists():
-        return own
-    return descendant_audio_files(album_dir)
+    return sorted((p for p in album_dir.iterdir() if formats.is_supported(p)), key=_key)
 
 
 def video_files(album_dir: Path) -> list[Path]:
-    """This album's VIDEO files, in the same order as `audio_files`.
+    """The video files in this directory, ordered like `audio_files`.
 
-    Harmonist cannot tag these — that is #66 — so they are deliberately absent
-    from `audio_files`, which is what the tagger, the matcher and the cover
-    reader all consume. But they are tracks the user has, tagged by Picard with
-    the same disc and position atoms as the audio, and pretending otherwise
-    reports an album whose second disc is a DVD as missing every track on it
-    (#193).
-
-    So: read for COMPLETENESS, never written. Same grouping rule as `audio_files`
-    — a sidecar'd parent with no audio of its own owns everything beneath it.
+    Harmonist cannot tag these — that is #66 — so they are absent from
+    `audio_files`, which is what the tagger, the matcher and the cover reader
+    consume. But they are tracks the user has, carrying the same disc and
+    position atoms as the audio, so the scan counts them towards completeness
+    (#193): read, never written.
     """
-    own = sorted(p for p in album_dir.iterdir() if formats.is_video(p))
-    if own or not (album_dir / SIDECAR_FILENAME).exists():
-        return own
-    if any(p for p in album_dir.iterdir() if formats.is_supported(p)):
-        return own
-    return descendant_video_files(album_dir)
+    return sorted((p for p in album_dir.iterdir() if formats.is_video(p)), key=_key)
 
 
-def descendant_video_files(album_dir: Path) -> list[Path]:
-    """Every video file below `album_dir`, ordered like `descendant_audio_files`."""
-    found = [p for p in album_dir.rglob("*") if formats.is_video(p) and p.is_file()]
-    return sorted(found, key=lambda p: sort_key(p.relative_to(album_dir)))
+def for_paths(paths: Sequence[Path]) -> list[Path]:
+    """Every audio file across an album's directories, in track order.
 
-
-def descendant_audio_files(album_dir: Path) -> list[Path]:
-    """Every audio file below `album_dir`, ordered by subdirectory then name.
-
-    Split out from `audio_files` because the scanner's walk has already
-    established that the directory holds no audio of its own and wants only
-    this half — and because `reconcile` needs it to evaluate a candidate
-    parent that has no sidecar yet.
+    The album-scoped question, answered from the folders `Album.paths` records.
+    Ordered by directory first, so a two-disc album assembled from `CD1` and
+    `CD2` still zips against the release's flattened tracklist in the right
+    order — which is what a full tagging depends on.
     """
-    found = [p for p in album_dir.rglob("*") if formats.is_supported(p) and p.is_file()]
-    return sorted(found, key=lambda p: sort_key(p.relative_to(album_dir)))
+    seen: list[Path] = []
+    for root in sorted(set(paths)):
+        seen.extend(audio_files(root))
+    return seen
+
+
+def _key(path: Path) -> tuple[tuple[object, ...], str]:
+    return sort_key(Path(path.name))
 
 
 def rel_name(album_dir: Path, path: Path) -> str:

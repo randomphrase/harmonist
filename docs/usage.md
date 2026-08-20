@@ -34,14 +34,13 @@ It works best on a library that's already in reasonable shape. Harmonist assumes
 - **One album per folder** — each directory of audio files is treated as a single
   album. A folder mixing several albums is flagged **Inconsistent**; split it with
   [Picard](https://picard.musicbrainz.org) first.
-- **Per-disc subfolders are fine** — a multi-disc release filed as
-  `Album/CD1` + `Album/CD2` is recognised as one album. Harmonist spots it when
-  the folders are tagged to the same MusicBrainz release and demonstrably hold
-  *different tracks* of it, then writes a sidecar into the parent folder; your
-  files are never moved. Two copies of the same disc are left as they are, which
-  is the point of the check. **Forget** on the grouped album splits it back up.
-  (The now-redundant sidecars in the disc folders are left alone — harmless, and
-  yours to remove.)
+- **One album can live in several folders** — per-disc subfolders, a box set
+  filed disc by disc, or a compilation you split into its component EPs. If the
+  folders are tagged to the same MusicBrainz release and demonstrably hold
+  *different tracks* of it, Harmonist treats them as one album, wherever they
+  are in your library. Nothing is moved or rewritten, and two copies of the same
+  release are left alone — that check is the point. The album's page lists every
+  folder it drew from.
 - **Already tagged** — ideally Picard-tagged. Harmonist reads the MusicBrainz
   Album ID from your files to recognize what's matched; anything untagged lands in
   the inbox for you to match by hand.

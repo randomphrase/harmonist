@@ -202,6 +202,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         disc_num=_first_int(_text(tags, "TPOS")),
         track_total=_total_int(_text(tags, "TRCK")),
         disc_total=_total_int(_text(tags, "TPOS")),
+        release_track_id=_txxx(tags, TXXX_RELEASE_TRACK_ID),
     )
 
 

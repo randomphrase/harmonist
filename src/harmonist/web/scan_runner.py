@@ -225,6 +225,11 @@ class ScanRunner:
         # so the client refreshes when a NEW snapshot is actually ready.
         status = ScanStatus(state="scanning", started_at=datetime.now(UTC), seq=self._scan_seq)
         self._status = status
+        # One entry per DIRECTORY. Identity grouping (#197) happens once at the
+        # end, over data already read — the walk and the cache stay per-directory
+        # so that costs no extra I/O, and progress still counts directories,
+        # which is what the user watches move.
+        scanned: list[scanner.ScannedDir] = []
         results: list[Album] = []
         last_log = started
 
@@ -243,7 +248,7 @@ class ScanRunner:
             try:
                 cached = self._cache.get(album_dir)
                 if cached is not None and cached[0] == signature:
-                    album = cached[1]  # full-signature hit → zero I/O
+                    album, io = cached[1], cached[2]  # full-signature hit → zero I/O
                 else:
                     # Audio unchanged (only the sidecar/cover moved)? Reuse the
                     # cached tag fields so the worker skips the per-track mutagen
@@ -252,14 +257,14 @@ class ScanRunner:
                     # rescan fast even though every linked album's sidecar changed.
                     reuse = None
                     if cached is not None and cached[0][0] == signature[0]:
-                        reuse = cached[2]  # audio unchanged → skip the tag reads
+                        reuse = cached[2].fields  # audio unchanged → skip the tag reads
                     io = await loop.run_in_executor(
                         executor, scanner.read_album_io, album_dir, files, videos, reuse
                     )
                     album = scanner.build_album(album_dir, files, io)  # CPU, on loop
-                    self._cache[album_dir] = (signature, album, io.fields)
-                results.append(album)
-                status.albums_found = len(results)
+                    self._cache[album_dir] = (signature, album, io)
+                scanned.append(scanner.ScannedDir(album, files, io))
+                status.albums_found = len(scanned)
             except Exception as e:  # one bad album must not abort the scan
                 log.warning("error scanning %s: %s", album_dir, e)
 
@@ -273,7 +278,11 @@ class ScanRunner:
                 )
                 last_log = now
 
-        scanner.prune_cache(self._cache, {a.path for a in results})
+        scanner.prune_cache(self._cache, {e.album.path for e in scanned})
+        # Fold the directories that hold parts of one release into single albums.
+        # Pure CPU over tags already read, so it stays on the loop thread.
+        results = scanner.merge_by_identity(scanned)
+        status.albums_found = len(results)
         self._albums = results
         self._announce_discoveries(results)
         # Reset the authoritative live counts from this fresh snapshot — the

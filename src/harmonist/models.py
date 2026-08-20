@@ -288,6 +288,22 @@ class Album:
     # state comes from `scanner.expected_tracks(...).complete`, which answers
     # the missing-medium case that no total can express.
     expected_track_count: int | None = None
+    # Every directory this album's files come from, in path order, and always
+    # non-empty (a one-folder album holds just `path`).
+    #
+    # An album is the files that name its MusicBrainz release, wherever they sit
+    # (#197) — the directory is where they happen to live, not what the album
+    # IS. `path` remains the album's primary folder for display and for
+    # anything that needs one name; `paths` is the truth about where it lives,
+    # and the album page lists them (#198).
+    paths: tuple[Path, ...] = ()
+
+    @property
+    def folders(self) -> tuple[Path, ...]:
+        """`paths`, falling back to `path` for an Album built without them —
+        every test fixture that constructs one by hand, and every caller that
+        predates #197."""
+        return self.paths or (self.path,)
 
 
 # ---------------------------------------------------------------------------

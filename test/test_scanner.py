@@ -361,17 +361,18 @@ def test_expected_count_sums_the_discs_of_a_multi_disc_release(tmp_path):
     """A 2-disc release of 11 + 10 is 21 tracks, and every one of them is
     stated by the files themselves — the Vapourized case from #16."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=0)
-    (album_dir / "CD1").mkdir()
-    (album_dir / "CD2").mkdir()
     for sub, n, disc, total in (("CD1", 3, 1, 3), ("CD2", 2, 2, 2)):
+        (album_dir / sub).mkdir()
         for i in range(1, n + 1):
             shutil.copy(SINE_M4A, album_dir / sub / f"{i:02d} Track.m4a")
         _tag_files(album_dir / sub, track_total=total, disc_num=disc, disc_total=2)
-    sc.write(album_dir, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime.now(UTC)))
+        _tagged_sidecar(album_dir / sub)
 
-    album = scan(tmp_path)[0]
-    assert album.expected_track_count == 5
-    assert album.state == AlbumState.COMPLETE
+    albums = scan(tmp_path)
+
+    assert len(albums) == 1, "identity grouping folds the two discs into one album"
+    assert albums[0].expected_track_count == 5
+    assert albums[0].state == AlbumState.COMPLETE
 
 
 def test_a_release_missing_a_whole_disc_is_incomplete_with_no_known_total(tmp_path):
