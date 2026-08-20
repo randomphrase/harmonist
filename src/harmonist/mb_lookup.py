@@ -136,6 +136,44 @@ def fetch_release(mbid: str) -> Release:
     return release
 
 
+def fetch_video_media(mbid: str) -> tuple[int, ...]:
+    """Which of the release's media hold nothing but video, by position.
+
+    The one fact about a release that CANNOT be read off the files, which is why
+    it earns a sidecar field (#206): a medium the user never ripped has no files
+    to carry it. Midnight Oil's *Best of Both Worlds* is a 44-track DVD-Video
+    plus a 16-track CD; the files say "disc 2 of 2, 16 tracks" and stop.
+
+    "Nothing but video" is the whole test, and it is deliberately per-TRACK
+    rather than per-format. `Wish You Were Here 50` is a single Blu-ray carrying
+    45 audio tracks and 4 videos — judging by the medium's format would call the
+    entire album video and expect nothing of it.
+
+    Returns positions, which is what survives: a medium's index in the release is
+    stable in a way its format string is not.
+    """
+    try:
+        result = musicbrainzngs.get_release_by_id(mbid, includes=["media", "recordings"])
+    except musicbrainzngs.ResponseError as e:
+        if _is_not_found(e):
+            raise ReleaseGoneError(f"MusicBrainz no longer has release {mbid}") from e
+        raise MBError(f"MB request failed: {e}") from e
+    except (musicbrainzngs.NetworkError, musicbrainzngs.AuthenticationError) as e:
+        raise MBError(f"MB request failed: {e}") from e
+
+    positions: list[int] = []
+    for medium in result["release"].get("medium-list") or []:
+        tracks = medium.get("track-list") or []
+        if not tracks:
+            continue
+        if all((t.get("recording") or {}).get("video") == "true" for t in tracks):
+            try:
+                positions.append(int(medium.get("position", 0)))
+            except (TypeError, ValueError):
+                continue
+    return tuple(sorted(positions))
+
+
 def fetch_release_urls(mbid: str) -> list[str]:
     """Return the list of URL relationships attached to an MB release.
 

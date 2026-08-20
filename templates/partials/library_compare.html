@@ -6,6 +6,24 @@
 
    This used to branch on whether `comparison` was in scope, so the same
    fragment could serve a smaller dialog. The dialog is gone (#129). #}
+{# Discs the release has and the disk does not. Shown whether or not they count
+   against completeness (#206): an album missing only video discs derives
+   COMPLETE, and "complete" must not quietly mean "we stopped mentioning two
+   whole discs". A summary, not a track list — the point is what is absent, and
+   naming 44 DVD tracks one by one would bury the album's own tracklist. #}
+{% if absent_media %}
+<div class="mb-3 px-3 py-2 rounded border border-line bg-surface">
+    <p class="text-2xs font-bold text-muted uppercase tracking-widest">Not on disk</p>
+    <ul class="mt-1 space-y-0.5">
+        {% for position, fmt, tracks in absent_media %}
+        <li class="text-2xs text-muted">
+            Disc {{ position }} — {{ fmt }}, {{ tracks }} track{{ 's' if tracks != 1 else '' }}
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 {% include 'partials/_tag_comparison.html' %}
 
 {# Out-of-band: htmx swaps this into the page's Tracks section rather than

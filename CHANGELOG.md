@@ -21,6 +21,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- An album is no longer reported as incomplete when the only discs it's missing
+  are video — the bonus DVD you never ripped. The album's page lists the discs
+  that aren't on disk, so "complete" doesn't quietly mean "we stopped mentioning
+  them". A partly-ripped video disc still counts as incomplete (#206).
 - An album whose MusicBrainz release has been deleted now says so plainly,
   instead of reporting a raw "HTTP Error 404" that looked like something to
   retry. A banner offers to send it back to Needs MBID when you're ready, and

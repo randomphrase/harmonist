@@ -33,7 +33,7 @@ from pathlib import Path
 
 from . import album_files, formats, url_recovery
 from . import sidecar as sidecar_mod
-from .models import Sidecar, is_bandcamp_url
+from .models import Album, Sidecar, is_bandcamp_url
 
 log = logging.getLogger(__name__)
 
@@ -243,3 +243,49 @@ def matching_bandcamp_url(
         if is_bandcamp_url(url):
             return url
     return None
+
+
+# ---------------------------------------------------------------------------
+# Video-only media: the one release fact the files cannot carry (#206)
+# ---------------------------------------------------------------------------
+
+
+def needs_video_media(album: Album) -> bool:
+    """True when this album is missing a whole medium and nobody has asked
+    MusicBrainz what was on it.
+
+    Bounded by exactly the albums the answer changes — an album whose media are
+    all present never needs it, which is nearly all of them. That is what makes
+    the lookup affordable where #187's per-album backfill was not.
+    """
+    sc = album.sidecar
+    return bool(
+        album.absent_media
+        and sc is not None
+        and sc.mb_release_id is not None
+        and sc.video_media is None
+    )
+
+
+def record_video_media(
+    album_dir: Path,
+    *,
+    fetch_video_media: Callable[[str], tuple[int, ...]],
+) -> tuple[int, ...] | None:
+    """Ask MusicBrainz which of the release's media are video-only, and record it.
+
+    Returns what was recorded, or None when there was nothing to do. Raises
+    whatever the lookup raises — a failed request must not be written down as
+    "none of them are video", which would silently mark the album incomplete
+    forever on evidence that was never gathered.
+
+    Re-reads the sidecar rather than trusting the caller's snapshot: a scan is
+    minutes old on a large library, and a tag or a re-match in between would
+    make this write clobber a newer one.
+    """
+    sc = sidecar_mod.read(album_dir)
+    if sc is None or sc.mb_release_id is None or sc.video_media is not None:
+        return None
+    positions = fetch_video_media(sc.mb_release_id)
+    sidecar_mod.write(album_dir, replace(sc, video_media=positions))
+    return positions

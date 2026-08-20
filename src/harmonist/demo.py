@@ -963,6 +963,17 @@ def fetch_release_urls(mbid: str) -> list[str]:
     return [url for url, m in URL_RELS.items() if m == mbid]
 
 
+def fetch_video_media(mbid: str) -> tuple[int, ...]:
+    """Demo counterpart of the video-only-media lookup (#206).
+
+    The seeded catalogue has no video tracks, so every release answers "none are
+    video" — which is the honest answer for it, and keeps the request off the
+    network like every other demo lookup.
+    """
+    fetch_release(mbid)  # raises ReleaseGoneError for an id the demo doesn't have
+    return ()
+
+
 def lookup_by_bandcamp_url(bandcamp_url: str) -> list[str]:
     mbid = URL_RELS.get(bandcamp_url)
     return [mbid] if mbid else []
@@ -1040,6 +1051,7 @@ def install() -> None:
 
     mb_lookup.fetch_release = fetch_release
     mb_lookup.fetch_release_urls = fetch_release_urls
+    mb_lookup.fetch_video_media = fetch_video_media
     mb_lookup.lookup_by_bandcamp_url = lookup_by_bandcamp_url
     mb_lookup.browse_release_group_releases = browse_release_group_releases
     mb_search.search_releases = search_releases

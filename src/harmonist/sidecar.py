@@ -266,6 +266,8 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
     the user can't easily undo":
 
       * identity — MBID / Bandcamp item_id / store_url
+      * `video_media` — which media are video-only, so an album missing just
+        those derives COMPLETE rather than INCOMPLETE. Reclassifies the album.
       * `tracks_unavailable` — accepting an incomplete album as finished. Takes
         it out of the Library's Incomplete filter, so changing it reclassifies
         what the user is shown as needing attention.
@@ -310,8 +312,25 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
         changes["purchase_unavailable"] = f"{old.purchase_unavailable}->{new.purchase_unavailable}"
     if old.tracks_unavailable != new.tracks_unavailable:
         changes["tracks_unavailable"] = f"{old.tracks_unavailable}->{new.tracks_unavailable}"
+    if old.video_media != new.video_media:
+        changes["video_media"] = f"{old.video_media}->{new.video_media}"
     if changes:
         audit.record("sidecar.update", album_id=album_id, album=album_dir, **changes)
+
+
+def _int_tuple(raw: object) -> tuple[int, ...] | None:
+    """A stored list of medium positions, or None when the key is absent.
+
+    Absent and empty mean different things here — "never asked" against "asked,
+    none are video" — so a malformed value is treated as absent rather than
+    empty: re-asking is cheap and wrong-but-plausible is not.
+    """
+    if not isinstance(raw, list):
+        return None
+    try:
+        return tuple(int(x) for x in raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def _normalise_identity(s: Sidecar, album_dir: Path) -> Sidecar:
@@ -372,6 +391,10 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
         d["purchase_unavailable"] = True
     if s.tracks_unavailable:
         d["tracks_unavailable"] = True
+    if s.video_media is not None:
+        # `[]` is meaningful — "asked, none are video" — so it is written, while
+        # the None default (never asked) is omitted like every other default.
+        d["video_media"] = list(s.video_media)
     return d
 
 
@@ -511,6 +534,7 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
         notes=d.get("notes"),
         purchase_unavailable=bool(d.get("purchase_unavailable", False)),
         tracks_unavailable=bool(d.get("tracks_unavailable", False)),
+        video_media=_int_tuple(d.get("video_media")),
     )
 
 

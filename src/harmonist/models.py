@@ -228,6 +228,19 @@ class Sidecar:
     # reports the count. Not derivable at any price: it is a decision, with no
     # evidence on disk. Same shape as `purchase_unavailable` one level over.
     tracks_unavailable: bool = False
+    # Which of the release's media hold nothing but video, by position — the one
+    # fact about a release that cannot be read off the files, because a medium
+    # the user never ripped has no files to carry it (#206).
+    #
+    # `None` means "not asked"; `()` means "asked, none are video". The
+    # difference is load-bearing: it is what stops the lookup being repeated
+    # forever on a release that turns out to have no video at all.
+    #
+    # Load-bearing: an album missing ONLY video media derives COMPLETE, since
+    # Harmonist cannot tag video (#66) and telling the user forever that their
+    # CD is missing 44 DVD tracks is noise. A partially-present video medium is
+    # still INCOMPLETE — if you have one video you should have the rest.
+    video_media: tuple[int, ...] | None = None
 
 
 @dataclass
@@ -290,6 +303,10 @@ class Album:
     # anything that needs one name; `paths` is the truth about where it lives,
     # and the album page lists them (#198).
     paths: tuple[Path, ...] = ()
+    # Medium positions with no files of any kind on disk. Scanner-derived from
+    # the tags; drives the bounded MusicBrainz pass that fills `video_media`
+    # (#206), which is the only thing that can say whether their absence matters.
+    absent_media: frozenset[int] = frozenset()
 
     @property
     def folders(self) -> tuple[Path, ...]:

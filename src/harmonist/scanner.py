@@ -434,7 +434,7 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
     # The sidecar is kept on disk; once the user fixes the on-disk tags
     # via Picard, the next scan re-derives state from the sidecar.
     inconsistent_tracks = _check_consistency(audio_files, fields)
-    expected = expected_tracks(fields, io.video_fields)
+    expected = expected_tracks(fields, io.video_fields, sidecar.video_media if sidecar else None)
     state = (
         AlbumState.INCONSISTENT
         if inconsistent_tracks
@@ -461,6 +461,7 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         # reconcile for untagged orphans it could never resolve.
         has_tag_mbid=any(sf.album_id for sf in fields),
         expected_track_count=expected.total,
+        absent_media=expected.absent_media,
         paths=tuple(sorted({f.parent for f in audio_files})) or (album_dir,),
     )
 
@@ -481,6 +482,11 @@ class ExpectedTracks(NamedTuple):
 
     total: int | None
     complete: bool
+    # Medium positions with no files of any kind on disk. Knowable from the tags
+    # alone (`disc_total` says how many there are, the discs present say which),
+    # and the input to #206: whether an absent medium MATTERS depends on whether
+    # it was video, which only MusicBrainz can say.
+    absent_media: frozenset[int] = frozenset()
 
 
 # What an album says when its files carry no counts at all. Complete, because
@@ -492,6 +498,7 @@ UNKNOWN_EXPECTED = ExpectedTracks(total=None, complete=True)
 def expected_tracks(
     fields: list[formats.ScanFields],
     video_fields: Sequence[formats.ScanFields] = (),
+    video_media: tuple[int, ...] | None = None,
 ) -> ExpectedTracks:
     """How many tracks the release has, read from the files' own tags (#195).
 
@@ -533,16 +540,27 @@ def expected_tracks(
 
     disc_totals = {f.disc_total for f in present if f.disc_total is not None}
     expected_media = next(iter(disc_totals)) if len(disc_totals) == 1 else len(totals)
-    if len(totals) < expected_media:
-        # A whole medium has no files at all. Certainly incomplete; the total is
-        # not knowable, because the absent disc's length was only ever recorded
-        # in the files that are missing.
-        return ExpectedTracks(total=None, complete=False)
+    absent = frozenset(range(1, expected_media + 1)) - set(totals)
+    if absent:
+        # A whole medium has no files of any kind. Whether that matters depends
+        # on what was ON it, and nothing on disk can say — the files that would
+        # have carried its length are precisely the missing ones (#206).
+        if video_media is not None and absent <= set(video_media):
+            # Every absent medium was video-only. Harmonist cannot tag video
+            # (#66), so a CD the user ripped in full is not "missing 44 tracks"
+            # because they declined the bonus DVD. The album is complete on the
+            # media it has, and its page lists the ones it hasn't.
+            pass
+        else:
+            # An absent medium that is not known to be video — or not asked
+            # about yet. The total is unknowable either way: the absent disc's
+            # length was only ever recorded in the files that are missing.
+            return ExpectedTracks(total=None, complete=False, absent_media=absent)
     if any(t is None for t in totals.values()):
         return UNKNOWN_EXPECTED  # a disc we can't size — don't guess the album's total
 
     total = sum(t for t in totals.values() if t is not None)
-    return ExpectedTracks(total=total, complete=len(present) >= total)
+    return ExpectedTracks(total=total, complete=len(present) >= total, absent_media=absent)
 
 
 def _audio_format(fields: list[formats.ScanFields]) -> str | None:
@@ -631,7 +649,7 @@ def _derive_state(
         # number. `complete` rather than a count comparison, because an album
         # missing an entire medium is knowably incomplete with no total to
         # compare against — see `expected_tracks`.
-        if not expected_tracks(fields, video_fields).complete:
+        if not expected_tracks(fields, video_fields, sidecar.video_media).complete:
             return AlbumState.INCOMPLETE
         # NEEDS_SYNC: Bandcamp-sourced album, MB release known, files tagged,
         # but Bandcamp item_id not yet linked (a Sync run resolves this).

@@ -406,6 +406,26 @@ Three shapes:
 Files carrying no totals give "don't know", which derives **Complete** — an
 album Harmonist has never tagged is not accused of missing tracks.
 
+**An absent medium that was video does not count against the album** (#206).
+A release whose bonus DVD the user never ripped is not missing 44 tracks in any
+sense they can act on — Harmonist cannot tag video (#66). So a medium that is
+*entirely* absent is forgiven when MusicBrainz says its tracks are all video.
+
+The word doing the work is *entirely*. A partly-present video medium is still
+Incomplete, on the principle that if the user has one video they should have the
+rest — which separates "I chose not to rip the DVD" from "my rip failed halfway".
+
+This is the one release fact the files cannot carry, because the files that would
+carry it are the missing ones. So it is persisted as `sidecar.video_media` (§4),
+filled by a lookup bounded to albums that actually have an absent medium —
+knowable from the tags alone, and a small set. `None` means "not asked" and `()`
+means "asked, none are video"; without that distinction a release with no video
+would be re-fetched on every pass forever.
+
+The album page **lists the absent media** regardless, off the release it has
+already fetched for its comparison. "Complete" must not quietly mean "we stopped
+mentioning two whole discs".
+
 **Video files count as present tracks** (#193). Harmonist cannot tag a `.m4v`
 — that is #66, and they are deliberately absent from `album_files.audio_files`
 so nothing that writes can reach them — but Picard tags them with the same disc

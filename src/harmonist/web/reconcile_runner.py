@@ -181,6 +181,7 @@ def reconcile_pending_orphans(
     music_dir: Path,
     *,
     fetch_urls: Callable[[str], list[str]],
+    fetch_video_media: Callable[[str], tuple[int, ...]] | None = None,
     recover_url: Callable[[Path], str | None] | None = None,
     status_updater: Callable[..., None] | None = None,
     rate_limit_seconds: float = MB_RATE_LIMIT_SECONDS,
@@ -263,6 +264,14 @@ def reconcile_pending_orphans(
     # per-disc directories is made of COMPLETE albums, not of the orphans this
     # pass otherwise exists for, so gating it on `total` would mean it only ever
     # ran on a library that also happened to have something new in it.
+    # Video-only media (#206), before the early return: the albums this applies
+    # to are terminal Library albums missing a whole disc, not orphans.
+    video_checked = (
+        _record_video_media(albums, exempt, fetch_video_media)
+        if fetch_video_media is not None
+        else 0
+    )
+
     if not total:
         # Nothing to do. Reconcile runs on startup and after every sync, so
         # announcing a no-op made it the feed's most frequent content — three
@@ -275,6 +284,7 @@ def reconcile_pending_orphans(
             "reconciled_manual": 0,
             "recovered_url": 0,
             "adopted": 0,
+            "video_checked": video_checked,
             "skipped": 0,
             "errors": 0,
         }
@@ -370,6 +380,61 @@ def reconcile_pending_orphans(
         "reconciled_manual": reconciled_manual,
         "recovered_url": recovered_url,
         "adopted": adopted,
+        "video_checked": video_checked,
         "skipped": skipped,
         "errors": errors,
     }
+
+
+def _record_video_media(
+    albums: list[Album],
+    exempt: set[Path],
+    fetch_video_media: Callable[[str], tuple[int, ...]],
+) -> int:
+    """Ask MusicBrainz which media are video-only, for the albums it changes.
+
+    Bounded to albums missing a WHOLE medium that have not been asked about —
+    knowable from the tags alone, and a small set. An album whose media are all
+    present never needs this, which is nearly all of them. That is the
+    difference from #187's per-album backfill, which was bounded only by library
+    size and cost ~16 minutes on a 958-album library.
+
+    Each answer removes its album from the candidate set permanently, including
+    a negative one: `()` means "asked, none are video", which is why the field
+    distinguishes that from `None`. Without it a release with no video at all
+    would be re-fetched on every pass forever.
+
+    A failure writes nothing and retries next pass — recording "no video media"
+    from a request that never succeeded would silently mark the album incomplete
+    forever on evidence nobody gathered.
+    """
+    from harmonist import reconcile
+
+    pending = [a for a in albums if reconcile.needs_video_media(a) and a.path not in exempt]
+    if not pending:
+        return 0
+
+    activity.record(f"Checking MusicBrainz for video-only discs — {len(pending)} album(s)")
+    checked = 0
+    for album in pending:
+        with activity_store.action():
+            try:
+                positions = reconcile.record_video_media(
+                    album.path, fetch_video_media=fetch_video_media
+                )
+            except Exception as e:
+                # Warning, not exception: on a library-wide pass a stack trace
+                # per unreachable album buries the run, and the next pass retries.
+                log.warning("could not check video media for %s: %s", album.path, e)
+                continue
+            if positions is None:
+                continue
+            checked += 1
+            if positions and album.absent_media <= set(positions):
+                activity.record(
+                    f"Disc(s) {', '.join(str(p) for p in sorted(album.absent_media))} "
+                    "are video-only — no longer counted as missing",
+                    album_id=sidecar.album_id_for(album.path),
+                    album_label=f"{album.artist} — {album.title}".strip(" —"),
+                )
+    return checked

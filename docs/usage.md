@@ -160,7 +160,10 @@ done but still wrong, each with its count:
   lookups. When a whole disc of a set is missing the tile just says *Incomplete* —
   nothing on disk records how long the absent disc was. Video tracks (`.m4v`)
   count towards completeness even though Harmonist can't tag them yet, so a
-  CD+DVD release you've ripped in full reads as complete.
+  CD+DVD release you've ripped in full reads as complete. If you *didn't* rip the
+  bonus DVD at all, that's not counted against you either — the album's page
+  lists the discs that aren't on disk, so nothing is hidden. A DVD you ripped
+  only part of does still count as incomplete.
 
   Some albums are incomplete on purpose and always will be — you ripped only the
   stereo mixes off a Blu-ray, or the hidden track was never ripped and the CD is

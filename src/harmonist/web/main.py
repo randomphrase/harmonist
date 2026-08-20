@@ -497,6 +497,7 @@ def create_app(
         reconcile_pending_orphans(
             cfg.paths.music_dir,
             fetch_urls=mb_lookup.fetch_release_urls,
+            fetch_video_media=mb_lookup.fetch_video_media,
             status_updater=status_updater,
             exempt_paths=forgotten_paths,
             albums=snapshot,
@@ -1732,6 +1733,31 @@ def _revertable_anchors(
     for anchor, records in tag_history.group_records(history, detail).items():
         if any(item.fields for item in tag_history.revert_plan(records)):
             out.add(anchor)
+    return out
+
+
+def _absent_media_summary(album: Album, release: Release) -> list[tuple[int, str, int]]:
+    """The release's media that have no files on disk, as (position, format, tracks).
+
+    Read off the release the page has just fetched for its comparison, so it
+    costs nothing extra. The state derivation cannot do this — it runs at scan
+    time with no MusicBrainz — which is exactly why an album missing only video
+    discs needs `sidecar.video_media` recorded to come out COMPLETE (#206).
+    Showing them is the other half: "complete" must not mean "we quietly stopped
+    mentioning two whole discs".
+    """
+    if not album.absent_media:
+        return []
+    out: list[tuple[int, str, int]] = []
+    for medium in release.get("medium-list") or []:
+        try:
+            position = int(medium.get("position", 0))
+        except (TypeError, ValueError):
+            continue
+        if position in album.absent_media:
+            tracks = medium.get("track-list") or []
+            count = len(tracks) or int(medium.get("track-count") or 0)
+            out.append((position, str(medium.get("format") or "Disc"), count))
     return out
 
 
@@ -3143,6 +3169,7 @@ def _register_routes(app: FastAPI) -> None:
             album=album,
             comparison=comparison,
             tracklist=tracks,
+            absent_media=_absent_media_summary(album, release),
             # What the note beside the hexagon reports. Harmonist has just read
             # the release, so "now" is honest — #127's cache is what will make
             # this a genuinely older timestamp worth showing.
