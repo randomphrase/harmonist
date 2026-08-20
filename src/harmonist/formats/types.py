@@ -39,6 +39,16 @@ class ScanFields(NamedTuple):
     # duplicate copies of the same one (both disc 1), and that question is asked
     # of every album in the library, not of one the user opened (#16).
     disc_num: int | None = None
+    # The release's own counts, as the tagging wrote them: how many tracks this
+    # file's medium has, and how many media the release has (Picard: trkn/disk
+    # totals, TRCK/TPOS "n/total", TOTALTRACKS/TOTALDISCS).
+    #
+    # These are what COMPLETE vs INCOMPLETE is derived from (#195). MusicBrainz
+    # told us both at tagging time and they were written into every file, so
+    # re-fetching them would be asking a question already answered on disk — and
+    # asking it once per album is a rate-limited request per album.
+    track_total: int | None = None
+    disc_total: int | None = None
 
 
 @dataclass

@@ -525,12 +525,3 @@ def test_demo_mode_patches_every_musicbrainz_entry_point():
 
     unpatched = {n for n in network if getattr(mb_lookup, n).__module__ == mb_lookup.__name__}
     assert not unpatched, f"demo mode leaves these talking to the real MusicBrainz: {unpatched}"
-
-
-def test_demo_track_count_matches_the_seeded_release():
-    from harmonist import demo as demo_mod
-
-    mbid, release = next(iter(demo_mod.MB_RELEASES.items()))
-    expected = sum(len(m.get("track-list", [])) for m in release.get("medium-list", []))
-
-    assert demo_mod.fetch_release_track_count(mbid) == expected

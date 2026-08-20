@@ -232,7 +232,6 @@ def write_ambiguous_candidates(album_dir: Path, item_ids: list[int]) -> bool:
         mb_match_candidate=existing.mb_match_candidate,
         tagged_at=existing.tagged_at,
         notes=existing.notes,
-        track_count_expected=existing.track_count_expected,
     )
     sidecar_mod.write(album_dir, merged)
     return True

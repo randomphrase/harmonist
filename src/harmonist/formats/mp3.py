@@ -198,8 +198,10 @@ def read_scan_fields(path: Path) -> ScanFields:
         codec="MP3",
         has_cover=bool(tags and tags.getall("APIC")),
         album_artist=_text(tags, "TPE2"),
-        # TPOS is "2" or "2/2" — take the disc, discard the total.
+        # TRCK / TPOS are "n" or "n/total" — both halves are wanted here.
         disc_num=_first_int(_text(tags, "TPOS")),
+        track_total=_total_int(_text(tags, "TRCK")),
+        disc_total=_total_int(_text(tags, "TPOS")),
     )
 
 
@@ -230,6 +232,17 @@ def read_tags(path: Path) -> TrackTags:
         duration_ms=round(audio.info.length * 1000) if audio.info.length else None,
         comment=_comment_text(tags),
     )
+
+
+def _total_int(value: str | None) -> int | None:
+    """The total half of an ID3 "n/total" pair, or None when absent or unparseable.
+    A bare "5" carries no total, which is the honest answer rather than 5."""
+    if not value or "/" not in value:
+        return None
+    try:
+        return int(value.split("/", 1)[1])
+    except ValueError:
+        return None
 
 
 def _first_int(value: str | None) -> int | None:

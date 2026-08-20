@@ -16,10 +16,9 @@ versions follow [semantic versioning](https://semver.org).
 ### Fixed
 
 - Albums adopted from an existing library can now be found with the Library's
-  **Incomplete** filter. They never could before: onboarding recorded no
-  expected track count, so an album with half its tracks read as complete.
-  Harmonist fills the gap in behind you on the next reconcile, and says which
-  albums turned out to be short (#187).
+  **Incomplete** filter. They never could before: an album with half its tracks
+  read as complete. The count now comes from your files' own tags, so it works
+  immediately and without contacting MusicBrainz (#187, #195).
 
 ## [1.9.0] - 2026-08-19
 

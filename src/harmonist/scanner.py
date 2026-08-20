@@ -243,6 +243,7 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
     # The sidecar is kept on disk; once the user fixes the on-disk tags
     # via Picard, the next scan re-derives state from the sidecar.
     inconsistent_tracks = _check_consistency(audio_files, fields)
+    expected = expected_tracks(fields)
     state = (
         AlbumState.INCONSISTENT
         if inconsistent_tracks
@@ -269,7 +270,79 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         # reconcile for untagged orphans it could never resolve.
         has_tag_mbid=any(sf.album_id for sf in fields),
         disc_num=_consistent_disc_num(fields),
+        expected_track_count=expected.total,
     )
+
+
+class ExpectedTracks(NamedTuple):
+    """What the files themselves say the release holds, and whether it's all here.
+
+    `total` is the release's track count, or None when it cannot be known from
+    the files present — which happens when an entire medium is absent, so
+    nothing on disk can say how long it was. (`total` rather than `count`
+    because `count` is already a tuple method.)
+
+    `complete` is the answer that actually drives state, and it is deliberately
+    separate: an album missing a whole disc is knowably INCOMPLETE even though
+    its exact total is unknowable. Reporting an unknown total as "no
+    information" would derive COMPLETE for what is visibly half a box set.
+    """
+
+    total: int | None
+    complete: bool
+
+
+# What an album says when its files carry no counts at all. Complete, because
+# "we have no idea" must not read as "tracks are missing" — that is the
+# pre-#195 behaviour for an untagged album and it stays.
+UNKNOWN_EXPECTED = ExpectedTracks(total=None, complete=True)
+
+
+def expected_tracks(fields: list[formats.ScanFields]) -> ExpectedTracks:
+    """How many tracks the release has, read from the files' own tags (#195).
+
+    MusicBrainz told us this at tagging time and the tagger wrote it into every
+    file — `trkn`'s total per medium, `disk`'s total for the release (Picard
+    writes the same). So the number is already on disk, from the same source and
+    the same moment as the sidecar field this replaces, and reading it costs
+    nothing where re-fetching it costs one rate-limited request per album.
+
+    Three shapes:
+
+    * **Single medium** — every file agrees on `track_total`; that is the total.
+    * **Every medium present** — sum each disc's own `track_total`. A 2-disc
+      release of 11 + 10 gives 21 without asking anyone.
+    * **A medium entirely absent** — `disc_total` says there are 2 discs and
+      only disc 1 has files. The total is unknowable (nothing on disk describes
+      disc 2), but the album is certainly incomplete.
+
+    Files carrying no totals give `UNKNOWN_EXPECTED`, so an album Harmonist has
+    never tagged is not accused of missing tracks.
+    """
+    present = [f for f in fields if not f.unreadable]
+    if not present:
+        return UNKNOWN_EXPECTED
+    # Per disc, the track_total its files agree on. A disc whose files disagree
+    # contributes None — a mid-retag album, and not something to average.
+    by_disc: dict[int, set[int | None]] = {}
+    for f in present:
+        by_disc.setdefault(f.disc_num or 1, set()).add(f.track_total)
+    totals = {disc: next(iter(v)) if len(v) == 1 else None for disc, v in by_disc.items()}
+    if all(t is None for t in totals.values()):
+        return UNKNOWN_EXPECTED
+
+    disc_totals = {f.disc_total for f in present if f.disc_total is not None}
+    expected_media = next(iter(disc_totals)) if len(disc_totals) == 1 else len(totals)
+    if len(totals) < expected_media:
+        # A whole medium has no files at all. Certainly incomplete; the total is
+        # not knowable, because the absent disc's length was only ever recorded
+        # in the files that are missing.
+        return ExpectedTracks(total=None, complete=False)
+    if any(t is None for t in totals.values()):
+        return UNKNOWN_EXPECTED  # a disc we can't size — don't guess the album's total
+
+    total = sum(t for t in totals.values() if t is not None)
+    return ExpectedTracks(total=total, complete=len(present) >= total)
 
 
 def _consistent_disc_num(fields: list[formats.ScanFields]) -> int | None:
@@ -358,11 +431,14 @@ def _derive_state(
         )
         return AlbumState.INCOMPLETE
     if _files_tagged_with(fields, sidecar.mb_release_id):
-        # INCOMPLETE wins over NEEDS_SYNC when set: the user has explicitly
-        # confirmed-as-incomplete (track_count_expected only gets set at
-        # tag time), and that intent should be visible even on bandcamp
-        # albums missing an item_id.
-        if sidecar.track_count_expected is not None and len(fields) < sidecar.track_count_expected:
+        # INCOMPLETE wins over NEEDS_SYNC: a defect the user can act on should
+        # be visible even on a bandcamp album missing an item_id.
+        #
+        # Read from the FILES (#195), not from a sidecar field holding the same
+        # number. `complete` rather than a count comparison, because an album
+        # missing an entire medium is knowably incomplete with no total to
+        # compare against — see `expected_tracks`.
+        if not expected_tracks(fields).complete:
             return AlbumState.INCOMPLETE
         # NEEDS_SYNC: Bandcamp-sourced album, MB release known, files tagged,
         # but Bandcamp item_id not yet linked (a Sync run resolves this).

@@ -76,7 +76,6 @@ def reconcile_album(
                 existing,
                 mb_release_id=file_mbid,
                 mb_match_candidate=None,
-                track_count_expected=None,
                 tagged_at=datetime.now(UTC),
             )
             sidecar_mod.write(album_dir, adopted)
@@ -458,12 +457,6 @@ def promote_split_release(split: SplitRelease) -> Sidecar:
         # Last tagged is when the album — all of it — was last brought up to
         # date; a disc tagged earlier does not make the album older.
         tagged_at=_latest(sc.tagged_at for sc in sidecars),
-        # Each part that Harmonist tagged recorded the WHOLE release's track
-        # count (see `_tag_with_release`), not its own disc's, so the maximum is
-        # that count and not a sum. Parts adopted at onboarding have none at all
-        # (#187), in which case this stays None and the album derives COMPLETE
-        # exactly as its parts did.
-        track_count_expected=_max(sc.track_count_expected for sc in sidecars),
         notes=_first(sc.notes for sc in sidecars),
         purchase_unavailable=any(sc.purchase_unavailable for sc in sidecars),
     )
@@ -500,55 +493,3 @@ def _earliest(values: Iterable[datetime | None]) -> datetime | None:
 def _latest(values: Iterable[datetime | None]) -> datetime | None:
     present = [v for v in values if v is not None]
     return max(present) if present else None
-
-
-def _max(values: Iterable[int | None]) -> int | None:
-    present = [v for v in values if v is not None]
-    return max(present) if present else None
-
-
-# ---------------------------------------------------------------------------
-# Expected track counts: what COMPLETE vs INCOMPLETE is derived from (#187)
-# ---------------------------------------------------------------------------
-
-
-def needs_track_count(album: Album) -> bool:
-    """True when this album is tagged but has no `track_count_expected`, so the
-    scanner has nothing to compare its file count against.
-
-    Every album adopted at onboarding is in this position. `reconcile_album`
-    derives a sidecar from the file tags and deliberately leaves the count
-    unset — filling it in there would mean one rate-limited MB call per album
-    during the walk, the ~16-minutes-for-960-albums cost that path exists to
-    avoid. Nothing filled it in later, so INCOMPLETE could never be derived for
-    an adopted library and the Library's Incomplete filter reported zero for a
-    shelf full of half-albums.
-
-    The external-re-tag branch above clears the field for the same reason, so
-    this is not a one-off migration: albums keep arriving in this state.
-    """
-    sc = album.sidecar
-    return sc is not None and sc.mb_release_id is not None and sc.track_count_expected is None
-
-
-def backfill_track_count(
-    album_dir: Path,
-    *,
-    fetch_count: Callable[[str], int],
-) -> int | None:
-    """Record the MB release's track count on an already-tagged album's sidecar.
-
-    Returns the count written, or None when there was nothing to do. Raises
-    whatever `fetch_count` raises — a failed lookup must not be recorded as a
-    successful one, and the caller decides whether to retry.
-
-    Re-reads the sidecar rather than trusting the caller's snapshot: the scan
-    that produced it may be minutes old on a large library, and a tag or a sync
-    in between would make this write clobber a newer one.
-    """
-    sc = sidecar_mod.read(album_dir)
-    if sc is None or sc.mb_release_id is None or sc.track_count_expected is not None:
-        return None  # already answered, or no longer an album this applies to
-    count = fetch_count(sc.mb_release_id)
-    sidecar_mod.write(album_dir, replace(sc, track_count_expected=count))
-    return count

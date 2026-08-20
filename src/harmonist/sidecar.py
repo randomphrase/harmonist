@@ -170,12 +170,11 @@ def unlink(album_dir: Path, sidecar: Sidecar, *, candidate: MatchCandidate | Non
     * **undoing the tagging that linked the album** (#158) — the tags have just
       been put back, so the sidecar follows them.
 
-    Everything that describes the release goes: `mb_release_id`, `tagged_at`,
-    and `track_count_expected`. That last one used to survive a pencil, leaving
-    a track count describing a release the sidecar no longer named — harmless
-    while it went unread (`_derive_state` only consults it inside the
-    `mb_release_id` branch) but untrue, and untrue stored facts are what this
-    codebase spends its time not having.
+    Everything that describes the release goes: `mb_release_id` and `tagged_at`.
+    A `track_count_expected` used to go with them — it once survived a pencil,
+    leaving a track count describing a release the sidecar no longer named. That
+    whole hazard is gone since #195: the expected count is read from the files'
+    own tags, so there is no stored copy to fall out of step with anything.
 
     The store link (`store_url`, `bandcamp`) stays: which shop it came from is
     not a claim about which MusicBrainz release it is.
@@ -195,7 +194,6 @@ def unlink(album_dir: Path, sidecar: Sidecar, *, candidate: MatchCandidate | Non
             sidecar,
             mb_release_id=None,
             tagged_at=None,
-            track_count_expected=None,
             mb_match_candidate=candidate,
         ),
     )
@@ -272,8 +270,6 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
       * `purchase_unavailable` — a surrender. Permanent: the scanner then treats
         the album as terminal despite having no purchase link, and no future sync
         re-surrenders it. Named in the review gate; it moved silently until #88.
-      * `track_count_expected` — splits COMPLETE from INCOMPLETE, so changing it
-        reclassifies the album.
 
     Deliberately NOT audited, so the narrowness here is a choice rather than an
     oversight:
@@ -310,8 +306,6 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
         changes["store_url"] = f"{old.store_url}->{new.store_url}"
     if old.purchase_unavailable != new.purchase_unavailable:
         changes["purchase_unavailable"] = f"{old.purchase_unavailable}->{new.purchase_unavailable}"
-    if old.track_count_expected != new.track_count_expected:
-        changes["track_count_expected"] = f"{old.track_count_expected}->{new.track_count_expected}"
     if changes:
         audit.record("sidecar.update", album_id=album_id, album=album_dir, **changes)
 
@@ -368,8 +362,6 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
         d["mb_match_candidate"] = _candidate_to_dict(s.mb_match_candidate)
     if s.tagged_at:
         d["tagged_at"] = _iso(s.tagged_at)
-    if s.track_count_expected is not None:
-        d["track_count_expected"] = s.track_count_expected
     if s.notes is not None:
         d["notes"] = s.notes
     if s.purchase_unavailable:
@@ -510,7 +502,6 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
         temp_uid=temp_uid,
         mb_match_candidate=candidate,
         tagged_at=_parse_iso(d.get("tagged_at")),
-        track_count_expected=d.get("track_count_expected"),
         notes=d.get("notes"),
         purchase_unavailable=bool(d.get("purchase_unavailable", False)),
     )

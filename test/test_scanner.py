@@ -319,322 +319,118 @@ def test_scan_done_when_mbid_set_and_files_tagged(tmp_path):
     assert a.state == AlbumState.COMPLETE
 
 
-def test_scan_complete_when_file_count_matches_expected(tmp_path):
-    """track_count_expected == file_count → COMPLETE."""
-    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
-    release = {
-        "id": "rel-aaa",
-        "title": "Album",
-        "release-group": {"id": "rg-aaa"},
-        "medium-list": [
-            {
-                "position": "1",
-                "track-list": [
-                    {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}},
-                    {"id": "rt-2", "title": "T2", "recording": {"id": "rec-2", "title": "T2"}},
-                ],
-            }
-        ],
-    }
-    tagger.tag_album(album_dir, release)
-    sc.write(
-        album_dir,
-        Sidecar(
-            mb_release_id="rel-aaa",
-            tagged_at=datetime.now(UTC),
-            track_count_expected=2,
-        ),
-    )
-    assert scan(tmp_path)[0].state == AlbumState.COMPLETE
-
-
-def test_scan_incomplete_when_file_count_less_than_expected(tmp_path):
-    """track_count_expected > file_count → INCOMPLETE."""
-    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
-    release = {
-        "id": "rel-aaa",
-        "title": "Album",
-        "release-group": {"id": "rg-aaa"},
-        "medium-list": [
-            {
-                "position": "1",
-                "track-list": [
-                    {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}},
-                    {"id": "rt-2", "title": "T2", "recording": {"id": "rec-2", "title": "T2"}},
-                ],
-            }
-        ],
-    }
-    # Tag in incomplete mode (so we don't crash on the count mismatch)
-    tagger.tag_album(album_dir, release, incomplete=True) if False else None
-    # Actually just write the tags manually for the test
+def _tag_files(album_dir, mbid: str = "rel-aaa", **totals) -> None:
+    """Stamp the MB Album Id, and optionally the trkn/disk totals, on every file."""
     from mutagen.mp4 import MP4
+
+    from test.helpers import write_track_totals
 
     for f in sorted(album_dir.glob("*.m4a")):
         audio = MP4(f)
-        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+        audio[ATOM_MB_ALBUM_ID] = [mbid.encode()]
         audio.save()
-    sc.write(
-        album_dir,
-        Sidecar(
-            mb_release_id="rel-aaa",
-            tagged_at=datetime.now(UTC),
-            track_count_expected=5,  # MB says 5 tracks; only 2 on disk
-        ),
-    )
-    assert scan(tmp_path)[0].state == AlbumState.INCOMPLETE
+    if totals:
+        write_track_totals(album_dir, **totals)
 
 
-def test_scan_complete_without_expected_count_legacy(tmp_path):
-    """A sidecar without track_count_expected (legacy / no incomplete-aware
-    tag yet) still resolves to COMPLETE — we don't penalise unknown.
-    """
+def _tagged_sidecar(album_dir, mbid: str = "rel-aaa") -> None:
+    sc.write(album_dir, Sidecar(mb_release_id=mbid, tagged_at=datetime.now(UTC)))
+
+
+def test_scan_complete_when_the_files_say_every_track_is_here(tmp_path):
+    """The files' own `trkn` total == file count → COMPLETE (#195)."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
-    from mutagen.mp4 import MP4
+    _tag_files(album_dir, track_total=2)
+    _tagged_sidecar(album_dir)
 
-    for f in sorted(album_dir.glob("*.m4a")):
-        audio = MP4(f)
-        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
-        audio.save()
-    sc.write(
-        album_dir,
-        Sidecar(
-            mb_release_id="rel-aaa",
-            tagged_at=datetime.now(UTC),
-            track_count_expected=None,
-        ),
-    )
     assert scan(tmp_path)[0].state == AlbumState.COMPLETE
+
+
+def test_scan_incomplete_when_the_files_say_tracks_are_missing(tmp_path):
+    """`trkn` says 5 tracks; 2 are on disk → INCOMPLETE, with no MB lookup."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    _tag_files(album_dir, track_total=5)
+    _tagged_sidecar(album_dir)
+
+    album = scan(tmp_path)[0]
+    assert album.state == AlbumState.INCOMPLETE
+    assert album.expected_track_count == 5
+
+
+def test_expected_count_sums_the_discs_of_a_multi_disc_release(tmp_path):
+    """A 2-disc release of 11 + 10 is 21 tracks, and every one of them is
+    stated by the files themselves — the Vapourized case from #16."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=0)
+    (album_dir / "CD1").mkdir()
+    (album_dir / "CD2").mkdir()
+    for sub, n, disc, total in (("CD1", 3, 1, 3), ("CD2", 2, 2, 2)):
+        for i in range(1, n + 1):
+            shutil.copy(SINE_M4A, album_dir / sub / f"{i:02d} Track.m4a")
+        _tag_files(album_dir / sub, track_total=total, disc_num=disc, disc_total=2)
+    sc.write(album_dir, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime.now(UTC)))
+
+    album = scan(tmp_path)[0]
+    assert album.expected_track_count == 5
+    assert album.state == AlbumState.COMPLETE
+
+
+def test_a_release_missing_a_whole_disc_is_incomplete_with_no_known_total(tmp_path):
+    """`disk` says 2 discs and only disc 1 has files. Certainly incomplete —
+    but nothing on disk records how long disc 2 was, so there is no total to
+    show. `None` here must NOT read as "no information, assume complete"."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    _tag_files(album_dir, track_total=2, disc_num=1, disc_total=2)
+    _tagged_sidecar(album_dir)
+
+    album = scan(tmp_path)[0]
+    assert album.state == AlbumState.INCOMPLETE
+    assert album.expected_track_count is None
+
+
+def test_scan_complete_when_the_files_carry_no_totals(tmp_path):
+    """Files tagged by something that wrote no track totals: unknown, and
+    unknown must not be reported as missing tracks."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    _tag_files(album_dir)  # MBID only, no trkn/disk
+    _tagged_sidecar(album_dir)
+
+    album = scan(tmp_path)[0]
+    assert album.state == AlbumState.COMPLETE
+    assert album.expected_track_count is None
 
 
 def test_scan_incomplete_promotes_to_complete_on_file_addition(tmp_path):
-    """If the user later drops the missing track into the dir, the next
-    scan sees file_count == track_count_expected and promotes to COMPLETE.
-    No sidecar mutation required — pure scanner derivation.
-    """
+    """Drop the missing track in and the next scan promotes it. Pure
+    derivation — no sidecar mutation, and now no lookup either."""
     album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
-    from mutagen.mp4 import MP4
-
-    for f in sorted(album_dir.glob("*.m4a")):
-        audio = MP4(f)
-        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
-        audio.save()
-    sc.write(
-        album_dir,
-        Sidecar(
-            mb_release_id="rel-aaa",
-            tagged_at=datetime.now(UTC),
-            track_count_expected=3,
-        ),
-    )
+    _tag_files(album_dir, track_total=3)
+    _tagged_sidecar(album_dir)
     assert scan(tmp_path)[0].state == AlbumState.INCOMPLETE
 
-    # User drops in the third file, tagged with the same MBID
     third = album_dir / "03 Track 3.m4a"
     shutil.copy(SINE_M4A, third)
-    audio = MP4(third)
-    audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
-    audio.save()
+    _tag_files(album_dir, track_total=3)
 
     assert scan(tmp_path)[0].state == AlbumState.COMPLETE
-
-
-def test_scan_done_check_only_matches_correct_mbid(tmp_path):
-    """If files are tagged with a DIFFERENT mbid than sidecar claims, state is TAGGING."""
-    album_dir = _make_album_dir(tmp_path, "Artist", "Album")
-    release = {
-        "id": "rel-bbb",  # different from sidecar's mb_release_id
-        "title": "Album",
-        "release-group": {"id": "rg-bbb"},
-        "medium-list": [
-            {
-                "position": "1",
-                "track-list": [
-                    {"id": "rt-1", "title": "T1", "recording": {"id": "rec-1", "title": "T1"}}
-                ],
-            }
-        ],
-    }
-    tagger.tag_album(album_dir, release)
-    sc.write(
-        album_dir,
-        Sidecar(mb_release_id="rel-aaa"),
-    )
-    assert scan(tmp_path)[0].state == AlbumState.TAGGING
-
-
-# ---------- INCONSISTENT detection (§15.2) ----------
-
-
-def _tag_file(
-    path: Path, *, album: str | None = None, mbid: str | None = None, artist: str | None = None
-) -> None:
-    from mutagen.mp4 import MP4
-
-    audio = MP4(path)
-    if album is not None:
-        audio[ATOM_ALBUM] = [album]
-    if mbid is not None:
-        audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
-    if artist is not None:
-        audio[ATOM_ARTIST] = [artist]
-    audio.save()
-
-
-def test_scan_inconsistent_when_album_titles_disagree(tmp_path):
-    album_dir = _make_album_dir(tmp_path, "Artist", "Mess", n_tracks=3)
-    files = sorted(album_dir.glob("*.m4a"))
-    _tag_file(files[0], album="Album A")
-    _tag_file(files[1], album="Album A")
-    _tag_file(files[2], album="Album B")  # the outlier
-    a = scan(tmp_path)[0]
-    assert a.state == AlbumState.INCONSISTENT
-    assert len(a.inconsistent_tracks) == 3
-    titles = {t.album_title for t in a.inconsistent_tracks}
-    assert titles == {"Album A", "Album B"}
-
-
-def test_scan_inconsistent_when_mbids_disagree(tmp_path):
-    album_dir = _make_album_dir(tmp_path, "Artist", "Mess", n_tracks=2)
-    files = sorted(album_dir.glob("*.m4a"))
-    _tag_file(files[0], album="Shared Title", mbid="rel-aaa")
-    _tag_file(files[1], album="Shared Title", mbid="rel-bbb")
-    a = scan(tmp_path)[0]
-    assert a.state == AlbumState.INCONSISTENT
-
-
-def test_scan_compilation_is_not_inconsistent(tmp_path):
-    """Same album title + MBID, varying track artists = legit compilation."""
-    album_dir = _make_album_dir(tmp_path, "VA", "Mixtape", n_tracks=3)
-    files = sorted(album_dir.glob("*.m4a"))
-    _tag_file(files[0], album="Mixtape", mbid="rel-aaa", artist="Artist 1")
-    _tag_file(files[1], album="Mixtape", mbid="rel-aaa", artist="Artist 2")
-    _tag_file(files[2], album="Mixtape", mbid="rel-aaa", artist="Artist 3")
-    a = scan(tmp_path)[0]
-    assert a.state != AlbumState.INCONSISTENT
-    assert a.inconsistent_tracks == []
-
-
-def test_scan_missing_tags_do_not_vote(tmp_path):
-    """A file without ©alb or MBID atom doesn't count as a distinct value
-    — partial tagging is a separate concern (§15.1).
-    """
-    album_dir = _make_album_dir(tmp_path, "Artist", "PartTagged", n_tracks=3)
-    files = sorted(album_dir.glob("*.m4a"))
-    _tag_file(files[0], album="Album X", mbid="rel-aaa")
-    _tag_file(files[1], album="Album X", mbid="rel-aaa")
-    # files[2] has no ©alb or MBID — should be treated as missing, not "different"
-    a = scan(tmp_path)[0]
-    assert a.state != AlbumState.INCONSISTENT
-
-
-def test_scan_inconsistent_trumps_existing_sidecar(tmp_path):
-    """A sidecar pointing at COMPLETE is overridden when files become
-    inconsistent (e.g. user dropped a stray file into a Done album dir).
-    The sidecar isn't deleted — once the user fixes the on-disk reality,
-    state derivation resumes from the sidecar.
-    """
-    album_dir = _make_album_dir(tmp_path, "Artist", "Was Done", n_tracks=2)
-    files = sorted(album_dir.glob("*.m4a"))
-    _tag_file(files[0], album="Original", mbid="rel-original")
-    _tag_file(files[1], album="Stray", mbid="rel-stray")
-    sc.write(
-        album_dir,
-        Sidecar(
-            mb_release_id="rel-original",
-            tagged_at=datetime.now(UTC),
-        ),
-    )
-    a = scan(tmp_path)[0]
-    assert a.state == AlbumState.INCONSISTENT
-    # Sidecar still present — to be re-used after user resolves on-disk
-    assert sc.has_sidecar(album_dir)
-
-
-def test_scan_single_file_album_cannot_be_inconsistent(tmp_path):
-    album_dir = _make_album_dir(tmp_path, "Artist", "Single", n_tracks=1)
-    files = sorted(album_dir.glob("*.m4a"))
-    _tag_file(files[0], album="Some Album", mbid="rel-x")
-    a = scan(tmp_path)[0]
-    assert a.state != AlbumState.INCONSISTENT
-
-
-# ---------- partial tagging detection (§15.1) ----------
-
-
-def test_partial_tag_count_when_some_files_missing_mbid(tmp_path):
-    """N of M files have the MBID atom (0 < N < M) → partial_tag_count
-    populated. State remains COMPLETE (any-match logic).
-    """
-    album_dir = _make_album_dir(tmp_path, "Artist", "Partial", n_tracks=3)
-    from mutagen.mp4 import MP4
-
-    files = sorted(album_dir.glob("*.m4a"))
-    # Tag two of three files
-    for f in files[:2]:
-        audio = MP4(f)
-        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
-        audio.save()
-    sc.write(
-        album_dir,
-        Sidecar(
-            mb_release_id="rel-aaa",
-            tagged_at=datetime.now(UTC),
-        ),
-    )
-    a = scan(tmp_path)[0]
-    assert a.state == AlbumState.COMPLETE
-    assert a.partial_tag_count == (2, 3)
-
-
-def test_partial_tag_count_none_when_all_tagged(tmp_path):
-    """All files tagged → partial_tag_count is None."""
-    album_dir = _make_album_dir(tmp_path, "Artist", "Whole", n_tracks=2)
-    from mutagen.mp4 import MP4
-
-    for f in sorted(album_dir.glob("*.m4a")):
-        audio = MP4(f)
-        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
-        audio.save()
-    sc.write(
-        album_dir,
-        Sidecar(
-            mb_release_id="rel-aaa",
-            tagged_at=datetime.now(UTC),
-        ),
-    )
-    a = scan(tmp_path)[0]
-    assert a.partial_tag_count is None
-
-
-def test_partial_tag_count_none_without_mbid(tmp_path):
-    """No mb_release_id on sidecar → can't compute partial tagging."""
-    album_dir = _make_album_dir(tmp_path, "Artist", "NoMBID", n_tracks=2)
-    sc.write(album_dir, Sidecar())
-    a = scan(tmp_path)[0]
-    assert a.partial_tag_count is None
 
 
 def test_partial_tag_count_independent_of_incomplete_state(tmp_path):
     """Both INCOMPLETE and partial-tagged at once: 2 files in dir, 1 tagged,
     MB says 5 expected. Both indicators populated independently.
     """
-    album_dir = _make_album_dir(tmp_path, "Artist", "Both", n_tracks=2)
     from mutagen.mp4 import MP4
 
-    files = sorted(album_dir.glob("*.m4a"))
-    # Tag only the first file
-    audio = MP4(files[0])
+    from test.helpers import write_track_totals
+
+    album_dir = _make_album_dir(tmp_path, "Artist", "Both", n_tracks=2)
+    # Both files carry the release's totals — that is an album-level fact the
+    # tagging writes everywhere — but only the first carries the MB Album Id.
+    write_track_totals(album_dir, track_total=5)
+    audio = MP4(min(album_dir.glob("*.m4a")))
     audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
-    sc.write(
-        album_dir,
-        Sidecar(
-            mb_release_id="rel-aaa",
-            tagged_at=datetime.now(UTC),
-            track_count_expected=5,
-        ),
-    )
+    _tagged_sidecar(album_dir)
+
     a = scan(tmp_path)[0]
     assert a.state == AlbumState.INCOMPLETE
     assert a.partial_tag_count == (1, 2)
@@ -871,3 +667,66 @@ def test_a_genuinely_untagged_album_still_reads_as_tagging(tmp_path):
     d = _make_album_dir(tmp_path, "Artist", "NotYet", n_tracks=2)
     sc.write(d, Sidecar(mb_release_id="rel-notyet", tagged_at=datetime.now(UTC)))
     assert scan(tmp_path)[0].state == AlbumState.TAGGING
+
+
+def test_expected_count_ignores_a_disc_whose_files_disagree(tmp_path):
+    """Files mid-retag disagree on the total. Averaging or picking a winner
+    would invent a number; "don't know" is the honest answer, and an album is
+    not accused of missing tracks on the strength of it."""
+    from mutagen.mp4 import MP4
+
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    _tag_files(album_dir)
+    for f, total in zip(sorted(album_dir.glob("*.m4a")), (5, 9), strict=True):
+        audio = MP4(f)
+        audio["trkn"] = [(1, total)]
+        audio.save()
+    _tagged_sidecar(album_dir)
+
+    album = scan(tmp_path)[0]
+    assert album.expected_track_count is None
+    assert album.state == AlbumState.COMPLETE
+
+
+def test_expected_count_survives_more_files_than_the_release_lists(tmp_path):
+    """A bonus track the release doesn't have must not read as INCOMPLETE —
+    `complete` is "every expected track is here", not "the counts are equal"."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=3)
+    _tag_files(album_dir, track_total=2)
+    _tagged_sidecar(album_dir)
+
+    assert scan(tmp_path)[0].state == AlbumState.COMPLETE
+
+
+def test_an_unreadable_file_does_not_vote_on_the_expected_count(tmp_path):
+    """`unreadable` files already force INCOMPLETE on their own (#112); they
+    must not also corrupt the total with the None every field reads as."""
+    from harmonist import formats, scanner
+
+    fields = [
+        formats.ScanFields(None, None, None, None, unreadable=True),
+        formats.ScanFields("A", "rel", "X", "ALAC", track_total=2, disc_num=1, disc_total=1),
+        formats.ScanFields("A", "rel", "X", "ALAC", track_total=2, disc_num=1, disc_total=1),
+    ]
+
+    assert scanner.expected_tracks(fields) == scanner.ExpectedTracks(total=2, complete=True)
+
+
+def test_expected_count_needs_no_musicbrainz_call(tmp_path, monkeypatch):
+    """The point of #195. A scan of an adopted album derives its expected count
+    with the network unavailable — where the backfill this replaced spent one
+    rate-limited request per album."""
+    import harmonist.mb_lookup as mb
+
+    def boom(*a, **kw):
+        raise AssertionError("the scan must not reach MusicBrainz")
+
+    for name in ("fetch_release", "fetch_release_urls", "lookup_by_bandcamp_url"):
+        monkeypatch.setattr(mb, name, boom)
+
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    _tag_files(album_dir, track_total=5)
+    _tagged_sidecar(album_dir)
+
+    album = scan(tmp_path)[0]
+    assert (album.state, album.expected_track_count) == (AlbumState.INCOMPLETE, 5)

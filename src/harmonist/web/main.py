@@ -482,7 +482,6 @@ def create_app(
         reconcile_pending_orphans(
             cfg.paths.music_dir,
             fetch_urls=mb_lookup.fetch_release_urls,
-            fetch_track_count=mb_lookup.fetch_release_track_count,
             status_updater=status_updater,
             exempt_paths=forgotten_paths,
             albums=snapshot,
@@ -1241,7 +1240,6 @@ def _demote_to_needs_mbid(
             mb_release_id=None,
             mb_match_candidate=candidate,
             tagged_at=None,
-            track_count_expected=None,
             notes=sc.notes,
         ),
     )
@@ -1268,7 +1266,6 @@ def _link_album_to_purchase(album_path: Path, sc: Sidecar, *, item_id: int, stor
             mb_release_id=sc.mb_release_id,
             mb_match_candidate=sc.mb_match_candidate,
             tagged_at=sc.tagged_at,
-            track_count_expected=sc.track_count_expected,
             notes=sc.notes,
         ),
     )
@@ -1620,9 +1617,9 @@ def _unlink_after_revert(album: Album, outcome: tagger_mod.RevertOutcome) -> boo
     files to the *older* release, and that older release — not the one the
     sidecar happened to be holding — is what the user just asked to go back to.
 
-    Confirming re-tags through the ordinary path, which fetches the release and
-    writes a fresh `track_count_expected`, so nothing here has to guess a track
-    count it has no lookup for.
+    Confirming re-tags through the ordinary path, which rewrites the release's
+    own totals into the files, so nothing here has to guess a track count it has
+    no lookup for.
 
     The mutation itself is `sidecar.unlink`, shared with the "wrong match"
     pencil (#166) — the two differ only in the candidate they pass, which is
@@ -1646,10 +1643,10 @@ def _unlink_after_revert(album: Album, outcome: tagger_mod.RevertOutcome) -> boo
             # they made themselves.
             confidence="exact",
             file_count=files,
-            # The count recorded when it was tagged, so the card offers the same
+            # The count the FILES report (#195), so the card offers the same
             # Confirm it would have before. `track_comparisons` stays empty: it
             # would need an MB fetch, and an undo makes no network call.
-            track_count=sc.track_count_expected or files,
+            track_count=album.expected_track_count or files,
             proposed_at=datetime.now(UTC),
             notes=["Unlinked when you undid the tagging that linked this album"],
         )
@@ -2101,7 +2098,6 @@ def _link_pending_to_album(album: Album, p: pending_downloads.PendingPurchase) -
             mb_release_id=resolved_mbid,
             mb_match_candidate=None if surrendered else sc.mb_match_candidate,
             tagged_at=sc.tagged_at,
-            track_count_expected=sc.track_count_expected,
             notes=sc.notes,
         ),
     )
@@ -2272,8 +2268,9 @@ def _tag_with_release(
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
     `incomplete=True` runs the tagger in incomplete mode (file_count <
-    MB track count allowed) and persists track_count_expected on the
-    sidecar so the scanner can derive INCOMPLETE on future scans.
+    MB track count allowed). Nothing is persisted about the count: the tagging
+    writes the release's own totals into every file, and that is what the
+    scanner derives INCOMPLETE from afterwards (#195).
 
     `store_url_override` replaces the sidecar's store_url. Used when confirming
     a mis-tag: the album is actually the *owned* edition, so its store_url must
@@ -2297,8 +2294,6 @@ def _tag_with_release(
         overwrite_art=overwrite_art,
     )
 
-    track_count_expected = sum(len(m.get("track-list", [])) for m in release.get("medium-list", []))
-
     sc = sidecar_mod.read(album_path)
     store_url = store_url_override or (sc.store_url if sc else None)
     if store_url is None:
@@ -2320,7 +2315,6 @@ def _tag_with_release(
         mb_release_id=mbid,
         mb_match_candidate=None,  # cleared on tag
         tagged_at=datetime.now(UTC),
-        track_count_expected=track_count_expected,
         notes=sc.notes if sc else None,
     )
     sidecar_mod.write(album_path, new)
@@ -3164,15 +3158,20 @@ def _register_routes(app: FastAPI) -> None:
                 sc.mb_release_id,
                 request.app.state.cfg,
                 request.app.state.tagger,
-                # An album the user already confirmed as incomplete has to be
+                # An album already known to be missing tracks has to be
                 # re-tagged in incomplete mode, or the tagger's file-count guard
                 # refuses it and re-tagging is impossible for exactly the albums
                 # a MusicBrainz correction is most likely to affect (#133).
                 #
-                # Keyed on the persisted confirmation, NOT on comparing the file
-                # count to the release: that would silently accept any mismatch,
-                # which is what the guard exists to prevent (design §15.3).
-                incomplete=sc.track_count_expected is not None,
+                # Keyed on the album's DERIVED state (#195), which is the honest
+                # form of what this always meant. It used to test
+                # `track_count_expected is not None` and call that "the persisted
+                # confirmation" — but `_tag_with_release` wrote that field on
+                # every tag, incomplete or not, so the test was true for every
+                # album Harmonist had ever tagged and distinguished nothing. The
+                # state does distinguish: a COMPLETE album still gets
+                # `incomplete=False` and the §15.3 guard still applies to it.
+                incomplete=album.state == AlbumState.INCOMPLETE,
                 overwrite_art=overwrite_art,
             )
         except Exception as e:
@@ -3606,7 +3605,6 @@ def _register_routes(app: FastAPI) -> None:
                 mb_release_id=cand.mb_release_id,
                 mb_match_candidate=None,
                 tagged_at=sc.tagged_at,
-                track_count_expected=sc.track_count_expected,
                 notes=sc.notes,
                 purchase_unavailable=True,
             ),

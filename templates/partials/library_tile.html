@@ -30,9 +30,12 @@
         <span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-2xs font-bold uppercase tracking-widest rounded bg-bc-teal text-white shadow-sm">New</span>
         {% endif %}
         {% if album.state == AlbumState.INCOMPLETE %}
+        {# The count comes from the files' own tags (#195), and is absent when a
+           whole disc is missing — nothing on disk records how long it was. Say
+           "Incomplete" then rather than inventing a denominator. #}
         <span class="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 text-2xs font-bold rounded bg-amber-50 text-amber-700 border border-amber-300"
-              title="{{ album.track_count }} of {{ sc.track_count_expected }} tracks on disk">
-            {{ album.track_count }} of {{ sc.track_count_expected }}
+              title="{% if album.expected_track_count %}{{ album.track_count }} of {{ album.expected_track_count }} tracks on disk{% else %}A disc of this release has no tracks on disk{% endif %}">
+            {% if album.expected_track_count %}{{ album.track_count }} of {{ album.expected_track_count }}{% else %}Incomplete{% endif %}
         </span>
         {% endif %}
     </div>

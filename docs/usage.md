@@ -148,11 +148,10 @@ Finished isn't the same as right, so the filter chips find the albums that are
 done but still wrong, each with its count:
 
 - **Incomplete** — fewer tracks on disk than the MusicBrainz release has. The tile
-  badges "N of M". Knowing this needs the release's track count, which albums
-  Harmonist tagged itself already have; for albums adopted from your existing
-  library it's filled in by the first reconcile after upgrading, one MusicBrainz
-  lookup each. Until that finishes, some incomplete albums won't be listed —
-  the Activity feed reports the pass, and names each album it finds short.
+  badges "N of M". The count comes from your files' own tags, which Harmonist and
+  Picard both write, so this works on an adopted library straight away with no
+  lookups. When a whole disc of a set is missing the tile just says *Incomplete* —
+  nothing on disk records how long the absent disc was.
 - **Partially tagged** — some files carry the MusicBrainz Album Id and some don't.
   A half-finished tagging run, or Picard applied to part of a folder, leaves this.
 - **No artwork** — correctly tagged, fully linked, and still a grey square in

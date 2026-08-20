@@ -200,6 +200,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         # untagged one (#112).
         return ScanFields(None, None, None, None, unreadable=True)
     disk = audio.get(ATOM_DISC_NUM) or []
+    trkn = audio.get(ATOM_TRACK_NUM) or []
     return ScanFields(
         album_title=_text_atom(audio, ATOM_ALBUM),
         album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),
@@ -208,6 +209,8 @@ def read_scan_fields(path: Path) -> ScanFields:
         has_cover=bool(audio.get(ATOM_COVER)),
         album_artist=_text_atom(audio, ATOM_ALBUM_ARTIST),
         disc_num=disk[0][0] if disk and disk[0] else None,
+        track_total=trkn[0][1] if trkn and trkn[0] and len(trkn[0]) > 1 else None,
+        disc_total=disk[0][1] if disk and disk[0] and len(disk[0]) > 1 else None,
     )
 
 

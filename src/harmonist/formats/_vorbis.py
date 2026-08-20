@@ -137,6 +137,16 @@ _LIST_KEYS: dict[Owned, str] = {
 }
 
 
+def _total_int(value: str | None) -> int | None:
+    """The total half of a "5/12" Vorbis comment, or None. Mirrors `mp3._total_int`."""
+    if not value or "/" not in value:
+        return None
+    try:
+        return int(value.split("/", 1)[1])
+    except ValueError:
+        return None
+
+
 def _first_int(value: str | None) -> int | None:
     """The leading integer of a "5" / "5/12" Vorbis comment, or None.
 
@@ -246,6 +256,10 @@ class VorbisTagger:
             has_cover=has_cover,
             album_artist=first(KEY_ALBUM_ARTIST),
             disc_num=_first_int(first(KEY_DISC_NUMBER)),
+            # TOTALTRACKS/TOTALDISCS are the canonical keys Harmonist writes;
+            # fall back to the "n/total" form some taggers put in TRACKNUMBER.
+            track_total=_first_int(first(KEY_TRACK_TOTAL)) or _total_int(first(KEY_TRACK_NUMBER)),
+            disc_total=_first_int(first(KEY_DISC_TOTAL)) or _total_int(first(KEY_DISC_NUMBER)),
         )
 
     def read_tags(self, path: Path) -> TrackTags:

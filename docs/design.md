@@ -386,11 +386,34 @@ side-by-side, rather than drawing a comparison table with no rows in it.
   renders this read-only (no Confirm — re-confirming would loop straight back to
   Needs Link) with a "no purchase found" note and the seed/fix tools.
 
-`Complete` vs `Incomplete` is derived at scan time by comparing the
-album's file count against `sidecar.track_count_expected` (the MB
-release's track count recorded at tagging time — see §4). Equal →
-Complete; fewer → Incomplete. There is no `incomplete` flag in the
-sidecar — state is sufficient.
+`Complete` vs `Incomplete` is derived at scan time from **the files' own
+tags** — `scanner.expected_tracks`. A tagging writes the release's counts into
+every file (`trkn`'s total per medium, `disk`'s total for the release; Picard
+writes the same), so the number is already on disk, from MusicBrainz, as of the
+moment the album was tagged.
+
+Three shapes:
+
+- **Single medium** — the files agree on a track total; that is the release's.
+- **Every medium present** — sum each disc's own total. A 2-disc release of
+  11 + 10 is 21 tracks, with no lookup.
+- **A medium entirely absent** — `disc_total` says 2 and only disc 1 has files.
+  Certainly Incomplete, but the total is *unknowable*: the absent disc's length
+  was only ever recorded in the files that are missing. `expected_track_count`
+  is None and the UI says "Incomplete" without a denominator rather than
+  inventing one.
+
+Files carrying no totals give "don't know", which derives **Complete** — an
+album Harmonist has never tagged is not accused of missing tracks.
+
+There is no `incomplete` flag and no stored count. `sidecar.track_count_expected`
+held this number from v1.0.0 to v1.9.0 and was retired in #195: it duplicated
+what the tags already said, from the same source and the same moment, and the
+copy could fall out of step while the tags could not. It also meant an adopted
+library — where nothing had ever written the field — could never derive
+Incomplete at all until one rate-limited MusicBrainz call per album filled it in
+(#187). A retired key in an existing sidecar is ignored, not an error; see the
+`sidecar` skill.
 
 **Transitions are idempotent.** Running sync, recheck, or tag twice on the same album is safe and produces the same result.
 
@@ -439,7 +462,7 @@ stateDiagram-v2
 Notes:
 
 - `COMPLETE` and `INCOMPLETE` are both terminals, distinguished by
-  whether the on-disk file count matches `sidecar.track_count_expected`
+  whether the on-disk file count matches what the files' own tags expect
   (the MB track count recorded at tagging time — see §4). No `incomplete`
   flag in the sidecar; state is sufficient.
 - `TAGGING` is omitted: it's a transient state visible only while the
@@ -451,7 +474,7 @@ Notes:
 - **Unlinking is one operation, `sidecar.unlink`**, reached two ways: the
   "wrong match" pencil, and undoing the tagging that linked the album (§4.x,
   #158). It clears everything that describes the release — `mb_release_id`,
-  `tagged_at`, `track_count_expected` — and keeps the store link, which is not
+  `tagged_at` — and keeps the store link, which is not
   a claim about which MusicBrainz release this is. The two differ only in the
   `mb_match_candidate` they pass, and that difference is the point: the pencil
   passes none, because re-offering a release the user just called wrong would
@@ -490,7 +513,6 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   "downloaded_at": "2026-05-05T12:34:56Z",
   "mb_release_id": "abc-123-...",
   "tagged_at": "2026-05-05T13:00:02Z",
-  "track_count_expected": 12,
   "notes": null
 }
 ```
@@ -520,31 +542,6 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   release, kept read-only after a full sync found no purchase — §3).
 - `mb_release_id` is the MBID string when matched; `null` when not yet
   matched (state derives from sidecar shape, not from this field alone).
-- `track_count_expected` (optional) is the MB release's track count
-  recorded at tagging time. The scanner uses it to distinguish
-  **Complete** (`file_count == track_count_expected`) from **Incomplete**
-  (`file_count < track_count_expected`). There is no `incomplete` flag;
-  state is the marker, and `track_count_expected` is what persists user
-  intent across MB upstream changes.
-
-  **Absent means "not yet asked", not "complete"** — and the difference is
-  load-bearing. `reconcile_album` leaves it unset (one rate-limited MB call per
-  album would put the whole-library walk out of budget), and the external-re-tag
-  branch clears it, so albums keep arriving without one. While it is absent the
-  scanner has nothing to compare against and derives **Complete** however many
-  tracks are missing, which made the Library's Incomplete filter report zero for
-  an entire adopted library (#187).
-
-  So the reconcile pass **backfills it**: for every tagged album with no count,
-  one `media`-only lookup (`mb_lookup.fetch_release_track_count`, ~25x smaller
-  than a full release fetch) records the number. Bounded by the albums that lack
-  the field rather than by library size, and each success removes itself from
-  the candidate set permanently — a long first pass over an adopted library and
-  nothing at all thereafter. A failed lookup writes nothing and retries next
-  pass, because a wrong count mislabels the album permanently and is worse than
-  no count. It runs **after** split-release grouping (§13.5), which is
-  load-bearing: measuring each half of a split release against the whole
-  release's count would flag both halves incomplete, which is true of neither.
 - `purchase_unavailable` (optional, bool) is set when the user accepts a
   **surrendered** album via **Move to Library** — a full sync found no purchase
   and there is none to find (the Bandcamp release was withdrawn, or it was bought
@@ -678,9 +675,9 @@ The records above exist to be readable, but they were shaped to be *reversible*:
 
 **`mb_album_id` is all-or-nothing, and the sidecar follows it** (#158). Identity is the one field that isn't per-file: the sidecar records exactly one release, so a revert that moved the id on some files and left it on others would derive as `INCONSISTENT` and leave nothing coherent to write down. So `_identity_revert` decides it once for the album — every file in the plan must agree on the before-value, still carry the after-value, and account for every file in the directory — or the field is left alone and reported stale.
 
-When it does move, the sidecar goes with it: `mb_release_id`, `tagged_at` and `track_count_expected` are cleared and the album derives as `NEEDS_MBID`. Leaving the sidecar naming a release the files no longer carry would derive as `TAGGING` (§3) — the transient spinner, with no action on it and no way out.
+When it does move, the sidecar goes with it: `mb_release_id` and `tagged_at` are cleared and the album derives as `NEEDS_MBID`. Leaving the sidecar naming a release the files no longer carry would derive as `TAGGING` (§3) — the transient spinner, with no action on it and no way out.
 
-**The release is kept as a confirmable suggestion**, not discarded: the Needs MBID card then offers Confirm & Tag, which is the one-click way back, with a note saying why the album is there. Undoing a *re-match* reverts the files to the older release, and that older release — not whichever one the sidecar was holding — is what gets suggested, because it is what the user asked to return to. The candidate carries no `track_comparisons`: building them needs an MB fetch, and an undo makes no network call. Confirming re-tags through the ordinary path, which fetches the release and writes a fresh `track_count_expected`, so nothing here has to guess a track count.
+**The release is kept as a confirmable suggestion**, not discarded: the Needs MBID card then offers Confirm & Tag, which is the one-click way back, with a note saying why the album is there. Undoing a *re-match* reverts the files to the older release, and that older release — not whichever one the sidecar was holding — is what gets suggested, because it is what the user asked to return to. The candidate carries no `track_comparisons`: building them needs an MB fetch, and an undo makes no network call. Confirming re-tags through the ordinary path, which rewrites the release's own totals into the files, so nothing here has to guess a track count.
 
 This is the same transition the "wrong match" pencil makes, and deliberately so: both go through `sidecar.unlink` (§3). It differs only in that the pencil leaves the on-disk tags alone and passes no candidate, since there the release was *wrong* rather than merely undone.
 
@@ -1167,10 +1164,10 @@ forever because `TagMismatchError` would block the tagger.
 **Handling:** the suggestion card (Needs MBID with a candidate) gains a
 button next to Confirm / Dismiss suggestion:
 
-- **Confirm as Incomplete** — runs the tagger in incomplete mode and
-  records `track_count_expected` (the MB release's track count) on the
-  sidecar. The album's state becomes `INCOMPLETE`, derived at scan time
-  from `file_count < track_count_expected`.
+- **Confirm as Incomplete** — runs the tagger in incomplete mode. The
+  tagging writes the release's own track/disc totals into every file it
+  touches, so the album's state becomes `INCOMPLETE`, derived at scan time
+  from those tags (§3). Nothing about the count is persisted separately.
 
 **Tagger incomplete mode:** doesn't raise `TagMismatchError` on
 `file_count < track_count`. Uses **length-similarity** to match the
@@ -1184,12 +1181,12 @@ alone tells the UI what to render, no sidecar metadata peek required.
 The album page shows a small "incomplete" badge plus a
 per-track list of which MB tracks weren't on disk.
 
-**Promotion to Complete:** if the user later adds the missing tracks
-on disk and clicks Recheck, the scanner sees `file_count ==
-track_count_expected` and the state naturally promotes to `COMPLETE`.
-Conversely, if MB upstream gains new tracks, Recheck refreshes
-`track_count_expected` and the album either stays `INCOMPLETE` (if
-the new MB count still exceeds file count) or routes back through
+**Promotion to Complete:** if the user later adds the missing tracks on
+disk, the next scan sees every expected track present and the state promotes
+to `COMPLETE` — no Recheck and no lookup, since the expectation was already
+in the files. Conversely, if MB upstream gains new tracks, a Re-tag rewrites
+the higher total into the files and the album either stays `INCOMPLETE` (if
+the new count still exceeds what is on disk) or routes back through
 `NEEDS_MBID` (with a fresh suggestion) for re-confirmation.
 
 **Out of scope:** file_count > track_count (extra tracks on disk) — same
@@ -1272,7 +1269,7 @@ release; and they run once, since the parent then has a sidecar and is
 skipped from that point on.
 
 The parent's sidecar inherits from the parts (earliest `added_at`, latest
-`tagged_at`, the widest `track_count_expected`, any `store_url`, and
+`tagged_at`, any `store_url`, and
 `purchase_unavailable` if any part was surrendered). **No alias row is
 written**: an album's id *is* its `mb_release_id` once it has one, and
 detection only groups parts that already agree on the release, so the id

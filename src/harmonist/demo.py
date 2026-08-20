@@ -261,12 +261,16 @@ LIBRARY: list[dict[str, Any]] = [
         },
     },
     {
-        # State: INCOMPLETE — tagged & synced, but only 2 of the MB release's
-        # 4 tracks are on disk (track_count_expected=4). Shows in the Library
-        # with the "2 of 4" incomplete badge.
+        # State: INCOMPLETE — tagged & synced, but only 2 of the MB release's 4
+        # tracks are on disk. Shows in the Library with the "2 of 4" badge.
+        #
+        # `release_tracks` is what makes it incomplete (#195): the files carry
+        # the RELEASE's track total, as a real tagging writes it, not the count
+        # of files in the folder. Without it the album would report 2 of 2.
         "artist": "Dr. Teeth and the Electric Mayhem",
         "album": "Can You Picture That?",
         "tracks": ["Can You Picture That?", "Mahna Mahna"],
+        "release_tracks": 4,
         "cover": "cover-7.jpg",
         "file_mbid": "demo-rel-electric-mayhem",
         "sidecar": {
@@ -274,7 +278,6 @@ LIBRARY: list[dict[str, Any]] = [
             "bandcamp_item_id": 1005,
             "mb_release_id": "demo-rel-electric-mayhem",
             "tagged": True,
-            "track_count_expected": 4,
         },
     },
     {
@@ -890,7 +893,6 @@ def _fill_in_existing_item_ids(
             temp_uid=sc.temp_uid,
             mb_match_candidate=sc.mb_match_candidate,
             tagged_at=sc.tagged_at,
-            track_count_expected=sc.track_count_expected,
             notes=sc.notes,
         )
         with activity_store.action():
@@ -924,15 +926,6 @@ def fetch_release(mbid: str) -> Release:
 
 def fetch_release_urls(mbid: str) -> list[str]:
     return [url for url, m in URL_RELS.items() if m == mbid]
-
-
-def fetch_release_track_count(mbid: str) -> int:
-    """Demo counterpart of the media-only lookup the track-count backfill uses
-    (#187). Counted off the same seeded releases the rest of demo mode serves,
-    so a demo library backfills exactly as a real one does — and, crucially,
-    without a single request leaving the machine."""
-    release = fetch_release(mbid)
-    return sum(len(m.get("track-list", [])) for m in release.get("medium-list", []))
 
 
 def lookup_by_bandcamp_url(bandcamp_url: str) -> list[str]:
@@ -1012,7 +1005,6 @@ def install() -> None:
 
     mb_lookup.fetch_release = fetch_release
     mb_lookup.fetch_release_urls = fetch_release_urls
-    mb_lookup.fetch_release_track_count = fetch_release_track_count
     mb_lookup.lookup_by_bandcamp_url = lookup_by_bandcamp_url
     mb_lookup.browse_release_group_releases = browse_release_group_releases
     mb_search.search_releases = search_releases
@@ -1035,7 +1027,10 @@ def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
     album_dir = music_dir / _safe(spec["artist"]) / _safe(spec["album"])
     album_dir.mkdir(parents=True, exist_ok=True)
 
-    n_tracks = len(spec["tracks"])
+    # The MB release's track count, which is what a tagging writes into every
+    # file and what the scanner reads back to derive COMPLETE vs INCOMPLETE
+    # (#195). Defaults to the files present — the ordinary complete album.
+    n_tracks = spec.get("release_tracks", len(spec["tracks"]))
     for i, title in enumerate(spec["tracks"], start=1):
         target = album_dir / f"{i:02d} {_safe(title)}.m4a"
         shutil.copy(SINE, target)
@@ -1090,7 +1085,7 @@ def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidec
     """Build a Sidecar dataclass from a spec-dict.
 
     Keys recognised:
-      store_url, bandcamp_item_id, mb_release_id, tagged, track_count_expected,
+      store_url, bandcamp_item_id, mb_release_id, tagged,
       mb_match_candidate (nested dict with deltas_ms list).
     """
     now = datetime.now(UTC)
@@ -1173,5 +1168,4 @@ def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidec
         mb_release_id=sc_spec.get("mb_release_id"),
         mb_match_candidate=candidate,
         tagged_at=tagged_at,
-        track_count_expected=sc_spec.get("track_count_expected"),
     )

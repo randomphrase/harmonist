@@ -960,3 +960,38 @@ def _vorbis_open(path: Path) -> Any:
     from mutagen.oggopus import OggOpus
 
     return OggOpus(path)
+
+
+@pytest.mark.parametrize(
+    "trck, tpos, want_track_total, want_disc_total",
+    [
+        ("3/12", "1/2", 12, 2),
+        ("3", "1", None, None),  # bare number carries no total
+        ("3/x", "1/y", None, None),  # unparseable
+        (None, None, None, None),
+    ],
+)
+def test_mp3_scan_fields_read_the_totals(tmp_path, trck, tpos, want_track_total, want_disc_total):
+    """#195 reads COMPLETE vs INCOMPLETE off these, so a bare "3" must give None
+    rather than 3 — "no total recorded" and "a one-track release" are different
+    claims and only one of them is true."""
+    from mutagen.id3 import TPOS, TRCK
+    from mutagen.mp3 import MP3
+
+    src = FIXTURES_DIR / "sine.mp3"
+    if not src.exists():
+        pytest.skip("no mp3 fixture")
+    target = tmp_path / "t.mp3"
+    shutil.copy(src, target)
+    audio = MP3(target)
+    if audio.tags is None:
+        audio.add_tags()
+    if trck:
+        audio.tags.add(TRCK(encoding=3, text=[trck]))
+    if tpos:
+        audio.tags.add(TPOS(encoding=3, text=[tpos]))
+    audio.save()
+
+    sf = formats.read_scan_fields(target)
+    assert sf.track_total == want_track_total
+    assert sf.disc_total == want_disc_total

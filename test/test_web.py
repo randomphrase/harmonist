@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import re
 import shutil
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
@@ -2209,12 +2208,14 @@ def test_library_refresh_does_not_push_a_history_entry(client, cfg):
 
 
 def _make_incomplete_album(cfg, name, *, mbid, tagged_at, expected=4) -> Path:
-    """Tagged against an MB release of `expected` tracks with one file on disk."""
+    """Tagged against an MB release of `expected` tracks with one file on disk.
+
+    The count lives in the file's own `trkn` total (#195), which is where a real
+    tagging leaves it — not in the sidecar."""
+    from test.helpers import write_track_totals
+
     d = _make_tagged_album(cfg, name, mbid=mbid, tagged_at=tagged_at)
-    stored = sc.read(d)
-    assert stored is not None
-    stored.track_count_expected = expected
-    sc.write(d, stored)
+    write_track_totals(d, track_total=expected)
     return d
 
 
@@ -2950,27 +2951,23 @@ def test_rematch_clears_mbid_and_demotes_to_needs_mbid(client, cfg):
     assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.NEEDS_MBID
 
 
-def test_rematch_clears_the_track_count_of_the_release_it_dropped(client, cfg):
-    """`track_count_expected` describes the MB release, so it goes with it (#166).
+def test_rematch_drops_everything_describing_the_release(client, cfg):
+    """A re-match un-names the release, so everything describing it goes (#166).
 
-    It used to survive a re-match, leaving a count describing a release the
-    sidecar no longer named. Nothing read it while the album was unlinked —
-    `_derive_state` only consults it inside the `mb_release_id` branch — so it
-    was harmless, and it was still a stored fact that had stopped being true.
+    There is no longer a track count among them: since #195 it is read from the
+    files' own tags, so there is no stored copy that could outlive the release
+    it described — the hazard this test was originally written about cannot
+    recur, by construction.
     """
     d = _make_tagged_album(
         cfg, "Counted", mbid="rel-counted", tagged_at=datetime.now(UTC), item_id=7
     )
-    before = sc.read(d)
-    assert before is not None
-    sc.write(d, replace(before, track_count_expected=9))
 
     client.post(f"/library/{_id_for(cfg, d)}/rematch")
 
     loaded = sc.read(d)
     assert loaded is not None
     assert loaded.mb_release_id is None
-    assert loaded.track_count_expected is None, "the count went with the release"
     assert loaded.tagged_at is None
     assert loaded.store_url is not None, "the store link is not a claim about the release"
 
@@ -3065,15 +3062,9 @@ def test_retag_works_on_an_album_confirmed_as_incomplete(client, cfg, monkeypatc
     """#133: the tagger refuses file_count < track_count unless told the album is
     knowingly incomplete. /retag never told it, so re-tagging failed for exactly
     the albums a MusicBrainz correction is most likely to affect."""
-    d = _make_tagged_album(cfg, "Partial", mbid="rel-part", tagged_at=datetime.now(UTC))
-    # One file on disk, but the user confirmed the release has four tracks.
-    sc.write(
-        d,
-        Sidecar(
-            mb_release_id="rel-part",
-            tagged_at=datetime.now(UTC),
-            track_count_expected=4,
-        ),
+    # One file on disk, and the file's own tags say the release has four tracks.
+    d = _make_incomplete_album(
+        cfg, "Partial", mbid="rel-part", tagged_at=datetime.now(UTC), expected=4
     )
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=4)
@@ -3087,10 +3078,10 @@ def test_retag_works_on_an_album_confirmed_as_incomplete(client, cfg, monkeypatc
 
 
 def test_retag_still_refuses_an_unconfirmed_short_album(client, cfg, monkeypatch):
-    """The control, and the reason this keys on the sidecar rather than on
-    counting files: an album the user has NOT confirmed as incomplete must still
-    be refused, or the guard against tagging a partial download by accident is
-    gone (design §15.3)."""
+    """The control: an album not already known to be short must still be
+    refused, or the guard against tagging a partial download by accident is gone
+    (design §15.3). Its files carry no totals, so it derives COMPLETE and /retag
+    passes `incomplete=False`."""
     d = _make_tagged_album(cfg, "Unconfirmed", mbid="rel-unc", tagged_at=datetime.now(UTC))
     sc.write(d, Sidecar(mb_release_id="rel-unc", tagged_at=datetime.now(UTC)))  # no expectation
     monkeypatch.setattr(
@@ -3648,7 +3639,6 @@ def test_undo_unlinks_the_album_and_keeps_its_release_as_a_suggestion(client, cf
     assert after is not None
     assert after.mb_release_id is None, "unlinked"
     assert after.tagged_at is None
-    assert after.track_count_expected is None
     assert after.mb_match_candidate is not None
     assert after.mb_match_candidate.mb_release_id == "rel-TagUnlink", "kept as a suggestion"
     assert after.mb_match_candidate.notes, "and says why the album is back here"
@@ -4261,21 +4251,16 @@ def test_leaving_the_library_returns_you_to_it(client, cfg):
 
 def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg, monkeypatch):
     """When MB over-counts (e.g. a phantom album-mix track) an album lands as a
-    spurious INCOMPLETE. After the user fixes MB upstream, Re-tag from MB
-    recomputes track_count_expected from the corrected release and the state
-    self-corrects to COMPLETE — no explicit override needed."""
+    spurious INCOMPLETE. After the user fixes MB upstream, Re-tag from MB writes
+    the corrected release's totals into the files and the state self-corrects to
+    COMPLETE — no explicit override needed."""
     from harmonist import scanner
     from harmonist.models import AlbumState
+    from test.helpers import write_track_totals
 
     d = _make_album(cfg, "OverCounted", mbid="rel-1")  # 1 file, tagged rel-1
-    sc.write(
-        d,
-        Sidecar(
-            mb_release_id="rel-1",
-            track_count_expected=2,  # MB wrongly said 2 → 1 file < 2 → INCOMPLETE
-            tagged_at=datetime.now(UTC),
-        ),
-    )
+    write_track_totals(d, track_total=2)  # MB wrongly said 2 → 1 file < 2 → INCOMPLETE
+    sc.write(d, Sidecar(mb_release_id="rel-1", tagged_at=datetime.now(UTC)))
     before = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
     assert before.state == AlbumState.INCOMPLETE  # precondition
 
@@ -4289,8 +4274,8 @@ def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg,
     r = client.post(f"/retag/{_id_for(cfg, d)}")
     assert r.status_code == 200
 
-    assert sc.read(d).track_count_expected == 1  # recomputed from corrected MB
     after = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert after.expected_track_count == 1, "the re-tag rewrote the total into the file"
     assert after.state == AlbumState.COMPLETE  # self-corrected
 
 
@@ -4472,9 +4457,11 @@ def test_route_404_when_id_is_unknown(client):
 
 
 def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkeypatch):
-    """POST /confirm/{id}/incomplete tags via the incomplete-mode tagger,
-    sets mb_release_id and track_count_expected, and leaves the album in
-    INCOMPLETE on next scan.
+    """POST /confirm/{id}/incomplete tags via the incomplete-mode tagger, sets
+    mb_release_id, and leaves the album INCOMPLETE on the next scan.
+
+    The expected count is not persisted anywhere (#195) — the tagging writes the
+    release's own totals into the file, and that is what the scan reads back.
     """
     d = _make_album(cfg, "ShortAlbum")  # 1 file from the fixture
     # Seed a candidate with file_count=1, track_count=3 (MB says 3, disk has 1)
@@ -4533,7 +4520,6 @@ def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkey
 
     loaded = sc.read(d)
     assert loaded.mb_release_id == "rel-mbid"
-    assert loaded.track_count_expected == 3
     assert loaded.mb_match_candidate is None
     assert loaded.tagged_at is not None
 
@@ -4544,6 +4530,7 @@ def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkey
     from harmonist.models import AlbumState
 
     assert a.state == AlbumState.INCOMPLETE
+    assert a.expected_track_count == 3, "read back from the tags the tagging wrote"
 
 
 def test_confirm_mistag_adopts_owned_store_url(client, cfg, monkeypatch):
@@ -4691,18 +4678,7 @@ def test_library_includes_incomplete_albums(client, cfg):
         tagged_at=datetime.now(UTC),
         item_id=1,
     )
-    d_partial = _make_album(cfg, "Partial")
-    audio = MP4(d_partial / "01 Track.m4a")
-    audio[ATOM_MB_ALBUM_ID] = [b"rel-i"]
-    audio.save()
-    sc.write(
-        d_partial,
-        Sidecar(
-            mb_release_id="rel-i",
-            tagged_at=datetime.now(UTC),
-            track_count_expected=5,
-        ),
-    )
+    _make_incomplete_album(cfg, "Partial", mbid="rel-i", tagged_at=datetime.now(UTC), expected=5)
     r = client.get("/library")
     assert r.status_code == 200
     assert "Whole" in r.text

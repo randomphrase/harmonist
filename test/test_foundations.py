@@ -216,18 +216,38 @@ def test_sidecar_write_preserves_existing_temp_uid(tmp_path):
     assert second.temp_uid == first.temp_uid
 
 
-def test_sidecar_round_trip_with_track_count_expected(tmp_path):
-    """track_count_expected drives COMPLETE vs INCOMPLETE at scan time."""
+def test_a_retired_field_in_an_existing_sidecar_is_ignored(tmp_path):
+    """The deprecation contract for #195, and for every field retired after it.
+
+    `track_count_expected` shipped from v1.0.0 to v1.9.0, so it is in sidecars
+    on real users' disks. Retiring it must not make those unreadable — which is
+    what a `schema_version` bump would have done, since `_from_dict` tests exact
+    equality and the scanner drops any album it cannot parse. Unknown keys are
+    ignored instead, so the stale value simply loads as absent and disappears on
+    the next write.
+    """
+    import json
+
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
-    s = Sidecar(
-        mb_release_id="rel-aaa",
-        tagged_at=datetime(2026, 5, 7, tzinfo=UTC),
-        track_count_expected=12,
+    sc.write(
+        album_dir, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime(2026, 5, 7, tzinfo=UTC))
     )
-    sc.write(album_dir, s)
+
+    # A sidecar as an older Harmonist left it.
+    path = sc.sidecar_path(album_dir)
+    payload = json.loads(path.read_text())
+    payload["track_count_expected"] = 12
+    path.write_text(json.dumps(payload))
+
     loaded = sc.read(album_dir)
-    assert loaded.track_count_expected == 12
+    assert loaded is not None, "a stale key must not make the album unreadable"
+    assert loaded.mb_release_id == "rel-aaa"
+    assert not hasattr(loaded, "track_count_expected")
+
+    # And it is gone once the sidecar is rewritten for any other reason.
+    sc.write(album_dir, loaded)
+    assert "track_count_expected" not in json.loads(path.read_text())
 
 
 def test_sidecar_round_trip_purchase_unavailable(tmp_path):

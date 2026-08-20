@@ -19,7 +19,6 @@ SINE_M4A = FIXTURES_DIR / "sine.m4a"
 _PRISTINE_GLOBALS = {
     (mb_lookup, "fetch_release"): mb_lookup.fetch_release,
     (mb_lookup, "fetch_release_urls"): mb_lookup.fetch_release_urls,
-    (mb_lookup, "fetch_release_track_count"): mb_lookup.fetch_release_track_count,
     (mb_lookup, "lookup_by_bandcamp_url"): mb_lookup.lookup_by_bandcamp_url,
     (mb_search, "search_releases"): mb_search.search_releases,
     (cover_art, "ensure_cover"): cover_art.ensure_cover,

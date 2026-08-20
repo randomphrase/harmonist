@@ -342,18 +342,26 @@ def test_promotion_is_idempotent(tmp_path):
     assert sidecar_mod.sidecar_path(parent).read_text() == written
 
 
-def test_promotion_inherits_the_widest_expected_track_count(tmp_path):
-    """Each part Harmonist tagged recorded the WHOLE release's count, so the
-    maximum is that count — never the sum."""
+def test_a_grouped_album_sums_its_discs_own_track_totals(tmp_path):
+    """The grouped album's expected count comes from the discs' own tags (#195),
+    summed — 2 + 2 makes a 4-track release, and no lookup is involved.
+
+    This is the pairing that makes #16 and #195 work together: before grouping
+    each disc is a 2-of-4 album; after it, one complete 4-track album."""
+    from test.helpers import write_track_totals
+
     parent = tmp_path / "Artist" / "Album"
     d1 = _disc_dir(parent, "CD1", disc=1, tracks=2)
     d2 = _disc_dir(parent, "CD2", disc=2, tracks=2)
-    for d in (d1, d2):
-        _edit_sidecar(d, track_count_expected=4)
+    write_track_totals(d1, track_total=2, disc_num=1, disc_total=2)
+    write_track_totals(d2, track_total=2, disc_num=2, disc_total=2)
 
     reconcile.promote_split_release(_find(tmp_path)[0])
 
-    assert sidecar_mod.read(parent).track_count_expected == 4
+    album = scan(tmp_path)[0]
+    assert album.path == parent
+    assert album.expected_track_count == 4
+    assert album.state == AlbumState.COMPLETE
 
 
 def test_promotion_keeps_the_earliest_added_and_latest_tagged(tmp_path):

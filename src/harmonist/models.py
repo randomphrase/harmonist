@@ -189,11 +189,6 @@ class Sidecar:
     temp_uid: str | None = None
     mb_match_candidate: MatchCandidate | None = None
     tagged_at: datetime | None = None
-    # MB release's track count at the time the album was tagged. Set on
-    # any tag (including incomplete-mode); the scanner uses it to distinguish
-    # COMPLETE (file_count == this) from INCOMPLETE (file_count < this).
-    # See design §3, §15.3.
-    track_count_expected: int | None = None
     notes: str | None = None
     # Set when the user accepts a SURRENDERED album as done: a full sync found no
     # matching Bandcamp purchase (release withdrawn from Bandcamp, bought
@@ -253,6 +248,16 @@ class Album:
     # copies of the same disc if they don't. Absent that, "same release, two
     # folders" describes both, and merging a duplicate would be a fabrication.
     disc_num: int | None = None
+    # The release's track count as the FILES report it (#195) — `trkn`/`disk`
+    # totals, written by the tagging from MusicBrainz. Scanner-derived, never
+    # persisted: it replaced a sidecar field holding the same number from the
+    # same source, which is duplicated data the tags already carry.
+    #
+    # None when unknowable — the files carry no totals, or a whole medium is
+    # absent so nothing on disk records its length. None is NOT "complete":
+    # state comes from `scanner.expected_tracks(...).complete`, which answers
+    # the missing-medium case that no total can express.
+    expected_track_count: int | None = None
 
 
 # ---------------------------------------------------------------------------
