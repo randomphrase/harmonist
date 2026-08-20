@@ -307,6 +307,13 @@ class Album:
     # the tags; drives the bounded MusicBrainz pass that fills `video_media`
     # (#206), which is the only thing that can say whether their absence matters.
     absent_media: frozenset[int] = frozenset()
+    # How many media the files say the release has, when they agree on it.
+    # Scanner-derived. Compared against MusicBrainz's actual medium count on the
+    # album page (#204): the files claiming a 1-disc release while the sidecar
+    # names a 3-disc one is a disagreement worth surfacing, and it is invisible
+    # to everything else — the album derives COMPLETE because, by its own tags,
+    # it is.
+    disc_total: int | None = None
 
     @property
     def folders(self) -> tuple[Path, ...]:

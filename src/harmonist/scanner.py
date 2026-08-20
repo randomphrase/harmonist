@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from stat import S_ISREG
 from typing import NamedTuple
@@ -462,8 +462,17 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         has_tag_mbid=any(sf.album_id for sf in fields),
         expected_track_count=expected.total,
         absent_media=expected.absent_media,
+        disc_total=_consistent(f.disc_total for f in fields if not f.unreadable),
         paths=tuple(sorted({f.parent for f in audio_files})) or (album_dir,),
     )
+
+
+def _consistent(values: Iterable[int | None]) -> int | None:
+    """The single value every file agrees on, or None when they disagree or any
+    lacks it. Files that disagree about the album's own shape are not evidence
+    of anything, so they get no answer rather than a majority one."""
+    seen = set(values)
+    return next(iter(seen)) if len(seen) == 1 and None not in seen else None
 
 
 class ExpectedTracks(NamedTuple):

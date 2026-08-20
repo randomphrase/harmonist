@@ -87,6 +87,12 @@ purchase it came from. **Sync** links these; that's the common case. If a sync
 can't find the purchase, use **Try a different URL** or **Mark purchased
 elsewhere**.
 
+**Files that describe a different release.** If your tags say the album is a
+single disc while the MusicBrainz release it's matched to has three, the album's
+page says so. It isn't incomplete — by its own tags it's fine — but the tags are
+either stale (**Re-tag from MB** brings them into line) or the release is the
+wrong one (**Wrong MusicBrainz match**). Harmonist won't guess which.
+
 **A release that's vanished from MusicBrainz.** Editors occasionally delete a
 release (usually a duplicate). The album's page says so rather than showing a
 fetch error, and **Find a new release** sends it back to Needs MBID with its

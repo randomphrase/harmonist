@@ -11,6 +11,23 @@
    COMPLETE, and "complete" must not quietly mean "we stopped mentioning two
    whole discs". A summary, not a track list — the point is what is absent, and
    naming 44 DVD tracks one by one would bury the album's own tracklist. #}
+{# The files describe a release of a different SHAPE from the one the sidecar
+   names (#204). Not an incompleteness — by its own tags the album is complete —
+   but a sign the tags are stale or the release is wrong, and the only evidence
+   either way. Both remedies are on this page already, so this points at them
+   rather than adding a third button. #}
+{% if shape_mismatch %}
+<div class="mb-3 px-3 py-2 rounded border border-amber-300 bg-amber-50">
+    <p class="text-2xs text-amber-900">
+        <strong>These files describe a different release.</strong>
+        Their tags say {{ shape_mismatch[0] }} disc{{ 's' if shape_mismatch[0] != 1 else '' }};
+        this MusicBrainz release has {{ shape_mismatch[1] }}. Either the tags predate a
+        MusicBrainz change — <strong>Re-tag from MB</strong> brings them into line — or this
+        is the wrong release, in which case use <strong>Wrong MusicBrainz match</strong>.
+    </p>
+</div>
+{% endif %}
+
 {% if absent_media %}
 <div class="mb-3 px-3 py-2 rounded border border-line bg-surface">
     <p class="text-2xs font-bold text-muted uppercase tracking-widest">Not on disk</p>

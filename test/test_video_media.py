@@ -250,3 +250,79 @@ def test_video_media_round_trips_and_distinguishes_empty_from_absent(tmp_path):
     assert "video_media" not in written, "the default is omitted"
     asked = json.loads(sidecar_mod.sidecar_path(tmp_path / "asked").read_text())
     assert asked["video_media"] == [], "but an empty answer is not the default"
+
+
+# ---------------------------------------------------------------------------
+# Files describing a release of a different shape (#204)
+# ---------------------------------------------------------------------------
+
+
+def _release(media: list[int]) -> dict:
+    """A release with `media` giving each medium's track count."""
+    return {
+        "id": MBID,
+        "title": "Album",
+        "artist-credit": [{"artist": {"id": "a", "name": "Artist", "sort-name": "Artist"}}],
+        "release-group": {"id": "rg", "primary-type": "Album"},
+        "medium-list": [
+            {
+                "position": str(i),
+                "format": "CD",
+                "track-list": [
+                    {"id": f"rt-{i}-{n}", "position": str(n), "title": f"T{n}"}
+                    for n in range(1, count + 1)
+                ],
+            }
+            for i, count in enumerate(media, start=1)
+        ],
+    }
+
+
+def test_files_claiming_a_different_shape_are_flagged(tmp_path):
+    """TISM: 16 files tagged `disc 1/1` against a three-medium release. By its
+    own tags the album is complete, so nothing else ever notices."""
+    from harmonist.web.main import _shape_mismatch
+
+    _album(tmp_path, tracks=16, disc=1, disc_total=1)
+    album = scan(tmp_path)[0]
+
+    assert album.state == AlbumState.COMPLETE, "the precondition — it looks fine"
+    assert _shape_mismatch(album, _release([22, 16, 31])) == (1, 3)
+
+
+def test_files_agreeing_with_the_release_are_not_flagged(tmp_path):
+    from harmonist.web.main import _shape_mismatch
+
+    _album(tmp_path, tracks=16, disc=2, disc_total=2)
+    album = scan(tmp_path)[0]
+
+    assert _shape_mismatch(album, _release([44, 16])) is None
+
+
+def test_files_that_disagree_among_themselves_are_not_flagged(tmp_path):
+    """No shape to check against. A majority answer here would be an invention."""
+    from harmonist.web.main import _shape_mismatch
+
+    d = _album(tmp_path, tracks=4, disc=1, disc_total=2)
+    odd = next(iter(sorted(d.glob("*.m4a"))))
+    a = MP4(odd)
+    a["disk"] = [(1, 5)]
+    a.save()
+    album = scan(tmp_path)[0]
+
+    assert album.disc_total is None
+    assert _shape_mismatch(album, _release([4, 4])) is None
+
+
+def test_the_mismatch_is_explained_on_the_album_page(tmp_path):
+    """It points at the two remedies already on the page rather than adding a
+    third button — the fix is the user's call either way."""
+    from harmonist.web.main import _shape_mismatch
+
+    _album(tmp_path, tracks=16, disc=1, disc_total=1)
+    album = scan(tmp_path)[0]
+    mismatch = _shape_mismatch(album, _release([22, 16, 31]))
+
+    assert mismatch == (1, 3)
+    # Rendered by library_compare.html; asserted on the values it renders from.
+    assert mismatch[0] != mismatch[1]

@@ -21,6 +21,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- An album whose files describe a different release from the one it's matched to
+  now says so on its page — tags claiming a single disc against a three-disc
+  release, say. It looks complete because by its own tags it is, so nothing else
+  would have told you (#204).
 - An album is no longer reported as incomplete when the only discs it's missing
   are video — the bonus DVD you never ripped. The album's page lists the discs
   that aren't on disk, so "complete" doesn't quietly mean "we stopped mentioning

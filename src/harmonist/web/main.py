@@ -1736,6 +1736,31 @@ def _revertable_anchors(
     return out
 
 
+def _shape_mismatch(album: Album, release: Release) -> tuple[int, int] | None:
+    """`(what the files say, what MusicBrainz says)` when they disagree about how
+    many media the release has — else None.
+
+    TISM's *The White Albun* is the case (#204): 16 files tagged `disc 1/1`,
+    against a release MusicBrainz says is a DVD, a CD and another DVD. The album
+    derives COMPLETE because by its own tags it IS complete, and nothing else
+    ever notices — the disagreement is the only evidence, and it is discarded.
+
+    That is not an incompleteness to count. It means the album is tagged against
+    a release its own tags do not describe, which is closer to a mis-tag (#17):
+    either the tags are stale, or the release is the wrong one. Both are the
+    user's call, and both are fixed from this page — Re-tag rewrites the tags
+    from the release, Wrong MusicBrainz match picks a different one.
+
+    Checked here rather than at scan time because it needs the release, and the
+    scan has no MusicBrainz by design. Same discoverability limit as #194: it
+    surfaces when the album is opened, not before.
+    """
+    if album.disc_total is None:
+        return None  # the files do not agree on a shape, so there is none to check
+    media = len(release.get("medium-list") or [])
+    return None if media in (0, album.disc_total) else (album.disc_total, media)
+
+
 def _absent_media_summary(album: Album, release: Release) -> list[tuple[int, str, int]]:
     """The release's media that have no files on disk, as (position, format, tracks).
 
@@ -3170,6 +3195,7 @@ def _register_routes(app: FastAPI) -> None:
             comparison=comparison,
             tracklist=tracks,
             absent_media=_absent_media_summary(album, release),
+            shape_mismatch=_shape_mismatch(album, release),
             # What the note beside the hexagon reports. Harmonist has just read
             # the release, so "now" is honest — #127's cache is what will make
             # this a genuinely older timestamp worth showing.
