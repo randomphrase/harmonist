@@ -1,0 +1,62 @@
+{# MusicBrainz has deleted the release this album names (#194, #210).
+
+   Returned by the /compare fetch, which is the only thing that finds out — the
+   page cannot know at render time without an MB call, and doing that
+   server-side would block the paint on a 1 req/sec budget.
+
+   Three destinations from one response, extending the two the compare fragment
+   already writes to: this note in-band in the Tags section, a banner out-of-band
+   at the top of the page, and a disabled Re-tag out-of-band in the actions row.
+
+   The banner ASKS rather than acts. The album does need an MBID and the inbox is
+   where it belongs, but the user may have opened this page for something else
+   entirely; sending it away underneath them is the wrong move for the
+   interactive case. When periodic background re-scanning lands, detecting this
+   with nobody present SHOULD file it automatically — that is a different
+   situation, not an inconsistency. #}
+<p class="text-2xs text-muted italic">
+    No comparison — MusicBrainz no longer has this release.
+</p>
+
+<div id="album-alert-{{ album.id }}" hx-swap-oob="true">
+    <div class="border border-amber-300 bg-amber-50 rounded-lg p-3 mb-3 flex items-start gap-3">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+             class="text-amber-700 flex-shrink-0 mt-0.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        <div class="flex-1 min-w-0">
+            <p class="text-xs font-bold text-amber-900">This release is gone from MusicBrainz</p>
+            <p class="text-2xs text-amber-800 mt-0.5">
+                It was deleted there — usually because it was a duplicate. Your files are
+                untouched and still carry its tags, but Harmonist can't compare them against
+                anything or re-tag them until the album points at a release that exists.
+            </p>
+        </div>
+        {# Straight to the existing rematch endpoint, which KEEPS the store link —
+           that is what makes the recovery cheap, since a Recheck can then find the
+           replacement from the same URL. Confirms first: it moves the album out of
+           the Library, which is not what a mis-click should do. #}
+        <button hx-post="/library/{{ album.id }}/rematch"
+                hx-swap="none" hx-disabled-elt="this"
+                hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
+                hx-confirm="Send this album to Needs MBID so you can pick a release that exists? Your files keep their current tags until you re-tag."
+                class="flex-shrink-0 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded text-xs font-bold uppercase tracking-widest transition"
+                {# The accessible name must CONTAIN the visible text (WCAG "label
+                   in name"), or voice control saying "Find a new release" cannot
+                   reach it — an aria-label replaces the label rather than adding
+                   to it. Caught by the browser test; the markup looked fine. #}
+                aria-label="Find a new release — send this album to Needs MBID">
+            Find a new release
+        </button>
+    </div>
+</div>
+
+{# Same markup as the live button minus every hx-* attribute, so it cannot fire
+   at all rather than firing and failing politely. The endpoint still refuses on
+   its own (#194) — this is the UI half, not the guard. #}
+<button id="retag-btn-{{ album.id }}" hx-swap-oob="true" disabled
+        class="px-3 py-1.5 bg-surface text-muted border border-line rounded text-xs font-bold uppercase tracking-widest opacity-50 cursor-not-allowed"
+        title="There is no MusicBrainz release to re-tag from — it has been deleted.">
+    Re-tag from MB
+</button>

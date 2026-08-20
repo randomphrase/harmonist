@@ -90,9 +90,11 @@ elsewhere**.
 
 **A release that's vanished from MusicBrainz.** Editors occasionally delete a
 release (usually a duplicate). The album's page says so rather than showing a
-fetch error, and **Wrong MusicBrainz match** sends it back to Needs MBID with its
-store link intact — a Recheck usually finds the replacement straight away. Your
-files keep their tags throughout.
+fetch error, and **Find a new release** sends it back to Needs MBID with its
+store link intact — a Recheck usually finds the replacement straight away. Re-tag
+is disabled meanwhile, since there's nothing to re-tag from. Nothing happens
+until you press the button: your files keep their tags, and the album stays in
+the Library if you'd rather deal with it later.
 
 **Inconsistent** — the files in one folder disagree about album title or MBID,
 which normally means several albums share a directory. Harmonist won't guess:

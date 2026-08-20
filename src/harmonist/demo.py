@@ -288,6 +288,28 @@ LIBRARY: list[dict[str, Any]] = [
         },
     },
     {
+        # State: COMPLETE, but its release has been DELETED from MusicBrainz —
+        # the real case #194 came from, where an editor removed a duplicate
+        # release out from under an album that was already tagged to it. The
+        # files are fine and still carry its tags; the album simply names
+        # something that is no longer there. Opening its page raises the banner
+        # offering to send it to Needs MBID (#210).
+        #
+        # `demo-rel-deleted` is deliberately absent from MB_RELEASES — that
+        # absence IS the deletion.
+        "artist": "The Soggy Bottom Boys",
+        "album": "Man of Constant Sorrow",
+        "tracks": ["Man of Constant Sorrow", "In the Jailhouse Now"],
+        "cover": "cover-3.jpg",
+        "file_mbid": "demo-rel-deleted",
+        "sidecar": {
+            "store_url": "https://soggybottomboys.bandcamp.com/album/constant-sorrow",
+            "bandcamp_item_id": 1009,
+            "mb_release_id": "demo-rel-deleted",
+            "tagged": True,
+        },
+    },
+    {
         # State: NEEDS_SYNC, tagged as the STANDARD "Fever Dog" — but the user owns
         # the "Live at the Riot House" edition (sibling in the same release group).
         # The FIRST sync can't link the std URL (no purchase for it), so post-sync
@@ -925,9 +947,15 @@ def _fill_in_existing_item_ids(
 
 def fetch_release(mbid: str) -> Release:
     if mbid not in MB_RELEASES:
-        from .mb_lookup import MBError
+        # `ReleaseGoneError`, not a bare MBError: in demo the catalogue is the
+        # whole world, so an id that is not in it genuinely does not exist —
+        # which is precisely what a 404 means against the real service. It is an
+        # MBError subclass, so every existing handler is unaffected, and it makes
+        # the deleted-release state (#194, #210) reachable in demo mode, where
+        # this project expects flows to be exercised.
+        from .mb_lookup import ReleaseGoneError
 
-        raise MBError(f"demo: no MB release for {mbid}")
+        raise ReleaseGoneError(f"demo: no MB release for {mbid}")
     return MB_RELEASES[mbid]
 
 

@@ -31,6 +31,13 @@
         ← Back to library
     </a>
 
+    {# Empty until the /compare fetch below discovers something the page could
+       not know at render time — currently only that MusicBrainz has deleted this
+       album's release (#210). Finding that out costs an MB call, so it cannot
+       happen server-side without blocking the paint on a 1 req/sec budget; the
+       fetch fills this out of band, the same way it fills Tracks. #}
+    <div id="album-alert-{{ album.id }}"></div>
+
     {% include 'partials/library_detail.html' %}
 
     {# Tags and Tracks each stand as their own section, siblings of the album

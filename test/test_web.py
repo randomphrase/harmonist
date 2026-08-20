@@ -6393,7 +6393,50 @@ def test_album_page_explains_a_deleted_release_instead_of_showing_a_404(client, 
     assert r.status_code == 200
     assert "no longer has this release" in r.text
     assert "404" not in r.text
-    assert "Wrong MusicBrainz match" in r.text, "names the way out"
+
+
+def test_a_deleted_release_raises_a_banner_with_a_way_out(client, cfg, monkeypatch):
+    """A sentence pointing at another control is not a remedy. The banner asks,
+    with the button that acts, and it is swapped OUT OF BAND to the top of the
+    page — the page could not know at render time (#210)."""
+    d = _make_tagged_album(cfg, "Gone", mbid="rel-gone", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _gone)
+    aid = _id_for(cfg, d)
+
+    r = client.get(f"/library/{aid}/compare")
+
+    assert f'id="album-alert-{aid}" hx-swap-oob="true"' in r.text
+    assert "This release is gone from MusicBrainz" in r.text
+    assert f'hx-post="/library/{aid}/rematch"' in r.text, "the button acts"
+    assert "hx-confirm" in r.text, "moving it out of the Library is not for a mis-click"
+
+
+def test_a_deleted_release_disables_retag(client, cfg, monkeypatch):
+    """Nothing behind Re-tag can succeed, so it must not look available."""
+    d = _make_tagged_album(cfg, "Gone", mbid="rel-gone", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _gone)
+    aid = _id_for(cfg, d)
+
+    r = client.get(f"/library/{aid}/compare")
+
+    swapped = r.text.split(f'id="retag-btn-{aid}"')[1].split(">")[0]
+    assert "hx-swap-oob" in swapped and "disabled" in swapped
+    assert "hx-post" not in swapped, "cannot fire at all, rather than firing and failing"
+
+
+def test_a_healthy_album_gets_no_banner_and_a_live_retag(client, cfg, monkeypatch):
+    """The control: the OOB swaps must not fire for an album that is fine."""
+    d = _make_tagged_album(cfg, "Fine", mbid="rel-fine", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda m: _release_for_match(m, n_tracks=1)
+    )
+    aid = _id_for(cfg, d)
+
+    r = client.get(f"/library/{aid}/compare")
+
+    assert "album-alert-" not in r.text
+    assert "gone from MusicBrainz" not in r.text
+    assert 'hx-post="/retag/' in client.get(f"/album/{aid}").text, "still live on the page"
 
 
 def test_album_page_still_says_try_again_for_a_transient_failure(client, cfg, monkeypatch):

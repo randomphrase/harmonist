@@ -20,9 +20,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
-- An album whose MusicBrainz release has been deleted now says so, and points at
-  **Wrong MusicBrainz match** to pick the current one — instead of reporting a
-  raw "HTTP Error 404" that looked like something to retry (#194).
+- An album whose MusicBrainz release has been deleted now says so plainly,
+  instead of reporting a raw "HTTP Error 404" that looked like something to
+  retry. A banner offers to send it back to Needs MBID when you're ready, and
+  Re-tag is disabled meanwhile — there's nothing to re-tag from (#194, #210).
 - An album whose second disc is a DVD no longer reports every video track as
   missing. Harmonist can't tag video files yet, but it now counts the ones you
   have, so a CD+DVD release with everything ripped reads as complete (#193).

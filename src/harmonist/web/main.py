@@ -3102,15 +3102,22 @@ def _register_routes(app: FastAPI) -> None:
         except mb_lookup.ReleaseGoneError:
             # A 404 is an ANSWER, not a failure: the release has been deleted
             # from MusicBrainz, and no amount of retrying will bring it back.
-            # Saying "couldn't fetch" would invite the user to try again forever,
-            # so say what happened and point at the one thing that fixes it —
-            # re-matching, which keeps the store link and lets Recheck find the
-            # replacement (#194).
-            return HTMLResponse(
-                '<p class="text-2xs text-amber-700 mt-2">MusicBrainz no longer has '
-                "this release — it looks like it was deleted there. Use "
-                "<strong>Wrong MusicBrainz match</strong> above to pick the "
-                "current one; your files keep their tags until you re-tag.</p>"
+            # Saying "couldn't fetch" would invite the user to try again forever.
+            #
+            # This is the only place that finds out, so it carries the whole
+            # response to it (#210): the note here, a banner out-of-band, and a
+            # disabled Re-tag out-of-band — nothing behind that button can
+            # succeed. The banner ASKS rather than sending the album to the
+            # inbox: the user may have opened this page for something else.
+            log.warning(
+                "album %s names release %s, which MusicBrainz no longer has",
+                album.path,
+                sc.mb_release_id,
+            )
+            return _templates(request).TemplateResponse(
+                request,
+                "partials/_release_gone.html",
+                _ctx(request, album=album),
             )
         except mb_lookup.MBError as e:
             # Escaped: an MBError wraps upstream musicbrainzngs text, so the

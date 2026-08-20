@@ -204,7 +204,12 @@
                unusable meanwhile: the tagging overlay covers the panel opaquely
                at z-20, which is what has always blocked them. #}
             <div id="album-actions-{{ album.id }}" class="flex gap-2 pt-2 border-t border-line">
-                <button hx-post="/retag/{{ album.id }}"
+                {# id so the /compare fetch can swap this out of band for a
+                   disabled one when it discovers the release is gone (#210):
+                   nothing behind Re-tag can succeed then, and a control that
+                   always fails should not look available. #}
+                <button id="retag-btn-{{ album.id }}"
+                        hx-post="/retag/{{ album.id }}"
                         hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
                         class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition"
                         title="Re-tag from MusicBrainz. Per-track embedded artwork is preserved.">
