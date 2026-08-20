@@ -16,6 +16,7 @@ from . import activity_store, audit, id_registry, library_index
 # keeps working; it's defined in models.py so Sidecar can default to it.
 from .models import (
     CURRENT_SCHEMA_VERSION,
+    SIDECAR_FILENAME,
     BandcampInfo,
     MatchCandidate,
     Sidecar,
@@ -23,8 +24,6 @@ from .models import (
 )
 
 log = logging.getLogger(__name__)
-
-SIDECAR_FILENAME = ".harmonist.json"
 
 
 class UnsupportedSchemaVersionError(Exception):

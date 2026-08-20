@@ -24,6 +24,18 @@ type Track = dict[str, Any]
 # it for `from harmonist.sidecar import CURRENT_SCHEMA_VERSION`.
 CURRENT_SCHEMA_VERSION = 1
 
+# The per-album sidecar's filename. Lives here, next to the schema version and
+# for the same reason: `models` imports nothing from the package, so anything
+# that needs to recognise a sidecar can read the name without importing the
+# module that reads its contents.
+#
+# `album_files` is why that matters. It has to ask whether a directory declares
+# itself an album, which is a question about a filename — but importing
+# `sidecar` for it closed a cycle (sidecar → library_index → url_recovery →
+# album_files → sidecar) that made `import harmonist.sidecar` fail outright
+# whenever it was the first harmonist import (#200).
+SIDECAR_FILENAME = ".harmonist.json"
+
 
 class AlbumState(StrEnum):
     NEW = "new"

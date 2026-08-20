@@ -32,7 +32,7 @@ import re
 from pathlib import Path
 
 from . import formats
-from .sidecar import has_sidecar
+from .models import SIDECAR_FILENAME
 
 
 def audio_files(album_dir: Path) -> list[Path]:
@@ -44,7 +44,7 @@ def audio_files(album_dir: Path) -> list[Path]:
     directory. Returns [] for a directory that is not an album at all.
     """
     own = sorted(p for p in album_dir.iterdir() if formats.is_supported(p))
-    if own or not has_sidecar(album_dir):
+    if own or not (album_dir / SIDECAR_FILENAME).exists():
         return own
     return descendant_audio_files(album_dir)
 

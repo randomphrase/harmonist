@@ -42,7 +42,14 @@ from .formats.m4a import (
     ATOM_TITLE,
     ATOM_TRACK_NUM,
 )
-from .models import BandcampInfo, MatchCandidate, Release, Sidecar, TrackComparison
+from .models import (
+    SIDECAR_FILENAME,
+    BandcampInfo,
+    MatchCandidate,
+    Release,
+    Sidecar,
+    TrackComparison,
+)
 from .pending_downloads import PendingPurchase
 
 log = logging.getLogger(__name__)
@@ -833,7 +840,7 @@ def _on_disk_item_ids(music_dir: Path) -> set[int]:
     ids: set[int] = set()
     if not music_dir.exists():
         return ids
-    for harmonist_json in music_dir.rglob(sidecar_mod.SIDECAR_FILENAME):
+    for harmonist_json in music_dir.rglob(SIDECAR_FILENAME):
         try:
             sc = sidecar_mod.read(harmonist_json.parent)
         except Exception:
@@ -869,7 +876,7 @@ def _fill_in_existing_item_ids(
     if not music_dir.exists():
         return 0
     patched = 0
-    for harmonist_json in music_dir.rglob(sidecar_mod.SIDECAR_FILENAME):
+    for harmonist_json in music_dir.rglob(SIDECAR_FILENAME):
         album_dir = harmonist_json.parent
         try:
             sc = sidecar_mod.read(album_dir)
