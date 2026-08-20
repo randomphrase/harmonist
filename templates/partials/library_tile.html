@@ -32,9 +32,15 @@
         {% if album.state == AlbumState.INCOMPLETE %}
         {# The count comes from the files' own tags (#195), and is absent when a
            whole disc is missing — nothing on disk records how long it was. Say
-           "Incomplete" then rather than inventing a denominator. #}
-        <span class="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 text-2xs font-bold rounded bg-amber-50 text-amber-700 border border-amber-300"
-              title="{% if album.expected_track_count %}{{ album.track_count }} of {{ album.expected_track_count }} tracks on disk{% else %}A disc of this release has no tracks on disk{% endif %}">
+           "Incomplete" then rather than inventing a denominator.
+
+           Amber says "this needs attention". An album the user has accepted as
+           finished (#196) is still short and still says so, but it is no longer
+           work — so it goes neutral. The badge stays rather than disappearing,
+           because hiding it would lose a true fact about the album. #}
+        {% set _accepted = sc and sc.tracks_unavailable %}
+        <span class="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 text-2xs font-bold rounded {{ 'bg-surface text-muted border border-line' if _accepted else 'bg-amber-50 text-amber-700 border border-amber-300' }}"
+              title="{% if album.expected_track_count %}{{ album.track_count }} of {{ album.expected_track_count }} tracks on disk{% else %}A disc of this release has no tracks on disk{% endif %}{% if _accepted %} — accepted as complete; the rest aren't available{% endif %}">
             {% if album.expected_track_count %}{{ album.track_count }} of {{ album.expected_track_count }}{% else %}Incomplete{% endif %}
         </span>
         {% endif %}

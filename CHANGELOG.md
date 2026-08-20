@@ -8,6 +8,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Albums that are incomplete *on purpose* can now be accepted as finished — you
+  ripped only part of a box set, or the missing track is on a CD you no longer
+  have. **No more tracks to get** on the album's page keeps it out of the
+  Library's Incomplete list without pretending the tracks are there (#196).
 - A release you filed as per-disc folders (`Album/CD1`, `Album/CD2`) is now
   recognised as one album instead of one per disc. Nothing on disk moves — the
   folders stay where they are, and deleting the sidecar Harmonist adds to the

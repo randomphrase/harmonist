@@ -154,6 +154,13 @@ done but still wrong, each with its count:
   nothing on disk records how long the absent disc was. Video tracks (`.m4v`)
   count towards completeness even though Harmonist can't tag them yet, so a
   CD+DVD release you've ripped in full reads as complete.
+
+  Some albums are incomplete on purpose and always will be — you ripped only the
+  stereo mixes off a Blu-ray, or the hidden track was never ripped and the CD is
+  long gone. **No more tracks to get**, on the album's page, takes it out of this
+  list. The album stays marked "N of M"; it just stops presenting itself as
+  something to fix, and the button becomes **Mark incomplete again** if you
+  change your mind.
 - **Partially tagged** — some files carry the MusicBrainz Album Id and some don't.
   A half-finished tagging run, or Picard applied to part of a folder, leaves this.
 - **No artwork** — correctly tagged, fully linked, and still a grey square in

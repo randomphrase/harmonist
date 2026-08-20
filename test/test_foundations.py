@@ -431,3 +431,29 @@ def test_sidecar_round_trip_with_match_candidate(tmp_path):
     assert c.track_comparisons[1].delta_ms is None
     assert c.proposed_at == candidate.proposed_at
     assert c.notes == candidate.notes
+
+
+def test_sidecar_round_trip_tracks_unavailable(tmp_path):
+    """Accepting an incomplete album as finished persists, and defaults False
+    when the key is absent — an older sidecar has never heard of it (#196)."""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    sc.write(album_dir, Sidecar(mb_release_id="rel-aaa", tracks_unavailable=True))
+    assert sc.read(album_dir).tracks_unavailable is True
+
+    plain = tmp_path / "Plain"
+    plain.mkdir()
+    sc.write(plain, Sidecar(mb_release_id="rel-bbb"))
+    assert sc.read(plain).tracks_unavailable is False
+
+
+def test_the_default_is_omitted_from_the_sidecar_file(tmp_path):
+    """Sidecars are read by people debugging their own libraries; a file listing
+    every field at its default hides the ones that matter."""
+    import json
+
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    sc.write(album_dir, Sidecar(mb_release_id="rel-aaa"))
+
+    assert "tracks_unavailable" not in json.loads(sc.sidecar_path(album_dir).read_text())

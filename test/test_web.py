@@ -6258,3 +6258,113 @@ def test_a_genuine_miss_is_still_404(client, cfg):
     really isn't there, or the 503 would just be masking every miss."""
     r = client.get("/album/some-id-that-is-not-in-the-snapshot")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Accepting an incomplete album as finished (#196)
+# ---------------------------------------------------------------------------
+
+
+def test_accepting_an_incomplete_album_takes_it_out_of_the_filter(client, cfg):
+    """The Pink Floyd case: only the stereo mixes were ever ripped off the
+    Blu-ray, so the missing tracks are not a defect anyone can act on."""
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    assert "Blu" in client.get("/library?filter=incomplete").text
+
+    r = client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+
+    assert r.status_code == 200
+    assert sc.read(d).tracks_unavailable is True
+    assert "Blu" not in client.get("/library?filter=incomplete").text
+
+
+def test_an_accepted_album_stays_incomplete_and_still_says_so(client, cfg):
+    """It is not a lie about the files — the album really is short. Only the
+    "what should I fix" list stops carrying it."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+
+    album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert album.state == AlbumState.INCOMPLETE
+    assert "Blu" in client.get("/library").text, "still in the Library"
+
+
+def test_accepting_is_reversible_from_the_ui(client, cfg):
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+    client.post(f"/library/{aid}/tracks-unavailable")
+
+    r = client.post(f"/library/{aid}/tracks-unavailable", data={"accept": "false"})
+
+    assert r.status_code == 200
+    assert sc.read(d).tracks_unavailable is False
+    assert "Blu" in client.get("/library?filter=incomplete").text
+
+
+def test_accepting_is_idempotent(client, cfg):
+    """Reconcile-style double submits must not stack audit rows."""
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+
+    first = client.post(f"/library/{aid}/tracks-unavailable")
+    second = client.post(f"/library/{aid}/tracks-unavailable")
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert "No change" in second.text
+    assert sc.read(d).tracks_unavailable is True
+
+
+def test_a_complete_album_cannot_be_accepted_as_complete(client, cfg):
+    """The claim is about missing tracks. There are none, so there is nothing to
+    record — and allowing it would turn the field into a general "ignore this"."""
+    d = _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=datetime.now(UTC))
+
+    r = client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+
+    assert r.status_code == 400
+    assert sc.read(d).tracks_unavailable is False
+
+
+def test_accepting_touches_no_tags(client, cfg):
+    """It records a decision, not a change to the album."""
+    from harmonist import formats
+
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    path = next(p for p in d.iterdir() if formats.is_supported(p))
+    before = formats.read_owned(path)
+
+    client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+
+    assert formats.read_owned(path) == before
+
+
+def test_accepting_is_audited(client, cfg, tmp_path):
+    """It reclassifies what the user is shown as needing attention, so it is a
+    load-bearing sidecar change and has to be reconstructable."""
+    from harmonist import activity_store
+
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+
+    rows = [e.message for e in activity_store.recent(50)]
+    assert any("tracks_unavailable=False->True" in m for m in rows)
+
+
+def test_the_album_page_offers_the_acceptance_only_when_incomplete(client, cfg):
+    incomplete = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    whole = _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=datetime.now(UTC))
+
+    assert "No more tracks to get" in client.get(f"/album/{_id_for(cfg, incomplete)}").text
+    assert "No more tracks to get" not in client.get(f"/album/{_id_for(cfg, whole)}").text
+
+
+def test_the_album_page_offers_the_way_back_once_accepted(client, cfg):
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+    client.post(f"/library/{aid}/tracks-unavailable")
+
+    page = client.get(f"/album/{aid}").text
+    assert "Mark incomplete again" in page, "escape hatch, per review gate item 5"

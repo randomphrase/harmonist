@@ -266,6 +266,9 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
     the user can't easily undo":
 
       * identity — MBID / Bandcamp item_id / store_url
+      * `tracks_unavailable` — accepting an incomplete album as finished. Takes
+        it out of the Library's Incomplete filter, so changing it reclassifies
+        what the user is shown as needing attention.
       * `purchase_unavailable` — a surrender. Permanent: the scanner then treats
         the album as terminal despite having no purchase link, and no future sync
         re-surrenders it. Named in the review gate; it moved silently until #88.
@@ -305,6 +308,8 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
         changes["store_url"] = f"{old.store_url}->{new.store_url}"
     if old.purchase_unavailable != new.purchase_unavailable:
         changes["purchase_unavailable"] = f"{old.purchase_unavailable}->{new.purchase_unavailable}"
+    if old.tracks_unavailable != new.tracks_unavailable:
+        changes["tracks_unavailable"] = f"{old.tracks_unavailable}->{new.tracks_unavailable}"
     if changes:
         audit.record("sidecar.update", album_id=album_id, album=album_dir, **changes)
 
@@ -365,6 +370,8 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
         d["notes"] = s.notes
     if s.purchase_unavailable:
         d["purchase_unavailable"] = True
+    if s.tracks_unavailable:
+        d["tracks_unavailable"] = True
     return d
 
 
@@ -503,6 +510,7 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
         tagged_at=_parse_iso(d.get("tagged_at")),
         notes=d.get("notes"),
         purchase_unavailable=bool(d.get("purchase_unavailable", False)),
+        tracks_unavailable=bool(d.get("tracks_unavailable", False)),
     )
 
 

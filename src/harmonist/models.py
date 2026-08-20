@@ -210,6 +210,24 @@ class Sidecar:
     # Without it the album would re-classify NEEDS_SYNC and re-surrender on every
     # full sync — there is no purchase to link, ever.
     purchase_unavailable: bool = False
+    # Set when the user accepts an INCOMPLETE album as finished: the tracks it is
+    # missing are not obtainable, so there is nothing to act on. The Pink Floyd
+    # Blu-ray where only the stereo mixes were ripped; the hidden CD track never
+    # ripped from a disc since thrown away (#196).
+    #
+    # A claim about the SOURCE — "there are no more tracks to get" — not about
+    # the UI. That distinction is what keeps it from becoming a general "ignore
+    # this album": the honest reading is checkable, and it is the reason a
+    # Bandcamp album whose artist has since added tracks is the wrong candidate
+    # (#132 can genuinely fetch those).
+    #
+    # Load-bearing: the Library's Incomplete filter is for defects the user can
+    # do something about, and an accepted one is no longer such a defect, so this
+    # takes the album out of it. Deliberately does NOT change the state — the
+    # album really is short, `INCOMPLETE` says so truthfully, and the tile still
+    # reports the count. Not derivable at any price: it is a decision, with no
+    # evidence on disk. Same shape as `purchase_unavailable` one level over.
+    tracks_unavailable: bool = False
 
 
 @dataclass

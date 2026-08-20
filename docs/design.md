@@ -550,6 +550,24 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   release, kept read-only after a full sync found no purchase — §3).
 - `mb_release_id` is the MBID string when matched; `null` when not yet
   matched (state derives from sidecar shape, not from this field alone).
+- `tracks_unavailable` (optional, bool) is set when the user accepts an
+  **Incomplete** album as finished: the tracks it lacks are not obtainable, so
+  there is nothing to act on. A Blu-ray where only the stereo mixes were ripped;
+  a hidden CD track never ripped from a disc since thrown away.
+
+  The claim is about the **source** — "there are no more tracks to get" — not
+  about the UI. That is what keeps it from becoming a general "ignore this
+  album", and it is why a Bandcamp album whose artist has since added tracks is
+  the wrong candidate: those can genuinely be fetched (#132).
+
+  It does **not** change state. The album really is short, `INCOMPLETE` says so
+  truthfully, and the tile still reports the count — in neutral rather than
+  amber, since it is no longer work. What changes is the Library's **Incomplete
+  filter**, which exists to find defects the user can fix; an accepted one is
+  not such a defect, so it drops out. Reversible from the album page.
+
+  Not derivable at any price: a decision with no evidence on disk. Same shape as
+  `purchase_unavailable` one level over (#196).
 - `purchase_unavailable` (optional, bool) is set when the user accepts a
   **surrendered** album via **Move to Library** — a full sync found no purchase
   and there is none to find (the Bandcamp release was withdrawn, or it was bought

@@ -136,6 +136,7 @@ _LIBRARY_LIMIT_COOKIE_MAX_AGE = 365 * 24 * 60 * 60
 # script, so an unchecked one from the URL would be reflected into the page.
 _INDEX_TABS = ("inbox", "library", "activity")
 
+
 # Library filters (#174), slug → (label, predicate). Every predicate reads a field
 # the SCANNER already derived, so filtering costs no lookup and no rescan (#140's
 # no-MB-on-the-request-path constraint) and persists nothing — the grid asks a
@@ -149,8 +150,22 @@ _INDEX_TABS = ("inbox", "library", "activity")
 #
 # Insertion order is the order the control offers them. Slugs are URL-visible and
 # outlive any wording change, so they are not derived from the labels.
+def _is_actionable_incomplete(a: Album) -> bool:
+    """INCOMPLETE, and the user has not already accepted it as finished (#196).
+
+    The filter answers "what is wrong that I could fix?", so an album whose
+    missing tracks are known to be unobtainable does not belong in it — the
+    Pink Floyd Blu-ray where only the stereo mixes were ever ripped is not a
+    defect, it is a decision. The album is still INCOMPLETE and still says so on
+    its tile; it simply stops presenting itself as work.
+    """
+    return a.state == AlbumState.INCOMPLETE and not (
+        a.sidecar is not None and a.sidecar.tracks_unavailable
+    )
+
+
 _LIBRARY_FILTERS: dict[str, tuple[str, Callable[[Album], bool]]] = {
-    "incomplete": ("Incomplete", lambda a: a.state == AlbumState.INCOMPLETE),
+    "incomplete": ("Incomplete", _is_actionable_incomplete),
     "partial": ("Partially tagged", lambda a: a.partial_tag_count is not None),
     "no-artwork": ("No artwork", lambda a: not a.has_cover),
 }
@@ -3618,6 +3633,48 @@ def _register_routes(app: FastAPI) -> None:
         )
         sidecar_mod.write(album.path, new_sc)
         return _flash_response("Match rejected", album=album)
+
+    @app.post("/library/{album_id}/tracks-unavailable", response_class=HTMLResponse)
+    def set_tracks_unavailable(
+        request: Request, album_id: str, accept: bool = Form(True)
+    ) -> Response:
+        """Accept an INCOMPLETE album as finished, or take that acceptance back.
+
+        The claim being recorded is about the SOURCE — there are no more tracks
+        to get — so it is offered only where that claim can be true: on an album
+        that really is short. Accepting a complete album would be recording a
+        fact about nothing.
+
+        Deliberately does NOT touch state or files. The album is still
+        INCOMPLETE, its tile still reports the count, and no tag is rewritten;
+        the only thing that changes is that the Library stops listing it as
+        something to fix (#196).
+        """
+        album = _find_album(request, album_id)
+        sc = album.sidecar
+        if sc is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no sidecar on this album")
+        if accept and album.state != AlbumState.INCOMPLETE:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "only an incomplete album can be accepted as finished",
+            )
+        if sc.tracks_unavailable == accept:
+            # Idempotent: the sidecar write would be a no-op anyway, but returning
+            # here keeps a double-click out of the audit log entirely.
+            return _flash_response("No change", album=album)
+        sidecar_mod.write(album.path, replace(sc, tracks_unavailable=accept))
+        # The Library's filter counts change, and nothing else does — the state is
+        # untouched, so there is no live_counts move to make. Refresh the snapshot
+        # in one render rather than letting the async rescan dim the page (#11).
+        runner = request.app.state.scan_runner
+        if runner.is_engaged():
+            runner.refresh_now()
+        request.state.skip_rescan = True
+        return _flash_response(
+            "Accepted as complete" if accept else "Back in the Incomplete list",
+            album=album,
+        )
 
     @app.post("/surrender/{album_id}/keep", response_class=HTMLResponse)
     def surrender_keep(request: Request, album_id: str) -> Response:
