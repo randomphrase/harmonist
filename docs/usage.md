@@ -151,7 +151,9 @@ done but still wrong, each with its count:
   badges "N of M". The count comes from your files' own tags, which Harmonist and
   Picard both write, so this works on an adopted library straight away with no
   lookups. When a whole disc of a set is missing the tile just says *Incomplete* —
-  nothing on disk records how long the absent disc was.
+  nothing on disk records how long the absent disc was. Video tracks (`.m4v`)
+  count towards completeness even though Harmonist can't tag them yet, so a
+  CD+DVD release you've ripped in full reads as complete.
 - **Partially tagged** — some files carry the MusicBrainz Album Id and some don't.
   A half-finished tagging run, or Picard applied to part of a folder, leaves this.
 - **No artwork** — correctly tagged, fully linked, and still a grey square in

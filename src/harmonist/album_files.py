@@ -49,6 +49,33 @@ def audio_files(album_dir: Path) -> list[Path]:
     return descendant_audio_files(album_dir)
 
 
+def video_files(album_dir: Path) -> list[Path]:
+    """This album's VIDEO files, in the same order as `audio_files`.
+
+    Harmonist cannot tag these — that is #66 — so they are deliberately absent
+    from `audio_files`, which is what the tagger, the matcher and the cover
+    reader all consume. But they are tracks the user has, tagged by Picard with
+    the same disc and position atoms as the audio, and pretending otherwise
+    reports an album whose second disc is a DVD as missing every track on it
+    (#193).
+
+    So: read for COMPLETENESS, never written. Same grouping rule as `audio_files`
+    — a sidecar'd parent with no audio of its own owns everything beneath it.
+    """
+    own = sorted(p for p in album_dir.iterdir() if formats.is_video(p))
+    if own or not (album_dir / SIDECAR_FILENAME).exists():
+        return own
+    if any(p for p in album_dir.iterdir() if formats.is_supported(p)):
+        return own
+    return descendant_video_files(album_dir)
+
+
+def descendant_video_files(album_dir: Path) -> list[Path]:
+    """Every video file below `album_dir`, ordered like `descendant_audio_files`."""
+    found = [p for p in album_dir.rglob("*") if formats.is_video(p) and p.is_file()]
+    return sorted(found, key=lambda p: sort_key(p.relative_to(album_dir)))
+
+
 def descendant_audio_files(album_dir: Path) -> list[Path]:
     """Every audio file below `album_dir`, ordered by subdirectory then name.
 

@@ -40,6 +40,34 @@ def is_supported(path: Path) -> bool:
     return _module_for(path) is not None
 
 
+# Video containers that carry the same MP4 tag atoms as `.m4a`, so a Picard-
+# tagged video track states its disc, its position and its release exactly as an
+# audio one does. Harmonist cannot TAG these (that is #66), which is why they are
+# not `is_supported` — but it can read them, and refusing to look means an album
+# whose second disc is a DVD reads as missing every one of its tracks (#193).
+#
+# Narrow on purpose: `.mp4` is left out because it is routinely audio, and
+# guessing wrong there would feed a music file into the wrong half of the scan.
+VIDEO_EXTENSIONS = frozenset({".m4v"})
+
+
+def is_video(path: Path) -> bool:
+    """True for a video file whose tags Harmonist can read but not write."""
+    return path.suffix.lower() in VIDEO_EXTENSIONS
+
+
+def read_video_scan_fields(path: Path) -> ScanFields:
+    """`read_scan_fields` for a video container.
+
+    Routed through the MP4 reader explicitly rather than through
+    `_module_for`, which is keyed on the extensions Harmonist will WRITE. Adding
+    `.m4v` there would let the tagger try to tag it.
+    """
+    from . import m4a
+
+    return m4a.read_scan_fields(path)
+
+
 def read_album_id(path: Path) -> str | None:
     mod = _module_for(path)
     return mod.read_album_id(path) if mod else None

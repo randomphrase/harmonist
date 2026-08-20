@@ -406,6 +406,14 @@ Three shapes:
 Files carrying no totals give "don't know", which derives **Complete** — an
 album Harmonist has never tagged is not accused of missing tracks.
 
+**Video files count as present tracks** (#193). Harmonist cannot tag a `.m4v`
+— that is #66, and they are deliberately absent from `album_files.audio_files`
+so nothing that writes can reach them — but Picard tags them with the same disc
+and position atoms as the audio, and the user *has* them. Without this a CD+DVD
+release reads as missing every track on the DVD. They are tracks for the purpose
+of "do you have this album", and for no other purpose: the track count, the
+tracklist and the tagger all still see audio only.
+
 There is no `incomplete` flag and no stored count. `sidecar.track_count_expected`
 held this number from v1.0.0 to v1.9.0 and was retired in #195: it duplicated
 what the tags already said, from the same source and the same moment, and the

@@ -730,3 +730,78 @@ def test_expected_count_needs_no_musicbrainz_call(tmp_path, monkeypatch):
 
     album = scan(tmp_path)[0]
     assert (album.state, album.expected_track_count) == (AlbumState.INCOMPLETE, 5)
+
+
+def _video_disc(album_dir, disc: int, disc_total: int, n: int, track_total: int) -> None:
+    """Lay down `n` Picard-tagged .m4v files for one medium of a release."""
+    from mutagen.mp4 import MP4
+
+    for i in range(1, n + 1):
+        f = album_dir / f"{disc}-{i:02d} Video {i}.m4v"
+        shutil.copy(SINE_M4A, f)  # an MP4 container either way
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
+        audio["trkn"] = [(i, track_total)]
+        audio["disk"] = [(disc, disc_total)]
+        audio.save()
+
+
+def test_a_video_medium_on_disk_completes_the_album(tmp_path):
+    """The Barking case (#193): 9 CD tracks and 9 DVD ones, every file present,
+    reported as "missing 9 of 18" because the DVD half is not audio."""
+    album_dir = _make_album_dir(tmp_path, "Underworld", "Barking", n_tracks=9)
+    _tag_files(album_dir, track_total=9, disc_num=1, disc_total=2)
+    _video_disc(album_dir, disc=2, disc_total=2, n=9, track_total=9)
+    _tagged_sidecar(album_dir)
+
+    album = scan(tmp_path)[0]
+    assert album.expected_track_count == 18
+    assert album.state == AlbumState.COMPLETE
+
+
+def test_a_video_medium_never_ripped_stays_incomplete(tmp_path):
+    """The other half of the same rule. No files of any kind for the medium, so
+    the album really is short and must keep saying so."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=9)
+    _tag_files(album_dir, track_total=9, disc_num=1, disc_total=2)
+    _tagged_sidecar(album_dir)
+
+    assert scan(tmp_path)[0].state == AlbumState.INCOMPLETE
+
+
+def test_a_partly_ripped_video_medium_is_incomplete(tmp_path):
+    """7 of the DVD's 9 videos present — counted, and still short."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=9)
+    _tag_files(album_dir, track_total=9, disc_num=1, disc_total=2)
+    _video_disc(album_dir, disc=2, disc_total=2, n=7, track_total=9)
+    _tagged_sidecar(album_dir)
+
+    album = scan(tmp_path)[0]
+    assert album.expected_track_count == 18
+    assert album.state == AlbumState.INCOMPLETE
+
+
+def test_video_files_are_not_offered_to_anything_that_tags(tmp_path):
+    """Harmonist cannot write these (#66). They must stay out of `audio_files`,
+    which is what the tagger, the matcher and the cover reader consume."""
+    from harmonist import album_files
+
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=2)
+    _video_disc(album_dir, disc=2, disc_total=2, n=2, track_total=2)
+
+    assert all(f.suffix == ".m4a" for f in album_files.audio_files(album_dir))
+    assert all(f.suffix == ".m4v" for f in album_files.video_files(album_dir))
+
+
+def test_a_new_video_file_invalidates_the_scan_cache(tmp_path):
+    """Videos change what the album derives, so a signature blind to them would
+    serve a stale Album after a DVD rip landed."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=9)
+    _tag_files(album_dir, track_total=9, disc_num=1, disc_total=2)
+    _tagged_sidecar(album_dir)
+    cache: dict = {}
+    assert scan(tmp_path, album_cache=cache)[0].state == AlbumState.INCOMPLETE
+
+    _video_disc(album_dir, disc=2, disc_total=2, n=9, track_total=9)
+
+    assert scan(tmp_path, album_cache=cache)[0].state == AlbumState.COMPLETE

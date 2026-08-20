@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from stat import S_ISREG
 from typing import NamedTuple
@@ -52,8 +52,8 @@ def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Albu
     Omit it (the default) for a full, uncached scan.
     """
     albums: list[Album] = []
-    for album_dir, audio_files, signature in iter_album_dirs(music_dir):
-        album = resolve_album(album_dir, audio_files, signature, album_cache)
+    for album_dir, audio, videos, signature in iter_album_dirs(music_dir):
+        album = resolve_album(album_dir, audio, videos, signature, album_cache)
         if album is not None:
             albums.append(album)
     if album_cache is not None:
@@ -61,9 +61,13 @@ def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Albu
     return albums
 
 
-def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], AlbumSignature]]:
-    """Yield (album_dir, sorted_audio_files, signature) for every album
+def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], AlbumSignature]]:
+    """Yield (album_dir, audio_files, video_files, signature) for every album
     directory under `root`, ONE DIRECTORY AT A TIME.
+
+    Video files are yielded separately because Harmonist reads them but never
+    writes them (#193, #66): they count toward whether an album is complete, and
+    must stay out of everything that tags.
 
     An album directory is one containing supported audio — or, per
     `album_files`, one that declares itself an album with a sidecar while
@@ -89,6 +93,7 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], AlbumSignatu
         if any(r in d.parents for r in grouped_roots):
             continue
         audio: list[tuple[Path, int, int]] = []
+        video: list[tuple[Path, int, int]] = []
         sidecar_mtime: int | None = None
         cover_mtime: int | None = None
         for name in filenames:
@@ -101,6 +106,9 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], AlbumSignatu
                 continue
             if formats.is_supported(f):
                 audio.append((f, st.st_mtime_ns, st.st_size))
+            elif formats.is_video(f):
+                # Not audio, but tracks all the same — see `album_files.video_files`.
+                video.append((f, st.st_mtime_ns, st.st_size))
             elif name == ".harmonist.json":
                 sidecar_mtime = st.st_mtime_ns
             elif name in ("cover.jpg", "cover.png"):
@@ -111,31 +119,42 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], AlbumSignatu
             # directory. Anything else is an ordinary artist/container dir.
             if sidecar_mtime is None:
                 continue
-            grouped = _grouped_entries(d)
+            grouped = _grouped_entries(d, album_files.descendant_audio_files)
             if not grouped:
                 continue  # sidecar but nothing beneath it — not an album
             grouped_roots.append(d)
             audio = grouped
+            video = _grouped_entries(d, album_files.descendant_video_files)
         else:
             audio.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
+            video.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
         files = [e[0] for e in audio]
+        videos = [e[0] for e in video]
         signature: AlbumSignature = (
             # Keyed on the path RELATIVE to the album dir, not the bare name:
             # a grouped album has a "01 - …" in every disc directory, and bare
             # names would collide into one indistinguishable signature entry.
-            tuple((str(e[0].relative_to(d)), e[1], e[2]) for e in audio),
+            #
+            # Video files ride in the SAME tuple as the audio. They are read for
+            # completeness (#193), so a video appearing or vanishing changes what
+            # the album derives — and a signature blind to them would serve a
+            # stale Album from the cache after a DVD rip landed.
+            tuple((str(e[0].relative_to(d)), e[1], e[2]) for e in [*audio, *video]),
             sidecar_mtime,
             cover_mtime,
         )
-        yield d, files, signature
+        yield d, files, videos, signature
 
 
-def _grouped_entries(album_dir: Path) -> list[tuple[Path, int, int]]:
-    """(path, mtime_ns, size) for every audio file below a grouped album dir,
-    in track order. Unstattable files are dropped, exactly as in the walk above.
+def _grouped_entries(
+    album_dir: Path, collect: Callable[[Path], list[Path]]
+) -> list[tuple[Path, int, int]]:
+    """(path, mtime_ns, size) for every file `collect` finds below a grouped
+    album dir, in track order. Unstattable files are dropped, exactly as in the
+    walk above.
     """
     entries = []
-    for f in album_files.descendant_audio_files(album_dir):
+    for f in collect(album_dir):
         try:
             st = f.stat()
         except OSError:
@@ -148,6 +167,7 @@ def _grouped_entries(album_dir: Path) -> list[tuple[Path, int, int]]:
 def resolve_album(
     album_dir: Path,
     audio_files: list[Path],
+    video_files: list[Path],
     signature: AlbumSignature,
     album_cache: AlbumCache | None,
 ) -> Album | None:
@@ -163,7 +183,7 @@ def resolve_album(
     # re-read below.
     reuse = cached[2] if (cached is not None and cached[0][0] == signature[0]) else None
     try:
-        io = read_album_io(album_dir, audio_files, reuse)
+        io = read_album_io(album_dir, audio_files, video_files, reuse)
         album = build_album(album_dir, audio_files, io)
     except (InvalidSidecarError, UnsupportedSchemaVersionError) as e:
         log.warning("skipping %s: %s", album_dir, e)
@@ -191,11 +211,18 @@ class AlbumIO(NamedTuple):
     sidecar: Sidecar | None
     fields: list[formats.ScanFields]
     cover_path: Path | None
+    # Read from the album's video files, which Harmonist never tags. Kept apart
+    # from `fields` so nothing that writes can reach them, and consulted only by
+    # the completeness derivation (#193).
+    # A tuple, not a list: `AlbumIO` is a NamedTuple, so a mutable default
+    # would be shared by every instance that omits it.
+    video_fields: tuple[formats.ScanFields, ...] = ()
 
 
 def read_album_io(
     album_dir: Path,
     audio_files: list[Path],
+    video_files: list[Path] | None = None,
     reuse_fields: list[formats.ScanFields] | None = None,
 ) -> AlbumIO:
     """Do an album's blocking reads in one place: the sidecar, each track's tags
@@ -212,6 +239,7 @@ def read_album_io(
         if reuse_fields is not None
         else [formats.read_scan_fields(f) for f in audio_files],
         cover_path=_find_cover(album_dir),
+        video_fields=tuple(formats.read_video_scan_fields(f) for f in (video_files or [])),
     )
 
 
@@ -243,11 +271,11 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
     # The sidecar is kept on disk; once the user fixes the on-disk tags
     # via Picard, the next scan re-derives state from the sidecar.
     inconsistent_tracks = _check_consistency(audio_files, fields)
-    expected = expected_tracks(fields)
+    expected = expected_tracks(fields, io.video_fields)
     state = (
         AlbumState.INCONSISTENT
         if inconsistent_tracks
-        else _derive_state(sidecar, fields, album_dir)
+        else _derive_state(sidecar, fields, album_dir, io.video_fields)
     )
 
     return Album(
@@ -298,7 +326,10 @@ class ExpectedTracks(NamedTuple):
 UNKNOWN_EXPECTED = ExpectedTracks(total=None, complete=True)
 
 
-def expected_tracks(fields: list[formats.ScanFields]) -> ExpectedTracks:
+def expected_tracks(
+    fields: list[formats.ScanFields],
+    video_fields: Sequence[formats.ScanFields] = (),
+) -> ExpectedTracks:
     """How many tracks the release has, read from the files' own tags (#195).
 
     MusicBrainz told us this at tagging time and the tagger wrote it into every
@@ -318,8 +349,14 @@ def expected_tracks(fields: list[formats.ScanFields]) -> ExpectedTracks:
 
     Files carrying no totals give `UNKNOWN_EXPECTED`, so an album Harmonist has
     never tagged is not accused of missing tracks.
+
+    `video_fields` are counted as present tracks (#193). Harmonist cannot tag a
+    video file, but the user HAS it, and a release whose second medium is a DVD
+    otherwise reads as missing every track on it — *Barking* is nine CD tracks
+    and nine DVD ones, all on disk, reported as "missing 9 of 18". They are
+    tracks for the purpose of "do you have this album", and for no other purpose.
     """
-    present = [f for f in fields if not f.unreadable]
+    present = [f for f in [*fields, *video_fields] if not f.unreadable]
     if not present:
         return UNKNOWN_EXPECTED
     # Per disc, the track_total its files agree on. A disc whose files disagree
@@ -403,7 +440,10 @@ def _album_id(album_dir: Path, sidecar: Sidecar | None) -> str:
 
 
 def _derive_state(
-    sidecar: Sidecar | None, fields: list[formats.ScanFields], album_dir: Path
+    sidecar: Sidecar | None,
+    fields: list[formats.ScanFields],
+    album_dir: Path,
+    video_fields: Sequence[formats.ScanFields] = (),
 ) -> AlbumState:
     if sidecar is None:
         return AlbumState.NEW
@@ -438,7 +478,7 @@ def _derive_state(
         # number. `complete` rather than a count comparison, because an album
         # missing an entire medium is knowably incomplete with no total to
         # compare against — see `expected_tracks`.
-        if not expected_tracks(fields).complete:
+        if not expected_tracks(fields, video_fields).complete:
             return AlbumState.INCOMPLETE
         # NEEDS_SYNC: Bandcamp-sourced album, MB release known, files tagged,
         # but Bandcamp item_id not yet linked (a Sync run resolves this).

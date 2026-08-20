@@ -16,6 +16,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- An album whose second disc is a DVD no longer reports every video track as
+  missing. Harmonist can't tag video files yet, but it now counts the ones you
+  have, so a CD+DVD release with everything ripped reads as complete (#193).
 - Albums adopted from an existing library can now be found with the Library's
   **Incomplete** filter. They never could before: an album with half its tracks
   read as complete. The count now comes from your files' own tags, so it works

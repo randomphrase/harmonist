@@ -236,8 +236,8 @@ class ScanRunner:
             item = await loop.run_in_executor(executor, next, walk, _DONE)
             if item is _DONE:
                 break
-            album_dir, files, signature = cast(
-                "tuple[Path, list[Path], scanner.AlbumSignature]", item
+            album_dir, files, videos, signature = cast(
+                "tuple[Path, list[Path], list[Path], scanner.AlbumSignature]", item
             )
             status.dirs_scanned += 1
             try:
@@ -254,7 +254,7 @@ class ScanRunner:
                     if cached is not None and cached[0][0] == signature[0]:
                         reuse = cached[2]  # audio unchanged → skip the tag reads
                     io = await loop.run_in_executor(
-                        executor, scanner.read_album_io, album_dir, files, reuse
+                        executor, scanner.read_album_io, album_dir, files, videos, reuse
                     )
                     album = scanner.build_album(album_dir, files, io)  # CPU, on loop
                     self._cache[album_dir] = (signature, album, io.fields)
