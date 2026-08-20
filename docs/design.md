@@ -736,8 +736,8 @@ src/harmonist/
   config.py             Pydantic config model + env/TOML loading
   models.py             Album, Sidecar, AlbumState, MatchCandidate, BandcampInfo, …
   sidecar.py            Read/write .harmonist.json sidecars atomically
-  scanner.py            Walk music dir → Album objects (state derived per-album)
-  album_files.py        Which audio files belong to one album — incl. a release split across disc dirs (#16)
+  scanner.py            Walk music dir → Album objects; group directories by release id (#197)
+  album_files.py        The audio/video files in ONE directory (the album-wide question is Album.paths, #197)
   reconcile.py          Derive a sidecar from MBID tag + ©cmt + MB url-rels (orphan recovery)
   url_recovery.py       Recover an embedded Bandcamp URL from ©cmt (precise or artist-root; no scraping)
   bandcamp_hook.py      bandcampsync Syncer subclass: download cap, sidecar capture, purchase↔album linking

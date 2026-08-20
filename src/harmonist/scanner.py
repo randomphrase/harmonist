@@ -114,15 +114,16 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], 
         files = [e[0] for e in audio]
         videos = [e[0] for e in video]
         signature: AlbumSignature = (
-            # Keyed on the path RELATIVE to the album dir, not the bare name:
-            # a grouped album has a "01 - …" in every disc directory, and bare
-            # names would collide into one indistinguishable signature entry.
-            #
             # Video files ride in the SAME tuple as the audio. They are read for
             # completeness (#193), so a video appearing or vanishing changes what
             # the album derives — and a signature blind to them would serve a
             # stale Album from the cache after a DVD rip landed.
-            tuple((str(e[0].relative_to(d)), e[1], e[2]) for e in [*audio, *video]),
+            #
+            # Bare names, because everything here is in `d`: this walk is
+            # per-directory again since #197, so nothing can collide. It briefly
+            # keyed on the relative path, when one entry could span disc
+            # subdirectories.
+            tuple((e[0].name, e[1], e[2]) for e in [*audio, *video]),
             sidecar_mtime,
             cover_mtime,
         )
@@ -459,7 +460,6 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         # reconcile.reconcile_album reads). Lets the inbox skip kicking
         # reconcile for untagged orphans it could never resolve.
         has_tag_mbid=any(sf.album_id for sf in fields),
-        disc_num=_consistent_disc_num(fields),
         expected_track_count=expected.total,
         paths=tuple(sorted({f.parent for f in audio_files})) or (album_dir,),
     )
@@ -543,16 +543,6 @@ def expected_tracks(
 
     total = sum(t for t in totals.values() if t is not None)
     return ExpectedTracks(total=total, complete=len(present) >= total)
-
-
-def _consistent_disc_num(fields: list[formats.ScanFields]) -> int | None:
-    """The single disc number all this album's files carry, or None when they
-    disagree or none is tagged. Untagged is the norm for a single-disc release,
-    so None means "don't know", never "disc 0"."""
-    discs = {sf.disc_num for sf in fields if sf.disc_num is not None}
-    if len(discs) != 1 or any(sf.disc_num is None for sf in fields):
-        return None
-    return next(iter(discs))
 
 
 def _audio_format(fields: list[formats.ScanFields]) -> str | None:
