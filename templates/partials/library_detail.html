@@ -166,6 +166,22 @@
                 <dt>Path</dt>
                 <dd class="font-mono text-2xs text-muted break-all"
                     title="{{ album.path }}">{{ rel_path(album.path, cfg.paths.music_dir) }}</dd>
+                {# An album can span several folders (#16), and the Path row above can
+                   only name one of them. Listing the rest is how the reader confirms
+                   Harmonist picked up ALL the files — otherwise the grouping is
+                   invisible and the only check is counting tracks and hoping (#198).
+
+                   Absent entirely for the ordinary one-folder album: the row would say
+                   nothing the Path row hasn't. Paths are relative to the album, so the
+                   shared prefix isn't repeated on every line. #}
+                {% if folders %}
+                <dt>Folders</dt>
+                <dd class="font-mono text-2xs text-muted break-all">
+                    {% for name, count in folders %}
+                    <div>{{ name }} <span class="text-muted/70">· {{ count }} track{{ 's' if count != 1 else '' }}</span></div>
+                    {% endfor %}
+                </dd>
+                {% endif %}
                 {% if album.audio_format %}
                 <dt>Format</dt>
                 <dd>{{ album.audio_format }}</dd>

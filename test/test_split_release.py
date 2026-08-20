@@ -758,3 +758,27 @@ def test_parts_with_neither_track_ids_nor_disc_numbers_are_left_alone(tmp_path):
     _disc_dir(parent, "two", disc=None)
 
     assert _find(tmp_path) == []
+
+
+# ---------------------------------------------------------------------------
+# The album page names every folder the tracks came from (#198)
+# ---------------------------------------------------------------------------
+
+
+def test_album_folders_lists_each_disc_directory_with_its_count(tmp_path):
+    from harmonist.web.main import _album_folders
+
+    parent = _grouped(tmp_path)
+    album = next(a for a in scan(tmp_path) if a.path == parent)
+
+    assert sorted(_album_folders(album)) == [("CD1", 2), ("CD2", 2)]
+
+
+def test_album_folders_is_empty_for_an_ordinary_one_folder_album(tmp_path):
+    """The row would only repeat the Path row above it."""
+    from harmonist.web.main import _album_folders
+
+    d = _disc_dir(tmp_path / "Artist", "Album", disc=None)
+    album = next(a for a in scan(tmp_path) if a.path == d)
+
+    assert _album_folders(album) == []

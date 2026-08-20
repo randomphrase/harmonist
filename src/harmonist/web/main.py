@@ -1720,6 +1720,43 @@ def _revertable_anchors(
     return out
 
 
+def _album_folders(album: Album) -> list[tuple[str, int]]:
+    """Every directory this album's files come from, as (relative path, count).
+
+    An album can span several directories since #16, and the page's single Path
+    row could then only ever name one of them. Listing them is how the user
+    confirms Harmonist picked up ALL the files — the grouping is otherwise
+    invisible, and the only alternative check is counting tracks and hoping
+    (#198).
+
+    Computed per request rather than carried on `Album`: this is a single-album
+    view that already opens every file for the tag comparison, so one more
+    directory listing is free, where a field on every album in the snapshot is
+    memory the Library page would never read (#15).
+
+    Returns [] for the ordinary flat album — one directory, already named by the
+    Path row above, so there is nothing for the list to add.
+    """
+    files = album_files.audio_files(album.path)
+    counts: dict[Path, int] = {}
+    for f in files:
+        counts[f.parent] = counts.get(f.parent, 0) + 1
+    if len(counts) <= 1:
+        return []
+    # Relative to the ALBUM, not the library root: the album's own path is right
+    # above in the Path row, so "CD1" reads better than repeating the whole
+    # prefix on every line.
+    return [(_rel_to(d, album.path), n) for d, n in counts.items()]
+
+
+def _rel_to(path: Path, root: Path) -> str:
+    """`path` relative to `root`, or its bare name when it is not underneath."""
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return path.name
+
+
 def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
     """Extract embedded cover art (bytes, mime) from the album's first audio
     file, or None. Used by /cover to serve art without writing it to disk."""
@@ -3017,6 +3054,7 @@ def _register_routes(app: FastAPI) -> None:
         ctx = _ctx(
             request,
             album=album,
+            folders=_album_folders(album),
             history=history,
             history_unavailable=history_unavailable,
             tag_changes=tag_changes,
