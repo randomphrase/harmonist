@@ -372,3 +372,65 @@ def test_fetch_release_urls_raises_on_error(monkeypatch):
     monkeypatch.setattr(musicbrainzngs, "get_release_by_id", explode)
     with pytest.raises(MBError):
         fetch_release_urls("rel-aaa")
+
+
+def test_fetch_release_raises_release_gone_on_404(monkeypatch):
+    """A 404 is an ANSWER — the release has been deleted — and must be
+    distinguishable from "ask again later", or the caller can only offer a retry
+    that will never succeed (#194)."""
+    import musicbrainzngs
+
+    from harmonist import mb_lookup
+
+    err = musicbrainzngs.ResponseError("not found")
+    err.cause = _http_error(404)
+
+    def boom(*a, **kw):
+        raise err
+
+    monkeypatch.setattr(musicbrainzngs, "get_release_by_id", boom)
+
+    with pytest.raises(mb_lookup.ReleaseGoneError):
+        mb_lookup.fetch_release("7b598009-b155-416d-8e3a-f71647228a43")
+
+
+@pytest.mark.parametrize("status", [500, 503])
+def test_fetch_release_keeps_other_http_errors_transient(monkeypatch, status):
+    """A 503 means the service is unwell, not that the release is gone. It must
+    stay a plain MBError so nothing tells the user to re-match over an outage."""
+    import musicbrainzngs
+
+    from harmonist import mb_lookup
+
+    err = musicbrainzngs.ResponseError("server error")
+    err.cause = _http_error(status)
+
+    def boom(*a, **kw):
+        raise err
+
+    monkeypatch.setattr(musicbrainzngs, "get_release_by_id", boom)
+
+    with pytest.raises(mb_lookup.MBError) as excinfo:
+        mb_lookup.fetch_release("some-mbid")
+    assert not isinstance(excinfo.value, mb_lookup.ReleaseGoneError)
+
+
+def test_fetch_release_keeps_network_errors_transient(monkeypatch):
+    import musicbrainzngs
+
+    from harmonist import mb_lookup
+
+    def boom(*a, **kw):
+        raise musicbrainzngs.NetworkError("connection refused")
+
+    monkeypatch.setattr(musicbrainzngs, "get_release_by_id", boom)
+
+    with pytest.raises(mb_lookup.MBError) as excinfo:
+        mb_lookup.fetch_release("some-mbid")
+    assert not isinstance(excinfo.value, mb_lookup.ReleaseGoneError)
+
+
+def _http_error(status: int):
+    from urllib.error import HTTPError
+
+    return HTTPError("http://mb", status, "Not Found", {}, None)  # type: ignore[arg-type]

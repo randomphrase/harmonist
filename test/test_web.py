@@ -6368,3 +6368,85 @@ def test_the_album_page_offers_the_way_back_once_accepted(client, cfg):
 
     page = client.get(f"/album/{aid}").text
     assert "Mark incomplete again" in page, "escape hatch, per review gate item 5"
+
+
+# ---------------------------------------------------------------------------
+# A release MusicBrainz has deleted (#194)
+# ---------------------------------------------------------------------------
+
+
+def _gone(mbid):
+    from harmonist import mb_lookup
+
+    raise mb_lookup.ReleaseGoneError(f"MusicBrainz no longer has release {mbid}")
+
+
+def test_album_page_explains_a_deleted_release_instead_of_showing_a_404(client, cfg, monkeypatch):
+    """Real case: Voices From the Lake — II names `7b598009-…`, which MB has
+    deleted. The page used to render "Couldn't fetch from MusicBrainz: HTTP
+    Error 404: Not Found", which reads as something to retry forever."""
+    d = _make_tagged_album(cfg, "Gone", mbid="rel-gone", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _gone)
+
+    r = client.get(f"/library/{_id_for(cfg, d)}/compare")
+
+    assert r.status_code == 200
+    assert "no longer has this release" in r.text
+    assert "404" not in r.text
+    assert "Wrong MusicBrainz match" in r.text, "names the way out"
+
+
+def test_album_page_still_says_try_again_for_a_transient_failure(client, cfg, monkeypatch):
+    """The control. An outage must not tell the user their release was deleted."""
+    from harmonist import mb_lookup
+
+    d = _make_tagged_album(cfg, "Flaky", mbid="rel-flaky", tagged_at=datetime.now(UTC))
+
+    def unwell(mbid):
+        raise mb_lookup.MBError("MB request failed: HTTP Error 503")
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", unwell)
+
+    r = client.get(f"/library/{_id_for(cfg, d)}/compare")
+
+    assert "Couldn't fetch from MusicBrainz" in r.text
+    assert "no longer has this release" not in r.text
+
+
+def test_retag_reports_a_deleted_release_as_gone_not_as_a_failure(client, cfg, monkeypatch):
+    d = _make_tagged_album(cfg, "Gone", mbid="rel-gone", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _gone)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}")
+
+    assert r.status_code == 200
+    assert "gone from MusicBrainz" in r.text
+    assert "Re-tag failed" not in r.text
+    assert "Wrong MusicBrainz match" in r.text
+
+
+def test_retag_still_reports_a_real_failure_as_a_failure(client, cfg, monkeypatch):
+    d = _make_tagged_album(cfg, "Boom", mbid="rel-boom", tagged_at=datetime.now(UTC))
+
+    def boom(mbid):
+        raise RuntimeError("disk on fire")
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", boom)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}")
+
+    assert "Re-tag failed" in r.text
+
+
+def test_a_deleted_release_leaves_the_album_alone(client, cfg, monkeypatch):
+    """No automatic demotion. MusicBrainz being briefly odd must not dump albums
+    out of the Library, and the user's tags are not rewritten behind them —
+    the remedy is offered, not applied."""
+    d = _make_tagged_album(cfg, "Gone", mbid="rel-gone", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _gone)
+    before = sc.read(d)
+
+    client.get(f"/library/{_id_for(cfg, d)}/compare")
+    client.post(f"/retag/{_id_for(cfg, d)}")
+
+    assert sc.read(d) == before

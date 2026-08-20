@@ -3099,6 +3099,19 @@ def _register_routes(app: FastAPI) -> None:
             )
         try:
             release = mb_lookup.fetch_release(sc.mb_release_id)
+        except mb_lookup.ReleaseGoneError:
+            # A 404 is an ANSWER, not a failure: the release has been deleted
+            # from MusicBrainz, and no amount of retrying will bring it back.
+            # Saying "couldn't fetch" would invite the user to try again forever,
+            # so say what happened and point at the one thing that fixes it —
+            # re-matching, which keeps the store link and lets Recheck find the
+            # replacement (#194).
+            return HTMLResponse(
+                '<p class="text-2xs text-amber-700 mt-2">MusicBrainz no longer has '
+                "this release — it looks like it was deleted there. Use "
+                "<strong>Wrong MusicBrainz match</strong> above to pick the "
+                "current one; your files keep their tags until you re-tag.</p>"
+            )
         except mb_lookup.MBError as e:
             # Escaped: an MBError wraps upstream musicbrainzngs text, so the
             # message originates off-box and must not reach the DOM as markup.
@@ -3226,6 +3239,20 @@ def _register_routes(app: FastAPI) -> None:
                 # `incomplete=False` and the §15.3 guard still applies to it.
                 incomplete=album.state == AlbumState.INCOMPLETE,
                 overwrite_art=overwrite_art,
+            )
+        except mb_lookup.ReleaseGoneError:
+            # Not a failure to report as one: MusicBrainz has deleted the release
+            # this album names, so re-tagging from it is impossible now and will
+            # stay impossible. "Re-tag failed: HTTP Error 404" reads as something
+            # to retry; this says what is actually true and names the way out
+            # (#194).
+            log.warning("retag: MusicBrainz no longer has release %s", sc.mb_release_id)
+            return _flash_response(
+                "That release is gone from MusicBrainz",
+                "use Wrong MusicBrainz match to pick the current one",
+                level=Level.WARNING,
+                tasks_changed=False,
+                album=album,
             )
         except Exception as e:
             log.exception("retag failed")

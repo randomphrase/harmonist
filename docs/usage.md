@@ -88,6 +88,12 @@ purchase it came from. **Sync** links these; that's the common case. If a sync
 can't find the purchase, use **Try a different URL** or **Mark purchased
 elsewhere**.
 
+**A release that's vanished from MusicBrainz.** Editors occasionally delete a
+release (usually a duplicate). The album's page says so rather than showing a
+fetch error, and **Wrong MusicBrainz match** sends it back to Needs MBID with its
+store link intact — a Recheck usually finds the replacement straight away. Your
+files keep their tags throughout.
+
 **Inconsistent** — the files in one folder disagree about album title or MBID,
 which normally means several albums share a directory. Harmonist won't guess:
 split them in Picard and refresh.

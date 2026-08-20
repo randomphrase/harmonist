@@ -28,6 +28,26 @@ class MBError(Exception):
     """Raised on transient MB API failures (network errors, non-404 HTTP errors)."""
 
 
+class ReleaseGoneError(MBError):
+    """MusicBrainz 404s the release: it is no longer there.
+
+    A subclass, so every existing `except MBError` keeps working and only the
+    callers that can offer a remedy have to know the difference.
+
+    **A 404 is an answer, not a failure**, and that is the whole point of
+    separating it. A network error, a timeout or a 503 means "ask again later";
+    a 404 from a service that is plainly working means the release has been
+    deleted, and asking again next startup will get the same answer forever.
+
+    Deleted, not merged: MusicBrainz *redirects* a merged MBID, so a bare 404
+    with no redirect means the entity was removed outright. Observed on
+    `7b598009-…`, an edition of Voices From the Lake's *II* that MB no longer
+    has — while the album's Bandcamp URL still resolves to two live releases,
+    one of which matches the files exactly. So this is usually recoverable, and
+    the album should be told to re-match rather than left broken.
+    """
+
+
 _USER_AGENT_RE = re.compile(r"^\s*([^/]+)/(\S+)\s*\(\s*([^)]*?)\s*\)\s*$")
 
 
@@ -85,7 +105,11 @@ def lookup_by_bandcamp_url(bandcamp_url: str) -> list[str]:
 
 
 def fetch_release(mbid: str) -> Release:
-    """Fetch a full MB release with everything the tagger needs."""
+    """Fetch a full MB release with everything the tagger needs.
+
+    Raises `ReleaseGoneError` — a subclass of `MBError` — when MusicBrainz 404s
+    the release, so a caller can tell "gone" from "try again later" (#194).
+    """
     try:
         result = musicbrainzngs.get_release_by_id(
             mbid,
@@ -98,9 +122,12 @@ def fetch_release(mbid: str) -> Release:
                 "isrcs",
             ],
         )
+    except musicbrainzngs.ResponseError as e:
+        if _is_not_found(e):
+            raise ReleaseGoneError(f"MusicBrainz no longer has release {mbid}") from e
+        raise MBError(f"MB request failed: {e}") from e
     except (
         musicbrainzngs.NetworkError,
-        musicbrainzngs.ResponseError,
         musicbrainzngs.AuthenticationError,
     ) as e:
         raise MBError(f"MB request failed: {e}") from e
