@@ -34,8 +34,15 @@ def _disc_dir(
     disc: int | None = 1,
     tracks: int = 2,
     sidecar: bool = True,
+    track_ids: list[str] | None = None,
 ) -> Path:
-    """One disc's directory: `tracks` tagged files, plus its own sidecar."""
+    """One disc's directory: `tracks` tagged files, plus its own sidecar.
+
+    `track_ids` writes a `MusicBrainz Release Track Id` per file — what Picard
+    puts there, and the evidence detection prefers. Omitted by default so the
+    disc-number fallback is what most of these tests exercise; the tests that
+    mean to exercise the track-id path pass it explicitly.
+    """
     d = parent / name
     d.mkdir(parents=True)
     for i in range(1, tracks + 1):
@@ -48,6 +55,10 @@ def _disc_dir(
             audio["disk"] = [(disc, 2)]
         if mbid is not None:
             audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [mbid.encode()]
+        if track_ids is not None and i <= len(track_ids):
+            audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [
+                track_ids[i - 1].encode()
+            ]
         audio.save()
     if sidecar:
         sidecar_mod.write(
@@ -615,3 +626,83 @@ def test_forgetting_a_grouped_album_is_not_undone_by_the_next_reconcile(tmp_path
     assert stats["grouped"] == 0
     assert not sidecar_mod.has_sidecar(parent)
     assert {a.path.name for a in scan(tmp_path)} == {"CD1", "CD2"}
+
+
+# ---------------------------------------------------------------------------
+# Track identity — the evidence detection prefers over a disc number
+# ---------------------------------------------------------------------------
+
+DISC1_IDS = ["rt-001", "rt-002"]
+DISC2_IDS = ["rt-003", "rt-004"]
+
+
+def test_disjoint_track_ids_group_an_album_with_no_disc_numbers_at_all(tmp_path):
+    """The point of preferring track ids: correctly tagged files say which
+    tracks they hold, so the album groups even with no disc number anywhere."""
+    parent = tmp_path / "Artist" / "Album"
+    _disc_dir(parent, "CD1", disc=None, track_ids=DISC1_IDS)
+    _disc_dir(parent, "CD2", disc=None, track_ids=DISC2_IDS)
+
+    found = _find(tmp_path)
+
+    assert len(found) == 1
+    assert [p.name for p in found[0].parts] == ["CD1", "CD2"]
+
+
+def test_identical_track_ids_are_a_duplicate_even_when_disc_numbers_differ(tmp_path):
+    """Track ids OVERRULE the disc number. Two copies of disc 1, one of them
+    mis-tagged as disc 2, still hold the same tracks — and grouping them would
+    fabricate a 2-disc album out of a duplicate."""
+    parent = tmp_path / "Artist" / "Album"
+    _disc_dir(parent, "rip-a", disc=1, track_ids=DISC1_IDS)
+    _disc_dir(parent, "rip-b", disc=2, track_ids=DISC1_IDS)
+
+    assert _find(tmp_path) == []
+
+
+def test_one_shared_track_is_enough_to_refuse(tmp_path):
+    """Disjoint means disjoint — an overlap of one says these are not two
+    halves of anything."""
+    parent = tmp_path / "Artist" / "Album"
+    _disc_dir(parent, "CD1", disc=1, track_ids=["rt-001", "rt-002"])
+    _disc_dir(parent, "CD2", disc=2, track_ids=["rt-002", "rt-003"])
+
+    assert _find(tmp_path) == []
+
+
+def test_track_ids_on_only_some_parts_is_not_evidence(tmp_path):
+    """Nothing to compare. Falling back to disc numbers here would answer with
+    the weaker evidence a question the better evidence was available for."""
+    parent = tmp_path / "Artist" / "Album"
+    _disc_dir(parent, "CD1", disc=1, track_ids=DISC1_IDS)
+    _disc_dir(parent, "CD2", disc=2)
+
+    assert _find(tmp_path) == []
+
+
+def test_a_part_with_one_untagged_file_falls_back_rather_than_half_comparing(tmp_path):
+    """A partial set makes disjointness meaningless — two copies of one disc
+    with half the files untagged would compare as disjoint on the tagged half."""
+    parent = tmp_path / "Artist" / "Album"
+    _disc_dir(parent, "rip-a", disc=1, tracks=2, track_ids=["rt-001"])  # 2nd file bare
+    _disc_dir(parent, "rip-b", disc=1, tracks=2, track_ids=["rt-002"])
+
+    assert _find(tmp_path) == [], "same disc number, so the fallback refuses too"
+
+
+def test_disc_numbers_still_group_a_release_with_no_track_ids(tmp_path):
+    """The pre-2011 rip. Weaker evidence, but exact, and refusing to ever group
+    these would be a needless limitation."""
+    parent = tmp_path / "Artist" / "Album"
+    _disc_dir(parent, "CD1", disc=1)
+    _disc_dir(parent, "CD2", disc=2)
+
+    assert len(_find(tmp_path)) == 1
+
+
+def test_parts_with_neither_track_ids_nor_disc_numbers_are_left_alone(tmp_path):
+    parent = tmp_path / "Artist" / "Album"
+    _disc_dir(parent, "one", disc=None)
+    _disc_dir(parent, "two", disc=None)
+
+    assert _find(tmp_path) == []

@@ -1220,18 +1220,37 @@ and any that doesn't leaves the directories alone:
   for — a leftover means a container directory that happens to hold two
   discs;
 - every part is tagged to the **same** `mb_release_id`;
-- every part carries a **distinct disc number**.
+- the parts hold **different tracks** of that release.
 
-That last one is what separates a split release from a duplicate: two
-directories of the same release are its disc 1 and disc 2 if their disc
-numbers differ, and are two copies of the same disc if they don't.
-Without a disc number on every part there is no evidence either way, so
-nothing is merged.
+That last one is what separates a split release from a duplicate, and
+"same release, two folders" describes both equally well — so something
+has to tell them apart.
 
-Detection makes **no MusicBrainz call** and reads no tags of its own — it
-runs over the whole library, which §6's budget puts out of reach for a
-per-album lookup. Everything it needs the scan has already read
-(`Album.disc_num`).
+**Release-track MBIDs are the primary evidence.** Every track of a
+release carries its own `MusicBrainz Release Track Id`, so two
+directories holding different discs have **disjoint** sets and two copies
+of one disc have identical ones. This reads the thing in question
+directly rather than a proxy for it: it establishes not that the parts
+*claim* to be different discs but that they *are* different tracks —
+which is why it overrules a disc number that says otherwise. Picard has
+written this tag for well over a decade, and Harmonist's tagger writes
+it.
+
+**Distinct disc numbers are the fallback**, for a pre-2011 rip carrying
+no track ids at all. Weaker — it is what the files claim, not what they
+contain — but still exact, and a duplicate pair fails it (both copies say
+disc 1). A *mixture* is refused: with track ids on some parts and not
+others there is nothing to compare, and falling back would answer with
+the weaker evidence a question the better evidence was available to
+settle. A part with even one untagged file counts as having none, because
+a partial set makes disjointness meaningless.
+
+Detection makes **no MusicBrainz call** — §6's budget puts a per-album
+lookup out of reach for something that runs over the whole library. The
+only checks that read tags or touch the filesystem are the last two, by
+which point a directory has already had to look exactly like a split
+release; and they run once, since the parent then has a sidecar and is
+skipped from that point on.
 
 The parent's sidecar inherits from the parts (earliest `added_at`, latest
 `tagged_at`, the widest `track_count_expected`, any `store_url`, and

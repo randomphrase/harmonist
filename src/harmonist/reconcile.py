@@ -33,6 +33,7 @@ from pathlib import Path
 
 from . import album_files, audit, formats, url_recovery
 from . import sidecar as sidecar_mod
+from .formats import owned
 from .models import Album, Sidecar, is_bandcamp_url
 
 log = logging.getLogger(__name__)
@@ -285,14 +286,14 @@ def find_split_releases(albums: list[Album], music_dir: Path) -> list[SplitRelea
       happens to hold two discs, not a release that occupies the whole of it;
     * every part is tagged to the same `mb_release_id` — the exact-scoped-unique
       match, scoped to this one parent, from sidecars that already exist;
-    * every part carries a distinct disc number. This is what separates the two
-      halves of a split release from two duplicate copies of it, which agree on
-      the release and on the disc. Without a disc number on every part there is
-      no evidence either way, so nothing is merged.
+    * the parts hold DIFFERENT TRACKS of that release, which is what separates a
+      split release from two duplicate copies of one disc. See
+      `_parts_hold_different_tracks`.
 
-    Deliberately makes NO MusicBrainz call and reads no tags of its own: it runs
-    over the whole library, and the budget rule (§6) puts a per-album lookup out
-    of reach. Everything it needs the scan has already read.
+    Deliberately makes NO MusicBrainz call: it runs over the whole library, and
+    the budget rule (§6) puts a per-album lookup out of reach. The only check
+    that reads tags or touches the filesystem is the last one, by which point a
+    directory has already had to look exactly like a split release.
     """
     by_parent: dict[Path, list[Album]] = {}
     album_paths = {a.path for a in albums}
@@ -314,18 +315,19 @@ def find_split_releases(albums: list[Album], music_dir: Path) -> list[SplitRelea
         mbid = next(iter(mbids))
         if mbid is None:
             continue
-        discs = [a.disc_num for a in parts]
-        if any(d is None for d in discs) or len(set(discs)) != len(discs):
-            continue
-        # Left until last deliberately: it is the only check that touches the
-        # filesystem, and this runs over every directory that holds two or more
-        # albums — i.e. every artist directory in the library, on every
-        # reconcile pass. The release check above rejects those for free (two
-        # albums by one artist are two releases), so the walk only ever happens
-        # for a directory that is already, on the evidence, a split release.
+        # Left until last deliberately: these are the only checks that read tags
+        # or touch the filesystem, and this loop runs over every directory
+        # holding two or more albums — i.e. every artist directory in the
+        # library, on every reconcile pass. The release check above rejects
+        # those for free (two albums by one artist are two releases), so the
+        # reads below only ever happen for a directory that already looks like a
+        # split release, and only once: the parent gets a sidecar and is skipped
+        # from then on.
         if _has_unaccounted_audio(parent, {a.path for a in parts}):
             continue
-        ordered = sorted(parts, key=lambda a: a.disc_num or 0)
+        if not _parts_hold_different_tracks(parts):
+            continue
+        ordered = _in_disc_order(parts)
         found.append(
             SplitRelease(
                 parent=parent,
@@ -334,6 +336,76 @@ def find_split_releases(albums: list[Album], music_dir: Path) -> list[SplitRelea
             )
         )
     return found
+
+
+def _parts_hold_different_tracks(parts: list[Album]) -> bool:
+    """True when the candidate parts hold DIFFERENT tracks of the release.
+
+    The question this whole feature turns on. "Same release, two folders"
+    describes a split release and a duplicate pair equally well, and merging a
+    duplicate would fabricate a two-disc album out of two copies of one disc —
+    so something has to tell them apart.
+
+    **Release-track MBIDs, when the files carry them.** Every track of a release
+    has its own `MusicBrainz Release Track Id`, so two directories holding
+    different discs have DISJOINT sets and two copies of one disc have identical
+    ones. This is a direct reading of the thing in question rather than a proxy
+    for it: it does not merely establish that the parts *claim* to be different
+    discs, it establishes that they *are* different tracks. Picard has written
+    this tag for well over a decade, and Harmonist's own tagger writes it, so it
+    is present on anything tagged the way the adoption path asks for.
+
+    **Distinct disc numbers, when they don't.** A pre-2011 rip may carry no
+    track ids at all, and refusing to ever group those would be a needless
+    limitation. Distinct disc numbers are weaker — they are what the files
+    claim, not what they contain — but they are still an exact test, and a
+    duplicate pair fails it (both copies say disc 1).
+
+    A MIXTURE is rejected: if one part has track ids and another doesn't, there
+    is nothing to compare, and the disc-number fallback would be answering a
+    question the better evidence was available to settle.
+    """
+    identities = [_release_track_ids(a.path) for a in parts]
+    if all(ids for ids in identities):
+        # Disjoint iff no id is shared, i.e. the union is as big as the parts.
+        return len(set().union(*identities)) == sum(len(ids) for ids in identities)
+    if any(ids for ids in identities):
+        return False  # some tagged, some not — no honest comparison
+    discs = [a.disc_num for a in parts]
+    return all(d is not None for d in discs) and len(set(discs)) == len(discs)
+
+
+def _release_track_ids(album_dir: Path) -> frozenset[str]:
+    """Every file's `MusicBrainz Release Track Id` in this directory, or an
+    empty set if ANY file lacks one.
+
+    All-or-nothing because a partial set makes disjointness meaningless: two
+    copies of one disc where half the files are untagged would compare as
+    disjoint on the tagged half and read as a split release.
+    """
+    ids = set()
+    for f in album_files.audio_files(album_dir):
+        try:
+            value = formats.read_owned(f).get(owned.Owned.MB_RELEASE_TRACK_ID)
+        except Exception:
+            # An unreadable file is not evidence of anything. Bail rather than
+            # judging the album on the files that happened to open — grouping is
+            # a write, and this is the check standing between it and a duplicate.
+            log.warning("could not read the track id on %s — not grouping", f)
+            return frozenset()
+        if not isinstance(value, str) or not value:
+            return frozenset()
+        ids.add(value)
+    return frozenset(ids)
+
+
+def _in_disc_order(parts: list[Album]) -> list[Album]:
+    """Candidate parts in disc order, falling back to path order when the files
+    carry no disc number. Affects only how the promotion is recorded — the
+    album's own track order comes from `album_files`."""
+    if all(a.disc_num is not None for a in parts):
+        return sorted(parts, key=lambda a: a.disc_num or 0)
+    return sorted(parts, key=lambda a: a.path)
 
 
 def _has_unaccounted_audio(parent: Path, parts: set[Path]) -> bool:
