@@ -310,6 +310,9 @@ button[disabled],
    stacked pair — splitting the two halves of one difference. */
 .track-diff__track { border-top: 1px solid var(--color-line); }
 .track-diff__track:first-of-type { border-top: 0; }
+/* Nor immediately after a disc heading — the heading's own rule already divides
+   them, and two lines a few pixels apart read as a mistake. */
+.track-diff__disc + .track-diff__track { border-top: 0; }
 .track-diff__track tr:first-child td { padding-top: .3rem; }
 .track-diff__track tr:last-child td { padding-bottom: .3rem; }
 /* Numbers and durations right-aligned and tabular so they form a column the eye
@@ -348,12 +351,28 @@ button[disabled],
    heading at all, which is nearly every album. */
 .track-diff__disc-head {
   text-align: left;
-  padding: .75rem .5rem .25rem;
-  font-size: .7rem;
+  /* Generous ABOVE, tight below. The heading has to bind to the disc it opens
+     rather than float between two of them — which is what made the collapsed
+     "none of this disc's tracks are on disk" row read as belonging to the disc
+     below it instead of the one above. */
+  padding: 1.6rem .5rem .35rem;
+  font-size: .78rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .08em;
   color: var(--color-ink);
+}
+/* A rule ABOVE each disc, heavier than the hairline between tracks, so the
+   grouping is visible at a glance rather than inferred from the headings. The
+   first disc needs none: the section's own heading is already above it. */
+.track-diff__disc { border-top: 2px solid var(--color-ink); }
+.track-diff__disc:first-of-type { border-top: 0; }
+.track-diff__disc:first-of-type .track-diff__disc-head { padding-top: .35rem; }
+/* Repeated column headings sit under the disc heading, so they are subordinate
+   to it — lighter and tighter than the single set they replace. */
+.track-diff__disc-cols th {
+  padding-top: 0;
+  padding-bottom: .25rem;
   border-bottom: 1px solid var(--color-line);
 }
 .track-diff__disc-meta,
