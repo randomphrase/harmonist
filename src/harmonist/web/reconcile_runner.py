@@ -272,6 +272,10 @@ def reconcile_pending_orphans(
         else 0
     )
 
+    # Re-tags done outside Harmonist (#220), before the early return: these are
+    # terminal Library albums, not orphans.
+    adopted_external = _adopt_external_retags(albums, exempt)
+
     if not total:
         # Nothing to do. Reconcile runs on startup and after every sync, so
         # announcing a no-op made it the feed's most frequent content — three
@@ -285,6 +289,7 @@ def reconcile_pending_orphans(
             "recovered_url": 0,
             "adopted": 0,
             "video_checked": video_checked,
+            "adopted_external": adopted_external,
             "skipped": 0,
             "errors": 0,
         }
@@ -381,6 +386,7 @@ def reconcile_pending_orphans(
         "recovered_url": recovered_url,
         "adopted": adopted,
         "video_checked": video_checked,
+        "adopted_external": adopted_external,
         "skipped": skipped,
         "errors": errors,
     }
@@ -438,3 +444,73 @@ def _record_video_media(
                     album_label=f"{album.artist} — {album.title}".strip(" —"),
                 )
     return checked
+
+
+#: Harmonist's own writes to an album's audio files. A change made by one of
+#: these is not an external re-tag, however it looks from the mtimes.
+_OWN_WRITES = ("tag.album", "tag.revert", "artwork.restore")
+
+
+def _adopt_external_retags(albums: list[Album], exempt: set[Path]) -> int:
+    """Notice albums re-tagged outside Harmonist, say so, and adopt the change.
+
+    Harmonist asks users to re-tag in Picard; it should not then be the last to
+    know. `reconcile_album` already adopts an external re-tag whose RELEASE
+    changed, which is the rarer case — this covers the commoner one, where the
+    release stayed and everything else was corrected.
+
+    Bounded to albums whose files are newer than their `tagged_at`, which the
+    scan already knows, and self-clearing: adopting moves `tagged_at` to the
+    files, so the notice cannot repeat.
+    """
+    from harmonist import reconcile
+
+    candidates = [
+        a for a in albums if reconcile.looks_externally_retagged(a) and a.path not in exempt
+    ]
+    if not candidates:
+        return 0
+
+    adopted = 0
+    for album in candidates:
+        sc = album.sidecar
+        written = album.files_written_at
+        if sc is None or sc.tagged_at is None or written is None:
+            continue
+        if _harmonist_wrote_since(album.id, sc.tagged_at):
+            # Its own doing. `revert_tags` and `restore_artwork` write files
+            # without moving `tagged_at`, so by mtime alone an undo is
+            # indistinguishable from a Picard re-tag — and reporting the user's
+            # own undo back to them as an external change would be the confident
+            # lie this codebase spends its time not telling.
+            continue
+        with activity_store.action():
+            try:
+                if not reconcile.adopt_external_retag(album.path, written):
+                    continue
+            except Exception:
+                log.exception("could not adopt the external re-tag at %s", album.path)
+                continue
+            adopted += 1
+            activity.record(
+                "Noticed these files were re-tagged outside Harmonist",
+                album_id=sidecar.album_id_for(album.path),
+                album_label=f"{album.artist} — {album.title}".strip(" —"),
+            )
+    return adopted
+
+
+def _harmonist_wrote_since(album_id: str, when: datetime) -> bool:
+    """True when Harmonist itself wrote this album's files after `when`.
+
+    Read from the audit log, which is the only record of who did what — the
+    filesystem cannot tell an undo from a Picard re-tag. Errs towards SILENCE:
+    an unreadable store means "assume it was us", because a missed notice is a
+    smaller wrong than telling the user their own undo was somebody else's.
+    """
+    try:
+        history = activity_store.album_history(album_id, limit=200)
+    except Exception:
+        log.warning("could not read the history for %s — not reporting a re-tag", album_id)
+        return True
+    return any(e.ts > when and e.message.startswith(_OWN_WRITES) for e in history)

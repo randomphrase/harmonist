@@ -314,6 +314,11 @@ class Album:
     # to everything else — the album derives COMPLETE because, by its own tags,
     # it is.
     disc_total: int | None = None
+    # When this album's audio files were last written, from the mtimes the scan
+    # already stats. Compared against `sidecar.tagged_at` to notice a re-tag done
+    # OUTSIDE Harmonist — in Picard, which is what Harmonist asks users to do
+    # (#220). Scanner-derived; not persisted.
+    files_written_at: datetime | None = None
 
     @property
     def folders(self) -> tuple[Path, ...]:

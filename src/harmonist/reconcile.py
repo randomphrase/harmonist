@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import album_files, formats, url_recovery
@@ -289,3 +289,54 @@ def record_video_media(
     positions = fetch_video_media(sc.mb_release_id)
     sidecar_mod.write(album_dir, replace(sc, video_media=positions))
     return positions
+
+
+# ---------------------------------------------------------------------------
+# Re-tags done outside Harmonist (#220)
+# ---------------------------------------------------------------------------
+
+#: How far a file's mtime may lead `tagged_at` before it counts as a separate
+#: event. Harmonist writes the files and then the sidecar, so its own tagging
+#: always leaves the sidecar a shade newer — but a filesystem with coarse
+#: timestamps, or a slow network mount, can invert that by a hair.
+RETAG_MARGIN = timedelta(seconds=5)
+
+
+def looks_externally_retagged(album: Album) -> bool:
+    """True when this album's files were written after Harmonist last tagged it.
+
+    Harmonist asks users to re-tag in Picard, and `reconcile_album` already
+    adopts one — but only when the RELEASE changes, which is the rarer case. A
+    re-tag that keeps the release and corrects everything else (disc numbers,
+    titles, totals) left the album deriving COMPLETE, reconcile never looking at
+    it, and the change passing in silence (#220).
+
+    Cheap: both sides are already in hand — the mtimes from the scan's own stat
+    calls, and `tagged_at` from the sidecar.
+    """
+    sc = album.sidecar
+    return bool(
+        sc is not None
+        and sc.mb_release_id is not None
+        and sc.tagged_at is not None
+        and album.files_written_at is not None
+        and album.files_written_at > sc.tagged_at + RETAG_MARGIN
+    )
+
+
+def adopt_external_retag(album_dir: Path, written_at: datetime) -> bool:
+    """Bring `tagged_at` up to date with the tags actually on disk. True if written.
+
+    The same move the release-changed branch of `reconcile_album` makes, and for
+    the same reason: the files won, so the sidecar follows them. Only `tagged_at`
+    moves — the album's identity, its store link and every decision recorded
+    about it are untouched, because a re-tag changed none of those.
+
+    This is also what stops the notice repeating: once `tagged_at` describes the
+    tags on disk, the album no longer looks externally re-tagged.
+    """
+    sc = sidecar_mod.read(album_dir)
+    if sc is None or sc.tagged_at is None or sc.tagged_at >= written_at:
+        return False
+    sidecar_mod.write(album_dir, replace(sc, tagged_at=written_at))
+    return True

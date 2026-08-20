@@ -26,6 +26,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Re-tagging an album in Picard is now noticed and reported, instead of passing
+  in silence. Harmonist already adopted an external re-tag that changed the
+  *release*; one that keeps the release and corrects everything else — disc
+  numbers, titles — went unrecorded (#220).
 - An album whose files describe a different release from the one it's matched to
   now says so on its page — tags claiming a single disc against a three-disc
   release, say. It looks complete because by its own tags it is, so nothing else

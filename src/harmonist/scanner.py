@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Iterable, Iterator, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from stat import S_ISREG
 from typing import NamedTuple
@@ -130,6 +131,20 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], 
         yield d, files, videos, signature
 
 
+def _written_at(signature: AlbumSignature) -> datetime | None:
+    """When this album's files were last written, from the mtimes the walk has
+    already stat'ed. None for an album with no files.
+
+    Compared against `sidecar.tagged_at` to notice a re-tag done outside
+    Harmonist (#220) — so it costs nothing beyond what the signature already
+    holds.
+    """
+    entries = signature[0]
+    if not entries:
+        return None
+    return datetime.fromtimestamp(max(e[1] for e in entries) / 1e9, tz=UTC)
+
+
 class ScannedDir(NamedTuple):
     """One directory's worth of scan output, before identity grouping.
 
@@ -171,7 +186,7 @@ def resolve_dir(
     reuse = cached[2].fields if (cached is not None and cached[0][0] == signature[0]) else None
     try:
         io = read_album_io(album_dir, audio_files, video_files, reuse)
-        album = build_album(album_dir, audio_files, io)
+        album = build_album(album_dir, audio_files, io, _written_at(signature))
     except (InvalidSidecarError, UnsupportedSchemaVersionError) as e:
         log.warning("skipping %s: %s", album_dir, e)
         return None
@@ -330,7 +345,8 @@ def _combine(mbid: str, group: list[ScannedDir]) -> Album:
         cover_path=next((e.io.cover_path for e in ordered if e.io.cover_path), None),
         video_fields=tuple(f for e in ordered for f in e.io.video_fields),
     )
-    return build_album(primary.album.path, files, io)
+    written = [e.album.files_written_at for e in group if e.album.files_written_at]
+    return build_album(primary.album.path, files, io, max(written) if written else None)
 
 
 def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
@@ -422,7 +438,12 @@ def _display_artist(fields: list[formats.ScanFields]) -> str:
     return (fields[0].artist or "").strip()
 
 
-def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
+def build_album(
+    album_dir: Path,
+    audio_files: list[Path],
+    io: AlbumIO,
+    files_written_at: datetime | None = None,
+) -> Album:
     """Assemble the Album from pre-read I/O. CPU + id-registry only (no file
     I/O), so it runs on the event-loop thread where the shared registry lives."""
     sidecar = io.sidecar
@@ -464,6 +485,7 @@ def build_album(album_dir: Path, audio_files: list[Path], io: AlbumIO) -> Album:
         absent_media=expected.absent_media,
         disc_total=_consistent(f.disc_total for f in fields if not f.unreadable),
         paths=tuple(sorted({f.parent for f in audio_files})) or (album_dir,),
+        files_written_at=files_written_at,
     )
 
 
