@@ -782,3 +782,35 @@ def test_album_folders_is_empty_for_an_ordinary_one_folder_album(tmp_path):
     album = next(a for a in scan(tmp_path) if a.path == d)
 
     assert _album_folders(album) == []
+
+
+def test_grouping_does_not_also_report_each_disc_separately(tmp_path):
+    """#190: the reconcile pass grouped a release and then reported each of its
+    disc folders as an album in its own right, because the backfill that ran
+    after grouping was handed the SAME pre-grouping snapshot. Every grouped
+    album produced one bogus entry per disc.
+
+    The backfill is gone with #195, so the stale snapshot has no consumer left —
+    the orphan pass only looks at NEW/TAGGING albums, and a disc folder of a
+    tagged release is neither. Asserted rather than reasoned about, because
+    reasoning is exactly what got #190 wrong: the code carried a comment
+    explaining this failure mode and then failed that way anyway.
+    """
+    from harmonist import activity, activity_store
+    from harmonist.web.reconcile_runner import reconcile_pending_orphans
+
+    activity_store.init(tmp_path / "audit.db")
+    activity.clear()
+    parent = _split_album(tmp_path)
+
+    reconcile_pending_orphans(tmp_path, fetch_urls=lambda m: [], rate_limit_seconds=0)
+
+    messages = [e.message for e in activity_store.recent(100)]
+    grouped = [m for m in messages if "Grouped" in m]
+    assert len(grouped) == 1, f"one entry for the release, got {grouped}"
+    assert not [m for m in messages if "Missing" in m], "no per-disc incompleteness claims"
+
+    # And the album really is one complete album afterwards.
+    albums = scan(tmp_path)
+    assert [a.path for a in albums] == [parent]
+    assert albums[0].state == AlbumState.COMPLETE
