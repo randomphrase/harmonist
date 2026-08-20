@@ -601,6 +601,50 @@ def test_a_second_reconcile_pass_groups_nothing(tmp_path):
     assert (first["grouped"], second["grouped"]) == (1, 0)
 
 
+def test_the_grouping_entry_names_the_album_not_the_folder(tmp_path):
+    """The LOTR case (#191): the parent is often a container named for something
+    else — an artist directory — so the feed must read the title off the tags,
+    as every other entry does."""
+    from harmonist import activity, activity_store
+    from harmonist.web.reconcile_runner import reconcile_pending_orphans
+
+    activity_store.init(tmp_path / "audit.db")
+    activity.clear()
+    # Discs filed straight under the artist, which is what makes the parent's
+    # directory name the wrong label.
+    parent = tmp_path / "Kasey Taylor"
+    _disc_dir(parent, "CD1", disc=1)
+    _disc_dir(parent, "CD2", disc=2)
+
+    reconcile_pending_orphans(tmp_path, fetch_urls=lambda m: [], rate_limit_seconds=0)
+
+    labels = [e.album_label for e in activity_store.recent(50) if e.album_label]
+    assert "Kasey Taylor — Vapourized Volume One" in labels
+    assert "Kasey Taylor" not in labels, "the bare directory name is the bug"
+
+
+def test_the_grouping_label_falls_back_to_the_folder_when_untagged(tmp_path):
+    """No album title in the tags at all — the scanner already falls back to the
+    directory name there, and this must not produce a blank label."""
+    parent = tmp_path / "Artist" / "Mystery"
+    for name, disc in (("CD1", 1), ("CD2", 2)):
+        d = parent / name
+        d.mkdir(parents=True)
+        for i in (1, 2):
+            f = d / f"{i:02d} Track {i}.m4a"
+            shutil.copy(SINE_M4A, f)
+            audio = MP4(f)
+            audio["disk"] = [(disc, 2)]
+            audio["----:com.apple.iTunes:MusicBrainz Album Id"] = [MBID.encode()]
+            audio.save()
+        sidecar_mod.write(d, Sidecar(mb_release_id=MBID, tagged_at=datetime.now(UTC)))
+
+    found = _find(tmp_path)
+
+    assert len(found) == 1
+    assert found[0].label, "never blank"
+
+
 def test_grouping_is_recorded_in_the_activity_feed(tmp_path):
     from harmonist import activity, activity_store
     from harmonist.web.reconcile_runner import reconcile_pending_orphans

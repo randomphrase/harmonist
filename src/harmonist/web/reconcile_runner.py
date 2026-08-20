@@ -414,7 +414,7 @@ def _promote_split_releases(albums: list[Album], music_dir: Path, exempt: set[Pa
             except Exception:
                 log.exception("could not group the split release at %s", split.parent)
                 activity.warning(
-                    f"Could not group the discs under {split.parent.name} — left as separate albums"
+                    f"Could not group the discs of {split.label} — left as separate albums"
                 )
                 continue
             grouped += 1
@@ -422,6 +422,6 @@ def _promote_split_releases(albums: list[Album], music_dir: Path, exempt: set[Pa
                 f"Grouped {len(split.parts)} disc folder(s) into one album "
                 f"({split.track_count} tracks)",
                 album_id=split.mb_release_id,
-                album_label=split.parent.name,
+                album_label=split.label,
             )
     return grouped

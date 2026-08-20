@@ -258,11 +258,29 @@ class SplitRelease:
     `parent` is the directory that should own the album; `parts` are the
     per-disc directories beneath it, in disc order. Detection only — promoting
     it is a separate, audited step.
+
+    `artist` and `title` come from the parts' TAGS, not from any directory name.
+    The grouping parent is often a container the user named for something else —
+    the LOTR trilogy's discs sit directly under `Howard Shore/`, so the entry
+    announcing it read "Howard Shore · Grouped 3 disc folder(s)" for an album
+    actually called *The Lord of the Rings Trilogy: The Motion Picture Trilogy
+    Soundtrack* (#191). Every other entry in the feed names an album from its
+    tags; this one had only a path to hand.
     """
 
     parent: Path
     mb_release_id: str
     parts: tuple[Path, ...]
+    artist: str = ""
+    title: str = ""
+
+    @property
+    def label(self) -> str:
+        """ "Artist — Title" for the feed, falling back to the parent's directory
+        name when the tags carry neither (an album with no album title at all —
+        the scanner already falls back to the directory name for that case)."""
+        joined = f"{self.artist} — {self.title}".strip(" —")
+        return joined or self.parent.name
 
     @property
     def track_count(self) -> int:
@@ -332,6 +350,10 @@ def find_split_releases(albums: list[Album], music_dir: Path) -> list[SplitRelea
                 parent=parent,
                 mb_release_id=mbid,
                 parts=tuple(a.path for a in ordered),
+                # From the scan's own reading of the tags — `build_album` has
+                # already resolved album-artist vs per-track artist for these.
+                artist=ordered[0].artist,
+                title=ordered[0].title,
             )
         )
     return found
