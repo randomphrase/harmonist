@@ -28,10 +28,12 @@ then follow the conventions below.
 Reach for `docs/design.md` before answering anything about states, the sidecar,
 matching/linking, or tagging — don't reconstruct it from memory or code alone.
 
-Seven further skills are situational rather than always-on, each written up from
+Eight further skills are situational rather than always-on, each written up from
 a bug this repo actually paid for — consult them when you're in their territory:
 `web-ui` (anything under `templates/`), `bulk-refactor` (a mechanical edit across
-many call sites), `schema-migration` (the `activity_store` SQLite schema),
+many call sites), `sidecar` (changing what a `.harmonist.json` *contains* —
+adding, retiring or repurposing a field, or touching `CURRENT_SCHEMA_VERSION`),
+`schema-migration` (the `activity_store` SQLite schema),
 `event-recording` (any `activity.record()` / `audit.record()` call, and any code
 that mutates a sidecar, tags, or files on disk), `error-handling` (any `except`
 clause, fallback return, or broad `except Exception`), `release` (cutting a
@@ -49,6 +51,10 @@ escape hatch out of every state; the MusicBrainz call budget; idempotent
 transitions. Don't skip it because a diff "looks small" — small diffs are where
 invariants erode. (This skill supersedes the old inline "sidecar minimalism" and
 persistence rules — the load-bearing-fields-only rule now lives in gate item 3.)
+
+Gate item 3 decides *whether* a sidecar field should exist; the **sidecar**
+skill covers what happens on disk once you change one. Both, for any change to
+sidecar contents.
 
 ## Working conventions
 
