@@ -1,13 +1,13 @@
 ---
 name: release
-description: Cut a Harmonist release. Use when the user asks to "cut 1.5", "do a release", "tag a version", or "ship what's on main". Covers auditing the changelog against the log, the version bump, the release commit and its message, the signed tag, the GitHub Release (the step that gets forgotten), and the workflows the tag triggers.
+description: Cut a Harmonist release. Use when the user asks to "cut 1.5", "do a release", "tag a version", or "ship what's on main". Covers auditing the changelog against the log, re-trimming its entries to something scannable, the version bump, the release commit and its message, the signed tag, the GitHub Release (the step that gets forgotten), and the workflows the tag triggers.
 ---
 
 # Cutting a release
 
 A release is four artifacts that must agree: the `CHANGELOG.md` section, the
 `pyproject.toml` version, the signed tag, and the **GitHub Release**. Getting
-three of four is the normal failure — see step 7.
+three of four is the normal failure — see step 8.
 
 Releases are exempt from `issue-first`: rolling a changelog and bumping a version
 can't change runtime behavior. They still need `make check` to pass.
@@ -50,7 +50,41 @@ routes, UI surfaces, flags. 1.5.0 was about to ship with `docs/design.md` still
 telling users to click Re-tag from MB "in the detail modal", a surface deleted an
 hour earlier. `docs/usage.md` is the likeliest to rot: it names buttons.
 
-## 3. Roll the changelog and bump the version
+## 3. Re-trim every entry to one or two sentences
+
+The `changelog` skill already requires this of each entry — one sentence, two as
+the ceiling, with rationale and mechanism left to the issue. **Enforce it again
+here, on the whole section at once, before rolling it.** That is the gate, and
+it is a gate because the rule reliably erodes across a cycle: entries are written
+one at a time, in the author's moment, when the mechanism is vivid and every
+caveat feels load-bearing. Each looks proportionate alone. Twenty of them stacked
+into one section is a wall, and nobody sees the section until release day.
+
+Read the assembled section as a stranger scanning for *does this version affect
+me?* Any bullet running past two sentences gets rewritten to **what changed, and
+who notices**; the issue reference carries the rest. Cut, specifically:
+
+- **The mechanism.** *How* it was fixed is for the commit and the issue. "The
+  count now comes from your files' own tags" earns its place only because it
+  tells the user it works without a MusicBrainz call.
+- **The history of the bug.** "They never could before: an album with half its
+  tracks read as complete." The user has the fixed version; the broken one is
+  not news to them.
+- **The counter-case and the caveat.** "A partly-ripped video disc still counts
+  as incomplete", "two copies of the same release are left alone". Real, and the
+  issue documents them.
+- **The second example.** One concrete instance lands; three is a list.
+
+Keep the user-facing *name* of anything they must click — **No more tracks to
+get** — and keep a single vivid example where it does the explaining ("the bonus
+DVD you never ripped"). Punchy is not terse: the voice stays the same, there is
+just less of it.
+
+1.10.0 shipped this wrong and had to be rewritten after the fact. Every entry
+was accurate and well written; the section was still a wall of four-line
+paragraphs nobody would scan. Accurate is not the bar.
+
+## 4. Roll the changelog and bump the version
 
 Per the `changelog` skill: rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`
 and add a fresh empty `## [Unreleased]` above it. Then `pyproject.toml` — the
@@ -60,9 +94,13 @@ single source of the version:
 version = "X.Y.Z"
 ```
 
-## 4. `make check`
+The **release commit body and the GitHub Release narrative are exempt** — prose
+themes are where the mechanism, the history and the caveats belong. The trim
+applies to the bullets only. Detail is not deleted, it is *relocated*.
 
-## 5. The release commit
+## 5. `make check`
+
+## 6. The release commit
 
 Subject is exactly `Release X.Y.Z`. Stage explicit paths — `CHANGELOG.md`,
 `pyproject.toml`, and any docs from step 2.
@@ -76,7 +114,7 @@ carry. Read `git show v1.4.0` and `git show v1.5.0` for the established shape:
    explains what got *better* and why it mattered, which a bullet list of
    effects can't. Fixes that share a cause belong in one theme.
 
-## 6. The signed tag
+## 7. The signed tag
 
 ```
 git tag -s vX.Y.Z -m "Harmonist X.Y.Z"
@@ -91,7 +129,7 @@ git push origin main
 git push origin vX.Y.Z
 ```
 
-## 7. The GitHub Release — the step that gets forgotten
+## 8. The GitHub Release — the step that gets forgotten
 
 The tag is not the release. Every prior version has one (`gh release list`), and
 1.5.0 shipped without it until the user noticed.
@@ -111,7 +149,7 @@ The body is the changelog section **plus** the commit's themes:
 Never `--generate-notes`. A list of commit subjects is exactly what the
 changelog exists to not be. `gh` marks the newest release latest on its own.
 
-## 8. Watch what the tag triggered
+## 9. Watch what the tag triggered
 
 The tag fires `Publish image` (`.github/workflows/publish.yml`) alongside the
 usual CI, pushing `ghcr.io/randomphrase/harmonist` at `:X.Y.Z`, `:X.Y`, `:X`
@@ -129,6 +167,8 @@ Confirm from the workflow run, not the registry: reading published tags via
 
 - [ ] every commit since the last tag is in the changelog or genuinely internal
 - [ ] `README.md`, `docs/usage.md` and `docs/design.md` describe what shipped
+- [ ] **every changelog bullet is one or two sentences** — scannable, with the
+      mechanism and the caveats left to the issue and the themes
 - [ ] `pyproject.toml` bumped, `make check` green
 - [ ] `Release X.Y.Z` commit, GPG-signed tag verified locally
 - [ ] commit pushed, then tag

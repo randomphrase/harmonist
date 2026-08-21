@@ -10,49 +10,35 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
-- A multi-disc album's tracks are now grouped by disc, with the disc's name where
-  MusicBrainz has one. A disc you don't have at all is reported once instead of
-  listing every one of its tracks — a bonus DVD no longer buries the album you
-  do have. The album's page also lists every folder its tracks came from, not
-  just the first (#216).
-- Albums that are incomplete *on purpose* can now be accepted as finished — you
-  ripped only part of a box set, or the missing track is on a CD you no longer
-  have. **No more tracks to get** on the album's page keeps it out of the
-  Library's Incomplete list without pretending the tracks are there (#196).
 - A release you keep in several folders — `Album/CD1` + `Album/CD2`, a box set
-  filed disc by disc, a compilation split into its component EPs — is now
-  recognised as one album, wherever those folders are. Nothing on disk moves, and
-  two copies of the same release are left alone (#16, #197). The album's page
-  lists every folder its tracks came from, so you can see it found them all
-  (#198).
+  filed disc by disc — is now recognised as one album, wherever those folders
+  are. Nothing on disk moves (#16, #197, #198).
+- A multi-disc album's tracks are grouped by disc, named where MusicBrainz names
+  them. A disc you don't have at all is reported once instead of track by track
+  (#216).
+- An album that's incomplete *on purpose* can be accepted as finished:
+  **No more tracks to get** takes it out of the Library's Incomplete list
+  without pretending the tracks are there (#196).
 
 ### Fixed
 
-- Re-tagging no longer strips the disc subtitle Picard wrote. Harmonist now
-  writes it too, from the disc's name in MusicBrainz (#218).
-- Re-tagging an album in Picard is now noticed and reported, instead of passing
-  in silence. Harmonist already adopted an external re-tag that changed the
-  *release*; one that keeps the release and corrects everything else — disc
-  numbers, titles — went unrecorded (#220).
-- An album whose files describe a different release from the one it's matched to
-  now says so on its page — tags claiming a single disc against a three-disc
-  release, say. It looks complete because by its own tags it is, so nothing else
-  would have told you (#204).
-- An album is no longer reported as incomplete when the only discs it's missing
-  are video — the bonus DVD you never ripped. The album's page lists the discs
-  that aren't on disk, so "complete" doesn't quietly mean "we stopped mentioning
-  them". A partly-ripped video disc still counts as incomplete (#206).
-- An album whose MusicBrainz release has been deleted now says so plainly,
-  instead of reporting a raw "HTTP Error 404" that looked like something to
-  retry. A banner offers to send it back to Needs MBID when you're ready, and
-  Re-tag is disabled meanwhile — there's nothing to re-tag from (#194, #210).
-- An album whose second disc is a DVD no longer reports every video track as
-  missing. Harmonist can't tag video files yet, but it now counts the ones you
-  have, so a CD+DVD release with everything ripped reads as complete (#193).
 - Albums adopted from an existing library can now be found with the Library's
-  **Incomplete** filter. They never could before: an album with half its tracks
-  read as complete. The count now comes from your files' own tags, so it works
-  immediately and without contacting MusicBrainz (#187, #195).
+  **Incomplete** filter — the expected track count now comes from your files'
+  own tags, so it works without contacting MusicBrainz (#187, #195).
+- A MusicBrainz release that's been deleted now says so plainly instead of
+  reporting a raw "HTTP Error 404", and offers to send the album back to Needs
+  MBID (#194, #210).
+- An album whose files describe a different release from the one it's matched to
+  now says so on its page (#204).
+- A re-tag done in Picard that keeps the release but corrects everything under
+  it — disc numbers, titles — is now noticed and recorded (#220).
+- Re-tagging no longer strips the disc subtitle Picard wrote; Harmonist now
+  writes it too (#218).
+- A CD+DVD release with everything ripped no longer reports its video tracks as
+  missing (#193).
+- An album missing only video discs — the bonus DVD you never ripped — is no
+  longer reported as incomplete. The absent discs are still listed on its page
+  (#206).
 
 ## [1.9.0] - 2026-08-19
 
