@@ -28,10 +28,11 @@ then follow the conventions below.
 Reach for `docs/design.md` before answering anything about states, the sidecar,
 matching/linking, or tagging — don't reconstruct it from memory or code alone.
 
-Nine further skills are situational rather than always-on, each written up from
+Ten further skills are situational rather than always-on, each written up from
 a bug this repo actually paid for — consult them when you're in their territory:
 `source-control` (before anything leaves this machine — `git push`, `gh pr`,
 `gh release` — and before `git add` or rewriting history),
+`screenshots` (adding or re-cropping any image under `docs/`),
 `web-ui` (anything under `templates/`), `bulk-refactor` (a mechanical edit across
 many call sites), `sidecar` (changing what a `.harmonist.json` *contains* —
 adding, retiring or repurposing a field, or touching `CURRENT_SCHEMA_VERSION`),
