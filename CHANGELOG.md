@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-08-21
+
 ### Added
 
 - A multi-disc album's tracks are now grouped by disc, with the disc's name where
@@ -28,7 +30,6 @@ versions follow [semantic versioning](https://semver.org).
 
 - Re-tagging no longer strips the disc subtitle Picard wrote. Harmonist now
   writes it too, from the disc's name in MusicBrainz (#218).
-
 - Re-tagging an album in Picard is now noticed and reported, instead of passing
   in silence. Harmonist already adopted an external re-tag that changed the
   *release*; one that keeps the release and corrects everything else — disc
