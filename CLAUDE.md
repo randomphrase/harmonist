@@ -28,8 +28,10 @@ then follow the conventions below.
 Reach for `docs/design.md` before answering anything about states, the sidecar,
 matching/linking, or tagging — don't reconstruct it from memory or code alone.
 
-Eight further skills are situational rather than always-on, each written up from
+Nine further skills are situational rather than always-on, each written up from
 a bug this repo actually paid for — consult them when you're in their territory:
+`source-control` (before anything leaves this machine — `git push`, `gh pr`,
+`gh release` — and before `git add` or rewriting history),
 `web-ui` (anything under `templates/`), `bulk-refactor` (a mechanical edit across
 many call sites), `sidecar` (changing what a `.harmonist.json` *contains* —
 adding, retiring or repurposing a field, or touching `CURRENT_SCHEMA_VERSION`),
@@ -58,6 +60,11 @@ sidecar contents.
 
 ## Working conventions
 
+- **Never push or publish without an explicit say-so.** Commit freely; anything
+  that leaves the machine is the user's call, every time — ask, and wait. A skill
+  that lists `git push` among its steps is documenting it, not authorizing it.
+  See the **source-control** skill for what else doesn't count as authorization,
+  plus staging and history-rewrite discipline.
 - **Issue-first:** raise substantial/functional work (bug fixes, features,
   behavior changes, non-trivial refactors) as a GitHub issue *before* writing the
   code, and close it from the commit (`Fixes #N`). Only changes that can't alter

@@ -69,6 +69,9 @@ branch + PR for trivial work (no issue required).
    with `Fixes #N`. **CI green is the merge gate** — `make check` passing locally is
    necessary but not sufficient; the PR must go green before it lands. Don't merge a
    red or pending PR, and don't bypass CI with a direct push to `main`.
+
+   **Ask before the first push** — see the `source-control` skill. Reaching this
+   step is not the go-ahead, and neither is CI being green.
 7. **Land it locally, not with the merge button.** If `main` has moved, rebase
    onto it and force-push *first*, so CI validates exactly the commits that will
    land:

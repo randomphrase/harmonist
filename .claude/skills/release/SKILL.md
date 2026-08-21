@@ -121,13 +121,21 @@ git tag -s vX.Y.Z -m "Harmonist X.Y.Z"
 git tag -v vX.Y.Z          # verify BEFORE pushing
 ```
 
-Push the commit first, then the tag — a tag whose commit isn't on the remote
-publishes an image from a commit nobody can fetch:
+**Stop here and ask** — see the `source-control` skill. Everything up to this
+point is local and undoable; everything after it is public and is not, and
+invoking this skill is not authorization to cross that line. Say the commit and
+the verified tag are ready, and wait.
+
+Once they say go, push the commit first, then the tag — a tag whose commit isn't
+on the remote publishes an image from a commit nobody can fetch:
 
 ```
 git push origin main
 git push origin vX.Y.Z
 ```
+
+One go-ahead covers the rest of this release — the tag push and step 8's
+`gh release create` — and nothing beyond it.
 
 ## 8. The GitHub Release — the step that gets forgotten
 
