@@ -101,6 +101,12 @@ is disabled meanwhile, since there's nothing to re-tag from. Nothing happens
 until you press the button: your files keep their tags, and the album stays in
 the Library if you'd rather deal with it later.
 
+![The banner shown on such an album: "This release is gone from MusicBrainz — it
+was deleted there, usually because it was a duplicate. Your files are untouched
+and still carry its tags, but Harmonist can't compare them against anything or
+re-tag them until the album points at a release that exists." A Find a new
+release button sits to its right.](images/release-gone.png)
+
 **Inconsistent** — the files in one folder disagree about album title or MBID,
 which normally means several albums share a directory. Harmonist won't guess:
 split them in Picard and refresh.
