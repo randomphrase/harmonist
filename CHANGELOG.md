@@ -6,6 +6,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- An album whose MusicBrainz release has been deleted now shows your files' own
+  tags and tracklist, instead of leaving Tracks stuck on "Checking tracks against
+  MusicBrainz…" and Tags refusing to show anything. Those tags are what you'd
+  search on to find the replacement release (#228).
+- A MusicBrainz fetch that fails now says so in both the Tags and Tracks
+  sections, rather than leaving Tracks looking like it's still working (#228).
+
 ## [1.10.0] - 2026-08-21
 
 ### Added

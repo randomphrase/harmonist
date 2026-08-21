@@ -404,6 +404,14 @@ class AlbumComparison:
     """Every field of one album, plus the headline the section needs."""
 
     fields: tuple[FieldComparison, ...] = field(default_factory=tuple)
+    #: Whether there was a MusicBrainz release to compare against at all. False
+    #: for the disk-only view (#228): the tags are still shown — they never
+    #: depended on MusicBrainz — but nothing here was compared, and every field
+    #: lands in ONLY_DISK for want of a counterpart rather than because
+    #: MusicBrainz has nothing to say about it. Without this the summary would
+    #: read "All 7 fields match MusicBrainz" for a release MusicBrainz has
+    #: deleted, since ONLY_DISK is deliberately not a finding.
+    mb_available: bool = True
 
     @property
     def differing(self) -> tuple[FieldComparison, ...]:
@@ -434,6 +442,8 @@ class AlbumComparison:
         "9 of 7 differ", since every field goes UNREADABLE while only seven of
         them were ever comparable.
         """
+        if not self.mb_available:
+            return "No comparison — showing your files' tags"
         fields = self.comparable
         n = len([f for f in fields if f.differs])
         if not fields:
@@ -583,6 +593,10 @@ class TracklistComparison:
     #: The release's media, in position order. Empty for a caller that has none
     #: to give, in which case `discs` falls back to what the tracks say.
     media: tuple[Medium, ...] = field(default_factory=tuple)
+    #: Whether there was a MusicBrainz release to compare against at all — the
+    #: tracklist half of `AlbumComparison.mb_available` (#228). False for the
+    #: disk-only view built by `disk_tracklist`.
+    mb_available: bool = True
 
     @property
     def discs(self) -> tuple[DiscGroup, ...]:
@@ -613,6 +627,9 @@ class TracklistComparison:
         being folded into the count: "3 of 10 tracks differ" is true of an album
         with a dead file, but it isn't what the user needs to be told.
         """
+        if not self.mb_available:
+            n = len(self.tracks)
+            return f"No comparison — showing your {n} track{'s' if n != 1 else ''}"
         if not self.tracks:
             return "Nothing to compare against MusicBrainz"
 
@@ -728,6 +745,35 @@ def tracklist(
             )
         )
     return TracklistComparison(tracks=tuple(rows), media=tuple(media))
+
+
+def disk_tracklist(tracks: Sequence[tuple[str, TrackTags]]) -> TracklistComparison:
+    """The album's own tracks, with no MusicBrainz release to compare them to.
+
+    For a release MusicBrainz has DELETED (#228). The tracks never depended on
+    MusicBrainz — Harmonist read them off the files, and they are still there —
+    so declining to show them drops the wrong half: this is exactly the evidence
+    the user needs to go and find the replacement release.
+
+    Deliberately not `tracklist(tracks, mb=[])`. That reaches a similar shape by
+    a different route, and calls every row EXTRA — "not in MusicBrainz", which
+    is a finding about the track. Nothing here is a finding: MusicBrainz was
+    never asked. The rows are PRESENT with no counterpart, and `mb_available`
+    tells the summary and the template to say so once, at the top.
+    """
+    multi_disc = any((t.disc_num or 1) > 1 for _, t in tracks)
+    rows = [
+        ComparedTrack(
+            TrackState.UNREADABLE if tags.unreadable else TrackState.PRESENT,
+            _track_fields(
+                None if tags.unreadable else tags, None, multi_disc, unreadable=tags.unreadable
+            ),
+            file_name=name,
+            disc=tags.disc_num or 1,
+        )
+        for name, tags in tracks
+    ]
+    return TracklistComparison(tracks=tuple(rows), mb_available=False)
 
 
 def _assign(

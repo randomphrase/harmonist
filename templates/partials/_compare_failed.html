@@ -1,0 +1,22 @@
+{# A MusicBrainz fetch that FAILED — not a release MusicBrainz has deleted.
+
+   The distinction is the whole point: a deleted release is an answer and gets
+   the disk-only view (`_release_gone.html`), but a failed fetch may well
+   succeed on a reload, so it keeps saying so rather than quietly degrading to a
+   view that would look authoritative (#228).
+
+   Two destinations from one response, because the /compare fetch fills both
+   halves of the page: this note in-band in Tags, and its counterpart
+   out-of-band into Tracks. Without the second, the Tracks placeholder sits on
+   "Checking tracks against MusicBrainz…" forever — reading as a request still
+   in flight when the request has in fact already failed, and no other is
+   coming (#228). #}
+<p class="text-2xs text-red-700 mt-2">Couldn't fetch from MusicBrainz: {{ error }}</p>
+
+<section id="album-tracks" hx-swap-oob="true"
+         class="border border-line rounded-lg p-4 space-y-3">
+    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
+    <p class="text-2xs text-red-700">
+        Couldn't fetch from MusicBrainz — reload the page to try again.
+    </p>
+</section>

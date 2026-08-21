@@ -9,7 +9,12 @@
    the cells that actually differ. Both values keep the same left edge and the
    same column, so a difference is a vertical scan rather than a comparison.
    Same register as the album panel above — most of these are formatting
-   differences, not errors, and nothing is coloured as a mistake. #}
+   differences, not errors, and nothing is coloured as a mistake.
+
+   Also serves the DISK-ONLY view, where MusicBrainz has deleted the release
+   (#228). Every row is then PRESENT with no MusicBrainz counterpart, so
+   `shows_mb` is false throughout and the table renders one plain line per
+   track — no second layout, just the existing one with nothing to stack. #}
 
 {# The hexagon note, matching the album section's. Missing, unreadable and extra
    tracks get their own clause in the summary: they are different problems with

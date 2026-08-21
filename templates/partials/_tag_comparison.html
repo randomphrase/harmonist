@@ -4,7 +4,13 @@
 
    Deliberately NOT a code diff. Most real differences here are formatting — a
    Bandcamp "A | B" credit against MusicBrainz's join phrases, a featured credit
-   MB keeps out of the title — so nothing is coloured as a mistake. #}
+   MB keeps out of the title — so nothing is coloured as a mistake.
+
+   Also serves the DISK-ONLY view, where there is no MusicBrainz release to
+   compare against because MusicBrainz has deleted it (#228). Every field is
+   then ONLY_DISK, which this already renders as a lone plain line — the
+   degenerate case reached from a different direction, not a second layout. The
+   only branch it needs is `comparison.mb_available`, above. #}
 
 {# The hexagon note: what this section is comparing against, how much differs,
    and when Harmonist last read it. The timestamp answers "is my own MusicBrainz
@@ -21,7 +27,12 @@
         </svg>
     </span>
     <span class="mb-note__legend">{{ comparison.summary }}</span>
+    {# No timestamp when there was nothing to read (#228): "read just now" beside
+       a note saying nothing was compared is a claim about a fetch that returned
+       a 404. The summary already says what happened; the banner says why. #}
+    {% if comparison.mb_available %}
     <span class="mb-note__when">read {{ ago(mb_read_at) }}</span>
+    {% endif %}
 </div>
 
 <dl class="tag-fields">

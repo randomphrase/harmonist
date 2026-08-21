@@ -745,6 +745,27 @@ def _album_comparison(
     )
 
 
+def _album_disk_view(
+    album_dir: Path, paths: Sequence[Path] | None = None
+) -> tuple[compare.AlbumComparison, compare.TracklistComparison]:
+    """The same two halves as `_album_comparison`, from the files ALONE (#228).
+
+    For an album whose MusicBrainz release has been deleted. Both panels used to
+    decline to show anything, which drops the wrong half: the banner says "your
+    files are untouched and still carry its tags" and the page then declines to
+    show them, when those tags are the evidence the user would use to find the
+    replacement release.
+
+    One pass over the files, for the same reason `_album_comparison` makes one.
+    """
+    files = album_files.for_paths(paths) if paths else album_files.audio_files(album_dir)
+    tracks = [(_rel_to(f, album_dir), formats.read_tags(f)) for f in files]
+    return (
+        compare.AlbumComparison(fields=compare.album_fields(tracks, None), mb_available=False),
+        compare.disk_tracklist(tracks),
+    )
+
+
 def _merge_unscoped_audit(events: list[activity.Event], since: datetime) -> list[activity.Event]:
     """Fold audit rows that belong to no action into a page of activity entries,
     newest first (#123).
@@ -3183,26 +3204,39 @@ def _register_routes(app: FastAPI) -> None:
             # Saying "couldn't fetch" would invite the user to try again forever.
             #
             # This is the only place that finds out, so it carries the whole
-            # response to it (#210): the note here, a banner out-of-band, and a
-            # disabled Re-tag out-of-band — nothing behind that button can
-            # succeed. The banner ASKS rather than sending the album to the
-            # inbox: the user may have opened this page for something else.
+            # response to it (#210): the tags here, the tracklist and a banner
+            # out-of-band, and a disabled Re-tag out-of-band — nothing behind
+            # that button can succeed. The banner ASKS rather than sending the
+            # album to the inbox: the user may have opened this page for
+            # something else.
+            #
+            # Both panels still render, from the files alone (#228). MusicBrainz
+            # is gone; the tags are not, and they are what the user needs to go
+            # find the replacement release.
             log.warning(
                 "album %s names release %s, which MusicBrainz no longer has",
                 album.path,
                 sc.mb_release_id,
             )
+            comparison, tracks = _album_disk_view(album.path, album.folders)
             return _templates(request).TemplateResponse(
                 request,
                 "partials/_release_gone.html",
-                _ctx(request, album=album),
+                _ctx(request, album=album, comparison=comparison, tracklist=tracks),
             )
         except mb_lookup.MBError as e:
-            # Escaped: an MBError wraps upstream musicbrainzngs text, so the
-            # message originates off-box and must not reach the DOM as markup.
-            return HTMLResponse(
-                '<p class="text-2xs text-red-700 mt-2">Couldn\'t fetch from '
-                f"MusicBrainz: {html.escape(str(e))}</p>"
+            # A template rather than a bare string so the failure reaches BOTH
+            # halves of the page (#228): the in-band note here settled Tags, and
+            # Tracks was left on its "checking…" placeholder forever, reading as
+            # a request still in flight when this one had already failed.
+            #
+            # Jinja autoescapes `error`, which is what keeps upstream
+            # musicbrainzngs text — off-box, unsanitised — out of the DOM as
+            # markup.
+            return _templates(request).TemplateResponse(
+                request,
+                "partials/_compare_failed.html",
+                _ctx(request, album=album, error=str(e)),
             )
         # No `assess_match` here any more (#135). It re-opened every file in the
         # album for a duration and a title that `_album_comparison` had just

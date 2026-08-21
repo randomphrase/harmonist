@@ -99,7 +99,9 @@ fetch error, and **Find a new release** sends it back to Needs MBID with its
 store link intact — a Recheck usually finds the replacement straight away. Re-tag
 is disabled meanwhile, since there's nothing to re-tag from. Nothing happens
 until you press the button: your files keep their tags, and the album stays in
-the Library if you'd rather deal with it later.
+the Library if you'd rather deal with it later. Tags and Tracks still list what's
+on your files, with no MusicBrainz column beside them — that's what you'll be
+searching on to find the replacement release.
 
 ![The banner shown on such an album: "This release is gone from MusicBrainz — it
 was deleted there, usually because it was a duplicate. Your files are untouched

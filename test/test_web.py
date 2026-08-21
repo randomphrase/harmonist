@@ -6391,7 +6391,8 @@ def test_album_page_explains_a_deleted_release_instead_of_showing_a_404(client, 
     r = client.get(f"/library/{_id_for(cfg, d)}/compare")
 
     assert r.status_code == 200
-    assert "no longer has this release" in r.text
+    assert "It was deleted there" in r.text, "the page says what happened"
+    assert "No comparison" in r.text, "and each panel says it wasn't able to compare"
     assert "404" not in r.text
 
 
@@ -6422,6 +6423,79 @@ def test_a_deleted_release_disables_retag(client, cfg, monkeypatch):
     swapped = r.text.split(f'id="retag-btn-{aid}"')[1].split(">")[0]
     assert "hx-swap-oob" in swapped and "disabled" in swapped
     assert "hx-post" not in swapped, "cannot fire at all, rather than firing and failing"
+
+
+def _gone_album_with_tags(cfg, name="Gone", *, mbid="rel-gone"):
+    """A deleted-release album whose files carry tags worth showing."""
+    d = _make_tagged_album(cfg, name, mbid=mbid, tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_ALBUM] = ["Silent Season Sampler"]
+    audio[ATOM_TITLE] = ["Drifting Under Ice"]
+    audio.save()
+    return d
+
+
+def test_a_deleted_release_still_shows_the_files_own_tags(client, cfg, monkeypatch):
+    """#228: the banner says the files "still carry its tags", and the page then
+    declined to show them. Those tags are the evidence for finding the
+    replacement release — dropping them sent the user to Picard."""
+    d = _gone_album_with_tags(cfg)
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _gone)
+
+    r = client.get(f"/library/{_id_for(cfg, d)}/compare")
+
+    assert "Silent Season Sampler" in r.text, "the album's own tags, not an empty note"
+    assert "No comparison — showing your files" in r.text
+    assert "read " not in r.text, "nothing was read from MusicBrainz — don't claim a timestamp"
+
+
+def test_a_deleted_release_settles_the_tracks_placeholder(client, cfg, monkeypatch):
+    """The original #228 symptom: Tracks sat on "Checking tracks against
+    MusicBrainz…" forever, so the one panel still claiming to be working
+    contradicted the three that had already answered."""
+    d = _gone_album_with_tags(cfg)
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _gone)
+
+    r = client.get(f"/library/{_id_for(cfg, d)}/compare")
+
+    assert 'id="album-tracks" hx-swap-oob="true"' in r.text, "the fourth destination"
+    assert "Drifting Under Ice" in r.text, "the file-derived tracklist"
+    assert "Not in MusicBrainz" not in r.text, "MB was never asked — that's not a finding"
+
+
+def test_a_failed_mb_fetch_settles_the_tracks_placeholder_too(client, cfg, monkeypatch):
+    """Same stuck placeholder, different cause. It must NOT degrade to the
+    disk-only view: a fetch that failed may succeed on a reload, and a view that
+    quietly drops MusicBrainz would look authoritative."""
+
+    def _boom(mbid):
+        raise mb_lookup.MBError("upstream said no")
+
+    d = _gone_album_with_tags(cfg)
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _boom)
+
+    r = client.get(f"/library/{_id_for(cfg, d)}/compare")
+
+    assert 'id="album-tracks" hx-swap-oob="true"' in r.text
+    assert r.text.count("Couldn't fetch from MusicBrainz") == 2, "both halves settle"
+    assert "reload" in r.text, "retryable, unlike a deleted release"
+    assert "album-alert-" not in r.text, "no deleted-release banner for a transient failure"
+
+
+def test_a_failed_mb_fetch_escapes_the_upstream_message(client, cfg, monkeypatch):
+    """An MBError wraps musicbrainzngs text, which originates off-box and must
+    not reach the DOM as markup."""
+
+    def _boom(mbid):
+        raise mb_lookup.MBError("<script>alert(1)</script>")
+
+    d = _make_tagged_album(cfg, "Boom", mbid="rel-boom", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _boom)
+
+    r = client.get(f"/library/{_id_for(cfg, d)}/compare")
+
+    assert "<script>" not in r.text
+    assert "&lt;script&gt;" in r.text
 
 
 def test_a_healthy_album_gets_no_banner_and_a_live_retag(client, cfg, monkeypatch):

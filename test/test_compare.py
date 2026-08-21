@@ -26,6 +26,7 @@ from harmonist.compare import (
     compare_field,
     consensus,
     diff_runs,
+    disk_tracklist,
     tracklist,
 )
 from harmonist.formats.types import TagSet, TrackTags
@@ -660,3 +661,56 @@ def test_an_unreadable_file_takes_the_slot_left_free_by_the_numbered_ones():
 
 def test_an_album_with_no_release_to_compare_against_says_so():
     assert tracklist([], []).summary == "Nothing to compare against MusicBrainz"
+
+
+# ---------- the disk-only view: MusicBrainz has deleted the release (#228) ----------
+
+
+def test_a_disk_only_tracklist_shows_the_tracks_without_calling_them_extra():
+    """The tracks never depended on MusicBrainz, so they still render — but
+    nothing here is a finding: MusicBrainz was never asked. `tracklist(t, [])`
+    reaches a similar shape by calling every row EXTRA ("not in MusicBrainz"),
+    which is a claim about the track rather than about the release."""
+    tl = disk_tracklist([_file(1, "Nightcall"), _file(2, "Odd Look")])
+
+    assert [t.state for t in tl.tracks] == [TrackState.PRESENT, TrackState.PRESENT]
+    assert [t.fields[1].disk for t in tl.tracks] == ["Nightcall", "Odd Look"]
+    assert not tl.mb_available
+    assert not any(t.shows_mb for t in tl.tracks), "no MusicBrainz line to draw"
+
+
+def test_a_disk_only_tracklist_says_it_compared_nothing():
+    """The header note is the one place the absence is stated. Left to the
+    default it would have said "All 2 tracks match MusicBrainz"."""
+    assert disk_tracklist([_file(1, "Nightcall"), _file(2, "Odd Look")]).summary == (
+        "No comparison — showing your 2 tracks"
+    )
+    assert disk_tracklist([_file(1, "Nightcall")]).summary == (
+        "No comparison — showing your 1 track"
+    )
+
+
+def test_a_disk_only_tracklist_keeps_the_unreadable_state():
+    """A file that won't open is still a file that won't open — that answer
+    doesn't come from MusicBrainz, so losing it here would report a dead file as
+    a track shown normally."""
+    tl = disk_tracklist([("01 Nightcall.flac", TrackTags(unreadable=True))])
+    (row,) = tl.tracks
+    assert row.state is TrackState.UNREADABLE
+    assert row.file_name == "01 Nightcall.flac"
+
+
+def test_a_disk_only_tracklist_groups_by_the_files_own_discs():
+    tl = disk_tracklist([_file(1, "Nightcall", disc=1), _file(1, "Protovision", disc=2)])
+    assert [g.medium.position for g in tl.discs] == [1, 2]
+
+
+def test_a_disk_only_album_panel_says_it_compared_nothing():
+    """`album_fields(tracks, None)` already leaves every field ONLY_DISK, which
+    is deliberately not a finding — so without `mb_available` the summary read
+    "All 7 fields match MusicBrainz" for a release MusicBrainz has deleted."""
+    fields = album_fields([_file(1, "Nightcall")], None)
+    assert AlbumComparison(fields=fields).summary.startswith("All ")
+    assert AlbumComparison(fields=fields, mb_available=False).summary == (
+        "No comparison — showing your files' tags"
+    )
