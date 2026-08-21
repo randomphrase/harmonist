@@ -6,17 +6,17 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-08-21
+
 ### Fixed
 
-- A re-tag done in Picard is now noticed for real. 1.10.0 announced this, but
-  the background scan dropped the file timestamp it reads, so outside the tests
-  it never fired once (#230).
+- A re-tag done in Picard is now noticed for real — 1.10.0 announced this, but
+  outside the tests it never fired once (#230).
 - An album whose MusicBrainz release has been deleted now shows your files' own
-  tags and tracklist, instead of leaving Tracks stuck on "Checking tracks against
-  MusicBrainz…" and Tags refusing to show anything. Those tags are what you'd
-  search on to find the replacement release (#228).
+  tags and tracklist, which is what you'd search on to find the replacement
+  release (#228).
 - A MusicBrainz fetch that fails now says so in both the Tags and Tracks
-  sections, rather than leaving Tracks looking like it's still working (#228).
+  sections, instead of leaving Tracks looking like it's still working (#228).
 
 ## [1.10.0] - 2026-08-21
 
