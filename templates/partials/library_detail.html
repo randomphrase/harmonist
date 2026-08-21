@@ -170,7 +170,7 @@
                    found them all. A one-folder album, which is nearly all of
                    them, reads exactly as it always did. #}
                 <dt>{{ "Paths" if folders else "Path" }}</dt>
-                <dd class="font-mono text-2xs text-muted break-all">
+                <dd class="font-mono text-2xs text-muted break-all{{ ' tag-fields__stack' if folders }}">
                     {% if folders %}
                     {% for name, count in folders %}
                     <div>{{ name }} <span class="text-muted/70">· {{ count }} track{{ 's' if count != 1 else '' }}</span></div>

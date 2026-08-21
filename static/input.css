@@ -172,6 +172,14 @@ button[disabled],
   flex-wrap: wrap;
   gap: 0 .1rem;
 }
+/* A LIST of values rather than one value with a pill beside it — an album's
+   folders, of which #197 albums can have eleven. The row flex above wraps them
+   into a paragraph and runs them together; this stacks them one per line. */
+.tag-fields__stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .15rem 0;
+}
 
 /* The pair: both values flush left, one above the other, so a difference is a
    vertical scan down a single edge. No "MB" prefix — it breaks that alignment,
