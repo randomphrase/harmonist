@@ -310,8 +310,8 @@ button[disabled],
    stacked pair — splitting the two halves of one difference. */
 .track-diff__track { border-top: 1px solid var(--color-line); }
 .track-diff__track:first-of-type { border-top: 0; }
-/* Nor immediately after a disc heading — the heading's own rule already divides
-   them, and two lines a few pixels apart read as a mistake. */
+/* Nor immediately after a disc heading — the band's edge already divides them,
+   and a line a few pixels below it reads as a mistake. */
 .track-diff__disc + .track-diff__track { border-top: 0; }
 .track-diff__track tr:first-child td { padding-top: .3rem; }
 .track-diff__track tr:last-child td { padding-bottom: .3rem; }
@@ -349,31 +349,35 @@ button[disabled],
 /* Disc headings (#216). A multi-disc release is grouped rather than prefixing
    every row with "2-4" for the reader to decode; a single-disc album gets no
    heading at all, which is nearly every album. */
+/* A disc heading is a BAND, not a rule. The table already draws a hairline per
+   track; adding a heavier one above each disc just put more lines into
+   something that was already busy. A quiet background groups the heading with
+   its column headings and reads as a block without drawing anything. */
+.track-diff__disc-head,
+.track-diff__disc-cols th {
+  background: var(--color-surface);
+}
 .track-diff__disc-head {
   text-align: left;
-  /* Generous ABOVE, tight below. The heading has to bind to the disc it opens
-     rather than float between two of them — which is what made the collapsed
-     "none of this disc's tracks are on disk" row read as belonging to the disc
-     below it instead of the one above. */
-  padding: 1.6rem .5rem .35rem;
+  padding: .5rem .5rem .3rem;
   font-size: .78rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .08em;
   color: var(--color-ink);
 }
-/* A rule ABOVE each disc, heavier than the hairline between tracks, so the
-   grouping is visible at a glance rather than inferred from the headings. The
-   first disc needs none: the section's own heading is already above it. */
-.track-diff__disc { border-top: 2px solid var(--color-ink); }
-.track-diff__disc:first-of-type { border-top: 0; }
-.track-diff__disc:first-of-type .track-diff__disc-head { padding-top: .35rem; }
-/* Repeated column headings sit under the disc heading, so they are subordinate
-   to it — lighter and tighter than the single set they replace. */
+/* Repeated column headings sit under the disc heading, inside the same band, so
+   they read as subordinate to it. */
 .track-diff__disc-cols th {
   padding-top: 0;
-  padding-bottom: .25rem;
-  border-bottom: 1px solid var(--color-line);
+  padding-bottom: .35rem;
+}
+/* The space between discs. A table cannot take it from margins, so it is an
+   explicit spacer row — which also keeps the band from stretching to fill it. */
+.track-diff__disc-gap td {
+  height: 1.75rem;
+  border: 0;
+  padding: 0;
 }
 .track-diff__disc-meta,
 .track-diff__disc-absent {

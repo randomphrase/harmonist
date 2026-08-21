@@ -46,12 +46,19 @@
            MusicBrainz often names a medium — Hybrid's two are "Wide Angle" and
            "Live Angle" — which is a good deal more use than "Disc 2". #}
         {% if multi_disc %}
+        {# Real space between discs. A table cannot get it from margins, and a
+           transparent border collapses unpredictably, so it is an explicit
+           spacer row — predictable, and it keeps the heading's background band
+           from stretching to fill it. #}
+        {% if not loop.first %}
+        <tbody class="track-diff__disc-gap"><tr><td colspan="{{ track_columns|length }}"></td></tr></tbody>
+        {% endif %}
         <tbody class="track-diff__disc">
             <tr>
                 <th scope="colgroup" colspan="{{ track_columns|length }}" class="track-diff__disc-head">
+                    {% if group.absent %}<span class="track-diff__disc-absent">Not on disk:</span>{% endif %}
                     {{ group.medium.label }}
                     <span class="track-diff__disc-meta">{{ group.summary }}</span>
-                    {% if group.absent %}<span class="track-diff__disc-absent">not on disk</span>{% endif %}
                 </th>
             </tr>
             {# The column headings repeat under each disc. A small duplication,
