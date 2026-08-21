@@ -35,6 +35,7 @@ from mutagen.id3 import (
     TSO2,
     TSOP,
     TSRC,
+    TSST,
     TXXX,
     UFID,
     Encoding,
@@ -103,6 +104,7 @@ OWNED_FRAMES: dict[Owned, tuple[str, ...]] = {
     Owned.TRACK_TOTAL: ("TRCK",),
     Owned.DISC_NUM: ("TPOS",),
     Owned.MEDIA: ("TMED",),
+    Owned.DISC_SUBTITLE: ("TSST",),
     Owned.MB_TRACK_ID: (f"UFID:{UFID_OWNER}",),
     Owned.MB_RELEASE_TRACK_ID: (f"TXXX:{TXXX_RELEASE_TRACK_ID}",),
     Owned.MB_ARTIST_IDS: (f"TXXX:{TXXX_ARTIST_ID}",),
@@ -348,6 +350,7 @@ def _read_owned(tags: Any) -> dict[str, Any]:
         Owned.TRACK_TOTAL: track_total,
         Owned.DISC_NUM: disc_num,
         Owned.MEDIA: _text(tags, "TMED"),
+        Owned.DISC_SUBTITLE: _text(tags, "TSST"),
         Owned.MB_TRACK_ID: ufid.data.decode("ascii", "replace") if ufid is not None else None,
         Owned.MB_RELEASE_TRACK_ID: _txxx(tags, TXXX_RELEASE_TRACK_ID),
         Owned.MB_ARTIST_IDS: _txxx_list(tags, TXXX_ARTIST_ID),
@@ -456,6 +459,7 @@ _TEXT_FRAMES: dict[Owned, Any] = {
     Owned.ARTIST: TPE1,
     Owned.ARTIST_SORT: TSOP,
     Owned.MEDIA: TMED,
+    Owned.DISC_SUBTITLE: TSST,
 }
 
 #: Owned fields carried in a single-valued TXXX user-text frame.
@@ -575,6 +579,8 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
         _set_txxx(tags, TXXX_ASIN, [tagset.asin])
     if tagset.media:
         tags.setall("TMED", [TMED(encoding=Encoding.UTF8, text=[tagset.media])])
+    if tagset.disc_subtitle:
+        tags.setall("TSST", [TSST(encoding=Encoding.UTF8, text=[tagset.disc_subtitle])])
 
     # ---- Cover art ----
     if cover is not None:

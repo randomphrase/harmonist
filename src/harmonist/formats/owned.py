@@ -92,6 +92,7 @@ class Owned(StrEnum):
     TRACK_NUM = "track_num"
     TRACK_TOTAL = "track_total"
     DISC_NUM = "disc_num"
+    DISC_SUBTITLE = "disc_subtitle"
     MEDIA = "media"
     MB_TRACK_ID = "mb_track_id"
     MB_RELEASE_TRACK_ID = "mb_release_track_id"
@@ -124,6 +125,10 @@ SCOPE: dict[Owned, Scope] = {
     Owned.TRACK_NUM: Scope.TRACK,
     Owned.TRACK_TOTAL: Scope.TRACK,
     Owned.DISC_NUM: Scope.TRACK,
+    # Track-scoped for the same reason as `disc_num` and `media`: it describes
+    # the MEDIUM, which differs between tracks on a multi-disc release even
+    # though it reads like an album-level fact.
+    Owned.DISC_SUBTITLE: Scope.TRACK,
     Owned.MEDIA: Scope.TRACK,
     Owned.MB_TRACK_ID: Scope.TRACK,
     Owned.MB_RELEASE_TRACK_ID: Scope.TRACK,

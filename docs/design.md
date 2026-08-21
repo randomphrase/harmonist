@@ -665,7 +665,7 @@ Everything not in the set is left exactly as found: the comment carrying a recov
 - **Album** — `mb_album_id`, `album`, `album_artist`, `album_artist_sort`, `mb_album_artist_ids`, `mb_release_group_id`, `mb_album_type`, `mb_album_status`, `mb_album_country`, `date`, `original_date`, `script`, `label`, `catalog_number`, `barcode`, `asin`, `disc_total`.
 - **Track** — `title`, `artist`, `artist_sort`, `artists`, `track_num`, `track_total`, `disc_num`, `media`, `mb_track_id`, `mb_release_track_id`, `mb_artist_ids`, `isrcs`.
 
-`media`, `disc_num` and `track_total` are derived from the *medium*, so they are track-scoped even though they look album-level: on a 2-disc release, or a CD+DVD set, they genuinely differ between tracks. The scope drives the tagging audit records (#86), which record an album-level change once per album rather than once per track.
+`media`, `disc_subtitle`, `disc_num` and `track_total` are derived from the *medium*, so they are track-scoped even though they look album-level: on a 2-disc release, or a CD+DVD set, they genuinely differ between tracks. The scope drives the tagging audit records (#86), which record an album-level change once per album rather than once per track.
 
 The `Owned` member values are exactly the `TagSet` attribute names, and a test asserts the two sets match. That guards drift in both directions: a new `TagSet` field nobody classified would be written but never cleared, and an `Owned` member with no field behind it would clear a tag Harmonist never writes.
 

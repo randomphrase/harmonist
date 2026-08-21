@@ -39,6 +39,8 @@ ATOM_LABEL = f"{ATOM_PREFIX}LABEL"
 ATOM_CATALOG = f"{ATOM_PREFIX}CATALOGNUMBER"
 ATOM_BARCODE = f"{ATOM_PREFIX}BARCODE"
 ATOM_MEDIA = f"{ATOM_PREFIX}MEDIA"
+#: Picard's `discsubtitle` — the medium's own name (#218).
+ATOM_DISC_SUBTITLE = f"{ATOM_PREFIX}DISCSUBTITLE"
 ATOM_ASIN = f"{ATOM_PREFIX}ASIN"
 
 # Per-track ISRC(s) and multi-value artists, original date, script (freeform).
@@ -105,6 +107,7 @@ OWNED_ATOMS: dict[Owned, tuple[str, ...]] = {
     Owned.TRACK_TOTAL: (ATOM_TRACK_NUM,),
     Owned.DISC_NUM: (ATOM_DISC_NUM,),
     Owned.MEDIA: (ATOM_MEDIA,),
+    Owned.DISC_SUBTITLE: (ATOM_DISC_SUBTITLE,),
     Owned.MB_TRACK_ID: (ATOM_MB_TRACK_ID,),
     Owned.MB_RELEASE_TRACK_ID: (ATOM_MB_RELEASE_TRACK_ID,),
     Owned.MB_ARTIST_IDS: (ATOM_MB_ARTIST_ID,),
@@ -308,6 +311,7 @@ def _read_owned(audio: MP4) -> dict[str, Any]:
         Owned.TRACK_TOTAL: trkn[1] if trkn else None,
         Owned.DISC_NUM: disk[0] if disk else None,
         Owned.MEDIA: _binary_atom_str(audio, ATOM_MEDIA),
+        Owned.DISC_SUBTITLE: _binary_atom_str(audio, ATOM_DISC_SUBTITLE),
         Owned.MB_TRACK_ID: _binary_atom_str(audio, ATOM_MB_TRACK_ID),
         Owned.MB_RELEASE_TRACK_ID: _binary_atom_str(audio, ATOM_MB_RELEASE_TRACK_ID),
         Owned.MB_ARTIST_IDS: _binary_atom_list(audio, ATOM_MB_ARTIST_ID),
@@ -411,6 +415,7 @@ _BINARY_ATOMS: dict[Owned, str] = {
     Owned.BARCODE: ATOM_BARCODE,
     Owned.ASIN: ATOM_ASIN,
     Owned.MEDIA: ATOM_MEDIA,
+    Owned.DISC_SUBTITLE: ATOM_DISC_SUBTITLE,
     Owned.MB_TRACK_ID: ATOM_MB_TRACK_ID,
     Owned.MB_RELEASE_TRACK_ID: ATOM_MB_RELEASE_TRACK_ID,
 }
@@ -509,6 +514,8 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
         audio[ATOM_ASIN] = [tagset.asin.encode("utf-8")]
     if tagset.media:
         audio[ATOM_MEDIA] = [tagset.media.encode("utf-8")]
+    if tagset.disc_subtitle:
+        audio[ATOM_DISC_SUBTITLE] = [tagset.disc_subtitle.encode("utf-8")]
     if tagset.original_date:
         audio[ATOM_ORIGINAL_DATE] = [tagset.original_date.encode("utf-8")]
         audio[ATOM_ORIGINAL_YEAR] = [tagset.original_date[:4].encode("utf-8")]

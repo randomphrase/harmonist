@@ -686,6 +686,10 @@ def _build_tagset(
         barcode=release.get("barcode") or None,
         asin=release.get("asin") or None,
         media=medium.get("format") or None,
+        # The medium's own name, from the same dict `media` comes from. Picard
+        # writes this as `discsubtitle`, so a Picard-tagged library already
+        # carries it — and until #218 a Harmonist re-tag silently removed it.
+        disc_subtitle=medium.get("title") or None,
     )
 
 

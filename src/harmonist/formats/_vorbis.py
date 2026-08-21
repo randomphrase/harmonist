@@ -54,6 +54,8 @@ KEY_CATALOG = "CATALOGNUMBER"
 KEY_BARCODE = "BARCODE"
 KEY_ASIN = "ASIN"
 KEY_MEDIA = "MEDIA"
+#: Picard's `discsubtitle` — the medium's own name (#218).
+KEY_DISC_SUBTITLE = "DISCSUBTITLE"
 KEY_COMMENT = "COMMENT"
 # Read-only: Harmonist doesn't write a genre (that's #12), but files tagged
 # elsewhere carry one and the album comparison should show it.
@@ -91,6 +93,7 @@ OWNED_KEYS: dict[Owned, tuple[str, ...]] = {
     Owned.TRACK_TOTAL: (KEY_TRACK_TOTAL,),
     Owned.DISC_NUM: (KEY_DISC_NUMBER,),
     Owned.MEDIA: (KEY_MEDIA,),
+    Owned.DISC_SUBTITLE: (KEY_DISC_SUBTITLE,),
     Owned.MB_TRACK_ID: (KEY_TRACK_ID,),
     Owned.MB_RELEASE_TRACK_ID: (KEY_RELEASE_TRACK_ID,),
     Owned.MB_ARTIST_IDS: (KEY_ARTIST_ID,),
@@ -124,6 +127,7 @@ _SINGLE_KEYS: dict[Owned, str] = {
     Owned.TRACK_TOTAL: KEY_TRACK_TOTAL,
     Owned.DISC_NUM: KEY_DISC_NUMBER,
     Owned.MEDIA: KEY_MEDIA,
+    Owned.DISC_SUBTITLE: KEY_DISC_SUBTITLE,
     Owned.MB_TRACK_ID: KEY_TRACK_ID,
     Owned.MB_RELEASE_TRACK_ID: KEY_RELEASE_TRACK_ID,
 }
@@ -361,6 +365,7 @@ class VorbisTagger:
             Owned.TRACK_TOTAL: num(KEY_TRACK_TOTAL),
             Owned.DISC_NUM: num(KEY_DISC_NUMBER),
             Owned.MEDIA: one(KEY_MEDIA),
+            Owned.DISC_SUBTITLE: one(KEY_DISC_SUBTITLE),
             Owned.MB_TRACK_ID: one(KEY_TRACK_ID),
             Owned.MB_RELEASE_TRACK_ID: one(KEY_RELEASE_TRACK_ID),
             Owned.MB_ARTIST_IDS: many(KEY_ARTIST_ID),
@@ -452,6 +457,8 @@ class VorbisTagger:
             tags[KEY_ASIN] = [tagset.asin]
         if tagset.media:
             tags[KEY_MEDIA] = [tagset.media]
+        if tagset.disc_subtitle:
+            tags[KEY_DISC_SUBTITLE] = [tagset.disc_subtitle]
 
         if cover is not None:
             self._set_cover(audio, cover)

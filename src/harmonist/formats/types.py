@@ -109,6 +109,12 @@ class TagSet:
     date: str | None = None
     disc_num: int = 1
     disc_total: int = 1
+    # The medium's own name, where MusicBrainz has one — Hybrid's two discs are
+    # "Wide Angle" and "Live Angle". Picard writes this as `discsubtitle`, so a
+    # Picard-tagged library already carries it and Harmonist was STRIPPING it on
+    # re-tag: a field the user's tagger wrote, silently removed by an operation
+    # sold as bringing their tags up to date (#218). Most releases have none.
+    disc_subtitle: str | None = None
 
     label: str | None = None
     catalog_number: str | None = None
