@@ -15,7 +15,9 @@ versions follow [semantic versioning](https://semver.org).
 - Re-tagging an album that's missing tracks no longer picks which track a file
   is by comparing durations, which could give one file another track's title
   and ids (#232).
-
+- An album whose only missing discs are video can be re-tagged again. It used
+  to refuse — "16 audio files but MB release has 69 tracks" — counting a bonus
+  DVD's videos as audio files you were missing (#235).
 - An album page now lists the video files on disk instead of reporting a
   part-ripped DVD as a disc you don't have at all. They're marked as video and
   not compared against MusicBrainz — Harmonist reads their tags, never writes

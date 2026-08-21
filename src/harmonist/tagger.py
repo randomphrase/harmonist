@@ -134,10 +134,18 @@ def tag_album(
     `musicbrainzngs.get_release_by_id()` returns under the "release" key.
     Returns the number of files tagged.
 
-    `incomplete=True` allows file_count < track_count and assigns files
-    to a subset of MB tracks via length-similarity (positional fallback).
-    file_count > track_count is still an error in both modes (per design
-    §15.3 — "extra files on disk" is out of scope).
+    `incomplete=True` allows file_count < track_count. file_count >
+    track_count is still an error in both modes (per design §15.3 — "extra
+    files on disk" is out of scope).
+
+    Which file is which track is decided by `compare.assign` in **both** modes
+    (#235). It used to be positional in the complete mode and by the ladder in
+    the incomplete one, which meant a release could fit the files perfectly and
+    still be unpairable: an album whose only absent media are video is COMPLETE
+    (#206), so it took the positional path and `zip(..., strict=True)` raised on
+    a count that included tracks Harmonist will never write. The ladder's last
+    rung IS positional pairing, so a single-medium album is assigned exactly as
+    before.
 
     `overwrite_art=True` embeds the album cover even when the tracks carry
     differing per-track artwork (which is otherwise preserved) — the user's
@@ -146,10 +154,17 @@ def tag_album(
     files = files if files is not None else album_files.audio_files(album_dir)
     flat_tracks = list(_flatten_tracks(release))
 
-    if not incomplete and len(files) != len(flat_tracks):
+    # What the count guard is entitled to expect on disk: the release's tracks
+    # minus the ones on media Harmonist cannot tag (#235). Counting a bonus
+    # DVD's 53 videos against 16 audio files made a complete, correctly tagged
+    # album permanently un-re-taggable — and it is the albums MusicBrainz has
+    # since corrected that most need the button.
+    taggable = _taggable_tracks(album_dir, flat_tracks)
+
+    if not incomplete and len(files) != len(taggable):
         raise TagMismatchError(
             f"album {album_dir.name!r}: {len(files)} audio files but MB release "
-            f"has {len(flat_tracks)} tracks"
+            f"has {len(taggable)} tracks"
         )
     if len(files) > len(flat_tracks):
         raise TagMismatchError(
@@ -158,11 +173,11 @@ def tag_album(
             f"scope (see design §15.3)"
         )
 
-    if incomplete and len(files) < len(flat_tracks):
-        pairs = _assign_files_to_tracks(files, flat_tracks)
-    else:
-        # Counts are guaranteed equal here by the checks above.
-        pairs = list(zip(files, flat_tracks, strict=True))
+    # Assigned against EVERY track, not just the taggable ones: a file that
+    # names a video track's id is a file in the wrong place, and quietly
+    # re-pointing it at an audio track would be the invention this ladder
+    # exists to avoid.
+    pairs = _assign_files_to_tracks(files, flat_tracks)
 
     cover = cover_path.read_bytes() if cover_path else None
     # Only when there IS a cover to embed. With `cover=None` write_tags leaves
@@ -721,6 +736,26 @@ def _identity_of(flat: _FlatTrack) -> compare.TrackIdentity:
     number from the position."""
     medium, track_pos, track = flat
     return compare.TrackIdentity(track.get("id"), _disc_num(medium), track_pos + 1)
+
+
+def _taggable_tracks(album_dir: Path, flat_tracks: list[_FlatTrack]) -> list[_FlatTrack]:
+    """The release's tracks minus the ones on media Harmonist will never write.
+
+    Read from the sidecar's `video_media` (#206), which is the only record of
+    which media are video — the release dict's per-medium `format` is not the
+    test, because a medium can mix audio and video and MusicBrainz answers that
+    per TRACK (`mb_lookup.fetch_video_media`).
+
+    `None` there means "not asked yet", not "none are video", so it excludes
+    nothing and the guard behaves exactly as it did before this existed. An
+    album that has never been through that lookup is no worse off; one that has
+    stops being told its DVD's tracks are missing audio files.
+    """
+    sc = sidecar_mod.read(album_dir)
+    video = set(sc.video_media or ()) if sc else set()
+    if not video:
+        return flat_tracks
+    return [f for f in flat_tracks if _disc_num(f[0]) not in video]
 
 
 def _disc_num(medium: dict[str, Any]) -> int:

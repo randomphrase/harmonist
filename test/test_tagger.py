@@ -1034,3 +1034,92 @@ def test_reverting_does_not_touch_the_artwork(album_with_tracks, tmp_path):
     tagger.revert_tags(album_dir, _plan())
 
     assert formats.read_cover(f) == embedded
+
+
+# ---------- a bonus DVD is not missing audio (§15.3, #235) ----------
+
+
+def _release_cd_plus_dvd() -> dict:
+    """A 2-track CD and a 3-track DVD — *TISM — The White Albun* in miniature."""
+    release = _release_2_tracks()
+    release["medium-list"].append(
+        {
+            "position": "2",
+            "format": "DVD-Video",
+            "track-list": [
+                {
+                    "id": f"rt-v{i}",
+                    "position": str(i),
+                    "title": f"Video {i}",
+                    "recording": {"id": f"rec-v{i}", "title": f"Video {i}", "length": "300000"},
+                }
+                for i in range(1, 4)
+            ],
+        }
+    )
+    return release
+
+
+def _with_video_media(album_dir, media):
+    from datetime import UTC, datetime
+
+    from harmonist import sidecar as sidecar_mod
+    from harmonist.models import Sidecar
+
+    sidecar_mod.write(
+        album_dir,
+        Sidecar(
+            mb_release_id="rel-aaa",
+            tagged_at=datetime(2026, 1, 1, tzinfo=UTC),
+            video_media=media,
+        ),
+    )
+
+
+def test_tag_album_does_not_count_video_tracks_against_the_files(album_with_tracks):
+    """The whole CD is on disk and the bonus DVD never will be, which is what
+    COMPLETE means for this album (#206) — so Re-tag has to work. It used to
+    refuse: "2 audio files but MB release has 5 tracks"."""
+    album_dir = album_with_tracks(2)
+    _with_video_media(album_dir, (2,))
+
+    n = tagger.tag_album(album_dir, _release_cd_plus_dvd())
+
+    assert n == 2
+    assert _atom_str(MP4(album_dir / "01 Track 1.m4a"), ATOM_MB_RELEASE_TRACK_ID) == "rt-001"
+    assert _atom_str(MP4(album_dir / "02 Track 2.m4a"), ATOM_MB_RELEASE_TRACK_ID) == "rt-002"
+
+
+def test_tag_album_puts_the_files_on_the_audio_medium(album_with_tracks):
+    """Not merely "doesn't raise": the two files must land on the CD's tracks.
+    Pairing positionally across the flattened release would have been just as
+    quiet and just as wrong."""
+    album_dir = album_with_tracks(2)
+    _with_video_media(album_dir, (2,))
+
+    tagger.tag_album(album_dir, _release_cd_plus_dvd())
+
+    for name in ("01 Track 1.m4a", "02 Track 2.m4a"):
+        assert MP4(album_dir / name)["disk"][0][0] == 1
+
+
+def test_tag_album_still_refuses_when_audio_is_genuinely_missing(album_with_tracks):
+    """The control. Forgiving the DVD must not forgive a CD track that isn't
+    there — that is the mismatch the guard exists for."""
+    album_dir = album_with_tracks(1)  # the CD has two tracks
+    _with_video_media(album_dir, (2,))
+
+    with pytest.raises(TagMismatchError, match="1 audio files but MB release has 2 tracks"):
+        tagger.tag_album(album_dir, _release_cd_plus_dvd())
+
+
+def test_tag_album_counts_everything_when_video_media_is_unknown(album_with_tracks):
+    """`video_media=None` is "not asked yet", not "none are video" (#206). An
+    album that has never been through that lookup must behave exactly as it did
+    before this existed, rather than quietly assuming its second medium is a
+    DVD."""
+    album_dir = album_with_tracks(2)
+    _with_video_media(album_dir, None)
+
+    with pytest.raises(TagMismatchError, match="2 audio files but MB release has 5 tracks"):
+        tagger.tag_album(album_dir, _release_cd_plus_dvd())
