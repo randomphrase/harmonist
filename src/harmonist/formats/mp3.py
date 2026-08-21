@@ -234,6 +234,7 @@ def read_tags(path: Path) -> TrackTags:
         disc_num=_first_int(_text(tags, "TPOS")),
         duration_ms=round(audio.info.length * 1000) if audio.info.length else None,
         comment=_comment_text(tags),
+        release_track_id=_txxx(tags, TXXX_RELEASE_TRACK_ID),
     )
 
 

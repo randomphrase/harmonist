@@ -26,7 +26,7 @@ inventing an answer.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from enum import StrEnum
@@ -805,59 +805,152 @@ def disk_tracklist(tracks: Sequence[tuple[str, TrackTags]]) -> TracklistComparis
     return TracklistComparison(tracks=tuple(rows), mb_available=False)
 
 
+@dataclass(frozen=True)
+class TrackIdentity:
+    """What a file — or a MusicBrainz track — says about which track it is.
+
+    The three things either side can offer, in descending order of how much they
+    are worth. Deliberately a value with no tags, no paths and no MusicBrainz
+    dicts in it: the ladder below is the same question for the album page and
+    for the tagger, and they must not be able to answer it differently (#232).
+    """
+
+    release_track_id: str | None = None
+    disc: int | None = None
+    track: int | None = None
+
+    @classmethod
+    def of_tagset(cls, tags: TagSet) -> TrackIdentity:
+        """The identity of a MusicBrainz track, as tagging would write it."""
+        return cls(tags.mb_release_track_id, tags.disc_num, tags.track_num)
+
+
+def identity_of(tags: TrackTags) -> TrackIdentity:
+    """The identity one file claims for itself.
+
+    An unreadable file claims nothing: it has no tags to read (#112), which is
+    not the same as a readable file that carries no numbers, and inventing
+    (disc 1, track None) for it would be a claim it never made.
+    """
+    if tags.unreadable:
+        return TrackIdentity()
+    return TrackIdentity(tags.release_track_id, tags.disc_num, tags.track_num)
+
+
+def _by_release_track_id(identity: TrackIdentity) -> Hashable | None:
+    return identity.release_track_id
+
+
+def _by_number(identity: TrackIdentity) -> Hashable | None:
+    # Paired with the disc, because track 4 exists on both halves of a 2-CD
+    # release. A file that names no track names nothing.
+    return None if identity.track is None else (identity.disc or 1, identity.track)
+
+
+#: The ladder, best rung first. Each is tried for every file before the next is
+#: tried for any — so one file's missing id can't cost another file its own.
+_RUNGS: tuple[Callable[[TrackIdentity], Hashable | None], ...] = (
+    _by_release_track_id,
+    _by_number,
+)
+
+
+def assign(files: Sequence[TrackIdentity], tracks: Sequence[TrackIdentity]) -> list[int | None]:
+    """Which MusicBrainz track each file is: the index of its track, or None.
+
+    **By the release track id first — the one rung that is not a guess** (#232).
+    That id names one position in one release, Harmonist writes it on every
+    track it tags, and Picard writes the same. For anything either has touched,
+    this is a lookup.
+
+    Nothing else here can say that. TISM's *The White Albun* was tagged when
+    MusicBrainz's release held only its CD; MusicBrainz later added two DVDs and
+    moved the CD to position 2, and every one of those files — still correctly
+    saying disc 1 — then keyed onto a video track, so a complete CD read as
+    sixteen tracks that all differed and a disc that wasn't on disk. The ids in
+    those same files named their true slots exactly, and Picard used them to
+    re-file the album without being asked.
+
+    Then, for files carrying no id — an adopted album Harmonist has never
+    tagged — **the disc-and-track number**, trusted only where it is
+    unambiguous: unique among the files, unique among MusicBrainz's tracks.
+
+    Then **file order**, for whatever is left: files with no numbers, duplicate
+    numbers, numbers MusicBrainz doesn't have, and unreadable files. An album
+    with no numbers anywhere therefore behaves exactly as positional pairing
+    always did.
+
+    The last two rungs are guesses and can be wrong — a file mis-numbered as
+    track 1 when it is really track 2 is compared against the wrong track, and
+    so is the one it displaced. #136 is the escape hatch, letting the user say
+    which track a file actually is. The first rung is what removes most albums
+    from needing it at all.
+
+    There is deliberately no length-similarity rung. A duration is not an
+    identity: two recordings of the same length are common on one release, the
+    odds get worse the longer the release, and being wrong writes another
+    track's title and ids into the file with nothing on the page to show for it.
+    """
+    out: list[int | None] = [None] * len(files)
+    taken: set[int] = set()
+
+    for rung in _RUNGS:
+        slot_of = _unique_slots(tracks, rung)
+        claims = Counter(k for k in (rung(f) for f in files) if k is not None)
+        for i, identity in enumerate(files):
+            if out[i] is not None:
+                continue
+            key = rung(identity)
+            # Two files claiming one key are two copies of a track, or a
+            # mis-tag; either way the claim isn't unique and settles nothing.
+            if key is None or claims[key] != 1:
+                continue
+            slot = slot_of.get(key)
+            if slot is None or slot in taken:
+                continue
+            out[i] = slot
+            taken.add(slot)
+
+    free = iter([i for i in range(len(tracks)) if i not in taken])
+    for i, slot in enumerate(out):
+        if slot is None:
+            out[i] = next(free, None)
+    return out
+
+
+def _unique_slots(
+    tracks: Sequence[TrackIdentity], rung: Callable[[TrackIdentity], Hashable | None]
+) -> dict[Hashable, int]:
+    """MusicBrainz's side of one rung, keeping only the keys it answers once.
+
+    A key MusicBrainz repeats identifies nothing, so it is dropped rather than
+    resolved to its first holder — the ambiguity is the finding.
+    """
+    keys = [rung(t) for t in tracks]
+    counts = Counter(k for k in keys if k is not None)
+    return {k: i for i, k in enumerate(keys) if k is not None and counts[k] == 1}
+
+
 def _assign(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: Sequence[MBTrack],
 ) -> tuple[dict[int, tuple[str, TrackTags]], list[tuple[str, TrackTags]]]:
-    """Decide which file is which MusicBrainz track.
-
-    **By the file's own track number first, by file order only as a fallback.**
-    Position alone is what the matcher uses, and it is wrong the moment anything
-    is absent: one missing track three shifts every later file up a slot, and
-    the page then reports the whole rest of the album as differing — the
-    crying-wolf failure the comparison exists to avoid.
-
-    A number is only trusted when it is unambiguous: unique among the files,
-    unique among MusicBrainz's tracks, and paired with the disc, because track 4
-    exists on both halves of a 2-CD release. Everything left over — files with
-    no number, duplicate numbers, numbers MusicBrainz doesn't have, and
-    unreadable files, which have no tags to read at all — is dealt into the
-    slots still free, in file order. An album with no track numbers anywhere
-    therefore behaves exactly as positional pairing always did.
-
-    It is still a guess, and it trusts the tag: a file mis-numbered as track 1
-    when it is really track 2 will be compared against the wrong track, and so
-    will the one it displaced. The page has no way to say "these two are
-    swapped", only that both disagree. #136 is the escape hatch — letting the
-    user re-assign a file to the track it actually is.
+    """Decide which file is which MusicBrainz track — see `assign`.
 
     Returns `{mb_index: (file_name, tags)}` and the files that found no slot.
     """
-    mb_keys = [(t.tags.disc_num or 1, t.tags.track_num) for t in mb]
-    mb_counts = Counter(mb_keys)
-    slot_of: dict[tuple[int, int], int] = {
-        key: i for i, key in enumerate(mb_keys) if mb_counts[key] == 1
-    }
-
-    keyed: list[tuple[int, int] | None] = [
-        (t.disc_num or 1, t.track_num) if t.track_num is not None and not t.unreadable else None
-        for _, t in tracks
-    ]
-    file_counts = Counter(k for k in keyed if k is not None)
-
+    slots = assign(
+        [identity_of(t) for _, t in tracks],
+        [TrackIdentity.of_tagset(t.tags) for t in mb],
+    )
     assigned: dict[int, tuple[str, TrackTags]] = {}
     leftover: list[tuple[str, TrackTags]] = []
-    for (name, tags), key in zip(tracks, keyed, strict=True):
-        slot = slot_of.get(key) if key is not None and file_counts[key] == 1 else None
-        if slot is None or slot in assigned:
-            leftover.append((name, tags))
+    for entry, slot in zip(tracks, slots, strict=True):
+        if slot is None:
+            leftover.append(entry)
         else:
-            assigned[slot] = (name, tags)
-
-    free = [i for i in range(len(mb)) if i not in assigned]
-    for slot, entry in zip(free, leftover, strict=False):
-        assigned[slot] = entry
-    return assigned, leftover[len(free) :]
+            assigned[slot] = entry
+    return assigned, leftover
 
 
 def _track_fields(

@@ -8,6 +8,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Your files are now lined up against MusicBrainz by the per-track id they
+  carry, so an album still stays on its own tracks after MusicBrainz renumbers
+  or reorders the release's discs — where before a whole CD could be compared
+  against a bonus DVD's tracks and reported as missing (#232).
+- Re-tagging an album that's missing tracks no longer picks which track a file
+  is by comparing durations, which could give one file another track's title
+  and ids (#232).
+
 - An album page now lists the video files on disk instead of reporting a
   part-ripped DVD as a disc you don't have at all. They're marked as video and
   not compared against MusicBrainz — Harmonist reads their tags, never writes

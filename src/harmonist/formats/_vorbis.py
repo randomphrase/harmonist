@@ -300,6 +300,7 @@ class VorbisTagger:
             disc_num=_first_int(disc_num),
             duration_ms=duration,
             comment=first(KEY_COMMENT),
+            release_track_id=first(KEY_RELEASE_TRACK_ID),
         )
 
     def read_cover(self, path: Path) -> tuple[bytes, str] | None:

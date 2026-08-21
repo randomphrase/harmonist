@@ -701,21 +701,83 @@ def test_tag_album_incomplete_uses_positional_fallback_without_lengths(
     assert _atom_str(audio, ATOM_MB_TRACK_ID) == "rec-001"
 
 
-def test_tag_album_incomplete_uses_length_similarity_when_available(
-    album_with_tracks,
-):
-    """The sine.m4a fixture is ~1000ms long. If MB track lengths differ
-    sharply, the assignment should pick the closest match — not positional.
+def test_tag_album_incomplete_ignores_length_similarity(album_with_tracks):
+    """Length is not an identity (#232).
+
+    The sine.m4a fixture is ~1000ms. Track 1 is 10s and track 2 is 1s, so the
+    old rule assigned this file to track 2 on the strength of its duration —
+    against a file that says nothing about which track it is, where file order
+    is the only thing on offer that isn't invention. Two tracks of one length
+    are ordinary on a real release, and being wrong here writes another track's
+    title and ids into the file.
     """
     album_dir = album_with_tracks(1)
     release = _release_2_tracks()
-    # Track 0 wildly mismatched (10s); track 1 matches (1s) — incomplete-mode
-    # should pick track 1 even though positional would have picked track 0.
     release["medium-list"][0]["track-list"][0]["recording"]["length"] = "10000"
     release["medium-list"][0]["track-list"][1]["recording"]["length"] = "1000"
+
     tagger.tag_album(album_dir, release, incomplete=True)
+
     audio = MP4(album_dir / "01 Track 1.m4a")
-    assert _atom_str(audio, ATOM_MB_TRACK_ID) == "rec-002"
+    assert _atom_str(audio, ATOM_MB_TRACK_ID) == "rec-001"
+
+
+def test_tag_album_incomplete_is_idempotent(album_with_tracks):
+    """Twice is the same as once, across the rung change that the first run
+    causes: the file starts with no id and is placed by file order, the tagging
+    writes that slot's id into it, and the second run then reads the id and
+    reaches the same slot by a different rung.
+
+    (Which also means a placement the user disagrees with is now written down
+    rather than re-derived. #136 is where overruling it belongs — it does not
+    become harder to correct, but it does become explicit.)
+    """
+    album_dir = album_with_tracks(1)
+    release = _release_2_tracks()
+
+    tagger.tag_album(album_dir, release, incomplete=True)
+    first = dict(MP4(album_dir / "01 Track 1.m4a"))
+    tagger.tag_album(album_dir, release, incomplete=True)
+
+    assert dict(MP4(album_dir / "01 Track 1.m4a")) == first
+
+
+def test_tag_album_incomplete_assigns_by_release_track_id(album_with_tracks):
+    """A file that already names its slot is tagged as that slot, wherever it
+    sits in the folder — the rung that isn't a guess.
+
+    Positional would call this file track 1; it says it is track 2, in the only
+    terms that can't be argued with, and it is the only file present.
+    """
+    album_dir = album_with_tracks(1)
+    f = album_dir / "01 Track 1.m4a"
+    audio = MP4(f)
+    audio[ATOM_MB_RELEASE_TRACK_ID] = [b"rt-002"]
+    audio.save()
+
+    tagger.tag_album(album_dir, _release_2_tracks(), incomplete=True)
+
+    tagged = MP4(f)
+    assert _atom_str(tagged, ATOM_MB_TRACK_ID) == "rec-002"
+    assert tagged[ATOM_TITLE][0] == "Track 2"
+
+
+def test_tag_album_incomplete_prefers_the_id_over_the_number(album_with_tracks):
+    """The TISM case, in miniature: the file's disc/track numbers are stale
+    because MusicBrainz renumbered the release, and its id is not. The id wins,
+    so the numbers get corrected instead of deciding where the file goes."""
+    album_dir = album_with_tracks(1)
+    f = album_dir / "01 Track 1.m4a"
+    audio = MP4(f)
+    audio[ATOM_MB_RELEASE_TRACK_ID] = [b"rt-002"]
+    audio["trkn"] = [(1, 2)]  # stale: it says track 1
+    audio.save()
+
+    tagger.tag_album(album_dir, _release_2_tracks(), incomplete=True)
+
+    tagged = MP4(f)
+    assert _atom_str(tagged, ATOM_MB_TRACK_ID) == "rec-002"
+    assert tagged["trkn"][0][0] == 2, "and the stale number is rewritten"
 
 
 # -- helpers used in multiple tests --

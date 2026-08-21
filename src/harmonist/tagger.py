@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol, runtime_checkable
 
-from . import activity_store, album_files, artwork_store, audit, formats, tag_history
+from . import activity_store, album_files, artwork_store, audit, compare, formats, tag_history
 from . import sidecar as sidecar_mod
 from .formats import TagSet, owned
 from .formats.m4a import (  # noqa: F401 — back-compat re-exports
@@ -647,13 +647,7 @@ def _build_tagset(
     rg = release.get("release-group") or {}
 
     track_total = len(medium.get("track-list", []))
-
-    disc_num = 1
-    if "position" in medium:
-        try:
-            disc_num = int(medium["position"])
-        except (TypeError, ValueError):
-            disc_num = 1
+    disc_num = _disc_num(medium)
 
     return TagSet(
         mb_album_id=release["id"],
@@ -697,47 +691,48 @@ def _assign_files_to_tracks(
     files: list[Path],
     flat_tracks: list[_FlatTrack],
 ) -> list[tuple[Path, _FlatTrack]]:
-    """Best-fit assignment of files to a subset of MB tracks via length
-    similarity, preserving input file order.
+    """Which MusicBrainz track each file is, for an album missing some of them.
 
-    Falls back to positional matching when any file or track length is
-    unknown — the simpler choice is more predictable without enough data.
+    Through `compare.assign` — the same ladder the album page uses, so a file
+    cannot be one track in the tracklist and a different one in the tagger
+    (#232). Release track id, then disc-and-track number, then file order.
+
+    This used to assign by **length similarity**, which is why it is worth
+    saying what changed: on *TISM — The White Albun* that rule bound
+    `Sorted for D 'n M.m4a` to a DVD track called *Diatribe*, one file in
+    sixteen, and would have written that track's title and ids into it. The
+    file's own tags named its real slot the whole time and were never read.
+    Fifteen right out of sixteen is the worst available outcome — nobody
+    re-checks an album that looks mostly correct.
+
+    Costs one open per file, as reading their durations did.
     """
-    file_durations: list[int | None] = [formats.read_duration_ms(f) for f in files]
+    identities = [compare.identity_of(formats.read_tags(f)) for f in files]
+    slots = compare.assign(identities, [_identity_of(t) for t in flat_tracks])
+    # A file with no slot is not tagged at all. It can only happen with more
+    # files than tracks, which the caller has already refused (§15.3) — but
+    # leaving one alone beats writing another track's metadata into it.
+    return [(f, flat_tracks[s]) for f, s in zip(files, slots, strict=True) if s is not None]
 
-    track_lengths: list[int | None] = []
-    for _medium, _pos, track in flat_tracks:
-        # Per-release track length is authoritative; recording length can
-        # differ by seconds across releases (see match._mb_track_length_ms).
-        raw = track.get("length") or (track.get("recording") or {}).get("length")
-        try:
-            track_lengths.append(None if raw is None else int(raw))
-        except (TypeError, ValueError):
-            track_lengths.append(None)
 
-    if any(t is None for t in track_lengths) or any(d is None for d in file_durations):
-        # Positional fallback — first N tracks; the rest are "missing"
-        # and get no file assigned.
-        return [(files[i], flat_tracks[i]) for i in range(len(files))]
+def _identity_of(flat: _FlatTrack) -> compare.TrackIdentity:
+    """One MusicBrainz track's identity, exactly as tagging would write it —
+    `_build_tagset` derives the same disc from the medium and the same track
+    number from the position."""
+    medium, track_pos, track = flat
+    return compare.TrackIdentity(track.get("id"), _disc_num(medium), track_pos + 1)
 
-    used: set[int] = set()
-    pairs: list[tuple[Path, _FlatTrack]] = []
-    for f, dur in zip(files, file_durations, strict=True):
-        # The guard above guarantees every duration/length is set here.
-        assert dur is not None
-        best_idx = None
-        best_delta: int | None = None
-        for i, tlen in enumerate(track_lengths):
-            if i in used or tlen is None:
-                continue
-            delta = abs(dur - tlen)
-            if best_delta is None or delta < best_delta:
-                best_idx = i
-                best_delta = delta
-        assert best_idx is not None
-        used.add(best_idx)
-        pairs.append((f, flat_tracks[best_idx]))
-    return pairs
+
+def _disc_num(medium: dict[str, Any]) -> int:
+    """Which disc this medium is. 1 when MusicBrainz doesn't say, or says
+    something that isn't a number — a single-medium release often has no
+    position at all."""
+    if "position" not in medium:
+        return 1
+    try:
+        return int(medium["position"])
+    except (TypeError, ValueError):
+        return 1
 
 
 def _flatten_tracks(release: Release) -> Iterator[_FlatTrack]:

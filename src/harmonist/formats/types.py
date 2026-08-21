@@ -169,6 +169,20 @@ class TrackTags:
     #: no counterpart and it must never be rendered as a difference.
     comment: str | None = None
 
+    #: This track's `MusicBrainz Release Track Id` — the id of one position in
+    #: one release, unlike the recording id, which a release can repeat.
+    #:
+    #: What says WHICH track a file is (#232). Harmonist writes it on every
+    #: track it tags and Picard writes the same, so for anything either has
+    #: touched, "which MusicBrainz track is this file?" is a lookup and not a
+    #: guess — where disc-and-track numbers are a guess the moment MusicBrainz
+    #: renumbers a release's media, and a duration is a guess always.
+    #:
+    #: Already read into `ScanFields` for a different question (#197: two parts
+    #: of a release, or two copies of one). This is the same atom, read on the
+    #: comparison's pass instead of the scanner's.
+    release_track_id: str | None = None
+
     #: Read from a video file, which Harmonist can read but never write (#66).
     #: Not a tag — a property of the read, like `unreadable`, and here for the
     #: same reason: the tracklist has to say something different about this row
