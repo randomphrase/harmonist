@@ -335,6 +335,18 @@ button[disabled],
   white-space: nowrap;
 }
 .track-diff__num { width: 1%; }
+/* The video mark (#226). Muted and small: it qualifies the row rather than
+   flagging it — the track is present and fine, it is simply one Harmonist reads
+   and never writes. Sits in the number cell so a DVD's worth of them lines up
+   as a column instead of interrupting each title. */
+.track-diff__video {
+  display: inline-flex;
+  align-items: center;
+  margin-right: .3rem;
+  color: var(--color-muted);
+  vertical-align: baseline;
+  cursor: help;
+}
 /* Differing runs are UNDERLINED here, not tinted as they are in the album panel:
    the tint reads well on two or three rows and turns into confetti down a table
    of twelve. Both lines of a pair, so the marking means the same thing on each. */

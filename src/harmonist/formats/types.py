@@ -169,6 +169,14 @@ class TrackTags:
     #: no counterpart and it must never be rendered as a difference.
     comment: str | None = None
 
+    #: Read from a video file, which Harmonist can read but never write (#66).
+    #: Not a tag — a property of the read, like `unreadable`, and here for the
+    #: same reason: the tracklist has to say something different about this row
+    #: and cannot tell from the values alone. A video track is reported as
+    #: PRESENT and nothing more (#226); comparing it field by field would raise
+    #: findings against a file no amount of re-tagging can change.
+    video: bool = False
+
 
 class UnsupportedFormatError(Exception):
     """Raised when no audio module handles a given file extension."""

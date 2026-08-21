@@ -517,6 +517,11 @@ class ComparedTrack:
     #: unreadable one especially, where "which file?" is the user's next
     #: question. None when there is no file.
     file_name: str | None = None
+    #: A video file: on disk, readable, and never tagged by Harmonist (#66).
+    #: The row says so, because otherwise the page shows a track that silently
+    #: never takes part in anything — no comparison, no change when the album
+    #: is re-tagged — and leaves the user to wonder which of those is a bug.
+    video: bool = False
 
     @property
     def differs(self) -> bool:
@@ -725,6 +730,28 @@ def tracklist(
                 )
             )
             continue
+        if tags.video:
+            # Present, and that is the whole claim (#226). Compared against
+            # `mb_track` every field would be a finding the user cannot act on:
+            # Harmonist will not re-tag a video, so a title MusicBrainz spells
+            # differently would sit on the page for good. Length is worse than
+            # unactionable — a DVD track's runtime is the VIDEO's, intros and
+            # all, and MusicBrainz frequently has no length for one at all.
+            #
+            # `mb=None` is how the module already says "MusicBrainz has no
+            # opinion here": every field lands in ONLY_DISK, which is explicitly
+            # not a difference, so the row draws one plain line of the file's own
+            # values — the same shape `disk_tracklist` produces for #228.
+            rows.append(
+                ComparedTrack(
+                    TrackState.PRESENT,
+                    _track_fields(tags, None, multi_disc),
+                    file_name=name,
+                    disc=disc,
+                    video=True,
+                )
+            )
+            continue
         rows.append(
             ComparedTrack(
                 TrackState.PRESENT,
@@ -742,6 +769,7 @@ def tracklist(
                     None if tags.unreadable else tags, None, multi_disc, unreadable=tags.unreadable
                 ),
                 file_name=name,
+                video=tags.video,
             )
         )
     return TracklistComparison(tracks=tuple(rows), media=tuple(media))
@@ -770,6 +798,7 @@ def disk_tracklist(tracks: Sequence[tuple[str, TrackTags]]) -> TracklistComparis
             ),
             file_name=name,
             disc=tags.disc_num or 1,
+            video=tags.video,
         )
         for name, tags in tracks
     ]

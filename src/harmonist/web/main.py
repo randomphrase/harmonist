@@ -727,21 +727,22 @@ def _album_comparison(
     file in the album — the read cost #106 flags, and the same cost problem as
     #44 / #74. Reading them twice for one page view would be careless.
     """
-    files = album_files.for_paths(paths) if paths else album_files.audio_files(album_dir)
-    # Named by path relative to the album, so the two "01 - Intro.m4a" of a
-    # multi-folder album (#197) stay distinguishable in the tracklist. Identical
-    # to the bare name for a one-folder album.
-    tracks = [(_rel_to(f, album_dir), formats.read_tags(f)) for f in files]
+    audio, video = _album_tracks(album_dir, paths)
     tagsets = tagsets_for(release)
     mb_tracks = [
         compare.MBTrack(tags=ts, length_ms=length)
         for ts, length in zip(tagsets, match.mb_track_lengths(release), strict=True)
     ]
     return (
+        # The album panel is the AUDIO's account of itself, deliberately (#226).
+        # A video carries the same album-level tags but Harmonist never rewrites
+        # them, so the first re-tag of an album with a bonus DVD would leave the
+        # two halves disagreeing for good — a "label differs on 26 of 47 tracks"
+        # pill that nothing on the page can clear.
         compare.AlbumComparison(
-            fields=compare.album_fields(tracks, tagsets[0] if tagsets else None)
+            fields=compare.album_fields(audio, tagsets[0] if tagsets else None)
         ),
-        compare.tracklist(tracks, mb_tracks, _media_of(release)),
+        compare.tracklist(_in_track_order(audio + video), mb_tracks, _media_of(release)),
     )
 
 
@@ -758,12 +759,50 @@ def _album_disk_view(
 
     One pass over the files, for the same reason `_album_comparison` makes one.
     """
-    files = album_files.for_paths(paths) if paths else album_files.audio_files(album_dir)
-    tracks = [(_rel_to(f, album_dir), formats.read_tags(f)) for f in files]
+    audio, video = _album_tracks(album_dir, paths)
     return (
-        compare.AlbumComparison(fields=compare.album_fields(tracks, None), mb_available=False),
-        compare.disk_tracklist(tracks),
+        compare.AlbumComparison(fields=compare.album_fields(audio, None), mb_available=False),
+        compare.disk_tracklist(_in_track_order(audio + video)),
     )
+
+
+def _album_tracks(
+    album_dir: Path, paths: Sequence[Path] | None
+) -> tuple[list[tuple[str, formats.TrackTags]], list[tuple[str, formats.TrackTags]]]:
+    """The album's files read as `(name, tags)`, audio and video kept apart.
+
+    Video is read too since #226 — a Picard-tagged `.m4v` states its disc, its
+    position and its title exactly as the audio does, and not looking is what
+    made a DVD with 26 of its 29 videos on disk report as entirely absent.
+
+    Two lists rather than one because the two halves are used differently: the
+    tracklist wants both, the album panel wants only the audio, and nothing that
+    WRITES tags may see the video at all (#66).
+
+    Names are relative to the album, so the two "01 - Intro.m4a" of a
+    multi-folder album (#197) stay distinguishable in the tracklist. Identical
+    to the bare name for a one-folder album.
+    """
+    audio = album_files.for_paths(paths) if paths else album_files.audio_files(album_dir)
+    video = album_files.videos_for_paths(paths) if paths else album_files.video_files(album_dir)
+    return (
+        [(_rel_to(f, album_dir), formats.read_tags(f)) for f in audio],
+        [(_rel_to(f, album_dir), formats.read_video_tags(f)) for f in video],
+    )
+
+
+def _in_track_order(
+    tracks: list[tuple[str, formats.TrackTags]],
+) -> list[tuple[str, formats.TrackTags]]:
+    """Audio and video interleaved back into one list, in track order.
+
+    By name, which is the order both halves already arrived in — so "2-01
+    Intro.m4v" lands after "1-21 Outro.m4a" rather than the videos trailing the
+    whole album. Only matters where file order is what decides something: the
+    disk-only tracklist (#228) renders in this order, and files carrying no
+    track number at all are dealt into MusicBrainz's free slots by it.
+    """
+    return sorted(tracks, key=lambda t: album_files.sort_key(Path(t[0])))
 
 
 def _merge_unscoped_audit(events: list[activity.Event], since: datetime) -> list[activity.Event]:

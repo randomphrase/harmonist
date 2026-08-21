@@ -11,6 +11,10 @@
    Same register as the album panel above — most of these are formatting
    differences, not errors, and nothing is coloured as a mistake.
 
+   A video track is a third shape (#226): present, marked, and carrying only its
+   own values — Harmonist reads `.m4v` tags but never writes them, so comparing
+   one against MusicBrainz would raise differences no re-tag could ever settle.
+
    Also serves the DISK-ONLY view, where MusicBrainz has deleted the release
    (#228). Every row is then PRESENT with no MusicBrainz counterpart, so
    `shows_mb` is false throughout and the table renders one plain line per
@@ -113,6 +117,18 @@
             <tr>
                 {% for f in t.fields %}
                 <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">
+                    {#- A video track (#226). Shown like any other present track,
+                        because it IS present — but marked, because it is the one
+                        row a re-tag will never touch, and a track that silently
+                        never changes and never compares is worse than one that
+                        says why. One mark per row, beside the number, so a disc
+                        of them reads as a column rather than as 26 notices. -#}
+                    {%- if loop.first and t.video -%}
+                    <span class="track-diff__video" role="img" aria-label="Video file"
+                          title="A video file — Harmonist reads its tags but never writes them"><svg
+                        viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"
+                        ><path d="M5 3L21 12L5 21Z"/></svg></span>
+                    {%- endif -%}
                     {%- if f.disk -%}
                     {%- with runs = f.disk_runs, value = f.disk %}{% include 'partials/_diff_runs.html' %}{% endwith -%}
                     {%- endif -%}

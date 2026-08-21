@@ -6,6 +6,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- An album page now lists the video files on disk instead of reporting a
+  part-ripped DVD as a disc you don't have at all. They're marked as video and
+  not compared against MusicBrainz — Harmonist reads their tags, never writes
+  them (#226).
+
 ## [1.10.1] - 2026-08-21
 
 ### Fixed

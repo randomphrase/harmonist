@@ -66,6 +66,20 @@ def for_paths(paths: Sequence[Path]) -> list[Path]:
     return seen
 
 
+def videos_for_paths(paths: Sequence[Path]) -> list[Path]:
+    """Every video file across an album's directories, in track order.
+
+    `for_paths` for the files the tagger must never see. Kept a separate list
+    rather than folded into it: every caller of `for_paths` writes tags, and one
+    that quietly gained video files would try to tag them (#66). The album page
+    asks for both and keeps them apart the same way (#226).
+    """
+    seen: list[Path] = []
+    for root in sorted(set(paths)):
+        seen.extend(video_files(root))
+    return seen
+
+
 def _key(path: Path) -> tuple[tuple[object, ...], str]:
     return sort_key(Path(path.name))
 

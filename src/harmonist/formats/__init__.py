@@ -10,6 +10,7 @@ read/write functions used here, then register it in `_MODULES`.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -66,6 +67,24 @@ def read_video_scan_fields(path: Path) -> ScanFields:
     from . import m4a
 
     return m4a.read_scan_fields(path)
+
+
+def read_video_tags(path: Path) -> TrackTags:
+    """`read_tags` for a video container (#226).
+
+    Routed through the MP4 reader explicitly, for the same reason
+    `read_video_scan_fields` is: `_module_for` is keyed on what Harmonist
+    WRITES, and `.m4v` must stay out of it.
+
+    A Picard-tagged video carries the whole album-level set — title, artist,
+    label, catalogue number, `media`, its position and its length — so an album
+    whose second disc is a DVD has 26 perfectly readable tracks that
+    `read_tags` was answering None to. The `video` flag rides along so the
+    comparison can report them as present without comparing them.
+    """
+    from . import m4a
+
+    return replace(m4a.read_tags(path), video=True)
 
 
 def read_album_id(path: Path) -> str | None:
