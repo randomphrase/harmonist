@@ -10,6 +10,7 @@ Harmonist noticed only as "library settled after change — requesting rescan".
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 from datetime import UTC, datetime, timedelta
@@ -23,6 +24,7 @@ from harmonist import sidecar as sidecar_mod
 from harmonist.models import Sidecar
 from harmonist.scanner import scan
 from harmonist.web.reconcile_runner import reconcile_pending_orphans
+from harmonist.web.scan_runner import ScanRunner
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -193,3 +195,46 @@ def test_the_notice_names_the_album(tmp_path, audit_db):
 
     labels = [e.album_label for e in activity_store.recent(50) if e.album_label]
     assert "Artist — Album" in labels
+
+
+# ---------------------------------------------------------------------------
+# Through the background scan (#230)
+# ---------------------------------------------------------------------------
+#
+# Everything above scans via `scanner.scan()`. Production does not: it reads the
+# snapshot the background `ScanRunner` builds, which inlined a stale copy of
+# `resolve_dir` and never stamped `files_written_at` — so detection was dead in
+# the field while this file stayed green. These go through the runner.
+
+
+async def _scan_via_runner(runner: ScanRunner) -> None:
+    runner.attach_loop()
+    for _ in range(300):
+        if runner.has_completed():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("background scan never completed")
+
+
+def test_the_background_scan_notices_it_too(tmp_path):
+    """The snapshot reconcile actually reads is the background runner's, so a
+    re-tag has to be visible in THAT album, not just in a synchronous scan."""
+    _album(tmp_path, tagged_at=datetime.now(UTC) - timedelta(days=30), files_at=datetime.now(UTC))
+    runner = ScanRunner(tmp_path)
+
+    asyncio.run(_scan_via_runner(runner))
+
+    assert reconcile.looks_externally_retagged(runner.albums()[0])
+
+
+def test_the_background_scans_cache_does_not_poison_the_sync_path(tmp_path):
+    """Both paths share one mtime cache, so an album built without its timestamp
+    doesn't just break the background scan — `scan_now()` hands the very same
+    object back on a signature hit, and inherits the blindness."""
+    _album(tmp_path, tagged_at=datetime.now(UTC) - timedelta(days=30), files_at=datetime.now(UTC))
+    runner = ScanRunner(tmp_path)
+
+    asyncio.run(_scan_via_runner(runner))  # populates the shared cache
+    albums = runner.scan_now()  # cache hit — returns what the scan built
+
+    assert reconcile.looks_externally_retagged(albums[0])

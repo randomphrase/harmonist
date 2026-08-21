@@ -4,12 +4,15 @@ Walks the music dir off the request path and keeps an in-memory snapshot of
 Albums that the web routes serve instantly — so a cold scan of a large library
 over a slow filesystem never blocks `GET /` or `/tasks`.
 
-Single event loop, NO threads. Filesystem I/O (mutagen tag reads, `stat`) is
-inherently blocking — there is no true async fs walk in Python — so the scan
-yields cooperatively (`await asyncio.sleep(0)`) every ~50ms of work, letting
-request handlers interleave between reads. The one residual cost is that a
-single pathologically slow read briefly stalls the loop; that's the trade for
-not using a thread.
+Filesystem I/O (mutagen tag reads, `stat`) is inherently blocking — there is no
+true async fs walk in Python — so it runs on a single dedicated worker thread
+and the loop awaits it one directory at a time. Request handlers interleave
+freely between those awaits, and no read, however slow, stalls the loop.
+
+Each directory is resolved by `scanner.resolve_dir` — the SAME function the
+synchronous `scanner.scan` uses. That is deliberate and load-bearing: this
+module used to inline its body, the two drifted, and the background scan quietly
+stopped stamping the timestamp external-re-tag detection is built on (#230).
 
 The runner is "engaged" once `attach_loop()` runs (from the FastAPI lifespan).
 Until then — e.g. in unit tests that build a TestClient without the lifespan —
@@ -87,11 +90,16 @@ class ScanRunner:
         # backend-side so it runs without waiting for the frontend /tasks poll.
         self._on_first_complete: Callable[[], object] | None = None
         # A SINGLE worker thread runs all the scan's blocking filesystem I/O
-        # (walk/stat + tag reads), so the event loop never blocks on syscalls.
-        # One worker keeps reads serial → no parallel-I/O concurrency, and the
-        # worker functions are pure (no shared state), so the only hand-off is
-        # arg-in/result-out via the executor's Future. All mutable state (cache,
-        # snapshot, status, id registry) is touched only on the loop thread.
+        # (walk/stat + tag reads) AND the album build that follows it, so the
+        # event loop never blocks on syscalls. One worker keeps reads serial →
+        # no parallel-I/O concurrency, and the loop awaits each hand-off, so the
+        # two threads are never inside the resolver at once.
+        #
+        # The mtime cache is the one piece of mutable state the worker touches:
+        # `scanner.resolve_dir` reads and writes it there. That is the same
+        # sharing `scan_now` already relies on from FastAPI's threadpool — a
+        # dict, GIL-atomic per entry, worst case a redundant re-read of one
+        # album. The snapshot and the status stay loop-thread-only.
         self._executor: ThreadPoolExecutor | None = None
 
     # ----- engagement (lifespan) -----
@@ -245,28 +253,19 @@ class ScanRunner:
                 "tuple[Path, list[Path], list[Path], scanner.AlbumSignature]", item
             )
             status.dirs_scanned += 1
-            try:
-                cached = self._cache.get(album_dir)
-                if cached is not None and cached[0] == signature:
-                    album, io = cached[1], cached[2]  # full-signature hit → zero I/O
-                else:
-                    # Audio unchanged (only the sidecar/cover moved)? Reuse the
-                    # cached tag fields so the worker skips the per-track mutagen
-                    # reads (the expensive part) and re-reads only the cheap
-                    # sidecar + cover. This is what keeps a post-sync/reconcile
-                    # rescan fast even though every linked album's sidecar changed.
-                    reuse = None
-                    if cached is not None and cached[0][0] == signature[0]:
-                        reuse = cached[2].fields  # audio unchanged → skip the tag reads
-                    io = await loop.run_in_executor(
-                        executor, scanner.read_album_io, album_dir, files, videos, reuse
-                    )
-                    album = scanner.build_album(album_dir, files, io)  # CPU, on loop
-                    self._cache[album_dir] = (signature, album, io)
-                scanned.append(scanner.ScannedDir(album, files, io))
+            # The SAME resolver the synchronous scan uses — cache lookup, tag
+            # reuse and build in one call, on the worker thread. Inlining its
+            # body here instead let the two drift, and the background scan
+            # silently stopped stamping `files_written_at`, which is the whole
+            # of external-re-tag detection (#230). One resolver, no drift.
+            # It swallows a bad album itself (logging it) and returns None, so
+            # one unreadable directory still can't abort the scan.
+            entry = await loop.run_in_executor(
+                executor, scanner.resolve_dir, album_dir, files, videos, signature, self._cache
+            )
+            if entry is not None:
+                scanned.append(entry)
                 status.albums_found = len(scanned)
-            except Exception as e:  # one bad album must not abort the scan
-                log.warning("error scanning %s: %s", album_dir, e)
 
             now = time.monotonic()
             if now - last_log >= _LOG_INTERVAL_S:

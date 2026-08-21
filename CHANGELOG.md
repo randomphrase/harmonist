@@ -8,6 +8,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- A re-tag done in Picard is now noticed for real. 1.10.0 announced this, but
+  the background scan dropped the file timestamp it reads, so outside the tests
+  it never fired once (#230).
 - An album whose MusicBrainz release has been deleted now shows your files' own
   tags and tracklist, instead of leaving Tracks stuck on "Checking tracks against
   MusicBrainz…" and Tags refusing to show anything. Those tags are what you'd

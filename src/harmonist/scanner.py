@@ -384,8 +384,8 @@ def prune_cache(album_cache: AlbumCache, seen: set[Path]) -> None:
 class AlbumIO(NamedTuple):
     """Everything for one album that requires blocking filesystem I/O —
     sidecar JSON, each track's tags, and the cover lookup. Produced by
-    `read_album_io` (safe to run in a worker thread: pure I/O, no shared
-    state) and consumed by `build_album` (CPU only, runs on the event loop)."""
+    `read_album_io` and consumed by `build_album` — both safe in a worker
+    thread, neither touching shared mutable state."""
 
     sidecar: Sidecar | None
     fields: list[formats.ScanFields]
@@ -444,8 +444,11 @@ def build_album(
     io: AlbumIO,
     files_written_at: datetime | None = None,
 ) -> Album:
-    """Assemble the Album from pre-read I/O. CPU + id-registry only (no file
-    I/O), so it runs on the event-loop thread where the shared registry lives."""
+    """Assemble the Album from pre-read I/O — CPU only, no file I/O.
+
+    Thread-agnostic: it touches no shared mutable state (an album's id is a hash
+    of its path since #114), so the background scan can build on its worker
+    thread alongside the reads, rather than hopping back to the event loop."""
     sidecar = io.sidecar
     fields = io.fields
     title = (fields[0].album_title if fields else None) or album_dir.name
