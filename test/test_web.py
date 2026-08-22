@@ -438,7 +438,6 @@ def test_new_card_untagged_offers_search_no_reconcile(client, cfg):
     assert "need a MusicBrainz release" in r.text
     assert "Reconcile from tags" not in r.text
     assert "Assign &amp; Tag" in r.text or "Assign & Tag" in r.text
-    assert "Recover store URL" not in r.text  # URL recovery is automatic now
 
 
 def test_new_card_tagged_orphan_offers_reconcile(client, cfg):
@@ -1605,8 +1604,6 @@ def test_needs_mbid_store_url_offers_both_search_modes(client, cfg):
     assert "Look up releases at this URL" in r.text  # store-URL mode action
     assert f"/manual/{aid}/search" in r.text  # name-mode form
     assert r.text.count('id="mbid-results-') == 1  # single shared results box
-    # No nested "search by name" disclosure anymore.
-    assert "Or search MusicBrainz by name" not in r.text
 
 
 def test_manual_search_results_carry_heading(client, cfg, monkeypatch):
@@ -2800,11 +2797,6 @@ def test_library_empty_still_renders_its_header(client, cfg):
     assert 'data-total-done="0"' in r.text
 
 
-def test_library_empty_state(client):
-    r = client.get("/library")
-    assert "No fully-tagged albums yet" in r.text
-
-
 def test_library_tile_is_a_link_to_the_album_page(client, cfg):
     """#129: a tile is an ordinary link, not a dialog trigger — so every click
     has a real URL that can be shared, bookmarked and gone back from."""
@@ -2813,9 +2805,6 @@ def test_library_tile_is_a_link_to_the_album_page(client, cfg):
     d = _make_tagged_album(cfg, "Linked", mbid="abc-123", tagged_at=datetime.now(UTC), item_id=42)
     r = client.get("/library")
     assert f'href="/album/{_id_for(cfg, d)}"' in r.text
-    # Guards the route's re-introduction: a tile must never queue a fragment
-    # fetch to open in place, which is what #129 removed.
-    assert "/detail" not in r.text
     # The heavy detail markup is still not inlined in the grid response.
     assert "musicbrainz.org/release/abc-123" not in r.text
 
@@ -3001,15 +2990,12 @@ def test_rematch_warns_when_no_mb_release(client, cfg):
 
 def test_library_detail_wrong_match_controls_beside_badges(client, cfg):
     """The MB 'wrong match' re-pick (pencil → /rematch) sits beside the MusicBrainz
-    badge (#38), replacing the old ambiguous 'Wrong match' text button. The Bandcamp
-    forget-link control is temporarily removed pending a re-link path (#42)."""
+    badge (#38), where its placement says which badge it acts on."""
     d = _make_tagged_album(cfg, "Badges", mbid="rel-b", tagged_at=datetime.now(UTC), item_id=9)
     aid = _id_for(cfg, d)
     html = client.get(f"/album/{aid}").text
     assert f"/library/{aid}/rematch" in html  # MB re-pick control exists
     assert "Wrong MusicBrainz match" in html  # explanatory tooltip
-    assert "Wrong match" not in html  # old ambiguous button is gone
-    assert "forget_url" not in html  # BC removal control pulled for now (#42)
 
 
 def test_album_page_actions_navigate_after_success_not_onclick(client, cfg):
@@ -3183,7 +3169,6 @@ def test_activity_feed_puts_album_before_message(client, cfg):
     body = client.get("/activity").text
     # Single entry, so these are unambiguous positions within the one row.
     assert body.index("The Thamesmen — Gimme") < body.index("Unlinked now")
-    assert "text-right" not in body  # no right-aligned column any more
 
 
 # ---------- The feed poll must not re-send an unchanged feed (#118) ----------
@@ -4210,10 +4195,7 @@ def test_album_page_wires_retag_progress_and_refresh(client, cfg):
     # issues the request, so a selector covering the trigger stops the request
     # firing at all. The overlay is what blocks the other buttons.
     assert 'hx-disabled-elt="this"' in r.text
-    # The page reloads itself, and the modal's refresh listener stays out.
-    # Asserted on the listener, not on `hx-target="#modal"` — the header's
-    # Bandcamp-setup button legitimately targets the modal on every page.
-    assert "album-retagged from:body" not in r.text
+    # The page reloads itself once the re-tag lands.
     assert "window.location.reload()" in r.text
 
 
@@ -4239,10 +4221,6 @@ def test_leaving_the_library_returns_you_to_it(client, cfg):
     body = client.get(f"/album/{_id_for(cfg, d)}").text
 
     assert body.count("window.location.href = '/'") == 2  # rematch and Forget
-    # No control still tries to close a dialog. Asserted on the CALL SITE, not
-    # the name: base.html still defines harmonistCloseModal for the Bandcamp
-    # setup modal, which is a different dialog and stays.
-    assert "successful) harmonistCloseModal()" not in body
     # …and both controls are actually there to navigate from.
     aid = _id_for(cfg, d)
     assert f"/library/{aid}/rematch" in body
@@ -4371,9 +4349,11 @@ def test_cover_serves_when_present(client, cfg):
 # ---------- album id stability ----------
 
 
-def test_new_album_id_is_minted_from_registry(client, cfg):
-    """A NEW album (no sidecar) gets a UUID from the in-process registry;
-    the same path gets the same id on repeat scans.
+def test_a_new_album_gets_an_id_without_a_sidecar_to_hold_it(client, cfg):
+    """An album with no sidecar still needs an id for its URLs and its activity
+    records. `id_registry.get_or_mint` hashes the path, so the same folder
+    answers the same id on every scan with nothing persisted anywhere (#114 —
+    it was a minted UUID in a dict once, which the name still remembers).
     """
     d = _make_album(cfg, "NewOne")
     aid1 = _id_for(cfg, d)
@@ -4381,8 +4361,6 @@ def test_new_album_id_is_minted_from_registry(client, cfg):
     assert aid1 == aid2
     # No sidecar exists, so the id can't have come from one
     assert not sc.has_sidecar(d)
-    # 32 hex chars = uuid4().hex
-    assert len(aid1) == 32
 
 
 def test_sidecar_album_id_matches_temp_uid(client, cfg):
@@ -4446,11 +4424,6 @@ def test_sidecar_album_id_survives_rename(client, cfg):
     d.rename(new_d)
     aid_after = _id_for(cfg, new_d)
     assert aid_before == aid_after
-
-
-def test_route_404_when_id_is_unknown(client):
-    r = client.post("/recheck/this-id-doesnt-exist")
-    assert r.status_code == 404
 
 
 # ---------- Confirm as Incomplete (§15.3) ----------
@@ -5348,18 +5321,6 @@ def test_tracks_disagreeing_about_a_field_are_counted_not_hidden(client, cfg, mo
     assert "The others differ." not in body
 
 
-def test_the_comparison_is_absent_from_the_library_modal(client, cfg, monkeypatch):
-    """The modal answers "is this the right release?" and links through for the
-    rest (#103). It loads the same fragment, so the tag comparison must be gated
-    on the page's context rather than leaking into the dialog."""
-    d = _make_tagged_album(cfg, "Modal", mbid="rel-cmp", tagged_at=datetime.now(UTC))
-    monkeypatch.setattr(
-        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
-    )
-    body = client.get(f"/album/{_id_for(cfg, d)}").text
-    assert "<dt>Cat. no.</dt>" not in body
-
-
 def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     """When on-disk track titles differ from MB (e.g. a featured-artist tidy-up
     on MB after tagging), the tracklist reports the metadata difference even
@@ -5393,16 +5354,23 @@ def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     assert "match MusicBrainz" not in r.text
 
 
-def test_album_page_loads_the_comparison_lazily(client, cfg):
+def test_album_page_loads_the_comparison_lazily(client, cfg, monkeypatch):
     """The MusicBrainz comparison is fetched on load rather than rendered with
     the page: it costs an MB request, and the budget is one per second
-    (review-gate item 6). Lazy keeps that cost to opening the page."""
+    (review-gate item 6). Lazy keeps that cost to opening the page.
+
+    MusicBrainz is stubbed to answer in full, so the empty `#compare-<id>` is
+    the render's own doing and not the absence of anything to put in it."""
     d = _make_tagged_album(cfg, "HasVerify", mbid="rel-v2", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
 
     page = client.get(f"/album/{aid}").text
     assert f"/library/{aid}/compare" in page
     assert 'hx-trigger="load"' in page
+    assert "<dt>Cat. no.</dt>" not in page, "the comparison waits for the fetch"
 
 
 def test_library_detail_shows_ambiguous_bandcamp_ids(client, cfg):

@@ -7,8 +7,8 @@ fields we currently support.
 
 This is a *spec* conformance test, not a byte-diff against actual Picard
 output — that would require running real Picard against a reference
-release and committing its output. (Roadmap: see KNOWN_GAPS at the
-bottom of this file.)
+release and committing its output. (Roadmap: see the comment above
+EXPECTED_PICARD_ATOMS_WE_WRITE for the atoms still unwritten.)
 """
 
 from __future__ import annotations
@@ -270,6 +270,16 @@ def test_sort_artists_original_date_script_atoms(tmp_path):
 
 
 # ---------- exhaustive atom inventory ----------
+#
+# Picard atoms Harmonist does not write yet, as of this list: LANGUAGE, WORK,
+# MOVEMENT, ©wrt (composer), and ©gen (the atom exists but nothing populates it
+# from MusicBrainz). A comment, not an assertion: the inventory test below is
+# what notices when one of them starts being written, because anything outside
+# this set fails it. A separate "we don't write X" test cannot — it duplicates
+# that check when the gap is real, and quietly certifies a lie when it isn't.
+# DISCSUBTITLE was on the list while the tagger had been writing it for months
+# (test_disc_subtitle.py); the assertion passed because the fixture release gave
+# its medium no title, so the gap was true of the fixture and false of the code.
 
 EXPECTED_PICARD_ATOMS_WE_WRITE = {
     # Album-level MBIDs
@@ -330,37 +340,3 @@ def test_complete_inventory_against_picard_spec(tmp_path):
     # from the fixture file itself, not from our tagger. Filter those out.
     extra = {a for a in extra if not a.startswith("\xa9too")}
     assert not extra, f"unexpected atoms written: {extra}"
-
-
-# ---------- known gaps ----------
-#
-# Picard atoms we DO NOT yet write (documented future work). Source: the
-# Picard spec at https://picard.musicbrainz.org/docs/mappings/#mp4. Tests
-# below assert these are NOT yet present — flipping any of them to "should
-# be present" will fail clearly, signalling that this gap list needs an
-# update and the tagger's coverage needs to expand.
-
-KNOWN_GAPS = {
-    "----:com.apple.iTunes:LANGUAGE",
-    "----:com.apple.iTunes:DISCSUBTITLE",
-    "----:com.apple.iTunes:WORK",
-    "----:com.apple.iTunes:MOVEMENT",
-    "\xa9wrt",  # composer
-    "\xa9gen",  # genre (we have the atom name but don't populate it from MB)
-}
-
-
-def test_known_gaps_not_yet_written(tmp_path):
-    """Sanity-check on what we DON'T cover yet — fails loudly if a future
-    change starts writing one of these (without updating the gap list).
-    """
-    album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
-
-    audio = MP4(album_dir / "01 Track 1.m4a")
-    actually_written = set(audio.keys())
-    for gap in KNOWN_GAPS:
-        assert gap not in actually_written, (
-            f"{gap!r} is now being written — update KNOWN_GAPS list "
-            f"and add a positive assertion in test_complete_inventory_against_picard_spec"
-        )

@@ -26,7 +26,6 @@ from pathlib import Path
 import pytest
 from mutagen.mp4 import MP4
 
-from harmonist import reconcile
 from harmonist import sidecar as sidecar_mod
 from harmonist.models import AlbumState, Sidecar
 from harmonist.scanner import scan
@@ -380,12 +379,6 @@ def test_an_untagged_file_in_a_part_suspends_the_merge(tmp_path):
     albums = scan(tmp_path)
     assert len(albums) == 2
     assert any(a.partial_tag_count is not None for a in albums)
-
-
-def test_reconcile_no_longer_has_split_release_machinery(tmp_path):
-    """#16's directory rule is gone, not merely bypassed."""
-    assert not hasattr(reconcile, "find_split_releases")
-    assert not hasattr(reconcile, "promote_split_release")
 
 
 # ---------------------------------------------------------------------------

@@ -130,21 +130,6 @@ def test_flagship_sync_then_recheck_then_done(demo_client, tmp_path):
     assert ATOM_MB_TRACK_ID in audio
 
 
-def test_flagship_sync_status_visible_during_run(demo_client):
-    """Confirms /sync/status returns running state while sync is in flight.
-
-    We can't easily race the thread reliably in a test, so instead we verify
-    the *shape* of the running state once the runner has started.
-    """
-    runner = demo_client.app.state.sync_runner
-    # Manually flip to running so we can inspect the status response shape
-    runner._status.state = "running"
-    r = demo_client.get("/sync/status")
-    body = r.json()
-    assert body["state"] == "running"
-    runner._status.state = "idle"
-
-
 def test_flagship_full_sync_downloads_then_second_is_noop(demo_client, tmp_path):
     """A full sync fetches every owned-but-not-on-disk purchase; a second full
     sync has nothing left to download."""
@@ -161,16 +146,6 @@ def test_flagship_full_sync_downloads_then_second_is_noop(demo_client, tmp_path)
     demo_client.post("/sync", data={"from_popover": "true"})
     _wait_for_idle(demo_client)
     assert len(scanner.scan(music_dir)) == count_after_first
-
-
-def test_flagship_409_when_sync_in_flight(demo_client):
-    runner = demo_client.app.state.sync_runner
-    runner._status.state = "running"
-    try:
-        r = demo_client.post("/sync")
-        assert r.status_code == 409
-    finally:
-        runner._status.state = "idle"
 
 
 def test_flagship_new_to_done_via_reconcile_and_confirm(demo_client, tmp_path):

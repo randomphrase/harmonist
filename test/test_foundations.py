@@ -109,13 +109,28 @@ def test_config_default_ignores_and_cookies(monkeypatch, tmp_path):
 # ---------- models ----------
 
 
-def test_album_state_values():
-    assert AlbumState.NEW.value == "new"
-    assert AlbumState.NEEDS_MBID.value == "needs_mbid"
-    assert AlbumState.TAGGING.value == "tagging"
-    assert AlbumState.NEEDS_SYNC.value == "needs_sync"
-    assert AlbumState.COMPLETE.value == "complete"
-    assert AlbumState.INCOMPLETE.value == "incomplete"
+def test_the_state_values_are_the_status_json_wire_contract():
+    """These strings are the wire spelling of a state, not just how the enum is
+    written: `live_counts.to_status()` mirrors them as the keys of the /status
+    JSON, which the poll in index.html reads (`data.counts.needs_sync`), and
+    `AlbumState` is a StrEnum so anything that serialises one emits the value.
+
+    Asserted as a whole set rather than name by name: the old form listed six of
+    the seven, so INCONSISTENT could have been renamed without a word from it.
+
+    `needs_sync` is the one to leave alone hardest. It DISPLAYS as "Needs Link"
+    (models.py says so), which makes renaming the value to match look like
+    tidying.
+    """
+    assert {s.value for s in AlbumState} == {
+        "new",
+        "needs_mbid",
+        "tagging",
+        "needs_sync",
+        "complete",
+        "incomplete",
+        "inconsistent",
+    }
 
 
 # ---------- store URL host classification ----------

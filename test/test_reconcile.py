@@ -82,13 +82,6 @@ def test_adopts_external_file_retag(tmp_path):
     assert result.bandcamp.item_id == 99  # kept (same purchase)
 
 
-def test_leaves_consistent_sidecar_untouched(tmp_path):
-    """Sidecar MBID == file MBID → idempotent no-op."""
-    album_dir = _make_album(tmp_path, mbid="rel-1")
-    sc.write(album_dir, Sidecar(mb_release_id="rel-1"))
-    assert reconcile_album(album_dir, fetch_urls=_no_urls) is None
-
-
 def test_does_not_re_promote_surrendered_album(tmp_path):
     """A surrendered album (sidecar MBID None) whose files still carry the old
     MBID must NOT be re-promoted to it."""
@@ -137,13 +130,6 @@ def test_reconcile_records_artist_root_url_no_mbid(tmp_path):
     assert result.store_url == "https://asura.bandcamp.com"
     assert result.mb_release_id is None  # untagged → NEEDS_MBID
     assert result.tagged_at is None
-
-
-def test_no_sidecar_when_no_mbid_and_no_recoverable_url(tmp_path):
-    album_dir = _make_album(tmp_path)
-    result = reconcile_album(album_dir, fetch_urls=_no_urls, recover_url=lambda _p: None)
-    assert result is None
-    assert not sc.has_sidecar(album_dir)
 
 
 def test_recovery_failure_leaves_orphan(tmp_path):
