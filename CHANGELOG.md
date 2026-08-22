@@ -6,28 +6,23 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-08-22
+
 ### Fixed
 
-- Your files are now lined up against MusicBrainz by the per-track id they
-  carry, so an album still stays on its own tracks after MusicBrainz renumbers
-  or reorders the release's discs — where before a whole CD could be compared
-  against a bonus DVD's tracks and reported as missing (#232).
-- Re-tagging an album that's missing tracks no longer picks which track a file
-  is by comparing durations, which could give one file another track's title
-  and ids (#232).
-- An album whose only missing discs are video can be re-tagged again. It used
-  to refuse — "16 audio files but MB release has 69 tracks" — counting a bonus
-  DVD's videos as audio files you were missing (#235, #237).
-- Re-tagging no longer resets parts of an album's record: a surrendered album
-  stays surrendered, an accepted-as-incomplete one stays accepted, and an album
-  with a bonus DVD no longer flips to Incomplete until the next reconcile
-  (#239).
+- Your files are now paired with MusicBrainz tracks by the per-track id they
+  carry, so an album stays on its own tracks after MusicBrainz renumbers or
+  reorders the release's discs (#232).
+- Re-tagging an album that's missing tracks no longer picks a file's track by
+  comparing durations, which could write another track's title and ids (#232).
+- An album whose only missing discs are video can be re-tagged again, instead
+  of refusing with "16 audio files but MB release has 69 tracks" (#235, #237).
+- Re-tagging no longer resets parts of an album's record — a surrendered album
+  stays surrendered, and one accepted as incomplete stays accepted (#239).
+- An album page now lists the video files on disk, marked as video, instead of
+  reporting a part-ripped DVD as a disc you don't have at all (#226).
 - The History panel's per-track lines now number tracks from 1, matching the
-  files and the tracklist above them, instead of from 0 (#240).
-- An album page now lists the video files on disk instead of reporting a
-  part-ripped DVD as a disc you don't have at all. They're marked as video and
-  not compared against MusicBrainz — Harmonist reads their tags, never writes
-  them (#226).
+  files and the tracklist above them (#240).
 
 ## [1.10.1] - 2026-08-21
 

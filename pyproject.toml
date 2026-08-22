@@ -1,6 +1,6 @@
 [project]
 name = "harmonist"
-version = "1.10.1"
+version = "1.10.2"
 requires-python = ">=3.12"
 # bandcampsync 0.8 reshaped Syncer.__init__ to take a BandcampSyncOptions
 # object (+ auto_run); HarmonistSyncer adapts to it in bandcamp_hook.py.

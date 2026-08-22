@@ -431,8 +431,13 @@ mentioning two whole discs".
 so nothing that writes can reach them — but Picard tags them with the same disc
 and position atoms as the audio, and the user *has* them. Without this a CD+DVD
 release reads as missing every track on the DVD. They are tracks for the purpose
-of "do you have this album", and for no other purpose: the track count, the
-tracklist and the tagger all still see audio only.
+of "do you have this album" and for the album page's tracklist, which lists
+them as present and marks them video (#226) — a `.m4v` is an MP4 container, so
+Picard states its album, disc, position and length in the same atoms as the
+audio beside it. Their fields come back `ONLY_DISK`: nothing about a video is
+compared against MusicBrainz, because Harmonist can never write it and the
+findings would be ones no re-tag could settle. The track count, the album-level
+Tags panel and the tagger all still see audio only, for the same reason.
 
 There is no `incomplete` flag and no stored count. `sidecar.track_count_expected`
 held this number from v1.0.0 to v1.9.0 and was retired in #195: it duplicated
@@ -594,6 +599,14 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   elsewhere / ripped). It makes the scanner treat the album as terminal
   (Complete/Incomplete) despite a bandcamp `store_url` + missing `item_id`, so no
   future sync re-surrenders it. Absent → `false`.
+- `video_media` (optional, list of ints) names the release's video media by
+  position (#206), so the scanner can forgive a bonus DVD the user never ripped
+  without a MusicBrainz call of its own (§3). `null` means "not asked yet" and
+  `[]` means "asked, none are video" — collapsing the two would re-fetch every
+  video-free release forever. The **scanner is its only reader**: anything
+  holding the release already computes the same answer from it
+  (`mb_lookup.video_media_of`), because a restored-from-backup sidecar can be
+  older than the discs MusicBrainz has since added (#237).
 - All timestamps are ISO 8601 UTC with `Z` suffix.
 
 **Persistence philosophy:** The sidecar holds load-bearing state only —
@@ -653,6 +666,26 @@ Sort phrases keep the artist-credit join phrases (`A feat. B` → `A feat. B, Th
 The existing `©cmt` (Bandcamp comment) is **preserved** if present — it's the fallback URL recovery path and other tools may rely on it. We never strip user data.
 
 The current code's `MUSICBRAINZ_RELEASEID` atom is **non-Picard** and gets removed by the tagger when it writes the correct atoms.
+
+### Which file is which track
+
+One ladder, `compare.assign`, answers this for everything — the album page's
+tracklist and the tagger both — and it is tried in order: the file's
+**MusicBrainz Release Track Id**, then its **disc-and-track number**, then
+**file order** (#232).
+
+Only the first rung is an identity. Harmonist writes that id on everything it
+tags and Picard writes the same one, so for any album either tool has touched
+the question is answered outright, and it survives MusicBrainz renumbering or
+reordering the release's media underneath it. The rungs below are guesses kept
+for files nobody has tagged yet, and #136 — let the user re-pair a file with
+its track by hand — is still the escape hatch out of a wrong one.
+
+**Duration is not one of the rungs.** Matching on length-similarity was how the
+tagger picked tracks until #232: two recordings of the same length are ordinary,
+the odds get worse the longer the release, and the failure is silent and
+targeted — one file in sixteen given another track's title and ids, on an album
+that otherwise looks right, which nobody re-checks.
 
 ### The tags Harmonist owns
 
@@ -1216,10 +1249,10 @@ button next to Confirm / Dismiss suggestion:
   from those tags (§3). Nothing about the count is persisted separately.
 
 **Tagger incomplete mode:** doesn't raise `TagMismatchError` on
-`file_count < track_count`. Uses **length-similarity** to match the
-on-disk files to a subset of MB tracks (best-fit assignment, falling
-back to positional matching when lengths are unknown / equal). MB tracks
-without a matched file are skipped.
+`file_count < track_count`. Matching the on-disk files to a subset of MB
+tracks goes through `compare.assign` like everywhere else — release track
+id, then disc-and-track number, then file order (#232). MB tracks without
+a matched file are skipped.
 
 **State after Confirm as Incomplete:** `INCOMPLETE`. This is a distinct
 terminal state, not a flagged variant of `COMPLETE` — the state enum

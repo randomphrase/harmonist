@@ -216,7 +216,9 @@ When your own tracks disagree with each other, it says what's wrong ("missing on
 1 track"), and clicking that lists the tracks.
 
 **Tracks** compares the tracklist — title, artist, number and length — flagging
-tracks that are missing, unreadable, or absent from MusicBrainz.
+tracks that are missing, unreadable, or absent from MusicBrainz. Video files are
+listed as present and marked *video*; Harmonist reads their tags but never writes
+them, so they aren't compared against MusicBrainz.
 
 **History** gathers everything Harmonist has recorded about the album, including
 records written before it was last re-identified, so history doesn't rot when a
