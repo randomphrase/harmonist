@@ -6265,13 +6265,36 @@ def test_a_genuine_miss_is_still_404(client, cfg):
 # ---------------------------------------------------------------------------
 
 
+def _accept(client, album_id, accept=True):
+    """POST the acceptance the way the checkbox does (#227): a ticked box sends
+    `accept=true`, and an unticked one sends nothing at all — that absence is
+    what takes the acceptance back."""
+    return client.post(
+        f"/library/{album_id}/tracks-unavailable", data={"accept": "true"} if accept else {}
+    )
+
+
+def _is_checked(page, marker):
+    """Whether the one `<input type=checkbox …>` on `page` whose attributes
+    mention `marker` is ticked — which is what says how the setting stands, where
+    the label beside it reads the same either way.
+
+    Attribute VALUES are blanked before looking for `checked`: this box carries an
+    `hx-on::after-request` handler that mentions `this.checked`, and matching that
+    would make every such assertion pass for free.
+    """
+    tags = [t for t in re.findall(r"<input\b[^>]*>", page) if marker in t]
+    assert len(tags) == 1, f"expected one checkbox mentioning {marker!r}, found {len(tags)}"
+    return bool(re.search(r"\bchecked\b", re.sub(r'"[^"]*"', '""', tags[0])))
+
+
 def test_accepting_an_incomplete_album_takes_it_out_of_the_filter(client, cfg):
     """The Pink Floyd case: only the stereo mixes were ever ripped off the
     Blu-ray, so the missing tracks are not a defect anyone can act on."""
     d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
     assert "Blu" in client.get("/library?filter=incomplete").text
 
-    r = client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+    r = _accept(client, _id_for(cfg, d))
 
     assert r.status_code == 200
     assert sc.read(d).tracks_unavailable is True
@@ -6285,7 +6308,7 @@ def test_an_accepted_album_stays_incomplete_and_still_says_so(client, cfg):
     from harmonist.models import AlbumState
 
     d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
-    client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+    _accept(client, _id_for(cfg, d))
 
     album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
     assert album.state == AlbumState.INCOMPLETE
@@ -6295,9 +6318,9 @@ def test_an_accepted_album_stays_incomplete_and_still_says_so(client, cfg):
 def test_accepting_is_reversible_from_the_ui(client, cfg):
     d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
-    client.post(f"/library/{aid}/tracks-unavailable")
+    _accept(client, aid)
 
-    r = client.post(f"/library/{aid}/tracks-unavailable", data={"accept": "false"})
+    r = _accept(client, aid, accept=False)
 
     assert r.status_code == 200
     assert sc.read(d).tracks_unavailable is False
@@ -6309,8 +6332,8 @@ def test_accepting_is_idempotent(client, cfg):
     d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
 
-    first = client.post(f"/library/{aid}/tracks-unavailable")
-    second = client.post(f"/library/{aid}/tracks-unavailable")
+    first = _accept(client, aid)
+    second = _accept(client, aid)
 
     assert (first.status_code, second.status_code) == (200, 200)
     assert "No change" in second.text
@@ -6322,7 +6345,7 @@ def test_a_complete_album_cannot_be_accepted_as_complete(client, cfg):
     record — and allowing it would turn the field into a general "ignore this"."""
     d = _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=datetime.now(UTC))
 
-    r = client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+    r = _accept(client, _id_for(cfg, d))
 
     assert r.status_code == 400
     assert sc.read(d).tracks_unavailable is False
@@ -6336,7 +6359,7 @@ def test_accepting_touches_no_tags(client, cfg):
     path = next(p for p in d.iterdir() if formats.is_supported(p))
     before = formats.read_owned(path)
 
-    client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+    _accept(client, _id_for(cfg, d))
 
     assert formats.read_owned(path) == before
 
@@ -6347,7 +6370,7 @@ def test_accepting_is_audited(client, cfg, tmp_path):
     from harmonist import activity_store
 
     d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
-    client.post(f"/library/{_id_for(cfg, d)}/tracks-unavailable")
+    _accept(client, _id_for(cfg, d))
 
     rows = [e.message for e in activity_store.recent(50)]
     assert any("tracks_unavailable=False->True" in m for m in rows)
@@ -6357,17 +6380,124 @@ def test_the_album_page_offers_the_acceptance_only_when_incomplete(client, cfg):
     incomplete = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
     whole = _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=datetime.now(UTC))
 
-    assert "No more tracks to get" in client.get(f"/album/{_id_for(cfg, incomplete)}").text
+    page = client.get(f"/album/{_id_for(cfg, incomplete)}").text
+    assert "No more tracks to get" in page
+    assert not _is_checked(page, "tracks-unavailable"), "not accepted yet"
+
     assert "No more tracks to get" not in client.get(f"/album/{_id_for(cfg, whole)}").text
 
 
 def test_the_album_page_offers_the_way_back_once_accepted(client, cfg):
+    """The escape hatch (review gate item 5) is now unticking the box, so what
+    has to be on the page is a CHECKED checkbox — the label stays put either
+    way, and by itself proves nothing."""
     d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
-    client.post(f"/library/{aid}/tracks-unavailable")
+    _accept(client, aid)
 
     page = client.get(f"/album/{aid}").text
-    assert "Mark incomplete again" in page, "escape hatch, per review gate item 5"
+    assert _is_checked(page, "tracks-unavailable"), "escape hatch, per review gate item 5"
+
+
+# ---------------------------------------------------------------------------
+# The completeness badge on the album's own page (#227)
+# ---------------------------------------------------------------------------
+
+
+def test_the_album_page_states_how_much_of_the_release_is_on_disk(client, cfg):
+    """The tile carried this and the page didn't, so the one view that had room
+    to explain the badge was the one that omitted it."""
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+
+    page = client.get(f"/album/{_id_for(cfg, d)}").text
+
+    assert "1 of 4 tracks on disk" in page
+
+
+def test_a_complete_album_gets_no_completeness_badge(client, cfg):
+    """Nothing to explain — and the tile says nothing about one either, so a
+    blob here would be a second vocabulary for the same fact."""
+    d = _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=datetime.now(UTC))
+
+    page = client.get(f"/album/{_id_for(cfg, d)}").text
+
+    assert "tracks on disk" not in page
+    assert "album-completeness" not in page
+
+
+def test_an_album_missing_a_whole_disc_gets_no_invented_denominator(client, cfg):
+    """`expected_track_count` is None when a medium has no files at all — nothing
+    on disk records how long it was. The badge says so instead of guessing."""
+    from test.helpers import write_track_totals
+
+    d = _make_tagged_album(cfg, "Boxed", mbid="rel-boxed", tagged_at=datetime.now(UTC))
+    write_track_totals(d, track_total=1, disc_num=1, disc_total=2)
+
+    page = client.get(f"/album/{_id_for(cfg, d)}").text
+
+    assert "no tracks on disk" in page
+    assert "of 1 tracks on disk" not in page
+
+
+def test_accepting_demotes_the_badge_instead_of_removing_it(client, cfg):
+    """The album really is short — that stays true once accepted. It stops being
+    a warning (amber) and becomes a statement (neutral), the same distinction the
+    tile makes."""
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+    assert "amber" in _badge(client.get(f"/album/{aid}").text)
+
+    _accept(client, aid)
+
+    badge = _badge(client.get(f"/album/{aid}").text)
+    assert "1 of 4 tracks on disk" in badge, "still says what is missing"
+    assert "amber" not in badge, "no longer a defect to fix"
+
+
+def _badge(page):
+    """The completeness blob and everything up to the end of its badge text."""
+    start = page.index("album-completeness")
+    return page[start : page.index("</span>", start)]
+
+
+def test_ticking_the_box_re_states_the_badge_in_the_same_response(client, cfg):
+    """The control sits beside the statement it changes, so the response has to
+    carry that statement back — otherwise the page keeps showing a warning about
+    an album the user just accepted, until they reload it."""
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+
+    body = _accept(client, aid).text
+
+    assert 'hx-swap-oob="true"' in body
+    assert f'id="album-completeness-{aid}"' in body
+    assert "amber" not in body, "swapped back demoted, matching what was just written"
+
+
+def test_taking_the_acceptance_back_re_states_the_badge_too(client, cfg):
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+    _accept(client, aid)
+
+    body = _accept(client, aid, accept=False).text
+
+    assert 'hx-swap-oob="true"' in body
+    assert "amber" in body, "back to being something to fix"
+
+
+def test_a_double_submit_still_re_states_the_badge(client, cfg):
+    """The no-op path returns early to keep the audit log clean, and the badge
+    has to come back with it — a checkbox that raced itself must end up showing
+    what is on disk, not what the last click typed."""
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+    _accept(client, aid)
+
+    body = _accept(client, aid).text
+
+    assert "No change" in body
+    assert f'id="album-completeness-{aid}"' in body
+    assert "amber" not in body
 
 
 # ---------------------------------------------------------------------------

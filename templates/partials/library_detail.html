@@ -102,6 +102,13 @@
             </div>
             {% endif %}
 
+            {# How much of the release is on disk, and the control that accepts
+               what's missing as final (#227). Directly under the identity badges
+               and above the actions, for the same reason the MusicBrainz-id note
+               below sits there: it is a finding about this album, and findings
+               belong next to the buttons that answer them. #}
+            {% include 'partials/_completeness.html' %}
+
             {# Only SOME files carry the MusicBrainz Album Id (#175). The Library
                tile has said "1/3 tagged" since #139, but the album page — where
                you'd act on it — said nothing at all, and the Tracks section below
@@ -228,26 +235,12 @@
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Forget
                 </button>
-                {# Accepting an incomplete album as finished (#196). Offered only
-                   where the claim it records can be true — an album that really
-                   is short — and phrased as a claim about the SOURCE rather than
-                   about the UI, because "there are no more tracks to get" is
-                   checkable and "ignore this" is not.
-
-                   Rare and non-destructive, so it sits muted to the right rather
-                   than competing with Re-tag (rule 4 of the web-ui skill). It
-                   writes one sidecar field: no state change, no tag rewrite. #}
-                {% if album.state == AlbumState.INCOMPLETE %}
-                {% set _accepted = sc and sc.tracks_unavailable %}
-                <button hx-post="/library/{{ album.id }}/tracks-unavailable"
-                        hx-vals='{"accept": {{ "false" if _accepted else "true" }}}'
-                        hx-swap="none" hx-disabled-elt="this"
-                        class="ml-auto px-3 py-1.5 text-muted hover:text-ink hover:bg-surface border border-transparent hover:border-line rounded text-xs font-bold uppercase tracking-widest transition"
-                        aria-label="{{ 'List this album as incomplete again' if _accepted else 'Accept this album as complete — the missing tracks cannot be got' }}"
-                        title="{% if _accepted %}Put this album back in the Library's Incomplete list.{% else %}The missing tracks aren't available, so stop listing this album as incomplete. It stays marked {{ album.track_count }} of {{ album.expected_track_count }} — only the Incomplete filter ignores it.{% endif %}">
-                    {{ "Mark incomplete again" if _accepted else "No more tracks to get" }}
-                </button>
-                {% endif %}
+                {# "No more tracks to get" used to sit here, as a button reading
+                   "Mark incomplete again" once accepted. It moved up to the
+                   completeness badge as a checkbox (#227): it acts on that badge
+                   rather than on the album generally, and a button could only
+                   show the ACTION, leaving you to infer the state backwards from
+                   it. This row is for things that DO something to the album. #}
                 {# Unlink (clear the Bandcamp item_id) is temporarily removed —
                    until a Library album can be re-linked, taking a link off is a
                    dead end. It comes back with the re-link path in #42. The

@@ -586,10 +586,12 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   the wrong candidate: those can genuinely be fetched (#132).
 
   It does **not** change state. The album really is short, `INCOMPLETE` says so
-  truthfully, and the tile still reports the count — in neutral rather than
-  amber, since it is no longer work. What changes is the Library's **Incomplete
-  filter**, which exists to find defects the user can fix; an accepted one is
-  not such a defect, so it drops out. Reversible from the album page.
+  truthfully, and both the tile and the album page still report the count — in
+  neutral rather than amber, since it is no longer work. What changes is the
+  Library's **Incomplete filter**, which exists to find defects the user can fix;
+  an accepted one is not such a defect, so it drops out. Set and unset from a
+  checkbox beside the album page's completeness badge, which is the statement it
+  governs (#227).
 
   Not derivable at any price: a decision with no evidence on disk. Same shape as
   `purchase_unavailable` one level over (#196).

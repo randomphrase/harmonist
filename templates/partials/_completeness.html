@@ -1,0 +1,66 @@
+{# The album's completeness, said out loud on the album's own page (#227).
+
+   The Library tile has carried this since #195; opening the album dropped it,
+   which is backwards — the tile is a thumbnail in a grid of hundreds and the
+   page is where someone goes to find out what is wrong with an album. Same
+   colouring and outlining as the tile's badge so the two read as one statement,
+   with room here to spell the number out rather than compress it to "10 of 11".
+
+   Rendered in place by library_detail.html, and again as an out-of-band swap by
+   the acceptance endpoint (`oob`), so ticking the checkbox re-states the badge
+   in the same response that persists it.
+
+   Only INCOMPLETE albums get a blob: a complete album has nothing to explain,
+   and the tile says nothing about one either. #}
+{% set sc = album.sidecar %}
+{% set _accepted = sc and sc.tracks_unavailable %}
+{% if album.state == AlbumState.INCOMPLETE %}
+<div id="album-completeness-{{ album.id }}"{% if oob %} hx-swap-oob="true"{% endif %}
+     class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+    {# The denominator comes from the files' own tags (#195) and is absent when a
+       whole disc is missing — nothing on disk records how long it was. Say so
+       rather than inventing one.
+
+       Amber says "this needs attention". An album accepted as finished (#196) is
+       still short and still says so, but it is no longer work — so the badge is
+       demoted to a statement rather than removed. Hiding it would discard a true
+       fact about the album to make the page tidier. #}
+    <span class="inline-flex items-center px-2.5 py-1 rounded-md text-2xs font-bold
+                 {{ 'bg-surface text-muted border border-line' if _accepted else 'bg-amber-50 text-amber-700 border border-amber-300' }}"
+          title="{% if album.expected_track_count %}The total comes from the files' own tags, written from MusicBrainz.{% else %}A medium of this release has no files on disk at all, so nothing records how many tracks it had.{% endif %}{% if _accepted %} You've accepted this album as complete, so the Library's Incomplete filter skips it.{% endif %}">
+        {% if album.expected_track_count %}
+        {{ album.track_count }} of {{ album.expected_track_count }} tracks on disk
+        {% else %}
+        Incomplete &mdash; a disc of this release has no tracks on disk
+        {% endif %}
+    </span>
+
+    {# Accepting an incomplete album as finished (#196), as a checkbox beside the
+       badge it governs rather than a button in the album-wide action row (#227):
+       it shows the STATE rather than an action, and its placement says which
+       statement it acts on (rule 4 of the web-ui skill).
+
+       A checkbox is simply the native control for a persisted boolean (rule 1),
+       and `change` is its default trigger, so there is no hx-trigger to get wrong
+       (rule 2b). `name`/`value` are the platform's own contract too: a ticked box
+       posts accept=true, an unticked one posts nothing and the endpoint's default
+       reads that as taking the acceptance back.
+
+       Phrased as a claim about the SOURCE — there are no more tracks to get —
+       because that is checkable, where "ignore this" is not. #}
+    <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
+                  text-2xs uppercase tracking-widest font-bold text-muted hover:text-ink transition"
+           title="{% if _accepted %}Untick to put this album back in the Library's Incomplete list.{% else %}The missing tracks aren't available, so stop listing this album as incomplete. It stays marked above — only the Incomplete filter ignores it.{% endif %}">
+        <input type="checkbox" name="accept" value="true" class="cursor-pointer"
+               {% if _accepted %}checked{% endif %}
+               hx-post="/library/{{ album.id }}/tracks-unavailable"
+               hx-swap="none" hx-disabled-elt="this"
+               {# The response swaps this whole blob out of band, so the tick is
+                  only ever what the sidecar now says. A FAILED write swaps
+                  nothing, which would leave the box showing a setting that was
+                  never persisted — so put it back. #}
+               hx-on::after-request="if (!event.detail.successful) this.checked = !this.checked">
+        No more tracks to get
+    </label>
+</div>
+{% endif %}

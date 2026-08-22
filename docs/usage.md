@@ -179,12 +179,16 @@ done but still wrong, each with its count:
   lists the discs that aren't on disk, so nothing is hidden. A DVD you ripped
   only part of does still count as incomplete.
 
+  The album's own page says the same thing in words — *"10 of 11 tracks on
+  disk"*, under the MusicBrainz and Bandcamp badges — so you don't have to work
+  it out from the tracklist below it.
+
   Some albums are incomplete on purpose and always will be — you ripped only the
   stereo mixes off a Blu-ray, or the hidden track was never ripped and the CD is
-  long gone. **No more tracks to get**, on the album's page, takes it out of this
-  list. The album stays marked "N of M"; it just stops presenting itself as
-  something to fix, and the button becomes **Mark incomplete again** if you
-  change your mind.
+  long gone. Tick **No more tracks to get**, beside that badge, and the album
+  drops out of this list. It stays marked "N of M" — the album really is short,
+  and that goes on being true — but the badge turns from amber to grey: a
+  statement rather than something to fix. Untick it if you change your mind.
 - **Partially tagged** — some files carry the MusicBrainz Album Id and some don't.
   A half-finished tagging run, or Picard applied to part of a folder, leaves this.
 - **No artwork** — correctly tagged, fully linked, and still a grey square in

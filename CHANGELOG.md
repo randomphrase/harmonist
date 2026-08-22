@@ -6,6 +6,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+
+- An album's own page now states how much of the release is on disk — "10 of 11
+  tracks on disk", under the MusicBrainz and Bandcamp badges — instead of
+  leaving that to the Library tile you just came from (#227).
+- **No more tracks to get** is now a checkbox beside that badge rather than a
+  button in the action row, so it shows whether the album is accepted instead of
+  making you read it backwards off the button's label. Ticking it turns the
+  badge from amber to grey; the album still says how short it is (#227).
+
 ## [1.10.2] - 2026-08-22
 
 ### Fixed

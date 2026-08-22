@@ -942,6 +942,19 @@ def _templates(request: Request) -> Jinja2Templates:
     return templates
 
 
+def _completeness_oob(request: Request, album: Album) -> str:
+    """The album page's completeness badge + its acceptance checkbox, rendered as
+    an out-of-band swap (#227).
+
+    The album passed in must be the album as it is AFTER whatever just changed —
+    the badge states what the sidecar now says, and the caller holds the new one.
+    Renders to nothing for an album that isn't INCOMPLETE, which is exactly right:
+    there is no such blob on that page to replace.
+    """
+    template = _templates(request).env.get_template("partials/_completeness.html")
+    return template.render(_ctx(request, album=album, oob=True))
+
+
 def _library_limit(request: Request, limit: int | None) -> int:
     """The page size for this render: the URL's `?limit=` when it names one, else
     the size the reader last chose, else the default (#144).
@@ -3843,7 +3856,7 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post("/library/{album_id}/tracks-unavailable", response_class=HTMLResponse)
     def set_tracks_unavailable(
-        request: Request, album_id: str, accept: bool = Form(True)
+        request: Request, album_id: str, accept: bool = Form(False)
     ) -> Response:
         """Accept an INCOMPLETE album as finished, or take that acceptance back.
 
@@ -3851,6 +3864,11 @@ def _register_routes(app: FastAPI) -> None:
         to get — so it is offered only where that claim can be true: on an album
         that really is short. Accepting a complete album would be recording a
         fact about nothing.
+
+        `accept` defaults to **False** because the control is a checkbox (#227),
+        and an unticked checkbox posts no value at all — that absence IS the
+        request to take the acceptance back. A caller that means to accept says
+        so; nothing accepts by omission.
 
         Deliberately does NOT touch state or files. The album is still
         INCOMPLETE, its tile still reports the count, and no tag is rewritten;
@@ -3868,9 +3886,12 @@ def _register_routes(app: FastAPI) -> None:
             )
         if sc.tracks_unavailable == accept:
             # Idempotent: the sidecar write would be a no-op anyway, but returning
-            # here keeps a double-click out of the audit log entirely.
-            return _flash_response("No change", album=album)
-        sidecar_mod.write(album.path, replace(sc, tracks_unavailable=accept))
+            # here keeps a double-click out of the audit log entirely. Still
+            # re-states the badge, so a checkbox that raced itself ends up
+            # showing what is on disk rather than what the last click typed.
+            return _flash_response("No change", album=album, oob=_completeness_oob(request, album))
+        updated = replace(sc, tracks_unavailable=accept)
+        sidecar_mod.write(album.path, updated)
         # The Library's filter counts change, and nothing else does — the state is
         # untouched, so there is no live_counts move to make. Refresh the snapshot
         # in one render rather than letting the async rescan dim the page (#11).
@@ -3878,9 +3899,13 @@ def _register_routes(app: FastAPI) -> None:
         if runner.is_engaged():
             runner.refresh_now()
         request.state.skip_rescan = True
+        # The album page states the completeness beside this control (#227), so it
+        # is now stale on the very page the click came from. Swap it out of band
+        # from the album as it is AFTER the write — `album` was resolved before it.
         return _flash_response(
             "Accepted as complete" if accept else "Back in the Incomplete list",
             album=album,
+            oob=_completeness_oob(request, replace(album, sidecar=updated)),
         )
 
     @app.post("/surrender/{album_id}/keep", response_class=HTMLResponse)
@@ -4146,6 +4171,7 @@ def _flash_response(
     extra_triggers: dict[str, Any] | None = None,
     album: Album | None = None,
     record_activity: bool = True,
+    oob: str = "",
 ) -> HTMLResponse:
     """Standard action response: flash HTML body + HX-Trigger events.
 
@@ -4162,6 +4188,13 @@ def _flash_response(
     Use for every endpoint that mutates album state. For pure-display
     failures (e.g. MB lookup error with no state change), pass
     `tasks_changed=False` to avoid spurious refreshes.
+
+    `oob` is markup carrying `hx-swap-oob`, appended to the flash. Every caller
+    of this helper posts with `hx-swap="none"`, so the flash body itself is
+    discarded — but htmx still processes out-of-band elements in it, which is how
+    a mutation can re-state the one region it changed without the page reloading.
+    Pass it on *every* return path of an endpoint that uses it, including the
+    no-op ones: a response without the fragment leaves the region as it was.
 
     Pass `album` whenever the action concerns one album, so the entry joins that
     album's history (#33) and the feed can link + name it (#65). The album's id
@@ -4194,7 +4227,7 @@ def _flash_response(
     if extra_triggers:
         triggers.update(extra_triggers)
     return HTMLResponse(
-        _flash(message, level=level),
+        _flash(message, level=level) + oob,
         status_code=status_code,
         headers={"HX-Trigger": json.dumps(triggers)},
     )
