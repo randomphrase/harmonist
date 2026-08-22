@@ -152,22 +152,14 @@ see event ordering, focus, the top layer, or whether a click actually produced a
 request — every one of which is where this layer's bugs live. #40 shipped with a
 green suite and 91% coverage.
 
-- Exercise the change in **demo mode** (`HARMONIST_DEMO_MODE=1`) before calling
-  it done. "The template looks right" is not verification.
-- If the change concerns **event ordering or dialog lifecycle**, add or extend
-  the Playwright smoke test in `test/e2e/`. It's opt-in (`make e2e`, needs
-  `uv pip install -e '.[e2e]'` + `playwright install chromium`), so `make check`
-  stays browser-free.
-- A new browser test must be **mutation-checked**: reintroduce the bug, confirm
-  the test fails, restore. A smoke test that cannot fail is worse than none.
-- **A mutation check that passes means your test is wrong, not that the fix is
-  unnecessary.** #144's first attempt drove the 2b bug with a keyboard `Enter` on
-  the `<select>` and stayed green with the bug back in — Chrome only does implicit
-  submission from text-ish controls, so the key press did nothing at all. Driving
-  the same event through `requestSubmit()` reproduced it. Prefer a driver that
-  raises the event **directly** over one that depends on an engine's rules for
-  synthesising it; those rules differ per browser and change under you, and a test
-  resting on them stops reproducing its bug without ever going red.
+So a template change is not proven by pytest. Exercise it in **demo mode**
+(`HARMONIST_DEMO_MODE=1`) — "the template looks right" is not verification — and
+where the change concerns event ordering or dialog lifecycle, add to the
+Playwright smoke tests in `test/e2e/`.
+
+The **`testing`** skill owns the rest: which rung of the ladder can see which
+bug, why a browser test must be mutation-checked, and why a mutation check that
+*passes* means the test is wrong (#144). Read it before writing the test.
 
 ## 7. Test-client CSRF
 
