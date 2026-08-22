@@ -1051,7 +1051,16 @@ def _release_cd_plus_dvd() -> dict:
                     "id": f"rt-v{i}",
                     "position": str(i),
                     "title": f"Video {i}",
-                    "recording": {"id": f"rec-v{i}", "title": f"Video {i}", "length": "300000"},
+                    "recording": {
+                        "id": f"rec-v{i}",
+                        "title": f"Video {i}",
+                        "length": "300000",
+                        # What MusicBrainz actually returns, and the only honest
+                        # test of a video medium — the medium's `format` is not
+                        # one, since a Blu-ray can carry 45 audio tracks and 4
+                        # videos (#206).
+                        "video": "true",
+                    },
                 }
                 for i in range(1, 4)
             ],
@@ -1113,13 +1122,21 @@ def test_tag_album_still_refuses_when_audio_is_genuinely_missing(album_with_trac
         tagger.tag_album(album_dir, _release_cd_plus_dvd())
 
 
-def test_tag_album_counts_everything_when_video_media_is_unknown(album_with_tracks):
-    """`video_media=None` is "not asked yet", not "none are video" (#206). An
-    album that has never been through that lookup must behave exactly as it did
-    before this existed, rather than quietly assuming its second medium is a
-    DVD."""
-    album_dir = album_with_tracks(2)
-    _with_video_media(album_dir, None)
+@pytest.mark.parametrize("recorded", [None, ()])
+def test_tag_album_asks_the_release_not_the_sidecar_about_video(album_with_tracks, recorded):
+    """#237: the sidecar's `video_media` doesn't get a vote here.
 
-    with pytest.raises(TagMismatchError, match="2 audio files but MB release has 5 tracks"):
-        tagger.tag_album(album_dir, _release_cd_plus_dvd())
+    It is written only for albums that already LOOK like they are missing a
+    medium (`reconcile.needs_video_media`), which an album whose tags predate
+    the release gaining discs does not — TISM's *The White Albun* restored from
+    backup says "disc 1 of 1, all present", so nothing was absent, nothing was
+    asked, and the guard went back to counting videos as missing audio.
+
+    `None` is that album ("not asked"), and `()` is the staler version of the
+    same thing ("asked, before the DVDs existed"). The release in hand carries
+    the per-track video flag either way, so neither blocks the re-tag.
+    """
+    album_dir = album_with_tracks(2)
+    _with_video_media(album_dir, recorded)
+
+    assert tagger.tag_album(album_dir, _release_cd_plus_dvd()) == 2

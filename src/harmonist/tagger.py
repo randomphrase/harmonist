@@ -17,7 +17,16 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol, runtime_checkable
 
-from . import activity_store, album_files, artwork_store, audit, compare, formats, tag_history
+from . import (
+    activity_store,
+    album_files,
+    artwork_store,
+    audit,
+    compare,
+    formats,
+    mb_lookup,
+    tag_history,
+)
 from . import sidecar as sidecar_mod
 from .formats import TagSet, owned
 from .formats.m4a import (  # noqa: F401 — back-compat re-exports
@@ -159,7 +168,7 @@ def tag_album(
     # DVD's 53 videos against 16 audio files made a complete, correctly tagged
     # album permanently un-re-taggable — and it is the albums MusicBrainz has
     # since corrected that most need the button.
-    taggable = _taggable_tracks(album_dir, flat_tracks)
+    taggable = _taggable_tracks(release, flat_tracks)
 
     if not incomplete and len(files) != len(taggable):
         raise TagMismatchError(
@@ -738,21 +747,28 @@ def _identity_of(flat: _FlatTrack) -> compare.TrackIdentity:
     return compare.TrackIdentity(track.get("id"), _disc_num(medium), track_pos + 1)
 
 
-def _taggable_tracks(album_dir: Path, flat_tracks: list[_FlatTrack]) -> list[_FlatTrack]:
+def _taggable_tracks(release: Release, flat_tracks: list[_FlatTrack]) -> list[_FlatTrack]:
     """The release's tracks minus the ones on media Harmonist will never write.
 
-    Read from the sidecar's `video_media` (#206), which is the only record of
-    which media are video — the release dict's per-medium `format` is not the
-    test, because a medium can mix audio and video and MusicBrainz answers that
-    per TRACK (`mb_lookup.fetch_video_media`).
+    Read from the RELEASE (#237), not from the sidecar's `video_media` (#206),
+    even though that field records the same fact. The sidecar's copy exists for
+    the scanner, which has no MusicBrainz; here the release is already in hand
+    and carries the per-track `video` flag, so asking the sidecar buys nothing
+    and can be wrong: it is only written for albums that look like they are
+    missing a medium (`reconcile.needs_video_media`), and an album whose tags
+    predate the release gaining discs does not look like that. TISM's *The White
+    Albun*, restored from a backup, says "disc 1 of 1, all present" — nothing
+    absent, so nothing asked, so the guard counted 53 videos as missing audio
+    and refused the re-tag for good.
 
-    `None` there means "not asked yet", not "none are video", so it excludes
-    nothing and the guard behaves exactly as it did before this existed. An
-    album that has never been through that lookup is no worse off; one that has
-    stops being told its DVD's tracks are missing audio files.
+    Per TRACK rather than per medium format, exactly as
+    `mb_lookup.fetch_video_media` is: `Wish You Were Here 50` is one Blu-ray of
+    45 audio tracks and 4 videos, and judging by format would expect nothing of
+    it.
     """
-    sc = sidecar_mod.read(album_dir)
-    video = set(sc.video_media or ()) if sc else set()
+    # `mb_lookup` for a PURE function: this makes no request, and the release it
+    # reads was fetched by the caller.
+    video = set(mb_lookup.video_media_of(release))
     if not video:
         return flat_tracks
     return [f for f in flat_tracks if _disc_num(f[0]) not in video]

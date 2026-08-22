@@ -161,8 +161,23 @@ def fetch_video_media(mbid: str) -> tuple[int, ...]:
     except (musicbrainzngs.NetworkError, musicbrainzngs.AuthenticationError) as e:
         raise MBError(f"MB request failed: {e}") from e
 
+    return video_media_of(result["release"])
+
+
+def video_media_of(release: Release) -> tuple[int, ...]:
+    """`fetch_video_media`'s answer, read off a release already in hand.
+
+    Pure — no request. `fetch_release` asks for `recordings`, so the per-track
+    `video` flag is already on every release the album page and the tagger hold,
+    and asking MusicBrainz again for a fact sitting in memory would spend a
+    rate-limited request on nothing (#237).
+
+    Kept beside the fetch rather than in `models`, because what counts as a
+    video medium is a MusicBrainz question and the answer must not drift between
+    the two callers.
+    """
     positions: list[int] = []
-    for medium in result["release"].get("medium-list") or []:
+    for medium in release.get("medium-list") or []:
         tracks = medium.get("track-list") or []
         if not tracks:
             continue
