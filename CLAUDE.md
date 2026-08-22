@@ -74,6 +74,16 @@ sidecar contents.
 - **Quality gate:** `make check` (ruff + `ruff format --check` + `mypy --strict`
   + `template-lint` + pytest) must pass before you commit; CI runs the same on
   Python 3.12/3.13/3.14.
+- **A test says what the code does, not what it stopped doing.** Assert an
+  *absence* only when some live code path could produce the thing — the reliable
+  sign is that the same string is asserted **present** elsewhere under different
+  conditions (Confirm & Tag on a suggestion card but not a surrender one; the
+  amber badge before acceptance but not after). An absence nothing could produce
+  is the removal diff pinned in amber: it can never fail, so it never earns its
+  run. Same rule for a "we don't support X yet" list — it either duplicates the
+  exhaustive positive check or quietly drifts away from the code, as
+  `test_picard_spec.py`'s KNOWN_GAPS did for months. Roadmaps go in a comment
+  beside the check that would actually notice.
 - **UI work:** before editing anything under `templates/` or `static/input.css`,
   consult the `web-ui` skill — native elements over hand-rolled widgets, never
   `onclick` on an element that also carries `hx-*` (mechanically enforced by
