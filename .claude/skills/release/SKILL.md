@@ -94,9 +94,9 @@ single source of the version:
 version = "X.Y.Z"
 ```
 
-The **release commit body and the GitHub Release narrative are exempt** — prose
-themes are where the mechanism, the history and the caveats belong. The trim
-applies to the bullets only. Detail is not deleted, it is *relocated*.
+The trim applies to the bullets. Detail is not deleted, it is *relocated* — to
+the issue and to the commit that made the change, both of which are already
+linked from the bullet and neither of which has a length limit.
 
 ## 5. `make check`
 
@@ -106,13 +106,41 @@ Subject is exactly `Release X.Y.Z`. Stage explicit paths — `CHANGELOG.md`,
 `pyproject.toml`, and any docs from step 2.
 
 The body is not a summary of the changelog; it's the part the changelog can't
-carry. Read `git show v1.4.0` and `git show v1.5.0` for the established shape:
+carry — which on a quiet release is just the first two lines below. `git show
+v1.4.0` and `git show v1.5.0` show the long shape, from cycles that had one to
+justify; read them for the voice, not as a quota to fill.
 
 1. One line on what the commit mechanically does.
 2. Why this bump, per semver.
-3. **The themes** — two or three, in prose, each naming its issues. A theme
-   explains what got *better* and why it mattered, which a bullet list of
-   effects can't. Fixes that share a cause belong in one theme.
+3. **Themes, only if there are any** — see below. Most releases stop at 2.
+
+### Themes are the exception, not the format
+
+A theme is prose that names what got *better* across several entries at once.
+It has to earn its place, and the bar is: **something true of the release that
+no bullet and no linked commit says.** If a reader would learn nothing from it
+that the six bullets above it already told them, it is filler — cut it and ship
+the bullets alone. That is the normal outcome for a patch release.
+
+What does not clear the bar:
+
+- **The obvious.** A bugfix release is about bugs; a minor release adds things.
+  Restating the section heading in paragraph form is not a theme.
+- **A retelling of one bullet.** If a theme names one issue, it is that issue's
+  commit message with the line breaks moved, and the commit is already better
+  at it — this repo writes long, careful ones.
+- **A group with nothing to say about the group.** Three fixes that happen to
+  touch the same feature are three bullets. The theme needs a point about the
+  *set*: they shared a cause, or fixing them changed how the feature works.
+
+What does: a cross-cutting change several bullets only hint at individually;
+something the user must do or know on upgrade; a capability that arrived in
+pieces no single entry describes; the reason a release exists at all.
+
+Two is the ceiling in practice. 1.10.2 shipped three for six unrelated fixes,
+each one a paraphrase of a commit message — 1.5KB of prose in front of notes a
+reader could have scanned in fifteen seconds. Where there is nothing to say,
+say nothing: bullets alone is a finished release, not a lazy one.
 
 ## 7. The signed tag
 
@@ -146,13 +174,16 @@ The tag is not the release. Every prior version has one (`gh release list`), and
 gh release create vX.Y.Z --verify-tag --title "Harmonist X.Y.Z" --notes-file -
 ```
 
-The body is the changelog section **plus** the commit's themes:
+The body is the changelog section:
 
 - the `### Added` / `### Changed` / `### Fixed` sections, each bullet unwrapped
   to a single line (the changelog hard-wraps; GitHub doesn't need it), with
   `### Changed` led by the most significant entry
-- a `---` rule
-- the themed narrative from the release commit, with the theme leads in **bold**
+
+For most releases that is the whole body, and it is complete as it stands. Only
+if the release commit ended up with themes (step 6) do they follow, after a
+`---` rule, with the theme leads in **bold**. No themes in the commit, no rule
+and no narrative here — do not write one for the occasion.
 
 Never `--generate-notes`. A list of commit subjects is exactly what the
 changelog exists to not be. `gh` marks the newest release latest on its own.
@@ -176,7 +207,9 @@ Confirm from the workflow run, not the registry: reading published tags via
 - [ ] every commit since the last tag is in the changelog or genuinely internal
 - [ ] `README.md`, `docs/usage.md` and `docs/design.md` describe what shipped
 - [ ] **every changelog bullet is one or two sentences** — scannable, with the
-      mechanism and the caveats left to the issue and the themes
+      mechanism and the caveats left to the issue and the commit
+- [ ] any theme survives "what does this say that the bullets don't?" — if
+      none does, the release notes are the bullets alone
 - [ ] `pyproject.toml` bumped, `make check` green
 - [ ] `Release X.Y.Z` commit, GPG-signed tag verified locally
 - [ ] commit pushed, then tag
