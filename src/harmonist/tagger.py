@@ -241,7 +241,11 @@ def tag_album(
             "tag.track",
             album_id=album_id,
             file=album_files.rel_name(album_dir, file_path),
-            track=track_pos_in_medium,
+            # +1 because `_flatten_tracks` enumerates from zero and MusicBrainz,
+            # the files and the album page all count from one (#240). A record
+            # off by one is worse than none: it is exactly what someone auditing
+            # a re-tag would read as the tagger having assigned the wrong track.
+            track=track_pos_in_medium + 1,
             title=_track_title(track),
         )
         if event_id is not None:

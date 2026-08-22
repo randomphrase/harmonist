@@ -18,6 +18,12 @@ versions follow [semantic versioning](https://semver.org).
 - An album whose only missing discs are video can be re-tagged again. It used
   to refuse — "16 audio files but MB release has 69 tracks" — counting a bonus
   DVD's videos as audio files you were missing (#235, #237).
+- Re-tagging no longer resets parts of an album's record: a surrendered album
+  stays surrendered, an accepted-as-incomplete one stays accepted, and an album
+  with a bonus DVD no longer flips to Incomplete until the next reconcile
+  (#239).
+- The History panel's per-track lines now number tracks from 1, matching the
+  files and the tracklist above them, instead of from 0 (#240).
 - An album page now lists the video files on disk instead of reporting a
   part-ripped DVD as a disc you don't have at all. They're marked as video and
   not compared against MusicBrainz — Harmonist reads their tags, never writes

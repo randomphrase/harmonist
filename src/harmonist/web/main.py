@@ -2497,15 +2497,26 @@ def _tag_with_release(
             )
         except Exception:
             log.exception("store_url derivation during tagging failed")
-    new = Sidecar(
+    # `replace`, not a fresh `Sidecar(...)` — anything not named here carries
+    # through BY CONSTRUCTION (#239). Listing the fields to keep meant every
+    # field left off the list was silently reset to its default on every
+    # re-tag: `video_media` (so an album with a bonus DVD went Incomplete until
+    # a later pass spent a MusicBrainz request re-learning it), and the
+    # `purchase_unavailable` / `tracks_unavailable` surrenders, whose whole
+    # purpose is to be permanent. A field added to the model later would have
+    # joined them, silently, with no test to notice.
+    base = sc or Sidecar()
+    new = replace(
+        base,
         store_url=store_url,
-        bandcamp=sc.bandcamp if sc else None,
-        downloaded_at=sc.downloaded_at if sc else None,
-        added_at=(sc.added_at if sc else None) or datetime.now(UTC),
+        added_at=base.added_at or datetime.now(UTC),
         mb_release_id=mbid,
-        mb_match_candidate=None,  # cleared on tag
+        mb_match_candidate=None,  # cleared on tag — a suggestion, now acted on
         tagged_at=datetime.now(UTC),
-        notes=sc.notes if sc else None,
+        # Read off the release this tagging used, so the one fact the files
+        # cannot carry (#206) is recorded at the moment it is known rather than
+        # left for a reconcile pass to fetch again. Pure — no request (#237).
+        video_media=mb_lookup.video_media_of(release),
     )
     sidecar_mod.write(album_path, new)
     _claim_pending_by_store_url(store_url)
