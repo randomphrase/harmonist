@@ -127,27 +127,72 @@ album has no directory, so it is in no state at all — it is held in
 derivation* when `library_index` sees the purchase again (so any route home
 clears it, including the user restoring the zip by hand).
 
-**The replacement is tagged by the ordinary path**, `_resolve_by_store_url` off
-the sync's `post_download_callback` — the same one every first-time download
-takes. So it can land untagged, in exactly the three ways any download can: the
-store URL resolves to no MB release, it resolves but the match is only
-*approximate* (a live release the artist has since grown is precisely this — the
-new file count won't match a stale MB tracklist), or the lookup errors. All three
-leave a sidecar with a `store_url` and no release, i.e. **NEEDS_MBID** — in the
-inbox with Recheck and the assign tools, not silently absent and not silently
-wrong. Worth stating plainly because it is a real cost of the operation: the
-album was COMPLETE before, and the user can get back a copy that needs a click.
-The archive is what makes that recoverable rather than a loss.
+**The release is carried through the round trip.** Re-downloading says the
+*files* are wrong, not the match — the user is looking at an album they already
+accepted as this release and replacing its audio. So the archived album's
+`mb_release_id` is held in `redownloads` and the replacement is tagged as that
+same release (`_tag_as_redownloaded`, off the sync's `post_download_callback`),
+rather than re-resolving the store URL and re-opening a question nobody asked.
+Re-resolution can land on a different release, or on none, turning a finished
+album into inbox work.
 
-**Album history spans the round trip only when the release is unchanged.** The
-archive and delete are recorded under the album's `mb_release_id`; the fresh
-download starts under a path-derived `temp_uid`; tagging it back to the *same*
-release records the `temp_uid → MBID` alias, and `album_history` unions over the
-alias chain — so the album's page shows what happened to it, not just what has
-happened since. If MusicBrainz resolves the store URL to a **different** release,
-nothing joins the two ids and the archive stays on the old album's history:
-findable in the Activity feed, absent from the new album's page. Both halves are
-pinned by tests; the alias is what carries it, so removing it fails them.
+This is **Confirm's semantics, not a guess** — an explicit user decision to tag
+an album as a named release — so the match-confidence assessment is skipped
+exactly as Confirm skips it. What is *not* skipped is the tagger's own count
+guard: whether a tagging is representable is not something a user's assertion can
+make true.
+
+**Whether the copy was INCOMPLETE is carried too**, and this is not a separate
+judgement — it is part of the match the user accepted. An album short of its
+release, re-downloaded to go and get the rest, may well come back just as short
+(the artist hasn't added them after all, or Bandcamp hasn't caught up). That is
+the state it was already in, so it is tagged in the tagger's incomplete mode and
+stays INCOMPLETE. Refusing would charge the user their tags for a shortfall that
+predates the button.
+
+The reverse does **not** get the same treatment: an album that was COMPLETE
+coming back short is a bad download, and gets the strict guard. Both directions
+are pinned by tests, because the rule is wrong if either half is dropped — and
+the first version of this shipped without it, which the demo library caught by
+turning its own INCOMPLETE fixture into inbox work.
+
+**Every case it can't settle falls through to `_resolve_by_store_url`**, i.e. to
+what a first-time download does, so the fallback is never worse than the ordinary
+path:
+
+- The replacement **outgrew** the release (`file_count > track_count`, an error in
+  both tagger modes, §13.3) — MusicBrainz may not have caught up with a release
+  the artist has added to.
+- A previously **COMPLETE** album arrived short (above).
+- The carried release has been **deleted from MusicBrainz** since the archive
+  (#194), or MB is unreachable.
+- The carried match was **lost to a restart** (it is in-memory, like everything
+  else here).
+
+All four leave a sidecar with a `store_url` and no release — **NEEDS_MBID**, in
+the inbox with the side-by-side and Confirm / Confirm as Incomplete on it. Worth
+stating plainly, because it remains a real cost of the operation: an album that
+was COMPLETE can come back needing a click. The archive is what makes that
+recoverable rather than a loss.
+
+**Two lifetimes, two dicts.** The inbox card clears the moment the files are back
+(`prune`, on `library_index.item_ids()`); the carried release must outlive it,
+because the download writes its sidecar — and so populates that index — *before*
+the tagging runs, and the inbox polls every couple of seconds during a sync.
+Holding both in one dict meant a poll landing in that gap silently discarded the
+match. The carried one is instead consumed by `take_match` at the tagging, which
+is also the only thing that clears it on the happy path.
+
+**Album history spans the round trip.** The archive and delete are recorded under
+the album's `mb_release_id`; the fresh download starts under a path-derived
+`temp_uid`; tagging it back to that same release records the `temp_uid → MBID`
+alias, and `album_history` unions over the alias chain — so the album's page
+shows what happened to it, not just what has happened since. Carrying the release
+is what makes this the normal outcome rather than a coincidence. Where it can't
+be carried, nothing joins the two ids and the archive stays on the old album's
+history: findable in the Activity feed, absent from the new album's page. Both
+halves are pinned by tests; the alias is what carries it, so removing it fails
+them.
 
 **Known limitation.** That store and the download approval are both in-memory. A
 restart in the seconds between the archive and its sync loses them, and on a

@@ -746,6 +746,7 @@ def run_demo_sync(
     link_only: bool = False,
     ignores_file: Path | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    post_download_callback: Callable[[Path], None] | None = None,
 ) -> Any:
     """Mirror the real syncer's adoption behaviour:
       1. Link every already-on-disk album whose Bandcamp store_url matches a
@@ -755,8 +756,18 @@ def run_demo_sync(
          are the residue. In **link-only** mode they surface as POTENTIAL
          DOWNLOADS for review (download nothing); any the user already approved
          (clicked Download) are fetched. In a **full** sync they all download.
+      3. Bring back any LIBRARY album archived off disk by a re-download (#132):
+         an approved purchase that is one of the seeded albums rather than one of
+         the pending ones. Like the real path, an approval bypasses link-only.
     Returns a stub matching the attributes the sync runner introspects — including
     `unmatched_purchases()`, which the post-sync mis-tag detection reads.
+
+    `post_download_callback` is invoked for **re-downloads only**. The pending
+    purchases' fixtures already carry their release, so they land tagged with no
+    resolution needed; a re-download must go through the real callback because
+    that is the thing being demonstrated — it is what tags the replacement as the
+    release the archived copy had, and a demo that skipped it would show the right
+    outcome while proving nothing about the code that produces it.
     """
 
     class _Result:
@@ -809,7 +820,44 @@ def run_demo_sync(
             _download(music_dir, p, progress_callback)
             result.new_items_downloaded = True
         pending_downloads.replace_all([])
+
+    for spec in _archived_redownloads(on_disk):
+        _download(music_dir, _as_fresh_download(spec), progress_callback)
+        result.new_items_downloaded = True
+        if post_download_callback:
+            album_dir = music_dir / _safe(spec["artist"]) / _safe(spec["album"])
+            with contextlib.suppress(Exception):
+                post_download_callback(album_dir)
     return result
+
+
+def _archived_redownloads(on_disk: set[int]) -> list[dict[str, Any]]:
+    """Seeded albums the user re-downloaded: approved, and no longer on disk
+    because the re-download archived them away (#132)."""
+    out = []
+    for spec in LIBRARY:
+        sc_spec = spec.get("sidecar") or {}
+        iid = sc_spec.get("bandcamp_item_id")
+        if iid and iid not in on_disk and pending_downloads.is_approved(int(iid)):
+            out.append(spec)
+    return out
+
+
+def _as_fresh_download(spec: dict[str, Any]) -> dict[str, Any]:
+    """The same album as it arrives from Bandcamp: audio and a purchase link, no
+    MusicBrainz anything.
+
+    The seeded spec describes the album in its *settled* state — tagged, with a
+    release on the sidecar and an MBID atom on the files. A download has none of
+    that yet; the tagging happens afterwards, in the app. Handing the settled
+    spec back would leave nothing for the re-download's tagging to do, and the
+    demo would show a working feature whatever the code did."""
+    sidecar = {
+        k: v
+        for k, v in (spec.get("sidecar") or {}).items()
+        if k not in ("mb_release_id", "tagged", "mb_match_candidate")
+    }
+    return {**spec, "sidecar": sidecar, "file_mbid": None, "file_mbid_tracks": None}
 
 
 def _purchase_label(url: str) -> str:

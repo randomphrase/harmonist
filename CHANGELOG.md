@@ -14,7 +14,12 @@ versions follow [semantic versioning](https://semver.org).
   purchase. Your current files are zipped to the top of your music folder first,
   as `Artist — Album (archived 2026-08-24).zip`, and only removed once the zip
   has been checked; unzip it there to put the album back. The inbox shows the
-  album as re-downloading until the replacement lands.
+  album as re-downloading until the replacement lands, which is then tagged as
+  the same MusicBrainz release the old copy had — re-downloading says the files
+  are wrong, not the match — so the album keeps its history and normally goes
+  straight back to the Library. An album that was already incomplete may come
+  back just as short if the tracks still aren't there; it keeps its tags and its
+  count rather than landing in the inbox.
 
 ### Changed
 

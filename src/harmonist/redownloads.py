@@ -57,15 +57,68 @@ _lock = threading.Lock()
 _pending: dict[int, PendingRedownload] = {}
 
 
-def add(entry: PendingRedownload) -> None:
-    """Record an archived album as awaiting re-download."""
+@dataclass(frozen=True)
+class CarriedMatch:
+    """What an archived album knew about itself, for its replacement to inherit."""
+
+    mb_release_id: str
+    #: The archived copy was INCOMPLETE — short of the release's tracklist, and
+    #: tagged that way regardless. Carried because it is part of the match the
+    #: user accepted, not a separate judgement: a replacement that arrives just
+    #: as short is the status quo, and refusing to tag it would turn a tagged
+    #: album into inbox work for a shortfall it already had. The reverse case is
+    #: the one that must NOT be waved through — an album that was complete coming
+    #: back short is a bad download, so it does not get this.
+    incomplete: bool = False
+
+
+# item_id → what the archived album was, for the replacement to be tagged as too
+# (#132).
+#
+# **Deliberately not the same lifetime as the card above**, which is why it is a
+# second dict rather than a field on `PendingRedownload`. The card clears the
+# moment the files are back on disk; this must survive until the *tagging*, which
+# happens afterwards — and the inbox polls every couple of seconds during a sync,
+# so the gap between the two is not theoretical. Sharing one dict meant a poll
+# landing in that window silently threw the release away and the replacement
+# re-resolved from scratch: the exact thing carrying it is meant to prevent.
+#
+# Consumed by `take_release`, so an entry has a definite end. One that is never
+# consumed — the download never arrives — leaks a single string until restart,
+# which is the same bound as everything else in this module.
+_carried: dict[int, CarriedMatch] = {}
+
+
+def add(entry: PendingRedownload, *, match: CarriedMatch | None = None) -> None:
+    """Record an archived album as awaiting re-download.
+
+    `match` is what the archived copy was. Re-downloading says the *files* are
+    wrong, not the match — so the replacement is tagged as that same release
+    rather than being re-resolved from its store URL, which could land on a
+    different one (or on none).
+    """
     with _lock:
         _pending[entry.item_id] = entry
+        if match:
+            _carried[entry.item_id] = match
+
+
+def take_match(item_id: int) -> CarriedMatch | None:
+    """What a re-download should be tagged as, removing it as it answers.
+
+    Take-once: the tagging either succeeds, or falls back to resolving the store
+    URL and must not then be re-attempted against the same release on a later
+    sync — by which point the user has seen the album in their inbox and may have
+    assigned it something else themselves.
+    """
+    with _lock:
+        return _carried.pop(item_id, None)
 
 
 def remove(item_id: int) -> None:
     with _lock:
         _pending.pop(item_id, None)
+        _carried.pop(item_id, None)
 
 
 def prune(present_item_ids: set[int]) -> None:
@@ -73,6 +126,10 @@ def prune(present_item_ids: set[int]) -> None:
 
     `present_item_ids` is `library_index.item_ids()` — the purchases the current
     scan can see. An entry in both is an album that has returned.
+
+    Clears the CARD only. The carried release outlives it on purpose: the album
+    is on disk here but not yet tagged, and that is precisely when the release is
+    still needed (see `_carried`).
     """
     with _lock:
         for item_id in present_item_ids & set(_pending):
@@ -95,3 +152,4 @@ def reset() -> None:
     """Clear all state. For demo re-seed and test isolation."""
     with _lock:
         _pending.clear()
+        _carried.clear()

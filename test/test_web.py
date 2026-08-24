@@ -6900,7 +6900,7 @@ def test_redownload_of_an_adopted_album_does_not_cry_wolf_about_the_ignores(
 
 
 def test_redownload_warns_when_the_ignore_could_not_be_removed(
-    client, cfg, quiet_sync, monkeypatch
+    client, cfg, quiet_sync, no_cover_fetch, monkeypatch
 ):
     """The opposite case, and the one worth interrupting for: the id is still
     ignored, so bandcampsync skips the purchase and the replacement the user was
@@ -6979,7 +6979,9 @@ def test_redownloading_twice_archives_once(client, cfg, quiet_sync):
     assert len(list(cfg.paths.music_dir.glob("*.zip"))) == 1
 
 
-def _replay_the_download(cfg, name: str, *, item_id: int, mbid: str | None) -> Path:
+def _replay_the_download(
+    cfg, name: str, *, item_id: int, mbid: str | None, tracks: int = 1
+) -> Path:
     """What the sync does when the replacement lands: recreate the album dir and
     write a sidecar for the purchase (no MBID — a fresh download isn't tagged
     yet), then, if MusicBrainz resolved it, tag it. Both go through
@@ -6987,6 +6989,8 @@ def _replay_the_download(cfg, name: str, *, item_id: int, mbid: str | None) -> P
     from harmonist.bandcamp_hook import write_sidecar_for_item
 
     d = _make_album(cfg, name)
+    for i in range(2, tracks + 1):  # _make_album writes track 1
+        shutil.copy(SINE_M4A, d / f"{i:02d} Track.m4a")
     slug = name.lower().replace(" ", "-")
     item = mock.Mock(
         item_id=item_id,
@@ -7026,11 +7030,16 @@ def test_history_survives_the_round_trip_when_the_replacement_tags_the_same_rele
 
 
 def test_history_splits_when_the_replacement_tags_a_different_release(client, cfg, quiet_sync):
-    """The limit of the above, stated rather than discovered. If MusicBrainz
-    resolves the store URL to a DIFFERENT release, the replacement's id is not
-    the archived album's id and no alias joins them — the archive stays on the
-    old id's history, reachable from the Activity feed but not from the new
-    album's page."""
+    """The limit of the above, stated rather than discovered. If the replacement
+    ends up on a DIFFERENT release, its id is not the archived album's id and no
+    alias joins them — the archive stays on the old id's history, reachable from
+    the Activity feed but not from the new album's page.
+
+    Carrying the release through the round trip is what makes this rare rather
+    than routine: it is now only reachable when the carried release was lost (a
+    restart) or refused (the files don't fit it), and in the second case the user
+    is looking at the suggestion card when it happens. So this pins a residual
+    case, not the common path — which is the test above."""
     d = _make_tagged_album(
         cfg, "Split", mbid="rel-split-old", tagged_at=datetime.now(UTC), item_id=7002
     )
@@ -7067,3 +7076,247 @@ def test_a_replacement_musicbrainz_cannot_match_lands_in_the_inbox_not_the_libra
 
     states = {a.path: a.state for a in scanner.scan(cfg.paths.music_dir)}
     assert states[back] == AlbumState.NEEDS_MBID
+
+
+@pytest.fixture
+def no_cover_fetch(monkeypatch):
+    """Tagging embeds cover art, which would otherwise reach the real Cover Art
+    Archive over the network for every release id these tests invent."""
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+
+def _resolve_the_download(cfg, album_dir: Path) -> str:
+    """Run the post-download hook the sync runs, against a just-landed album."""
+    from harmonist.tagger import PicardCompatibleTagger
+    from harmonist.web.main import _resolve_by_store_url
+
+    return _resolve_by_store_url(album_dir, cfg, PicardCompatibleTagger())
+
+
+def test_the_replacement_is_tagged_as_the_release_it_was_archived_as(
+    client, cfg, quiet_sync, no_cover_fetch, monkeypatch
+):
+    """Re-downloading says the FILES are wrong, not the match — so the release
+    the user already accepted is carried through rather than re-resolved from the
+    store URL, which is a question they didn't ask."""
+    d = _make_tagged_album(
+        cfg, "Carried", mbid="rel-carry", tagged_at=datetime.now(UTC), item_id=8001
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda m: _release_with_rg(m, "rg-carry", n_tracks=1)
+    )
+    # The store URL now resolves somewhere ELSE — a re-match would take it, and
+    # carrying the release is exactly what stops that.
+    monkeypatch.setattr(mb_lookup, "lookup_by_bandcamp_url", lambda _u: ["rel-something-else"])
+    back = _replay_the_download(cfg, "Carried", item_id=8001, mbid=None)
+
+    assert _resolve_the_download(cfg, back) == "tagged"
+    assert sc.read(back).mb_release_id == "rel-carry"
+
+
+def test_carrying_the_release_keeps_the_album_out_of_the_inbox(
+    client, cfg, quiet_sync, no_cover_fetch, monkeypatch
+):
+    """The point of it, in the terms the user sees: an album that was in the
+    Library before the re-download is in the Library after it."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+
+    d = _make_tagged_album(
+        cfg, "Stays Done", mbid="rel-stays", tagged_at=datetime.now(UTC), item_id=8002
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda m: _release_with_rg(m, "rg-stays", n_tracks=1)
+    )
+    back = _replay_the_download(cfg, "Stays Done", item_id=8002, mbid=None)
+    _resolve_the_download(cfg, back)
+
+    states = {a.path: a.state for a in scanner.scan(cfg.paths.music_dir)}
+    assert states[back] == AlbumState.COMPLETE
+
+
+def test_a_replacement_that_does_not_fit_the_release_falls_back_to_a_suggestion(
+    client, cfg, quiet_sync, no_cover_fetch, monkeypatch
+):
+    """The tagger's count guard is not skipped, and must not be: whether a
+    tagging is representable is not something the user's assertion can settle.
+    MusicBrainz may not have caught up with a release the artist has grown, so
+    the new files can outnumber its tracklist — which is an error in both tagger
+    modes (§13.3). The user meets the ordinary side-by-side instead."""
+    d = _make_tagged_album(
+        cfg, "Outgrown", mbid="rel-outgrown", tagged_at=datetime.now(UTC), item_id=8003
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    # MB still lists one track; the replacement arrives with three.
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda m: _release_with_rg(m, "rg-out", n_tracks=1)
+    )
+    monkeypatch.setattr(mb_lookup, "lookup_by_bandcamp_url", lambda _u: ["rel-outgrown"])
+    back = _replay_the_download(cfg, "Outgrown", item_id=8003, mbid=None, tracks=3)
+
+    assert _resolve_the_download(cfg, back) != "tagged"
+    after = sc.read(back)
+    assert after.mb_release_id is None  # not tagged behind the user's back
+    assert after.mb_match_candidate is not None  # ...but the suggestion is there
+
+
+def test_a_release_deleted_from_musicbrainz_falls_back_rather_than_failing(
+    client, cfg, quiet_sync, no_cover_fetch, monkeypatch
+):
+    """The carried release can go away between the archive and the download —
+    #194's case. Falling through to the store-URL path is how the album still
+    gets a chance at a release that exists."""
+    d = _make_tagged_album(
+        cfg, "Vanished", mbid="rel-vanished", tagged_at=datetime.now(UTC), item_id=8004
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    monkeypatch.setattr(mb_lookup, "fetch_release", _gone)
+    monkeypatch.setattr(mb_lookup, "lookup_by_bandcamp_url", lambda _u: [])
+    back = _replay_the_download(cfg, "Vanished", item_id=8004, mbid=None)
+
+    assert _resolve_the_download(cfg, back) == "no_match"
+    assert sc.read(back).mb_release_id is None
+
+
+def test_the_carried_release_survives_an_inbox_poll_between_download_and_tagging(
+    client, cfg, quiet_sync, no_cover_fetch, monkeypatch
+):
+    """The inbox polls every couple of seconds during a sync, and the download
+    writes the sidecar — putting the item_id into library_index — BEFORE the
+    tagging runs. A poll landing in that gap must not take the carried release
+    away with the card."""
+    from harmonist import redownloads
+
+    d = _make_tagged_album(
+        cfg, "Polled", mbid="rel-polled", tagged_at=datetime.now(UTC), item_id=8005
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda m: _release_with_rg(m, "rg-polled", n_tracks=1)
+    )
+    monkeypatch.setattr(mb_lookup, "lookup_by_bandcamp_url", lambda _u: ["rel-elsewhere"])
+    back = _replay_the_download(cfg, "Polled", item_id=8005, mbid=None)
+
+    client.get("/tasks")  # the poll: the album is back, so the card goes
+    assert redownloads.count() == 0
+    _resolve_the_download(cfg, back)
+
+    assert sc.read(back).mb_release_id == "rel-polled"
+
+
+def test_a_replacement_that_arrives_short_is_not_quietly_tagged_incomplete(
+    client, cfg, quiet_sync, no_cover_fetch, monkeypatch
+):
+    """The other side of the count guard. A download that arrives SHORT could be
+    forced through in the tagger's incomplete mode, and that would be the wrong
+    favour: the album was complete before, so a short replacement is a bad
+    download, not a newly-incomplete album. Carrying the release must not turn
+    into carrying an excuse for it."""
+    d = _make_tagged_album(
+        cfg, "Short", mbid="rel-short", tagged_at=datetime.now(UTC), item_id=8006
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    # MB says three tracks; only one file comes back.
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda m: _release_with_rg(m, "rg-short", n_tracks=3)
+    )
+    monkeypatch.setattr(mb_lookup, "lookup_by_bandcamp_url", lambda _u: ["rel-short"])
+    back = _replay_the_download(cfg, "Short", item_id=8006, mbid=None, tracks=1)
+
+    assert _resolve_the_download(cfg, back) != "tagged"
+    assert sc.read(back).mb_release_id is None
+
+
+def test_the_carried_release_is_let_go_of_once_it_has_been_used(
+    client, cfg, quiet_sync, no_cover_fetch, monkeypatch
+):
+    """`prune` deliberately leaves the carried release alone, so consuming it at
+    the tagging is the ONLY thing that clears it on the happy path. Without that
+    every successful re-download would leak one until restart."""
+    from harmonist import redownloads
+
+    d = _make_tagged_album(
+        cfg, "Let Go", mbid="rel-letgo", tagged_at=datetime.now(UTC), item_id=8007
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda m: _release_with_rg(m, "rg-letgo", n_tracks=1)
+    )
+    back = _replay_the_download(cfg, "Let Go", item_id=8007, mbid=None)
+    assert redownloads.take_match(8007) is not None  # still held before the tagging
+    redownloads.add(
+        redownloads.PendingRedownload(
+            item_id=8007,
+            artist="Artist",
+            title="Let Go",
+            url="",
+            archive_name="x.zip",
+            requested_at=datetime.now(UTC),
+        ),
+        match=redownloads.CarriedMatch(mb_release_id="rel-letgo"),
+    )
+
+    _resolve_the_download(cfg, back)
+
+    assert redownloads.take_match(8007) is None
+
+
+def test_an_incomplete_album_that_comes_back_just_as_short_keeps_its_tags(
+    client, cfg, quiet_sync, no_cover_fetch, monkeypatch
+):
+    """The issue's own case: an album short of its release because the artist
+    added tracks after the purchase, re-downloaded to go and get them. Bandcamp
+    may not have them either — and then the replacement arrives just as short.
+
+    Being short is the state it was ALREADY in, and the user accepted this
+    release knowing that, so it stays tagged and INCOMPLETE. Refusing here would
+    charge them their tags for a shortfall that predates the button, which is
+    what the demo library did before the incompleteness was carried too."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+    from test.helpers import write_track_totals
+
+    d = _make_incomplete_album(
+        cfg, "Still Short", mbid="rel-short-still", tagged_at=datetime.now(UTC), expected=4
+    )
+    tagged = sc.read(d)
+    assert tagged is not None
+    sc.write(
+        d,
+        replace(
+            tagged,
+            bandcamp=BandcampInfo(item_id=8008),
+            store_url="https://x.bandcamp.com/album/still-short",
+        ),
+    )
+    assert _state_of(cfg, d) == AlbumState.INCOMPLETE
+
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda m: _release_with_rg(m, "rg-still", n_tracks=4)
+    )
+    back = _replay_the_download(cfg, "Still Short", item_id=8008, mbid=None, tracks=1)
+
+    assert _resolve_the_download(cfg, back) == "tagged"
+    assert sc.read(back).mb_release_id == "rel-short-still"
+    write_track_totals(back, track_total=4)
+    states = {a.path: a.state for a in scanner.scan(cfg.paths.music_dir)}
+    assert states[back] == AlbumState.INCOMPLETE  # short, and honest about it

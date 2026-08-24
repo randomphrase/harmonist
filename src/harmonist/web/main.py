@@ -343,6 +343,13 @@ def create_app(
         demo.install()
         demo.ensure_seeded(cfg.paths.music_dir)
 
+        def demo_resolve_after_download(album_dir: Path) -> None:
+            # The demo twin of `resolve_after_download` below. MB is monkey-patched
+            # by demo.install(), so this reaches the mocked catalogue rather than
+            # the network — but it is otherwise the same code, which is the point:
+            # a re-download's tagging is what the demo is there to show.
+            _resolve_by_store_url(album_dir, cfg, tagger)
+
         def runner_fn() -> Any:
             # Same link-only rule as the real runner: the popover override wins,
             # else auto-detect (any Needs-Link album or pending potential-download).
@@ -360,6 +367,10 @@ def create_app(
                 link_only=link_only,
                 ignores_file=cfg.ignores_file,
                 progress_callback=sync_runner.set_current_item,
+                # Re-downloads (#132) go through the REAL post-download resolve,
+                # so the demo exercises the carry-through rather than staging its
+                # outcome. See run_demo_sync for why only they do.
+                post_download_callback=demo_resolve_after_download,
             )
             # Run the REAL post-sync mis-tag detection (like the non-demo runner),
             # so a mis-tag surfaces AFTER a sync rather than being pre-seeded. Pass
@@ -2623,6 +2634,71 @@ def _tag_with_release(
     _claim_pending_by_store_url(store_url)
 
 
+def _tag_as_redownloaded(
+    album_path: Path, sc: Sidecar, cfg: config_mod.Config, tagger: Tagger
+) -> str | None:
+    """Tag a just-downloaded album as the release its archived copy was (#132).
+
+    Returns a status string if it handled the album, or **None to fall through**
+    to the ordinary store-URL resolution — which is every case this can't settle,
+    so the fallback is always today's behaviour rather than a worse one.
+
+    **Why carry the release at all.** Re-downloading says the *files* are wrong,
+    not the match: the user is looking at an album they already accepted as this
+    release and replacing its audio. Re-resolving the store URL from scratch
+    re-opens a question they did not ask — it can land on a different release, or
+    on none, turning a finished album into inbox work. Carrying it also keeps the
+    album's id stable across the round trip, which is what lets its history span
+    the archive (§2.4.1).
+
+    This is `Confirm`'s semantics, not a guess: an explicit user decision to tag
+    an album as a named release, so the match-confidence assessment is skipped
+    exactly as Confirm skips it. What is NOT skipped is the tagger's own count
+    guard, and that is the right remaining check — it asks whether the tagging is
+    *representable*, which no assertion by the user can make true. Files that
+    don't fit the release fall through, and the user meets the ordinary
+    side-by-side with Confirm / Confirm as Incomplete on it.
+    """
+    item_id = sc.bandcamp.item_id if sc.bandcamp else None
+    if item_id is None:
+        return None
+    carried = redownloads.take_match(item_id)
+    if carried is None:
+        return None  # not a re-download, or its match was already consumed
+    mbid = carried.mb_release_id
+    try:
+        # `incomplete` is carried, not decided here. An album that was already
+        # short keeps being taggable while short — refusing would cost it its
+        # tags over a shortfall it had before the user pressed anything. One that
+        # was COMPLETE gets the strict guard, so a truncated download is caught.
+        _tag_with_release(album_path, mbid, cfg, tagger, incomplete=carried.incomplete)
+    except tagger_mod.TagMismatchError as e:
+        # The replacement doesn't fit the release the old copy was. Genuinely
+        # possible and worth seeing: MusicBrainz may not have caught up with a
+        # release the artist has grown, and extra files on disk are out of scope
+        # for the tagger either way (§13.3). Fall through to the normal path,
+        # which stashes a suggestion and puts it in the inbox with the tools.
+        log.info("re-download of %s doesn't fit release %s: %s", album_path.name, mbid, e)
+        activity.record(
+            "Re-downloaded — the new files don't fit the release it was tagged as, "
+            "so it needs a look",
+            album_id=sidecar_mod.album_id_for(album_path),
+            album_label=album_path.name,
+            level=Level.WARNING,
+        )
+        return None
+    except mb_lookup.MBError:
+        # The release is gone from MusicBrainz, or MB is down. Same answer.
+        log.exception("could not fetch release %s for the re-download of %s", mbid, album_path)
+        return None
+    activity.info(
+        "Re-downloaded and tagged as the same MusicBrainz release",
+        album_id=sidecar_mod.album_id_for(album_path),
+        album_label=album_path.name,
+    )
+    return "tagged"
+
+
 def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagger) -> str:
     """Auto-resolve a sidecar's store_url against MusicBrainz.
 
@@ -2632,10 +2708,16 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
     match assessment: exact → tag (COMPLETE), approximate → stash candidate
     (NEEDS_MBID with a suggestion shown), no match → NEEDS_MBID. Never raises — returns a
     short status string for logging.
+
+    A **re-download** (#132) short-circuits all of that: the album is tagged as
+    the release its archived copy was, because that match is not what the user
+    asked to revisit. Only if those files won't fit it does this run.
     """
     sc = sidecar_mod.read(album_path)
     if sc is None or not sc.store_url or sc.mb_release_id:
         return "skipped"  # nothing to resolve, or already resolved
+    if (carried := _tag_as_redownloaded(album_path, sc, cfg, tagger)) is not None:
+        return carried
     # The album's name for the feed's album column. No artist/title is available
     # on this path — neither MatchCandidate nor BandcampInfo carries one, and
     # _apply_best_match returns plain strings — so use the directory name, which
@@ -3754,7 +3836,23 @@ def _register_routes(app: FastAPI) -> None:
                     url=sc.store_url or "" if sc else "",
                     archive_name=result.path.name,
                     requested_at=datetime.now(UTC),
-                )
+                ),
+                # Carried through the round trip so the replacement is tagged as
+                # THIS release rather than re-resolved from the store URL (#132).
+                # Re-downloading says the files are wrong, not the match.
+                match=(
+                    redownloads.CarriedMatch(
+                        mb_release_id=sc.mb_release_id,
+                        # Re-downloading an INCOMPLETE album is the issue's own
+                        # case: the artist added tracks. It may well come back
+                        # just as short (they haven't, or Bandcamp hasn't caught
+                        # up), and that is the state it was already in — so it
+                        # stays taggable rather than being demoted to the inbox.
+                        incomplete=album.state == AlbumState.INCOMPLETE,
+                    )
+                    if sc and sc.mb_release_id
+                    else None
+                ),
             )
             # The album has left every state — it isn't on disk any more. The
             # next scan's reset_from would correct this anyway; doing it here

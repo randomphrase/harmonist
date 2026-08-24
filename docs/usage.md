@@ -262,12 +262,25 @@ Nothing ever deletes the archive — it's yours to keep or bin once the new
 download looks right. The format is whichever one you've set in Settings, and the
 confirmation says which before you commit.
 
-**The new copy is tagged the same way any download is**, so it can arrive needing
-attention rather than going straight to the Library — if MusicBrainz has no
-release for the album, or has one that no longer matches what you've just
-downloaded. It then waits in the Inbox under **Needs MBID** with the usual
-Recheck and search tools. That's worth knowing before you start: an album that
-was finished can come back needing a click. It's also why the archive exists.
+**The new copy keeps the release you'd already matched.** Re-downloading says the
+files are wrong, not the match — so Harmonist tags the replacement as the same
+MusicBrainz release the old copy had, rather than looking the album up afresh and
+possibly landing somewhere else. The album keeps its history across the round
+trip, and normally goes straight back to the Library.
+
+If the album was already incomplete, it's allowed to come back incomplete — you
+re-downloaded to *try* for the missing tracks, and if they still aren't there
+that's the same album you had, not a new problem. It keeps its tags and its "2 of
+4 tracks on disk" badge.
+
+It can still come back needing attention, when the new files genuinely don't fit
+that release: more tracks than MusicBrainz lists (the artist added them and
+MusicBrainz hasn't caught up), fewer than it lists on an album that was
+previously complete (a bad download — Harmonist won't quietly accept that), or
+the release has since been deleted from MusicBrainz. Then it waits in the Inbox
+under **Needs MBID** with the side-by-side and the usual Confirm and search
+tools. Worth knowing before you start: an album that was finished can come back
+needing a click. It's also why the archive exists.
 
 You can't start a re-download while a sync is running; wait for it to finish.
 
