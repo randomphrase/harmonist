@@ -17,6 +17,9 @@ versions follow [semantic versioning](https://semver.org).
   whether the album is accepted instead of making you read it backwards off the
   button's label. Ticking it turns the badge from amber to grey; the album still
   says how short it is (#227, #245).
+- Video tracks are now marked with a video-camera icon instead of a play
+  triangle, which looked like a button you could press. Same icon MusicBrainz
+  uses (#249).
 - The Library no longer repeats itself above the grid: the `LIBRARY · N done`
   heading is gone, since the tab directly above already names the Library and
   counts it — and "done" quietly disagreed with the Incomplete filter sitting
