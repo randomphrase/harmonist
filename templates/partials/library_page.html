@@ -1,4 +1,4 @@
-{# One page of the Library grid — header, tiles, pager — rendered as a whole.
+{# One page of the Library grid — search, filters, tiles, pager — as a whole.
 
    It used to be an accumulator: the first page opened #library-grid and every
    later page appended tiles plus a fresh Load-more button. That made the grid's
@@ -12,77 +12,28 @@
    link inside would then send its own `?page=2` plus the container's `?page=1`,
    and the last value wins — which silently pinned the grid to page 1. Here there
    is no inherited value to collide with, and a refresh mid-browse (every
-   `tasks-changed`) keeps you on your page. #}
+   `tasks-changed`) keeps you on your page.
+
+   It also carries the dataset that says what this render *is*: which slice is on
+   screen (`data-page`, `data-limit`) and how big the whole Library is
+   (`data-total-done` — unfiltered and unsearched, #140's constraint, since a
+   paginated grid cannot be counted by its rendered rows). The browser tests read
+   it to tell an in-place swap from a page load. It used to hang off a `LIBRARY ·
+   N done` heading here, which repeated the tab label and count directly above it
+   and called every terminal album "done" while the chips below offered to filter
+   the Incomplete ones — so the heading went and the dataset stayed (#217). #}
 {% from 'macros.html' import library_query %}
-<div hx-get="/library?{{ library_query(page, limit, filter, q) }}"
+<div id="library-page" data-total-done="{{ total_done }}" data-page="{{ page }}"
+     data-limit="{{ limit }}"
+     hx-get="/library?{{ library_query(page, limit, filter, q) }}"
      hx-trigger="library-refresh from:body, tasks-changed from:body"
      hx-target="#library-rows" hx-swap="innerHTML">
-<div class="flex justify-between items-baseline mb-3 gap-3">
-    {# data-total-done carries the full terminal-album count (not just this
-       page) so the Library tab badge can show the real total — the grid is
-       paginated, so counting rendered rows would under-report. #}
-    <h2 id="library-total" data-total-done="{{ total_done }}" data-page="{{ page }}"
-        data-limit="{{ limit }}"
-        class="text-sm font-semibold text-muted uppercase tracking-widest">Library
-        <span class="ml-1 font-normal normal-case tracking-normal">· {{ total_done }} done</span>
-    </h2>
-    <div class="flex items-baseline gap-4">
-        {% if rows %}
-        {# Page size (#144). A real <form> so it works without JS — submitting to
-           the index URL is exactly what the hx-get does, one tab-panel wider. The
-           hx-get lives on the FORM, not the <select>, so HTMX serialises the
-           hidden inputs alongside the chosen size; `change` bubbles up from the
-           select, so no click handler is needed (and none is allowed here — an
-           onclick beside hx-* is what `make template-lint` fails on).
-
-           `submit` is in the trigger list on purpose. A form's DEFAULT hx-trigger
-           is `submit`, and naming `change` REPLACES that default rather than
-           adding to it — so with `change` alone any submit event reaching this
-           form escapes HTMX and the browser navigates to `action` instead. Same
-           albums, but a full page load, and the address bar left reading
-           `?anchor=3&limit=40`: the transient hint stranded where the resolved
-           `?page=` belongs, ready to be bookmarked. Committing the select with the
-           keyboard is enough to do it.
-
-           `anchor` is the first row on screen. The server resolves it against the
-           NEW size and corrects the address bar with an HX-Push-Url header, so
-           picking a bigger page keeps the album you were looking at in view
-           instead of throwing you back to page 1. #}
-        <form method="get" action="/" hx-get="/library" hx-trigger="change, submit"
-              hx-target="#library-rows" hx-swap="innerHTML"
-              class="flex items-baseline gap-1.5">
-            <input type="hidden" name="tab" value="library">
-            <input type="hidden" name="anchor" value="{{ first_row }}">
-            {# The filter and the search travel with the size, or picking "40 per
-               page" would quietly answer a different question than the one on
-               screen. #}
-            {% if filter %}<input type="hidden" name="filter" value="{{ filter }}">{% endif %}
-            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
-            <label for="library-limit"
-                   class="text-xs text-muted uppercase tracking-widest font-bold">Show</label>
-            <select id="library-limit" name="limit"
-                    class="bg-white border border-line rounded px-1.5 py-0.5 text-xs text-ink focus:border-accent outline-none">
-                {# An off-menu size — hand-typed, or remembered from a build that
-                   offered different ones — is shown rather than silently swapped
-                   for a neighbour, so the control never misreports the page. #}
-                {% if limit not in page_sizes %}<option selected>{{ limit }}</option>{% endif %}
-                {% for size in page_sizes %}
-                <option value="{{ size }}" {{ 'selected' if size == limit }}>{{ size }}</option>
-                {% endfor %}
-            </select>
-            <span class="text-xs text-muted">per page</span>
-            {# Without JS the change event can't submit anything; give that reader
-               a button. HTMX users never see it. #}
-            <noscript><button type="submit"
-                    class="text-xs font-bold text-accent">Apply</button></noscript>
-        </form>
-        {% endif %}
-        <button hx-get="/library?{{ library_query(page, limit, filter, q) }}"
-                hx-target="#library-rows" hx-swap="innerHTML"
-                class="text-xs text-muted hover:text-accent transition uppercase tracking-widest font-bold">
-            Refresh
-        </button>
-    </div>
+<div class="mb-3 flex justify-end">
+    <button hx-get="/library?{{ library_query(page, limit, filter, q) }}"
+            hx-target="#library-rows" hx-swap="innerHTML"
+            class="text-xs text-muted hover:text-accent transition uppercase tracking-widest font-bold">
+        Refresh
+    </button>
 </div>
 
 {# Search (#180). The filters below find albums that are *wrong*; this finds the
@@ -185,8 +136,8 @@
 {% set chip_dead = chip ~ " border-transparent text-muted opacity-40 cursor-default select-none" %}
 {# Every count here is `total_matched`-relative, not library-relative: under a
    search the chips report what they would yield *within it* (#180). All says how
-   many the search left; the rest are subsets of that. The header above is the one
-   number that stays library-wide. #}
+   many the search left; the rest are subsets of that. The container's
+   `data-total-done` is the one number that stays library-wide. #}
 <nav class="mb-3 flex flex-wrap items-center gap-1.5" aria-label="Library filters">
     {% if filter %}
     <a href="/?tab=library&{{ library_query(none, limit, none, q) }}"
@@ -264,6 +215,13 @@
     {% for album in rows %}{% include 'partials/library_tile.html' %}{% endfor %}
 </div>
 
+{# The pager and the page-size control, at the bottom together: both are things
+   you reach for after reading a page, not before, and #217 moved the size down
+   here from above the search box for that reason. The size control survives a
+   single-page library — dropping to 20 is a way to *make* a second page — so it
+   is gated on `rows`, which this branch already establishes, and not on the
+   pager's `total_pages > 1`. #}
+<div class="mt-5">
 {% if total_pages > 1 %}
 {# Pager. Each control is a real <a href> to the index URL for that page AND an
    hx-get that swaps just the grid: with JS it's an in-place swap that pushes the
@@ -272,7 +230,7 @@
    construction, so the address bar always names what's on screen.
    At the ends the control becomes a plain disabled <span> — there is no disabled
    state for an anchor, and a link to a page that doesn't exist is worse. #}
-<nav class="mt-5 flex items-center justify-between gap-4" aria-label="Library pages">
+<nav class="flex items-center justify-between gap-4" aria-label="Library pages">
     {% set nav_class = "px-3 py-1.5 rounded border border-line text-sm font-bold transition" %}
     {% if prev_page %}
     <a href="/?tab=library&{{ library_query(prev_page, limit, filter, q) }}"
@@ -286,8 +244,8 @@
     {% endif %}
 
     {# `total_shown`, not `total_done`: this readout describes the list being paged,
-       which under a filter is a subset. The header keeps reporting the whole
-       library — one number cannot honestly be both (#174). #}
+       which under a filter is a subset. The container's `data-total-done` keeps
+       reporting the whole library — one number cannot honestly be both (#174). #}
     <span class="text-xs text-muted tabular-nums">
         {{ first_row }}–{{ last_row }} of {{ total_shown }}
         <span class="mx-1 opacity-50">·</span>
@@ -306,5 +264,53 @@
     {% endif %}
 </nav>
 {% endif %}
+
+{# Page size (#144). A real <form> so it works without JS — submitting to the
+   index URL is exactly what the hx-get does, one tab-panel wider. The hx-get
+   lives on the FORM, not the <select>, so HTMX serialises the hidden inputs
+   alongside the chosen size; `change` bubbles up from the select, so no click
+   handler is needed (and none is allowed here — an onclick beside hx-* is what
+   `make template-lint` fails on).
+
+   `submit` is in the trigger list on purpose. A form's DEFAULT hx-trigger is
+   `submit`, and naming `change` REPLACES that default rather than adding to it —
+   so with `change` alone any submit event reaching this form escapes HTMX and the
+   browser navigates to `action` instead. Same albums, but a full page load, and
+   the address bar left reading `?anchor=3&limit=40`: the transient hint stranded
+   where the resolved `?page=` belongs, ready to be bookmarked. Committing the
+   select with the keyboard is enough to do it.
+
+   `anchor` is the first row on screen. The server resolves it against the NEW
+   size and corrects the address bar with an HX-Push-Url header, so picking a
+   bigger page keeps the album you were looking at in view instead of throwing you
+   back to page 1. #}
+<form method="get" action="/" hx-get="/library" hx-trigger="change, submit"
+      hx-target="#library-rows" hx-swap="innerHTML"
+      class="mt-3 flex items-baseline justify-end gap-1.5">
+    <input type="hidden" name="tab" value="library">
+    <input type="hidden" name="anchor" value="{{ first_row }}">
+    {# The filter and the search travel with the size, or picking "40 per page"
+       would quietly answer a different question than the one on screen. #}
+    {% if filter %}<input type="hidden" name="filter" value="{{ filter }}">{% endif %}
+    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+    <label for="library-limit"
+           class="text-xs text-muted uppercase tracking-widest font-bold">Show</label>
+    <select id="library-limit" name="limit"
+            class="bg-white border border-line rounded px-1.5 py-0.5 text-xs text-ink focus:border-accent outline-none">
+        {# An off-menu size — hand-typed, or remembered from a build that offered
+           different ones — is shown rather than silently swapped for a neighbour,
+           so the control never misreports the page. #}
+        {% if limit not in page_sizes %}<option selected>{{ limit }}</option>{% endif %}
+        {% for size in page_sizes %}
+        <option value="{{ size }}" {{ 'selected' if size == limit }}>{{ size }}</option>
+        {% endfor %}
+    </select>
+    <span class="text-xs text-muted">per page</span>
+    {# Without JS the change event can't submit anything; give that reader a
+       button. HTMX users never see it. #}
+    <noscript><button type="submit"
+            class="text-xs font-bold text-accent">Apply</button></noscript>
+</form>
+</div>
 {% endif %}
 </div>

@@ -56,7 +56,7 @@ def test_choosing_a_size_swaps_in_place_and_names_the_resolved_page(demo_server:
         _open_library_page_two(page, demo_server)
 
         page.select_option("#library-limit", "20")
-        page.wait_for_function("document.querySelector('#library-total')?.dataset.limit === '20'")
+        page.wait_for_function("document.querySelector('#library-page')?.dataset.limit === '20'")
 
         assert page.evaluate("window.__harmonistNoReload === true"), "the grid reloaded"
         # Row 3 — the top of page 2 at size 2 — sits on page 1 at size 20.

@@ -2042,9 +2042,10 @@ def test_library_page_two_holds_the_next_slice(client, cfg):
     assert r.text.count('id="lib-') == 2
     assert "Album2" in r.text and "Album3" in r.text
     assert "Album0" not in r.text
-    # Every page is a whole render now, header included — it replaces the grid
-    # rather than appending to it, so page 2 must stand on its own.
-    assert "<h2" in r.text
+    # Every page is a whole render now, search and filters included — it replaces
+    # the grid rather than appending to it, so page 2 must stand on its own.
+    assert 'id="library-search"' in r.text
+    assert 'aria-label="Library filters"' in r.text
     assert 'data-page="2"' in r.text
 
 
@@ -2116,6 +2117,25 @@ def test_library_page_size_control_offers_the_sizes_and_marks_the_current_one(cl
     # in test/e2e/test_library_page_size.py, which most runs skip — this is the
     # cheap guard against the attribute being tidied by someone who never sees it.
     assert 'hx-trigger="change, submit"' in body
+
+
+def test_library_page_size_control_sits_below_the_grid(client, cfg):
+    """It is a control you reach for after reading a page, so it belongs at the
+    bottom with the pager rather than above the search box, competing for the top
+    of the view (#217). Rendering order is the only handle the server has on that."""
+    _make_library(cfg, 3)
+    body = client.get("/library").text
+    assert body.index('id="library-grid"') < body.index('id="library-limit"')
+    assert body.index('id="library-search"') < body.index('id="library-limit"')
+
+
+def test_library_page_size_control_survives_a_single_page(client, cfg):
+    """The pager disappears when everything fits on one page; the size control must
+    not go with it. Dropping to 20 is how a reader *makes* a second page."""
+    _make_library(cfg, 3)
+    body = client.get("/library?limit=40").text
+    assert 'aria-label="Library pages"' not in body
+    assert 'id="library-limit"' in body
 
 
 def test_library_page_size_control_is_absent_when_there_is_nothing_to_size(client, cfg):
@@ -2291,10 +2311,11 @@ def test_library_filter_counts_come_from_the_whole_library_not_the_page(client, 
     assert re.search(r"Incomplete\s*<span[^>]*>5</span>", body)  # all five, not the two shown
 
 
-def test_library_header_total_ignores_the_filter(client, cfg):
-    """#140's constraint: the header (and the `data-total-done` the tab count
-    reads) reports the whole library. A filtered grid must not let it start
-    reporting the rows it happens to be rendering."""
+def test_library_total_done_ignores_the_filter(client, cfg):
+    """#140's constraint: `data-total-done` reports the whole library, however the
+    grid below it is narrowed. A filtered grid must not let it start reporting the
+    rows it happens to be rendering — the "show all N" ways out read it, and so do
+    the browser tests that wait for a particular render."""
     from datetime import datetime
 
     base = datetime.now(UTC)
@@ -2302,7 +2323,7 @@ def test_library_header_total_ignores_the_filter(client, cfg):
     _make_incomplete_album(cfg, "Short", mbid="rel-short", tagged_at=base)
     body = client.get("/library?filter=incomplete").text
     assert 'data-total-done="2"' in body
-    assert "· 2 done" in body
+    assert body.count('id="lib-') == 1  # one incomplete album on screen, of the two
 
 
 def test_library_filtered_pager_reports_the_filtered_total(client, cfg):
@@ -2570,9 +2591,9 @@ def test_library_search_matching_nothing_names_the_query(client, cfg):
     assert "Clear the search" in body
 
 
-def test_library_header_total_ignores_the_search(client, cfg):
-    """`data-total-done` feeds the Library tab badge, which reports the whole
-    library. A searched grid must not let it start reporting its own rows (#140)."""
+def test_library_total_done_ignores_the_search(client, cfg):
+    """The other narrowing, same rule: `data-total-done` reports the whole library,
+    so a searched grid must not let it start reporting its own rows (#140)."""
     _make_two_albums(cfg)
     body = client.get("/library?q=aphex").text
     assert 'data-total-done="2"' in body
@@ -2791,7 +2812,10 @@ def test_library_page_size_is_bounded(client, cfg):
     assert 'data-limit="200"' in r.text
 
 
-def test_library_empty_still_renders_its_header(client, cfg):
+def test_library_empty_still_describes_itself(client, cfg):
+    """An empty Library is still a render that says what it is: the e2e harness
+    polls `data-total-done` to know when the seeded albums have landed, so the
+    attribute has to be there before there is anything to count."""
     r = client.get("/library")
     assert "No fully-tagged albums yet." in r.text
     assert 'data-total-done="0"' in r.text

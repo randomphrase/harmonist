@@ -1137,9 +1137,9 @@ def _library_page_vars(
         reverse=True,
     )
     # How many terminal albums exist, before any filter — the Library's own count,
-    # and the number the header reports. Captured here because `shown` below is a
-    # DIFFERENT number once a filter is on, and the two must not be conflated: the
-    # header says how big the library is, the pager says how much of it is on
+    # and the number `data-total-done` reports. Captured here because `shown` below
+    # is a DIFFERENT number once a filter is on, and the two must not be conflated:
+    # the dataset says how big the library is, the pager says how much of it is on
     # screen (#174).
     total_done = len(done)
     # Search narrows BEFORE the filter, and the filter counts below are taken after
@@ -1192,9 +1192,9 @@ def _library_page_vars(
         # rather than being silently corrected, so the control always shows the
         # truth about what's on screen.
         "page_sizes": _LIBRARY_PAGE_SIZES,
-        # The whole Library, unfiltered — the header's "· N done" and the
-        # `data-total-done` attribute both read this. A filtered grid must not let
-        # it start reporting the rows it happens to be rendering (#140).
+        # The whole Library, unfiltered — the `data-total-done` attribute and the
+        # "search all N" links both read this. A filtered grid must not let it
+        # start reporting the rows it happens to be rendering (#140).
         "total_done": total_done,
         # How many albums the search left, before the filter — what the All chip
         # says, and what the chips beside it are subsets of. Equal to `total_done`
