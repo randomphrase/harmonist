@@ -181,10 +181,24 @@ def read_duration_ms(path: Path) -> int | None:
 
 
 def _codec_label(audio: MP4) -> str:
+    """The short label for what's inside the MP4 container.
+
+    `MP4Info.codec` is an RFC 6381 string — mutagen documents it as
+    `'mp4a[.*][.*]'` or `'alac'` — so AAC arrives as "mp4a.40.2" and an
+    equality test against the bare "mp4a" matched nothing (#254). `alac` really
+    is bare, which is why only half of this was ever wrong.
+
+    Matched on `.40` rather than on "mp4a" alone: the suffix is
+    `"%X" % objectTypeIndication`, and 0x40 is MPEG-4 Audio — the AAC family.
+    Other object types in an `mp4a` box genuinely aren't AAC (`mp4a.69` and
+    `mp4a.6B` are MP3 in an MP4 container), and a bare "mp4a" means no ESDS
+    descriptor could be parsed at all. Both keep falling through to "MP4",
+    which is the honest answer for a container whose codec we can't name.
+    """
     codec = getattr(audio.info, "codec", "")
     if codec == "alac":
         return "ALAC"
-    if codec == "mp4a":
+    if codec.startswith("mp4a.40"):
         return "AAC"
     return "MP4"
 

@@ -53,6 +53,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- AAC files now say **AAC** in an album's Format row instead of **MP4** (#254),
+  so the row tells you at a glance whether an `.m4a` album is the lossless
+  download or the lossy one. **MP4** now means only what it should: a file
+  whose codec Harmonist couldn't identify.
 - Your files are now paired with MusicBrainz tracks by the per-track id they
   carry, so an album stays on its own tracks after MusicBrainz renumbers or
   reorders the release's discs (#232).

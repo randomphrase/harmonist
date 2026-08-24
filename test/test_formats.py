@@ -475,6 +475,25 @@ def test_describe_label(tmp_path, ext, fixture, expected):
     assert formats.describe(f) == expected
 
 
+def test_describe_names_aac_rather_than_its_container(tmp_path):
+    """#254: `MP4Info.codec` is an RFC 6381 string — "mp4a.40.2", not "mp4a" —
+    so an equality test against the bare four-character code never matched and
+    every AAC file read as "MP4".
+
+    The point of the label is to separate lossless ALAC from lossy AAC, and
+    "MP4" is the answer that should be reserved for a container whose codec
+    can't be pinned down.
+    """
+    from mutagen.mp4 import MP4
+
+    dst = tmp_path / "01 track.m4a"
+    shutil.copy(FIXTURES_DIR / "sine-aac.m4a", dst)
+    assert MP4(dst).info.codec == "mp4a.40.2"  # what the label has to cope with
+
+    assert formats.describe(dst) == "AAC"
+    assert formats.read_scan_fields(dst).codec == "AAC"
+
+
 def test_describe_none_for_unknown(tmp_path):
     assert formats.describe(tmp_path / "cover.jpg") is None
 
