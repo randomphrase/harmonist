@@ -235,6 +235,30 @@
                         class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Forget
                 </button>
+                {# Re-download from Bandcamp (#132) — upgrade MP3s to FLAC, or pick
+                   up tracks the artist has added to the release since the purchase.
+                   Only offered where it can actually be done: a single Bandcamp
+                   purchase id. An album linked by `candidate_item_ids` alone has
+                   several purchases it might be, and fetching a guess is exactly
+                   what Harmonist doesn't do.
+
+                   Subtle until hover (web-ui rule 4): this is rare, and it deletes
+                   files. `hx-confirm` names the archive and the format, because
+                   both are things the user cannot see beforehand and would want to
+                   have known — the format especially, since it comes from Settings
+                   rather than from anything on this page. #}
+                {% set bc = album.sidecar.bandcamp if album.sidecar else None %}
+                {% if bc and bc.item_id %}
+                <button hx-post="/library/{{ album.id }}/redownload"
+                        hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                        hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
+                        hx-confirm="Re-download this album as {{ cfg.bandcamp.download_format|upper }}? The files you have now are zipped into the top of your music folder first, then removed, and the next sync fetches a fresh copy."
+                        class="px-3 py-1.5 bg-surface hover:bg-line text-muted hover:text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition"
+                        title="Archive this album to a .zip in your music folder and download it again from Bandcamp, in the format set in Settings ({{ cfg.bandcamp.download_format|upper }}). Use this to upgrade the format, or to pick up tracks added to the release since you bought it."
+                        aria-label="Re-download from Bandcamp — archives the current files to a zip first">
+                    Re-download
+                </button>
+                {% endif %}
                 {# The acceptance used to sit here, as a button reading "No more
                    tracks to get" / "Mark incomplete again". It moved up to the
                    completeness badge as a checkbox (#227): it acts on that badge

@@ -84,3 +84,15 @@ def album_with_tracks(tmp_path):
         return album_dir
 
     return _build
+
+
+@pytest.fixture(autouse=True)
+def reset_redownloads():
+    """Albums awaiting a re-download (#132) are process-level in-memory state, so
+    a test that archives one would otherwise leave its card rendering in every
+    later `/tasks` assertion — and tests run in random order, so that surfaces as
+    an unrelated test failing intermittently."""
+    from harmonist import redownloads
+
+    yield
+    redownloads.reset()

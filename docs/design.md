@@ -75,6 +75,71 @@ the whole reason the `NEEDS_SYNC` state exists.
 2. User clicks **Re-tag from MB** on a Library album's page.
 3. Harmonist re-fetches the MB release and rewrites the file tags. Per-track embedded artwork is preserved unless the user forces **Replace artwork**.
 
+### 2.4.1 Re-download from Bandcamp (#132)
+
+A re-tag rewrites tags; sometimes the **files themselves** are the problem — MP3s
+the user would rather have as FLAC, or a release the artist has added tracks to
+since the purchase (the live@heartlandgathering case, which derives INCOMPLETE
+against MusicBrainz with a live store URL sitting right there). The fix is to let
+the sync fetch a purchase it already has.
+
+**Why the files have to go.** Three independent mechanisms stop a re-fetch, and
+each of them keys off the album being on disk:
+
+1. `sync_items` unions `library_index.item_ids()` into bandcampsync's ignore set,
+   so a sidecar'd `item_id` blocks the download even with a lost `ignores.txt`.
+2. `sync_item` short-circuits on a `store_url` it finds in that index (exact, then
+   slug, then `slug_copies` as a backstop).
+3. `LocalMedia.is_locally_downloaded` reads the `bandcamp_item_id.txt` the
+   original download left in the directory.
+
+There is no variant of this that keeps the files where they are, so the flow is:
+
+1. **Archive** every directory of the album (§13.5 — one release, one zip) into
+   `<music_root>/<Artist> — <Album> (archived YYYY-MM-DD).zip`, stored not
+   deflated, colliding names suffixed rather than overwritten.
+2. **Verify** — reopen, CRC-check, and compare the manifest and every member's
+   size against what went in. Only then is anything deleted. A failure at any
+   point leaves the album untouched and removes the partial zip.
+3. **Delete** the directories, and any parent they just emptied.
+4. **Un-ignore** the purchase, *including* bandcampsync's auto-managed region —
+   the one `_remove_user_ignore` refuses to touch, because there it would mean
+   duplicating an album that is still on disk. Here there is no copy left.
+5. **Approve** the download (`pending_downloads.approve`), the existing flag that
+   gets an item past link-only mode and the per-sync cap, and **clear the
+   collection checkpoint**, or an incremental sync starts past an old purchase.
+6. **Start a sync.**
+
+**Ordering is the safety argument.** The zip is proved good before a byte is
+deleted, and the un-ignore happens between syncs rather than during one —
+bandcampsync snapshots `ignores.txt` at startup and rewrites it wholesale, so a
+concurrent edit is silently discarded. A re-download is therefore refused while a
+sync is in flight.
+
+**The archive is the escape hatch** out of the interim state, and the only one
+offered: unzipping it at the music root restores the album exactly, sidecar and
+all, so it comes back matched rather than as a NEW album to re-reconcile. Nothing
+prunes archives; they are the user's.
+
+**No new state, no sidecar field.** Between the archive and the download the
+album has no directory, so it is in no state at all — it is held in
+`redownloads`, an in-memory store rendered as an inbox card, cleared *by
+derivation* when `library_index` sees the purchase again (so any route home
+clears it, including the user restoring the zip by hand).
+
+**Known limitation.** That store and the download approval are both in-memory. A
+restart in the seconds between the archive and its sync loses them, and on a
+library with unlinked albums the next sync then runs link-only and surfaces the
+purchase as an ordinary *potential download* — one click to fetch, but beside a
+"Don't download" that would strand it. Accepted rather than persisted, for the
+reasons `pending_downloads` gives for refusing a JSON of its own: the decision
+already persists in the two places that matter (the id is out of `ignores.txt`,
+the directory is off disk), which is what makes any later sync fetch it.
+
+**Not offered** without a single `bandcamp.item_id` — a manual/CD-rip album has no
+purchase, and one carrying only `candidate_item_ids` has several it might be.
+Fetching a guess is the no-guessing invariant in reverse.
+
 ### 2.5 Per-album reconciliation
 
 Instead of a "bootstrap" event, reconciliation is **continuous and per-album**. Whenever the scanner encounters an album that has MBID-tagged files but no `.harmonist.json` sidecar, the reconciler runs once for that album to derive the right sidecar.
@@ -480,6 +545,8 @@ stateDiagram-v2
     NEEDS_SYNC --> NEEDS_MBID: Surrender<br/>(full sync, no purchase)
     NEEDS_SYNC --> NEEDS_SYNC: Update URL<br/>(retry on next sync)
 
+    COMPLETE --> [*]: Re-download<br/>(archived to a zip,<br/>files off disk — §2.4.1)
+    INCOMPLETE --> [*]: Re-download<br/>(archived to a zip,<br/>files off disk — §2.4.1)
     COMPLETE --> NEW: Forget<br/>(sidecar deleted)
     COMPLETE --> NEEDS_MBID: Wrong match<br/>(pencil — tags left on disk)
     COMPLETE --> NEEDS_MBID: Undo the linking<br/>tagging (#157/#158)
@@ -500,6 +567,11 @@ Notes:
   flag in the sidecar; state is sufficient.
 - `TAGGING` is omitted: it's a transient state visible only while the
   tagger is mid-write (typically <1s).
+- **A re-download leaves the state machine entirely** (§2.4.1). Every other
+  state is derived from something on disk; an archived album has no directory,
+  so it derives nothing. It is held in the in-memory `redownloads` store —
+  rendered as an inbox card naming its zip — and re-enters at `[*]` when the
+  sync writes the replacement, exactly as a first-time download does.
 - `INCONSISTENT` is purely derived from on-disk file tags; user resolves
   via Picard (§13.2). No sidecar action needed.
 - Forget adds the path to an in-memory exemption set so auto-reconcile
@@ -809,6 +881,8 @@ src/harmonist/
   url_recovery.py       Recover an embedded Bandcamp URL from ©cmt (precise or artist-root; no scraping)
   bandcamp_hook.py      bandcampsync Syncer subclass: download cap, sidecar capture, purchase↔album linking
   pending_downloads.py  In-memory "potential downloads" (unmatched purchases awaiting a decision)
+  redownloads.py        In-memory "archived, awaiting its replacement download" (#132)
+  archive.py            Zip an album's dirs into the music root, verify, then delete them (#132)
   mb_lookup.py          MB by-id / by-url fetch (1 req/sec budget)
   mb_search.py          MB free-text search (manual-ingest path)
   match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
@@ -898,7 +972,7 @@ authoritative list; the shape is:
 - **Per-album actions** (keyed by album id): `/confirm/{id}`, `/reject/{id}`,
   `/recheck/{id}`, `/manual/{id}/…` (search / candidates / assign),
   `/retag/{id}`, `/forget/{id}`, `/surrender/{id}/keep` (Move to Library),
-  `/library/{id}/…` (detail / unlink).
+  `/library/{id}/…` (detail / unlink / redownload).
 - **Potential downloads** (keyed by purchase item_id): `/pending/{id}/…`
   (match / download / skip).
 - **Cover art**: `GET /cover/{id}`; other static assets under `/static/`.

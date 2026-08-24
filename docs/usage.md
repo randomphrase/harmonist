@@ -237,6 +237,33 @@ MBID to re-pick, leaving your files' current tags alone until you re-tag), and
 **Forget**, which deletes the sidecar and returns the album to New without
 touching a single audio file.
 
+### Re-downloading an album
+
+**Re-download** fetches the album from Bandcamp again. Two reasons to want it:
+you bought MP3s years ago and would rather have FLAC, or the artist has added
+tracks to the release since you bought it and your copy is short. It appears on
+any album Harmonist has linked to a single Bandcamp purchase — not on a CD rip,
+and not on one of the rare albums whose store URL matches several purchases,
+where Harmonist can't tell which one to fetch.
+
+It is the one action here that removes files, so it works like this:
+
+1. **Your current files are zipped into the top of your music folder**, named
+   `Artist — Album (archived 2026-08-24).zip`. Everything goes in — audio,
+   artwork, and Harmonist's own sidecar — so unzipping it *there* puts the album
+   back exactly as it was, still matched to its release.
+2. **The zip is checked before anything is deleted.** If it can't be written, or
+   comes back short, nothing is removed and you're told why.
+3. The album is taken off disk, its purchase is taken out of your Bandcamp
+   ignores, and a sync starts. The album shows in the Inbox as *Re-downloading*,
+   naming its archive, until the new copy lands and it returns to your Library.
+
+Nothing ever deletes the archive — it's yours to keep or bin once the new
+download looks right. The format is whichever one you've set in Settings, and the
+confirmation says which before you commit.
+
+You can't start a re-download while a sync is running; wait for it to finish.
+
 ## Undoing a tagging
 
 Every tagging is recorded field by field — the value before and the value after,

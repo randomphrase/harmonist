@@ -6,6 +6,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **Re-download an album from Bandcamp** (#132) — for upgrading MP3s to FLAC, or
+  picking up tracks the artist has added to a release since you bought it. The
+  button is on the album's own page, for any album linked to a Bandcamp
+  purchase. Your current files are zipped to the top of your music folder first,
+  as `Artist — Album (archived 2026-08-24).zip`, and only removed once the zip
+  has been checked; unzip it there to put the album back. The inbox shows the
+  album as re-downloading until the replacement lands.
+
 ### Changed
 
 - An album's own page now states how much of the release is on disk — "10 of 11

@@ -1,0 +1,55 @@
+{# Albums archived off disk and waiting for the sync to fetch them again (#132).
+
+   Purely informational — there is nothing to decide here, and no button that
+   would help. Between the archive and the download the album is genuinely
+   nowhere: no directory, so no state, no tile and no history page to link to.
+   Without this card it would just vanish for the length of a sync, moments after
+   the user clicked something that deleted their files.
+
+   So the card's whole job is to name the zip. That archive IS the escape hatch
+   out of this state — if the download never lands, unzipping it at the music
+   root puts the album back exactly as it was, sidecar included. A "Cancel"
+   button could not do better (it would re-ignore the purchase and leave the
+   files in the zip regardless), so it isn't offered; the honest instruction is
+   the filename.
+
+   Cleared by derivation in /tasks — `redownloads.prune` drops anything the
+   library can see again, so nothing has to remember to remove a card. #}
+<section id="redownload-section" class="space-y-3 mb-6">
+    {% if redownloading %}
+    <div class="rounded-md border-l-4 border-mb-purple bg-mb-purple/10 px-3 py-2">
+        <h3 class="text-sm font-bold text-mb-purple">
+            Re-downloading
+            <span class="text-muted font-normal ml-1">· {{ redownloading|length }}</span>
+        </h3>
+        <p class="text-xs text-muted mt-0.5">
+            Archived and being fetched from Bandcamp again. They reappear in your Library
+            when the download finishes.
+            {% if not (sync and sync.state == 'running') %}
+            <span class="font-bold text-mb-purple">Click Sync</span> if one doesn't arrive.
+            {% endif %}
+        </p>
+    </div>
+    <div class="grid grid-cols-1 gap-3">
+        {% for r in redownloading %}
+        <div class="rounded-lg border border-line bg-surface px-4 py-3">
+            <div class="min-w-0">
+                <div class="font-semibold text-ink truncate">{{ r.label }}</div>
+                {% if r.url %}
+                <div class="text-xs text-muted truncate">
+                    <a href="{{ r.url }}" target="_blank" rel="noopener"
+                       class="text-mb-purple hover:underline">{{ r.url }}</a>
+                </div>
+                {% endif %}
+            </div>
+            <p class="text-2xs text-muted mt-1.5">
+                Your old files are in
+                <span class="font-mono text-ink break-all">{{ r.archive_name }}</span>
+                at the top of your music folder. Unzip it there to put the album back;
+                delete it once the new download looks right.
+            </p>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>

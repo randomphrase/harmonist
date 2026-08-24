@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 import shutil
+import zipfile
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
@@ -6716,3 +6718,261 @@ def test_a_deleted_release_leaves_the_album_alone(client, cfg, monkeypatch):
     client.post(f"/retag/{_id_for(cfg, d)}")
 
     assert sc.read(d) == before
+
+
+# ---------- Re-download from Bandcamp (#132) ----------
+
+
+@pytest.fixture
+def quiet_sync(client):
+    """Make the sync a no-op that still moves the runner through its states, so a
+    re-download can start one without reaching the network (or the missing
+    cookies file). Returns the runner for assertions about whether it ran."""
+    runner = client.app.state.sync_runner
+    runner._runner_fn = lambda: None
+    return runner
+
+
+def _ignores_with(cfg, *, user: Sequence[int] = (), auto: Sequence[int] = ()) -> Path:
+    """An ignores.txt with ids in each of its two regions. bandcampsync appends
+    a downloaded album's id BELOW the separator, which is the half the ordinary
+    Restore refuses to touch — so a re-download has to reach into it."""
+    cfg.paths.config_dir.mkdir(parents=True, exist_ok=True)
+    lines = [f"{i}  # declined\n" for i in user]
+    lines.append("# ==========================================================\n")
+    lines += [f"{i}  # downloaded\n" for i in auto]
+    cfg.ignores_file.write_text("".join(lines), encoding="utf-8")
+    return cfg.ignores_file
+
+
+def test_redownload_archives_the_album_and_takes_it_off_disk(client, cfg, quiet_sync):
+    d = _make_tagged_album(
+        cfg, "Upgrade Me", mbid="rel-rd-1", tagged_at=datetime.now(UTC), item_id=5150
+    )
+    album_id = _id_for(cfg, d)
+
+    r = client.post(f"/library/{album_id}/redownload")
+
+    assert r.status_code == 200
+    assert not d.exists()
+    zips = list(cfg.paths.music_dir.glob("*.zip"))
+    assert len(zips) == 1
+    with zipfile.ZipFile(zips[0]) as zf:
+        assert any(n.endswith("01 Track.m4a") for n in zf.namelist())
+        assert any(n.endswith(".harmonist.json") for n in zf.namelist())
+
+
+def test_redownload_unignores_the_purchase_in_bandcampsyncs_own_region(client, cfg, quiet_sync):
+    """The one thing that actually makes the next sync re-fetch it. The id sits
+    below the separator because bandcampsync put it there on the first download,
+    and `_remove_user_ignore` deliberately won't go there."""
+    d = _make_tagged_album(cfg, "Reget", mbid="rel-rd-2", tagged_at=datetime.now(UTC), item_id=777)
+    ign = _ignores_with(cfg, user=[111], auto=[777, 888])
+
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+    remaining = ign.read_text()
+    assert "777" not in remaining
+    assert "888" in remaining  # somebody else's download, left alone
+    assert "111" in remaining  # a genuine "don't download", left alone
+
+
+def test_redownload_approves_the_download_so_a_link_only_sync_still_fetches_it(
+    client, cfg, quiet_sync
+):
+    """While any album is Needs Link the sync runs link-only and downloads
+    nothing — except items the user explicitly asked for, which is this."""
+    from harmonist import pending_downloads
+
+    d = _make_tagged_album(
+        cfg, "Approved", mbid="rel-rd-3", tagged_at=datetime.now(UTC), item_id=4242
+    )
+    try:
+        client.post(f"/library/{_id_for(cfg, d)}/redownload")
+        assert pending_downloads.is_approved(4242)
+    finally:
+        pending_downloads.reset()
+
+
+def test_redownload_clears_the_collection_checkpoint(client, cfg, quiet_sync):
+    """An incremental sync starts at the checkpoint, so an old purchase would
+    never be re-paged and the replacement would never arrive."""
+    d = _make_tagged_album(
+        cfg, "Old Purchase", mbid="rel-rd-4", tagged_at=datetime.now(UTC), item_id=99
+    )
+    state_file = cfg.paths.music_dir / ".bandcampsync-state.json"
+    state_file.write_text('{"token": "2020-01-01"}')
+
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+    assert not state_file.exists()
+
+
+def test_redownload_starts_a_sync(client, cfg, quiet_sync):
+    started = []
+    quiet_sync._runner_fn = lambda: started.append(True)
+    d = _make_tagged_album(
+        cfg, "Fetch Me", mbid="rel-rd-5", tagged_at=datetime.now(UTC), item_id=31337
+    )
+
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+    quiet_sync._thread.join(timeout=5)
+    assert started == [True]
+
+
+def test_redownload_refuses_while_a_sync_is_running_and_keeps_the_album(client, cfg):
+    """bandcampsync snapshots ignores.txt at startup and rewrites it wholesale,
+    so an edit made mid-sync is silently discarded — the album would be deleted
+    and then skipped."""
+    d = _make_tagged_album(cfg, "Busy", mbid="rel-rd-6", tagged_at=datetime.now(UTC), item_id=606)
+    client.app.state.sync_runner._status.state = "running"
+
+    r = client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+    assert r.status_code == 409
+    assert d.exists()
+    assert not list(cfg.paths.music_dir.glob("*.zip"))
+
+
+def test_redownload_refuses_an_album_with_no_single_purchase_id(client, cfg, quiet_sync):
+    """`candidate_item_ids` means several purchases share this store URL and a
+    tiebreak couldn't pin one. Fetching a guess is exactly what Harmonist
+    doesn't do — so the album is not deleted either."""
+    d = _make_tagged_album(cfg, "Ambiguous", mbid="rel-rd-7", tagged_at=datetime.now(UTC))
+    sc.write(
+        d,
+        Sidecar(
+            store_url="https://x.bandcamp.com/album/ambiguous",
+            bandcamp=BandcampInfo(item_id=None, candidate_item_ids=[1, 2]),
+            mb_release_id="rel-rd-7",
+            tagged_at=datetime.now(UTC),
+        ),
+    )
+
+    r = client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+    assert r.status_code == 400
+    assert d.exists()
+
+
+def test_redownload_records_the_archive_against_the_albums_history(client, cfg, quiet_sync):
+    """The album's id is its MBID, and the replacement gets tagged with the same
+    one — so the archive, the delete and the eventual re-tag all land on one
+    history, which is the point of auditing this at all."""
+    from harmonist import activity_store
+
+    d = _make_tagged_album(
+        cfg, "Traceable", mbid="rel-rd-8", tagged_at=datetime.now(UTC), item_id=8080
+    )
+
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+    messages = [e.message for e in activity_store.album_history("rel-rd-8")]
+    assert any(m.startswith("redownload.archive") for m in messages)
+    assert any(m.startswith("redownload.delete") for m in messages)
+    assert any("Archived to" in m for m in messages)
+    # Recorded relative to the library root (#98), so the log names the album
+    # rather than repeating a container path on every line. The pruned parent is
+    # the one that can get this wrong — see test_archive.py, where a symlinked
+    # root can actually tell the two apart.
+    prune = next(m for m in messages if m.startswith("redownload.prune"))
+    assert prune == "redownload.prune dir=Artist"
+
+
+def test_redownload_of_an_adopted_album_does_not_cry_wolf_about_the_ignores(
+    client, cfg, quiet_sync
+):
+    """An album adopted from an existing library was never downloaded by
+    bandcampsync, so it has no line in ignores.txt and nothing was blocking the
+    re-download. Reporting that as a problem would fire on the common case."""
+    from harmonist import activity
+
+    d = _make_tagged_album(
+        cfg, "Adopted", mbid="rel-rd-12", tagged_at=datetime.now(UTC), item_id=1212
+    )
+    assert not cfg.ignores_file.exists()
+
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+    assert not [e for e in activity.recent() if e.level == Level.WARNING]
+
+
+def test_redownload_warns_when_the_ignore_could_not_be_removed(
+    client, cfg, quiet_sync, monkeypatch
+):
+    """The opposite case, and the one worth interrupting for: the id is still
+    ignored, so bandcampsync skips the purchase and the replacement the user was
+    promised never arrives."""
+    from harmonist import activity
+
+    d = _make_tagged_album(
+        cfg, "Stuck", mbid="rel-rd-13", tagged_at=datetime.now(UTC), item_id=1313
+    )
+    _ignores_with(cfg, auto=[1313])
+    monkeypatch.setattr(Path, "write_text", mock.Mock(side_effect=OSError("read-only filesystem")))
+
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+    warnings = [e.message for e in activity.recent() if e.level == Level.WARNING]
+    assert any("ignores" in m for m in warnings)
+
+
+def test_an_awaited_redownload_is_shown_in_the_inbox_until_it_lands(client, cfg, quiet_sync):
+    """Between the archive and the download the album has no directory, so it is
+    in no state and no group — without this card it just vanishes moments after
+    the user clicked something that deleted their files."""
+    from harmonist import library_index, redownloads
+
+    d = _make_tagged_album(
+        cfg, "Interim", mbid="rel-rd-9", tagged_at=datetime.now(UTC), item_id=9090
+    )
+    try:
+        client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+        r = client.get("/tasks")
+        assert "Re-downloading" in r.text
+        assert "Interim" in r.text
+        # The zip is the escape hatch out of this state, so the card has to name it.
+        assert "(archived " in r.text
+
+        # ...and it clears by derivation once the purchase is back on disk — no
+        # completion callback anything could forget to fire.
+        library_index.upsert(
+            cfg.paths.music_dir / "Artist" / "Interim",
+            Sidecar(mb_release_id="rel-rd-9", bandcamp=BandcampInfo(item_id=9090)),
+        )
+        assert "Interim" not in client.get("/tasks").text
+    finally:
+        redownloads.reset()
+        library_index.clear()
+
+
+def test_album_page_offers_redownload_only_for_a_linked_bandcamp_purchase(client, cfg):
+    linked = _make_tagged_album(
+        cfg, "Linked", mbid="rel-rd-10", tagged_at=datetime.now(UTC), item_id=1010
+    )
+    manual = _make_tagged_album(cfg, "Manual", mbid="rel-rd-11", tagged_at=datetime.now(UTC))
+
+    assert "/redownload" in client.get(f"/album/{_id_for(cfg, linked)}").text
+    # A CD rip has no purchase to re-download, so the control isn't offered —
+    # the same string IS present on the album above, under different conditions.
+    assert "/redownload" not in client.get(f"/album/{_id_for(cfg, manual)}").text
+
+
+def test_redownloading_twice_archives_once(client, cfg, quiet_sync):
+    """Transitions are idempotent (§3). The album is off disk after the first
+    call, so the second finds nothing to act on rather than writing a second
+    archive of an album that no longer exists — which would be an empty zip and
+    a second sync for a purchase already queued."""
+    d = _make_tagged_album(
+        cfg, "Twice", mbid="rel-rd-14", tagged_at=datetime.now(UTC), item_id=1414
+    )
+    album_id = _id_for(cfg, d)
+
+    first = client.post(f"/library/{album_id}/redownload")
+    second = client.post(f"/library/{album_id}/redownload")
+
+    assert first.status_code == 200
+    assert second.status_code == 404
+    assert len(list(cfg.paths.music_dir.glob("*.zip"))) == 1

@@ -32,7 +32,7 @@ from typing import Any
 
 from mutagen.mp4 import MP4
 
-from . import activity, activity_store, audit, id_registry, pending_downloads
+from . import activity, activity_store, audit, id_registry, pending_downloads, redownloads
 from . import sidecar as sidecar_mod
 from .formats.m4a import (
     ATOM_ALBUM,
@@ -696,6 +696,10 @@ def seed(music_dir: Path) -> None:
         f"Harmonist demo data — safe to delete.\nversion: {data_version()}\n"
     )
     pending_downloads.replace_all([])
+    # A re-download awaited against the OLD library refers to an album this
+    # re-seed has just recreated from scratch (#132) — leaving the card up would
+    # have the inbox waiting forever for something already there.
+    redownloads.reset()
 
 
 def reset(music_dir: Path) -> None:

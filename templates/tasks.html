@@ -20,6 +20,11 @@
    decides (Match / Download / Don't download). In-memory, from the last sync. #}
 {% include 'partials/_pending.html' %}
 
+{# Albums archived off disk and awaiting their replacement download (#132). They
+   have no directory, so they are in no state and no group below — this is the
+   only place they appear until the download lands. #}
+{% include 'partials/_redownloading.html' %}
+
 {% if reconciling %}
 {# Reconcile in flight: the inbox is being built. Show the counts climbing as
    each orphan is filed, rather than the churning (and re-polled) card lists.
@@ -43,7 +48,7 @@
     </p>
     <p class="text-2xs text-muted mt-1">Large libraries on a network mount can take a few minutes.</p>
 </div>
-{% elif not albums and not pending %}
+{% elif not albums and not pending and not redownloading|default([]) %}
 <div class="p-10 text-center border border-line rounded-lg">
     <p class="text-muted italic">
         {% if total_albums %}
@@ -54,7 +59,8 @@
     </p>
 </div>
 {% elif not albums %}
-{# Only potential downloads remain — the section above shows them. #}
+{# Only potential downloads and/or re-downloads remain — the sections above
+   show them. #}
 {% else %}
 
 {# Render albums grouped by state with a header + instruction per group.

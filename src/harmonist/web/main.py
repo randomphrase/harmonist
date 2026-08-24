@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
@@ -32,18 +32,21 @@ from harmonist import (
     activity,
     activity_store,
     album_files,
+    archive,
     artwork_store,
     audit,
     compare,
     cover_art,
     formats,
     id_registry,
+    library_index,
     live_counts,
     match,
     mb_lookup,
     mb_search,
     pending_downloads,
     reconcile,
+    redownloads,
     scanner,
     tag_history,
 )
@@ -407,7 +410,9 @@ def create_app(
             sync_runner.link_only_override = None
             link_only = override if override is not None else pending_links > 0
             if link_only and pending_links == 0:
-                _clear_bandcampsync_checkpoint(cfg.paths.music_dir)
+                _clear_bandcampsync_checkpoint(
+                    cfg.paths.music_dir, reason="link-only sync forced from the popover"
+                )
             # The ONE sync-start entry, written here because this is where the
             # mode is decided — the runner's generic "started" line fired before
             # this point and so could never name it (#101).
@@ -1255,13 +1260,19 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
 _BANDCAMPSYNC_STATE_FILE = ".bandcampsync-state.json"
 
 
-def _clear_bandcampsync_checkpoint(music_dir: Path) -> bool:
+def _clear_bandcampsync_checkpoint(music_dir: Path, *, reason: str) -> bool:
     """Remove bandcampsync's collection-checkpoint file if present. Returns
-    True if a file was removed. Never raises — best-effort."""
+    True if a file was removed. Never raises — best-effort.
+
+    `reason` goes in the audit line. There are two callers now and they clear it
+    for genuinely different reasons — unlinked albums whose purchase an
+    incremental sync wouldn't re-page, and a re-download whose purchase is
+    older still (#132) — so the reason can't be a constant here without the log
+    confidently misattributing half of them."""
     state_file = music_dir / _BANDCAMPSYNC_STATE_FILE
     try:
         if state_file.is_file():
-            audit.record("checkpoint.clear", path=state_file, reason="pending Needs-Sync links")
+            audit.record("checkpoint.clear", path=state_file, reason=reason)
             state_file.unlink()
             return True
     except OSError as e:
@@ -1289,7 +1300,9 @@ def _force_full_sync_if_pending_links(cfg: config_mod.Config, scan_runner: ScanR
             scan_runner.albums() if scan_runner.is_engaged() else scanner.scan(cfg.paths.music_dir)
         )
         pending = sum(1 for a in albums if a.state == AlbumState.NEEDS_SYNC)
-        if pending and _clear_bandcampsync_checkpoint(cfg.paths.music_dir):
+        if pending and _clear_bandcampsync_checkpoint(
+            cfg.paths.music_dir, reason="pending Needs-Sync links"
+        ):
             log.info(
                 "Forcing a full Bandcamp sync: %d album(s) await a purchase link",
                 pending,
@@ -2262,6 +2275,53 @@ def _remove_user_ignore(ignores_file: Path, item_id: int) -> bool:
     return True
 
 
+def _remove_ignore_anywhere(
+    ignores_file: Path, item_id: int
+) -> Literal["removed", "absent", "failed"]:
+    """Drop one id from BOTH regions so the next sync downloads it again (#132).
+
+    The sibling above refuses to touch the auto-managed region, on the grounds
+    that removing an already-downloaded id there would re-download the album.
+    That is precisely the intent here: the album has just been archived off disk,
+    so there is no copy to duplicate and the ignore is now the only thing
+    standing between the user and the files they asked for.
+
+    Rewriting bandcampsync's region is safe *between* syncs and only then — it
+    reads the file once at startup and rewrites it wholesale from that snapshot,
+    so an edit made while a sync runs is silently discarded. The caller refuses
+    to archive anything while a sync is in flight, which is what makes this hold.
+
+    Three outcomes, not two, because "the id wasn't in the file" and "I couldn't
+    rewrite the file" want opposite responses and a bool would conflate them. An
+    adopted album was never downloaded by bandcampsync, so it has no auto-region
+    line and `absent` is the *ordinary* result — warning about it would cry wolf
+    on the common case. `failed` is the one worth interrupting the user for: the
+    ignore stands, so the replacement they were promised will never arrive.
+    """
+    try:
+        text = ignores_file.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return "absent"  # nothing ignored yet — genuinely nothing to remove
+    except OSError:
+        log.exception("could not read ignores %s — %s stays ignored", ignores_file, item_id)
+        return "failed"
+
+    def keep(line: str) -> bool:
+        return (line.partition("#")[0].strip() or None) != str(item_id)
+
+    user, auto = _ignores_split(text)
+    kept_user, kept_auto = [ln for ln in user if keep(ln)], [ln for ln in auto if keep(ln)]
+    if len(kept_user) + len(kept_auto) == len(user) + len(auto):
+        return "absent"
+    try:
+        ignores_file.write_text("".join(kept_user + kept_auto), encoding="utf-8")
+    except OSError:
+        log.exception("could not rewrite ignores %s — %s stays ignored", ignores_file, item_id)
+        return "failed"
+    audit.record("ignores.remove", item_id=item_id, file=ignores_file, reason="re-download")
+    return "removed"
+
+
 def _search_albums(request: Request, q: str, *, limit: int = 25) -> list[dict[str, str]]:
     """On-disk albums whose artist/title/folder matches `q` — the Match picker's
     candidates, each carrying its display path for disambiguation."""
@@ -2703,6 +2763,10 @@ def _register_routes(app: FastAPI) -> None:
         ):
             request.app.state.reconcile_runner.start()
         pending = pending_downloads.all_pending()
+        # Awaited re-downloads clear by derivation (#132): anything whose purchase
+        # the library can see again has come back, whether the sync we kicked
+        # fetched it, a later one did, or the user unzipped the archive by hand.
+        redownloads.prune(library_index.item_ids())
         pending_suggestions, surrender_suggestions = _reconcile_suggestions(
             albums, pending, request.app.state.cfg.paths.music_dir
         )
@@ -2711,6 +2775,7 @@ def _register_routes(app: FastAPI) -> None:
             albums=_inbox_albums(albums),
             total_albums=len(albums),
             pending=pending,
+            redownloading=redownloads.all_pending(),
             pending_suggestions=pending_suggestions,
             surrender_suggestions=surrender_suggestions,
             scan=request.app.state.scan_runner.status(),
@@ -2928,7 +2993,9 @@ def _register_routes(app: FastAPI) -> None:
         # next sync re-pages the whole Bandcamp collection rather than stopping
         # at bandcampsync's saved checkpoint. ignores.txt is deliberately left
         # alone — clearing it would re-download audio, which nuke is not about.
-        state_cleared = _clear_bandcampsync_checkpoint(cfg.paths.music_dir)
+        state_cleared = _clear_bandcampsync_checkpoint(
+            cfg.paths.music_dir, reason="sidecars erased — start fresh"
+        )
         suffix = " · sync checkpoint reset" if state_cleared else ""
         # Drop the now-stale snapshot + counts and kick a fresh scan, so the inbox
         # shows the "Scanning…" screen (then the rebuilt inbox) when the user
@@ -3590,6 +3657,137 @@ def _register_routes(app: FastAPI) -> None:
             "Tags put back",
             _revert_detail(outcome, unlinked=unlinked),
             extra_triggers={"album-retagged": True},
+            album=album,
+        )
+
+    @app.post("/library/{album_id}/redownload", response_class=HTMLResponse)
+    def redownload(request: Request, album_id: str) -> Response:
+        """Archive the album's files off disk and let the next sync fetch it again
+        (#132) — a format upgrade, or a release the artist has since added to.
+
+        Four things have to be undone for a sync to re-fetch a purchase it has
+        already got, and the order matters:
+
+        1. **Archive and delete the directories** (`archive.archive_and_remove`,
+           which verifies the zip before removing anything). This is what clears
+           `library_index`, the `bandcamp_item_id.txt` marker and the on-disk
+           `store_url` — the three things `sync_item` short-circuits on.
+        2. **Un-ignore the purchase**, including bandcampsync's auto-managed
+           region. Done here rather than during the sync because bandcampsync
+           snapshots the file at startup and discards concurrent edits.
+        3. **Approve the download**, which is the existing flag that gets an item
+           past both link-only mode and the per-sync cap.
+        4. **Clear the collection checkpoint**, or an incremental sync starts past
+           an old purchase and never re-pages it.
+
+        Then start the sync. A sync already in flight is refused outright: step 2
+        would be thrown away by the run that is already going.
+        """
+        cfg: config_mod.Config = request.app.state.cfg
+        album = _find_album(request, album_id)
+        sc = album.sidecar
+        item_id = sc.bandcamp.item_id if sc and sc.bandcamp else None
+        if item_id is None:
+            # No purchase id, no re-download: an album linked only by
+            # `candidate_item_ids` has several purchases it could be and we would
+            # be guessing which to fetch (review-gate item 2).
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This album isn't linked to a single Bandcamp purchase, so there's "
+                "nothing to re-download.",
+            )
+        if request.app.state.sync_runner.is_running:
+            return _flash_response(
+                "Can't re-download now",
+                "a sync is already running — wait for it to finish and try again",
+                level=Level.WARNING,
+                tasks_changed=False,
+                status_code=409,
+                album=album,
+            )
+
+        # Captured BEFORE the mutation, unlike everywhere else (event-recording
+        # rule 2), because the mutation *destroys* the sidecar this id would be
+        # re-read from. It is the right id regardless: a re-downloadable album is
+        # matched, so `Album.id` is its `mb_release_id`, which the replacement
+        # will be tagged with in turn — so the archive, the delete and the
+        # re-tagging all land on one album history.
+        aid = album.id
+        label = f"{album.artist} — {album.title}".strip(" —")
+        # One scope, so the audit rows beneath the archive attach to the activity
+        # entry as its "what changed" (#97).
+        with activity_store.action():
+            try:
+                result = archive.archive_and_remove(
+                    album.folders,
+                    music_root=cfg.paths.music_dir,
+                    label=label,
+                    album_id=aid,
+                )
+            except archive.ArchiveError as e:
+                # Nothing was deleted (or, in the one partial-removal case, the
+                # message says so) and no ignore was touched — the album is where
+                # it was and the user can try again.
+                return _flash_response(
+                    "Couldn't archive this album",
+                    str(e),
+                    level=Level.ERROR,
+                    tasks_changed=False,
+                    status_code=500,
+                    album=album,
+                )
+            # Drop it from the in-memory index NOW rather than waiting for the
+            # rescan: `sync_items` seeds bandcampsync's ignore set from
+            # `library_index.item_ids()`, and the sync starts below.
+            for d in album.folders:
+                library_index.remove(d)
+            unignore = _remove_ignore_anywhere(cfg.ignores_file, item_id)
+            pending_downloads.approve(item_id)
+            _clear_bandcampsync_checkpoint(
+                cfg.paths.music_dir, reason=f"re-download of purchase {item_id}"
+            )
+            redownloads.add(
+                redownloads.PendingRedownload(
+                    item_id=item_id,
+                    artist=album.artist,
+                    title=album.title,
+                    url=sc.store_url or "" if sc else "",
+                    archive_name=result.path.name,
+                    requested_at=datetime.now(UTC),
+                )
+            )
+            # The album has left every state — it isn't on disk any more. The
+            # next scan's reset_from would correct this anyway; doing it here
+            # keeps the Library count honest in the same render (#11).
+            live_counts.move(album.state, None)
+            activity.record(
+                f"Archived to {result.path.name} ({result.file_count} files) — "
+                "re-downloading from Bandcamp",
+                album_id=aid,
+                album_label=label,
+            )
+        if unignore == "failed":
+            # The album is already gone, so this is not fatal — but bandcampsync
+            # will skip the purchase and the replacement never arrives. Say so
+            # where the user will see it rather than only in the log. ("absent"
+            # is not this: an adopted album was never in the ignores file, and
+            # nothing was blocking the download in the first place.)
+            activity.warning(
+                f"{label}: couldn't take Bandcamp purchase {item_id} out of your ignores "
+                "file, so the sync may skip it. Restore it from Settings → Ignored, or "
+                "unzip the archive to put the album back.",
+                album_id=aid,
+            )
+        try:
+            request.app.state.sync_runner.start()
+        except AlreadyRunningError:
+            # Raced with a sync started between the check above and here. The
+            # archive stands and the purchase is un-ignored, so the *next* sync
+            # fetches it; the card stays up meanwhile saying exactly that.
+            log.info("a sync started while archiving %s — the next one will fetch it", label)
+        return _flash_response(
+            "Re-downloading",
+            f"old files archived to {result.path.name} in your music folder",
             album=album,
         )
 
