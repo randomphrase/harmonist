@@ -262,6 +262,13 @@ Nothing ever deletes the archive — it's yours to keep or bin once the new
 download looks right. The format is whichever one you've set in Settings, and the
 confirmation says which before you commit.
 
+**The new copy is tagged the same way any download is**, so it can arrive needing
+attention rather than going straight to the Library — if MusicBrainz has no
+release for the album, or has one that no longer matches what you've just
+downloaded. It then waits in the Inbox under **Needs MBID** with the usual
+Recheck and search tools. That's worth knowing before you start: an album that
+was finished can come back needing a click. It's also why the archive exists.
+
 You can't start a re-download while a sync is running; wait for it to finish.
 
 ## Undoing a tagging

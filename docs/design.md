@@ -127,6 +127,28 @@ album has no directory, so it is in no state at all — it is held in
 derivation* when `library_index` sees the purchase again (so any route home
 clears it, including the user restoring the zip by hand).
 
+**The replacement is tagged by the ordinary path**, `_resolve_by_store_url` off
+the sync's `post_download_callback` — the same one every first-time download
+takes. So it can land untagged, in exactly the three ways any download can: the
+store URL resolves to no MB release, it resolves but the match is only
+*approximate* (a live release the artist has since grown is precisely this — the
+new file count won't match a stale MB tracklist), or the lookup errors. All three
+leave a sidecar with a `store_url` and no release, i.e. **NEEDS_MBID** — in the
+inbox with Recheck and the assign tools, not silently absent and not silently
+wrong. Worth stating plainly because it is a real cost of the operation: the
+album was COMPLETE before, and the user can get back a copy that needs a click.
+The archive is what makes that recoverable rather than a loss.
+
+**Album history spans the round trip only when the release is unchanged.** The
+archive and delete are recorded under the album's `mb_release_id`; the fresh
+download starts under a path-derived `temp_uid`; tagging it back to the *same*
+release records the `temp_uid → MBID` alias, and `album_history` unions over the
+alias chain — so the album's page shows what happened to it, not just what has
+happened since. If MusicBrainz resolves the store URL to a **different** release,
+nothing joins the two ids and the archive stays on the old album's history:
+findable in the Activity feed, absent from the new album's page. Both halves are
+pinned by tests; the alias is what carries it, so removing it fails them.
+
 **Known limitation.** That store and the download approval are both in-memory. A
 restart in the seconds between the archive and its sync loses them, and on a
 library with unlinked albums the next sync then runs link-only and surfaces the

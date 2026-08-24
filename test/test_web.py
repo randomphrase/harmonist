@@ -11,6 +11,7 @@ import re
 import shutil
 import zipfile
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
@@ -19,7 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
-from harmonist import mb_lookup
+from harmonist import activity, activity_store, mb_lookup
 from harmonist import sidecar as sc
 from harmonist.activity_store import Level
 from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
@@ -6976,3 +6977,93 @@ def test_redownloading_twice_archives_once(client, cfg, quiet_sync):
     assert first.status_code == 200
     assert second.status_code == 404
     assert len(list(cfg.paths.music_dir.glob("*.zip"))) == 1
+
+
+def _replay_the_download(cfg, name: str, *, item_id: int, mbid: str | None) -> Path:
+    """What the sync does when the replacement lands: recreate the album dir and
+    write a sidecar for the purchase (no MBID — a fresh download isn't tagged
+    yet), then, if MusicBrainz resolved it, tag it. Both go through
+    `sidecar.write`, which is what records the identity alias."""
+    from harmonist.bandcamp_hook import write_sidecar_for_item
+
+    d = _make_album(cfg, name)
+    slug = name.lower().replace(" ", "-")
+    item = mock.Mock(
+        item_id=item_id,
+        band_name="Artist",
+        item_title=name,
+        _data={"band_id": 1, "item_url": f"https://x.bandcamp.com/album/{slug}"},
+    )
+    write_sidecar_for_item(item, d)
+    activity.record("Downloaded", album_id=sc.album_id_for(d), album_label=name)
+    if mbid:
+        existing = sc.read(d)
+        assert existing is not None
+        sc.write(d, replace(existing, mb_release_id=mbid, tagged_at=datetime.now(UTC)))
+        activity.record("Auto-tagged from MusicBrainz after sync", album_id=sc.album_id_for(d))
+    return d
+
+
+def test_history_survives_the_round_trip_when_the_replacement_tags_the_same_release(
+    client, cfg, quiet_sync
+):
+    """The claim the audit trail rests on: the archive is recorded under the
+    album's MBID, the fresh download starts life under a path-derived temp_uid,
+    and tagging it back to the same release aliases the two — so the album's page
+    shows what happened to it, not just what happened since."""
+    d = _make_tagged_album(
+        cfg, "Round Trip", mbid="rel-rt-1", tagged_at=datetime.now(UTC), item_id=7001
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    _replay_the_download(cfg, "Round Trip", item_id=7001, mbid="rel-rt-1")
+
+    messages = [e.message for e in activity_store.album_history("rel-rt-1")]
+    assert any(m.startswith("redownload.archive") for m in messages)  # before
+    assert "Downloaded" in messages  # during, under the temp_uid
+    assert "Auto-tagged from MusicBrainz after sync" in messages  # after
+
+
+def test_history_splits_when_the_replacement_tags_a_different_release(client, cfg, quiet_sync):
+    """The limit of the above, stated rather than discovered. If MusicBrainz
+    resolves the store URL to a DIFFERENT release, the replacement's id is not
+    the archived album's id and no alias joins them — the archive stays on the
+    old id's history, reachable from the Activity feed but not from the new
+    album's page."""
+    d = _make_tagged_album(
+        cfg, "Split", mbid="rel-split-old", tagged_at=datetime.now(UTC), item_id=7002
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    _replay_the_download(cfg, "Split", item_id=7002, mbid="rel-split-new")
+
+    new_side = [e.message for e in activity_store.album_history("rel-split-new")]
+    assert "Downloaded" in new_side
+    assert not any(m.startswith("redownload.archive") for m in new_side)
+    # The record is not lost, just filed under the album it was made about.
+    old_side = [e.message for e in activity_store.album_history("rel-split-old")]
+    assert any(m.startswith("redownload.archive") for m in old_side)
+
+
+def test_a_replacement_musicbrainz_cannot_match_lands_in_the_inbox_not_the_library(
+    client, cfg, quiet_sync
+):
+    """A re-download can end up UNTAGGED. The album was COMPLETE before; if the
+    store URL no longer resolves, the replacement has a sidecar and a store_url
+    but no release, which is NEEDS_MBID — in the inbox with the usual tools, not
+    silently absent and not silently wrong."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+
+    d = _make_tagged_album(
+        cfg, "Unmatched", mbid="rel-um-1", tagged_at=datetime.now(UTC), item_id=7003
+    )
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+    shutil.rmtree(d, ignore_errors=True)
+
+    back = _replay_the_download(cfg, "Unmatched", item_id=7003, mbid=None)
+
+    states = {a.path: a.state for a in scanner.scan(cfg.paths.music_dir)}
+    assert states[back] == AlbumState.NEEDS_MBID
