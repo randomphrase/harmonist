@@ -78,6 +78,42 @@ def test_loading_older_activity_survives_the_poll(demo_server: str) -> None:
         browser.close()
 
 
+# Start watching: stash the pill node, and arm a watcher on the runner states.
+# A runner changing state is the one thing that legitimately rewrites the bar —
+# a running sync, reconcile or scan OUTRANKS the action flash (see the priority
+# order in index.html), so a dir-watcher rescan starting mid-window swaps the
+# flash out for "Scanning…" and back, and the restored flash is a new node with
+# identical markup. That is the display working as designed, and it is
+# indistinguishable from the #93 flicker by node identity alone — so measure
+# only across windows where nothing moved, and say so when nothing moved.
+#
+# Watch the three runner-state attributes and nothing else. #app-status is the
+# element that ISSUES the 1.5s poll, so htmx puts `htmx-request` on it and takes
+# it off again every cycle — an unfiltered observer reports that as churn and
+# never sees a quiet window. And compare oldValue, because the poll re-assigns
+# all three dataset attributes every time: assigning an identical value still
+# raises a mutation record.
+_ARM_WATCH = """
+    window.__pill = document.querySelector('#harmonist-status').firstElementChild;
+    window.__opsMoved = false;
+    const app = document.querySelector('#app-status');
+    new MutationObserver(function (records) {
+        for (const r of records) {
+            if (r.oldValue !== app.getAttribute(r.attributeName)) window.__opsMoved = true;
+        }
+    }).observe(app, {
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ['data-sync', 'data-reconcile', 'data-scan'],
+    });
+"""
+
+_READ_WATCH = """[
+    window.__opsMoved,
+    document.querySelector('#harmonist-status').firstElementChild === window.__pill,
+]"""
+
+
 def test_status_pill_is_not_rebuilt_when_unchanged(demo_server: str) -> None:
     """#93: the header status pill must not be re-rendered on every 1.5s poll.
 
@@ -99,16 +135,16 @@ def test_status_pill_is_not_rebuilt_when_unchanged(demo_server: str) -> None:
         )
         pill = page.locator("#harmonist-status > *").first
         pill.wait_for(state="attached")
-        page.evaluate(
-            "window.__pill = document.querySelector('#harmonist-status').firstElementChild"
-        )
 
-        page.wait_for_timeout(3500)  # more than two 1.5s status polls
-
-        same_node = page.evaluate(
-            "document.querySelector('#harmonist-status').firstElementChild === window.__pill"
-        )
-        assert same_node, "the status pill was rebuilt despite unchanged content"
+        for _ in range(4):
+            page.evaluate(_ARM_WATCH)
+            page.wait_for_timeout(3500)  # more than two 1.5s status polls
+            ops_moved, same_node = page.evaluate(_READ_WATCH)
+            if not ops_moved:
+                assert same_node, "the status pill was rebuilt despite unchanged content"
+                break
+        else:
+            pytest.skip("no quiet 3.5s window — a background runner kept changing state")
 
         browser.close()
 

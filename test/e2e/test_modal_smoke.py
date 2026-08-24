@@ -22,6 +22,16 @@ pytestmark = pytest.mark.skipif(
 )
 playwright_sync = pytest.importorskip("playwright.sync_api")
 
+# The rematch pencil, named by the label it is reachable by rather than by its
+# endpoint. `button[hx-post*="/rematch"]` used to be unique on an album page and
+# is not any more: the deleted-release banner (#210) offers "Find a new release",
+# which posts to the same route with a different confirm — and the demo album
+# that opens first is precisely the one that carries it, so the bare selector
+# resolved to two elements and every click through it died on strict mode. The
+# tests below are about the pencil's confirm/side-effect ordering (#40), so they
+# have to say which button they mean.
+_PENCIL = 'button[aria-label^="Wrong MusicBrainz match"]'
+
 
 def test_old_deep_link_lands_on_the_album_page(demo_server: str) -> None:
     """`?album=<id>` opened a dialog before there was an album page (#65). Now it
@@ -98,10 +108,10 @@ def test_activity_album_link_actually_opens_the_album(demo_server: str) -> None:
         # The tile is a link to the album's page now, not a dialog trigger (#129).
         page.click('[data-tab="library"]')
         page.locator('#panel-library a[href^="/album/"]').first.click()
-        page.locator('button[hx-post*="/rematch"]').wait_for(state="visible")
+        page.locator(_PENCIL).wait_for(state="visible")
         page.on("dialog", lambda d: d.accept())
         with page.expect_request(lambda r: "/rematch" in r.url and r.method == "POST"):
-            page.click('button[hx-post*="/rematch"]')
+            page.click(_PENCIL)
         page.wait_for_url(f"{demo_server}/")  # rematch sends it out of the Library
 
         # Its Activity entry must carry a link on the album name.
@@ -135,14 +145,14 @@ def test_album_page_rematch_fires_confirm_and_post_then_navigates(demo_server: s
         # Library tab → first tile → the album's own page.
         page.click('[data-tab="library"]')
         page.locator('#panel-library a[href^="/album/"]').first.click()
-        page.locator('button[hx-post*="/rematch"]').wait_for(state="visible")
+        page.locator(_PENCIL).wait_for(state="visible")
         assert "/album/" in page.url
 
         # Accept the hx-confirm, then click the rematch pencil and require
         # that the POST is actually issued.
         page.on("dialog", lambda d: d.accept())
         with page.expect_request(lambda r: "/rematch" in r.url and r.method == "POST"):
-            page.click('button[hx-post*="/rematch"]')
+            page.click(_PENCIL)
 
         # The album has left the Library, so the page navigates back to it
         # rather than sitting there describing something that moved.
