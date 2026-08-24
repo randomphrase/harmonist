@@ -6349,10 +6349,10 @@ def test_the_album_page_offers_the_acceptance_only_when_incomplete(client, cfg):
     whole = _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=datetime.now(UTC))
 
     page = client.get(f"/album/{_id_for(cfg, incomplete)}").text
-    assert "No more tracks to get" in page
+    assert "Don't warn me about this" in page
     assert not _is_checked(page, "tracks-unavailable"), "not accepted yet"
 
-    assert "No more tracks to get" not in client.get(f"/album/{_id_for(cfg, whole)}").text
+    assert "warn me about this" not in client.get(f"/album/{_id_for(cfg, whole)}").text
 
 
 def test_the_album_page_offers_the_way_back_once_accepted(client, cfg):

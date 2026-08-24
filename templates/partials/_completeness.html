@@ -54,11 +54,17 @@
        posts accept=true, an unticked one posts nothing and the endpoint's default
        reads that as taking the acceptance back.
 
-       Phrased as a claim about the SOURCE — there are no more tracks to get —
-       because that is checkable, where "ignore this" is not. #}
+       Labelled with what ticking it DOES, because that is all it does: the flag
+       demotes this badge and drops the album from the Incomplete filter, and
+       touches no state, tag or file. It read "No more tracks to get" until #245
+       — a claim about the source, which had two problems. It changed unit under
+       a badge that now says "Disc 2 of 2 is missing"; and it asked the reader to
+       assert something they generally cannot know, since whether a hidden track
+       is obtainable *somewhere* is not a fact about their own shelf. "Stop
+       flagging this" is entirely within what they know. #}
     <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
                   text-2xs uppercase tracking-widest font-bold text-muted hover:text-ink transition"
-           title="{% if _accepted %}Untick to put this album back in the Library's Incomplete list.{% else %}The missing tracks aren't available, so stop listing this album as incomplete. It stays marked above — only the Incomplete filter ignores it.{% endif %}">
+           title="{% if _accepted %}Untick to have the Library list this album as incomplete again.{% else %}Stop listing this album as incomplete — for when what's missing isn't coming. The shortfall stays stated above, in grey rather than amber; only the Incomplete filter ignores it.{% endif %}">
         <input type="checkbox" name="accept" value="true" class="cursor-pointer"
                {% if _accepted %}checked{% endif %}
                hx-post="/library/{{ album.id }}/tracks-unavailable"
@@ -68,7 +74,7 @@
                   nothing, which would leave the box showing a setting that was
                   never persisted — so put it back. #}
                hx-on::after-request="if (!event.detail.successful) this.checked = !this.checked">
-        No more tracks to get
+        Don't warn me about this
     </label>
 </div>
 {% endif %}

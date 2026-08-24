@@ -580,10 +580,22 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   there is nothing to act on. A Blu-ray where only the stereo mixes were ripped;
   a hidden CD track never ripped from a disc since thrown away.
 
-  The claim is about the **source** — "there are no more tracks to get" — not
-  about the UI. That is what keeps it from becoming a general "ignore this
-  album", and it is why a Bandcamp album whose artist has since added tracks is
-  the wrong candidate: those can genuinely be fetched (#132).
+  The control is labelled with what it **does** — *Don't warn me about this* —
+  because that is the whole of its effect: the badge is demoted and the album
+  leaves the Incomplete filter. It was originally phrased as a claim about the
+  source ("there are no more tracks to get"), on the reasoning that a checkable
+  claim keeps the field from becoming a general "ignore this album". Two things
+  were wrong with that. The claim isn't checkable by the person making it —
+  whether a hidden track can still be got *somewhere* is not a fact about their
+  own shelf — and it names tracks, under a badge that may be reporting a missing
+  disc (#245).
+
+  The cost of the change is recorded here rather than lost: the data no longer
+  distinguishes "as complete as this album can be" from "the user muted a
+  shortfall that is genuinely fixable" — a Bandcamp album whose artist has since
+  added tracks, which *can* be fetched (#132). Nothing reads that distinction
+  today; a future gardener pass that offers to fetch newly-available tracks
+  (#32) would want it, and would need to ask rather than infer.
 
   It does **not** change state. The album really is short, `INCOMPLETE` says so
   truthfully, and both the tile and the album page still report the count — in

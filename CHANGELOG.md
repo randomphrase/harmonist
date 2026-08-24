@@ -12,10 +12,11 @@ versions follow [semantic versioning](https://semver.org).
   tracks on disk", under the MusicBrainz and Bandcamp badges — instead of
   leaving that to the Library tile you just came from (#227). When the shortfall
   is a whole disc it names it: "Disc 2 of 2 is missing" (#245).
-- **No more tracks to get** is now a checkbox beside that badge rather than a
-  button in the action row, so it shows whether the album is accepted instead of
-  making you read it backwards off the button's label. Ticking it turns the
-  badge from amber to grey; the album still says how short it is (#227).
+- Accepting an incomplete album is now a checkbox beside that badge — **Don't
+  warn me about this** — rather than a button in the action row, so it shows
+  whether the album is accepted instead of making you read it backwards off the
+  button's label. Ticking it turns the badge from amber to grey; the album still
+  says how short it is (#227, #245).
 
 ## [1.10.2] - 2026-08-22
 

@@ -186,10 +186,11 @@ done but still wrong, each with its count:
 
   Some albums are incomplete on purpose and always will be — you ripped only the
   stereo mixes off a Blu-ray, or the hidden track was never ripped and the CD is
-  long gone. Tick **No more tracks to get**, beside that badge, and the album
+  long gone. Tick **Don't warn me about this**, beside that badge, and the album
   drops out of this list. It stays marked "N of M" — the album really is short,
-  and that goes on being true — but the badge turns from amber to grey: a
-  statement rather than something to fix. Untick it if you change your mind.
+  and that goes on being true — but the badge turns from amber to grey, here and
+  on the tile: a statement rather than something to fix. Untick it if you change
+  your mind.
 - **Partially tagged** — some files carry the MusicBrainz Album Id and some don't.
   A half-finished tagging run, or Picard applied to part of a folder, leaves this.
 - **No artwork** — correctly tagged, fully linked, and still a grey square in
