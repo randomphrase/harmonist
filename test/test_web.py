@@ -2853,6 +2853,22 @@ def test_library_detail_shows_store_url_and_item_id(client, cfg):
     assert "42" in r.text  # item_id
 
 
+def test_album_page_format_row_says_what_the_format_actually_is(client, cfg):
+    """#130: "ALAC" alone doesn't say whether the download is the quality the
+    user paid for. The Format row carries the stream detail beside the codec."""
+    import re
+    from datetime import datetime
+
+    d = _make_tagged_album(cfg, "Detailed", mbid="abc-123", tagged_at=datetime.now(UTC))
+    r = client.get(f"/album/{_id_for(cfg, d)}")
+    # The whole row, so the two halves are asserted together rather than as
+    # substrings that could each be somewhere else on the page.
+    row = re.search(r"<dt>Format</dt>\s*<dd>(.*?)</dd>", r.text, re.DOTALL)
+    assert row is not None
+    assert "ALAC" in row.group(1)  # the fixture is ALAC-encoded
+    assert "44.1 kHz · 16 bit" in row.group(1)
+
+
 def test_album_page_says_when_only_some_files_carry_the_mb_id(client, cfg):
     """#175: the Library tile has said "1/3 tagged" since #139, but the album page
     said nothing — and its Tracks section reports "All N tracks match MusicBrainz",

@@ -44,7 +44,7 @@ read_cover = _impl.read_cover
 
 
 def read_scan_fields(path: Path) -> ScanFields:
-    return _impl.read_scan_fields(path, "Vorbis")
+    return _impl.read_scan_fields(path, "Vorbis", lossless=False)
 
 
 def read_tags(path: Path) -> TrackTags:

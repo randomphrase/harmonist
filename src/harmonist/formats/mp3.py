@@ -43,6 +43,7 @@ from mutagen.id3 import (
 )
 from mutagen.mp3 import MP3
 
+from . import quality
 from .owned import Owned
 from .types import ScanFields, TagSet, TrackTags
 
@@ -205,6 +206,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         track_total=_total_int(_text(tags, "TRCK")),
         disc_total=_total_int(_text(tags, "TPOS")),
         release_track_id=_txxx(tags, TXXX_RELEASE_TRACK_ID),
+        quality=quality.read(audio.info, lossless=False),
     )
 
 

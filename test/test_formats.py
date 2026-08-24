@@ -479,6 +479,106 @@ def test_describe_none_for_unknown(tmp_path):
     assert formats.describe(tmp_path / "cover.jpg") is None
 
 
+# ---------- stream quality (#130) ----------
+
+
+@pytest.mark.parametrize(
+    ("ext", "fixture", "expected"),
+    [
+        # Lossless: sample rate and bit depth, and NO bitrate — a lossless
+        # bitrate is an artifact of how well the audio compressed, not a
+        # quality the user chose.
+        (".m4a", "sine.m4a", "44.1 kHz · 16 bit"),
+        (".flac", "sine.flac", "44.1 kHz · 16 bit"),
+        # Lossy: bitrate instead of depth, and MP3 alone names its mode.
+        (".mp3", "sine.mp3", "44.1 kHz · 128 kbps CBR"),
+        # Opus records no sample rate at all — it always decodes at 48 kHz
+        # whatever went in — so the clause is absent, not "unknown".
+        (".opus", "sine.opus", "75 kbps"),
+    ],
+)
+def test_quality_label_per_format(tmp_path, ext, fixture, expected):
+    d = _make_album(tmp_path, fixture)
+    f = next(d.glob(f"*{ext}"))
+    assert formats.read_scan_fields(f).quality.label == expected
+
+
+def test_a_lossy_stream_reports_no_bit_depth_even_when_mutagen_offers_one(tmp_path):
+    """MP4 is the one container here holding both a lossless and a lossy codec,
+    and `MP4Info` reports `bits_per_sample` for BOTH — 16, for AAC.
+
+    That 16 describes the decoder's output, not the file: an AAC download
+    labelled "16 bit" claims a fidelity it doesn't have. The AAC fixture is
+    what makes this a real check — every other lossy format simply has no such
+    attribute, so a reader that dropped the lossless guard would still look
+    correct on them.
+    """
+    d = tmp_path / "aac"
+    d.mkdir()
+    dst = d / "01 track.m4a"
+    shutil.copy(FIXTURES_DIR / "sine-aac.m4a", dst)
+
+    from mutagen.mp4 import MP4
+
+    assert MP4(dst).info.bits_per_sample == 16  # what a reader must NOT repeat
+
+    quality = formats.read_scan_fields(dst).quality
+    assert quality.bit_depth is None
+    assert quality.label == "44.1 kHz · 116 kbps"
+
+
+def test_a_lossless_stream_reports_depth_and_no_bitrate(tmp_path):
+    """The other half of the pair: ALAC does carry a real bit depth, and its
+    bitrate is an artifact of how well the audio compressed rather than a
+    quality anyone chose — so it isn't reported."""
+    d = _make_album(tmp_path, "sine.m4a")
+    quality = formats.read_scan_fields(next(d.glob("*.m4a"))).quality
+    assert quality.bit_depth == 16
+    assert quality.bitrate is None
+
+
+def test_hi_res_rate_drops_a_trailing_zero(tmp_path):
+    """48000 Hz reads as "48 kHz", not "48.0 kHz" — and 24-bit depth survives
+    the read, which is the difference the Format row exists to show."""
+    d = _make_album(tmp_path, "sine-hires.flac")
+    f = next(d.glob("*.flac"))
+    assert formats.read_scan_fields(f).quality.label == "48 kHz · 24 bit"
+
+
+def test_a_file_with_no_comment_block_still_reports_its_quality(tmp_path):
+    """A FLAC carrying no VORBIS_COMMENT block at all still has a perfectly
+    readable stream — what a file IS doesn't depend on whether anyone tagged it.
+
+    The block has to be REMOVED, not emptied: mutagen hands back an empty
+    `VCFLACDict` for a file that merely has no values, and only a file missing
+    the block outright reaches the reader's untagged early-return. An empty
+    fixture leaves that branch unvisited and the test unable to fail.
+    """
+    from mutagen.flac import FLAC, VCFLACDict
+
+    d = _make_album(tmp_path, "sine.flac")
+    f = next(d.glob("*.flac"))
+    audio = FLAC(f)
+    audio.metadata_blocks[:] = [b for b in audio.metadata_blocks if not isinstance(b, VCFLACDict)]
+    audio.tags = None
+    audio.save()
+    assert FLAC(f).tags is None  # the branch under test is genuinely reachable
+
+    sf = formats.read_scan_fields(f)
+    assert sf.album_title is None  # nothing to read
+    assert sf.quality.label == "44.1 kHz · 16 bit"  # but the stream still speaks
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_an_unopenable_file_reports_no_quality(tmp_path, ext, fixture):
+    d = _make_album(tmp_path, fixture)
+    f = next(d.glob(f"*{ext}"))
+    f.write_bytes(b"not audio at all")
+    sf = formats.read_scan_fields(f)
+    assert sf.unreadable is True
+    assert sf.quality.label is None
+
+
 # ---------- scanner integration ----------
 
 
@@ -521,6 +621,51 @@ def test_scanner_audio_format_mixed(tmp_path):
     d = _make_album(tmp_path, "sine.flac", name="a")
     shutil.copy(FIXTURES_DIR / "sine.mp3", d / "02 b.mp3")
     assert scan(tmp_path)[0].audio_format == "Mixed"
+
+
+def test_scanner_audio_quality_when_the_files_agree(tmp_path):
+    from harmonist.scanner import scan
+
+    d = _make_album(tmp_path, "sine.flac", name="a")
+    shutil.copy(FIXTURES_DIR / "sine.flac", d / "02 b.flac")
+    album = scan(tmp_path)[0]
+    assert album.audio_format == "FLAC"
+    assert album.audio_quality == "44.1 kHz · 16 bit"
+
+
+def test_scanner_audio_quality_names_the_odd_tracks(tmp_path):
+    """Half the album at a different bit depth is worth knowing about, so the
+    row reports what most tracks say and how many don't — rather than
+    collapsing to "Mixed" and throwing the answer away."""
+    from harmonist.scanner import scan
+
+    d = _make_album(tmp_path, "sine.flac", name="a")
+    shutil.copy(FIXTURES_DIR / "sine.flac", d / "02 b.flac")
+    shutil.copy(FIXTURES_DIR / "sine-hires.flac", d / "03 c.flac")
+    album = scan(tmp_path)[0]
+    assert album.audio_format == "FLAC"  # one codec throughout
+    assert album.audio_quality == "44.1 kHz · 16 bit · 1 track differs"
+
+
+def test_scanner_audio_quality_ignores_a_codec_difference_the_audio_doesnt_share(tmp_path):
+    """An ALAC track beside a FLAC one is a mixed CODEC, which the label
+    already says. Both are 44.1/16, so the audio is uniform and reporting a
+    second disagreement for the same fact would overstate it."""
+    from harmonist.scanner import scan
+
+    d = _make_album(tmp_path, "sine.flac", name="a")
+    shutil.copy(FIXTURES_DIR / "sine.m4a", d / "02 b.m4a")
+    album = scan(tmp_path)[0]
+    assert album.audio_format == "Mixed"
+    assert album.audio_quality == "44.1 kHz · 16 bit"
+
+
+def test_scanner_audio_quality_absent_when_nothing_could_be_read(tmp_path):
+    from harmonist.scanner import scan
+
+    d = _make_album(tmp_path, "sine.flac")
+    next(d.glob("*.flac")).write_bytes(b"not audio at all")
+    assert scan(tmp_path)[0].audio_quality is None
 
 
 # ---------- the owned-tag set (#149) ----------

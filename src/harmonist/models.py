@@ -275,6 +275,12 @@ class Album:
     # "Mixed" when files disagree. Scanner-derived; not persisted. Confirms
     # the download format the user chose actually landed.
     audio_format: str | None = None
+    # What that format actually is — "44.1 kHz · 16 bit", "44.1 kHz · 320 kbps
+    # CBR" (#130). Scanner-derived; not persisted, like `audio_format` beside
+    # it. Says whether a download is the quality the user paid for, and whether
+    # two copies of an album are really the same. Carries its own outlier
+    # clause when the album's files disagree; None when nothing could be read.
+    audio_quality: str | None = None
     # True if a cover is available — a folder cover.* OR embedded art in the
     # tracks. Drives whether the UI requests /cover (avoids 404 floods) and
     # lets /cover serve the embedded art without writing it to disk.

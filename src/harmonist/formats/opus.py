@@ -44,7 +44,7 @@ read_cover = _impl.read_cover
 
 
 def read_scan_fields(path: Path) -> ScanFields:
-    return _impl.read_scan_fields(path, "Opus")
+    return _impl.read_scan_fields(path, "Opus", lossless=False)
 
 
 def read_tags(path: Path) -> TrackTags:

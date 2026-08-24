@@ -13,6 +13,7 @@ from typing import Any
 
 from mutagen.mp4 import MP4, MP4Cover
 
+from . import quality
 from .owned import Owned
 from .types import ScanFields, TagSet, TrackTags
 
@@ -204,17 +205,23 @@ def read_scan_fields(path: Path) -> ScanFields:
         return ScanFields(None, None, None, None, unreadable=True)
     disk = audio.get(ATOM_DISC_NUM) or []
     trkn = audio.get(ATOM_TRACK_NUM) or []
+    codec = _codec_label(audio)
     return ScanFields(
         album_title=_text_atom(audio, ATOM_ALBUM),
         album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),
         artist=_text_atom(audio, ATOM_ARTIST),
-        codec=_codec_label(audio),
+        codec=codec,
         has_cover=bool(audio.get(ATOM_COVER)),
         album_artist=_text_atom(audio, ATOM_ALBUM_ARTIST),
         disc_num=disk[0][0] if disk and disk[0] else None,
         track_total=trkn[0][1] if trkn and trkn[0] and len(trkn[0]) > 1 else None,
         disc_total=disk[0][1] if disk and disk[0] and len(disk[0]) > 1 else None,
         release_track_id=_binary_atom_str(audio, ATOM_MB_RELEASE_TRACK_ID),
+        # MP4 is the one container here that holds both a lossless and a lossy
+        # codec, so what its `info` means depends on which. `MP4Info` reports
+        # `bits_per_sample` for AAC too, and it describes the decoder's output
+        # rather than the file — see `quality`.
+        quality=quality.read(audio.info, lossless=codec == "ALAC"),
     )
 
 

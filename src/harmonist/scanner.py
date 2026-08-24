@@ -15,7 +15,7 @@ from pathlib import Path
 from stat import S_ISREG
 from typing import NamedTuple
 
-from . import album_files, formats, id_registry
+from . import album_files, compare, formats, id_registry
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecarError, UnsupportedSchemaVersionError
 from .sidecar import read as read_sidecar
@@ -477,6 +477,7 @@ def build_album(
         inconsistent_tracks=inconsistent_tracks,
         partial_tag_count=_partial_tag_count(sidecar, fields),
         audio_format=_audio_format(fields),
+        audio_quality=_audio_quality(audio_files, fields),
         # A cover exists if there's a folder cover.* OR the first track has
         # embedded art (album art is on every track; first is representative).
         has_cover=io.cover_path is not None or (bool(fields) and fields[0].has_cover),
@@ -607,6 +608,35 @@ def _audio_format(fields: list[formats.ScanFields]) -> str | None:
     if len(labels) == 1:
         return next(iter(labels))
     return "Mixed"
+
+
+def _audio_quality(audio_files: list[Path], fields: list[formats.ScanFields]) -> str | None:
+    """What the album's audio actually IS, beside the codec label (#130).
+
+    "ALAC" doesn't say whether a download is the quality that was paid for, or
+    whether two copies of an album are the same files; "44.1 kHz · 16 bit"
+    does.
+
+    Rolled up the way the tag comparison rolls up a field, and for the same
+    reason: an album that is half 16-bit and half 24-bit is worth knowing
+    about. `consensus` gives what most tracks say plus a count of the ones that
+    don't, so the row reads "44.1 kHz · 16 bit · 2 tracks differ" rather than
+    collapsing to "Mixed" and throwing away the answer.
+
+    The codec is deliberately NOT part of the value compared here. A folder
+    holding one ALAC and one FLAC track, both 44.1/16, is a mixed *codec* — the
+    label beside this already says so — but its audio is uniform, and reporting
+    two disagreements for one fact would overstate it.
+    """
+    labels = [(p.name, sf.quality.label) for p, sf in zip(audio_files, fields, strict=True)]
+    agreed = compare.consensus(labels)
+    if agreed.value is None:
+        # No file reports anything — every one unreadable, or a format whose
+        # container records none of this.
+        return None
+    if agreed.is_unanimous:
+        return agreed.value
+    return f"{agreed.value} · {agreed.odd_summary}"
 
 
 def _partial_tag_count(

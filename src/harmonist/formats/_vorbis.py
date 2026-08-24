@@ -20,6 +20,7 @@ from typing import Any
 
 from mutagen.flac import Picture
 
+from . import quality
 from .owned import Owned
 from .types import ScanFields, TagSet, TrackTags
 
@@ -235,18 +236,24 @@ class VorbisTagger:
         ms: int = round(audio.info.length * 1000)
         return ms
 
-    def read_scan_fields(self, path: Path, codec: str) -> ScanFields:
+    def read_scan_fields(self, path: Path, codec: str, *, lossless: bool) -> ScanFields:
         """All scanner-needed fields in one open. `codec` is the format label
-        (a constant per Vorbis container — FLAC/Vorbis/Opus)."""
+        and `lossless` whether the stream is — both constants per Vorbis
+        container (FLAC is lossless, Vorbis and Opus are not), and both passed
+        in because this class handles all three and can't tell them apart."""
         audio = self._open(path)
         if audio is None:
             # Flagged, not silently blank: an unopenable file must not read as
             # an untagged one (#112).
             return ScanFields(None, None, None, codec, unreadable=True)
         has_cover = _has_embedded_cover(audio)
+        # Read before the untagged early-return below: a file with no comment
+        # block still has a perfectly readable stream, and what it IS doesn't
+        # depend on whether anyone has tagged it.
+        stream = quality.read(audio.info, lossless=lossless)
         tags = audio.tags
         if tags is None:
-            return ScanFields(None, None, None, codec, has_cover)
+            return ScanFields(None, None, None, codec, has_cover, quality=stream)
 
         def first(key: str) -> str | None:
             values = tags.get(key)
@@ -265,6 +272,7 @@ class VorbisTagger:
             track_total=_first_int(first(KEY_TRACK_TOTAL)) or _total_int(first(KEY_TRACK_NUMBER)),
             disc_total=_first_int(first(KEY_DISC_TOTAL)) or _total_int(first(KEY_DISC_NUMBER)),
             release_track_id=first(KEY_RELEASE_TRACK_ID),
+            quality=stream,
         )
 
     def read_tags(self, path: Path) -> TrackTags:

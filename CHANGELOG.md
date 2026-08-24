@@ -8,6 +8,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- The **Format** row on an album's page now says what the format actually is,
+  not just its name (#130) — "ALAC · 44.1 kHz · 16 bit", "MP3 · 44.1 kHz ·
+  320 kbps CBR". That's what tells you whether a download is the quality you
+  paid for, and whether two copies of an album are really the same. Lossless
+  albums get sample rate and bit depth, lossy ones get the bitrate (and, for
+  MP3, whether it's constant or variable); Opus shows no sample rate because
+  the format records none. When an album's own files disagree — half 16-bit,
+  half 24-bit — it reports what most tracks are and how many aren't.
 - **Re-download an album from Bandcamp** (#132) — for upgrading MP3s to FLAC, or
   picking up tracks the artist has added to a release since you bought it. The
   button is on the album's own page, for any album linked to a Bandcamp

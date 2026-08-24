@@ -959,6 +959,7 @@ src/harmonist/
   formats/              Per-format tag I/O (m4a, mp3, flac, ogg, opus; _vorbis shared; types)
                         owned.py names the tags Harmonist writes, per-album vs per-track
                         write_owned sets/removes a whole owned snapshot — what a revert needs
+                        quality.py reads the stream itself — rate, depth, bitrate (#130)
   tag_history.py        Invert per-file tag-change records into one row per field; build a revert plan
   artwork_store.py      Content-addressed copies of overwritten cover art (undo for #131)
   activity.py           In-memory ring-buffer log for the Activity tab

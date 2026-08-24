@@ -186,9 +186,19 @@
                     <span title="{{ album.path }}">{{ rel_path(album.path, cfg.paths.music_dir) }}</span>
                     {% endif %}
                 </dd>
+                {# The codec alone doesn't say whether the download is the
+                   quality that was paid for, or whether two copies of an album
+                   are the same files — the sample rate and bit depth (or
+                   bitrate) do (#130). They join the codec here rather than the
+                   header line, which already carries artist and track count.
+
+                   The detail is a lossless/lossy-dependent shape, not a fixed
+                   set of columns: Opus records no sample rate at all, and bit
+                   depth against a lossy stream would be wrong rather than
+                   merely noisy. The scanner assembles it. #}
                 {% if album.audio_format %}
                 <dt>Format</dt>
-                <dd>{{ album.audio_format }}</dd>
+                <dd>{{ album.audio_format }}{% if album.audio_quality %} <span class="text-muted">· {{ album.audio_quality }}</span>{% endif %}</dd>
                 {% endif %}
             </dl>
 

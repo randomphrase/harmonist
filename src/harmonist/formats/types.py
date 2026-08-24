@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
+from .quality import AudioQuality
+
 
 class ScanFields(NamedTuple):
     """The tag fields the scanner needs per file, read in a SINGLE file open
@@ -58,6 +60,14 @@ class ScanFields(NamedTuple):
     # is asked of any directory that shares a release with another — which the
     # scan cannot know in advance.
     release_track_id: str | None = None
+    # What the audio stream itself is — sample rate, bit depth, bitrate (#130).
+    # Read from the same handle as everything above, so it costs no extra open.
+    #
+    # Here rather than in `read_tags` because the album panel states the format
+    # beside the path, which is scanner-derived and rendered before the tag
+    # comparison is fetched. Empty for a file that wouldn't open, like every
+    # other field on an unreadable one.
+    quality: AudioQuality = AudioQuality()
 
 
 @dataclass
