@@ -18,8 +18,14 @@
 <div id="album-completeness-{{ album.id }}"{% if oob %} hx-swap-oob="true"{% endif %}
      class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
     {# The denominator comes from the files' own tags (#195) and is absent when a
-       whole disc is missing — nothing on disk records how long it was. Say so
-       rather than inventing one.
+       whole disc is missing — nothing on disk records how long it was. Name the
+       disc then rather than inventing a total (#245); `absent_media` is derived
+       from the same tags, so it costs nothing to say WHICH.
+
+       Three branches, and the third is not decoration: an INCOMPLETE album with
+       no total always has absent media today (the no-totals case derives
+       COMPLETE, so it never reaches here), but the badge should state less
+       rather than guess if that ever stops being true.
 
        Amber says "this needs attention". An album accepted as finished (#196) is
        still short and still says so, but it is no longer work — so the badge is
@@ -27,11 +33,13 @@
        fact about the album to make the page tidier. #}
     <span class="inline-flex items-center px-2.5 py-1 rounded-md text-2xs font-bold
                  {{ 'bg-surface text-muted border border-line' if _accepted else 'bg-amber-50 text-amber-700 border border-amber-300' }}"
-          title="{% if album.expected_track_count %}The total comes from the files' own tags, written from MusicBrainz.{% else %}A medium of this release has no files on disk at all, so nothing records how many tracks it had.{% endif %}{% if _accepted %} You've accepted this album as complete, so the Library's Incomplete filter skips it.{% endif %}">
+          title="{% if album.expected_track_count %}The total comes from the files' own tags, written from MusicBrainz.{% elif album.absent_media %}That disc has no files at all, so nothing on disk records how many tracks it held — the Tracks section lists what MusicBrainz says is on it.{% else %}Fewer tracks on disk than this release has.{% endif %}{% if _accepted %} You've accepted this album as complete, so the Library's Incomplete filter skips it.{% endif %}">
         {% if album.expected_track_count %}
         {{ album.track_count }} of {{ album.expected_track_count }} tracks on disk
+        {% elif album.absent_media %}
+        {{ missing_discs(album.absent_media, album.disc_total) }}
         {% else %}
-        Incomplete &mdash; a disc of this release has no tracks on disk
+        Incomplete
         {% endif %}
     </span>
 

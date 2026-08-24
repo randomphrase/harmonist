@@ -520,6 +520,7 @@ def create_app(
     templates.env.globals["display_path"] = _display_path
     templates.env.globals["rel_path"] = _rel_path
     templates.env.globals["ago"] = _ago
+    templates.env.globals["missing_discs"] = _missing_discs
     templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
     # The tracklist table's headings. A global rather than a per-route context
     # value because it must stay in lockstep with the field order the model
@@ -829,6 +830,33 @@ def _merge_unscoped_audit(events: list[activity.Event], since: datetime) -> list
     if not unscoped:
         return events
     return sorted([*events, *unscoped], key=lambda e: e.ts, reverse=True)
+
+
+def _missing_discs(absent: frozenset[int], disc_total: int | None) -> str:
+    """The completeness badge's text — "Disc 2 of 2 is missing" — for an album
+    whose shortfall is a whole medium with no files at all (#245).
+
+    Names the disc because it can: `absent_media` is scanner-derived from the
+    files' own `disk` tags, so this costs no MusicBrainz call. What it cannot
+    name is the disc's TITLE — MusicBrainz has that, the files don't, and the
+    badge renders before the release is fetched. The number is what's free.
+
+    "of N" only in the singular. "Discs 2 and 3 of 4 are missing" parses as a
+    fraction of a fraction; the plural drops it and stays readable.
+
+    Deliberately says nothing about "disk". The badge's other branch already ends
+    "tracks on disk", and this one used to read "a disc of this release has no
+    tracks on disk" — two load-bearing near-homophones four words apart, which is
+    a pun to parse before the fact arrives (#245).
+    """
+    discs = sorted(absent)
+    if not discs:
+        return ""  # caller's branch guards this; nothing sensible to say
+    if len(discs) == 1:
+        of_total = f" of {disc_total}" if disc_total else ""
+        return f"Disc {discs[0]}{of_total} is missing"
+    listed = f"{', '.join(str(d) for d in discs[:-1])} and {discs[-1]}"
+    return f"Discs {listed} are missing"
 
 
 def _ago(when: datetime | None) -> str:

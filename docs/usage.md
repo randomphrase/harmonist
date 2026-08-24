@@ -179,9 +179,10 @@ done but still wrong, each with its count:
   lists the discs that aren't on disk, so nothing is hidden. A DVD you ripped
   only part of does still count as incomplete.
 
-  The album's own page says the same thing in words — *"10 of 11 tracks on
-  disk"*, under the MusicBrainz and Bandcamp badges — so you don't have to work
-  it out from the tracklist below it.
+  The album's own page says the same thing in words, under the MusicBrainz and
+  Bandcamp badges, so you don't have to work it out from the tracklist below it:
+  *"10 of 11 tracks on disk"*, or — where the tile could only manage
+  *Incomplete* — the disc you're missing, *"Disc 2 of 2 is missing"*.
 
   Some albums are incomplete on purpose and always will be — you ripped only the
   stereo mixes off a Blu-ray, or the hidden track was never ripped and the CD is

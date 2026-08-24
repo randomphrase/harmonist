@@ -6393,9 +6393,36 @@ def test_a_complete_album_gets_no_completeness_badge(client, cfg):
     assert "album-completeness" not in page
 
 
-def test_an_album_missing_a_whole_disc_gets_no_invented_denominator(client, cfg):
+@pytest.mark.parametrize(
+    "absent,disc_total,expected",
+    [
+        ({2}, 2, "Disc 2 of 2 is missing"),
+        ({2}, None, "Disc 2 is missing"),  # the files don't agree on a disc count
+        ({2, 3}, 3, "Discs 2 and 3 are missing"),  # no "of 3": a fraction of a fraction
+        # Disc numbers whose SET iteration order isn't ascending — {9, 2} yields
+        # 9 first — so this fails if the sort is dropped. {2, 3, 4} would not:
+        # small ints hash to themselves, so that set already iterates in order
+        # and would pass either way.
+        ({9, 2, 5}, 10, "Discs 2, 5 and 9 are missing"),
+    ],
+)
+def test_the_missing_disc_phrase(absent, disc_total, expected):
+    """The badge's text for an album short by whole media (#245). Unit-tested
+    because the plural forms are fiddly and each would otherwise need its own
+    multi-disc fixture to reach through a page."""
+    from harmonist.web.main import _missing_discs
+
+    assert _missing_discs(frozenset(absent), disc_total) == expected
+
+
+def test_an_album_missing_a_whole_disc_names_the_disc(client, cfg):
     """`expected_track_count` is None when a medium has no files at all — nothing
-    on disk records how long it was. The badge says so instead of guessing."""
+    on disk records how long it was — so the badge can't count. It says which
+    disc is missing instead, which is the question "a disc of this release" left
+    the reader to take to the tracklist (#245).
+
+    Also the only spelling of the shortfall that avoids putting "disc" and "on
+    disk" in one sentence, four words apart."""
     from test.helpers import write_track_totals
 
     d = _make_tagged_album(cfg, "Boxed", mbid="rel-boxed", tagged_at=datetime.now(UTC))
@@ -6403,8 +6430,8 @@ def test_an_album_missing_a_whole_disc_gets_no_invented_denominator(client, cfg)
 
     page = client.get(f"/album/{_id_for(cfg, d)}").text
 
-    assert "no tracks on disk" in page
-    assert "of 1 tracks on disk" not in page
+    assert "Disc 2 of 2 is missing" in page
+    assert "of 1 tracks on disk" not in page, "no denominator invented from the disc that IS here"
 
 
 def test_accepting_demotes_the_badge_instead_of_removing_it(client, cfg):
