@@ -32,6 +32,7 @@ The following are explicitly out of scope for this prototype:
 - **No format conversion.** Files are downloaded in the requested format (default FLAC) and tagged in place.
 - **No fix-it-yourself for inconsistent dirs.** Picard exists for that. See §13.2.
 - **No transcoding, no folder splitting.** See §13.4.
+- **No genre writing, for now** (#12 — deferred, not ruled out). Every other tag Harmonist writes is something MusicBrainz *knows*: this release's barcode, this recording's ISRC, this track's position. A genre is a folksonomy — user-applied, aggregated, contested, inconsistent between neighbouring releases by the same artist — so there is no single authoritative value to copy, and picking one is not the exact, scoped, unique match the guiding principle asks for. Genre is also the tag most likely to carry deliberate user curation, and Plex/Navidrome have their own. Importing genres is a real possibility (see #12 for what would have to be settled first: a curation policy, and a rule that doesn't churn a whole library unattended under #32). Until then Harmonist reads and displays a genre, compares it against nothing, and **does not write or clear one** — it is absent from `formats.owned.Owned` and deliberately excluded from every backend's clear-before-write mapping, so a genre set by another tool survives every re-tag.
 
 ---
 
@@ -815,9 +816,11 @@ Per-track:
 Standard text tags refreshed from MB:
 
 - `©nam` (title), `©alb` (album), `©ART` (artist), `aART` (album artist)
-- `©day` (date), `©gen` (genre — first MB tag), `cprt` (copyright if present)
+- `©day` (date)
 - `trkn` (track / total), `disk` (disc / total)
 - `----:com.apple.iTunes:LABEL`, `----:com.apple.iTunes:CATALOGNUMBER`, `----:com.apple.iTunes:BARCODE`, `----:com.apple.iTunes:MEDIA`, `----:com.apple.iTunes:ASIN` when present
+
+**Genre (`©gen` / `TCON` / `GENRE`) and copyright (`cprt`) are NOT written**, and never have been. This list claimed both until the claim was checked against the code: genre is absent from `formats.owned.Owned` and excluded from every backend's clear-before-write mapping (deferred — §1, #12), and `cprt` appears nowhere in `src/` at all. `owned.Owned` is the authoritative set — a tag named here but missing from it is a documentation bug, and the mechanical check that keeps the backends honest (`test_every_backend_maps_every_owned_field`) cannot see this prose.
 
 Sort names, multi-value artists, original date, and script (Picard parity — these drive correct alphabetisation and "original year" columns in Plex/Navidrome). The per-format mapping:
 
