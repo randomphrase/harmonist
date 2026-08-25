@@ -4051,7 +4051,9 @@ def test_library_pager_links_do_not_inherit_a_competing_page_value(client, cfg):
     assert "hx-vals" not in fragment
     # Each render re-requests the page it is showing, at the size it is showing,
     # so a refresh mid-browse (every `tasks-changed`) can't yank the user back to
-    # the newest page or resize the one they're on.
+    # the newest page or resize the one they're on. Since #217 this wiring is the
+    # WHOLE of the Library's refreshing — the manual button it used to sit beside
+    # is gone — so losing it would leave the grid stale with nothing to press.
     assert 'hx-get="/library?page=2&limit=2"' in fragment
     assert "tasks-changed from:body" in fragment
 

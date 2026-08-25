@@ -47,7 +47,10 @@ versions follow [semantic versioning](https://semver.org).
   heading is gone, since the tab directly above already names the Library and
   counts it — and "done" quietly disagreed with the Incomplete filter sitting
   underneath. The **Show N per page** control has moved down beside the pager,
-  where you reach for it after reading a page (#217).
+  where you reach for it after reading a page. The **Refresh** button is gone
+  too: it was the other half of that heading's row, and the grid has refreshed
+  itself for a while now — after every scan, every action, and every sync — so
+  the search box is now the top of the view (#217).
 
 ## [1.10.2] - 2026-08-22
 

@@ -12,11 +12,11 @@
 
 {# The query string naming one Library view: which page, at what size, under which
    filter, matching which search. ONE definition because the Library page renders
-   this string in seventeen places — the container's refresh wiring, the Refresh
-   button, the page-size form, every filter chip and both pager arrows (as an href
-   AND an hx-push-url each), and the tile links — and a parameter dropped from any
-   one of them is a control that silently throws away part of the view. That is not
-   hypothetical: the set has grown from `page` to `page + limit` to
+   this string in twenty places — the container's refresh wiring, the page-size
+   form, the search-widening link, every filter chip and both pager arrows (as an
+   href AND an hx-push-url each), and the tile links — and a parameter dropped from
+   any one of them is a control that silently throws away part of the view. That is
+   not hypothetical: the set has grown from `page` to `page + limit` to
    `page + limit + filter` to this in four issues (#139, #144, #174, #180).
 
    Because Jinja renders a missing argument as an empty Undefined rather than

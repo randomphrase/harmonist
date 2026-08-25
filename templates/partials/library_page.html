@@ -21,21 +21,24 @@
    it to tell an in-place swap from a page load. It used to hang off a `LIBRARY ·
    N done` heading here, which repeated the tab label and count directly above it
    and called every terminal album "done" while the chips below offered to filter
-   the Incomplete ones — so the heading went and the dataset stayed (#217). #}
+   the Incomplete ones — so the heading went and the dataset stayed (#217).
+
+   A **Refresh** button used to sit opposite that heading, and it went with it —
+   it was the other half of a header row, and alone it left the near-empty row
+   removing the heading was meant to remove (#217 again). It had also outlived
+   its job: it dates from the first Library commit, when the grid refreshed only
+   when asked, and the wiring on this element now does that on its own. A
+   completed scan fires `tasks-changed` off the runner's `seq` counter — keyed on
+   the counter precisely so a 0.1s cache-warm rescan between two 1.5s polls is
+   still caught — as does every action, and a sync or reconcile finishing fires
+   `library-refresh`. The grid is derived from the scanner's snapshot and nothing
+   else, so there was nothing left for a press to fetch. #}
 {% from 'macros.html' import library_query %}
 <div id="library-page" data-total-done="{{ total_done }}" data-page="{{ page }}"
      data-limit="{{ limit }}"
      hx-get="/library?{{ library_query(page, limit, filter, q) }}"
      hx-trigger="library-refresh from:body, tasks-changed from:body"
      hx-target="#library-rows" hx-swap="innerHTML">
-<div class="mb-3 flex justify-end">
-    <button hx-get="/library?{{ library_query(page, limit, filter, q) }}"
-            hx-target="#library-rows" hx-swap="innerHTML"
-            class="text-xs text-muted hover:text-accent transition uppercase tracking-widest font-bold">
-        Refresh
-    </button>
-</div>
-
 {# Search (#180). The filters below find albums that are *wrong*; this finds the
    album you have in mind, which at library scale is the more common errand and
    the one paging cannot help with.
