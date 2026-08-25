@@ -629,6 +629,43 @@ def test_tag_album_preserves_per_track_artwork(album_with_tracks, tmp_path):
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == art_b  # preserved
 
 
+def test_preserved_per_track_artwork_reaches_the_album_history(album_with_tracks, tmp_path):
+    """#260: declining to overwrite the user's artwork is a decision Harmonist
+    made about their files, so it belongs in that album's own History — not only
+    in the global feed as an unattributed mirrored warning.
+
+    The `art=preserved` token on the `tag.album` audit line is not this: it shows
+    only with "Show details" ticked, as one token among a dozen. This is the
+    sentence that says it.
+    """
+    from datetime import UTC, datetime
+
+    from harmonist import activity, activity_store
+    from harmonist import sidecar as sidecar_mod
+    from harmonist.models import Sidecar
+
+    activity_store.init(tmp_path / "activity.db")
+    activity.install_log_handler()
+    album_dir = album_with_tracks(2)
+    sidecar_mod.write(
+        album_dir, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime(2026, 1, 1, tzinfo=UTC))
+    )
+    _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())
+    _embed_cover(album_dir / "02 Track 2.m4a", _minimal_jpeg() + b"_different")
+    new_cover = tmp_path / "cover.jpg"
+    new_cover.write_bytes(b"\xff\xd8\xff\xe0NEW_ALBUM_COVER\xff\xd9")
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=new_cover)
+
+    entry = next(
+        e
+        for e in activity_store.album_history("rel-aaa")
+        if "per-track embedded artwork" in e.message
+    )
+    assert entry.level == "warning"
+    assert entry.album_label == "Test Artist — Test Album"
+
+
 def test_tag_album_overwrite_art_forces_replacement(album_with_tracks, tmp_path):
     """overwrite_art=True is the explicit override: embed the album cover even over
     differing per-track art."""

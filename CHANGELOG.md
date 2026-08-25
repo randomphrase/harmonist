@@ -6,6 +6,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- When Harmonist keeps your existing per-track artwork instead of embedding the
+  album cover, that now appears in the album's own **History** (#260) — it was
+  only ever said in the global Activity feed, attributed to no album.
+- A failed re-tag, tag, reconcile, undo or manual assignment no longer writes a
+  second, blank entry to the Activity feed beneath the real one (#258).
+
 ## [1.11.0] - 2026-08-24
 
 ### Added

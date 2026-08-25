@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 
 import pytest
@@ -863,3 +864,34 @@ def test_append_failure_does_not_re_enter_the_feed_mirror(broken_store, caplog):
     failures = [r for r in caplog.records if r.levelname == "ERROR"]
     assert len(failures) == 1
     assert getattr(failures[0], "_activity", False) is True
+
+
+def test_mirrored_log_record_carries_the_album_it_names(caplog):
+    """#260: a WARNING mirrored into the feed reaches the album's history when
+    the call site says which album it is about.
+
+    Without this the mirror called `record(msg, level)` and nothing else, so
+    every mirrored line landed with `album_id=None` — present in the global feed,
+    invisible to `album_history`, which selects by id.
+    """
+    activity.install_log_handler()
+    logging.getLogger("harmonist.tagger").warning(
+        "kept the existing per-track artwork",
+        extra={"album_id": "rel-260", "album_label": "Some Artist — Some Album"},
+    )
+
+    history = activity_store.album_history("rel-260")
+    assert [e.message for e in history] == ["kept the existing per-track artwork"]
+    assert history[0].level == "warning"
+    # The label rides along so the feed can render (and link) the album's name.
+    assert history[0].album_label == "Some Artist — Some Album"
+
+
+def test_mirrored_log_record_without_an_album_still_reaches_the_feed():
+    """The opt-in must not become a requirement: the overwhelming majority of
+    WARNING+ records name no album, and they go on mirroring unattributed."""
+    activity.install_log_handler()
+    logging.getLogger("harmonist.sync").warning("sync could not reach Bandcamp")
+
+    entry = next(e for e in activity.recent() if "reach Bandcamp" in e.message)
+    assert (entry.album_id, entry.album_label) == (None, None)

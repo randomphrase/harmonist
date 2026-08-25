@@ -4305,6 +4305,37 @@ def test_retag_emits_album_retagged_trigger(client, cfg, monkeypatch):
     assert "album-retagged" in r.headers.get("HX-Trigger", "")
 
 
+def test_a_failed_action_reaches_the_feed_once_and_names_its_album(
+    client, cfg, monkeypatch, caplog
+):
+    """#258: a failure produces ONE feed entry, and it is the one that says which
+    album failed and why.
+
+    The `log.exception` beside each of these `_flash_response(..., album=...)`
+    calls is there for the server log's traceback. It mirrored into the feed too
+    (activity._ActivityLogHandler), so every failed action wrote a SECOND error
+    row — "retag failed", no album, no detail — beneath the real one. Two rows
+    for one failure, the useless copy last, and only the useless copy reached
+    nobody's album history.
+    """
+    caplog.set_level("ERROR")
+    d = _make_tagged_album(cfg, "FailRetag", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)
+
+    def boom(mbid):
+        raise RuntimeError("mb down")
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", boom)
+    album_id = _id_for(cfg, d)
+    assert "Re-tag failed" in client.post(f"/retag/{album_id}").text
+
+    errors = [e for e in activity.recent() if e.level == "error"]
+    assert [e.message for e in errors] == ["Re-tag failed — mb down"]
+    assert errors[0].album_id == album_id
+    # The traceback still reaches the server log — suppressing the MIRROR must
+    # not suppress the thing you actually want three weeks later.
+    assert any(r.exc_info for r in caplog.records if r.name == "harmonist.web.main")
+
+
 def test_retag_failure_does_not_emit_refresh_trigger(client, cfg, monkeypatch):
     """A failed re-tag must not fire album-retagged (nothing changed to refresh)."""
     d = _make_tagged_album(cfg, "FailRetag", mbid="rel-1", tagged_at=datetime.now(UTC), item_id=1)

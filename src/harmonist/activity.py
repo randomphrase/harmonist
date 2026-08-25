@@ -120,6 +120,31 @@ def clear() -> None:
     activity_store.clear()
 
 
+def _album_ref(rec: logging.LogRecord) -> tuple[str | None, str | None]:
+    """The album a log record names via `extra=`, or `(None, None)`.
+
+    A call site that knows which album it is talking about says so —
+    `log.warning(..., extra={"album_id": ..., "album_label": ...})` — and the
+    mirrored entry then joins that album's history instead of floating in the
+    global feed attributed to nothing (#260). The mirror used to call
+    `record(msg, level)` and nothing else, so *every* mirrored line landed with
+    a NULL album and `album_history`, which selects by id, could never find it.
+
+    Opt-in on purpose: most WARNING+ records genuinely aren't about one album,
+    and they go on mirroring unattributed exactly as before.
+
+    Type-checked rather than trusted, because `extra` is an arbitrary dict — a
+    caller passing a `Path` or an `Album` here would otherwise put a non-string
+    into a TEXT column and break the reader, far from the call site that did it.
+    """
+    album_id = getattr(rec, "album_id", None)
+    album_label = getattr(rec, "album_label", None)
+    return (
+        album_id if isinstance(album_id, str) else None,
+        album_label if isinstance(album_label, str) else None,
+    )
+
+
 class _ActivityLogHandler(logging.Handler):
     """Mirror harmonist log records (WARNING+) into the activity feed so
     background failures (sync errors, skipped albums, …) are visible."""
@@ -132,7 +157,8 @@ class _ActivityLogHandler(logging.Handler):
         except Exception:
             return
         level = Level.ERROR if rec.levelno >= logging.ERROR else Level.WARNING
-        record(msg, level)
+        album_id, album_label = _album_ref(rec)
+        record(msg, level, album_id=album_id, album_label=album_label)
 
 
 _handler_installed = False

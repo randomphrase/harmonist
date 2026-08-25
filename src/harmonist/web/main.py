@@ -98,6 +98,18 @@ def _extract_mbid(value: str) -> str | None:
 
 log = logging.getLogger(__name__)
 
+# For a `log.exception` that sits beside a `_flash_response(..., album=...)`: the
+# traceback belongs in the SERVER log, not in the feed. `_flash_response` has
+# already recorded the failure as a user-facing entry, attributed to the album
+# and carrying the reason — so without this flag the feed's WARNING+ mirror
+# (activity._ActivityLogHandler) adds a second ERROR row saying "tag failed" and
+# nothing else, under no album at all. One failure, one entry (#258).
+#
+# Only for the paired sites. A `log.exception` with no flash beside it — the
+# background passes, the ignores-file writes — is the ONLY notice the user gets
+# and must go on mirroring.
+_LOG_ONLY = {"_activity": True}
+
 
 HARMONY_BASE = "https://harmony.pulsewidth.org.uk"
 
@@ -3657,7 +3669,7 @@ def _register_routes(app: FastAPI) -> None:
                 # More files than the release has tracks. Out of scope for the
                 # tagger in *both* modes (§15.3), so there is no decision to
                 # offer — it stays an error, as it was.
-                log.exception("retag failed")
+                log.exception("retag failed", extra=_LOG_ONLY)
                 return _flash_response(
                     "Re-tag failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
                 )
@@ -3676,7 +3688,7 @@ def _register_routes(app: FastAPI) -> None:
                 ),
             )
         except Exception as e:
-            log.exception("retag failed")
+            log.exception("retag failed", extra=_LOG_ONLY)
             return _flash_response(
                 "Re-tag failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
@@ -3744,7 +3756,7 @@ def _register_routes(app: FastAPI) -> None:
                 "Couldn't undo", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
         except Exception as e:
-            log.exception("artwork restore failed")
+            log.exception("artwork restore failed", extra=_LOG_ONLY)
             return _flash_response(
                 "Couldn't undo", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
@@ -3794,7 +3806,7 @@ def _register_routes(app: FastAPI) -> None:
                 "Couldn't undo", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
         except Exception as e:
-            log.exception("tag revert failed")
+            log.exception("tag revert failed", extra=_LOG_ONLY)
             return _flash_response(
                 "Couldn't undo", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
@@ -4067,7 +4079,7 @@ def _register_routes(app: FastAPI) -> None:
         try:
             sc = reconcile.reconcile_album(album.path, fetch_urls=mb_lookup.fetch_release_urls)
         except Exception as e:
-            log.exception("reconcile failed")
+            log.exception("reconcile failed", extra=_LOG_ONLY)
             return _flash_response(
                 "Reconcile failed",
                 str(e),
@@ -4173,7 +4185,7 @@ def _register_routes(app: FastAPI) -> None:
                 )
                 return _flash_response("Tagged", "match found via Recheck", album=album)
             except Exception as e:
-                log.exception("tag after recheck failed")
+                log.exception("tag after recheck failed", extra=_LOG_ONLY)
                 return _flash_response(
                     "Tagging failed",
                     str(e),
@@ -4205,7 +4217,7 @@ def _register_routes(app: FastAPI) -> None:
                 paths=album.folders,
             )
         except Exception as e:
-            log.exception("tag failed")
+            log.exception("tag failed", extra=_LOG_ONLY)
             return _flash_response(
                 "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
@@ -4233,7 +4245,7 @@ def _register_routes(app: FastAPI) -> None:
                 paths=album.folders,
             )
         except Exception as e:
-            log.exception("incomplete tag failed")
+            log.exception("incomplete tag failed", extra=_LOG_ONLY)
             return _flash_response(
                 "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
@@ -4443,7 +4455,7 @@ def _register_routes(app: FastAPI) -> None:
                 album=album,
             )
         except Exception as e:
-            log.exception("manual assign failed")
+            log.exception("manual assign failed", extra=_LOG_ONLY)
             return _flash_response(
                 "Assignment failed",
                 str(e),

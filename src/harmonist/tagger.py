@@ -222,16 +222,30 @@ def tag_album(
     # rather than relying on the `and` below, which used to short-circuit this
     # read and stopped doing so when the digests were hoisted out.
     art_before = _art_digests(files) if cover is not None else {}
+    # Read before the artwork guard as well as before the loop: the guard's
+    # warning names the album it is about, and this is where that name comes
+    # from. Tagging can still move the id afterwards (temp_uid -> MBID), which is
+    # why `album_history` unions an album's alias chain — the same reason the
+    # `tag.album` line below gets away with the pre-write id.
+    album_id = sidecar_mod.album_id_for(album_dir)
     # DATA SAFETY: if the tracks carry DIFFERENT embedded art (a per-track-art
     # album, e.g. a compilation), embedding one album cover would destroy those
     # images. Preserve them — pass cover=None (write_tags leaves the existing
     # embedded cover untouched); the folder cover.* is still written separately.
     if cover is not None and not overwrite_art and _has_per_track_art(art_before):
+        # Attributed to the album (#260). This is a decision Harmonist made on
+        # the user's behalf about their files, so it has to reach that album's
+        # own History — and the feed's log mirror drops any record that doesn't
+        # say which album it means. The `art=preserved` token on the `tag.album`
+        # line below is not a substitute: it shows only under "Show details".
+        #
+        # The album's name is NOT repeated into the message; it rides in its own
+        # column, which is where the feed and the History both render it.
         log.warning(
-            "%s: tracks have per-track embedded artwork — keeping it, NOT embedding "
+            "tracks have per-track embedded artwork — keeping it, NOT embedding "
             "the album cover (folder cover.* is still written). Re-tag with "
             "'replace artwork' to override.",
-            album_dir.name,
+            extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
         )
         cover = None
     media_total = len(release.get("medium-list", [])) or 1
@@ -240,7 +254,6 @@ def tag_album(
     # audit log — it was the one core mutation with no record at all. The album
     # line is written BEFORE the loop so a crash part-way leaves evidence of what
     # was attempted, not silence.
-    album_id = sidecar_mod.album_id_for(album_dir)
     audit.record(
         "tag.album",
         album_id=album_id,
@@ -857,6 +870,20 @@ def _artist_ids(artist_credit: list[Any] | None) -> list[str]:
             if artist_id := artist.get("id"):
                 ids.append(artist_id)
     return ids
+
+
+def _album_label(release: dict[str, Any], album_dir: Path) -> str:
+    """The album's display name for an activity entry — "Artist — Title".
+
+    Taken from the release being tagged rather than the sidecar, because that is
+    what the files are about to say, and it is the same name the album will be
+    listed under once this tagging lands. Falls back to the folder name when the
+    release names neither, so an entry is never labelled with an empty string —
+    the feed hides the album column entirely when the label is blank, which would
+    lose the attribution this exists to add.
+    """
+    label = f"{_artist_phrase(release.get('artist-credit'))} — {release.get('title') or ''}"
+    return label.strip(" —") or album_dir.name
 
 
 def _artist_phrase(artist_credit: list[Any] | None) -> str:
