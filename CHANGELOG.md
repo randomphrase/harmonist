@@ -6,60 +6,50 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-08-24
+
 ### Added
 
 - The **Format** row on an album's page now says what the format actually is,
   not just its name (#130) — "ALAC · 44.1 kHz · 16 bit", "MP3 · 44.1 kHz ·
-  320 kbps CBR". That's what tells you whether a download is the quality you
-  paid for, and whether two copies of an album are really the same. Lossless
-  albums get sample rate and bit depth, lossy ones get the bitrate (and, for
-  MP3, whether it's constant or variable); Opus shows no sample rate because
-  the format records none. When an album's own files disagree — half 16-bit,
-  half 24-bit — it reports what most tracks are and how many aren't.
+  320 kbps CBR" — so you can see whether a download is the quality you paid for.
 - **Re-download an album from Bandcamp** (#132) — for upgrading MP3s to FLAC, or
   picking up tracks the artist has added to a release since you bought it. The
-  button is on the album's own page, for any album linked to a Bandcamp
-  purchase. Your current files are zipped to the top of your music folder first,
-  as `Artist — Album (archived 2026-08-24).zip`, and only removed once the zip
-  has been checked; unzip it there to put the album back. The inbox shows the
-  album as re-downloading until the replacement lands, which is then tagged as
-  the same MusicBrainz release the old copy had — re-downloading says the files
-  are wrong, not the match — so the album keeps its history and normally goes
-  straight back to the Library. An album that was already incomplete may come
-  back just as short if the tracks still aren't there; it keeps its tags and its
-  count rather than landing in the inbox.
+  button is on the album's own page; your current files are zipped to the top of
+  your music folder first, as `Artist — Album (archived 2026-08-24).zip`, and the
+  replacement is tagged as the same MusicBrainz release the old copy had.
 
 ### Changed
 
 - An album's own page now states how much of the release is on disk — "10 of 11
-  tracks on disk", under the MusicBrainz and Bandcamp badges — instead of
-  leaving that to the Library tile you just came from (#227). When the shortfall
-  is a whole disc it names it: "Disc 2 of 2 is missing" (#245).
+  tracks on disk", under the MusicBrainz and Bandcamp badges — and names the
+  shortfall when it's a whole disc: "Disc 2 of 2 is missing" (#227, #245).
 - Accepting an incomplete album is now a checkbox beside that badge — **Don't
   warn me about this** — rather than a button in the action row, so it shows
-  whether the album is accepted instead of making you read it backwards off the
-  button's label. Ticking it turns the badge from amber to grey; the album still
-  says how short it is (#227, #245).
+  whether the album is accepted instead of making you read that backwards off a
+  button's label (#227, #245).
 - Video tracks are now marked with a video-camera icon instead of a play
-  triangle, which looked like a button you could press. Same icon MusicBrainz
-  uses (#249).
+  triangle, which looked like a button you could press (#249).
 - The Library no longer repeats itself above the grid: the `LIBRARY · N done`
-  heading is gone, since the tab directly above already names the Library and
-  counts it — and "done" quietly disagreed with the Incomplete filter sitting
-  underneath. The **Show N per page** control has moved down beside the pager,
-  where you reach for it after reading a page. The **Refresh** button is gone
-  too: it was the other half of that heading's row, and the grid has refreshed
-  itself for a while now — after every scan, every action, and every sync — so
-  the search box is now the top of the view (#217).
-
-## [1.10.2] - 2026-08-22
+  heading and its **Refresh** button are gone, since the tab above already names
+  and counts the Library and the grid refreshes itself after every scan, action
+  and sync. **Show N per page** has moved down beside the pager, where you reach
+  for it after reading a page (#217).
 
 ### Fixed
 
 - AAC files now say **AAC** in an album's Format row instead of **MP4** (#254),
   so the row tells you at a glance whether an `.m4a` album is the lossless
-  download or the lossy one. **MP4** now means only what it should: a file
-  whose codec Harmonist couldn't identify.
+  download or the lossy one.
+- Re-tagging an album whose MusicBrainz release has since gained tracks no
+  longer fails with a stack trace (#252). It offers **Re-tag as incomplete** —
+  press it and your files take the release's current tags; nothing is written
+  unless you do.
+
+## [1.10.2] - 2026-08-22
+
+### Fixed
+
 - Your files are now paired with MusicBrainz tracks by the per-track id they
   carry, so an album stays on its own tracks after MusicBrainz renumbers or
   reorders the release's discs (#232).
@@ -67,11 +57,6 @@ versions follow [semantic versioning](https://semver.org).
   comparing durations, which could write another track's title and ids (#232).
 - An album whose only missing discs are video can be re-tagged again, instead
   of refusing with "16 audio files but MB release has 69 tracks" (#235, #237).
-- Re-tagging an album whose MusicBrainz release has since gained tracks no
-  longer fails with a stack trace (#252). It says how many tracks are there and
-  how many you have, and offers **Re-tag as incomplete** — press it and your
-  files take the release's current tags, and the album is listed as incomplete
-  in your Library. Nothing is written unless you do.
 - Re-tagging no longer resets parts of an album's record — a surrendered album
   stays surrendered, and one accepted as incomplete stays accepted (#239).
 - An album page now lists the video files on disk, marked as video, instead of

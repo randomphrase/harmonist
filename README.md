@@ -10,7 +10,8 @@ gets mislabeled.
 ## What it does
 
 - **Sync** your Bandcamp library (via [bandcampsync](https://github.com/meeb/bandcampsync)),
-  capturing each album's store URL.
+  capturing each album's store URL — and **re-download** any album later to upgrade
+  its files or pick up tracks the artist has added, with the old copy zipped aside.
 - **Auto-match** each download against MusicBrainz by its Bandcamp URL. An exact
   match is tagged and filed automatically; anything ambiguous — or not yet in
   MusicBrainz — lands in a tidy inbox.
