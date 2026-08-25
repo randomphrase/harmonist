@@ -148,7 +148,7 @@ changed behind the user's back, would they need to be able to reconstruct what
 it was? If yes, it is audited. See the `event-recording` skill for the traps
 around getting the record itself right.
 
-## 6. Never hand-roll the write
+## 6. Never hand-roll the write — or the rebuild
 
 `sidecar.write()` is the only writer, and it does five things besides
 serialising JSON:
@@ -169,6 +169,42 @@ need to change one field, read, `dataclasses.replace`, write.
 old on a large library; writing it back clobbers anything that landed in
 between. `reconcile.backfill_track_count` re-reads and re-checks its
 precondition for exactly this reason.
+
+### Rebuild with `replace`, never by naming the fields to keep
+
+`sidecar.write()` being the only writer is not enough on its own, because it
+writes whatever it is handed. The other half of the rule is how you build that
+object:
+
+```python
+new = replace(sc, mb_release_id=None, mb_match_candidate=candidate)   # yes
+new = Sidecar(store_url=sc.store_url, mb_release_id=None, ...)        # no
+```
+
+A fresh `Sidecar(...)` listing what to carry forward silently resets **every
+field you didn't name** to its default. That is not a hypothetical: #239 found
+it in `_tag_with_release` and fixed that one site; #263 found the same
+construction at **twelve** more, all of them dropping `video_media` and
+`tracks_unavailable`, eleven dropping `purchase_unavailable`. The surrenders are
+the worst case — they are decisions with no evidence on disk, so once defaulted
+they cannot be recovered by anything, and the album re-surrenders or re-accuses
+itself of missing tracks on the next pass.
+
+`replace()` carries unnamed fields **by construction**, so a field added to the
+model tomorrow needs no edit at any call site and cannot be dropped. That
+property is what makes rule 3's "add a field" safe at all.
+
+`test_sidecar_carries.py` enforces this by parsing `src/` for `Sidecar(...)`
+constructions that mention an existing sidecar. If your new code trips it, use
+`replace`; do not add yourself to the exemption set.
+
+**The one exemption is `scanner._merge_sidecars`,** which builds an album's view
+of its folders' sidecars (#197) and genuinely needs a rule per field — first /
+earliest / latest / any — which `replace()` off some arbitrary part cannot
+express. It pays for that by being held **total**: a second test asserts it names
+every field on the model, including the ones it deliberately drops (`temp_uid`).
+**Adding a field to `models.Sidecar` means adding a merge rule there**, and that
+test will tell you so.
 
 ## 7. `delete_all` is the escape hatch, and it is the user's to pull
 
@@ -191,6 +227,8 @@ Before committing a sidecar content change:
 - [ ] New field has a reader and a visible affordance (rule 3)
 - [ ] `_to_dict` omits the default (rule 3)
 - [ ] `_audit_sidecar_change`'s load-bearing list considered explicitly (rule 5)
+- [ ] Every rewrite uses `replace`, not a fresh `Sidecar(...)` (rule 6)
+- [ ] `scanner._merge_sidecars` gives the new field a merge rule (rule 6)
 - [ ] `docs/design.md` §4 updated — schema block *and* prose
 - [ ] Round-trip test: write → read → identical `Sidecar`
 - [ ] Old-sidecar test: a dict without the new key loads at the default

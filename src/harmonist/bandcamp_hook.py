@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -179,18 +180,16 @@ def write_sidecar_for_item(item: Any, album_dir: Path, *, prefer_item_url: bool 
             else (existing.bandcamp.band_id if existing.bandcamp else None),
             is_private=is_private,
         )
-        merged = Sidecar(
-            schema_version=existing.schema_version,
+        # `replace`, not a fresh `Sidecar(...)` — anything not named here carries
+        # through BY CONSTRUCTION (#263). Naming the fields to keep dropped the
+        # two surrenders and `video_media` on every linked purchase.
+        merged = replace(
+            existing,
             # Keep the existing canonical URL, unless a slug match told us to
             # adopt the item's (purchase-authoritative) URL instead.
             store_url=url if prefer_item_url else (existing.store_url or url),
             bandcamp=merged_bandcamp,
             downloaded_at=existing.downloaded_at or datetime.now(UTC),
-            added_at=existing.added_at,
-            mb_release_id=existing.mb_release_id,
-            mb_match_candidate=existing.mb_match_candidate,
-            tagged_at=existing.tagged_at,
-            notes=existing.notes,
         )
         sidecar_mod.write(album_dir, merged)
         return True
@@ -222,17 +221,8 @@ def write_ambiguous_candidates(album_dir: Path, item_ids: list[int]) -> bool:
         is_private=bc.is_private if bc else False,
         candidate_item_ids=sorted({int(i) for i in item_ids}),
     )
-    merged = Sidecar(
-        schema_version=existing.schema_version,
-        store_url=existing.store_url,
-        bandcamp=merged_bc,
-        downloaded_at=existing.downloaded_at,
-        added_at=existing.added_at,
-        mb_release_id=existing.mb_release_id,
-        mb_match_candidate=existing.mb_match_candidate,
-        tagged_at=existing.tagged_at,
-        notes=existing.notes,
-    )
+    # `replace`, not a fresh `Sidecar(...)` — see the note in `write_sidecar` (#263).
+    merged = replace(existing, bandcamp=merged_bc)
     sidecar_mod.write(album_dir, merged)
     return True
 

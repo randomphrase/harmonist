@@ -1398,19 +1398,14 @@ def _demote_to_needs_mbid(
     clear the wrong MBID but KEEP the store_url, and pre-load the correct
     release as `mb_match_candidate` — the NEEDS_MBID card then shows the
     side-by-side and a one-click Confirm."""
+    # `replace`, not a fresh `Sidecar(...)` (#263). The surrenders are claims
+    # about the SOURCE — no purchase exists, no more tracks exist — so a demote
+    # over the release identity leaves them as true as it found them. Stale
+    # `video_media` rides along harmlessly: nothing reads it while the album has
+    # no MBID, and `_tag_with_release` recomputes it from the release it uses.
     sidecar_mod.write(
         album_path,
-        Sidecar(
-            schema_version=sc.schema_version,
-            store_url=sc.store_url,
-            bandcamp=sc.bandcamp,
-            downloaded_at=sc.downloaded_at,
-            added_at=sc.added_at,
-            mb_release_id=None,
-            mb_match_candidate=candidate,
-            tagged_at=None,
-            notes=sc.notes,
-        ),
+        replace(sc, mb_release_id=None, mb_match_candidate=candidate, tagged_at=None),
     )
     # Surrender / mis-tag demote: the album was an unlinked NEEDS_SYNC, now back
     # to NEEDS_MBID. Keep the live counts moving between scans.
@@ -1420,22 +1415,20 @@ def _demote_to_needs_mbid(
 def _link_album_to_purchase(album_path: Path, sc: Sidecar, *, item_id: int, store_url: str) -> None:
     """Fill in the Bandcamp item_id on an already-tagged album's sidecar (Needs
     Sync → Library), adopting the matched purchase URL as the store_url."""
+    # `replace`, not a fresh `Sidecar(...)` (#263).
     sidecar_mod.write(
         album_path,
-        Sidecar(
-            schema_version=sc.schema_version,
+        replace(
+            sc,
             store_url=store_url,
             bandcamp=BandcampInfo(
                 item_id=item_id,
                 band_id=sc.bandcamp.band_id if sc.bandcamp else None,
                 is_private=sc.bandcamp.is_private if sc.bandcamp else False,
             ),
-            downloaded_at=sc.downloaded_at,
-            added_at=sc.added_at,
-            mb_release_id=sc.mb_release_id,
-            mb_match_candidate=sc.mb_match_candidate,
-            tagged_at=sc.tagged_at,
-            notes=sc.notes,
+            # Cleared deliberately — see `_link_pending_to_album`. A linked
+            # purchase falsifies "there is no purchase to link, ever".
+            purchase_unavailable=False,
         ),
     )
     # NEEDS_SYNC → Library (COMPLETE proxy; the scan reset splits the library
@@ -2410,20 +2403,23 @@ def _link_pending_to_album(album: Album, p: pending_downloads.PendingPurchase) -
     resolved_mbid = cand.mb_release_id if (surrendered and cand is not None) else sc.mb_release_id
     sidecar_mod.write(
         album.path,
-        Sidecar(
-            schema_version=sc.schema_version,
+        # `replace`, not a fresh `Sidecar(...)` (#263).
+        replace(
+            sc,
             store_url=p.url,
             bandcamp=BandcampInfo(
                 item_id=p.item_id,
                 band_id=sc.bandcamp.band_id if sc.bandcamp else None,
                 is_private=sc.bandcamp.is_private if sc.bandcamp else False,
             ),
-            downloaded_at=sc.downloaded_at,
-            added_at=sc.added_at,
             mb_release_id=resolved_mbid,
             mb_match_candidate=None if surrendered else sc.mb_match_candidate,
-            tagged_at=sc.tagged_at,
-            notes=sc.notes,
+            # Cleared DELIBERATELY, not carried (#263). `purchase_unavailable`
+            # is the claim "there is no purchase to link, ever" — and a purchase
+            # is being linked on this very line, so the claim is now false. This
+            # is the one place the flag is falsified by evidence rather than by
+            # the user changing their mind.
+            purchase_unavailable=False,
         ),
     )
     # If it's now tagged, it leaves the inbox for the Library — move counts from
@@ -2547,15 +2543,13 @@ def _apply_best_match(
         return "tagged", "Match exact — files tagged."
 
     existing = sidecar_mod.read(album_path)
-    new = Sidecar(
-        store_url=existing.store_url if existing else None,
-        bandcamp=existing.bandcamp if existing else None,
-        downloaded_at=existing.downloaded_at if existing else None,
+    # `replace` off whatever is there (#263) — a recheck that lands a suggestion
+    # must not also silently undo a surrender the user recorded.
+    new = replace(
+        existing or Sidecar(),
         added_at=(existing.added_at if existing else None) or datetime.now(UTC),
         mb_release_id=None,
         mb_match_candidate=candidate,
-        tagged_at=existing.tagged_at if existing else None,
-        notes=existing.notes if existing else None,
     )
     sidecar_mod.write(album_path, new)
     return (
@@ -4161,16 +4155,11 @@ def _register_routes(app: FastAPI) -> None:
         assert candidate is not None  # releases is non-empty (mbids guarded)
         mbid = candidate.mb_release_id
 
-        new_sc = Sidecar(
-            schema_version=sc.schema_version,
-            store_url=sc.store_url,
-            bandcamp=sc.bandcamp,
-            downloaded_at=sc.downloaded_at,
-            added_at=sc.added_at,
+        # `replace`, not a fresh `Sidecar(...)` (#263).
+        new_sc = replace(
+            sc,
             mb_release_id=mbid if candidate.confidence == "exact" else None,
             mb_match_candidate=None if candidate.confidence == "exact" else candidate,
-            tagged_at=sc.tagged_at,
-            notes=sc.notes,
         )
         sidecar_mod.write(album.path, new_sc)
 
@@ -4257,17 +4246,8 @@ def _register_routes(app: FastAPI) -> None:
         sc = album.sidecar
         if sc is None or sc.mb_match_candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to reject")
-        new_sc = Sidecar(
-            schema_version=sc.schema_version,
-            store_url=sc.store_url,
-            bandcamp=sc.bandcamp,
-            downloaded_at=sc.downloaded_at,
-            added_at=sc.added_at,
-            mb_release_id=None,
-            mb_match_candidate=None,
-            tagged_at=sc.tagged_at,
-            notes=sc.notes,
-        )
+        # `replace`, not a fresh `Sidecar(...)` (#263).
+        new_sc = replace(sc, mb_release_id=None, mb_match_candidate=None)
         sidecar_mod.write(album.path, new_sc)
         return _flash_response("Match rejected", album=album)
 
@@ -4340,16 +4320,14 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "not a surrendered album")
         sidecar_mod.write(
             album.path,
-            Sidecar(
-                schema_version=sc.schema_version,
-                store_url=sc.store_url,
-                bandcamp=sc.bandcamp,
-                downloaded_at=sc.downloaded_at,
-                added_at=sc.added_at,
+            # `replace`, not a fresh `Sidecar(...)` (#263) — recording one
+            # surrender used to erase the other, so an album accepted as
+            # incomplete re-accused itself of missing tracks the moment its
+            # purchase was accepted as gone.
+            replace(
+                sc,
                 mb_release_id=cand.mb_release_id,
                 mb_match_candidate=None,
-                tagged_at=sc.tagged_at,
-                notes=sc.notes,
                 purchase_unavailable=True,
             ),
         )
@@ -4476,33 +4454,19 @@ def _register_routes(app: FastAPI) -> None:
         sc = album.sidecar
         if sc is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no sidecar")
-        new_sc = Sidecar(
-            schema_version=sc.schema_version,
-            store_url=None,
-            bandcamp=None,
-            downloaded_at=sc.downloaded_at,
-            added_at=sc.added_at,
-            mb_release_id=sc.mb_release_id,
-            mb_match_candidate=sc.mb_match_candidate,
-            tagged_at=sc.tagged_at,
-            notes="marked as purchased elsewhere",
-        )
+        # `replace`, not a fresh `Sidecar(...)` (#263).
+        new_sc = replace(sc, store_url=None, bandcamp=None, notes="marked as purchased elsewhere")
         sidecar_mod.write(album.path, new_sc)
         return _flash_response("Marked manual", "purchased elsewhere", album=album)
 
 
 def _replace_url(sc: Sidecar, new_url: str, new_bandcamp: BandcampInfo | None) -> Sidecar:
     """Build a new Sidecar with store_url and bandcamp block replaced."""
-    return Sidecar(
-        schema_version=sc.schema_version,
+    # `replace`, not a fresh `Sidecar(...)` (#263).
+    return replace(
+        sc,
         store_url=new_url,
         bandcamp=new_bandcamp,
-        downloaded_at=sc.downloaded_at,
-        added_at=sc.added_at,
-        mb_release_id=sc.mb_release_id,
-        mb_match_candidate=sc.mb_match_candidate,
-        tagged_at=sc.tagged_at,
-        notes=sc.notes,
     )
 
 

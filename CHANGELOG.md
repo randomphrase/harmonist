@@ -8,6 +8,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Decisions you record about an album — **Keep in Library** for a purchase that
+  no longer exists, and accepting an incomplete album as finished — are no
+  longer erased by ordinary operations like a sync, a recheck, or rejecting a
+  suggestion (#263). Albums that lost one would re-surrender, or start reporting
+  missing tracks again, the next time Harmonist looked at them.
+- An album whose folders are split across directories no longer forgets that its
+  absent disc was video (#263), so it stays **Complete** instead of reporting the
+  DVD you never ripped as missing tracks.
 - When Harmonist keeps your existing per-track artwork instead of embedding the
   album cover, that now appears in the album's own **History** (#260) — it was
   only ever said in the global Activity feed, attributed to no album.

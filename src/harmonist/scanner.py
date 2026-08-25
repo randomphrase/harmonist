@@ -360,6 +360,14 @@ def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
     about a folder: it has existed since the first of its parts did, it was last
     tagged when the last of them was, and a decision recorded on any part (a
     surrender, an accepted incompleteness) was made about the album.
+
+    **Every field is named, and that is enforced** (#263). A merge needs a rule
+    per field — first / earliest / latest / any — so unlike the rest of the
+    codebase this cannot be a `replace()` off some arbitrary part. The price is
+    that a field added to the model and forgotten here would be reset to its
+    default on every multi-folder album, silently, which is exactly what happened
+    to `video_media` and the two surrender flags. `test_sidecar_carries` holds
+    this call total so the next field cannot repeat it.
     """
     present = [s for s in sidecars if s is not None]
     return Sidecar(
@@ -368,10 +376,27 @@ def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
         downloaded_at=min((s.downloaded_at for s in present if s.downloaded_at), default=None),
         added_at=min((s.added_at for s in present if s.added_at), default=None),
         mb_release_id=mbid,
+        # Dropped deliberately, and named so rather than omitted: exactly one of
+        # `(mb_release_id, temp_uid)` is non-null on a persisted sidecar (§4),
+        # and the line above just set the MBID — a merged album is grouped BY its
+        # release, so it always has one and can never still be wearing a temp id.
+        temp_uid=None,
+        # A suggestion recorded against any part is a suggestion about the album,
+        # by the same reasoning as the surrenders below. It cannot change the
+        # merged album's STATE — `mb_release_id` is set from the tags just above,
+        # so this view never derives NEEDS_MBID — it only lets the card render
+        # the suggestion instead of pretending no one made it.
+        mb_match_candidate=next(
+            (s.mb_match_candidate for s in present if s.mb_match_candidate), None
+        ),
         tagged_at=max((s.tagged_at for s in present if s.tagged_at), default=None),
         notes=next((s.notes for s in present if s.notes), None),
         purchase_unavailable=any(s.purchase_unavailable for s in present),
         tracks_unavailable=any(s.tracks_unavailable for s in present),
+        # "Not asked" is None and "asked, none are video" is `()`, so the first
+        # part that ASKED wins — `any`/`or` would collapse those two into each
+        # other and re-ask MusicBrainz forever on a release with no video (#206).
+        video_media=next((s.video_media for s in present if s.video_media is not None), None),
     )
 
 

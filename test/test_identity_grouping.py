@@ -300,6 +300,27 @@ def test_a_decision_recorded_on_any_part_holds_for_the_album(tmp_path, part):
     assert album.sidecar.purchase_unavailable is True
 
 
+@pytest.mark.parametrize("part", ["a", "b"])
+def test_an_absent_video_medium_stays_forgiven_across_the_merge(tmp_path, part):
+    """`video_media` is a fact about the ALBUM, not about a folder (#206).
+
+    A 3-medium release whose DVD was never ripped, with the two CDs in separate
+    folders. Only together are they the whole album — each part alone really is
+    short of a CD — so the merged view is the only place the DVD can be forgiven.
+    Dropping the field there costs the album #206 outright, and costs one
+    MusicBrainz call per scan to re-learn what its sidecar already recorded.
+    """
+    _part(tmp_path / "a", track_ids=DISC1, disc=2, disc_total=3, track_total=2)
+    _part(tmp_path / "b", track_ids=DISC2, disc=3, disc_total=3, track_total=2)
+    _edit(tmp_path / part, video_media=(1,))
+
+    album = scan(tmp_path)[0]
+
+    assert album.absent_media == frozenset({1})
+    assert album.sidecar.video_media == (1,)
+    assert album.state == AlbumState.COMPLETE
+
+
 def test_every_part_keeps_its_own_sidecar_on_disk(tmp_path):
     """No primary, no shards: a folder moved out of the group is still a
     complete album on its own."""
