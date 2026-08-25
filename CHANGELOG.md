@@ -64,6 +64,11 @@ versions follow [semantic versioning](https://semver.org).
   comparing durations, which could write another track's title and ids (#232).
 - An album whose only missing discs are video can be re-tagged again, instead
   of refusing with "16 audio files but MB release has 69 tracks" (#235, #237).
+- Re-tagging an album whose MusicBrainz release has since gained tracks no
+  longer fails with a stack trace (#252). It says how many tracks are there and
+  how many you have, and offers **Re-tag as incomplete** — press it and your
+  files take the release's current tags, and the album is listed as incomplete
+  in your Library. Nothing is written unless you do.
 - Re-tagging no longer resets parts of an album's record — a surrendered album
   stays surrendered, and one accepted as incomplete stays accepted (#239).
 - An album page now lists the video files on disk, marked as video, instead of

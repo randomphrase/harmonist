@@ -74,6 +74,21 @@ the whole reason the `NEEDS_SYNC` state exists.
 1. User edits a release in MB (track titles, dates, etc.) — or just wants to refresh tags.
 2. User clicks **Re-tag from MB** on a Library album's page.
 3. Harmonist re-fetches the MB release and rewrites the file tags. Per-track embedded artwork is preserved unless the user forces **Replace artwork**.
+4. If the release now lists **more** tracks than the album has files, the tagger's
+   count guard refuses (§15.3) and the refusal is presented as a decision rather
+   than an error: both counts, plus a **Re-tag as incomplete** control that
+   re-runs the same re-tag in incomplete mode (#252). Nothing is written until
+   that control is pressed; the album then derives `INCOMPLETE` from the totals
+   the re-tag wrote (§13.3) and stays in the Library.
+
+   The guard cannot be keyed off the album's derived state alone. `COMPLETE` vs
+   `INCOMPLETE` says whether the files were short of what MusicBrainz said **at
+   tagging time** (§3, #195); the guard asks what it says **now**. The two
+   diverge on precisely the album a MusicBrainz correction has grown, and no
+   derived fact can settle that — only the user can, so the endpoint asks.
+   `incomplete = file_count < track_count` at the call site is explicitly *not*
+   the answer (#133): it accepts any shortfall silently, which is the one thing
+   the guard exists to prevent.
 
 ### 2.4.1 Re-download from Bandcamp (#132)
 
@@ -617,6 +632,7 @@ stateDiagram-v2
     COMPLETE --> NEW: Forget<br/>(sidecar deleted)
     COMPLETE --> NEEDS_MBID: Wrong match<br/>(pencil — tags left on disk)
     COMPLETE --> NEEDS_MBID: Undo the linking<br/>tagging (#157/#158)
+    COMPLETE --> INCOMPLETE: Re-tag as incomplete<br/>(MB gained tracks — §2.4)
 
     INCOMPLETE --> NEW: Forget
     INCOMPLETE --> NEEDS_MBID: Recheck<br/>(MB tracklist changed → suggestion)
@@ -1403,6 +1419,13 @@ button next to Confirm / Dismiss suggestion:
   tagging writes the release's own track/disc totals into every file it
   touches, so the album's state becomes `INCOMPLETE`, derived at scan time
   from those tags (§3). Nothing about the count is persisted separately.
+
+A Library album that is already tagged reaches the same mode by the same kind of
+decision, offered where the problem appears: **Re-tag as incomplete**, on the
+refusal a re-tag returns when the release has since grown (§2.4 step 4). Same
+tagger mode, same lack of persistence — the only difference is that the album
+already has an MBID, so the answer belongs on its page rather than on a
+suggestion card.
 
 **Tagger incomplete mode:** doesn't raise `TagMismatchError` on
 `file_count < track_count`. Matching the on-disk files to a subset of MB

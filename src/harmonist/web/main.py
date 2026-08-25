@@ -999,6 +999,22 @@ def _completeness_oob(request: Request, album: Album) -> str:
     return template.render(_ctx(request, album=album, oob=True))
 
 
+def _retag_short_oob(
+    request: Request, album: Album, *, files: int, tracks: int, overwrite_art: bool
+) -> str:
+    """The album page's alert slot, stating that MusicBrainz now lists more tracks
+    than the album has files, and offering the re-tag that accepts that (#252).
+
+    Rendered out of band because the page had no way to know: the counts only
+    disagree once the re-tag has fetched the release, and the album's own state
+    says what MusicBrainz said at *tagging* time (#195), not what it says now.
+    """
+    template = _templates(request).env.get_template("partials/_retag_short.html")
+    return template.render(
+        _ctx(request, album=album, files=files, tracks=tracks, overwrite_art=overwrite_art)
+    )
+
+
 def _library_limit(request: Request, limit: int | None) -> int:
     """The page size for this render: the URL's `?limit=` when it names one, else
     the size the reader last chose, else the default (#144).
@@ -3572,7 +3588,19 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/retag/{album_id}", response_class=HTMLResponse)
-    def retag(request: Request, album_id: str, overwrite_art: bool = Form(False)) -> Response:
+    def retag(
+        request: Request,
+        album_id: str,
+        overwrite_art: bool = Form(False),
+        accept_short: bool = Form(False),
+    ) -> Response:
+        """Re-tag a Library album from the MusicBrainz release it names.
+
+        `accept_short=True` is the user's answer to the offer this endpoint makes
+        when the guard refuses (#252) — tag the files against a release that lists
+        more tracks than are on disk. It is a decision, so it arrives from a
+        control the user pressed; the endpoint never infers it from the counts.
+        """
         album = _find_album(request, album_id)
         sc = album.sidecar
         if not sc or not sc.mb_release_id:
@@ -3598,7 +3626,15 @@ def _register_routes(app: FastAPI) -> None:
                 # album Harmonist had ever tagged and distinguished nothing. The
                 # state does distinguish: a COMPLETE album still gets
                 # `incomplete=False` and the §15.3 guard still applies to it.
-                incomplete=album.state == AlbumState.INCOMPLETE,
+                #
+                # `accept_short` is the residual half (#252): the state answers
+                # "were the files short of what MusicBrainz said when they were
+                # tagged", and the guard asks "are they short of what it says
+                # now". They diverge on exactly the album a MusicBrainz
+                # correction has grown, and no derived fact can settle that — so
+                # the refusal below turns into a question, and this carries the
+                # user's answer to it.
+                incomplete=accept_short or album.state == AlbumState.INCOMPLETE,
                 overwrite_art=overwrite_art,
                 paths=album.folders,
             )
@@ -3616,12 +3652,57 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
                 album=album,
             )
+        except tagger_mod.TagMismatchError as e:
+            if not e.short:
+                # More files than the release has tracks. Out of scope for the
+                # tagger in *both* modes (§15.3), so there is no decision to
+                # offer — it stays an error, as it was.
+                log.exception("retag failed")
+                return _flash_response(
+                    "Re-tag failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
+                )
+            # Not a failure to report as one (#252). Nothing was written and the
+            # guard did its job; what the user needs is the two counts and the
+            # one control that resolves them, which rides back out of band.
+            log.info("retag: %s", e)
+            return _flash_response(
+                "MusicBrainz lists more tracks than you have",
+                f"{e.tracks} there, {e.files} here — re-tag as incomplete to take its tags anyway",
+                level=Level.WARNING,
+                tasks_changed=False,
+                album=album,
+                oob=_retag_short_oob(
+                    request, album, files=e.files, tracks=e.tracks, overwrite_art=overwrite_art
+                ),
+            )
         except Exception as e:
             log.exception("retag failed")
             return _flash_response(
                 "Re-tag failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
-        details = "artwork replaced" if overwrite_art else None
+        # Say what the re-tag DID, not only that it ran. A short re-tag has just
+        # written a longer tracklist's totals into the files, so the album derives
+        # INCOMPLETE from here (§13.3) and starts showing a shortfall badge — a
+        # visible change to how it is listed, which the entry should name rather
+        # than leave to be discovered. It stays in the Library either way.
+        detail_parts = [
+            *(["now listed as incomplete"] if accept_short else []),
+            *(["artwork replaced"] if overwrite_art else []),
+        ]
+        details = ", ".join(detail_parts) or None
+        # A re-tag can move the album's state — the totals it just wrote are what
+        # COMPLETE/INCOMPLETE is derived from (#195) — and the album page reloads
+        # itself on `album-retagged`. Refresh the snapshot in this request, or that
+        # reload races the async rescan and re-renders the state the re-tag has
+        # just replaced: a short album accepted as incomplete comes back still
+        # claiming to be complete (#252).
+        #
+        # NOT paired with `skip_rescan`, unlike the other single-album mutations:
+        # `refresh_now` patches the snapshot only, and a moved state also has to
+        # reach `live_counts`, which the full rescan is what resets.
+        runner = request.app.state.scan_runner
+        if runner.is_engaged():
+            runner.refresh_now()
         # Reload the open detail modal so its disk-vs-MB comparison + metadata
         # reflect the just-written tags (tasks-changed only refreshes the tiles).
         return _flash_response(

@@ -389,6 +389,30 @@ LIBRARY: list[dict[str, Any]] = [
             "tagged": True,
         },
     },
+    {
+        # State: COMPLETE — and it will stay COMPLETE, because the album's own
+        # files agree there are two of two. MusicBrainz has since grown the
+        # release to four (an editor merged in the reissue's bonus tracks), so
+        # pressing Re-tag from MB meets the count guard and gets the #252 offer
+        # rather than a stack trace.
+        #
+        # No `release_tracks`: the default writes the FILES' own count into them,
+        # which is exactly the point — the two facts (what MB said at tagging
+        # time, what it says now) have to disagree for this state to exist, and
+        # the disagreement lives between the files and MB_RELEASES below. The
+        # incomplete album above is the other way round and is not this case.
+        "artist": "The Wonders",
+        "album": "Play!",
+        "tracks": ["That Thing You Do!", "Dance With Me Tonight"],
+        "cover": "cover-5.jpg",
+        "file_mbid": "demo-rel-wonders",
+        "sidecar": {
+            "store_url": "https://thewonders.bandcamp.com/album/play",
+            "bandcamp_item_id": 1010,
+            "mb_release_id": "demo-rel-wonders",
+            "tagged": True,
+        },
+    },
 ]
 
 
@@ -616,6 +640,21 @@ MB_RELEASES: dict[str, Release] = {
         "Shout",
         ["Shout", "Shama Lama Ding Dong"],
     ),
+    "demo-rel-wonders": _release(
+        "demo-rel-wonders",
+        "The Wonders",
+        "Play!",
+        # 4 tracks on MB; the seeded album has the first 2 on disk AND its files
+        # say "2 of 2" — the release grew after the tagging (#252). That is the
+        # whole fixture: the album derives COMPLETE, so Re-tag sends
+        # `incomplete=False` and the guard refuses against this count.
+        [
+            "That Thing You Do!",
+            "Dance With Me Tonight",
+            "All My Only Dreams",
+            "Little Wild One",
+        ],
+    ),
 }
 
 
@@ -635,6 +674,7 @@ URL_RELS: dict[str, str] = {
     "https://stillwater.bandcamp.com/album/fever-dog-live": "demo-rel-fever-live",
     "https://bluesbrothers.bandcamp.com/album/rawhide": "demo-rel-blues-brothers",
     "https://otisday.bandcamp.com/album/shout": "demo-rel-otis-day",
+    "https://thewonders.bandcamp.com/album/play": "demo-rel-wonders",
 }
 
 

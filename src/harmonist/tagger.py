@@ -73,7 +73,29 @@ _FlatTrack = tuple[dict[str, Any], int, Track]
 
 
 class TagMismatchError(Exception):
-    """Raised when the file count doesn't match the MB release's track count."""
+    """Raised when the file count doesn't match the MB release's track count.
+
+    Carries the two counts, and `short` says which way round they are: True when
+    the release lists MORE tracks than the album has files. That is the one
+    direction a caller can resolve — by re-running in incomplete mode, which is
+    the user's decision to make (#252) — while the other direction (extra files
+    on disk) is out of scope for the tagger in both modes (design §15.3).
+
+    The counts are attributes rather than only prose in the message because the
+    web layer has to tell the two apart and name the numbers back to the user;
+    re-parsing the sentence for them would be a second, silently divergent copy
+    of what happened.
+    """
+
+    def __init__(self, message: str, *, files: int, tracks: int) -> None:
+        super().__init__(message)
+        self.files = files
+        self.tracks = tracks
+
+    @property
+    def short(self) -> bool:
+        """The album has fewer files than the release has tracks."""
+        return self.files < self.tracks
 
 
 @runtime_checkable
@@ -173,13 +195,17 @@ def tag_album(
     if not incomplete and len(files) != len(taggable):
         raise TagMismatchError(
             f"album {album_dir.name!r}: {len(files)} audio files but MB release "
-            f"has {len(taggable)} tracks"
+            f"has {len(taggable)} tracks",
+            files=len(files),
+            tracks=len(taggable),
         )
     if len(files) > len(flat_tracks):
         raise TagMismatchError(
             f"album {album_dir.name!r}: {len(files)} files exceeds MB release "
             f"track count {len(flat_tracks)} — extra files on disk are out of "
-            f"scope (see design §15.3)"
+            f"scope (see design §15.3)",
+            files=len(files),
+            tracks=len(flat_tracks),
         )
 
     # Assigned against EVERY track, not just the taggable ones: a file that

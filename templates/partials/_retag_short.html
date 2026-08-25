@@ -1,0 +1,57 @@
+{# MusicBrainz now lists more tracks than this album has files (#252).
+
+   Swapped out of band into the album page's alert slot by /retag, which is the
+   only thing that can find out: the count guard compares the files against the
+   release's tracklist *as it is now*, and the album's own state is derived from
+   what MusicBrainz said at tagging time (#195). When the release has grown since,
+   the two disagree and the guard refuses — correctly, since nothing may be tagged
+   short without someone saying so.
+
+   So this states the disagreement and offers the saying-so, rather than reporting
+   a refusal the user can do nothing about. The escape hatch used to exist only via
+   Wrong MusicBrainz match → re-pick the same release → Confirm as incomplete,
+   which required calling a correct match wrong and discarded the album's link on
+   the way.
+
+   Amber, not red: nothing failed and nothing was written. The album still carries
+   the tags it had.
+
+   The button re-posts the SAME re-tag with `accept_short` set, `overwrite_art`
+   included, so the second press does what the first was asked to do plus the
+   decision. #}
+<div id="album-alert-{{ album.id }}" hx-swap-oob="true">
+    <div class="border border-amber-300 bg-amber-50 rounded-lg p-3 mb-3 flex items-start gap-3">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+             class="text-amber-700 flex-shrink-0 mt-0.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        <div class="flex-1 min-w-0">
+            <p class="text-xs font-bold text-amber-900">
+                MusicBrainz now lists {{ tracks }} track{{ 's' if tracks != 1 else '' }} — you have {{ files }}
+            </p>
+            <p class="text-2xs text-amber-800 mt-0.5">
+                The release has gained tracks since this album was tagged, and Harmonist
+                won't tag files against a longer tracklist unless you say the shortfall is
+                expected — that's what stops a half-finished download being tagged as a
+                whole album. Re-tagging as incomplete takes its current tags for the
+                {{ files }} file{{ 's' if files != 1 else '' }} you have and leaves the album
+                in your library, listed as incomplete. Nothing is written until you press it.
+            </p>
+        </div>
+        {# Same indicator as the button that raised this, so the second attempt shows
+           the same tagging overlay as the first. No hx-confirm: this IS the
+           confirmation, and it is not destructive — a re-tag rewrites tags the album
+           already had, and the history keeps what they were. #}
+        <button hx-post="/retag/{{ album.id }}"
+                hx-vals='{"accept_short": "true", "overwrite_art": "{{ 'true' if overwrite_art else 'false' }}"}'
+                hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                class="flex-shrink-0 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded text-xs font-bold uppercase tracking-widest transition"
+                {# The accessible name must CONTAIN the visible text (WCAG "label in
+                   name"), or voice control saying "Re-tag as incomplete" can't reach it. #}
+                aria-label="Re-tag as incomplete — take the new tags for the {{ files }} tracks you have"
+                title="Re-tag from MusicBrainz, accepting that {{ tracks - files }} track{{ 's are' if tracks - files != 1 else ' is' }} missing from disk. The album derives Incomplete afterwards.">
+            Re-tag as incomplete
+        </button>
+    </div>
+</div>

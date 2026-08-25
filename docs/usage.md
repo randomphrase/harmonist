@@ -237,6 +237,16 @@ MBID to re-pick, leaving your files' current tags alone until you re-tag), and
 **Forget**, which deletes the sidecar and returns the album to New without
 touching a single audio file.
 
+**When MusicBrainz has gained tracks since you were tagged.** A re-tag won't
+write a release's tags onto fewer files than it lists — that guard is what stops
+a half-finished download being tagged as the whole album. So if an editor has
+added tracks in the meantime, Re-tag stops and tells you both numbers, with a
+**Re-tag as incomplete** button beside them. Press it and your files take the
+release's current tags anyway; the album is then listed as incomplete, saying how
+many tracks it's short, and stays in your Library. Nothing is written until you
+press it. (If your copy is short because the *artist* added tracks, **Re-download**
+below is the fix that gets you the missing audio.)
+
 ### Re-downloading an album
 
 **Re-download** fetches the album from Bandcamp again. Two reasons to want it:

@@ -3107,19 +3107,115 @@ def test_retag_works_on_an_album_confirmed_as_incomplete(client, cfg, monkeypatc
 
 
 def test_retag_still_refuses_an_unconfirmed_short_album(client, cfg, monkeypatch):
-    """The control: an album not already known to be short must still be
-    refused, or the guard against tagging a partial download by accident is gone
-    (design §15.3). Its files carry no totals, so it derives COMPLETE and /retag
-    passes `incomplete=False`."""
-    d = _make_tagged_album(cfg, "Unconfirmed", mbid="rel-unc", tagged_at=datetime.now(UTC))
-    sc.write(d, Sidecar(mb_release_id="rel-unc", tagged_at=datetime.now(UTC)))  # no expectation
+    """The control: an album not already known to be short must still not be
+    tagged short, or the guard against tagging a partial download by accident is
+    gone (design §15.3). Its files carry no totals, so it derives COMPLETE and
+    /retag passes `incomplete=False`.
+
+    Since #252 the refusal is a question rather than an error, so what's asserted
+    is that nothing was written — the flash wording is the next test's subject."""
+    tagged = datetime(2026, 1, 1, tzinfo=UTC)
+    d = _make_tagged_album(cfg, "Unconfirmed", mbid="rel-unc", tagged_at=tagged)
+    sc.write(d, Sidecar(mb_release_id="rel-unc", tagged_at=tagged))  # no expectation
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=4)
     )
     monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
 
     r = client.post(f"/retag/{_id_for(cfg, d)}")
+    assert "Re-tagged" not in r.text
+    after = sc.read(d)
+    assert after is not None and after.tagged_at == tagged, "the files were left alone"
+
+
+def test_retag_offers_incomplete_when_mb_has_grown_tracks(client, cfg, monkeypatch):
+    """#252: the album's files agree among themselves that it is complete — one
+    of one — so it derives COMPLETE and `incomplete=False` goes to the tagger.
+    MusicBrainz has since gained tracks, so the guard refuses against the *new*
+    count and re-tagging was impossible for exactly the album a MusicBrainz
+    correction has touched.
+
+    The answer is the two counts and a control that resolves them, not a stack
+    trace. The control rides back out of band into the album page's alert slot."""
+    import json
+
+    from test.helpers import write_track_totals
+
+    tagged = datetime(2026, 1, 1, tzinfo=UTC)
+    d = _make_tagged_album(cfg, "Grown", mbid="rel-grown", tagged_at=tagged)
+    write_track_totals(d, track_total=1)  # one file, and the file says 1 of 1
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    aid = _id_for(cfg, d)
+
+    r = client.post(f"/retag/{aid}")
+    assert r.status_code == 200
+    assert "Re-tag failed" not in r.text
+    # Both counts, said in the flash rather than left to the panel.
+    payload = json.loads(r.headers["HX-Trigger"])["harmonist-status"]
+    assert payload["level"] == "warning"
+    assert "3 there, 1 here" in payload["details"]
+    # The way out is one click from where the problem appeared.
+    assert f'id="album-alert-{aid}"' in r.text
+    assert 'hx-swap-oob="true"' in r.text
+    assert f'hx-post="/retag/{aid}"' in r.text
+    assert "accept_short" in r.text
+    # Nothing was written: the guard still holds until the user says so.
+    after = sc.read(d)
+    assert after is not None and after.tagged_at == tagged
+
+
+def test_retag_as_incomplete_takes_the_grown_releases_tags(client, cfg, monkeypatch):
+    """The other half of #252: pressing the offered control re-runs the same
+    re-tag with the shortfall accepted. The files take the release's current
+    tags — including its higher total — so the album then derives INCOMPLETE
+    (design §13.3), which is the true thing to say about it."""
+    from harmonist import scanner
+    from harmonist.models import AlbumState
+    from test.helpers import write_track_totals
+
+    d = _make_tagged_album(cfg, "Grown", mbid="rel-grown", tagged_at=datetime.now(UTC))
+    write_track_totals(d, track_total=1)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}", data={"accept_short": "true"})
+    assert r.status_code == 200
+    assert "Re-tagged" in r.text
+    album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert album.state == AlbumState.INCOMPLETE
+    assert album.expected_track_count == 3
+    # ...and the entry says so, rather than leaving the new badge to be found.
+    assert "now listed as incomplete" in r.text
+
+    # Idempotent, and nothing had to be persisted to make it so: the decision
+    # lives in the totals the re-tag wrote, so the album now derives INCOMPLETE
+    # and a PLAIN re-tag (no `accept_short`) goes through on its own.
+    again = client.post(f"/retag/{_id_for(cfg, d)}")
+    assert "Re-tagged" in again.text
+    assert "Re-tag failed" not in again.text
+    still = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert (still.state, still.expected_track_count) == (AlbumState.INCOMPLETE, 3)
+
+
+def test_retag_reports_extra_files_as_a_failure_with_no_way_out(client, cfg, monkeypatch):
+    """The mismatch #252 does NOT turn into a decision: more files on disk than
+    the release has tracks is out of scope for the tagger in both modes (§15.3),
+    so incomplete mode would not help and must not be offered."""
+    d = _make_tagged_album(cfg, "Extra", mbid="rel-extra", tagged_at=datetime.now(UTC))
+    shutil.copy(SINE_M4A, d / "02 Track.m4a")
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}")
     assert "Re-tag failed" in r.text
+    assert "accept_short" not in r.text
 
 
 def test_album_action_records_activity_against_that_album(client, cfg, monkeypatch):
