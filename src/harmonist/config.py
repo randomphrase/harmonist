@@ -30,6 +30,16 @@ class BandcampConfig(BaseModel):
 
 class MusicBrainzConfig(BaseModel):
     user_agent: str = "Harmonist/1.0 ( harmonist@girtby.net )"
+    # How long a fetched release may be re-served before Harmonist asks again
+    # (#127). MusicBrainz allows one request per second, so an uncached album
+    # page spends a rate-limited slot on every view.
+    #
+    # An hour, because that is roughly how long "I edited this on MusicBrainz
+    # and came back to look" takes to stop being a live concern — and the album
+    # page shows when it last read, with a control to read again, so a user who
+    # cannot wait never has to. 0 disables serving from the cache; payloads are
+    # still recorded, so change detection keeps working with it off.
+    cache_ttl_seconds: int = Field(default=3600, ge=0)
 
 
 class ServerConfig(BaseModel):

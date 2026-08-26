@@ -136,6 +136,19 @@ button[disabled],
 .mb-note__legend { font-size: .78rem; color: var(--color-muted); }
 .mb-note__legend b { color: var(--color-mb-purple); font-weight: 600; }
 .mb-note__when { margin-left: auto; font-size: .72rem; color: var(--color-muted); }
+/* The way out of a stale cached comparison (#127). Deliberately subtle — it is
+   a rare action and a real request against a 1-req/sec budget, so it should be
+   findable without competing with the summary beside it. No `margin-left: auto`
+   here: `__when` already claimed it, and the pair travels to the right together. */
+.mb-note__reread {
+  font-size: .72rem;
+  color: var(--color-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.mb-note__reread:hover { color: var(--color-accent); }
+.mb-note__reread:disabled { opacity: .5; cursor: progress; }
 
 /* `align-items: baseline` so the label sits on the same baseline as its value,
    rather than both being top-aligned and nudged into place with padding. With a

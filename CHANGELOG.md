@@ -6,6 +6,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- Harmonist now **caches the MusicBrainz releases it fetches** (#127), so
+  browsing your library no longer spends a rate-limited request every time you
+  open an album's page. The Tags panel says when the release was last read, with
+  a **read again** link for when you've just edited MusicBrainz. Re-tagging and
+  **Recheck** always fetch fresh. Tune with `cache_ttl_seconds` under
+  `[musicbrainz]` (default one hour; `0` disables re-use).
+
 ### Fixed
 
 - When MusicBrainz has **merged** the release an album names into another one,

@@ -895,3 +895,102 @@ def test_mirrored_log_record_without_an_album_still_reaches_the_feed():
 
     entry = next(e for e in activity.recent() if "reach Bandcamp" in e.message)
     assert (entry.album_id, entry.album_label) == (None, None)
+
+
+def test_migrates_a_v6_database_in_place_keeping_its_rows(tmp_path):
+    """The 6 -> 7 upgrade (mb_release_cache, #127): a v6 activity.db must gain
+    the table in place and keep every existing row.
+
+    A new TABLE rather than a new column, so there is nothing to back-fill and
+    nothing to read as NULL — the check that matters is that the events written
+    before the upgrade survive it, and that the new table works afterwards.
+
+    Built by applying a PREFIX of the real _MIGRATIONS rather than hand-written
+    DDL, so this test can't drift from what shipped.
+    """
+    db = tmp_path / "v6.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for step in activity_store._MIGRATIONS[:6]:
+        for stmt in step:
+            conn.execute(stmt)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message, album_id) VALUES (?, ?, ?, ?, ?)",
+        ("2026-08-01T00:00:00+00:00", "info", "activity", "written by v6", "rel-old"),
+    )
+    conn.execute("PRAGMA user_version = 6")
+    conn.close()
+
+    activity_store.init(db)  # should migrate 6 -> current
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    events = activity_store.recent()
+    assert [e.message for e in events] == ["written by v6"]
+    assert events[0].album_id == "rel-old"  # pre-existing data intact
+    # ...and the upgraded DB round-trips the new table.
+    activity_store.store_release("rel-x", "media", {"id": "rel-x", "title": "Geogaddi"})
+    cached = activity_store.cached_release("rel-x", "media")
+    assert cached is not None
+    assert cached.payload["title"] == "Geogaddi"
+
+
+def test_a_cached_release_is_keyed_on_the_includes_as_well_as_the_mbid():
+    """One release fetched two ways is two rows. Harmonist asks for the full
+    tracklist in one place and `url-rels` alone in another; serving one to a
+    caller expecting the other is wrong data that still parses, which is worse
+    than a miss."""
+    activity_store.store_release("rel-1", "media+recordings", {"id": "rel-1", "shape": "full"})
+    activity_store.store_release("rel-1", "url-rels", {"id": "rel-1", "shape": "urls"})
+
+    full = activity_store.cached_release("rel-1", "media+recordings")
+    urls = activity_store.cached_release("rel-1", "url-rels")
+    assert full is not None and full.payload["shape"] == "full"
+    assert urls is not None and urls.payload["shape"] == "urls"
+
+
+def test_storing_a_release_again_refreshes_the_payload_and_the_clock():
+    """The gardener compares a fresh fetch against the stored row and then
+    overwrites it, so the row must always be "what MusicBrainz last said" rather
+    than what it said first."""
+    activity_store.store_release("rel-2", "media", {"id": "rel-2", "title": "Old"})
+    first = activity_store.cached_release("rel-2", "media")
+    activity_store.store_release("rel-2", "media", {"id": "rel-2", "title": "New"})
+    second = activity_store.cached_release("rel-2", "media")
+
+    assert first is not None and second is not None
+    assert second.payload["title"] == "New"
+    assert second.fetched_at >= first.fetched_at
+
+
+def test_an_uncached_release_reads_as_none_not_as_an_empty_release():
+    """None here means "not cached", and the caller answers it by fetching. It
+    must never be confusable with "MusicBrainz has no such release"."""
+    assert activity_store.cached_release("never-fetched", "media") is None
+
+
+def test_an_unreadable_cache_row_reads_as_a_miss(tmp_path):
+    """A row whose payload won't parse is a row that can't be served. The answer
+    is the same as a miss — go and ask — rather than handing the tagger half a
+    release."""
+    activity_store.init(tmp_path / "corrupt.db")
+    conn = activity_store._ensure()
+    conn.execute(
+        "INSERT INTO mb_release_cache (mbid, inc, fetched_at, payload) VALUES (?, ?, ?, ?)",
+        ("rel-3", "media", "2026-08-01T00:00:00+00:00", "{not json"),
+    )
+    conn.commit()
+
+    assert activity_store.cached_release("rel-3", "media") is None
+
+
+def test_clear_empties_the_release_cache_too():
+    """A demo re-seed or the next test would otherwise be served a payload
+    fetched for a different catalogue — and be right to trust it, since rows are
+    keyed by MBID and nothing about them is invalidated by the library changing
+    underneath."""
+    activity_store.store_release("rel-4", "media", {"id": "rel-4"})
+    activity_store.store_release("rel-4", "url-rels", {"id": "rel-4"})
+
+    activity_store.clear()
+
+    assert activity_store.cached_release("rel-4", "media") is None
+    assert activity_store.cached_release("rel-4", "url-rels") is None

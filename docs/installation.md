@@ -83,7 +83,14 @@ max_downloads_per_sync = 25       # safety cap
 
 [musicbrainz]
 user_agent = "Harmonist/1.0 ( you@example.com )"
+cache_ttl_seconds = 3600          # re-serve a fetched release for this long
 ```
+
+MusicBrainz allows one request per second, so Harmonist caches each release it
+fetches and re-serves it for `cache_ttl_seconds` rather than asking again. An
+album's page shows when its release was last read, with a **read again** link
+beside it, so you can always force a fresh look after editing MusicBrainz — and
+re-tagging and **Recheck** never use the cache. Set it to `0` to always fetch.
 
 Bandcamp sync needs a `cookies.txt` (exported from a logged-in browser) — paste
 or upload it via the in-app **Set up Bandcamp sync** prompt.

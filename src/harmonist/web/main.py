@@ -16,7 +16,7 @@ import unicodedata
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, Protocol
 from urllib.parse import quote
@@ -42,6 +42,7 @@ from harmonist import (
     library_index,
     live_counts,
     match,
+    mb_cache,
     mb_lookup,
     mb_search,
     pending_downloads,
@@ -328,6 +329,9 @@ def create_app(
         activity_store.init_memory()
     else:
         activity_store.init(cfg.paths.config_dir / "activity.db")
+    # How long a fetched MusicBrainz release may be re-served (#127). After the
+    # store is initialised, since that is where the rows live.
+    mb_cache.configure(timedelta(seconds=cfg.musicbrainz.cache_ttl_seconds))
     # Copies of artwork a re-tag overwrote, so replacing it can be undone (#131).
     # `artwork_dir` sandboxes itself in demo mode rather than switching off, so
     # the demo exercises the real path.
@@ -393,7 +397,7 @@ def create_app(
                     cfg,
                     result,
                     browse_rg=mb_lookup.browse_release_group_releases,
-                    fetch_release=mb_lookup.fetch_release,
+                    fetch_release=mb_cache.fetch_release,
                     albums=scan_runner.scan_now(),
                     progress=sync_runner.set_current_item,
                 )
@@ -524,7 +528,7 @@ def create_app(
         snapshot = scan_runner.albums() if scan_runner.has_completed() else None
         reconcile_pending_orphans(
             cfg.paths.music_dir,
-            fetch_urls=mb_lookup.fetch_release_urls,
+            fetch_urls=mb_cache.fetch_release_urls,
             fetch_video_media=mb_lookup.fetch_video_media,
             status_updater=status_updater,
             exempt_paths=forgotten_paths,
@@ -1440,7 +1444,7 @@ def _link_unmatched_by_release_urls(
     cfg: config_mod.Config,
     syncer: _UnmatchedSource,
     *,
-    fetch_urls: Callable[[str], list[str]] = mb_lookup.fetch_release_urls,
+    fetch_urls: Callable[[str], list[str]] = mb_cache.fetch_release_urls,
     albums: list[Album] | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> None:
@@ -1504,7 +1508,7 @@ def _detect_mistags_after_sync(
     browse_rg: Callable[[str], list[tuple[str, list[str]]]] = (
         mb_lookup.browse_release_group_releases
     ),
-    fetch_release: Callable[[str], Release] = mb_lookup.fetch_release,
+    fetch_release: Callable[[str], Release] = mb_cache.fetch_release,
     albums: list[Album] | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> None:
@@ -2533,7 +2537,9 @@ def _apply_best_match(
     Returns (status, message) where status is
     'tagged' | 'needs_confirmation' | 'no_match'.
     """
-    releases = [mb_lookup.fetch_release(m) for m in mbids]
+    # Cached: this is assessment, not action. `_tag_with_release` below re-reads
+    # the chosen release fresh before it writes anything (#127).
+    releases = [mb_cache.fetch_release(m) for m in mbids]
     candidate = best_match(album_path, releases)
     if candidate is None:
         return "no_match", "No MusicBrainz release linked."
@@ -2638,7 +2644,12 @@ def _tag_with_release(
     `mistag_owned_url`) — otherwise the old (wrong-edition) URL matches no
     purchase and the album can never link, falling through to surrender.
     """
-    release = mb_lookup.fetch_release(mbid)
+    # FRESH, never cached (#127). This writes tags to the user's files, and
+    # doing that from an hour-old payload would put metadata on disk that
+    # Harmonist had already been told was superseded. It still goes through
+    # `mb_cache` rather than round it, so the stored row — the gardener's
+    # baseline — is refreshed by the fetch that was happening anyway.
+    release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH)
     # MusicBrainz REDIRECTS a merged MBID, so the release that comes back can
     # carry a different id from the one asked for. That difference IS the merge
     # notification — cheap, exact, and the only one there is (#268). Everything
@@ -2688,7 +2699,7 @@ def _tag_with_release(
         # all gated by ©cmt Bandcamp evidence. Best-effort — never blocks tagging.
         try:
             store_url = reconcile.store_url_for_tagging(
-                album_path, mbid, fetch_urls=mb_lookup.fetch_release_urls
+                album_path, mbid, fetch_urls=mb_cache.fetch_release_urls
             )
         except Exception:
             log.exception("store_url derivation during tagging failed")
@@ -3506,13 +3517,19 @@ def _register_routes(app: FastAPI) -> None:
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 
     @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
-    def library_compare(request: Request, album_id: str) -> Response:
+    def library_compare(request: Request, album_id: str, reread: bool = False) -> Response:
         """On-demand disk-vs-MB comparison for a tagged album — the per-field tag
         comparison (#106) and the per-track one, from a SINGLE MusicBrainz fetch.
 
         Both halves need the same release, so they share one request rather than
-        costing two against a 1-req/sec budget (review-gate item 6). Computed
-        live and never persisted; #127 would add a cache underneath.
+        costing two against a 1-req/sec budget (review-gate item 6).
+
+        Served from the release cache (#127), so opening album pages no longer
+        spends a rate-limited request each. `reread=True` is the user pressing
+        "read again" on the staleness line: it forces a live fetch and refreshes
+        the stored row. That control is what keeps a cached comparison from
+        being a dead end — the user can always see how old the answer is, and
+        always get a newer one, without touching a config file.
         """
         album = _find_album(request, album_id)
         sc = album.sidecar
@@ -3522,7 +3539,9 @@ def _register_routes(app: FastAPI) -> None:
                 "No MusicBrainz release to compare against.</p>"
             )
         try:
-            release = mb_lookup.fetch_release(sc.mb_release_id)
+            release = mb_cache.fetch_release(
+                sc.mb_release_id, max_age=mb_cache.FRESH if reread else None
+            )
         except mb_lookup.ReleaseGoneError:
             # A 404 is an ANSWER, not a failure: the release has been deleted
             # from MusicBrainz, and no amount of retrying will bring it back.
@@ -3577,10 +3596,17 @@ def _register_routes(app: FastAPI) -> None:
             tracklist=tracks,
             absent_media=_absent_media_summary(album, release),
             shape_mismatch=_shape_mismatch(album, release),
-            # What the note beside the hexagon reports. Harmonist has just read
-            # the release, so "now" is honest — #127's cache is what will make
-            # this a genuinely older timestamp worth showing.
-            mb_read_at=datetime.now(UTC),
+            # What the note beside the hexagon reports — now a real timestamp
+            # rather than an assumed "just now" (#127). The release may have come
+            # from the cache, in which case this is when it was actually read,
+            # which is the whole point: a user comparing their tags against
+            # MusicBrainz needs to know whether an edit they just made upstream
+            # is in what they are looking at.
+            #
+            # Falls back to now only when the row is somehow missing (a store
+            # that failed the write it was just asked for) — "read just now" is
+            # then still true of the fetch that produced this response.
+            mb_read_at=mb_cache.fetched_at(sc.mb_release_id) or datetime.now(UTC),
         )
         return _templates(request).TemplateResponse(request, "partials/library_compare.html", ctx)
 
@@ -4134,7 +4160,7 @@ def _register_routes(app: FastAPI) -> None:
         album = _find_album(request, album_id)
         request.app.state.forgotten_paths.discard(album.path)
         try:
-            sc = reconcile.reconcile_album(album.path, fetch_urls=mb_lookup.fetch_release_urls)
+            sc = reconcile.reconcile_album(album.path, fetch_urls=mb_cache.fetch_release_urls)
         except Exception as e:
             log.exception("reconcile failed", extra=_LOG_ONLY)
             return _flash_response(
@@ -4209,7 +4235,10 @@ def _register_routes(app: FastAPI) -> None:
             )
 
         try:
-            releases = [mb_lookup.fetch_release(m) for m in mbids]
+            # FRESH, never cached. "Recheck" means "I have just edited
+            # MusicBrainz" — serving a stored payload would make the button a
+            # silent no-op, with nothing on screen to say why (#127).
+            releases = [mb_cache.fetch_release(m, max_age=mb_cache.FRESH) for m in mbids]
         except mb_lookup.MBError as e:
             return _flash_response(
                 "MB fetch failed", str(e), level=Level.ERROR, tasks_changed=False, album=album

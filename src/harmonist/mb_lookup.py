@@ -21,6 +21,26 @@ from .models import Release
 # rarely maps to more than a few releases anyway.)
 MAX_URL_CANDIDATES = 5
 
+# What each get-by-id fetch asks MusicBrainz for. Module constants rather than
+# literals at the request, because `mb_cache` keys its rows on these (#127): a
+# release fetched with `url-rels` and one fetched with the tracklist are
+# different payloads under the same MBID, and serving one to a caller expecting
+# the other is wrong data rather than a miss.
+#
+# Sharing the tuple is what makes that safe. Were the cache to name its own copy
+# of the includes, adding one here would leave the key unchanged and every stale
+# row would keep being served under it — a drift nothing could detect, since the
+# payload would still parse. One definition, used for the request AND the key.
+RELEASE_INCLUDES = (
+    "artist-credits",
+    "recordings",
+    "release-groups",
+    "labels",
+    "media",
+    "isrcs",
+)
+RELEASE_URL_INCLUDES = ("url-rels",)
+
 log = logging.getLogger(__name__)
 
 
@@ -111,17 +131,7 @@ def fetch_release(mbid: str) -> Release:
     the release, so a caller can tell "gone" from "try again later" (#194).
     """
     try:
-        result = musicbrainzngs.get_release_by_id(
-            mbid,
-            includes=[
-                "artist-credits",
-                "recordings",
-                "release-groups",
-                "labels",
-                "media",
-                "isrcs",
-            ],
-        )
+        result = musicbrainzngs.get_release_by_id(mbid, includes=list(RELEASE_INCLUDES))
     except musicbrainzngs.ResponseError as e:
         if _is_not_found(e):
             raise ReleaseGoneError(f"MusicBrainz no longer has release {mbid}") from e
@@ -196,7 +206,7 @@ def fetch_release_urls(mbid: str) -> list[str]:
     to find Bandcamp URLs linked to an album we already have on disk.
     """
     try:
-        result = musicbrainzngs.get_release_by_id(mbid, includes=["url-rels"])
+        result = musicbrainzngs.get_release_by_id(mbid, includes=list(RELEASE_URL_INCLUDES))
     except (
         musicbrainzngs.NetworkError,
         musicbrainzngs.ResponseError,

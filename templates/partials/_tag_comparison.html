@@ -32,6 +32,21 @@
        a 404. The summary already says what happened; the banner says why. #}
     {% if comparison.mb_available %}
     <span class="mb-note__when">read {{ ago(mb_read_at) }}</span>
+    {# The way out of a stale answer (#127). Releases are served from a cache, so
+       what is above can legitimately be an hour old — and a user who has just
+       edited MusicBrainz needs to be able to say "no, look again" without
+       re-tagging or editing a config file.
+
+       A button, not a link: it re-fetches into the same target the load trigger
+       fills, so the panel updates in place. `hx-disabled-elt` because this is a
+       real MusicBrainz request on a 1-req/sec budget and a double-press would
+       spend two. No `onclick` anywhere near it — HTMX owns the click. #}
+    <button type="button" class="mb-note__reread"
+            hx-get="/library/{{ album.id }}/compare?reread=1"
+            hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"
+            hx-disabled-elt="this"
+            title="Read this release from MusicBrainz again"
+            aria-label="Read this release from MusicBrainz again">read again</button>
     {% endif %}
 </div>
 

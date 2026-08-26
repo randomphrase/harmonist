@@ -221,6 +221,13 @@ date, is visible at a glance rather than needing a character-by-character read.
 When your own tracks disagree with each other, it says what's wrong ("missing on
 1 track"), and clicking that lists the tracks.
 
+MusicBrainz allows one request per second, so the release behind this comparison
+is cached and re-used for an hour rather than re-fetched every time you open the
+page. The note above the fields says when it was last read — "read 20 minutes
+ago" — with **read again** beside it if you've just edited MusicBrainz and want
+to see the edit now. Re-tagging and **Recheck** always go to MusicBrainz itself,
+so an action never runs on a cached answer.
+
 **Tracks** compares the tracklist — title, artist, number and length — flagging
 tracks that are missing, unreadable, or absent from MusicBrainz. Video files are
 listed as present and marked *video*; Harmonist reads their tags but never writes

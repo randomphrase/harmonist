@@ -787,6 +787,18 @@ data are deliberately NOT persisted: rate limiting is process-wide
 history belongs in server logs. Speculative "might be useful later"
 fields don't go here.
 
+### Caching MusicBrainz releases
+
+MusicBrainz rate-limits at **one request per second, per request rather than per byte**. That single fact settles the design. A conditional GET saves bandwidth but still consumes a slot, and MusicBrainz's ETag is not a content validator anyway — three identical requests return three different ETags — so the only thing that saves the budget is **not asking**. `mb_cache` puts a TTL over `mb_lookup`'s by-id fetches, storing each payload in `activity.db` (#127).
+
+**Keyed on `(mbid, inc)`, never on the MBID alone.** Harmonist fetches releases with different `inc=` parameters in different places — the full tracklist for the tagger, `url-rels` alone for reconciliation — and those are different payloads for the same release. Serving one to a caller expecting the other is wrong data that still parses. `mb_lookup` owns the includes as module constants and `mb_cache` keys off the same tuples, so a key cannot drift from the request that filled it.
+
+**Who may be served a cached answer** is one rule: *reads that display or compare may be cached; writes, and anything the user pressed to force a re-check, fetch fresh.* The album page's comparison, the mis-tag sweep and candidate assessment are cached. `_tag_with_release` is not — it writes tags to the user's files, and doing that from an hour-old payload would put metadata on disk Harmonist had already been told was superseded. **Recheck** is not, because its entire meaning is "I have just edited MusicBrainz". A forced fetch still goes *through* `mb_cache` rather than round it, so the stored row is refreshed by the request that was happening anyway.
+
+**A row outlives its TTL on purpose.** `max_age` decides whether a row may be *served*, not how long it is *kept*. An expired row is still the last thing MusicBrainz said, which is what makes it the change-detection baseline the gardener compares a fresh fetch against (#32) — so expiry means "ask again", never "forget", and a fetch that fails does not fall back to it. There is deliberately no eviction: once findings exist (#271), a row is the evidence its finding was raised against.
+
+**`fetched_at` is why this needs no sidecar field.** It answers "how current is what I'm looking at?" on the album page — rendered as "read 20 minutes ago", with a **read again** control beside it, which is the escape hatch that keeps a cached comparison from being a dead end. It is also the clock the gardener's incremental scheduling reads to decide which albums are due. That last reader is what dissolves the derived-state tension #32 carried: "when was this last checked" lives here, keyed by MBID, and needs nothing on disk beside the album.
+
 ---
 
 ## 5. Tagging contract (Picard-compatible)
@@ -984,6 +996,7 @@ src/harmonist/
   redownloads.py        In-memory "archived, awaiting its replacement download" (#132)
   archive.py            Zip an album's dirs into the music root, verify, then delete them (#132)
   mb_lookup.py          MB by-id / by-url fetch (1 req/sec budget)
+  mb_cache.py           TTL cache over mb_lookup's by-id fetches, in activity.db (#127)
   mb_search.py          MB free-text search (manual-ingest path)
   match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
   compare.py            Field-by-field tag-vs-MB comparison primitives (Tags section + tracklist)

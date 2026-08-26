@@ -195,6 +195,40 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
             changes   TEXT NOT NULL
         )""",
     ),
+    # 6 -> 7: cached MusicBrainz release payloads with a fetch timestamp (#127).
+    # MusicBrainz rate-limits at one request per second, PER REQUEST rather than
+    # per byte, so the only thing that saves the budget is not asking. The album
+    # page's disk-vs-MB comparison wants a release on every view, and the
+    # gardener (#32) wants one per album per pass; neither is affordable live.
+    #
+    # KEYED ON (mbid, inc), not mbid alone. Harmonist fetches releases with
+    # different `inc=` parameters in different places — the full tracklist for
+    # the tagger, `url-rels` alone for reconciliation — and those are different
+    # payloads for the same release. Serving one to a caller expecting the other
+    # is wrong data that still parses, which is worse than a miss. The composite
+    # PK is also the lookup index, so no separate index is needed.
+    #
+    # `fetched_at` is load-bearing BEYOND the TTL, which is why it is a column
+    # rather than an expiry stamp. It answers "how current is what I'm looking
+    # at?" on the album page, which is the affordance that makes a cached
+    # comparison honest — and it is the clock the gardener's incremental
+    # scheduling reads to decide which albums are due. That last reader is what
+    # dissolves the derived-state problem #32 had: the "when was this last
+    # checked" fact lives here, keyed by MBID, and needs no sidecar field.
+    #
+    # `payload` is the response JSON as fetched. Stored whole rather than
+    # normalised because the gardener's change detection compares it against a
+    # fresh fetch, and a normalisation that dropped a field would make a real
+    # MusicBrainz change invisible.
+    (
+        """CREATE TABLE mb_release_cache (
+            mbid       TEXT NOT NULL,
+            inc        TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            payload    TEXT NOT NULL,
+            PRIMARY KEY (mbid, inc)
+        )""",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -832,6 +866,120 @@ def _alias_ancestors(album_id: str, *, max_hops: int = 20) -> list[str]:
     return found
 
 
+@dataclass(frozen=True)
+class CachedRelease:
+    """One cached MusicBrainz payload and when it was read (#127)."""
+
+    payload: dict[str, Any]
+    fetched_at: datetime
+
+
+def cached_release(mbid: str, inc: str) -> CachedRelease | None:
+    """The cached payload for this (release, includes) pair, or None if there
+    isn't one.
+
+    **None means "not cached", never "MusicBrainz has no such release".** The
+    only caller is `mb_cache`, which answers a None by fetching — so a miss
+    costs a request and is always safe. That is why this read SWALLOWS a store
+    failure and returns None instead of raising `StoreUnavailableError` the way
+    the history reads do: the two are different questions. A failed history read
+    has no truthful fallback, so the page must say "unavailable"; a failed cache
+    read has a perfect one, which is to go and ask MusicBrainz. Raising here
+    would turn a degraded cache into a broken album page.
+
+    Loud anyway. A cache that never reads back is invisible — every request still
+    succeeds, and the only symptom is the rate-limited budget quietly being spent
+    at full price, which is the thing this table exists to stop.
+    """
+    try:
+        conn = _ensure()
+        with _LOCK:
+            row = conn.execute(
+                "SELECT payload, fetched_at FROM mb_release_cache WHERE mbid = ? AND inc = ?",
+                (mbid, inc),
+            ).fetchone()
+    except sqlite3.Error:
+        log.exception(
+            "activity_store cached_release(%s) failed — falling back to a live "
+            "MusicBrainz request; the call budget is being spent unnecessarily",
+            mbid,
+            extra=_QUIET_MIRROR,
+        )
+        return None
+    if row is None:
+        return None
+    blob, stamp = row
+    try:
+        payload = json.loads(blob)
+        fetched_at = datetime.fromisoformat(stamp)
+    except (ValueError, TypeError):
+        # A row that cannot be parsed is a row that cannot be served. Same
+        # answer as a miss — go and ask — rather than handing the tagger half a
+        # release. `store_release` will overwrite it on the way back.
+        log.exception(
+            "activity_store cached_release(%s) holds an unreadable row — re-fetching",
+            mbid,
+            extra=_QUIET_MIRROR,
+        )
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return CachedRelease(payload=payload, fetched_at=fetched_at)
+
+
+def store_release(mbid: str, inc: str, payload: Mapping[str, Any]) -> None:
+    """Remember a freshly fetched MusicBrainz payload under (mbid, inc).
+
+    Best-effort, like every write here: a cache that cannot be written must not
+    fail the fetch it was meant to make cheaper.
+
+    REPLACE rather than INSERT, so a re-fetch refreshes both the payload and the
+    clock in one statement. That is also what makes the gardener's detector
+    work: it compares a fresh fetch against the stored row and then overwrites
+    it, so the row is always "what MusicBrainz last said", not "what it said
+    first".
+    """
+    try:
+        blob = json.dumps(payload, sort_keys=True)
+    except (TypeError, ValueError):
+        log.exception(
+            "activity_store store_release(%s) could not serialise the payload",
+            mbid,
+            extra=_QUIET_MIRROR,
+        )
+        return
+    try:
+        conn = _ensure()
+        with _LOCK:
+            conn.execute(
+                "INSERT OR REPLACE INTO mb_release_cache (mbid, inc, fetched_at, payload) "
+                "VALUES (?, ?, ?, ?)",
+                (mbid, inc, datetime.now(UTC).isoformat(), blob),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        log.exception(
+            "activity_store store_release(%s) failed — the next read will re-fetch",
+            mbid,
+            extra=_QUIET_MIRROR,
+        )
+
+
+# There is deliberately no `forget_release`. Three things would want one and
+# none of them survives contact:
+#
+#   * tidying up after a merge — but rows are keyed by the id the release
+#     ACTUALLY has (`mb_cache.fetch_release`), so a merged-away MBID never had a
+#     row to drop;
+#   * forcing a re-read — that is `max_age=FRESH`, which REPLACEs the row rather
+#     than leaving a gap, so the album page's "read again" never needs a delete;
+#   * eviction — which #271 argues directly against: once findings exist, a row
+#     is the evidence its finding was raised against, and dropping it leaves a
+#     review whose basis can no longer be shown.
+#
+# `clear()` below is the whole of the deletion surface, and it is a teardown.
+
+
 def clear() -> None:
     """Drop all stored state — events, their tag detail, AND aliases (tests /
     demo reset).
@@ -850,6 +998,13 @@ def clear() -> None:
     Child first, so the declared `REFERENCES events (id)` would hold even if the
     store ever turns on `PRAGMA foreign_keys` — which it does not today, and is
     why the orphans were possible at all.
+
+    Cached MusicBrainz payloads (#127) go too. They are keyed by MBID rather
+    than by album, so nothing about them is invalidated by the library changing
+    underneath — which is exactly the hazard: a demo re-seed or the next test
+    would be served a payload fetched for a different catalogue, and be right to
+    trust it. Re-fetching costs a request the tests never make anyway, since
+    they patch the fetch.
     """
     try:
         conn = _ensure()
@@ -857,6 +1012,7 @@ def clear() -> None:
             conn.execute("DELETE FROM tag_changes")
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM album_aliases")
+            conn.execute("DELETE FROM mb_release_cache")
             conn.commit()
     except sqlite3.Error:
         # Swallowed rather than raised: the callers are teardown paths (test
