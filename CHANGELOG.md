@@ -8,6 +8,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- When MusicBrainz has **merged** the release an album names into another one,
+  tagging now follows the surviving release and says so in the album's
+  **History** (#268), naming both releases. Previously the album silently
+  flickered through **Tagging**, and its identity was rewritten by the
+  reconciler as though you had re-tagged it in Picard.
 - Decisions you record about an album — **Keep in Library** for a purchase that
   no longer exists, and accepting an incomplete album as finished — are no
   longer erased by ordinary operations like a sync, a recheck, or rejecting a

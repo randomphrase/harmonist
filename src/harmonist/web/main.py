@@ -2574,6 +2574,42 @@ def _claim_pending_by_store_url(store_url: str | None) -> None:
             pending_downloads.remove(p.item_id)
 
 
+def _record_merge(album_path: Path, old_mbid: str, new_mbid: str) -> None:
+    """Say that MusicBrainz merged one release into another (#268).
+
+    Called AFTER the sidecar write, for two reasons. The album's id has just
+    moved with it, and an entry stamped with the pre-write id would hang off a
+    release the sidecar no longer names (#65). And the entry is a report of
+    something that happened, not of something attempted — a tagging that threw
+    part-way should not leave a line claiming the identity moved.
+
+    The alias that keeps the album's pre-merge history reachable is NOT recorded
+    here: `sidecar.write()` already records one whenever the canonical id
+    changes, and this is one of those. Adding a call would duplicate it at one
+    call site while leaving every other identity change relying on the write —
+    the shape the event-recording skill warns about.
+
+    Both sinks, because they answer different questions. The activity entry is
+    the outcome in the user's language, and the audit line is the pair of ids —
+    which is forensics, and doesn't belong in prose the feed renders next to an
+    album name it already shows in its own column.
+    """
+    album_id = sidecar_mod.album_id_for(album_path)
+    audit.record(
+        "release.merged",
+        album_id=album_id,
+        album=album_path,
+        old=old_mbid,
+        new=new_mbid,
+    )
+    activity.record(
+        "MusicBrainz merged the release this album named into another one — "
+        "it now follows the surviving release",
+        album_id=album_id,
+        album_label=album_path.name,
+    )
+
+
 def _tag_with_release(
     album_path: Path,
     mbid: str,
@@ -2587,6 +2623,10 @@ def _tag_with_release(
 ) -> None:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
+    `mbid` is what to ask MusicBrainz for, not necessarily what the album ends
+    up tagged as: a merged release redirects, and this follows the release it
+    actually got (#268). See the rebinding below.
+
     `incomplete=True` runs the tagger in incomplete mode (file_count <
     MB track count allowed). Nothing is persisted about the count: the tagging
     writes the release's own totals into every file, and that is what the
@@ -2599,6 +2639,27 @@ def _tag_with_release(
     purchase and the album can never link, falling through to surrender.
     """
     release = mb_lookup.fetch_release(mbid)
+    # MusicBrainz REDIRECTS a merged MBID, so the release that comes back can
+    # carry a different id from the one asked for. That difference IS the merge
+    # notification — cheap, exact, and the only one there is (#268). Everything
+    # downstream follows the id the release actually has, because the tagger
+    # writes `release["id"]` into the files either way: disagreeing with it left
+    # the sidecar naming a release that no longer exists, the album deriving
+    # TAGGING off its own files, and reconcile rewriting the identity through a
+    # path meant for "the user re-tagged in Picard".
+    #
+    # `mbid` is REBOUND rather than a second name being introduced, so the
+    # correction holds by construction: a line added below that reaches for the
+    # album's release gets the one it was tagged as, not the one that was asked
+    # for. Only the merge check itself wants the original.
+    #
+    # Unconditional, and it stays unconditional under #32's unattended pass:
+    # there is nothing to authorise, because the merge has already happened on
+    # MusicBrainz and this is only noticing it. Undo is the escape hatch, as it
+    # is for any tagging. Not the significance classifier's business (#267) —
+    # that decides which TAG changes may auto-apply, and this is an identity
+    # fact arriving beside them.
+    requested_mbid, mbid = mbid, release["id"]
     rg = release.get("release-group") or {}
     cover_path = cover_art.ensure_cover(
         album_path,
@@ -2653,6 +2714,8 @@ def _tag_with_release(
         video_media=mb_lookup.video_media_of(release),
     )
     sidecar_mod.write(album_path, new)
+    if mbid != requested_mbid:
+        _record_merge(album_path, requested_mbid, mbid)
     _claim_pending_by_store_url(store_url)
 
 

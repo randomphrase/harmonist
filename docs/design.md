@@ -859,6 +859,20 @@ the odds get worse the longer the release, and the failure is silent and
 targeted — one file in sixteen given another track's title and ids, on an album
 that otherwise looks right, which nobody re-checks.
 
+### The release a tagging follows, when MusicBrainz has moved it
+
+MusicBrainz **merges** releases routinely, and it does not 404 a merged MBID — it *redirects*, so `fetch_release(old)` answers with the surviving release under a different `id`. That difference is the whole notification: cheap, exact, and available on a request Harmonist was making anyway.
+
+**A tagging follows the release it actually got.** The sidecar records `release["id"]`, not the id that was asked for, because the tagger writes `release["id"]` into every file. Recording the requested one instead left the two disagreeing, and the album then derived `TAGGING` from its own freshly written files — so the Inbox picked it up and reconcile rewrote the identity from the tags, laundering an identity change through machinery meant for "the user re-tagged in Picard" (#268). It self-healed, which is why it went unnoticed; at the scale of #32's nightly pass it would be continuous churn.
+
+**A merge is named, not just applied.** The album's History gets an audit line carrying both MBIDs and a plain-language activity entry saying what happened, because `sidecar.update` alone — which already renders `mbid=old->new` for any identity change — cannot be told apart from the user re-matching the album by hand. The alias linking the old id to the new one needs no special call: `sidecar.write` records one whenever an album's canonical id changes, and this is one of those.
+
+**A merge always applies, and is never held for review** — including under #32's unattended pass. There is nothing to authorise: the merge has already happened on MusicBrainz, and Harmonist is only noticing it. Offering a choice would imply the old release still exists to stay on, which it does not. This is deliberately *not* the classifier's business (#267): that map decides which **tag changes** may auto-apply, and a merge is an identity fact arriving alongside them, not one of them.
+
+The escape hatch is the one every tagging has — **Undo**, which restores the previous tags from the album's own history (#157) — plus fixing the merge on MusicBrainz, which is where a wrong one is actually wrong. What a merge must never be is *silent*, which is what the record above is for.
+
+A **deletion** is the sibling case and behaves differently: MusicBrainz 404s, `fetch_release` raises `ReleaseGoneError`, and nothing is written at all (§2.4.1, #194).
+
 ### The tags Harmonist owns
 
 `formats/owned.py` names them, and the list is the concrete form of the promise not to touch tags Harmonist doesn't understand: **these fields, and only these, are the ones it writes, overwrites, and removes.** Each backend maps `Owned` to its native keys and clears that mapping before writing, so a field absent from the new `TagSet` — a release with no catalogue number, say — is *removed* rather than left stale from a previous tagging. Before #149 only the Vorbis backend did this, so a mis-tag correction left the wrong release's label on MP3 and M4A files indefinitely.
