@@ -64,7 +64,7 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_TRACK_NUM,
     LEGACY_RELEASE_ID,
 )
-from .models import Release, Track
+from .models import Release, Track, norm_title
 
 log = logging.getLogger(__name__)
 
@@ -338,6 +338,59 @@ class AlbumPlan:
     def empty(self) -> bool:
         """True when a re-tag would write no owned field on any file."""
         return not self.changes
+
+
+def significance_of(field: str, before: Any, after: Any) -> owned.Significance:
+    """What kind of change this one entry of a tagging diff is (#267).
+
+    `field` is a key from an `AlbumPlan`'s changes — an `owned.Owned` value or
+    `owned.ARTWORK` — and `before`/`after` are that entry's two values. The
+    field-level classification comes from `owned.SIGNIFICANCE`; this adds the one
+    rule that cannot be given at field level.
+
+    It says what the change IS, not what to do about it. Whether it needs a
+    person is `owned.needs_review`, which is policy over this answer rather than
+    part of it — today every level goes to review regardless, and #273 makes
+    that a setting.
+
+    **Identity is settled upstream of significance.** The diff handed to this
+    must have been computed against the release the album is *now known to be*,
+    not the one it was last recorded as. MusicBrainz redirects a merged MBID, so
+    a merge arrives as a changed `mb_album_id` — and #268 settled that a merge
+    always applies and is never held for review, there being nothing to
+    authorise once MusicBrainz has already done it. That correction belongs at
+    the fetch, where the redirect names both ids and the merge is provable. By
+    the time a diff reaches here, `mb_album_id` moving means the album is being
+    re-pointed at a genuinely different release, which is exactly the case its
+    REVIEW verdict is for. See `docs/design.md` §5.
+
+    Raises `KeyError` for a key that is neither owned nor artwork, rather than
+    guessing. A plan cannot produce one, and inventing a default here is how a
+    field would quietly acquire a significance nobody gave it — which, once
+    #273 lets a level be trusted, is how it would acquire permission to write
+    itself.
+    """
+    declared = owned.SIGNIFICANCE[field]
+    if field in owned.BY_VALUE and _only_cosmetically_different(before, after):
+        return owned.Significance.COSMETIC
+    return declared
+
+
+def _only_cosmetically_different(before: Any, after: Any) -> bool:
+    """Whether two values of a BY_VALUE field differ only in spacing or casing.
+
+    `models.norm_title` is the definition, borrowed rather than restated: it is
+    what `TrackComparison.title_differs` uses to decide whether the album page
+    shows a title as differing at all, and the two must agree. A title the page
+    reports as unchanged is not one the gardener may treat as a retitle.
+
+    Anything that isn't a pair of strings is not cosmetic — a field arriving or
+    disappearing is a real change, and the safe direction here is to fall
+    through to the higher significance the map already gave.
+    """
+    if not isinstance(before, str) or not isinstance(after, str):
+        return False
+    return norm_title(before) == norm_title(after)
 
 
 @dataclass(frozen=True)

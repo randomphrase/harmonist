@@ -739,6 +739,95 @@ def test_every_owned_field_has_a_scope():
     assert not set(ALBUM_FIELDS) & set(TRACK_FIELDS)
 
 
+def test_every_owned_field_has_a_significance():
+    """A field added to `Owned` cannot default into applying itself unattended.
+
+    This is the guard, and it is the whole reason the map lives beside `SCOPE`
+    rather than in the gardener that reads it: adding a field to `Owned` without
+    classifying it fails here, at the point of adding, rather than silently
+    inheriting whatever the classifier does with an unknown key. The cost of
+    forgetting `SCOPE` is a mis-rendered history row; the cost of forgetting this
+    one is an unattended write nobody authorised (#267).
+
+    Keyed over the whole diff vocabulary, not just `Owned`: `ARTWORK` is a key a
+    plan really produces, so leaving it out would be a hole exactly where the map
+    is supposed to be total.
+    """
+    from harmonist.formats.owned import ARTWORK, BY_VALUE, SIGNIFICANCE, Owned
+
+    assert set(SIGNIFICANCE) == {f.value for f in Owned} | {ARTWORK}
+    assert BY_VALUE <= set(Owned)
+
+
+def test_a_value_sensitive_field_is_declared_at_its_higher_significance():
+    """The runtime adjustment only ever lowers.
+
+    A `BY_VALUE` field is declared IDENTITY and *lowered* to COSMETIC when the
+    values turn out to differ trivially. Declared the other way round, the rule
+    failing to fire would understate a real retitle as a spacing fix — and once
+    #273 lets a level be trusted, understating is what writes something nobody
+    agreed to. Overstating only ever costs a glance.
+    """
+    from harmonist.formats.owned import BY_VALUE, SIGNIFICANCE, Significance
+
+    assert BY_VALUE
+    for field in BY_VALUE:
+        assert SIGNIFICANCE[field] is Significance.IDENTITY
+
+
+def test_cosmetic_is_never_declared_only_derived():
+    """COSMETIC describes a pair of values, not a field.
+
+    No field is inherently cosmetic — `title` is only cosmetic on the occasions
+    its two values differ by whitespace or casing. A field declared COSMETIC in
+    the table would be one claiming that of every change it could ever carry.
+    """
+    from harmonist.formats.owned import SIGNIFICANCE, Significance
+
+    assert Significance.COSMETIC not in SIGNIFICANCE.values()
+
+
+def test_no_level_applies_itself_yet():
+    """Every change goes to review, whatever its significance.
+
+    Deliberate, and the reason it is asserted rather than merely true: nothing
+    has watched this classification run against a real library yet, so the way to
+    find out whether the table is right is to see its verdicts arrive in the
+    Inbox. Starting closed also means the first cut of #32's runner cannot write
+    anything unattended, whatever else is wrong with it.
+
+    #273 turns `AUTO_APPLY` into a setting. Until it does, a member appearing
+    here is a decision about somebody's files, so it should be the point of the
+    change that adds it rather than a default that drifted.
+    """
+    from harmonist.formats.owned import AUTO_APPLY, Significance, needs_review
+
+    assert AUTO_APPLY == frozenset()
+    for level in Significance:
+        assert needs_review(level), level
+
+
+def test_no_identifier_is_classified_below_identity():
+    """Every MusicBrainz id is IDENTITY, including ones that only move on a merge.
+
+    Stated as a rule rather than left implicit in a list of thirty entries: an id
+    changing is the album being re-pointed at something else, and the one case
+    where that is settled rather than proposed — a merged release, which arrives
+    as a redirect naming both ids — is corrected at the fetch and never reaches
+    the classifier as a question (#268, `docs/design.md` §5).
+    """
+    from harmonist.formats.owned import SIGNIFICANCE, Owned, Significance
+
+    # By suffix, not by the `mb_` prefix: `mb_album_status` and
+    # `mb_album_country` are MusicBrainz's words for a release, not identifiers,
+    # and they ARE enrichment. The count is pinned so a filter that silently
+    # stopped selecting anything would fail here rather than pass vacuously.
+    ids = [f for f in Owned if f.value.endswith(("_id", "_ids"))]
+    assert len(ids) == 6
+    for field in ids:
+        assert SIGNIFICANCE[field] is Significance.IDENTITY, field
+
+
 @pytest.mark.parametrize(
     ("module_name", "table"),
     [

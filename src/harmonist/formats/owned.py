@@ -139,12 +139,160 @@ SCOPE: dict[Owned, Scope] = {
 ALBUM_FIELDS: tuple[Owned, ...] = tuple(f for f in Owned if SCOPE[f] is Scope.ALBUM)
 TRACK_FIELDS: tuple[Owned, ...] = tuple(f for f in Owned if SCOPE[f] is Scope.TRACK)
 
+
 #: Key under which a tagging records an artwork change, alongside the owned
 #: fields but deliberately NOT one of them — see the module docstring. Named
 #: here so the writer and the renderer can't drift on the spelling, and kept
 #: distinct from every `Owned` value so a reader iterating `Owned` skips it
 #: rather than trying to render a sha256 as a tag.
 ARTWORK = "artwork"
+
+
+class Significance(StrEnum):
+    """What KIND of change this is — deliberately *not* whether it needs review.
+
+    Those are two different questions and an earlier draft of this enum answered
+    them with one word, which was wrong: a change can be slight and still want a
+    person's eye, and a change can be far-reaching and still be one a particular
+    user is happy to have applied for them. Significance is a property of the
+    change; review is a policy over significance, and it belongs in `AUTO_APPLY`
+    below so #273 has somewhere to attach a per-level trust setting.
+
+    The levels are ordered by how much of the album they call into question, and
+    that ordering is the only thing a trust setting needs to be intelligible:
+    someone who trusts `STRUCTURE` almost certainly trusts `ENRICHMENT` too.
+    """
+
+    #: Whitespace or casing only — the same value, spelled differently. Never
+    #: declared in `SIGNIFICANCE`; only ever reached at runtime by a `BY_VALUE`
+    #: field whose two values turn out to differ this little.
+    COSMETIC = "cosmetic"
+    #: MusicBrainz filling in or correcting a detail — a catalogue number it
+    #: didn't have, a date narrowed from a year to a day. Nothing about what the
+    #: album is, or how it is laid out, moves.
+    ENRICHMENT = "enrichment"
+    #: How the album is laid out: track and disc numbers and totals. The album is
+    #: still the same album; which track is which has changed.
+    STRUCTURE = "structure"
+    #: What the album or one of its tracks IS — its name, its artist, or any of
+    #: the MusicBrainz ids that say which entity it points at.
+    IDENTITY = "identity"
+    #: The cover image. Its own level rather than a rank among the others,
+    #: because "let it update my cover art" is a trust decision people make
+    #: separately from anything about tags.
+    COVER_ART = "artwork"
+
+
+#: What kind of change each key of a tagging diff represents, keyed exactly as
+#: `diff` keys its result — the `Owned` values plus `ARTWORK`. Keyed by string
+#: for that reason: a classifier iterates a plan's changes, and artwork arrives
+#: in them under a key that is deliberately not an owned field. One lookup table
+#: for the whole diff means no caller has to remember which key is the exception.
+#:
+#: Placed here, beside `SCOPE`, so the totality test can hold: a field added to
+#: `Owned` later **cannot** slip through unclassified, because
+#: `test_every_owned_field_has_a_significance` fails until someone places it.
+#: That is the same discipline that keeps the three format backends in step, and
+#: it matters more here — the cost of forgetting `SCOPE` is a mis-rendered
+#: history row, the cost of forgetting this one is a change whose significance
+#: nothing can state, in the table a trust setting will be read through.
+SIGNIFICANCE: dict[str, Significance] = {
+    # --- Enrichment: MusicBrainz filling in or correcting a detail ---
+    Owned.ALBUM_ARTIST_SORT: Significance.ENRICHMENT,
+    Owned.ARTIST_SORT: Significance.ENRICHMENT,
+    Owned.MB_ALBUM_STATUS: Significance.ENRICHMENT,
+    Owned.MB_ALBUM_COUNTRY: Significance.ENRICHMENT,
+    Owned.DATE: Significance.ENRICHMENT,
+    Owned.ORIGINAL_DATE: Significance.ENRICHMENT,
+    Owned.SCRIPT: Significance.ENRICHMENT,
+    Owned.LABEL: Significance.ENRICHMENT,
+    Owned.CATALOG_NUMBER: Significance.ENRICHMENT,
+    Owned.BARCODE: Significance.ENRICHMENT,
+    Owned.ASIN: Significance.ENRICHMENT,
+    Owned.DISC_SUBTITLE: Significance.ENRICHMENT,
+    Owned.MEDIA: Significance.ENRICHMENT,
+    Owned.ISRCS: Significance.ENRICHMENT,
+    # --- Identity: what the album, or one of its tracks, IS ---
+    Owned.ALBUM: Significance.IDENTITY,
+    Owned.ALBUM_ARTIST: Significance.IDENTITY,
+    Owned.ARTIST: Significance.IDENTITY,
+    Owned.ARTISTS: Significance.IDENTITY,
+    # Identity even though it reads like a descriptor: MusicBrainz re-typing a
+    # release group from Album to EP is it saying this is a different sort of
+    # thing from what Harmonist recorded. The debatable one of this group — it
+    # would not be absurd as ENRICHMENT, and watching it in the Inbox is how
+    # that gets decided rather than by argument here.
+    Owned.MB_ALBUM_TYPE: Significance.IDENTITY,
+    # Every MusicBrainz id, including the ones that can only have moved because
+    # MusicBrainz merged the entity behind them. The cheaper reading — "a merge
+    # already happened, so there is nothing to authorise", which is what #268
+    # settled for the RELEASE id — was considered and not taken: that decision
+    # rests on the merge being *provable*, and it is, exactly once, at the fetch,
+    # where a redirect names both ids. An id that simply arrives different inside
+    # an unchanged release payload carries no such evidence. It is a merge, a
+    # re-point, or a MusicBrainz edit that replaced the track, and nothing here
+    # can tell those apart.
+    Owned.MB_ALBUM_ID: Significance.IDENTITY,
+    Owned.MB_RELEASE_GROUP_ID: Significance.IDENTITY,
+    Owned.MB_ALBUM_ARTIST_IDS: Significance.IDENTITY,
+    Owned.MB_ARTIST_IDS: Significance.IDENTITY,
+    Owned.MB_TRACK_ID: Significance.IDENTITY,
+    Owned.MB_RELEASE_TRACK_ID: Significance.IDENTITY,
+    # Identity by default, and the one field that can be less than that — see
+    # BY_VALUE below.
+    Owned.TITLE: Significance.IDENTITY,
+    # --- Structure: the same album, laid out differently ---
+    Owned.TRACK_NUM: Significance.STRUCTURE,
+    Owned.TRACK_TOTAL: Significance.STRUCTURE,
+    Owned.DISC_NUM: Significance.STRUCTURE,
+    Owned.DISC_TOTAL: Significance.STRUCTURE,
+    # --- Artwork ---
+    ARTWORK: Significance.COVER_ART,
+}
+
+#: Levels whose changes may be applied without asking anyone.
+#:
+#: **Empty, deliberately.** Every change goes to review, whatever its
+#: significance, because nothing has yet watched this classification run against
+#: a real library — and the way to find out whether `mb_album_type` really
+#: belongs under IDENTITY is to see it arrive in the Inbox, not to argue about
+#: it here. Starting closed also means the first version of #32's runner cannot
+#: write anything unattended, whatever else is wrong with it.
+#:
+#: This is the seam #273 turns into a setting: a user who trusts ENRICHMENT gets
+#: that level in this set, and everything else keeps going to review. Widening
+#: it is a decision about somebody's files, so it does not happen by a default
+#: drifting — `test_no_level_applies_itself_yet` fails if this set gains a
+#: member without that being the point of the change.
+AUTO_APPLY: frozenset[Significance] = frozenset()
+
+
+def needs_review(significance: Significance) -> bool:
+    """Whether a change of this kind has to be shown to a person first.
+
+    The policy over the classification, kept apart from it so the two can move
+    independently: significance describes the change and is a property of
+    MusicBrainz's data, while this describes how much a particular user trusts
+    Harmonist and is a property of their configuration (#273).
+    """
+    return significance not in AUTO_APPLY
+
+
+#: Fields whose significance cannot be given at field level, because it depends
+#: on how far the value actually moved. Only `title` so far: MusicBrainz tidying
+#: the spacing or casing of a track title is COSMETIC, and renaming the track is
+#: IDENTITY, and one entry in the table cannot say both.
+#:
+#: These are declared at their HIGHER significance and lowered when the values
+#: turn out to differ trivially — never raised. That direction is deliberate: a
+#: rule that fails to fire overstates a change, which costs a glance, while one
+#: that fires wrongly understates a retitle as a spacing fix, and under a trust
+#: setting that is a write nobody agreed to.
+#:
+#: The comparison itself lives with the caller (`tagger.significance_of`), which
+#: is where `models.norm_title` — the definition of "cosmetic" the album page
+#: already uses — can be imported without this module reaching upwards for it.
+BY_VALUE: frozenset[Owned] = frozenset({Owned.TITLE})
 
 
 def _absent(value: object) -> bool:

@@ -1358,3 +1358,124 @@ def test_retag_still_clears_a_legacy_atom_on_an_otherwise_unchanged_file(album_w
     tagger.tag_album(album_dir, _single_track_release())
 
     assert LEGACY_RELEASE_ID not in MP4(f)
+
+
+# ---------- which changes may apply unattended (#267) ----------
+
+
+def test_a_detail_musicbrainz_filled_in_is_enrichment():
+    """Nothing about what the album is, or how it is laid out, moves."""
+    assert (
+        tagger.significance_of("catalog_number", None, "CAT-001") is owned.Significance.ENRICHMENT
+    )
+    assert tagger.significance_of("isrcs", [], ["GBTEST2100001"]) is owned.Significance.ENRICHMENT
+    assert tagger.significance_of("date", "2021", "2021-06-15") is owned.Significance.ENRICHMENT
+
+
+def test_what_the_album_is_reads_as_identity():
+    for field, was, now in [
+        ("album", "Geogaddi", "Geogaddi (Remastered)"),
+        ("album_artist", "Boards Of Canada", "Boards of Canada"),
+        ("mb_album_id", "rel-aaa", "rel-bbb"),
+        ("mb_track_id", "rec-001", "rec-999"),
+    ]:
+        assert tagger.significance_of(field, was, now) is owned.Significance.IDENTITY, field
+
+
+def test_how_the_album_is_laid_out_reads_as_structure():
+    """The same album, renumbered — distinct from the album becoming a different
+    album, which is what separating the two levels is for."""
+    for field, was, now in [
+        ("track_num", 3, 4),
+        ("track_total", 12, 13),
+        ("disc_num", 1, 2),
+        ("disc_total", 1, 2),
+    ]:
+        assert tagger.significance_of(field, was, now) is owned.Significance.STRUCTURE, field
+
+
+def test_a_title_tidy_up_is_cosmetic_but_a_retitle_is_identity():
+    """The one classification a field-level map cannot give.
+
+    Whitespace and casing are the line `models.norm_title` already draws, and the
+    album page draws it in the same place — a title it reports as unchanged must
+    not be one the gardener treats as a retitle.
+    """
+    assert (
+        tagger.significance_of("title", "Dawn  Chorus", "Dawn Chorus")
+        is owned.Significance.COSMETIC
+    )
+    assert (
+        tagger.significance_of("title", "DAWN CHORUS", "Dawn Chorus") is owned.Significance.COSMETIC
+    )
+    assert (
+        tagger.significance_of("title", "Dawn Chorus", "Dawn Chorus (Alt. Take)")
+        is owned.Significance.IDENTITY
+    )
+
+
+def test_a_title_arriving_or_leaving_is_not_cosmetic():
+    """A field appearing or vanishing is a real change however the strings would
+    have normalised, so it falls through to the REVIEW the map already gave."""
+    assert tagger.significance_of("title", None, "Dawn Chorus") is owned.Significance.IDENTITY
+    assert tagger.significance_of("title", "Dawn Chorus", None) is owned.Significance.IDENTITY
+
+
+def test_artwork_is_its_own_level():
+    """Artwork arrives in a plan's changes under a key that is deliberately not
+    an owned field, and it still has to be classified — `owned.ARTWORK` is in the
+    table so the classifier can't meet a key it has no answer for.
+
+    Its own level rather than a rank among the others because "let it update my
+    cover art" is a trust decision people make separately from anything about
+    tags, and #273's setting is per level.
+    """
+    assert tagger.significance_of(owned.ARTWORK, "sha-a", "sha-b") is owned.Significance.COVER_ART
+
+
+def test_an_unknown_key_is_refused_rather_than_guessed():
+    """No default. A plan cannot produce a key outside the map, and inventing one
+    here is how a field would quietly acquire a significance nobody gave it —
+    which is the failure the totality test exists to prevent, defeated at the
+    reader instead of at the map."""
+    with pytest.raises(KeyError):
+        tagger.significance_of("genre", None, "Ambient")
+
+
+def test_every_change_reaching_the_runner_still_goes_to_review():
+    """The policy today, asserted through the pair of calls the runner will make.
+
+    `significance_of` says what a change is; `needs_review` says what to do about
+    it, and for now the answer is the same for every level. Asserted here as well
+    as over the enum because this is the shape #270 will actually use, and the
+    two halves being separable is the whole point of the correction that split
+    them (#273 attaches a per-level setting to the second one).
+    """
+    for field, was, now in [
+        ("catalog_number", None, "CAT-001"),
+        ("title", "Dawn  Chorus", "Dawn Chorus"),
+        ("album", "A", "B"),
+        ("track_num", 1, 2),
+        (owned.ARTWORK, "sha-a", "sha-b"),
+    ]:
+        assert owned.needs_review(tagger.significance_of(field, was, now)), field
+
+
+def test_every_change_a_real_plan_produces_can_be_classified(album_with_tracks, tmp_path):
+    """The map and the diff must agree about the vocabulary they share.
+
+    The totality test asserts that over `Owned` as declared; this asserts it over
+    what a tagging actually emits, which is the thing the runner will iterate. A
+    plan that produced a key the map had never heard of would pass the first test
+    and raise in production (#270).
+    """
+    album_dir = album_with_tracks(2)
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(_minimal_jpeg())
+
+    plan = tagger.plan_album(album_dir, _release_2_tracks(), cover_path=cover)
+
+    seen = {f for changes in plan.changes.values() for f in changes}
+    assert owned.ARTWORK in seen  # the key most likely to be forgotten
+    for field in seen:
+        assert isinstance(tagger.significance_of(field, None, "x"), owned.Significance)

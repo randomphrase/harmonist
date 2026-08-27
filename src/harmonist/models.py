@@ -96,11 +96,22 @@ class BandcampInfo:
     candidate_item_ids: list[int] | None = None
 
 
-def _norm_title(s: str) -> str:
+def norm_title(s: str) -> str:
     """Light normalisation for comparing a disk title against an MB title:
     collapse whitespace and casefold. Deliberately *not* the aggressive
     `_norm_*` used for matching — here we want to surface real differences, so
-    only cosmetic noise (spacing, case) is ignored."""
+    only cosmetic noise (spacing, case) is ignored.
+
+    Public because it draws the line between a cosmetic title change and a real
+    one in two places now: `TrackComparison.title_differs`, and the significance
+    classifier (#267), which auto-applies a spacing or casing tidy-up and holds
+    a genuine retitle. Those two must agree — a title the album page reports as
+    unchanged is not one the gardener may treat as a retitle — so they share the
+    definition rather than each having a notion of "cosmetic".
+
+    Not to be confused with `bandcamp_hook._norm_title`, which is the aggressive
+    matching normaliser and deliberately answers a different question.
+    """
     return " ".join(s.split()).casefold()
 
 
@@ -127,7 +138,7 @@ class TrackComparison:
         not a metadata discrepancy, so it returns False. Derived, never stored."""
         if not self.file_title or not self.mb_track_title:
             return False
-        return _norm_title(self.file_title) != _norm_title(self.mb_track_title)
+        return norm_title(self.file_title) != norm_title(self.mb_track_title)
 
 
 @dataclass
