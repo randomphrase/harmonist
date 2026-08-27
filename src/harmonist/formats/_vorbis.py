@@ -101,6 +101,11 @@ OWNED_KEYS: dict[Owned, tuple[str, ...]] = {
     Owned.ISRCS: (KEY_ISRC,),
 }
 
+#: Keys a write CLEARS and never writes back — see `m4a.SUPERSEDED_ATOMS`.
+#: Empty here: `KEY_ORIGINAL_YEAR` is the second key of an `OWNED_KEYS` pair,
+#: but a write re-derives it from `ORIGINALDATE`, so its presence is normal.
+SUPERSEDED_KEYS: tuple[str, ...] = ()
+
 
 #: Owned fields carried by a single Vorbis comment each. Numbers are written as
 #: their decimal string, which is how `_read_owned` reads them back.
@@ -485,6 +490,18 @@ class VorbisTagger:
         if audio is None:
             raise OSError(f"could not open {path} to read its tags")
         return self._read_owned(audio.tags)
+
+    def has_superseded_tags(self, path: Path) -> bool:
+        """Whether `path` carries a key a write would remove and not write back.
+
+        Always False while `SUPERSEDED_KEYS` is empty, and written to read the
+        file rather than to return the constant so it keeps working if it isn't.
+        """
+        if not SUPERSEDED_KEYS:
+            return False
+        audio = self._open(path)
+        tags = audio.tags if audio is not None else None
+        return tags is not None and any(key in tags for key in SUPERSEDED_KEYS)
 
     def write_owned(self, path: Path, values: Mapping[str, Any]) -> dict[str, Any]:
         """Set every owned field to `values`, removing those absent (#157's undo).

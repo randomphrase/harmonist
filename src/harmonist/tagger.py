@@ -182,6 +182,201 @@ def tag_album(
     differing per-track artwork (which is otherwise preserved) — the user's
     explicit "replace the artwork" override.
     """
+    prep = _prepare(
+        album_dir,
+        release,
+        cover_path,
+        incomplete=incomplete,
+        overwrite_art=overwrite_art,
+        files=files,
+    )
+    # Read before the artwork guard as well as before the loop: the guard's
+    # warning names the album it is about, and this is where that name comes
+    # from. Tagging can still move the id afterwards (temp_uid -> MBID), which is
+    # why `album_history` unions an album's alias chain — the same reason the
+    # `tag.album` line below gets away with the pre-write id.
+    album_id = sidecar_mod.album_id_for(album_dir)
+    if prep.preserves_per_track_art:
+        # Attributed to the album (#260). This is a decision Harmonist made on
+        # the user's behalf about their files, so it has to reach that album's
+        # own History — and the feed's log mirror drops any record that doesn't
+        # say which album it means. The `art=preserved` token on the `tag.album`
+        # line below is not a substitute: it shows only under "Show details".
+        #
+        # The album's name is NOT repeated into the message; it rides in its own
+        # column, which is where the feed and the History both render it.
+        log.warning(
+            "tracks have per-track embedded artwork — keeping it, NOT embedding "
+            "the album cover (folder cover.* is still written). Re-tag with "
+            "'replace artwork' to override.",
+            extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
+        )
+
+    # Tag writing replaces information in every audio file, so it belongs in the
+    # audit log — it was the one core mutation with no record at all. The album
+    # line is written BEFORE the loop so a crash part-way leaves evidence of what
+    # was attempted, not silence. It is recorded even when the loop turns out to
+    # write nothing: "the pass ran and found the files already correct" is a
+    # different fact from "the pass never ran", and only this line carries it.
+    audit.record(
+        "tag.album",
+        album_id=album_id,
+        album=album_dir,
+        release=release.get("id"),
+        tracks=len(prep.pairs),
+        art="embedded" if prep.cover is not None else "preserved",
+        mode="incomplete" if incomplete else "full",
+    )
+    if prep.art_after is not None:
+        _keep_doomed_art(prep.art_before, prep.art_after)
+
+    for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
+        tagset = _build_tagset(release, medium, track_pos_in_medium, track, prep.media_total)
+        before = formats.read_owned(file_path)
+        changes = _changes_for(tagset, before, file_path, prep.art_before, prep.art_after)
+        if not changes and not formats.has_superseded_tags(file_path):
+            # Nothing to write, so nothing is written. The file keeps its mtime
+            # — which `reconcile.looks_externally_retagged` compares against
+            # `tagged_at` — and no `tag.track` line claims a change that didn't
+            # happen. `_record_changes` has always taken this position for the
+            # per-field detail; the write and its record now take it too, which
+            # is what makes the gardener's nightly pass (#32) a real no-op
+            # rather than one that merely records nothing.
+            continue
+        formats.write_tags(file_path, tagset, prep.cover)
+        # The `tag.track` line comes AFTER the write, and the detail hangs off
+        # it: a record claiming a change that never landed would make a future
+        # revert restore a value that was never overwritten.
+        event_id = audit.record(
+            "tag.track",
+            album_id=album_id,
+            file=album_files.rel_name(album_dir, file_path),
+            # +1 because `_flatten_tracks` enumerates from zero and MusicBrainz,
+            # the files and the album page all count from one (#240). A record
+            # off by one is worse than none: it is exactly what someone auditing
+            # a re-tag would read as the tagger having assigned the wrong track.
+            track=track_pos_in_medium + 1,
+            title=_track_title(track),
+        )
+        if event_id is not None:
+            _record_changes(event_id, album_dir, file_path, tagset, changes)
+
+    return len(prep.files)
+
+
+def plan_album(
+    album_dir: Path,
+    release: Release,
+    cover_path: Path | None = None,
+    *,
+    incomplete: bool = False,
+    overwrite_art: bool = False,
+    files: list[Path] | None = None,
+) -> AlbumPlan:
+    """What `tag_album` would change here, computed without writing anything.
+
+    Same arguments, same guards, same assignment of files to tracks — and the
+    same `owned.diff` over the same values, so the plan and the audit record a
+    real tagging writes cannot disagree about what "changed" means. That is the
+    whole reason this exists rather than the album page's `compare.*` engine,
+    which is display-shaped: its per-track vocabulary is Title and Artist, it
+    shows fields it never compares (#164), and a gardener classifying off it
+    would judge on things a re-tag cannot write while missing most of what one
+    would (#32).
+
+    Raises `TagMismatchError` exactly where tagging would, so a caller learns
+    the release no longer fits the files without having to attempt the write.
+    For #32 that IS the finding: a changed track count is a structural change,
+    which is a question for a human rather than something to auto-apply.
+
+    Costs one read per file — two on an album with a cover to embed, which is
+    what `tag_album` costs on that path as well.
+    """
+    prep = _prepare(
+        album_dir,
+        release,
+        cover_path,
+        incomplete=incomplete,
+        overwrite_art=overwrite_art,
+        files=files,
+    )
+    changes: dict[Path, dict[str, list[Any]]] = {}
+    for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
+        tagset = _build_tagset(release, medium, track_pos_in_medium, track, prep.media_total)
+        if file_changes := _changes_for(
+            tagset, formats.read_owned(file_path), file_path, prep.art_before, prep.art_after
+        ):
+            changes[file_path] = file_changes
+    return AlbumPlan(changes=changes, preserves_per_track_art=prep.preserves_per_track_art)
+
+
+@dataclass(frozen=True)
+class AlbumPlan:
+    """What a re-tag of one album would change, per file and per field.
+
+    `changes` holds only the files that would change, and within each only the
+    fields that would — `{path: {field: [before, after]}}`, the shape
+    `activity_store.record_tag_changes` persists and `tag_history.label_for`
+    renders. Detector, classifier, activity entry and undo therefore all speak
+    one vocabulary, which is `owned.Owned` plus `owned.ARTWORK`.
+
+    An empty `changes` is the interesting case: it means a tagging would write
+    nothing at all. It does NOT mean a tagging would touch nothing on disk —
+    see `formats.has_superseded_tags` for the tags a write cleans up that no
+    owned-field diff can see.
+    """
+
+    changes: dict[Path, dict[str, list[Any]]]
+    #: True when the album's tracks carry differing embedded art, so a tagging
+    #: would keep it and NOT embed the album cover. Not a change — it is the
+    #: absence of one — but the caller needs it to explain why the artwork the
+    #: user expected didn't move (#260), and #272 needs it to stop announcing
+    #: that decision on a pass that wrote nothing.
+    preserves_per_track_art: bool
+
+    @property
+    def empty(self) -> bool:
+        """True when a re-tag would write no owned field on any file."""
+        return not self.changes
+
+
+@dataclass(frozen=True)
+class _Prepared:
+    """Everything a tagging has settled before it touches a file.
+
+    Shared by `tag_album` and `plan_album` so the two cannot diverge on which
+    files pair with which tracks, which count guard fires, or whether the album
+    cover is going to be embedded. Splitting here rather than at the write —
+    "plan, then apply the plan" — is deliberate: `write_tags` hands back the
+    before-state from the handle it already has open, so a literal plan-then-
+    apply would read every file twice on the path that is already the slow one.
+    """
+
+    files: list[Path]
+    pairs: list[tuple[Path, _FlatTrack]]
+    #: The cover to embed, or None to leave each file's own art alone.
+    cover: bytes | None
+    art_before: dict[Path, str | None]
+    art_after: str | None
+    preserves_per_track_art: bool
+    media_total: int
+
+
+def _prepare(
+    album_dir: Path,
+    release: Release,
+    cover_path: Path | None,
+    *,
+    incomplete: bool,
+    overwrite_art: bool,
+    files: list[Path] | None,
+) -> _Prepared:
+    """Decide what a tagging of this album would consist of, reading no tags.
+
+    (It does read embedded artwork, when there is a cover that might replace
+    it — that is the only way to know whether replacing it would destroy
+    per-track images.)
+    """
     files = files if files is not None else album_files.audio_files(album_dir)
     flat_tracks = list(_flatten_tracks(release))
 
@@ -222,92 +417,49 @@ def tag_album(
     # rather than relying on the `and` below, which used to short-circuit this
     # read and stopped doing so when the digests were hoisted out.
     art_before = _art_digests(files) if cover is not None else {}
-    # Read before the artwork guard as well as before the loop: the guard's
-    # warning names the album it is about, and this is where that name comes
-    # from. Tagging can still move the id afterwards (temp_uid -> MBID), which is
-    # why `album_history` unions an album's alias chain — the same reason the
-    # `tag.album` line below gets away with the pre-write id.
-    album_id = sidecar_mod.album_id_for(album_dir)
     # DATA SAFETY: if the tracks carry DIFFERENT embedded art (a per-track-art
     # album, e.g. a compilation), embedding one album cover would destroy those
     # images. Preserve them — pass cover=None (write_tags leaves the existing
     # embedded cover untouched); the folder cover.* is still written separately.
-    if cover is not None and not overwrite_art and _has_per_track_art(art_before):
-        # Attributed to the album (#260). This is a decision Harmonist made on
-        # the user's behalf about their files, so it has to reach that album's
-        # own History — and the feed's log mirror drops any record that doesn't
-        # say which album it means. The `art=preserved` token on the `tag.album`
-        # line below is not a substitute: it shows only under "Show details".
-        #
-        # The album's name is NOT repeated into the message; it rides in its own
-        # column, which is where the feed and the History both render it.
-        log.warning(
-            "tracks have per-track embedded artwork — keeping it, NOT embedding "
-            "the album cover (folder cover.* is still written). Re-tag with "
-            "'replace artwork' to override.",
-            extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
-        )
-        cover = None
-    media_total = len(release.get("medium-list", [])) or 1
-
-    # Tag writing replaces information in every audio file, so it belongs in the
-    # audit log — it was the one core mutation with no record at all. The album
-    # line is written BEFORE the loop so a crash part-way leaves evidence of what
-    # was attempted, not silence.
-    audit.record(
-        "tag.album",
-        album_id=album_id,
-        album=album_dir,
-        release=release.get("id"),
-        tracks=len(pairs),
-        art="embedded" if cover is not None else "preserved",
-        mode="incomplete" if incomplete else "full",
+    #
+    # Decided here and REPORTED rather than announced: `plan_album` must reach
+    # the same verdict without logging anything, so the warning belongs to
+    # `tag_album`, which is the one that acts on it.
+    preserves_per_track_art = (
+        cover is not None and not overwrite_art and _has_per_track_art(art_before)
     )
-    art_after = _digest(cover) if cover is not None else None
-    if art_after is not None:
+    if preserves_per_track_art:
+        cover = None
+
+    return _Prepared(
+        files=files,
+        pairs=pairs,
+        cover=cover,
+        art_before=art_before,
         # Only now is it settled that the embed is really happening — the
         # per-track-art guard above may have cancelled it.
-        _keep_doomed_art(art_before, art_after)
-    for file_path, (medium, track_pos_in_medium, track) in pairs:
-        tagset = _build_tagset(release, medium, track_pos_in_medium, track, media_total)
-        # The write hands back what was there before, read from the handle it
-        # already had open — so the per-field record (#86) costs no second pass.
-        before = formats.write_tags(file_path, tagset, cover)
-        # The `tag.track` line comes AFTER the write, and the detail hangs off
-        # it: a record claiming a change that never landed would make a future
-        # revert restore a value that was never overwritten.
-        event_id = audit.record(
-            "tag.track",
-            album_id=album_id,
-            file=album_files.rel_name(album_dir, file_path),
-            # +1 because `_flatten_tracks` enumerates from zero and MusicBrainz,
-            # the files and the album page all count from one (#240). A record
-            # off by one is worse than none: it is exactly what someone auditing
-            # a re-tag would read as the tagger having assigned the wrong track.
-            track=track_pos_in_medium + 1,
-            title=_track_title(track),
-        )
-        if event_id is not None:
-            _record_changes(event_id, album_dir, file_path, tagset, before, art_before, art_after)
-
-    return len(files)
+        art_after=_digest(cover) if cover is not None else None,
+        preserves_per_track_art=preserves_per_track_art,
+        media_total=len(release.get("medium-list", [])) or 1,
+    )
 
 
-def _record_changes(
-    event_id: int,
-    album_dir: Path,
-    file_path: Path,
+def _changes_for(
     tagset: TagSet,
     before: dict[str, Any],
+    file_path: Path,
     art_before: dict[Path, str | None],
     art_after: str | None,
-) -> None:
-    """Attach this file's per-field before/after to its `tag.track` audit line.
+) -> dict[str, list[Any]]:
+    """What tagging this one file to `tagset` would change, as `{field: [was, now]}`.
 
-    Writes nothing when nothing changed. A re-tag that finds MusicBrainz
-    unchanged is a no-op the user should not have to scroll past, and the
-    gardener (#32) will run one nightly per album — so silence is the feature,
-    not an omission. The `tag.album` line above still records that it ran.
+    The single answer to that question, so a dry run (`plan_album`) and the
+    audit record a real tagging writes are computed by the same code over the
+    same values. When they were two expressions they were free to disagree, and
+    a detector that disagreed with the record would classify changes the
+    history then said never happened.
+
+    Only fields that actually changed appear — see `owned.diff`.
     """
     changes = owned.diff(before, {f.value: getattr(tagset, f.value) for f in owned.Owned})
 
@@ -317,7 +469,24 @@ def _record_changes(
     was = art_before.get(file_path)
     if art_after is not None and art_after != was:
         changes[owned.ARTWORK] = [was, art_after]
+    return changes
 
+
+def _record_changes(
+    event_id: int,
+    album_dir: Path,
+    file_path: Path,
+    tagset: TagSet,
+    changes: dict[str, list[Any]],
+) -> None:
+    """Attach this file's per-field before/after to its `tag.track` audit line.
+
+    `changes` comes from `_changes_for`, computed before the write decided
+    whether to happen at all. Writes nothing when nothing changed — which since
+    #266 the caller has already acted on by skipping the file entirely, so this
+    guard is now the belt to that braces: a `tag.track` line with an empty
+    detail would say a file was tagged and decline to say to what.
+    """
     if not changes:
         return
     activity_store.record_tag_changes(

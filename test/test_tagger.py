@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
+
 import pytest
 from mutagen.mp4 import MP4, MP4Cover
 
 from harmonist import tagger
+from harmonist.formats import owned
 from harmonist.tagger import (
     ATOM_ALBUM,
     ATOM_ALBUM_ARTIST,
@@ -1177,3 +1181,180 @@ def test_tag_album_asks_the_release_not_the_sidecar_about_video(album_with_track
     _with_video_media(album_dir, recorded)
 
     assert tagger.tag_album(album_dir, _release_cd_plus_dvd()) == 2
+
+
+# ---------- the dry run (#266) ----------
+
+
+def test_plan_reports_every_field_a_first_tagging_would_set(album_with_tracks):
+    """An untagged album's plan names each file and, within it, every owned field
+    the tagging would fill — the same vocabulary the audit record and the undo
+    use, because both come from `owned.diff` over the same values."""
+    album_dir = album_with_tracks(2)
+
+    plan = tagger.plan_album(album_dir, _release_2_tracks())
+
+    assert not plan.empty
+    assert set(plan.changes) == {album_dir / "01 Track 1.m4a", album_dir / "02 Track 2.m4a"}
+    first = plan.changes[album_dir / "01 Track 1.m4a"]
+    assert first["album"] == [None, "Test Album"]
+    assert first["title"] == [None, "Track 1"]
+    assert first["mb_album_id"] == [None, "rel-aaa"]
+    # Every key is an owned field's name, not a display label.
+    assert set(first) <= {f.value for f in owned.Owned}
+
+
+def test_plan_of_an_already_tagged_album_is_empty(album_with_tracks):
+    """The idempotency invariant #32 rests on: a second look at an unchanged
+    MusicBrainz release finds nothing to do."""
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()
+    tagger.tag_album(album_dir, rel)
+
+    assert tagger.plan_album(album_dir, rel).empty
+
+
+def test_plan_writes_nothing(album_with_tracks):
+    """A dry run is dry: no tags written, and no file touched. The mtime is the
+    half that matters — `reconcile.looks_externally_retagged` compares it against
+    the sidecar's `tagged_at`, so a plan that bumped it would make every album it
+    inspected look re-tagged by someone else (#220)."""
+    album_dir = album_with_tracks(2)
+    f = album_dir / "01 Track 1.m4a"
+    os.utime(f, (1_000_000, 1_000_000))
+    before = dict(MP4(f))
+
+    tagger.plan_album(album_dir, _release_2_tracks())
+
+    assert dict(MP4(f)) == before
+    assert f.stat().st_mtime == 1_000_000
+
+
+def test_plan_reports_only_the_field_musicbrainz_moved(album_with_tracks):
+    """The detector's real job: after a tagging, one corrected value upstream
+    shows up as one field on one file, not as a whole-album rewrite."""
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()
+    tagger.tag_album(album_dir, rel)
+
+    rel["medium-list"][0]["track-list"][0]["title"] = "Track One"
+    plan = tagger.plan_album(album_dir, rel)
+
+    assert plan.changes == {album_dir / "01 Track 1.m4a": {"title": ["Track 1", "Track One"]}}
+
+
+def test_plan_raises_when_the_release_no_longer_fits_the_files(album_with_tracks):
+    """A changed track count is refused here exactly as it is at tagging time, so
+    the gardener learns the album's structure moved without attempting a write.
+    That IS the finding: structure is a question for a human, not something to
+    auto-apply (#32)."""
+    album_dir = album_with_tracks(3)
+
+    with pytest.raises(TagMismatchError):
+        tagger.plan_album(album_dir, _single_track_release())
+
+
+def test_plan_reports_the_artwork_it_would_embed(album_with_tracks, tmp_path):
+    """Artwork rides alongside the owned fields under `owned.ARTWORK`, as it does
+    in the audit record. Without it a "dry run" would report no change on an album
+    whose cover a tagging is about to replace."""
+    album_dir = album_with_tracks(2)
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(_minimal_jpeg())
+
+    plan = tagger.plan_album(album_dir, _release_2_tracks(), cover_path=cover)
+
+    was, now = plan.changes[album_dir / "01 Track 1.m4a"][owned.ARTWORK]
+    assert was is None
+    assert now == hashlib.sha256(_minimal_jpeg()).hexdigest()
+
+
+def test_plan_reports_per_track_artwork_it_would_preserve(album_with_tracks, tmp_path):
+    """The dry run reaches the same DATA SAFETY verdict a tagging does — keep the
+    per-track images, don't embed the album cover — and reports it instead of
+    logging it. #272 needs that: the decision recurs identically on every pass, so
+    only the pass that actually writes may announce it."""
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())
+    _embed_cover(album_dir / "02 Track 2.m4a", _minimal_jpeg() + b"_different")
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(_minimal_jpeg())
+
+    plan = tagger.plan_album(album_dir, _release_2_tracks(), cover_path=cover)
+
+    assert plan.preserves_per_track_art
+    assert not any(owned.ARTWORK in c for c in plan.changes.values())
+
+
+# ---------- a tagging that would change nothing writes nothing (#266) ----------
+
+
+def test_retag_leaves_a_file_it_would_not_change_alone(album_with_tracks):
+    """The idempotency invariant made mechanical rather than merely recorded. A
+    re-tag used to rewrite every file regardless, which bumps the mtime that
+    `reconcile.looks_externally_retagged` reads as "somebody else tagged this"
+    (#220) — and under #32's nightly pass it would do that to the whole library
+    every night."""
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()
+    tagger.tag_album(album_dir, rel)
+    f = album_dir / "01 Track 1.m4a"
+    os.utime(f, (1_000_000, 1_000_000))
+
+    tagger.tag_album(album_dir, rel)
+
+    assert f.stat().st_mtime == 1_000_000
+
+
+def test_retag_records_the_album_line_but_no_track_line_when_nothing_changed(
+    album_with_tracks, tmp_path
+):
+    """ "The pass ran and found the files already correct" is a different fact from
+    "the pass never ran", so `tag.album` still lands. A `tag.track` line does not:
+    it would claim a file was written, and its per-field detail — which is what a
+    revert reads — would be empty."""
+    from harmonist import activity_store
+    from harmonist.activity_store import Source
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()
+    tagger.tag_album(album_dir, rel)
+    before = len(_detail())
+
+    tagger.tag_album(album_dir, rel)
+
+    rows = [e.message for e in activity_store.recent(50, source=Source.AUDIT)]
+    assert len([m for m in rows if m.startswith("tag.album")]) == 2
+    assert len([m for m in rows if m.startswith("tag.track")]) == 2  # both from the first pass
+    assert len(_detail()) == before
+
+
+def test_retag_returns_the_file_count_even_when_it_writes_nothing(album_with_tracks):
+    """The count is how many files the album is now correctly tagged as, which is
+    what the caller reports to the user — not how many needed touching."""
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()
+    tagger.tag_album(album_dir, rel)
+
+    assert tagger.tag_album(album_dir, rel) == 2
+
+
+def test_retag_still_clears_a_legacy_atom_on_an_otherwise_unchanged_file(album_with_tracks):
+    """The one thing an owned-field diff cannot see. `read_owned` reports the
+    canonical `MusicBrainz Album Id`; a write ALSO clears the legacy
+    `MUSICBRAINZ_RELEASEID` spelling beside it. So a file can match the release on
+    all thirty owned fields and still carry a stale MBID under the old name —
+    exactly the shape of an album adopted from an older Picard, which is the case
+    #32's whole premise rests on. Skipping the write on the diff alone would leave
+    it there forever."""
+    album_dir = album_with_tracks(1)
+    f = album_dir / "01 Track 1.m4a"
+    tagger.tag_album(album_dir, _single_track_release())
+    audio = MP4(f)
+    audio[LEGACY_RELEASE_ID] = [b"old-broken-mbid"]
+    audio.save()
+
+    tagger.tag_album(album_dir, _single_track_release())
+
+    assert LEGACY_RELEASE_ID not in MP4(f)

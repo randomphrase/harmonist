@@ -112,6 +112,12 @@ OWNED_FRAMES: dict[Owned, tuple[str, ...]] = {
     Owned.ISRCS: ("TSRC",),
 }
 
+#: Frames a write CLEARS and never writes back — see `m4a.SUPERSEDED_ATOMS`.
+#: Empty here: ID3 carries no older spelling of an owned field that Harmonist
+#: has had to retire. Declared anyway so the three backends answer the same
+#: questions, which is the rule that keeps them from drifting (#149).
+SUPERSEDED_FRAMES: tuple[str, ...] = ()
+
 
 # ---------------------------------------------------------------------------
 # Read helpers
@@ -369,6 +375,19 @@ def read_owned(path: Path) -> dict[str, Any]:
     already been changed and quietly do nothing (#112's lesson, one layer down).
     """
     return _read_owned(MP3(path).tags)
+
+
+def has_superseded_tags(path: Path) -> bool:
+    """Whether `path` carries a frame a write would remove and not write back.
+
+    Always False while `SUPERSEDED_FRAMES` is empty, and written to read the
+    file rather than to return the constant so it keeps working if it isn't.
+    """
+    if not SUPERSEDED_FRAMES:
+        return False
+    audio = _open(path)
+    tags = audio.tags if audio is not None else None
+    return tags is not None and any(tags.getall(frame) for frame in SUPERSEDED_FRAMES)
 
 
 def write_owned(path: Path, values: Mapping[str, Any]) -> dict[str, Any]:

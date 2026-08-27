@@ -6,14 +6,17 @@ means dropping a `sine.<ext>` fixture and listing it in FIXTURES.
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Any
 
 import pytest
 from mutagen import MutagenError
+from mutagen.mp4 import MP4
 
 from harmonist import formats
+from harmonist.formats import m4a
 from harmonist.tagger import tag_album
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -1159,3 +1162,63 @@ def test_mp3_scan_fields_read_the_totals(tmp_path, trck, tpos, want_track_total,
     sf = formats.read_scan_fields(target)
     assert sf.track_total == want_track_total
     assert sf.disc_total == want_disc_total
+
+
+# ---------- a second tagging is a real no-op, per format (#266) ----------
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_a_second_tagging_of_an_unchanged_release_writes_nothing(tmp_path, ext, fixture):
+    """The whole file left alone — not merely re-written with the same values.
+
+    This is the mechanical guard on `has_superseded_tags`. That check exists so a
+    skipped write can't strand a retired tag on disk, and it is dangerously easy
+    to make it True for a tag Harmonist itself writes every time — `ORIGINALYEAR`
+    is exactly that shape, unread by `read_owned` and present on every correctly
+    tagged file. Declaring one of those superseded would make every album on the
+    library re-write on every pass forever, which no assertion about tag VALUES
+    can see: the values would be right each time. The mtime is what notices.
+
+    Parametrized because the backends declare that list separately, so the trap
+    is per-format and only a per-format test covers all of them.
+    """
+    d = _make_album(tmp_path, fixture)
+    f = next(d.glob(f"*{ext}"))
+    tag_album(d, _release_one_track())
+    os.utime(f, (1_000_000, 1_000_000))
+
+    tag_album(d, _release_one_track())
+
+    assert f.stat().st_mtime == 1_000_000
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_a_freshly_tagged_file_carries_no_superseded_tag(tmp_path, ext, fixture):
+    """The same trap, stated where it is caused rather than where it shows up: a
+    tag Harmonist has just written is by definition not one a write would remove.
+    """
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+
+    assert not formats.has_superseded_tags(next(d.glob(f"*{ext}")))
+
+
+def test_a_superseded_atom_is_reported_so_a_write_can_clear_it(tmp_path):
+    """MP4's retired `MUSICBRAINZ_RELEASEID`, the one spelling this really covers.
+
+    Not parametrized: it is the only superseded tag any backend declares, and a
+    format-agnostic version would assert nothing on the other three.
+    """
+    d = _make_album(tmp_path, "sine.m4a")
+    tag_album(d, _release_one_track())
+    f = next(d.glob("*.m4a"))
+    audio = MP4(f)
+    audio[m4a.LEGACY_RELEASE_ID] = [b"old-broken-mbid"]
+    audio.save()
+
+    assert formats.has_superseded_tags(f)
+
+
+def test_an_unsupported_extension_has_no_superseded_tags(tmp_path):
+    """Nothing here writes it, so nothing here has anything to clear."""
+    assert not formats.has_superseded_tags(tmp_path / "cover.jpg")

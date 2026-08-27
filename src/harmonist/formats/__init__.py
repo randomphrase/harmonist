@@ -193,6 +193,31 @@ def read_owned(path: Path) -> dict[str, Any]:
     return values
 
 
+def has_superseded_tags(path: Path) -> bool:
+    """Whether `path` carries a tag a write would remove and not write back.
+
+    A backend may retire an older spelling of an owned field — MP4's legacy
+    `MUSICBRAINZ_RELEASEID` — by clearing it on every write without ever
+    reading it back. `read_owned` therefore cannot report it, so a file can
+    match a `TagSet` on all thirty owned fields and still have something for a
+    write to clean up. That is the one thing `tagger.plan_album` cannot see, and
+    it has to be asked separately before deciding a file needs no write (#266).
+
+    Not the same as "carries a tag `read_owned` skips": `ORIGINALYEAR` is also
+    unread, but a write re-derives it from `ORIGINALDATE`, so its presence is
+    the normal state of a correctly tagged file rather than residue. Answering
+    True for it would mean re-writing every album with an original date, on
+    every pass, forever — which is the failure this whole change exists to end.
+
+    An unsupported extension answers False: nothing here writes it either.
+    """
+    mod = _module_for(path)
+    if mod is None:
+        return False
+    superseded: bool = mod.has_superseded_tags(path)
+    return superseded
+
+
 def write_owned(path: Path, values: dict[str, Any]) -> dict[str, Any]:
     """Set every owned field on `path` to `values`, removing those absent.
 
@@ -240,6 +265,7 @@ __all__ = [
     "TrackTags",
     "UnsupportedFormatError",
     "describe",
+    "has_superseded_tags",
     "is_supported",
     "read_album_id",
     "read_album_title",

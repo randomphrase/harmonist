@@ -25,6 +25,12 @@ versions follow [semantic versioning](https://semver.org).
   **Recheck** always fetch fresh. Tune with `cache_ttl_seconds` under
   `[musicbrainz]` (default one hour; `0` disables re-use).
 
+### Changed
+
+- **Re-tagging now leaves alone any file it wouldn't change** (#266), rather than
+  rewriting every track each time. Nothing appears in an album's History for a
+  re-tag that found MusicBrainz unchanged, and the files keep their timestamps.
+
 ### Fixed
 
 - When MusicBrainz has **merged** the release an album names into another one,

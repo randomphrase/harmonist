@@ -115,6 +115,18 @@ OWNED_ATOMS: dict[Owned, tuple[str, ...]] = {
     Owned.ISRCS: (ATOM_ISRC,),
 }
 
+#: Atoms a write CLEARS and never writes back — an older spelling of an owned
+#: field, kept here only so it can be removed. Distinct from the second atom of
+#: an `OWNED_ATOMS` pair such as `ATOM_ORIGINAL_YEAR`, which a write clears and
+#: then re-derives, so its presence is normal rather than something to clean up.
+#:
+#: `_read_owned` cannot report these — that is the point of them — so a file can
+#: match a release on all thirty owned fields and still carry one. Naming them
+#: lets `has_superseded_tags` answer for the write-skip in `tagger.tag_album`
+#: (#266), which would otherwise leave a stale legacy MBID in place forever on
+#: exactly the albums #32 cares about: the ones adopted from an older Picard.
+SUPERSEDED_ATOMS: tuple[str, ...] = (LEGACY_RELEASE_ID,)
+
 
 # ---------------------------------------------------------------------------
 # Read helpers
@@ -348,6 +360,16 @@ def read_owned(path: Path) -> dict[str, Any]:
     `mp3.read_owned`.
     """
     return _read_owned(MP4(path))
+
+
+def has_superseded_tags(path: Path) -> bool:
+    """Whether `path` carries an atom a write would remove and not write back.
+
+    An unopenable file answers False: the caller is about to write it and will
+    raise there if it really can't be read.
+    """
+    audio = _open(path)
+    return audio is not None and any(atom in audio for atom in SUPERSEDED_ATOMS)
 
 
 def write_owned(path: Path, values: Mapping[str, Any]) -> dict[str, Any]:
