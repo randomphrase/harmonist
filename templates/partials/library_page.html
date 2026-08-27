@@ -39,9 +39,9 @@
      hx-get="/library?{{ library_query(page, limit, filter, q) }}"
      hx-trigger="library-refresh from:body, tasks-changed from:body"
      hx-target="#library-rows" hx-swap="innerHTML">
-{# Search (#180). The filters below find albums that are *wrong*; this finds the
-   album you have in mind, which at library scale is the more common errand and
-   the one paging cannot help with.
+{# Search (#180). The filters below find albums that are *wrong*, or that have an
+   update waiting (#287); this finds the album you have in mind, which at library
+   scale is the more common errand and the one paging cannot help with.
 
    `hx-preserve` on the input, and it is load-bearing: this whole partial is
    replaced on every `tasks-changed` and `library-refresh`, so without it a scan

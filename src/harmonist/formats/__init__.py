@@ -16,6 +16,11 @@ from types import ModuleType
 from typing import Any
 
 from . import flac, m4a, mp3, ogg, opus
+
+# `READ_ERRORS` is re-exported (redundant alias) rather than used here: this
+# package is where mutagen stops, so `formats.READ_ERRORS` is how the rest of
+# the codebase names an unreadable file without importing mutagen to do it.
+from .types import READ_ERRORS as READ_ERRORS
 from .types import ScanFields, TagSet, TrackTags, UnsupportedFormatError
 
 _MODULES: tuple[ModuleType, ...] = (m4a, mp3, flac, ogg, opus)

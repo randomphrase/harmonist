@@ -12,6 +12,7 @@ import os
 # out of the production import path entirely.
 import re
 import sys
+import threading
 import unicodedata
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
@@ -38,6 +39,7 @@ from harmonist import (
     compare,
     cover_art,
     formats,
+    gardener,
     id_registry,
     library_index,
     live_counts,
@@ -155,15 +157,30 @@ _INDEX_TABS = ("inbox", "library", "activity")
 
 
 # Library filters (#174), slug → (label, predicate). Every predicate reads a field
-# the SCANNER already derived, so filtering costs no lookup and no rescan (#140's
-# no-MB-on-the-request-path constraint) and persists nothing — the grid asks a
-# question about state it can already see, it does not record an answer.
+# already on the in-memory Album, so filtering costs no lookup and no rescan
+# (#140's no-MB-on-the-request-path constraint) and persists nothing — the grid
+# asks a question about state it can already see, it does not record an answer.
 #
-# All three pick out albums that are *terminal but wrong*, which is the whole
-# point: the Library is where a defect goes to be forgotten. INCOMPLETE at least
-# has a tile badge; a partially tagged album derives COMPLETE (`_files_tagged_with`
-# is an `any()`) and shows nothing but a 10-pixel "8/10 tagged" line, and a
-# coverless album shows nothing at all. Neither is findable at library scale.
+# The control asks TWO questions, not one.
+#
+# *What is broken?* — the first three, which pick out albums that are terminal but
+# wrong. That is the Library's original problem: it is where a defect goes to be
+# forgotten. INCOMPLETE at least has a tile badge; a partially tagged album derives
+# COMPLETE (`_files_tagged_with` is an `any()`) and shows nothing but a 10-pixel
+# "8/10 tagged" line, and a coverless album shows nothing at all. Neither is
+# findable at library scale.
+#
+# *What has moved that I could take?* — `update-available` (#287), which is not the
+# same question and must not be read as one. An album whose release has grown an
+# ISRC is not wrong; it is current as of the last time anything looked. It is
+# invisible for a different reason: today the only way to discover an update is to
+# open that album's page, so at library scale improvements to MusicBrainz land
+# where nobody sees them.
+#
+# `update_available` is the one predicate NOT derived by the scanner — it is set by
+# `gardener.refresh_flag` from the album page and the startup warm-up. Reading it
+# is still free; the cost was paid when the flag was written. See the field's own
+# note for why a False can mean "we have not looked".
 #
 # Insertion order is the order the control offers them. Slugs are URL-visible and
 # outlive any wording change, so they are not derived from the labels.
@@ -185,6 +202,7 @@ _LIBRARY_FILTERS: dict[str, tuple[str, Callable[[Album], bool]]] = {
     "incomplete": ("Incomplete", _is_actionable_incomplete),
     "partial": ("Partially tagged", lambda a: a.partial_tag_count is not None),
     "no-artwork": ("No artwork", lambda a: not a.has_cover),
+    "update-available": ("Update available", lambda a: a.update_available),
 }
 
 # Longest search query the Library will act on (#180). Unlike `?filter=`'s slug,
@@ -546,10 +564,20 @@ def create_app(
         scan_runner.request_scan()  # sidecars written → refresh the snapshot
 
     reconcile_runner = ReconcileRunner(runner_fn=reconcile_runner_fn)
+
     # Auto-run reconcile once the initial library scan finishes — so MBID-tagged
     # (and ©cmt-URL-recoverable) orphans get sidecars on startup without needing
     # someone to open the inbox first.
-    scan_runner.set_on_first_complete(reconcile_runner.start)
+    # Two things want the first snapshot, so the slot holds both rather than
+    # either one quietly displacing the other: reconcile, and #287's warm-up of
+    # the update-available flags. Reconcile goes first — it can change an album's
+    # identity, and warming a flag onto an Album that reconcile is about to
+    # replace would be work thrown away.
+    def _on_first_scan() -> None:
+        reconcile_runner.start()
+        _start_flag_warm_up(scan_runner)
+
+    scan_runner.set_on_first_complete(_on_first_scan)
 
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     templates_dir = project_root / "templates"
@@ -2077,6 +2105,38 @@ def _periodic_rescan_if_idle(
         log.info("Skipping periodic rescan: sync or reconcile in progress")
         return
     scan_runner.request_quiet_rescan()
+
+
+def _start_flag_warm_up(scan_runner: ScanRunner) -> None:
+    """Rebuild the update-available flags once the library snapshot exists (#287).
+
+    The flags live in process memory, so a restart leaves the Library's "Update
+    available" filter reading zero until something looks at each album again.
+    `gardener.warm_from_cache` refills it from stored MusicBrainz payloads and
+    the files on disk, spending **no** MusicBrainz requests.
+
+    Its own thread, not the scan thread that triggers it: this is minutes of
+    file reads on a large library, and blocking there would hold up the scan
+    completion every other startup task is waiting behind. Not an asyncio task
+    either — it must never run on the event loop, and there is nothing to await
+    it for.
+
+    Daemon, and deliberately not cancelled at shutdown: it reads, records a
+    hint, and persists nothing, so being killed mid-pass loses only work that
+    the next startup redoes.
+    """
+
+    def _run() -> None:
+        try:
+            gardener.warm_from_cache(scan_runner.albums())
+        except Exception:
+            # Boundary catch: one unforeseen failure in a background hint must
+            # not take down the thread silently. Loud, because nobody is
+            # watching — the visible symptom would otherwise be a filter that
+            # is simply emptier than it should be, which reads as "no updates".
+            log.exception("update-available warm-up failed")
+
+    threading.Thread(target=_run, name="harmonist-flag-warmup", daemon=True).start()
 
 
 def _refreshed_from_disk(request: Request, album: Album) -> Album:
@@ -3686,6 +3746,17 @@ def _register_routes(app: FastAPI) -> None:
         # differs, track by track. It stays where it earns its keep: behind the
         # Needs MBID suggestion card, deciding whether to link at all.
         comparison, tracks = _album_comparison(album.path, release, album.folders)
+        # Opening an album is a look at exactly the question the Library filter
+        # asks, against a release already in hand — so answer it here too and
+        # record it on the snapshot's Album (#287). That is what lets the filter
+        # be useful before the background pass exists (#270): browsing fills it
+        # in, and a re-tag taken from this very page clears the flag on the next
+        # visit, because the plan then comes back empty.
+        #
+        # Costs one read per file on top of the comparison, which is affordable
+        # on a page the user asked for and is exactly why the Library's own
+        # render cannot do this for every tile.
+        gardener.refresh_flag(album, release)
         ctx = _ctx(
             request,
             album=album,

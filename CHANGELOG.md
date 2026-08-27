@@ -8,6 +8,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- The Library has an **Update available** filter (#287), gathering albums whose
+  MusicBrainz release has moved on since their files were tagged. Until now the
+  only way to find one was to open its page and look, so upstream corrections
+  landed where nobody saw them. Harmonist fills the filter in from the releases
+  it has already fetched — no MusicBrainz traffic — and keeps it current as you
+  browse; re-tagging an album takes it off the list.
 - Harmonist now **rescans your library once an hour** as a backstop (#151), for
   the cases where its file watcher isn't working and can't tell you so — a
   library mounted over the network, where the watcher is blind, or a watcher

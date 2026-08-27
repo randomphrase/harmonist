@@ -370,6 +370,26 @@ class Album:
     # OUTSIDE Harmonist — in Picard, which is what Harmonist asks users to do
     # (#220). Scanner-derived; not persisted.
     files_written_at: datetime | None = None
+    # True when a re-tag against the release MusicBrainz currently holds would
+    # change at least one owned tag (#287). NOT scanner-derived and NOT
+    # persisted: it is set by `gardener.refresh_flag` — from the album page's
+    # comparison, from the startup warm-up, and later from the background pass
+    # (#270) — and it lives here so the Library can filter on it for free.
+    #
+    # False therefore means "nothing to take, as far as we have looked", which
+    # on a cold start is not the same as "nothing to take". The flag
+    # UNDER-reports by design: an album we have never compared, or one whose
+    # files could not be read, stays False. That is the safe direction — the
+    # filter can miss an album, but it can never invite the user to act on an
+    # update that isn't there.
+    #
+    # Survives a rescan for the usual single-directory album, because
+    # `resolve_dir` returns the cached Album on a signature hit and
+    # `merge_by_identity` passes a one-part album straight through — the same
+    # object, flag intact. An album whose files or sidecar changed is rebuilt
+    # and starts False again, which is the self-invalidation we want: a re-tag
+    # that took the update clears the flag by construction.
+    update_available: bool = False
 
     @property
     def folders(self) -> tuple[Path, ...]:

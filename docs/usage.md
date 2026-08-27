@@ -166,7 +166,8 @@ has to match, but where and in what order doesn't, so `aphex ambient` finds
 <!-- screenshot: docs/screenshots/library-filters.png -->
 
 Finished isn't the same as right, so the filter chips find the albums that are
-done but still wrong, each with its count:
+done but still wrong — and the album whose MusicBrainz entry has improved since
+you tagged it — each with its count:
 
 - **Incomplete** — fewer tracks on disk than the MusicBrainz release has. The tile
   badges "N of M". The count comes from your files' own tags, which Harmonist and
@@ -195,6 +196,17 @@ done but still wrong, each with its count:
   A half-finished tagging run, or Picard applied to part of a folder, leaves this.
 - **No artwork** — correctly tagged, fully linked, and still a grey square in
   Plex or Navidrome.
+- **Update available** — nothing is wrong with these. MusicBrainz has simply
+  learned something since you tagged them: an ISRC filled in, a catalogue number
+  corrected, a release date fixed, a track retitled. Re-tag from the album's page
+  to take it, and the album drops off the list.
+
+  Harmonist works this out from the MusicBrainz releases it has already fetched,
+  so the filter costs no lookups and fills in as you browse — an album you open
+  is checked while you're there. That does mean the list is what Harmonist has
+  had reason to look at, not the whole library: an album nobody has opened since
+  Harmonist met it hasn't been compared yet, so it won't be here even if there is
+  something waiting. The filter under-reports rather than inventing work.
 
 Search and the filters compose: searching inside a filter narrows within it, and
 the chip counts follow the search, so each one tells you what it would actually

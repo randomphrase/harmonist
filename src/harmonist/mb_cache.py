@@ -125,6 +125,24 @@ def fetch_release(mbid: str, *, max_age: timedelta | None = None) -> Release:
     return release
 
 
+def stored_release(mbid: str) -> Release | None:
+    """What MusicBrainz last said about `mbid`, or None if we never asked.
+
+    **Reads the store and never the network**, whatever the row's age — the one
+    caller that wants that is #287's warm-up, which rebuilds the update-available
+    flags after a restart and must cost zero rate-limited requests. Age is
+    irrelevant to it: a stale row is still the last thing MusicBrainz said, which
+    is exactly the baseline the flag is derived against, and a fresher answer is
+    the background pass's job to go and get (#270).
+
+    Distinct from `fetch_release(max_age=...)`, which answers "give me a release"
+    and will spend a request to do it. This answers "have we got one already",
+    and a None is an answer rather than a reason to go and ask.
+    """
+    cached = activity_store.cached_release(mbid, _key(mb_lookup.RELEASE_INCLUDES))
+    return cached.payload if cached is not None else None
+
+
 def fetch_release_urls(mbid: str, *, max_age: timedelta | None = None) -> list[str]:
     """`mb_lookup.fetch_release_urls`, served from the cache when fresh enough.
 

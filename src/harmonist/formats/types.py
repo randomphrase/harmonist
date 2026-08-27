@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
+from mutagen import MutagenError
+
 from .quality import AudioQuality
 
 
@@ -204,3 +206,19 @@ class TrackTags:
 
 class UnsupportedFormatError(Exception):
     """Raised when no audio module handles a given file extension."""
+
+
+#: Everything a per-file tag read can fail with, as one name a caller can catch.
+#:
+#: The point of this package is that mutagen stays inside it, and a caller that
+#: has to tolerate an unreadable file was otherwise forced to break that: an
+#: `except OSError` looks complete and misses the common case, because
+#: `MutagenError` is NOT an `OSError` — a truncated or non-audio file raises
+#: `MP4StreamInfoError`, which inherits straight from `Exception`. That gap is
+#: silent, which is the worst kind: the catch reads as thorough and the failure
+#: goes straight past it.
+#:
+#: Only for callers that genuinely have a truthful answer for "I could not read
+#: this" and can carry on. Anything writing on the user's behalf should let it
+#: propagate — see the error-handling skill.
+READ_ERRORS: tuple[type[Exception], ...] = (OSError, MutagenError, UnsupportedFormatError)
