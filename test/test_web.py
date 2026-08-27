@@ -7604,3 +7604,41 @@ def test_an_incomplete_album_that_comes_back_just_as_short_keeps_its_tags(
     write_track_totals(back, track_total=4)
     states = {a.path: a.state for a in scanner.scan(cfg.paths.music_dir)}
     assert states[back] == AlbumState.INCOMPLETE  # short, and honest about it
+
+
+def test_the_album_page_does_not_report_a_disambiguated_title_as_a_difference(cfg):
+    """The wiring, which is the half a unit test can't see.
+
+    `compare.album_fields` takes the accepted spelling; something has to hand it
+    one, and forgetting to would leave the whole of #283 inert with every unit
+    test still green. This drives the real call the album page makes.
+    """
+    from harmonist.tagger import tag_album
+    from harmonist.web.main import _album_comparison
+
+    release = {
+        "id": "rel-283",
+        "title": "Obreel",
+        "disambiguation": "expanded edition",
+        "artist-credit": [{"artist": {"id": "a1", "name": "Artist"}}],
+        "release-group": {"id": "rg-1", "primary-type": "Album"},
+        "medium-list": [
+            {
+                "position": "1",
+                "format": "Digital Media",
+                "track-list": [
+                    {"id": "t1", "title": "Track", "recording": {"id": "r1", "title": "Track"}}
+                ],
+            }
+        ],
+    }
+    d = _make_album(cfg, "Obreel")
+    tag_album(d, release)
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_ALBUM] = ["Obreel (expanded edition)"]  # what Picard's option writes
+    audio.save()
+
+    comparison, _ = _album_comparison(d, release)
+
+    assert [f.label for f in comparison.differing] == []
+    assert {f.label: f.disk for f in comparison.fields}["Album"] == "Obreel (expanded edition)"

@@ -8,7 +8,7 @@ the caller's artist-scoping + uniqueness guard, not this rule.
 
 from __future__ import annotations
 
-from harmonist.models import title_words, titles_match
+from harmonist.models import title_with_disambiguation, title_words, titles_match
 
 
 def _m(a: str, b: str) -> bool:
@@ -56,3 +56,36 @@ def test_different_titles_dont_match():
 def test_empty_never_matches():
     assert not _m("", "Anything")
     assert not _m("Anything", "")
+
+
+# ---------- the exact disambiguation rule, which is NOT the above (#283) ----------
+#
+# `titles_match` would accept "Obreel" against "Obreel (expanded edition)" — and
+# against "(deluxe edition)" or "(2019 remaster)" just as readily, since it judges
+# on words alone. That latitude is earned where it is used, inside an
+# artist-scoped and uniqueness-guarded purchase match. Comparing a file's tags
+# against the release they came from is a different question with a better answer
+# available: the release states its disambiguation, so the accepted spelling can
+# be built exactly instead of guessed at.
+
+
+def test_the_picard_spelling_is_built_from_the_release():
+    assert title_with_disambiguation("Obreel", "expanded edition") == "Obreel (expanded edition)"
+
+
+def test_there_is_no_second_spelling_without_a_disambiguation():
+    """The guard that stops a nonsense alias existing at all.
+
+    Without it the function yields `Obreel ()`, which no file carries — so the
+    behaviour above it looks correct while the value it is built on is garbage.
+    Asserted here rather than through the tagger, where a broken guard produces a
+    string that happens not to match anything and the test passes regardless.
+    """
+    assert title_with_disambiguation("Obreel", None) is None
+    assert title_with_disambiguation("Obreel", "") is None
+    assert title_with_disambiguation("Obreel", "   ") is None
+
+
+def test_there_is_no_second_spelling_without_a_title():
+    assert title_with_disambiguation(None, "expanded edition") is None
+    assert title_with_disambiguation("", "expanded edition") is None

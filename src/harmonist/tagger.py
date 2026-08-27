@@ -64,7 +64,7 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_TRACK_NUM,
     LEGACY_RELEASE_ID,
 )
-from .models import Release, Track, norm_title
+from .models import Release, Track, norm_title, title_with_disambiguation
 
 log = logging.getLogger(__name__)
 
@@ -233,7 +233,14 @@ def tag_album(
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
         tagset = _build_tagset(release, medium, track_pos_in_medium, track, prep.media_total)
         before = formats.read_owned(file_path)
-        changes = _changes_for(tagset, before, file_path, prep.art_before, prep.art_after)
+        changes = _changes_for(
+            tagset,
+            before,
+            file_path,
+            prep.art_before,
+            prep.art_after,
+            prep.accepted_album_title,
+        )
         if not changes and not formats.has_superseded_tags(file_path):
             # Nothing to write, so nothing is written. The file keeps its mtime
             # — which `reconcile.looks_externally_retagged` compares against
@@ -304,7 +311,12 @@ def plan_album(
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
         tagset = _build_tagset(release, medium, track_pos_in_medium, track, prep.media_total)
         if file_changes := _changes_for(
-            tagset, formats.read_owned(file_path), file_path, prep.art_before, prep.art_after
+            tagset,
+            formats.read_owned(file_path),
+            file_path,
+            prep.art_before,
+            prep.art_after,
+            prep.accepted_album_title,
         ):
             changes[file_path] = file_changes
     return AlbumPlan(changes=changes, preserves_per_track_art=prep.preserves_per_track_art)
@@ -413,6 +425,11 @@ class _Prepared:
     art_after: str | None
     preserves_per_track_art: bool
     media_total: int
+    #: The one other album title that counts as already correct — Picard's
+    #: disambiguated spelling (#283). Album-constant, since every file's TagSet
+    #: carries the same `album`, so it is settled once here rather than rebuilt
+    #: per file.
+    accepted_album_title: str | None
 
 
 def _prepare(
@@ -494,6 +511,9 @@ def _prepare(
         art_after=_digest(cover) if cover is not None else None,
         preserves_per_track_art=preserves_per_track_art,
         media_total=len(release.get("medium-list", [])) or 1,
+        accepted_album_title=title_with_disambiguation(
+            release.get("title"), release.get("disambiguation")
+        ),
     )
 
 
@@ -503,6 +523,7 @@ def _changes_for(
     file_path: Path,
     art_before: dict[Path, str | None],
     art_after: str | None,
+    accepted_album_title: str | None = None,
 ) -> dict[str, list[Any]]:
     """What tagging this one file to `tagset` would change, as `{field: [was, now]}`.
 
@@ -515,6 +536,23 @@ def _changes_for(
     Only fields that actually changed appear — see `owned.diff`.
     """
     changes = owned.diff(before, {f.value: getattr(tagset, f.value) for f in owned.Owned})
+
+    # An album title carrying the release disambiguation is not a change (#283).
+    # Dropped from the diff rather than smoothed over in `owned.diff`, which
+    # compares values and rightly knows nothing about MusicBrainz: what makes
+    # this second spelling legitimate is a fact about the release.
+    #
+    # Only the diff is tolerant. A write that happens for some OTHER reason
+    # still puts MusicBrainz's plain title on the file — Harmonist writes what
+    # MusicBrainz says, and preserving a spelling it did not derive is the
+    # separate, configurable question this issue deliberately left alone.
+    album_change = changes.get(owned.Owned.ALBUM)
+    if (
+        album_change is not None
+        and accepted_album_title is not None
+        and album_change[0] == accepted_album_title
+    ):
+        del changes[owned.Owned.ALBUM]
 
     # Artwork rides alongside the owned fields but is not one of them: the
     # tagger, not `write_tags`, decides whether art is replaced or preserved,

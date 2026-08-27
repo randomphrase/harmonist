@@ -902,6 +902,16 @@ The `Owned` member values are exactly the `TagSet` attribute names, and a test a
 
 **Artwork is deliberately not in the set.** Embedded cover art is not a tag here — `tagger.tag_album` passes `cover=None` when the tracks carry differing per-track images precisely so `write_tags` leaves them alone, and clearing artwork with the owned set would make that protection a no-op. Per-track artwork is a third category that fits neither scope, which neither MusicBrainz nor Picard really models; it is handled in the tagger. See #131.
 
+### A second correct spelling of the album title
+
+Picard has an option to append the release's **disambiguation comment** to the album title, so a library tagged with it on carries `Selected Ambient Works, Volume II (expanded edition)` where MusicBrainz's release title is `Selected Ambient Works, Volume II`. That is the same album by the user's own deliberate setting, and reporting it as a difference costs more than a wrong row on the album page: `album` would differ on *every* pass forever, so the write-skip above could never fire on those albums and the classifier's Identity verdict would put the whole library in the Inbox on the gardener's first night (#283).
+
+So both places that judge a disk title against MusicBrainz's accept it: `compare.album_fields` for the album panel, and the tagging diff for the write-skip. The accepted spelling is built by `models.title_with_disambiguation` from the release already in hand, which costs no extra MusicBrainz request — `disambiguation` is a core field on the release entity.
+
+**Exactly one string, never a pattern.** `models.titles_match` would accept this pair too, and would accept `(deluxe edition)` and `(2019 remaster)` just as readily, since it judges on words alone. That latitude is earned where it is used, inside an artist-scoped and uniqueness-guarded purchase match. Here the release *states* its disambiguation, so accepting anything looser would be guessing an identity that was available for free — which review-gate item 2 forbids. Picard applies several other title transforms besides this one; recognising them is #284, and it is a survey of what is exactly checkable rather than a loosening of this rule.
+
+**Only the comparison is tolerant, not the write.** A re-tag that happens for some other reason still puts MusicBrainz's plain title on the file. Harmonist writes what MusicBrainz says; preserving a spelling it did not derive is a different question, and it is the one that needs a setting to match Picard's — deferred until someone wants it. The consequence is worth naming: on an album where nothing else has changed the disambiguated title survives indefinitely, and on one where something else has changed it does not.
+
 ### How significant a change is, and whether it needs review
 
 `Owned` is split a second way, by **significance**: what kind of change this is (#267). Deliberately *not* whether it needs a person — those are two questions, and an earlier draft answered them with one word. A change can be slight and still want an eye on it; a change can be far-reaching and still be one a particular user is happy to have applied for them. Significance is a property of the change. Review is a **policy over** significance.

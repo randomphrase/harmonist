@@ -115,6 +115,40 @@ def norm_title(s: str) -> str:
     return " ".join(s.split()).casefold()
 
 
+def title_with_disambiguation(title: str | None, disambiguation: str | None) -> str | None:
+    """`Title (disambiguation)` — how Picard spells an album title when its
+    "use release disambiguation comment in album title" option is on.
+
+    A library tagged that way carries `Selected Ambient Works Volume II
+    (expanded edition)` where MusicBrainz's release title is `Selected Ambient
+    Works Volume II`. That is the same album by the user's own deliberate
+    setting, so it is not a mismatch — and reporting it as one costs more than a
+    wrong row on a page: `album` would differ on every pass forever, so #266's
+    write-skip would never fire and #267's IDENTITY verdict would put the whole
+    library in the Inbox on the gardener's first night (#283).
+
+    None when either half is missing, meaning there is no second spelling to
+    accept. A release with no disambiguation has exactly one title, and a
+    bracketed suffix on such an album is a different title rather than the same
+    one spelled Picard's way.
+
+    Deliberately **not** `titles_match`, which would also accept this pair. That
+    rule is a word-level subsequence test, so it accepts *any* parenthetical
+    suffix — `(deluxe edition)`, `(2019 remaster)` — on the strength of the
+    words alone. It earns that latitude where it is used, inside an
+    artist-scoped and uniqueness-guarded purchase match. Here the release states
+    its disambiguation exactly, so accepting anything looser would be guessing
+    an identity that was available for free (review-gate item 2). Picard applies
+    several other title transforms besides this one; recognising them is #284,
+    and it is a survey rather than a loosening of this rule.
+    """
+    title = (title or "").strip()
+    disambiguation = (disambiguation or "").strip()
+    if not title or not disambiguation:
+        return None
+    return f"{title} ({disambiguation})"
+
+
 @dataclass
 class TrackComparison:
     """One row in a side-by-side files-vs-MB-release comparison.

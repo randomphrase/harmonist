@@ -33,6 +33,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- An album title carrying the **release disambiguation** — what Picard writes
+  with its "use disambiguation comment in album title" option on, e.g.
+  `Selected Ambient Works, Volume II (expanded edition)` — no longer reads as
+  differing from MusicBrainz (#283).
 - When MusicBrainz has **merged** the release an album names into another one,
   tagging now follows the surviving release and says so in the album's
   **History** (#268), naming both releases. Previously the album silently

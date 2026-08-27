@@ -1479,3 +1479,71 @@ def test_every_change_a_real_plan_produces_can_be_classified(album_with_tracks, 
     assert owned.ARTWORK in seen  # the key most likely to be forgotten
     for field in seen:
         assert isinstance(tagger.significance_of(field, None, "x"), owned.Significance)
+
+
+# ---------- Picard's disambiguated album title (#283) ----------
+
+
+def _set_album_tag(album_dir, value: str) -> None:
+    """Put `value` in every file's ©alb — what Picard writes with its
+    "use release disambiguation in album title" option turned on."""
+    for f in sorted(album_dir.glob("*.m4a")):
+        audio = MP4(f)
+        audio[ATOM_ALBUM] = [value]
+        audio.save()
+
+
+def test_a_disambiguated_album_title_is_not_a_change(album_with_tracks):
+    """Picard can be told to append the release disambiguation to the album
+    title, so a library tagged that way carries `Test Album (expanded edition)`
+    where MusicBrainz's release title is `Test Album`.
+
+    That is the same album, by the user's own deliberate setting. Reported as a
+    change it would differ on every pass forever: #266's write-skip would never
+    fire on those albums, and #267 classifies `album` as IDENTITY, so #32's
+    nightly pass would put the whole library in the Inbox on its first night.
+    """
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()
+    rel["disambiguation"] = "expanded edition"
+    tagger.tag_album(album_dir, rel)
+    _set_album_tag(album_dir, "Test Album (expanded edition)")
+
+    assert tagger.plan_album(album_dir, rel).empty
+
+
+def test_a_real_retitle_is_still_a_change(album_with_tracks):
+    """The tolerance is exactly one string, not "anything in brackets".
+
+    A parenthetical that isn't the release's disambiguation is a different album
+    title, and guessing otherwise would be inventing an identity the release can
+    state for free — which review-gate item 2 forbids.
+    """
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()
+    rel["disambiguation"] = "expanded edition"
+    tagger.tag_album(album_dir, rel)
+    _set_album_tag(album_dir, "Test Album (deluxe edition)")
+
+    plan = tagger.plan_album(album_dir, rel)
+    assert not plan.empty
+    assert all("album" in c for c in plan.changes.values())
+
+
+def test_a_bracketed_suffix_is_a_change_when_the_release_has_no_disambiguation(album_with_tracks):
+    """With nothing to append there is no second spelling to accept, so a
+    bracketed suffix is just a different album title.
+
+    A behaviour assertion, not a test of the None-return in
+    `title_with_disambiguation` — a broken guard there yields `Test Album ()`,
+    which matches nothing either, and this would stay green. That guard is
+    covered directly in `test_title_match.py`. What this does cover is the
+    tagger reaching for a looser rule: swap the exact comparison for
+    `titles_match` and it fails.
+    """
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()
+    tagger.tag_album(album_dir, rel)
+    _set_album_tag(album_dir, "Test Album (expanded edition)")
+
+    assert not tagger.plan_album(album_dir, rel).empty

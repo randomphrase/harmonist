@@ -714,3 +714,64 @@ def test_a_disk_only_album_panel_says_it_compared_nothing():
     assert AlbumComparison(fields=fields, mb_available=False).summary == (
         "No comparison — showing your files' tags"
     )
+
+
+# ---------- Picard's disambiguated album title (#283) ----------
+
+
+def _album_row(disk_album: str, *, alias: str | None = None, **track_overrides):
+    tags = TrackTags(album=disk_album, **track_overrides)
+    fields = album_fields([("1.flac", tags)], _tagset(album="Obreel"), album_title_alias=alias)
+    return {f.label: f for f in fields}
+
+
+def test_the_disambiguated_album_title_reads_as_a_match():
+    """Picard appends the release disambiguation to the album title when told to,
+    so `Obreel (expanded edition)` and `Obreel` are the same album by the user's
+    own setting — not a difference to report on every page view forever (#283).
+
+    The row still reports what is really on disk. Normalising the displayed value
+    to MusicBrainz's spelling would make the panel claim the files say something
+    they don't, which is the one thing this table exists to be trusted about.
+    """
+    row = _album_row("Obreel (expanded edition)", alias="Obreel (expanded edition)")["Album"]
+
+    assert row.agreement is Agreement.MATCHES
+    assert row.disk == "Obreel (expanded edition)"
+
+
+def test_the_same_title_differs_when_the_release_has_no_disambiguation():
+    """The other half, and what makes the test above mean something: with no
+    disambiguation there is no second spelling to accept, so the identical disk
+    value is a genuine difference."""
+    row = _album_row("Obreel (expanded edition)")["Album"]
+
+    assert row.agreement is Agreement.DIFFERS
+
+
+def test_only_the_disambiguation_is_accepted_not_any_parenthetical():
+    """One exact string, never a pattern. `models.titles_match` would accept this
+    on the strength of the words alone, and it is right to where it is used —
+    inside an artist-scoped, uniqueness-guarded purchase match. Here the release
+    states its disambiguation exactly, so accepting more would be guessing an
+    identity that was available for free (review-gate item 2).
+    """
+    row = _album_row("Obreel (deluxe edition)", alias="Obreel (expanded edition)")["Album"]
+
+    assert row.agreement is Agreement.DIFFERS
+
+
+def test_the_alias_applies_to_the_album_row_alone():
+    """Scoped to the one field with a second legitimate spelling. Handed to every
+    row it would silently excuse a real difference anywhere the string happened
+    to collide — an album artist genuinely renamed to the album's own title is
+    daft, and is exactly the kind of thing a loose special case lets through.
+    """
+    rows = _album_row(
+        "Obreel (expanded edition)",
+        alias="Obreel (expanded edition)",
+        album_artist="Obreel (expanded edition)",
+    )
+
+    assert rows["Album"].agreement is Agreement.MATCHES
+    assert rows["Album artist"].agreement is Agreement.DIFFERS

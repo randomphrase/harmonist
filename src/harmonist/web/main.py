@@ -66,6 +66,7 @@ from harmonist.models import (
     Release,
     Sidecar,
     store_name,
+    title_with_disambiguation,
     title_words,
     titles_match,
 )
@@ -799,7 +800,16 @@ def _album_comparison(
         # two halves disagreeing for good — a "label differs on 26 of 47 tracks"
         # pill that nothing on the page can clear.
         compare.AlbumComparison(
-            fields=compare.album_fields(audio, tagsets[0] if tagsets else None)
+            fields=compare.album_fields(
+                audio,
+                tagsets[0] if tagsets else None,
+                # Picard writes the release disambiguation into the album title
+                # when told to, and that is the same album — not a mismatch to
+                # report on every page view forever (#283).
+                album_title_alias=title_with_disambiguation(
+                    release.get("title"), release.get("disambiguation")
+                ),
+            )
         ),
         compare.tracklist(_in_track_order(audio + video), mb_tracks, _media_of(release)),
     )

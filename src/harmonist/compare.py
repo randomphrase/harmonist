@@ -283,12 +283,23 @@ def compare_value(
     mb: str | None = None,
     unreadable: bool = False,
     tracks: Consensus | None = None,
+    also_matches: str | None = None,
 ) -> FieldComparison:
     """Compare one on-disk value against one MusicBrainz value.
 
     The core of the model. A per-track field has exactly one on-disk value, so
     this is what the tracklist uses directly; `compare_field` wraps it for the
     album panel, where the on-disk value is a consensus across the tracks.
+
+    `also_matches` is a second on-disk spelling that counts as agreement — one
+    exact string, never a pattern. It exists because a field can have more than
+    one correct form on disk: Picard writes an album title with the release
+    disambiguation appended when told to, and that is the same album (#283).
+
+    This module stays deliberately free of runtime imports, so it is told the
+    accepted spelling rather than deriving it; what makes a second spelling
+    legitimate is MusicBrainz's business, and `models.title_with_disambiguation`
+    is where that knowledge lives.
     """
     if unreadable:
         return FieldComparison(label, kind, Agreement.UNREADABLE, mb=mb, consensus=tracks)
@@ -298,7 +309,7 @@ def compare_value(
         return FieldComparison(label, kind, Agreement.ONLY_MB, mb=mb, consensus=tracks)
     if mb is None:
         return FieldComparison(label, kind, Agreement.ONLY_DISK, disk=disk, consensus=tracks)
-    if disk == mb:
+    if disk == mb or disk == also_matches:
         return FieldComparison(label, kind, Agreement.MATCHES, disk=disk, mb=mb, consensus=tracks)
     disk_runs, mb_runs = diff_runs(disk, mb)
     return FieldComparison(
@@ -320,6 +331,7 @@ def compare_field(
     disk: Consensus | None = None,
     mb: str | None = None,
     unreadable: bool = False,
+    also_matches: str | None = None,
 ) -> FieldComparison:
     """Build one row of the ALBUM panel.
 
@@ -338,6 +350,7 @@ def compare_field(
         mb=mb,
         unreadable=unreadable,
         tracks=disk,
+        also_matches=also_matches,
     )
 
 
@@ -361,9 +374,17 @@ _ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = (
 )
 
 
+#: The one album field with a second legitimate on-disk spelling — see
+#: `album_fields`. Named rather than inlined so the special case is visible from
+#: the table above rather than buried in the loop.
+_ALIASED_FIELD = "album"
+
+
 def album_fields(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: TagSet | None,
+    *,
+    album_title_alias: str | None = None,
 ) -> tuple[FieldComparison, ...]:
     """Compare an album's per-track tags against what tagging would write.
 
@@ -375,6 +396,11 @@ def album_fields(
     identical across tracks. None when there's no MusicBrainz release to compare
     against, which leaves every field ONLY_DISK rather than pretending MB
     disagrees.
+
+    `album_title_alias` is a second album title that counts as agreement —
+    Picard's disambiguated spelling, built by `models.title_with_disambiguation`
+    from the release the caller already holds (#283). Only the Album row can
+    take one; nothing else here has a legitimate second form.
     """
     unreadable = all(t.unreadable for _, t in tracks) if tracks else False
     out: list[FieldComparison] = []
@@ -390,6 +416,7 @@ def album_fields(
             disk=consensus(values),
             mb=mb_value or None,
             unreadable=unreadable,
+            also_matches=album_title_alias if disk_attr == _ALIASED_FIELD else None,
         )
         # Marked here rather than threaded through `compare_value`, because THIS
         # table is where the knowledge lives: a field is comparable iff it names
