@@ -70,7 +70,7 @@ from harmonist.models import (
     titles_match,
 )
 from harmonist.tagger import PicardCompatibleTagger, Tagger, tagsets_for
-from harmonist.web import dir_watcher
+from harmonist.web import dir_watcher, periodic
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.scan_runner import ScanRunner
 from harmonist.web.security import BasicAuthMiddleware, CSRFMiddleware
@@ -191,6 +191,14 @@ _LIBRARY_FILTERS: dict[str, tuple[str, Callable[[Album], bool]]] = {
 # of them — so an unbounded one bloats the whole render. A hundred characters is
 # past any album or artist name; beyond it, someone pasted something.
 _LIBRARY_QUERY_MAX = 100
+
+# How often the library is rescanned regardless of what the file watcher did
+# (#151). A constant, not a setting: it is the period of a backstop nobody
+# should have to reason about, and the two things it protects against — a
+# network mount inotify can't see, a watcher killed by an exhausted watch limit
+# — give the user nothing to tune against. The cost that would justify a knob
+# isn't there either: an unchanged library is a stat per file and no tag reads.
+_RESCAN_INTERVAL = timedelta(hours=1)
 
 # The header that tells `/library` to name the resolved view in the address bar
 # (#180). The search form cannot spell its own `hx-push-url`: it does not know the
@@ -595,7 +603,22 @@ def create_app(
             dir_watcher.watch_music_dir(
                 cfg.paths.music_dir,
                 scan_runner.request_scan,
-                settle_seconds=cfg.library.watch_settle_seconds,
+                settle=timedelta(seconds=cfg.library.watch_settle_seconds),
+                stop_event=watch_stop,
+            )
+        )
+        # And rescan on a timer regardless, as the backstop for a watcher that
+        # isn't working — blind on a network mount (#152), or dead from an
+        # exhausted inotify watch limit. Both are silent, which is the whole
+        # reason this exists; neither is common, which is why it stays out of
+        # sight (#151). It coalesces with the watcher's kick through `_dirty`
+        # rather than competing with it — two kicks are one scan — and a rescan
+        # that finds nothing changed is a stat per file and no tag reads.
+        rescan_task = asyncio.create_task(
+            periodic.run_periodically(
+                _RESCAN_INTERVAL,
+                lambda: _periodic_rescan_if_idle(sync_runner, reconcile_runner, scan_runner),
+                name="library rescan",
                 stop_event=watch_stop,
             )
         )
@@ -604,8 +627,11 @@ def create_app(
         finally:
             watch_stop.set()
             watch_task.cancel()
+            rescan_task.cancel()
             with suppress(asyncio.CancelledError):
                 await watch_task
+            with suppress(asyncio.CancelledError):
+                await rescan_task
 
     app = FastAPI(title="Harmonist", lifespan=lifespan)
     app.state.cfg = cfg
@@ -2017,6 +2043,63 @@ def _albums(request: Request) -> list[Album]:
     if runner.is_engaged():
         return runner.albums()
     return scanner.scan(cfg.paths.music_dir)
+
+
+def _periodic_rescan_if_idle(
+    sync_runner: SyncRunner, reconcile_runner: ReconcileRunner, scan_runner: ScanRunner
+) -> None:
+    """One tick of the hourly library rescan (#151) — unless something else is
+    mid-flight.
+
+    The watcher waits for the music dir to go quiet precisely so it can never
+    scan mid-copy. A timer has no such instinct, and a rescan landing halfway
+    through a sync would read a part-written album directory and hand it to
+    `_announce_discoveries`, which would record Harmonist as having "started
+    tracking" a folder that was still being written — a permanent feed entry
+    about a transient. Reconcile is milder, since sidecar writes are atomic, but
+    it is actively invalidating the snapshot the rescan would build.
+
+    Skipping the tick is enough, and better than deferring it: the next one
+    comes round soon, and both runners request a scan of their own when they
+    finish, so nothing is waiting on this one.
+    """
+    if sync_runner.is_running or reconcile_runner.is_running:
+        log.info("Skipping periodic rescan: sync or reconcile in progress")
+        return
+    scan_runner.request_quiet_rescan()
+
+
+def _refreshed_from_disk(request: Request, album: Album) -> Album:
+    """Re-read this album's directories and return it as it is on disk NOW (#151).
+
+    The album page is where the user decides whether to re-tag, so it is the one
+    page whose reading must not be a snapshot of whenever the last scan ran —
+    and on a network mount the watcher never fires, so "whenever" can be
+    startup. One directory listing and a `stat` per file buys the guarantee.
+
+    Not wired to the inbox or the Library: those render every album, so the same
+    check there would be a walk of the library per page view — which is the
+    hourly rescan's job, on the hourly rescan's cadence.
+
+    When the runner isn't engaged (a TestClient without the lifespan) every
+    request already scans, so there is nothing to refresh.
+
+    The album is re-resolved by DIRECTORY rather than by id, because the reading
+    that just landed may have changed the id — an externally-written sidecar
+    naming a different release, or parts merging into one album (#197). The
+    pre-refresh album is the fallback for the case where the refresh dropped it:
+    saying "not found" about an album the user is looking at, on the strength of
+    one directory read, is the worse answer.
+    """
+    runner: ScanRunner = request.app.state.scan_runner
+    if not runner.is_engaged():
+        return album
+    known = album.paths or (album.path,)
+    runner.refresh_album(known)
+    for a in runner.albums():
+        if any(p in known for p in (a.paths or (a.path,))):
+            return a
+    return album
 
 
 def _find_album(request: Request, album_id: str) -> Album:
@@ -3473,8 +3556,12 @@ def _register_routes(app: FastAPI) -> None:
         Served for a stale id too: `_find_album` resolves one forward through the
         alias chain, so a link written before the album was re-identified still
         lands here rather than 404-ing.
+
+        The album's own directories are re-read before rendering (#151), so what
+        this page shows is what is on disk now — not what the last background
+        scan happened to see, which on a network mount could be startup.
         """
-        album = _find_album(request, album_id)
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
         # The tracklist and actions don't depend on the store, so a broken store
         # must not take the whole page down — but the history section has to say
         # it couldn't read rather than fall through to "Nothing recorded for this

@@ -84,7 +84,23 @@ max_downloads_per_sync = 25       # safety cap
 [musicbrainz]
 user_agent = "Harmonist/1.0 ( you@example.com )"
 cache_ttl_seconds = 3600          # re-serve a fetched release for this long
+
+[library]
+watch_settle_seconds = 5          # quiet time before a watched change rescans
 ```
+
+Harmonist watches the music dir and rescans when files change under it, but
+that only works on a **local** filesystem — if the container mounts your library
+over NFS or SMB, the kernel never reports the change and the watcher sees
+nothing. The watcher can also be killed outright by an exhausted system watch
+limit on a very large tree. Neither says so, so Harmonist rescans the library
+once an hour as a backstop. There is nothing to configure: an unchanged library
+costs a `stat` per file and no tag reads, and the hourly rescan is meant to go
+unnoticed — no **Scanning** banner, no locked inbox, and it waits for any sync
+or reconcile to finish rather than competing with it.
+
+An album's own page is never stale regardless: it re-reads that album's folders
+before it renders.
 
 MusicBrainz allows one request per second, so Harmonist caches each release it
 fetches and re-serves it for `cache_ttl_seconds` rather than asking again. An

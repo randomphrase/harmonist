@@ -506,6 +506,41 @@ def test_scan_skips_album_with_invalid_sidecar(tmp_path, caplog):
     assert bad_dir not in paths
 
 
+def test_the_same_broken_album_is_only_complained_about_once(tmp_path, caplog):
+    """A skipped album is invisible in the UI, so the warning is the only sign
+    it exists — but WARNING+ is mirrored into the Activity feed, and since #151
+    the library is scanned hourly whether or not anything happened. Saying it
+    every time would post the same entry to the feed forever.
+
+    Changing the directory and leaving it broken IS a new fact, though ("I tried
+    to fix it and it's still wrong"), so that speaks up again."""
+    import logging
+
+    caplog.set_level(logging.DEBUG, logger="harmonist.scanner")
+    bad_dir = _make_album_dir(tmp_path, "Bad", "Album")
+    sc.sidecar_path(bad_dir).write_text('{"schema_version": 99}', encoding="utf-8")
+
+    def warnings() -> list[str]:
+        # Filtered by logger: once an app has been built in this process, the
+        # activity mirror is attached to `harmonist` and re-logs every WARNING
+        # it sees — which is the very behaviour this test exists to keep quiet.
+        return [
+            r.message
+            for r in caplog.records
+            if r.name == "harmonist.scanner" and r.levelno >= logging.WARNING
+        ]
+
+    scan(tmp_path)
+    scan(tmp_path)
+    scan(tmp_path)
+    assert len(warnings()) == 1, warnings()
+
+    # Edited, still broken → it is worth saying again.
+    sc.sidecar_path(bad_dir).write_text('{"schema_version": 98}', encoding="utf-8")
+    scan(tmp_path)
+    assert len(warnings()) == 2, warnings()
+
+
 # ---------- per-album mtime cache (opt-in) ----------
 
 

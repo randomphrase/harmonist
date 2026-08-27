@@ -1022,6 +1022,7 @@ src/harmonist/
     reconcile_runner.py Reconciliation pass over the library (rate-limited MB)
     scan_runner.py      Cache-backed library scan + status
     dir_watcher.py      watchfiles watcher → rescan when the music dir settles
+    periodic.py         Generic interval task → the hourly library rescan
 ```
 
 Templates and static assets live at the **project root** (`/templates`,
@@ -1199,7 +1200,15 @@ services:
     ports: ["8000:8000"]
 ```
 
-### 10.4 Picking up manual changes (file watcher)
+### 10.4 Picking up manual changes (watcher, hourly rescan, per-album refresh)
+
+Three mechanisms, in increasing order of how little they assume: the watcher
+hears about a change, the hourly rescan goes and looks, and the album page
+re-reads the one album you are looking at. They coalesce through the same `_dirty` flag on
+`ScanRunner`, so any number of triggers between two scans still produces one
+scan.
+
+#### The file watcher
 
 Files added or removed outside the app — copied straight into the music dir,
 or deleted by hand — don't pass through the in-app rescan path. A background
@@ -1216,10 +1225,85 @@ which fires for changes to a *local* filesystem (the Synology bind-mount of
 machine). It does **not** fire when the *container itself* mounts a network
 share (the Pi-dev SMB recipe above, or any NFS/SMB `/music`): inotify events
 don't cross the network, so the watcher silently sees nothing and the watcher
-fails soft (logs, no crash). **Workaround for network-mounted libraries:
-restart the container** — the initial scan on startup re-reads the whole tree,
-so a quick bounce (`docker compose restart harmonist`) is a reliable way to
-force a rescan there.
+fails soft (logs, no crash). It can also be killed outright — an exhausted
+inotify watch limit on a very large tree ends the task, and from then on
+nothing rescans until a restart. That is what the hourly rescan below is for.
+
+#### The hourly rescan
+
+A rescan on a timer, regardless of what the watcher did or didn't hear
+(`web/periodic.py`, engaged from the lifespan beside the watcher). It is a
+**backstop for a watcher that isn't working**, not a routine mechanism: when
+the watcher fires, this finds nothing every time. Both failures it covers —
+the network mount, the dead watcher — are silent, which is what makes it worth
+its cost; neither is common, which is why it stays out of sight.
+
+That cost is low enough to need no tuning: a no-change rescan is a `stat` per
+file and no tag reads at all, because the mtime cache answers every directory
+from memory. So the interval is a **constant** (`main._RESCAN_INTERVAL`, one
+hour), not a setting — the user has nothing to trade off against, and a knob
+would only invite tuning a thing nobody should have to think about.
+
+`web/periodic.run_periodically` is deliberately generic — it owns no state and
+decides nothing about what a tick means — so the metadata gardener's paced pass
+(#270) can use the same timer rather than inventing a second one.
+
+**It is invisible.** A scan normally advertises itself: a *Scanning* pill,
+and the **inbox busy lock** that dims `#task-list` and turns off its pointer
+events so a click can't land on a snapshot being rebuilt. That is protection
+for a scan the user set in motion. Applied hourly on a timer it is just the
+inbox freezing under their cursor, so `ScanRunner.request_quiet_rescan()` runs
+the same scan without publishing a status. If a real trigger arrives mid-rescan
+the scan in flight is **promoted** — the pill and the lock appear at the moment
+there is something to protect.
+
+The completed-scan counter the client refreshes off (`ScanStatus.seq`) now
+advances only when the snapshot is genuinely **different**. Otherwise the
+hourly rescan over an untouched library would re-render the inbox every hour to
+show exactly what was already there.
+
+**It never runs during a sync or a reconcile pass** (`_periodic_rescan_if_idle`).
+The watcher waits for the directory to go quiet precisely so it can't scan
+mid-copy; a timer has no such instinct, and a rescan landing mid-download
+would read a part-written album and record it as one Harmonist has "started
+tracking" — a permanent Activity entry about a transient. Skipping the tick is
+enough: both runners request a scan of their own when they finish.
+
+**Repetition is its failure mode.** Anything the `harmonist` logger
+emits at WARNING or above is mirrored into the Activity feed, so a condition
+that doesn't clear on its own — an unmounted volume, one corrupt sidecar —
+posts an identical entry every interval, forever. Two places guard against it:
+`run_periodically` logs only the FIRST of a run of failures (and logs recovery
+at INFO), and `scanner._warn_once` complains about an unbuildable directory only
+when its signature has changed since the last complaint, so "I tried to fix it
+and it's still wrong" is still reported while "still broken, unchanged" is not.
+
+#### The per-album refresh
+
+The album page re-reads *its own* album's directories before rendering
+(`ScanRunner.refresh_album`), so what it shows is what is on disk now — not
+what the last scan happened to see, which on a network mount could be startup.
+The album page is where the user decides whether to re-tag, and deciding that
+against a stale reading is the failure that costs something.
+
+It is one directory listing plus a `stat` per file, and on a signature hit
+nothing more: no tags are read. That is affordable per page view; a full
+`refresh_now()` (which walks the entire library) is not, which is why the page
+does not just call one. Only the album's known directories are re-read, so an
+album gaining a *whole new* directory is still the hourly rescan's job.
+
+This is what makes the runner retain its per-directory `ScannedDir` entries:
+`merge_by_identity` is one-way, so a merged Album can no longer say which files
+came from which folder, and rebuilding one album's entry without them would
+mean re-walking the library to put the other discs back.
+
+**What none of this can tell you.** A scan derives current state from current
+files and keeps no record of what was there before, so a refresh can show a new
+value but never report that it *changed*. An external edit that doesn't affect a
+derived state — a hand-fixed title, an artist credit corrected in Picard —
+leaves no trace in the album's history. One that *does* (an MBID diverging from
+the sidecar) already surfaces as mis-tag/inconsistent. Emitting "changed outside
+Harmonist" records needs the last-written state of #86 and belongs with #32.
 
 ---
 

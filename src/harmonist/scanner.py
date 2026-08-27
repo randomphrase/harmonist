@@ -55,6 +55,19 @@ def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Albu
     is unchanged since the last scan — the big win on slow filesystems.
     Omit it (the default) for a full, uncached scan.
     """
+    return merge_by_identity(scan_dirs(music_dir, album_cache=album_cache))
+
+
+def scan_dirs(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[ScannedDir]:
+    """The per-DIRECTORY half of `scan`: walk, resolve, prune — but stop before
+    folding directories into albums.
+
+    Exposed because a caller that wants to refresh ONE album later needs the
+    per-directory entries this produced (`merge_by_identity` is not reversible —
+    a merged Album no longer knows which of its parts came from where). The
+    scan runner retains them for exactly that (#151); everyone else wants
+    `scan`.
+    """
     scanned: list[ScannedDir] = []
     for album_dir, audio, videos, signature in iter_album_dirs(music_dir):
         entry = resolve_dir(album_dir, audio, videos, signature, album_cache)
@@ -62,7 +75,7 @@ def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Albu
             scanned.append(entry)
     if album_cache is not None:
         prune_cache(album_cache, {e.album.path for e in scanned})
-    return merge_by_identity(scanned)
+    return scanned
 
 
 def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], AlbumSignature]]:
@@ -87,48 +100,76 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], 
         return
     for dirpath, _dirnames, filenames in os.walk(root):
         d = Path(dirpath)
-        audio: list[tuple[Path, int, int]] = []
-        video: list[tuple[Path, int, int]] = []
-        sidecar_mtime: int | None = None
-        cover_mtime: int | None = None
-        for name in filenames:
-            f = d / name
-            try:
-                st = f.stat()
-            except OSError:
-                continue
-            if not S_ISREG(st.st_mode):
-                continue
-            if formats.is_supported(f):
-                audio.append((f, st.st_mtime_ns, st.st_size))
-            elif formats.is_video(f):
-                # Not audio, but tracks all the same — see `album_files.video_files`.
-                video.append((f, st.st_mtime_ns, st.st_size))
-            elif name == ".harmonist.json":
-                sidecar_mtime = st.st_mtime_ns
-            elif name in ("cover.jpg", "cover.png"):
-                cover_mtime = st.st_mtime_ns
-        if not audio:
+        contents = read_dir(d, filenames)
+        if contents is None:
             continue  # not an album directory
-        audio.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
-        video.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
-        files = [e[0] for e in audio]
-        videos = [e[0] for e in video]
-        signature: AlbumSignature = (
-            # Video files ride in the SAME tuple as the audio. They are read for
-            # completeness (#193), so a video appearing or vanishing changes what
-            # the album derives — and a signature blind to them would serve a
-            # stale Album from the cache after a DVD rip landed.
-            #
-            # Bare names, because everything here is in `d`: this walk is
-            # per-directory again since #197, so nothing can collide. It briefly
-            # keyed on the relative path, when one entry could span disc
-            # subdirectories.
-            tuple((e[0].name, e[1], e[2]) for e in [*audio, *video]),
-            sidecar_mtime,
-            cover_mtime,
-        )
-        yield d, files, videos, signature
+        yield d, contents.files, contents.videos, contents.signature
+
+
+class DirContents(NamedTuple):
+    """One directory's audio, video and fingerprint, from `stat` alone."""
+
+    files: list[Path]
+    videos: list[Path]
+    signature: AlbumSignature
+
+
+def read_dir(album_dir: Path, names: Sequence[str] | None = None) -> DirContents | None:
+    """`stat` one directory's files and return what an album is built from, or
+    None when it holds no audio (so it is not an album directory).
+
+    `names` is the directory listing when the caller already has one — `os.walk`
+    hands `iter_album_dirs` a listing per directory, and re-reading it would
+    double the walk's syscalls. Omit it to list the directory here, which is
+    what refreshing a SINGLE album does (#151): one album's directories can be
+    fingerprinted without walking the library root.
+
+    An unreadable directory raises `OSError` rather than answering None — "no
+    audio here" and "couldn't look" must not be the same answer, because a
+    caller acting on the first would drop a whole album from the snapshot over a
+    momentarily unavailable network mount.
+    """
+    entries = list(names) if names is not None else os.listdir(album_dir)
+    audio: list[tuple[Path, int, int]] = []
+    video: list[tuple[Path, int, int]] = []
+    sidecar_mtime: int | None = None
+    cover_mtime: int | None = None
+    for name in entries:
+        f = album_dir / name
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        if not S_ISREG(st.st_mode):
+            continue
+        if formats.is_supported(f):
+            audio.append((f, st.st_mtime_ns, st.st_size))
+        elif formats.is_video(f):
+            # Not audio, but tracks all the same — see `album_files.video_files`.
+            video.append((f, st.st_mtime_ns, st.st_size))
+        elif name == ".harmonist.json":
+            sidecar_mtime = st.st_mtime_ns
+        elif name in ("cover.jpg", "cover.png"):
+            cover_mtime = st.st_mtime_ns
+    if not audio:
+        return None
+    audio.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
+    video.sort(key=lambda e: album_files.sort_key(Path(e[0].name)))
+    signature: AlbumSignature = (
+        # Video files ride in the SAME tuple as the audio. They are read for
+        # completeness (#193), so a video appearing or vanishing changes what
+        # the album derives — and a signature blind to them would serve a
+        # stale Album from the cache after a DVD rip landed.
+        #
+        # Bare names, because everything here is in `album_dir`: the walk is
+        # per-directory again since #197, so nothing can collide. It briefly
+        # keyed on the relative path, when one entry could span disc
+        # subdirectories.
+        tuple((e[0].name, e[1], e[2]) for e in [*audio, *video]),
+        sidecar_mtime,
+        cover_mtime,
+    )
+    return DirContents([e[0] for e in audio], [e[0] for e in video], signature)
 
 
 def _written_at(signature: AlbumSignature) -> datetime | None:
@@ -143,6 +184,37 @@ def _written_at(signature: AlbumSignature) -> datetime | None:
     if not entries:
         return None
     return datetime.fromtimestamp(max(e[1] for e in entries) / 1e9, tz=UTC)
+
+
+# Directories already complained about, and the signature they held when we did.
+# One entry per directory that has ever failed to BUILD, which is a set most
+# libraries never add to at all — so it is deliberately not pruned with the album
+# cache. It can't be: a directory that fails to build never reaches `seen`, so
+# pruning against that set would drop every entry on the next scan and undo the
+# whole point.
+_warned: dict[Path, AlbumSignature] = {}
+
+
+def _warn_once(album_dir: Path, signature: AlbumSignature, fmt: str, e: Exception) -> None:
+    """Log a directory we couldn't build an album from — but only the first time
+    it looks this way.
+
+    A skipped album is invisible in the UI, so the warning is the only signal
+    that it exists, and it has to be said. Saying it on *every* scan is a
+    different matter: WARNING and above is mirrored into the user's Activity
+    feed, and since #151 the library is scanned hourly whether or not anything
+    happened — so one corrupt sidecar would post an identical entry to the feed
+    every hour, forever.
+
+    Keyed on the signature, so it speaks up again the moment the directory
+    actually changes and is still broken: that is a new fact ("I tried to fix
+    it and it's still wrong"), not a repeat of the old one.
+    """
+    if _warned.get(album_dir) == signature:
+        log.debug(fmt, album_dir, e)
+        return
+    _warned[album_dir] = signature
+    log.warning(fmt, album_dir, e)
 
 
 class ScannedDir(NamedTuple):
@@ -188,10 +260,10 @@ def resolve_dir(
         io = read_album_io(album_dir, audio_files, video_files, reuse)
         album = build_album(album_dir, audio_files, io, _written_at(signature))
     except (InvalidSidecarError, UnsupportedSchemaVersionError) as e:
-        log.warning("skipping %s: %s", album_dir, e)
+        _warn_once(album_dir, signature, "skipping %s: %s", e)
         return None
     except Exception as e:
-        log.warning("error scanning %s: %s", album_dir, e)
+        _warn_once(album_dir, signature, "error scanning %s: %s", e)
         return None
     if album_cache is not None:
         album_cache[album_dir] = (signature, album, io)
@@ -401,9 +473,15 @@ def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
 
 
 def prune_cache(album_cache: AlbumCache, seen: set[Path]) -> None:
-    """Drop cache entries for album dirs not present in `seen` (removed dirs)."""
+    """Drop cache entries for album dirs not present in `seen` (removed dirs).
+
+    `pop`, not `del`: the cache is shared with whatever the scan runner is doing
+    on another thread, and a per-album refresh dropping the same vanished
+    directory in the gap between listing and deleting would otherwise abort the
+    whole scan with a KeyError.
+    """
     for stale in [p for p in album_cache if p not in seen]:
-        del album_cache[stale]
+        album_cache.pop(stale, None)
 
 
 class AlbumIO(NamedTuple):

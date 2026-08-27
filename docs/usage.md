@@ -212,6 +212,11 @@ Clicking a tile opens a summary that answers "is this the right release?"; from
 there, the album's own page at `/album/<id>` has the whole story. It has an
 address, so it can be shared, bookmarked, and gone back from.
 
+This page re-reads the album's folders every time you open it, so what it shows
+is what is on disk now — a track added by hand, or a title you fixed in Picard a
+moment ago, is already there. That matters here more than anywhere else, because
+this is the page where you decide whether to re-tag.
+
 <!-- screenshot: docs/screenshots/album-tags.png -->
 
 **Tags** compares your files against MusicBrainz field by field and shows **only

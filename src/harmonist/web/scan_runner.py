@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -51,10 +52,16 @@ class ScanStatus:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     last_error: str | None = None
-    # Monotonic count of completed scans. The client watches this to know a
-    # fresh snapshot exists and refresh the inbox — robust even when a scan is
-    # so fast (mtime-cache hit) that it starts AND finishes between two status
-    # polls, which the old scanning→done state edge would miss.
+    # Monotonic count of scans that produced a DIFFERENT snapshot. The client
+    # watches this to know a fresh snapshot exists and refresh the inbox —
+    # robust even when a scan is so fast (mtime-cache hit) that it starts AND
+    # finishes between two status polls, which the old scanning→done state edge
+    # would miss.
+    #
+    # Different, not merely completed: since #151 the library is rescanned
+    # hourly whether or not anything happened, and a counter that ticked on
+    # every one of those would re-render the inbox every hour over an
+    # unchanged library.
     seq: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -80,12 +87,33 @@ class ScanRunner:
         self._music_dir = music_dir
         self._cache: scanner.AlbumCache = {}
         self._albums: list[Album] = []
+        # The per-DIRECTORY entries `_albums` was folded from. Retained because
+        # `merge_by_identity` is one-way: a merged Album no longer knows which of
+        # its parts came from which directory, so refreshing ONE album (#151)
+        # would otherwise have to re-walk the whole library to rebuild the rest.
+        self._scanned: list[scanner.ScannedDir] = []
+        # Guards the read-modify-write of that pair. Everything else on the
+        # runner is either loop-thread-only or a single GIL-atomic assignment,
+        # but `refresh_album` reads `_scanned`, rebuilds it and publishes both —
+        # from FastAPI's threadpool, while a background scan may be about to
+        # publish its own. Held only for pure-CPU work over data already read.
+        self._snapshot_lock = threading.Lock()
         self._completed_once = False
         self._scan_seq = 0  # monotonic; stamped onto status at each completion
         self._status = ScanStatus()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[None] | None = None
         self._dirty = True  # a (re)scan is wanted
+        # Whether the wanted scan should ADVERTISE itself. A scan somebody asked
+        # for — a mutation, the watcher, startup — dims and locks the inbox while
+        # it runs, so a click can't land on a snapshot being rebuilt. The
+        # hourly rescan (#151) asked nobody, and locking the inbox on its own
+        # schedule, possibly mid-click, is not something it has earned. So it runs
+        # invisibly: same scan, no status.
+        self._visible = True  # the startup scan is very much visible
+        # The in-flight scan's status object, so a real trigger arriving during
+        # a quiet rescan can promote it mid-flight (see `_kick`).
+        self._current: ScanStatus | None = None
         # Fired once, after the FIRST scan completes — used to kick reconcile
         # backend-side so it runs without waiting for the frontend /tasks poll.
         self._on_first_complete: Callable[[], object] | None = None
@@ -156,9 +184,99 @@ class ScanRunner:
         `request.state.skip_rescan = True`, so the album resolves in one render
         instead of via the async post-mutation rescan — whose 'scanning' status
         dims the inbox (the #11 flicker). Safe from a worker thread: the cache is
-        shared safely (see `scan_now`) and the `_albums` assignment is GIL-atomic."""
-        self._albums = self.scan_now()
+        shared safely (see `scan_now`) and the `_albums` assignment is GIL-atomic.
+
+        Deliberately does NOT reset `live_counts` / `library_index` — a caller
+        that moved an album between states has already told `live_counts` about
+        it, and the full rescan is what re-derives them. This only patches the
+        snapshot."""
+        self._publish(scanner.scan_dirs(self._music_dir, album_cache=self._cache))
         self._completed_once = True
+
+    def refresh_album(self, dirs: Sequence[Path]) -> None:
+        """Re-read just these directories from disk and patch the snapshot (#151).
+
+        The album page's guarantee, made unconditional: what you are looking at
+        is what is on disk right now, whatever the watcher did or didn't see.
+        That matters most exactly there, because the album page is where the
+        user decides whether to re-tag — and deciding that against a stale
+        reading is the failure that costs something.
+
+        Cost is one directory listing plus a `stat` per file. On a signature hit
+        that is the whole of it: `resolve_dir` returns the cached Album and reads
+        no tags. `refresh_now` is NOT an alternative here — it walks the entire
+        library, which is cheap after a mutation and not cheap per page view on
+        a NAS, which is the case this exists for.
+
+        Blocking I/O, so call it from a worker thread (a sync route handler),
+        never the event loop. Only the directories named are re-read: an album
+        gaining a WHOLE NEW directory (a second disc dropped in elsewhere) is
+        beyond what one album's paths can find, and stays the hourly rescan's job.
+
+        A directory that can no longer be read is left as it was — a network
+        mount blinking must not delete albums from the snapshot. One that reads
+        fine but no longer resolves (its audio is gone, its sidecar is corrupt)
+        is dropped, which is what a full scan would have concluded about it too.
+        """
+        known = {e.album.path for e in self._scanned}
+        if not known:
+            return  # nothing to patch: no scan has produced a snapshot yet
+        fresh: dict[Path, scanner.ScannedDir | None] = {}
+        for d in dirs:
+            if d not in known:
+                # Only ever REPLACES entries the last scan produced. Reading a
+                # directory the snapshot has never heard of would put it in the
+                # mtime cache without ever putting it in the snapshot.
+                continue
+            try:
+                contents = scanner.read_dir(d)
+            except OSError as e:
+                # Debug, not warning: WARNING+ is mirrored into the Activity
+                # feed, and this fires once per album-page view — a flaky mount
+                # would fill the feed with a condition that costs the user
+                # nothing, since the entry it couldn't refresh is kept and the
+                # page renders. The hourly rescan is what reports a real problem.
+                log.debug("could not re-read %s: %s", d, e)
+                continue  # leave the existing entry alone
+            if contents is None:
+                fresh[d] = None  # readable, but no audio left in it
+                continue
+            fresh[d] = scanner.resolve_dir(
+                d, contents.files, contents.videos, contents.signature, self._cache
+            )
+        if not fresh:
+            return
+        with self._snapshot_lock:
+            rebuilt: list[scanner.ScannedDir] = []
+            for entry in self._scanned:
+                if entry.album.path not in fresh:
+                    rebuilt.append(entry)
+                    continue
+                replacement = fresh[entry.album.path]
+                if replacement is not None:
+                    rebuilt.append(replacement)
+                else:
+                    self._cache.pop(entry.album.path, None)
+            self._publish_locked(rebuilt)
+
+    def _publish(self, scanned: list[scanner.ScannedDir]) -> tuple[list[Album], bool]:
+        with self._snapshot_lock:
+            return self._publish_locked(scanned)
+
+    def _publish_locked(self, scanned: list[scanner.ScannedDir]) -> tuple[list[Album], bool]:
+        """Fold the per-directory entries into albums and publish both, so the
+        two never disagree. Caller holds `_snapshot_lock`. Also answers whether
+        the snapshot actually CHANGED, which is what the client's refresh hangs
+        off since the hourly rescan started producing identical ones.
+
+        The comparison is cheap in the case that matters: an unchanged directory
+        is served from the mtime cache as the very same `Album` object, and list
+        equality short-circuits on identity per element."""
+        results = scanner.merge_by_identity(scanned)
+        changed = results != self._albums
+        self._scanned = scanned
+        self._albums = results
+        return results, changed
 
     def status(self) -> dict[str, Any]:
         return self._status.to_dict()
@@ -172,6 +290,22 @@ class ScanRunner:
         shuts down — a sync/reconcile thread finishing its last pass during
         teardown must not die with 'Event loop is closed' (issue #52)."""
         self._kick_threadsafe(self._kick)
+
+    def request_quiet_rescan(self) -> None:
+        """Like `request_scan`, but for a rescan NOBODY asked for — the hourly
+        one (#151).
+
+        Identical work, deliberately without the status: the inbox busy-lock
+        exists so a click can't land on a snapshot being rebuilt by something
+        the user set in motion, and applying it hourly on a timer would dim and
+        freeze the inbox under someone's cursor for no reason they could see.
+        A backstop for a watcher that isn't working should be invisible when the
+        watcher is.
+
+        A real trigger arriving mid-rescan promotes the scan in flight, so the
+        lock appears exactly when there IS something to protect. Thread-safe;
+        no-op until engaged."""
+        self._kick_threadsafe(self._kick_quiet)
 
     def reset_and_rescan(self) -> None:
         """Drop the current snapshot, then kick a fresh scan. Used after a nuke
@@ -199,12 +333,31 @@ class ScanRunner:
     def _reset_and_kick(self) -> None:
         # On the loop thread: clear the snapshot before the scan task starts so a
         # /tasks render in between sees an empty inbox + (imminent) scanning.
-        self._albums = []
+        # The retained per-directory entries go with it — leaving them would let
+        # a per-album refresh in the gap republish the snapshot just cleared.
+        with self._snapshot_lock:
+            self._scanned = []
+            self._albums = []
         self._kick()
 
     def _kick(self) -> None:
         # Always runs in the event loop thread.
         self._dirty = True
+        self._visible = True
+        # A real trigger during a quiet rescan promotes the scan in flight,
+        # rather than leaving it invisible until the next pass: from here on
+        # there IS something the inbox lock is protecting.
+        if self._current is not None and self._status is not self._current:
+            self._current.state = "scanning"
+            self._status = self._current
+        self._start()
+
+    def _kick_quiet(self) -> None:
+        # A quiet rescan: wanted, but it must not claim the status if nothing else has.
+        self._dirty = True
+        self._start()
+
+    def _start(self) -> None:
         if self._task is None or self._task.done():
             assert self._loop is not None
             self._task = self._loop.create_task(self._run())
@@ -215,24 +368,36 @@ class ScanRunner:
         # Coalesce: if more changes land while scanning, scan again after.
         while self._dirty:
             self._dirty = False
+            # Claim the visibility this pass was asked for, so a trigger landing
+            # DURING it makes the next pass visible rather than being lost.
+            visible = self._visible
+            self._visible = False
             try:
-                await self._scan_once()
+                await self._scan_once(visible=visible)
             except Exception as e:  # never let the task die silently
                 log.exception("library scan failed")
                 self._status.state = "idle"
                 self._status.last_error = str(e)
+            finally:
+                self._current = None
 
-    async def _scan_once(self) -> None:
+    async def _scan_once(self, *, visible: bool) -> None:
         loop = asyncio.get_running_loop()
         executor = self._executor
         assert executor is not None  # set in attach_loop before any scan
 
         started = time.monotonic()
-        log.info("Library scan started: %s", self._music_dir)
+        log.info("Library %s started: %s", "scan" if visible else "rescan", self._music_dir)
         # Carry the last completed seq while scanning; bump it only on completion
         # so the client refreshes when a NEW snapshot is actually ready.
         status = ScanStatus(state="scanning", started_at=datetime.now(UTC), seq=self._scan_seq)
-        self._status = status
+        # An invisible rescan still builds a status — the progress counters below
+        # are written unconditionally — it just never publishes it. `_current`
+        # is how `_kick` reaches in and promotes this scan if a real trigger
+        # arrives while it runs.
+        self._current = status
+        if visible:
+            self._status = status
         # One entry per DIRECTORY. Identity grouping (#197) happens once at the
         # end, over data already read — the walk and the cache stay per-directory
         # so that costs no extra I/O, and progress still counts directories,
@@ -280,9 +445,10 @@ class ScanRunner:
         scanner.prune_cache(self._cache, {e.album.path for e in scanned})
         # Fold the directories that hold parts of one release into single albums.
         # Pure CPU over tags already read, so it stays on the loop thread.
-        results = scanner.merge_by_identity(scanned)
+        # Under the lock so it can't interleave with a per-album refresh
+        # rebuilding the same pair from the threadpool (#151).
+        results, changed = self._publish(scanned)
         status.albums_found = len(results)
-        self._albums = results
         self._announce_discoveries(results)
         # Reset the authoritative live counts from this fresh snapshot — the
         # self-healing baseline that transitions (live_counts.move) adjust between
@@ -291,21 +457,37 @@ class ScanRunner:
         # Same self-healing baseline for the sidecar/dedup index — rebuilt from the
         # fresh snapshot, then kept current by sidecar writes between scans.
         library_index.reset_from(results)
+        first = not self._completed_once
         self._completed_once = True
-        self._scan_seq += 1
+        # Only a scan that produced a DIFFERENT snapshot advances the counter the
+        # client refreshes off. An hourly rescan over an unchanged library must
+        # leave the inbox alone entirely — it has nothing to say.
+        if changed:
+            self._scan_seq += 1
         status.seq = self._scan_seq
         status.state = "done"
         status.finished_at = datetime.now(UTC)
+        if self._status is not status and changed:
+            # An invisible rescan, never promoted: its status was never published,
+            # and must not be now — but the client still has to learn a new
+            # snapshot exists, or what the rescan found would sit unread until
+            # something else happened to trigger a scan.
+            self._status.seq = self._scan_seq
         log.info(
-            "Library scan complete: %d albums across %d dirs in %.1fs",
+            "Library %s complete: %d albums across %d dirs in %.1fs%s",
+            "scan" if visible else "rescan",
             len(results),
             status.dirs_scanned,
             time.monotonic() - started,
+            "" if changed else " (no change)",
         )
         # Kick reconcile once the first snapshot is ready (backend-side, so it
         # runs even with no browser open). Only on the first scan — later scans
         # are covered by the /tasks kick, and re-firing here would churn.
-        if self._scan_seq == 1 and self._on_first_complete is not None:
+        # Keyed on the FIRST completion rather than on the seq counter, which no
+        # longer moves for a scan that found nothing: on an empty library that
+        # would leave reconcile never kicked at all.
+        if first and self._on_first_complete is not None:
             try:
                 self._on_first_complete()
             except Exception:

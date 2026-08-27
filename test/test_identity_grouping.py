@@ -470,3 +470,39 @@ def test_tagging_only_the_primary_folder_is_what_files_prevents(tmp_path):
 
     with pytest.raises(tagger.TagMismatchError):
         tagger.tag_album(album.path, _two_disc_release())
+
+
+def test_refreshing_one_folder_of_a_two_folder_album_keeps_it_whole(tmp_path):
+    """Re-reading ONE directory of a merged album (#151) must re-fold it with
+    the parts it wasn't asked about, not leave a half-album behind.
+
+    This is the reason the scan runner retains its per-directory entries at all:
+    `merge_by_identity` is one-way, so a merged Album can't say which of its
+    files came from which folder, and a refresh with only the merged snapshot to
+    work from would have to re-walk the library to put the other disc back."""
+    import asyncio
+
+    from harmonist.web.scan_runner import ScanRunner
+
+    disc1 = _part(tmp_path / "Hybrid" / "Wide Angle", track_ids=DISC1)
+    _part(tmp_path / "Hybrid" / "Live Angle", track_ids=DISC2)
+    runner = ScanRunner(tmp_path)
+
+    async def go() -> None:
+        runner.attach_loop()
+        for _ in range(300):
+            if runner.has_completed():
+                break
+            await asyncio.sleep(0.01)
+
+    asyncio.run(go())
+    assert len(runner.albums()) == 1
+
+    # A third track lands in disc 1, outside Harmonist.
+    _part(disc1, track_ids=[*DISC1, "rt-009"], tracks=3, album="Wide Angle")
+    runner.refresh_album([disc1])
+
+    albums = runner.albums()
+    assert len(albums) == 1, "the refreshed part came back as an album of its own"
+    assert albums[0].track_count == 5
+    assert {p.name for p in albums[0].paths} == {"Wide Angle", "Live Angle"}

@@ -19,6 +19,16 @@ def _album(root: Path, name: str) -> Path:
     return d
 
 
+async def _scan_to_completion(runner: ScanRunner) -> None:
+    """Kick a scan in-loop and await the task itself, so "it finished" is
+    certain rather than inferred from a status that a completed scan may no
+    longer touch (see the seq test)."""
+    runner._kick()
+    task = runner._task
+    assert task is not None
+    await task
+
+
 async def _wait(predicate, *, timeout_ticks: int = 300) -> None:
     for _ in range(timeout_ticks):
         if predicate():
@@ -133,9 +143,15 @@ def test_scan_runner_scans_and_reports(tmp_path):
     assert status["dirs_scanned"] >= 2
 
 
-def test_scan_runner_seq_increments_each_completed_scan(tmp_path):
-    """The completed-scan counter advances on every scan — the signal the
-    client uses to refresh even when a scan is too fast to observe mid-flight."""
+def test_scan_seq_advances_for_a_new_snapshot_and_not_for_an_identical_one(tmp_path):
+    """The counter is the client's "a fresh snapshot exists" signal, and it is
+    keyed on the snapshot being *different*, not on a scan having finished.
+
+    A scan too fast to observe mid-flight still advances it — that is why the
+    client watches the counter rather than the scanning→done edge. But the
+    library is now swept hourly whether or not anything happened (#151), and a
+    counter that ticked on every one of those would re-render the inbox every
+    hour over a library nobody touched."""
     music = tmp_path / "music"
     _album(music, "A")
     runner = ScanRunner(music)
@@ -145,11 +161,22 @@ def test_scan_runner_seq_increments_each_completed_scan(tmp_path):
         await _wait(runner.has_completed)
         first = runner.status()["seq"]
         assert first >= 1
-        runner.request_scan()  # even with no disk change, a scan still completes
-        await _wait(lambda: runner.status()["seq"] > first)
+
+        # Nothing on disk changed: the scan runs to completion, and the counter
+        # must not move. Kicked in-loop and awaited directly rather than polled,
+        # so "it finished" is certain — the completion this asserts about is
+        # deliberately no longer observable through the status.
+        await _scan_to_completion(runner)
+        assert runner.status()["state"] == "done"  # it really did run
+        assert runner.status()["seq"] == first
+
+        # A new album is a new snapshot, so it does.
+        _album(music, "B")
+        await _scan_to_completion(runner)
 
     asyncio.run(go())
-    assert runner.status()["seq"] >= 2
+    assert runner.status()["seq"] == 2
+    assert len(runner.albums()) == 2
 
 
 def test_scan_runner_fires_on_first_complete_once(tmp_path):
@@ -340,3 +367,88 @@ def test_the_discovery_entry_carries_its_albums_as_what_changed(tmp_path):
     detail = activity_store.audit_by_action([entry.action_id])[entry.action_id]
     assert len(detail) == 2  # one line per album, not one entry per album
     assert all(r.message.startswith(activity_store.DISCOVERY_EVENT) for r in detail)
+
+
+# ---------------------------------------------------------------------------
+# Refreshing ONE album from disk (#151)
+# ---------------------------------------------------------------------------
+
+
+def _add_track(album_dir: Path, name: str = "02 Another.m4a") -> None:
+    shutil.copy(SINE_M4A, album_dir / name)
+
+
+def test_refresh_album_picks_up_a_change_without_walking_the_library(tmp_path):
+    """The album page's guarantee: what you are looking at is what is on disk
+    now. A track added outside Harmonist — no watcher event, no scan — shows up
+    on the refreshed album.
+
+    And ONLY that album is re-read: a second album added at the same time stays
+    invisible, which is what makes this affordable per page view on a NAS. A
+    refresh that quietly re-walked the library would find it."""
+    music = tmp_path / "music"
+    a = _album(music, "A")
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(runner.has_completed)
+
+    asyncio.run(go())
+    assert [x.track_count for x in runner.albums()] == [1]
+    seq_before = runner.status()["seq"]
+
+    _add_track(a)
+    _album(music, "B")  # arrives at the same time, in a directory we don't name
+    runner.refresh_album([a])
+
+    assert {x.path.name: x.track_count for x in runner.albums()} == {"A": 2}
+    assert runner.status()["seq"] == seq_before  # no scan was run to do it
+
+
+def test_refresh_album_drops_an_album_whose_audio_has_gone(tmp_path):
+    """A directory that reads fine but holds no audio any more is dropped — the
+    same conclusion a full scan would reach about it."""
+    music = tmp_path / "music"
+    a = _album(music, "A")
+    _album(music, "B")
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(runner.has_completed)
+
+    asyncio.run(go())
+    assert len(runner.albums()) == 2
+
+    for f in a.glob("*.m4a"):
+        f.unlink()
+    runner.refresh_album([a])
+
+    assert {x.path.name for x in runner.albums()} == {"B"}
+    assert runner.cache_size() == 1  # its cache entry went with it
+
+
+def test_refresh_album_leaves_an_unreadable_directory_alone(tmp_path, monkeypatch):
+    """A network mount blinking is not evidence that an album is gone. When the
+    directory can't be read at all, the snapshot keeps what it had — the
+    alternative is albums vanishing from the library over a transient EIO."""
+    from harmonist import scanner as scanner_mod
+
+    music = tmp_path / "music"
+    a = _album(music, "A")
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(runner.has_completed)
+
+    asyncio.run(go())
+
+    def boom(album_dir, names=None):
+        raise OSError("stale NFS file handle")
+
+    monkeypatch.setattr(scanner_mod, "read_dir", boom)
+    runner.refresh_album([a])
+
+    assert {x.path.name for x in runner.albums()} == {"A"}

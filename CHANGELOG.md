@@ -8,6 +8,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Harmonist now **rescans your library once an hour** as a backstop (#151), for
+  the cases where its file watcher isn't working and can't tell you so — a
+  library mounted over the network, where the watcher is blind, or a watcher
+  killed by an exhausted system watch limit. Nothing to configure, and nothing
+  to see: it shows no **Scanning** banner and never locks the inbox the way an
+  action you took does, it waits for any sync or reconcile to finish first, and
+  it refreshes what you're looking at only if it actually found something.
+- **An album's own page re-reads that album from disk before it renders** (#151),
+  so a track added by hand or a title fixed in Picard shows up the moment you
+  open the page — whatever the watcher did or didn't see.
 - Harmonist now **caches the MusicBrainz releases it fetches** (#127), so
   browsing your library no longer spends a rate-limited request every time you
   open an album's page. The Tags panel says when the release was last read, with
@@ -35,6 +45,9 @@ versions follow [semantic versioning](https://semver.org).
   only ever said in the global Activity feed, attributed to no album.
 - A failed re-tag, tag, reconcile, undo or manual assignment no longer writes a
   second, blank entry to the Activity feed beneath the real one (#258).
+- An album Harmonist can't read — a corrupt or too-new sidecar — is reported to
+  the Activity feed **once** rather than on every scan (#151). Editing it and
+  leaving it broken still says so again, since that's news.
 
 ## [1.11.0] - 2026-08-24
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 
 from watchfiles import awatch
@@ -30,10 +31,10 @@ async def watch_music_dir(
     music_dir: Path,
     on_change: Callable[[], None],
     *,
-    settle_seconds: float = 5.0,
+    settle: timedelta = timedelta(seconds=5),
     stop_event: asyncio.Event | None = None,
 ) -> None:
-    """Rescan once `music_dir` has been quiet for `settle_seconds`.
+    """Rescan once `music_dir` has been quiet for `settle`.
 
     Each change (re)starts a settle timer; the rescan fires only after the tree
     has been idle for the full delay, so copying a batch of files in produces a
@@ -45,6 +46,7 @@ async def watch_music_dir(
         return
 
     loop = asyncio.get_running_loop()
+    settle_seconds = settle.total_seconds()
     pending: asyncio.TimerHandle | None = None
 
     def fire() -> None:

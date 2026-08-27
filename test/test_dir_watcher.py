@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from datetime import timedelta
 
 from harmonist.web.dir_watcher import watch_music_dir
 
@@ -23,7 +24,9 @@ def test_watcher_rescans_after_change(tmp_path):
 
     async def go() -> None:
         task = asyncio.create_task(
-            watch_music_dir(music, lambda: calls.append(1), settle_seconds=0.2, stop_event=stop)
+            watch_music_dir(
+                music, lambda: calls.append(1), settle=timedelta(seconds=0.2), stop_event=stop
+            )
         )
         await asyncio.sleep(0.3)  # let awatch start watching
         (music / "Artist").mkdir()
@@ -47,7 +50,9 @@ def test_watcher_coalesces_a_burst_into_one_rescan(tmp_path):
 
     async def go() -> None:
         task = asyncio.create_task(
-            watch_music_dir(music, lambda: calls.append(1), settle_seconds=0.4, stop_event=stop)
+            watch_music_dir(
+                music, lambda: calls.append(1), settle=timedelta(seconds=0.4), stop_event=stop
+            )
         )
         await asyncio.sleep(0.3)
         # A burst of writes well within the settle window.
@@ -71,7 +76,7 @@ def test_watcher_no_op_when_dir_missing(tmp_path):
     async def go() -> None:
         # Returns immediately (not a directory) without scheduling anything.
         await watch_music_dir(
-            tmp_path / "does-not-exist", lambda: calls.append(1), settle_seconds=0.1
+            tmp_path / "does-not-exist", lambda: calls.append(1), settle=timedelta(seconds=0.1)
         )
 
     asyncio.run(go())

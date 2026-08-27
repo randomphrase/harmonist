@@ -12,8 +12,9 @@ import shutil
 import zipfile
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 from unittest import mock
 
 import pytest
@@ -23,7 +24,14 @@ from mutagen.mp4 import MP4
 from harmonist import activity, activity_store, mb_lookup
 from harmonist import sidecar as sc
 from harmonist.activity_store import Level
-from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
+from harmonist.config import (
+    BandcampConfig,
+    Config,
+    LibraryConfig,
+    PathsConfig,
+    ServerConfig,
+    TestConfig,
+)
 from harmonist.models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 from harmonist.tagger import (
     ATOM_ALBUM,
@@ -5216,6 +5224,137 @@ def test_engaged_lifespan_serves_background_scan_snapshot(cfg):
         assert reconcile["state"] == "idle" and reconcile["finished_at"] is not None
         # /tasks serves the snapshot the background scan produced.
         assert "BgAlbum" in client.get("/tasks").text
+
+
+def test_a_periodic_rescan_is_skipped_while_a_sync_or_reconcile_is_running():
+    """The watcher waits for the music dir to go quiet so it can never scan
+    mid-copy; a timer has no such instinct. A rescan landing halfway through a
+    sync would read a part-written album directory and record Harmonist as
+    having "started tracking" a folder that was still being written — a
+    permanent Activity entry about a transient."""
+    from harmonist.web.main import _periodic_rescan_if_idle
+
+    class _Runner:
+        def __init__(self, running: bool) -> None:
+            self.is_running = running
+
+    class _Scan:
+        def __init__(self) -> None:
+            self.rescans = 0
+
+        def request_quiet_rescan(self) -> None:
+            self.rescans += 1
+
+    idle, busy = _Runner(False), _Runner(True)
+    scan = _Scan()
+
+    def tick(sync, reconcile) -> None:
+        _periodic_rescan_if_idle(cast("Any", sync), cast("Any", reconcile), cast("Any", scan))
+
+    tick(idle, idle)
+    assert scan.rescans == 1  # the ordinary case: nothing else is happening
+
+    tick(busy, idle)  # sync running
+    tick(idle, busy)  # reconcile running
+    tick(busy, busy)
+    assert scan.rescans == 1
+
+
+def test_an_album_that_appears_on_disk_is_picked_up_without_being_announced(cfg, monkeypatch):
+    """An album dropped into the library with nothing in the app asking for a
+    scan (#151) — no click, no mutation, no watcher event — turns up in the
+    inbox anyway. On a network mount, where inotify delivers nothing at all
+    (#152), the timer is the only thing that ever will.
+
+    And it does so INVISIBLY: the rescan never reports "scanning", because that
+    status dims the inbox and turns off pointer events until the scan finishes.
+    A lock the user set in motion is protection; one that arrives hourly on a
+    timer, under their cursor, is not.
+
+    The settle delay is absurdly high so that even if the watcher did see the
+    new folder, its rescan could not land inside the test — what happens here
+    can only be the periodic rescan's doing."""
+    import time as _time
+
+    import harmonist.web.main as main_mod
+
+    # The real interval is an hour and deliberately not configurable, so the
+    # test shortens the constant rather than a setting.
+    monkeypatch.setattr(main_mod, "_RESCAN_INTERVAL", timedelta(seconds=0.05))
+    cfg.library = LibraryConfig(watch_settle_seconds=1000)
+    _make_album(cfg, "Present")
+
+    with TestClient(create_app(cfg), headers={"HX-Request": "true"}) as client:
+        # Wait for startup to go quiet first — the reconcile pass kicked at the
+        # end of the first scan requests a scan of its own, and mistaking that
+        # for the periodic one would pass this test with none running at all.
+        for _ in range(200):
+            scan = client.get("/scan/status").json()
+            reconcile = client.get("/reconcile/status").json()
+            if scan["state"] == "done" and reconcile["finished_at"] is not None:
+                break
+            _time.sleep(0.02)
+        first = client.get("/scan/status").json()["seq"]
+        assert first >= 1
+        assert "Arrived" not in client.get("/tasks").text
+
+        before = client.get("/scan/status").json()
+
+        _make_album(cfg, "Arrived")
+
+        for _ in range(250):
+            if client.get("/scan/status").json()["seq"] > first:
+                break
+            _time.sleep(0.02)
+        after = client.get("/scan/status").json()
+        assert after["seq"] > first
+        assert "Arrived" in client.get("/tasks").text
+
+        # Nothing about the rescan reached the status EXCEPT the counter saying a
+        # new snapshot exists. Asserted as "the whole status is otherwise
+        # untouched" rather than "state was never 'scanning'": a rescan that took
+        # the status would hold it for milliseconds here, so polling for the
+        # word could miss it and the assertion would be unable to fail. A
+        # published status leaves its marks — a fresh started_at, its own
+        # progress counters — and this compares all of them at once.
+        assert {k: v for k, v in after.items() if k != "seq"} == {
+            k: v for k, v in before.items() if k != "seq"
+        }
+
+
+def test_album_page_re_reads_the_album_from_disk(cfg, monkeypatch):
+    """The album page shows what is on disk NOW, not what the last scan saw
+    (#151). This is the page where the user decides whether to re-tag, and on a
+    network mount the watcher never fires — so without the per-album refresh
+    that decision can be made against a reading taken at startup.
+
+    The watcher is muzzled for the duration (`request_scan` no-ops), so nothing
+    but the refresh itself can explain the new reading — and the scan sequence
+    is asserted unchanged to say so a second way."""
+    import time as _time
+
+    from harmonist.web.scan_runner import ScanRunner
+
+    d = _make_album(cfg, "Refreshed")
+    monkeypatch.setattr(ScanRunner, "request_scan", lambda self: None)
+
+    with TestClient(create_app(cfg), headers={"HX-Request": "true"}) as client:
+        for _ in range(200):
+            if client.get("/scan/status").json()["state"] == "done":
+                break
+            _time.sleep(0.02)
+        album_id = _id_for(cfg, d)  # after create_app: it sets the registry root
+        seq = client.get("/scan/status").json()["seq"]
+        assert "Refreshed" in client.get(f"/album/{album_id}").text
+
+        # The album title is corrected in Picard — the exact case #151 names.
+        audio = MP4(d / "01 Track.m4a")
+        audio["\xa9alb"] = ["Corrected In Picard"]
+        audio.save()
+
+        page = client.get(f"/album/{album_id}").text
+        assert "Corrected In Picard" in page
+        assert client.get("/scan/status").json()["seq"] == seq  # no scan ran
 
 
 def test_app_attribute_is_memoized(monkeypatch):
