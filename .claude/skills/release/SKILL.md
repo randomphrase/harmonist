@@ -50,39 +50,49 @@ routes, UI surfaces, flags. 1.5.0 was about to ship with `docs/design.md` still
 telling users to click Re-tag from MB "in the detail modal", a surface deleted an
 hour earlier. `docs/usage.md` is the likeliest to rot: it names buttons.
 
-## 3. Re-trim every entry to one or two sentences
+## 3. Cut every entry back to its claim
 
-The `changelog` skill already requires this of each entry — one sentence, two as
-the ceiling, with rationale and mechanism left to the issue. **Enforce it again
-here, on the whole section at once, before rolling it.** That is the gate, and
-it is a gate because the rule reliably erodes across a cycle: entries are written
-one at a time, in the author's moment, when the mechanism is vivid and every
-caveat feels load-bearing. Each looks proportionate alone. Twenty of them stacked
-into one section is a wall, and nobody sees the section until release day.
+**Enforce this on the whole section at once, before rolling it.** It is a gate
+because the rule erodes across a cycle: entries are written one at a time, in
+the author's moment, when the mechanism is vivid and every caveat feels
+load-bearing. Each looks proportionate alone. Twenty stacked into one section
+is a wall, and nobody sees the section until release day.
 
-Read the assembled section as a stranger scanning for *does this version affect
-me?* Any bullet running past two sentences gets rewritten to **what changed, and
-who notices**; the issue reference carries the rest. Cut, specifically:
+### The bold-claim test
 
-- **The mechanism.** *How* it was fixed is for the commit and the issue. "The
-  count now comes from your files' own tags" earns its place only because it
-  tells the user it works without a MusicBrainz call.
-- **The history of the bug.** "They never could before: an album with half its
-  tracks read as complete." The user has the fixed version; the broken one is
-  not news to them.
-- **The counter-case and the caveat.** "A partly-ripped video disc still counts
-  as incomplete", "two copies of the same release are left alone". Real, and the
-  issue documents them.
-- **The second example.** One concrete instance lands; three is a list.
+Every entry already contains its own summary — the clause you would bold. **That
+clause, as a complete sentence, plus the issue number, IS the entry.** Write it
+out and then ask of every surviving word: what does this add?
 
-Keep the user-facing *name* of anything they must click — **No more tracks to
-get** — and keep a single vivid example where it does the explaining ("the bonus
-DVD you never ripped"). Punchy is not terse: the voice stays the same, there is
-just less of it.
+    - **The Tags comparison covers every album tag Harmonist writes** —
+      seventeen, where it compared six (#295).
 
-1.10.0 shipped this wrong and had to be rewritten after the fact. Every entry
-was accurate and well written; the section was still a wall of four-line
-paragraphs nobody would scan. Accurate is not the bar.
+That is a finished entry. What it replaced ran five lines and added the bug's
+history, the wrong "N of M" line it used to print, a list of eleven recovered
+field names, and a note about two-column layout — all true, all in #295.
+
+Three things earn a second clause or sentence, and nothing else does:
+
+- **A knob.** `cache_ttl_seconds` under `[musicbrainz]` — the user cannot look
+  it up if the entry does not name it.
+- **Something they must do or expect on upgrade.** "Albums Harmonist tagged
+  itself will show one corrective update."
+- **The user-facing name of a thing they must click** — **No more tracks to
+  get**, **read again**.
+
+Cut, always: the mechanism (*how* it was fixed is the commit's job), the history
+of the bug (they have the fixed version; the broken one is not news), the
+counter-case and the caveat, and the second and third example. A vivid example
+survives only where it is doing the explaining and the sentence is shorter with
+it than without — "the bonus DVD you never ripped".
+
+Punchy is not terse: the voice stays the same, there is just far less of it.
+
+1.10.0 shipped a wall of four-line paragraphs and was rewritten after the fact;
+1.12.0 then did it again *under the one-or-two-sentence rule*, because one
+sentence with four subordinate clauses passes that rule and still does not scan.
+Hence a test against the claim rather than a sentence count. Accurate is not the
+bar, and neither is short — scannable is.
 
 ## 4. Roll the changelog and bump the version
 
@@ -206,8 +216,9 @@ Confirm from the workflow run, not the registry: reading published tags via
 
 - [ ] every commit since the last tag is in the changelog or genuinely internal
 - [ ] `README.md`, `docs/usage.md` and `docs/design.md` describe what shipped
-- [ ] **every changelog bullet is one or two sentences** — scannable, with the
-      mechanism and the caveats left to the issue and the commit
+- [ ] **every changelog bullet is its bold claim as a sentence**, plus a knob or
+      an upgrade consequence where there is one — mechanism, bug history and
+      caveats left to the issue and the commit
 - [ ] any theme survives "what does this say that the bullets don't?" — if
       none does, the release notes are the bullets alone
 - [ ] `pyproject.toml` bumped, `make check` green
