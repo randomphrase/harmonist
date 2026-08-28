@@ -1548,3 +1548,41 @@ def test_a_bracketed_suffix_is_a_change_when_the_release_has_no_disambiguation(a
     _set_album_tag(album_dir, "Test Album (expanded edition)")
 
     assert not tagger.plan_album(album_dir, rel).empty
+
+
+def test_mbid_names_pairs_every_id_the_panel_shows_with_its_name():
+    """#298: the album page renders `mb_album_artist_ids` and
+    `mb_release_group_id` as names rather than hex, and the name has to come out
+    of the same corner of the same payload the id does — read it from anywhere
+    else and a row can show one artist's name over another artist's id.
+
+    Walks the bare join-phrase strings musicbrainzngs puts between the artist
+    dicts (#183). A walker that doesn't is the recurring bug in this file, and
+    here it would raise rather than merely mis-join.
+    """
+    release = {
+        "id": "rel-1",
+        "artist-credit": [
+            {"artist": {"id": "art-1", "name": "zakè"}},
+            " & ",
+            {"artist": {"id": "art-2", "name": "rhubiqs"}},
+        ],
+        "release-group": {"id": "rg-1", "title": "Ausência"},
+    }
+
+    assert tagger.mbid_names(release) == {
+        "art-1": "zakè",
+        "art-2": "rhubiqs",
+        "rg-1": "Ausência",
+    }
+    # The release's own id is deliberately absent: its comparison row is gone,
+    # and nothing renders it as a link (#298).
+    assert "rel-1" not in tagger.mbid_names(release)
+
+
+def test_mbid_names_is_empty_rather_than_partial_on_a_thin_release():
+    """A release with no artist-credit and no release group yields no names at
+    all, and the page falls back to the raw ids — which is the honest answer.
+    Returning an entry with an empty name would render a link with no text."""
+    assert tagger.mbid_names({"id": "rel-1"}) == {}
+    assert tagger.mbid_names({"artist-credit": [{"artist": {"id": "art-1"}}]}) == {}

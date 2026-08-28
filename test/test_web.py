@@ -5545,7 +5545,10 @@ def _release_with_metadata(mbid="rel-cmp"):
         "title": "Obreel",
         "date": "2019-03-15",
         "artist-credit": [{"artist": {"id": "a1", "name": "Galán, Spieth & Guentner"}}],
-        "release-group": {"id": "rg-1", "primary-type": "Album"},
+        # `title` so the release-group row has a name to render instead of its
+        # MBID (#298); MusicBrainz always sends one with the `release-groups`
+        # include, and a fixture without it exercises only the fallback.
+        "release-group": {"id": "rg-1", "title": "Obreel", "primary-type": "Album"},
         "label-info-list": [{"label": {"name": "Dial Records"}, "catalog-number": "DIAL 042"}],
         "medium-list": [
             {
@@ -5574,6 +5577,89 @@ def test_album_page_compares_tags_field_by_field(client, cfg, monkeypatch):
     assert "Not in your files" in body
     for label in ("Album", "Album artist", "Date", "Label", "Cat. no.", "Comment"):
         assert f"<dt>{label}</dt>" in body, f"missing field row: {label}"
+
+
+def test_musicbrainz_ids_read_as_names_and_link_to_musicbrainz(client, cfg, monkeypatch):
+    """#298: the id rows carried three lines of raw hex in a panel whose whole
+    job is to be scannable. They now say what the id stands for and link to it.
+
+    The id itself is still what the row is about, so it stays reachable in the
+    link's tooltip — and it must never be the visible text of a row MusicBrainz
+    has named, which is what the negative assertion pins.
+    """
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    assert "<dt>Album artist IDs</dt>" in body
+    assert "<dt>Release group</dt>" in body
+    assert 'href="https://musicbrainz.org/artist/a1"' in body
+    assert 'href="https://musicbrainz.org/release-group/rg-1"' in body
+    # The name is the link text, and the id is only in the tooltip.
+    assert ">Galán, Spieth &amp; Guentner</a>" in body
+    assert ">a1</a>" not in body and ">rg-1</a>" not in body
+
+
+def test_an_id_musicbrainz_cannot_name_stays_raw(client, cfg, monkeypatch):
+    """The guard that keeps a difference from reading as a match.
+
+    Names come from the release just fetched, so only MusicBrainz's side of a
+    differing row has one. Rendering the name on both sides would put the same
+    text above and below itself on the one row where the ids genuinely disagree
+    — a merge, or a re-credited release — and hide the finding completely.
+    """
+    from harmonist import tagger as tagger_mod
+
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    tagger_mod.tag_album(d, _release_with_metadata())  # files now carry artist a1
+    recredited = _release_with_metadata() | {
+        "artist-credit": [{"artist": {"id": "a2", "name": "Someone Else"}}]
+    }
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", lambda mbid: recredited)
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    assert ">Someone Else</a>" in body  # MusicBrainz's side is named
+    assert ">a1</a>" in body  # ours is the hex, because that is all we know
+    assert 'class="mbid mbid--raw"' in body
+
+
+def test_the_release_row_is_gone_from_the_comparison(client, cfg, monkeypatch):
+    """#298 drops it: the comparison is fetched BY the release id the sidecar
+    names, and the album header already shows and links that release, so the row
+    matched on every album in the library bar one case.
+
+    That case is a MusicBrainz merge, where the fetch redirects and returns a
+    different id than the one asked for — and it is not lost, because dropping
+    the row takes `mb_album_id` out of `compare.SHOWN_FIELDS` and the re-tag box
+    below picks it up as the change it is.
+    """
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+    assert "<dt>MusicBrainz release</dt>" not in body
+
+    # The same label, from the live path that still emits it: a second album
+    # whose release comes back under a different id than its sidecar asked for.
+    # Its own album, not a re-fetch of the one above — that one's release is in
+    # the cache now, and the second read would be served from it (#127).
+    merged = _make_tagged_album(cfg, "Merged", mbid="rel-old", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release",
+        lambda mbid: _release_with_metadata("rel-survivor"),
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, merged)}/compare").text
+    assert "<dt>MusicBrainz release</dt>" in body
+    # The in-value emphasis splits the id across <em> runs, so the string is
+    # matched against the text rather than the markup.
+    assert "rel-old" in body and "rel-survivor" in re.sub(r"</?em[^>]*>", "", body)
 
 
 def test_a_small_difference_is_marked_inside_the_value(client, cfg, monkeypatch):

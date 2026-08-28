@@ -65,16 +65,16 @@
         {% elif f.agreement == 'only_mb' %}
         {# An addition, not a conflict: there is nothing of yours to disagree
            with, so it gets a lone MusicBrainz line and nothing struck through. #}
-        {% with value = f.mb, runs = none, why = "Not in your files — this is MusicBrainz's value" %}
+        {% with value = f.mb, runs = none, entity = f.entity, why = "Not in your files — this is MusicBrainz's value" %}
         {% include 'partials/_mb_value.html' %}
         {% endwith %}
 
         {% elif f.agreement == 'differs' and f.kind == 'scalar' %}
         {# Short values sit inline — an arrow reads correctly when MB is simply
            more precise (a bare year against a full date). #}
-        <span>{% with runs = f.disk_runs, value = f.disk %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
+        <span>{% with runs = f.disk_runs, value = f.disk, entity = f.entity %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
         <span class="tag-fields__arrow">→</span>
-        {% with value = f.mb, runs = f.mb_runs, why = "MusicBrainz's value" %}
+        {% with value = f.mb, runs = f.mb_runs, entity = f.entity, why = "MusicBrainz's value" %}
         {% include 'partials/_mb_value.html' %}
         {% endwith %}
 
@@ -82,16 +82,25 @@
         {# Long text stacks, both flush left, so a change is a vertical scan. No
            prefix on either line: that shared left edge is what makes the
            difference a glance rather than a comparison. The hexagon goes after
-           the value instead. #}
+           the value instead.
+
+           An id row lands here too, and this is the layout it wants (#298): the
+           old name over the new one, or a raw MBID over a name when MusicBrainz
+           has moved the entity out from under it. #}
         <span class="tag-pair">
-            <span>{% with runs = f.disk_runs, value = f.disk %}{% include 'partials/_diff_runs.html' %}{% endwith %}</span>
-            {% with value = f.mb, runs = f.mb_runs, why = "MusicBrainz's value" %}
+            <span>{% with runs = f.disk_runs, value = f.disk, entity = f.entity %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
+            {% with value = f.mb, runs = f.mb_runs, entity = f.entity, why = "MusicBrainz's value" %}
             {% include 'partials/_mb_value.html' %}
             {% endwith %}
         </span>
 
         {% elif f.disk %}
-        <span>{{ f.disk }}</span>
+        {# Matching, or on disk with nothing to compare against. `runs` is empty
+           either way — there is no difference to mark — but it still goes
+           through `_field_value`, because the everyday id row is this one: it
+           agrees with MusicBrainz, and it is exactly here that a wall of hex
+           was buying the reader nothing (#298). #}
+        <span>{% with runs = none, value = f.disk, entity = f.entity %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
 
         {% else %}
         <span class="tag-fields__absent">—</span>

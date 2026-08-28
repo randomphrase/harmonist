@@ -285,17 +285,23 @@ def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
     assert by_label["Genre"].comparable is False
     assert by_label["Comment"].comparable is False
     assert by_label["Album"].comparable is True
-    # Every album-scoped tag Harmonist writes is compared, and the two it only
-    # displays are not. Stated against `owned` rather than as literals: the gap
-    # between a hand-written count here and the real field set is what let this
-    # panel omit twenty-one fields (#295), and a test asserting "19" would have
-    # to be edited by the same person who forgot to add the field.
-    from harmonist.formats.owned import ALBUM_FIELDS, LABELS
+    # Every album-scoped tag Harmonist writes is compared bar one, and the two it
+    # only displays are not. Stated against `owned` rather than as literals: the
+    # gap between a hand-written count here and the real field set is what let
+    # this panel omit twenty-one fields (#295), and a test asserting "19" would
+    # have to be edited by the same person who forgot to add the field.
+    #
+    # The exception is spelled out rather than imported, so a SECOND row dropped
+    # from the panel has to be argued for here. `mb_album_id` is the release the
+    # comparison is fetched by, and the header already shows and links it, so the
+    # row matched on every album but a merge (#298).
+    from harmonist.formats.owned import ALBUM_FIELDS, LABELS, Owned
 
-    assert len(fields) == len(ALBUM_FIELDS) + 2
+    compared = [f for f in ALBUM_FIELDS if f is not Owned.MB_ALBUM_ID]
+    assert len(fields) == len(compared) + 2
     comparable = AlbumComparison(fields=fields).comparable
-    assert len(comparable) == len(ALBUM_FIELDS)
-    assert {f.label for f in comparable} == {LABELS[f] for f in ALBUM_FIELDS}
+    assert len(comparable) == len(compared)
+    assert {f.label for f in comparable} == {LABELS[f] for f in compared}
 
 
 def test_unreadable_files_cannot_push_the_count_past_the_total():
@@ -305,13 +311,14 @@ def test_unreadable_files_cannot_push_the_count_past_the_total():
     fields = album_fields([("1.flac", TrackTags(unreadable=True))], _tagset(album="Obreel"))
     album = AlbumComparison(fields=fields)
 
-    from harmonist.formats.owned import ALBUM_FIELDS
+    from harmonist.formats.owned import ALBUM_FIELDS, Owned
 
+    # Less the one row the panel doesn't carry — see the note in
+    # `test_summary_excludes_fields_musicbrainz_has_no_opinion_on` (#298).
+    total = len([f for f in ALBUM_FIELDS if f is not Owned.MB_ALBUM_ID])
     n = len([f for f in album.comparable if f.differs])
     assert n <= len(album.comparable)
-    assert (
-        album.summary == f"{len(ALBUM_FIELDS)} of {len(ALBUM_FIELDS)} fields differ in MusicBrainz"
-    )
+    assert album.summary == f"{total} of {total} fields differ in MusicBrainz"
 
 
 # ---------- what the consensus pill says (#164) ----------
@@ -843,11 +850,15 @@ def test_shown_fields_names_exactly_the_tags_with_another_surface():
     the right default, and it should still be a decision someone made rather than
     one that happened to them.
 
-    These ten are the box's entire reason to exist. The tracklist is four fixed
+    These are the box's entire reason to exist. The tracklist is four fixed
     columns — #, Title, Artist, Length — so an ISRC MusicBrainz has filled in or
     a recording id a merge has moved has nowhere else on the page to appear.
     """
     assert {f.value for f in Owned} - SHOWN_FIELDS == {
+        # Not a per-track tag: the panel dropped this row because the fetch is
+        # made BY this id and the header already links it, so the box is where a
+        # merge that moved it now surfaces (#298).
+        "mb_album_id",
         "artist_sort",
         "artists",
         "track_total",
@@ -858,4 +869,21 @@ def test_shown_fields_names_exactly_the_tags_with_another_surface():
         "mb_release_track_id",
         "mb_artist_ids",
         "isrcs",
+    }
+
+
+def test_only_id_rows_carry_a_musicbrainz_entity():
+    """`entity` is what tells the page a value is an MBID rather than something
+    to read, and it doubles as the path segment its link needs (#298).
+
+    Asserted as the whole mapping rather than by sampling the two rows that have
+    one: the failure worth catching is a field wrongly GAINING an entity — a
+    date rendered as a link to `musicbrainz.org/artist/2019-03-15` — and that is
+    invisible to a test which only checks that the two right ones are set.
+    """
+    fields = album_fields([("1.flac", TrackTags(album="Obreel"))], _tagset(album="Obreel"))
+
+    assert {f.label: f.entity for f in fields if f.entity} == {
+        "Album artist IDs": "artist",
+        "Release group": "release-group",
     }

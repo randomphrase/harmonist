@@ -205,9 +205,10 @@ you tagged it — each with its count:
   every album-level tag Harmonist writes, and the tracklist covers each track's
   number, title, artist and length — between them, most of an update is visible
   where you would look for it anyway. What is left goes in a short list under the
-  comparison: the per-track tags no column has room for — sort names, ISRCs, the
-  MusicBrainz ID of each recording — each with its before and after, laid out the
-  way the History entry will be once you've applied it.
+  comparison — **Other tags a re-tag would change**: mostly the per-track tags no
+  column has room for, such as sort names, ISRCs and the MusicBrainz ID of each
+  recording. Each has its before and after, laid out the way the History entry
+  will be once you've applied it.
 
   Harmonist works this out from the MusicBrainz releases it has already fetched,
   so the filter costs no lookups and fills in as you browse — an album you open
@@ -245,6 +246,12 @@ artist credit against MusicBrainz's join phrase, or a bare year against a full
 date, is visible at a glance rather than needing a character-by-character read.
 When your own tracks disagree with each other, it says what's wrong ("missing on
 1 track"), and clicking that lists the tracks.
+
+The MusicBrainz IDs among those fields — the album artist's, the release
+group's — read as the artist and release they name, and each is a link to
+MusicBrainz; hover one to see the ID itself. An ID your files carry that
+MusicBrainz has moved away from has no name to show, so it stays as its raw
+value, which is what makes that row's difference visible.
 
 MusicBrainz allows one request per second, so the release behind this comparison
 is cached and re-used for an hour rather than re-fetched every time you open the

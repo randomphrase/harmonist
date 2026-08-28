@@ -31,6 +31,11 @@ versions follow [semantic versioning](https://semver.org).
   type and status, country, script, ASIN, disc total, sort names and the
   MusicBrainz IDs all now appear. On a wide window the panel lays out in two
   columns, so it takes about the space it did before.
+- The **MusicBrainz IDs** in that comparison now read as the artist and release
+  group they name, and link to MusicBrainz, instead of as raw UUIDs (#298). The
+  **MusicBrainz release** row is gone with them — the badge above the panel
+  already shows and links that release, and the comparison is fetched by that
+  very ID, so the row matched on every album but a merged one.
 - Harmonist wrote **MusicBrainz Album Type** capitalised (`Album`) where Picard
   writes it lowercase (`album`), so nearly every album in a library adopted from
   Picard disagreed with Harmonist on that one field permanently — showing up as a

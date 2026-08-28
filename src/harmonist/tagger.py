@@ -1130,6 +1130,36 @@ def _isrcs(track: Track) -> list[str]:
     return [str(code) for code in (recording.get("isrc-list") or [])]
 
 
+def mbid_names(release: Release) -> dict[str, str]:
+    """The human name behind each MusicBrainz id `tagsets_for` writes, by id.
+
+    For the album page (#298), which otherwise renders `mb_album_artist_ids` and
+    `mb_release_group_id` as raw hex — a wall of characters carrying nothing a
+    reader can act on, in a panel whose whole job is to be scannable.
+
+    Lives here, beside `_artist_ids` and `_build_tagset`, for the same reason
+    `tagsets_for` does: the id and the name have to come out of the same corner
+    of the same payload. Read the name from somewhere else and a row can show
+    one artist's name over another artist's id, which is worse than the hex.
+
+    **Only the ids MusicBrainz has just told us about.** An id the files carry
+    that this release has moved away from is not in here and cannot be — we know
+    the hex and nothing else about it. The caller falls back to showing it raw,
+    which is what keeps a differing row from rendering two identical names.
+    """
+    names: dict[str, str] = {}
+    for ac in release.get("artist-credit") or []:
+        # Bare join-phrase strings sit between the artist dicts (#183).
+        if isinstance(ac, dict):
+            artist = ac.get("artist") or {}
+            if (artist_id := artist.get("id")) and (name := artist.get("name")):
+                names[artist_id] = name
+    rg = release.get("release-group") or {}
+    if (rg_id := rg.get("id")) and (rg_title := rg.get("title")):
+        names[rg_id] = rg_title
+    return names
+
+
 def _artist_ids(artist_credit: list[Any] | None) -> list[str]:
     """Pull MBIDs out of an MB artist-credit list."""
     if not artist_credit:

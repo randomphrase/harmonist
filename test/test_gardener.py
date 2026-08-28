@@ -464,7 +464,7 @@ def test_the_album_page_explains_an_update_the_comparison_cannot_show(engaged, m
 
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
 
-    assert "Track tags a re-tag would change" in body
+    assert "Other tags a re-tag would change" in body
     assert "ISRC" in body
     assert "GBAYE0000123" in body
 
@@ -494,7 +494,7 @@ def test_an_album_scoped_update_is_not_stated_twice(engaged, monkeypatch):
     assert runner.albums()[0].update_available is True
     assert body.count("Cat. no.") == 1
     assert body.count("WARPCD-999") == 1
-    assert "Track tags a re-tag would change" not in body
+    assert "Other tags a re-tag would change" not in body
 
 
 def test_an_album_with_nothing_waiting_says_nothing(engaged, monkeypatch):
@@ -508,7 +508,7 @@ def test_an_album_with_nothing_waiting_says_nothing(engaged, monkeypatch):
 
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
 
-    assert "Track tags a re-tag would change" not in body
+    assert "Other tags a re-tag would change" not in body
 
 
 # ---------------------------------------------------------------------------

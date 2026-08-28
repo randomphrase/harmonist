@@ -3757,7 +3757,16 @@ def _register_routes(app: FastAPI) -> None:
             return _templates(request).TemplateResponse(
                 request,
                 "partials/_release_gone.html",
-                _ctx(request, album=album, comparison=comparison, tracklist=tracks),
+                # No release, so no names to put on the ids the files carry
+                # (#298) — they render as raw MBIDs, still linked, which is what
+                # the user searches MusicBrainz with to find the replacement.
+                _ctx(
+                    request,
+                    album=album,
+                    comparison=comparison,
+                    tracklist=tracks,
+                    mb_names={},
+                ),
             )
         except mb_lookup.MBError as e:
             # A template rather than a bare string so the failure reaches BOTH
@@ -3809,6 +3818,11 @@ def _register_routes(app: FastAPI) -> None:
             # that failed the write it was just asked for) — "read just now" is
             # then still true of the fetch that produced this response.
             mb_read_at=mb_cache.fetched_at(mbid) or datetime.now(UTC),
+            # What the panel's MusicBrainz ids are called (#298). Off the same
+            # release the comparison is built from, so an id and the name shown
+            # for it can never come from two different payloads — which is the
+            # one way this could put an artist's name over another artist's id.
+            mb_names=tagger_mod.mbid_names(release),
             # What a re-tag would change in the fields nothing else on this page
             # shows (#291, narrowed by #297). Free: `refresh_flag` just built
             # this plan to set the flag, so rendering it costs no further reads.

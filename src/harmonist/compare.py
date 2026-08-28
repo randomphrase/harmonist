@@ -186,6 +186,17 @@ class FieldComparison:
     #: same is what let "All 9 fields match MusicBrainz" count two fields
     #: MusicBrainz was never asked about (#164).
     comparable: bool = True
+    #: The MusicBrainz entity this row's value(s) identify — "artist",
+    #: "release-group" — or None for an ordinary row (#298). Both the mark that
+    #: the value is a set of MBIDs rather than something to read, and the path
+    #: segment their links need.
+    #:
+    #: The NAME each id stands for is deliberately not here. It comes from the
+    #: release payload, which this module never sees, and it exists only for the
+    #: ids MusicBrainz just told us about — an id on disk that MB has moved away
+    #: from has no name to give. That asymmetry is load-bearing: it is what stops
+    #: a differing row rendering two identical names and reading as a match.
+    entity: str | None = None
 
     @property
     def differs(self) -> bool:
@@ -461,8 +472,28 @@ def _rows(fields: Sequence[Owned]) -> tuple[tuple[str, str, str | None, Kind], .
     return tuple((LABELS[f], f.value, f.value, _KINDS[f]) for f in fields)
 
 
-#: The album panel's rows: every album-scoped tag Harmonist writes, then the two
-#: it only displays.
+#: The one album-scoped tag the panel does NOT show (#298).
+#:
+#: `mb_album_id` is the release the sidecar names, and this comparison is fetched
+#: BY that id — so it matches on every album in the library except one case, and
+#: the album header already shows and links the release above. What it bought for
+#: that permanent row was nineteen hex characters in a panel whose job is to be
+#: scannable.
+#:
+#: The case it can differ in is a MusicBrainz merge: the fetch redirects and
+#: returns a different `id` than the one asked for. That is real, and it is not
+#: dropped — `mb_album_id` leaves `SHOWN_FIELDS` with this row, so the re-tag box
+#: below picks it up and states it as a change, which is what it is. #268 owns
+#: the merge itself.
+#:
+#: An exception to "derived, not listed" below, and the only one. It is written
+#: as a set to subtract rather than by hand-listing the survivors, so a field
+#: added to `Owned` still arrives in the panel on the day it exists.
+_NOT_COMPARED: frozenset[Owned] = frozenset({Owned.MB_ALBUM_ID})
+
+
+#: The album panel's rows: every album-scoped tag Harmonist writes bar the one
+#: above, then the two it only displays.
 #:
 #: **Derived, not listed.** It used to be a hand-written tuple of nine, and the
 #: gap between it and `Owned` grew to twenty-one fields without anyone noticing
@@ -471,13 +502,29 @@ def _rows(fields: Sequence[Owned]) -> tuple[tuple[str, str, str | None, Kind], .
 #: differ" count measured a denominator that had nothing to do with what a
 #: re-tag would write (#295). Deriving it means a field added to `Owned` is
 #: compared from the day it exists.
-_ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = _rows(ALBUM_FIELDS) + _DISPLAY_ONLY
+_ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = (
+    _rows([f for f in ALBUM_FIELDS if f not in _NOT_COMPARED]) + _DISPLAY_ONLY
+)
 
 
 #: The one album field with a second legitimate on-disk spelling — see
 #: `album_fields`. Named rather than inlined so the special case is visible from
 #: the table above rather than buried in the loop.
 _ALIASED_FIELD = "album"
+
+
+#: Which MusicBrainz entity each id-carrying row points at, which is both what
+#: makes a row linkable and the path segment its URL needs (#298).
+#:
+#: Only the album panel's rows are here. The per-track id fields — `mb_track_id`,
+#: `mb_release_track_id`, `mb_artist_ids` — are equally ids, and are deliberately
+#: absent: nothing renders them through a `FieldComparison`, so an entry for them
+#: would be a claim with no reader. They appear in the re-tag box, which is a
+#: change record and shows values, not links.
+_ENTITY: dict[str, str] = {
+    Owned.MB_ALBUM_ARTIST_IDS: "artist",
+    Owned.MB_RELEASE_GROUP_ID: "release-group",
+}
 
 
 def album_fields(
@@ -522,7 +569,11 @@ def album_fields(
         # table is where the knowledge lives: a field is comparable iff it names
         # a TagSet attribute. The comparison functions only ever see values, and
         # an absent MB value is not the same fact as an absent MB counterpart.
-        out.append(row if mb_attr else replace(row, comparable=False))
+        # Same for the entity — which MusicBrainz thing an id names is a property
+        # of the field, not of the two strings being compared.
+        out.append(
+            replace(row, comparable=bool(mb_attr), entity=_ENTITY.get(disk_attr)),
+        )
     return tuple(out)
 
 

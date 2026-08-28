@@ -496,6 +496,12 @@ def _release(
         ],
         "release-group": {
             "id": rg or f"demo-rg-{mbid}",
+            # MusicBrainz always sends this with the `release-groups` include, and
+            # the album page's comparison shows the release group by NAME (#298).
+            # Without it the demo library is the one place that only ever
+            # exercises the raw-MBID fallback — the state nobody is meant to
+            # meet, in the mode people meet the feature in.
+            "title": title,
             "primary-type": "Album",
         },
         "label-info-list": [

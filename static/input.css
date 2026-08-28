@@ -169,11 +169,11 @@ button[disabled],
    that leaves a ragged gap beside the short field opposite it.
 
    Sized for ALBUM ARTIST SORT rather than for `MUSICBRAINZ RELEASE`, which is
-   two characters longer and still wraps. That is deliberate: #298 removes the
-   release row — the header already shows and links the release, and the
-   comparison fetches the very release the sidecar names — so widening the
-   column for a row that is going away would cost every other row its value
-   width permanently.
+   two characters longer. #298 has since removed that row — the header already
+   shows and links the release, and the comparison fetches the very release the
+   sidecar names, so it matched on every album but a merge — which is why the
+   column was not widened for it: that would have cost every other row its value
+   width permanently, for a label that is now gone.
 
    Widened rather than the labels shortened, because since #295 they come from
    `owned.LABELS` and are shared with History and the re-tag plan. Trimming one
@@ -257,6 +257,20 @@ button[disabled],
   cursor: help;
 }
 .mb-mark:hover, .mb-mark:focus-visible { color: var(--color-mb-purple); }
+/* A MusicBrainz id, shown as the name it stands for (#298). Underlined on hover
+   only: three of these sit in a nineteen-row reference table, and a permanent
+   underline on each would make the panel's ids the loudest thing in it — the
+   opposite of the complaint. It inherits its colour, so the same link reads as
+   yours on the disk line and as MusicBrainz's on the purple one, which is the
+   distinction the whole panel is built on. */
+.mbid { color: inherit; text-decoration: none; border-bottom: 1px dotted currentColor; }
+.mbid:hover { text-decoration: underline; }
+.mbid:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+/* An id we have no name for — a merged-away artist, a release group MusicBrainz
+   has moved on from. Shown as the hex it is, in a face that says "identifier"
+   rather than "name", because that difference is the row's whole finding. */
+.mbid--raw { font-family: var(--font-mono); font-size: .78em; }
+
 .tag-fields__arrow { color: var(--color-muted); margin: 0 .35rem; }
 .tag-fields__absent { color: var(--color-muted); }
 .tag-fields__unreadable { color: var(--color-amber-700); font-style: italic; }

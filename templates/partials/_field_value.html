@@ -1,0 +1,36 @@
+{# One value of the album's tag comparison, rendered the way its field wants.
+
+   The seam between an ordinary tag — whose differing parts are marked in place
+   by `_diff_runs` — and a row whose value is one or more MusicBrainz IDs (#298).
+   A UUID has no parts worth marking: character-level emphasis across two hex
+   strings is confetti, and the string itself carries nothing a reader can act
+   on. So an id row becomes a link, captioned with the NAME the id stands for.
+
+   **The name comes from the release we just fetched, and only from there.** An
+   id the files carry that MusicBrainz has moved away from is not in `mb_names`
+   and falls back to the raw hex — which is what keeps a differing row from
+   rendering two identical names and reading as a match. The tooltip carries the
+   id either way, so the value on disk is never more than a hover away.
+
+   `value.split('; ')` undoes the join `compare._as_display` made. A round trip
+   through a string, and safe only because no MBID can contain the separator —
+   which is why this is here rather than being a general habit.
+
+   The scheme and host are literal, so `id` cannot make this a `javascript:`
+   URL; Jinja autoescapes it into the attribute, which is what keeps an
+   off-box, unsanitised payload from being markup.
+
+   Expects `value`, `runs` and `entity` from an enclosing {% with %};
+   `mb_names` comes from the page context, since it is the same for every row. #}
+{%- if entity and value -%}
+    {%- for id in value.split('; ') -%}
+        {%- if not loop.first %}; {% endif -%}
+        {%- set name = mb_names.get(id) -%}
+        <a class="mbid{{ ' mbid--raw' if not name }}"
+           href="https://musicbrainz.org/{{ entity }}/{{ id }}"
+           target="_blank" rel="noopener"
+           title="{% if name %}{{ name }} · {% endif %}{{ id }}">{{ name or id }}</a>
+    {%- endfor -%}
+{%- else -%}
+    {%- with runs = runs, value = value %}{% include 'partials/_diff_runs.html' %}{% endwith -%}
+{%- endif -%}

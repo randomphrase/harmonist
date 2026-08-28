@@ -10,8 +10,12 @@
    and you don't" and "MusicBrainz disagrees with you" are different facts and
    the styling is identical for both.
 
-   Expects `value`, `runs` and `why` from an enclosing {% with %}. #}
-<span class="tag-fields__mb">{% with runs = runs, value = value %}{% include 'partials/_diff_runs.html' %}{% endwith %}<span
+   Through `_field_value` rather than `_diff_runs` directly, so an id row is a
+   named link on this side as well as the disk side (#298) — the row that only
+   MusicBrainz has is exactly the one whose name the reader most needs.
+
+   Expects `value`, `runs`, `entity` and `why` from an enclosing {% with %}. #}
+<span class="tag-fields__mb">{% with runs = runs, value = value, entity = entity %}{% include 'partials/_field_value.html' %}{% endwith %}<span
     class="mb-mark" tabindex="0" title="{{ why }}" role="img" aria-label="{{ why }}"><svg
     viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"
     ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span></span>
