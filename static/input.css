@@ -159,9 +159,28 @@ button[disabled],
    labels have to line up as one column. max-content sizes each grid
    independently, so they'd disagree by a few pixels — exactly the kind of
    near-miss that reads as broken. */
+/* The label track fits `ALBUM ARTIST SORT` — 17 characters, uppercase and
+   letter-spaced — on one line (#301). It was 7rem back when the longest label
+   was `ALBUM ARTIST`; #295 brought in eleven fields that had never been
+   compared, three of them longer than anything that was here before.
+
+   A wrapped label is not merely untidy: rows are baseline-aligned, so one that
+   takes two lines makes its whole grid row taller, and with two pairs per row
+   that leaves a ragged gap beside the short field opposite it.
+
+   Sized for ALBUM ARTIST SORT rather than for `MUSICBRAINZ RELEASE`, which is
+   two characters longer and still wraps. That is deliberate: #298 removes the
+   release row — the header already shows and links the release, and the
+   comparison fetches the very release the sidecar names — so widening the
+   column for a row that is going away would cost every other row its value
+   width permanently.
+
+   Widened rather than the labels shortened, because since #295 they come from
+   `owned.LABELS` and are shared with History and the re-tag plan. Trimming one
+   to fit a column here would rename that tag everywhere. */
 .tag-fields {
   display: grid;
-  grid-template-columns: 7rem minmax(0, 1fr);
+  grid-template-columns: 8rem minmax(0, 1fr);
   gap: .5rem 1.1rem;
   align-items: baseline;
 }
@@ -185,7 +204,7 @@ button[disabled],
    decision nobody asked for. */
 @media (min-width: 60rem) {
   .tag-fields--paired {
-    grid-template-columns: 7rem minmax(0, 1fr) 7rem minmax(0, 1fr);
+    grid-template-columns: 8rem minmax(0, 1fr) 8rem minmax(0, 1fr);
     column-gap: 1.6rem;
   }
 }
