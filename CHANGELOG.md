@@ -6,106 +6,51 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
-- The background pass that fills the **Update available** filter after a restart
-  now **reports itself in the log** — when it starts, how far it has got, and how
-  long it took (#299). It also **paces itself against the machine it is on**,
-  resting in proportion to what each album costs rather than by a fixed amount,
-  so on a slower NAS it gets out of the way of whatever you are doing rather than
-  competing with it. Previously it ran silently, which made a slow page during
-  that window indistinguishable from a stuck one.
-- **Harmonist now says in its log when something took too long** (#300) — a
-  MusicBrainz fetch, reading one album's tags, or a whole album comparison. One
-  line naming what was slow, how slow, and which album, and nothing at all when
-  things are normal. Until now a page that took ninety seconds and a page that
-  never finished left exactly the same trace: none. These lines stay in the log
-  and deliberately do **not** appear in the Activity feed, which is for what
-  Harmonist did rather than how long it took.
-
-### Fixed
-
-- **The Tags comparison on an album's page now covers every album tag Harmonist
-  writes** — seventeen, where it compared six (#295). It could previously report
-  that all your fields matched MusicBrainz while a field it simply wasn't looking
-  at differed on every track, and its "N of M fields differ" line counted a total
-  that had nothing to do with what a re-tag would write. Original date, release
-  type and status, country, script, ASIN, disc total, sort names and the
-  MusicBrainz IDs all now appear. On a wide window the panel lays out in two
-  columns, so it takes about the space it did before.
-- The **MusicBrainz IDs** in that comparison now read as the artist and release
-  group they name, and link to MusicBrainz, instead of as raw UUIDs (#298). The
-  **MusicBrainz release** row is gone with them — the badge above the panel
-  already shows and links that release, and the comparison is fetched by that
-  very ID, so the row matched on every album but a merged one.
-- Harmonist wrote **MusicBrainz Album Type** capitalised (`Album`) where Picard
-  writes it lowercase (`album`), so nearly every album in a library adopted from
-  Picard disagreed with Harmonist on that one field permanently — showing up as a
-  re-tag that never settled, and, once the Update available filter arrived, as
-  most of the library apparently needing an update (#290). Both this and
-  **Album Status** now match Picard. Albums Harmonist tagged itself will show one
-  corrective update.
+## [1.12.0] - 2026-08-28
 
 ### Added
 
-- The Library has an **Update available** filter (#287), gathering albums whose
-  MusicBrainz release has moved on since their files were tagged. Until now the
-  only way to find one was to open its page and look, so upstream corrections
-  landed where nobody saw them. Harmonist fills the filter in from the releases
-  it has already fetched — no MusicBrainz traffic — and keeps it current as you
-  browse; re-tagging an album takes it off the list.
-- An album with an update waiting now **says what the update is**, on its own
-  page under the Tags comparison (#291, #297) — the per-track tags the tracklist
-  has no column for, such as an ISRC or a recording ID MusicBrainz has filled in,
-  field by field and in the same form the History entry takes once applied.
-- Harmonist now **rescans your library once an hour** as a backstop (#151), for
-  the cases where its file watcher isn't working and can't tell you so — a
-  library mounted over the network, where the watcher is blind, or a watcher
-  killed by an exhausted system watch limit. Nothing to configure, and nothing
-  to see: it shows no **Scanning** banner and never locks the inbox the way an
-  action you took does, it waits for any sync or reconcile to finish first, and
-  it refreshes what you're looking at only if it actually found something.
-- **An album's own page re-reads that album from disk before it renders** (#151),
-  so a track added by hand or a title fixed in Picard shows up the moment you
-  open the page — whatever the watcher did or didn't see.
-- Harmonist now **caches the MusicBrainz releases it fetches** (#127), so
-  browsing your library no longer spends a rate-limited request every time you
-  open an album's page. The Tags panel says when the release was last read, with
-  a **read again** link for when you've just edited MusicBrainz. Re-tagging and
-  **Recheck** always fetch fresh. Tune with `cache_ttl_seconds` under
-  `[musicbrainz]` (default one hour; `0` disables re-use).
+- The Library has an **Update available** filter, for albums whose MusicBrainz
+  release has moved on since they were tagged (#287).
+- An album with an update waiting **says what the update is**, under the Tags
+  comparison (#291, #297).
+- Harmonist **caches the MusicBrainz releases it fetches**, so browsing no longer
+  spends a rate-limited request per page (#127). Tune with `cache_ttl_seconds`
+  under `[musicbrainz]`.
+- Harmonist **rescans your library once an hour**, as a backstop for when the
+  file watcher is blind (#151).
+- **An album's page re-reads that album from disk before it renders** (#151).
+- Harmonist **says in its log when an operation took too long** (#300).
+- The startup pass that fills the Update available filter **reports its progress
+  in the log**, and paces itself against the machine it is on (#299).
 
 ### Changed
 
-- **Re-tagging now leaves alone any file it wouldn't change** (#266), rather than
-  rewriting every track each time. Nothing appears in an album's History for a
-  re-tag that found MusicBrainz unchanged, and the files keep their timestamps.
+- **Re-tagging leaves alone any file it wouldn't change** (#266), so your files
+  keep their timestamps.
 
 ### Fixed
 
-- An album title carrying the **release disambiguation** — what Picard writes
-  with its "use disambiguation comment in album title" option on, e.g.
-  `Selected Ambient Works, Volume II (expanded edition)` — no longer reads as
-  differing from MusicBrainz (#283).
-- When MusicBrainz has **merged** the release an album names into another one,
-  tagging now follows the surviving release and says so in the album's
-  **History** (#268), naming both releases. Previously the album silently
-  flickered through **Tagging**, and its identity was rewritten by the
-  reconciler as though you had re-tagged it in Picard.
-- Decisions you record about an album — **Keep in Library** for a purchase that
-  no longer exists, and accepting an incomplete album as finished — are no
-  longer erased by ordinary operations like a sync, a recheck, or rejecting a
-  suggestion (#263). Albums that lost one would re-surrender, or start reporting
-  missing tracks again, the next time Harmonist looked at them.
-- An album whose folders are split across directories no longer forgets that its
-  absent disc was video (#263), so it stays **Complete** instead of reporting the
-  DVD you never ripped as missing tracks.
-- When Harmonist keeps your existing per-track artwork instead of embedding the
-  album cover, that now appears in the album's own **History** (#260) — it was
-  only ever said in the global Activity feed, attributed to no album.
-- A failed re-tag, tag, reconcile, undo or manual assignment no longer writes a
-  second, blank entry to the Activity feed beneath the real one (#258).
-- An album Harmonist can't read — a corrupt or too-new sidecar — is reported to
-  the Activity feed **once** rather than on every scan (#151). Editing it and
-  leaving it broken still says so again, since that's news.
+- **The Tags comparison covers every album tag Harmonist writes** — seventeen,
+  where it compared six (#295).
+- **The MusicBrainz IDs in that comparison read as the artist and release group
+  they name**, and link to MusicBrainz (#298).
+- **Album Type and Album Status are now written in Picard's lowercase** (#290).
+  Albums Harmonist tagged itself will show one corrective update.
+- **A Picard disambiguation comment in an album title no longer reads as a
+  mismatch** (#283).
+- **Tagging follows a merged MusicBrainz release**, and says so in the album's
+  History (#268).
+- **Decisions you record about an album — Keep in Library, accepting an
+  incomplete album — are no longer erased** by a sync, a recheck, or rejecting a
+  suggestion (#263).
+- **A split-folder album no longer forgets that its absent disc was video**
+  (#263), so it stays Complete.
+- **Keeping your existing per-track artwork now appears in the album's own
+  History** (#260).
+- **A failed action no longer writes a second, blank entry** to the Activity
+  feed (#258).
+- **An unreadable album is reported once** rather than on every scan (#151).
 
 ## [1.11.0] - 2026-08-24
 
