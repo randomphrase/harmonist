@@ -168,7 +168,7 @@ def test_the_warm_up_rebuilds_flags_without_asking_musicbrainz(tmp_path, monkeyp
 
     monkeypatch.setattr(mb_lookup, "fetch_release", _no_requests)
 
-    assert gardener.warm_from_cache([album], pause=timedelta(0)) == 1
+    assert gardener.warm_from_cache([album], duty=0) == 1
     assert album.update_available is True
 
 
@@ -188,10 +188,10 @@ def test_a_second_warm_up_changes_nothing(tmp_path, monkeypatch):
         mb_lookup, "fetch_release", lambda *a, **k: pytest.fail("warm-up went to MusicBrainz")
     )
 
-    first = gardener.warm_from_cache([album], pause=timedelta(0))
+    first = gardener.warm_from_cache([album], duty=0)
     events_after_first = len(activity_store.recent(50))
 
-    assert gardener.warm_from_cache([album], pause=timedelta(0)) == first == 1
+    assert gardener.warm_from_cache([album], duty=0) == first == 1
     assert album.update_available is True
     assert len(activity_store.recent(50)) == events_after_first
 
@@ -202,7 +202,7 @@ def test_the_warm_up_leaves_an_album_musicbrainz_was_never_asked_about(tmp_path)
     activity_store.init(tmp_path / "activity.db")
     album = _tagged(tmp_path, _release())
 
-    assert gardener.warm_from_cache([album], pause=timedelta(0)) == 0
+    assert gardener.warm_from_cache([album], duty=0) == 0
     assert album.update_available is False
 
 
@@ -214,7 +214,7 @@ def test_the_warm_up_skips_an_album_with_no_release_of_its_own(tmp_path):
     album = next(a for a in scanner.scan(tmp_path) if a.path == d)
     assert album.sidecar is None
 
-    assert gardener.warm_from_cache([album], pause=timedelta(0)) == 0
+    assert gardener.warm_from_cache([album], duty=0) == 0
 
 
 async def _scan_via_runner(runner: ScanRunner) -> None:
@@ -484,3 +484,63 @@ def test_an_album_with_nothing_waiting_says_nothing(engaged, monkeypatch):
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
 
     assert "Update available" not in body
+
+
+# ---------------------------------------------------------------------------
+# Pacing and audibility (#299)
+# ---------------------------------------------------------------------------
+
+
+def test_the_warm_up_says_it_started_and_says_it_finished(tmp_path, caplog):
+    """It shipped logging one line, at the end. On a NAS that made a pass taking
+    minutes indistinguishable from no pass at all — and from a hang, which is
+    exactly the ambiguity that left #299 with two competing explanations and no
+    way to choose between them."""
+    import logging
+
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+
+    with caplog.at_level(logging.INFO, logger="harmonist.gardener"):
+        gardener.warm_from_cache([album], duty=0)
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert any("checking 1 albums" in m for m in lines)
+    assert any("done in" in m for m in lines)
+
+
+def test_the_rest_is_proportional_to_the_work(monkeypatch):
+    """A fixed pause is the wrong shape: 50 ms is most of the time on a laptop
+    and a rounding error on a NAS, which is backwards — the slow machine is the
+    one that most needs the pass out of its way. Resting in proportion to what
+    the album actually cost self-tunes with nothing to measure."""
+    slept: list[float] = []
+    monkeypatch.setattr(gardener.time, "sleep", slept.append)
+
+    gardener._rest(worked=0.1, duty=0.25)  # a quarter duty → rest three times as long
+
+    assert slept == [pytest.approx(0.3)]
+
+
+def test_one_pathological_album_cannot_park_the_pass(monkeypatch):
+    """Proportional rest has a tail: a hundred-track album on a failing disk
+    would otherwise buy itself a rest measured in minutes, during which the pass
+    does nothing at all and its progress lines say nothing new."""
+    slept: list[float] = []
+    monkeypatch.setattr(gardener.time, "sleep", slept.append)
+
+    gardener._rest(worked=600.0, duty=0.25)
+
+    assert slept == [gardener._MAX_REST.total_seconds()]
+
+
+def test_pacing_can_be_switched_off_entirely(monkeypatch):
+    """`duty=0` is what the tests above run at, so it has to mean *no sleep at
+    all* rather than a very short one — a test suite that really slept would be
+    paying the pass's politeness on every run."""
+    slept: list[float] = []
+    monkeypatch.setattr(gardener.time, "sleep", slept.append)
+
+    gardener._rest(worked=1.0, duty=0)
+
+    assert slept == []

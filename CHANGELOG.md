@@ -6,6 +6,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- The background pass that fills the **Update available** filter after a restart
+  now **reports itself in the log** — when it starts, how far it has got, and how
+  long it took (#299). It also **paces itself against the machine it is on**,
+  resting in proportion to what each album costs rather than by a fixed amount,
+  so on a slower NAS it gets out of the way of whatever you are doing rather than
+  competing with it. Previously it ran silently, which made a slow page during
+  that window indistinguishable from a stuck one.
 - **Harmonist now says in its log when something took too long** (#300) — a
   MusicBrainz fetch, reading one album's tags, or a whole album comparison. One
   line naming what was slow, how slow, and which album, and nothing at all when

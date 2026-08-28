@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Iterable
+from collections.abc import Sequence
 from datetime import timedelta
 
 from . import album_files, formats, mb_cache, tagger
@@ -55,11 +55,29 @@ from .models import Album, AlbumState, Release
 
 log = logging.getLogger(__name__)
 
-# How long the warm-up rests between albums. It is bounded by disk rather than
-# by MusicBrainz's 1 req/s, so this is not a rate limit — it is politeness to a
-# NAS that is also serving Plex, and to the library scan this runs behind.
-# Small enough that a 2,000-album library warms in a few minutes.
-WARM_PAUSE = timedelta(milliseconds=50)
+# What fraction of the time the warm-up is allowed to be working. The rest of
+# each album's share is spent asleep, so the pass takes roughly 1/duty times as
+# long as the work itself and leaves the remainder to whatever else the machine
+# is doing — a request being served, Plex transcoding, the library scan.
+#
+# A ratio rather than a fixed pause (#299). The original rested 50 ms between
+# albums, which is most of the time on a laptop and a rounding error on a NAS —
+# backwards, since the slow machine is the one that most needs this out of the
+# way. Resting in proportion to what each album cost self-tunes to the machine
+# with nothing to measure and nothing to configure.
+#
+# A quarter is deliberately unambitious. The warm-up's only job is that the
+# Library's Update available filter is not empty after a restart, and being
+# late to that is invisible — the filter under-reports by design and browsing
+# fills it in. Being slow is free here; being in the way is not.
+WARM_DUTY = 0.25
+
+# How often a running pass says where it has got to. Long enough not to fill the
+# log on a healthy install, short enough that a stalled pass is obvious.
+_PROGRESS_EVERY = timedelta(seconds=30)
+
+# The longest single rest, so one pathological album cannot park the pass.
+_MAX_REST = timedelta(seconds=2)
 
 
 def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
@@ -147,7 +165,7 @@ def refresh_flag(album: Album, release: Release) -> tagger.AlbumPlan | None:
     return plan
 
 
-def warm_from_cache(albums: Iterable[Album], *, pause: timedelta = WARM_PAUSE) -> int:
+def warm_from_cache(albums: Sequence[Album], *, duty: float = WARM_DUTY) -> int:
     """Rebuild the update-available flags from stored releases. Returns how many
     albums were flagged.
 
@@ -169,9 +187,18 @@ def warm_from_cache(albums: Iterable[Album], *, pause: timedelta = WARM_PAUSE) -
 
     Blocking I/O (one read per file, per `plan_album`), so call it from a worker
     thread, never the event loop.
+
+    **Paced by duty cycle, and audible while it runs** (#299). It shipped doing
+    neither, and the two failures compounded: on a NAS it took the CPU for
+    however long a whole library takes to parse, while saying nothing at all
+    until it finished — so an album page that crawled during that window looked
+    identical to one that had hung, with no way to tell which from the log.
     """
+    started = time.monotonic()
+    log.info("update-available warm-up: checking %d albums", len(albums))
     flagged = 0
     looked = 0
+    reported = started
     for album in albums:
         sc = album.sidecar
         if sc is None or not sc.mb_release_id:
@@ -180,17 +207,42 @@ def warm_from_cache(albums: Iterable[Album], *, pause: timedelta = WARM_PAUSE) -
         if release is None:
             continue  # never fetched, or fetched under a different `inc`
         looked += 1
+        at = time.monotonic()
         refresh_flag(album, release)
         # The verdict is the flag, not the return value — a None comes back both
         # for an unreadable album (not flagged) and for one whose tracklist no
         # longer fits (flagged), so counting the return would undercount.
         if album.update_available:
             flagged += 1
-        if pause > timedelta(0):
-            time.sleep(pause.total_seconds())
+        _rest(time.monotonic() - at, duty)
+        if time.monotonic() - reported >= _PROGRESS_EVERY.total_seconds():
+            reported = time.monotonic()
+            log.info(
+                "update-available warm-up: %d albums looked at, %d with an update", looked, flagged
+            )
     log.info(
-        "update-available warm-up: %d of %d albums with a stored release have an update",
+        "update-available warm-up: done in %.0fs — %d of %d albums with a stored release "
+        "have an update",
+        time.monotonic() - started,
         flagged,
         looked,
     )
     return flagged
+
+
+def _rest(worked: float, duty: float) -> None:
+    """Sleep long enough that the pass only ever uses `duty` of the machine.
+
+    A fixed pause was the original, and it is the wrong shape: 50 ms between
+    albums is most of the time on a laptop and a rounding error on a NAS, which
+    is exactly backwards — the slow machine is the one that needs the pass to
+    get out of the way. Resting in proportion to what each album actually cost
+    self-tunes with no measurement, no configuration and nothing shared with the
+    request path to coordinate through.
+
+    Capped, so one pathological album — a hundred tracks on a failing disk —
+    cannot stall the whole pass behind a single long sleep.
+    """
+    if duty <= 0 or duty >= 1:
+        return  # 0 disables pacing (tests); 1 means "no rest", same thing here
+    time.sleep(min(worked * (1 / duty - 1), _MAX_REST.total_seconds()))
