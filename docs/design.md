@@ -1314,6 +1314,14 @@ at INFO), and `scanner._warn_once` complains about an unbuildable directory only
 when its signature has changed since the last complaint, so "I tried to fix it
 and it's still wrong" is still reported while "still broken, unchanged" is not.
 
+A third guard is different in kind: `extra={"_diagnostic": True}` keeps a record
+out of the feed **entirely**, rather than rate-limiting it. For measurements —
+`timing.warn_if_slow`, which warns when an operation crosses a threshold — the
+level is right for the log and wrong for the feed: nothing failed, nothing was
+lost, and there is nothing to act on. The distinction is worth holding onto when
+adding any new WARNING: the mirror's rule is *every warning is news the user
+should see*, which is true of a failure and false of a stopwatch.
+
 #### The per-album refresh
 
 The album page re-reads *its own* album's directories before rendering

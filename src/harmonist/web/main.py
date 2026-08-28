@@ -52,6 +52,7 @@ from harmonist import (
     redownloads,
     scanner,
     tag_history,
+    timing,
 )
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
@@ -204,6 +205,17 @@ _LIBRARY_FILTERS: dict[str, tuple[str, Callable[[Album], bool]]] = {
     "no-artwork": ("No artwork", lambda a: not a.has_cover),
     "update-available": ("Update available", lambda a: a.update_available),
 }
+
+# When reading one album's tags is slow enough to say so (#300). Generous: this
+# is every file in the album opened and parsed, so a long album on a modest NAS
+# is legitimately a second or two, and #299 is the case where it is minutes.
+_SLOW_ALBUM_READ = timedelta(seconds=10)
+
+# When the whole disk-vs-MusicBrainz comparison is slow enough to say so. The
+# most valuable of the three, and the reason it exists as well as the two
+# beneath it: a page can be slow with no single phase crossing its own
+# threshold, and this is the line that says so anyway.
+_SLOW_COMPARE = timedelta(seconds=15)
 
 # Longest search query the Library will act on (#180). Unlike `?filter=`'s slug,
 # `q` is free text, and it is reflected into every URL this page builds — seventeen
@@ -882,10 +894,15 @@ def _album_tracks(
     """
     audio = album_files.for_paths(paths) if paths else album_files.audio_files(album_dir)
     video = album_files.videos_for_paths(paths) if paths else album_files.video_files(album_dir)
-    return (
-        [(_rel_to(f, album_dir), formats.read_tags(f)) for f in audio],
-        [(_rel_to(f, album_dir), formats.read_video_tags(f)) for f in video],
-    )
+    # The whole pass, not each file: one line naming a slow album is the signal,
+    # twenty-seven lines naming its tracks is the noise (#300).
+    with timing.warn_if_slow(
+        "album tag read", _SLOW_ALBUM_READ, album=album_dir, files=len(audio) + len(video)
+    ):
+        return (
+            [(_rel_to(f, album_dir), formats.read_tags(f)) for f in audio],
+            [(_rel_to(f, album_dir), formats.read_video_tags(f)) for f in video],
+        )
 
 
 def _in_track_order(
@@ -3695,10 +3712,27 @@ def _register_routes(app: FastAPI) -> None:
                 '<p class="text-2xs text-muted italic mt-2">'
                 "No MusicBrainz release to compare against.</p>"
             )
+        # Around the whole thing (#300). The MusicBrainz fetch and the tag read
+        # carry their own guards, but this is the one that catches a page that
+        # was slow without any single phase crossing its threshold — which is
+        # the shape of #299, where the page stalls and nothing says why.
+        with timing.warn_if_slow(
+            "album comparison", _SLOW_COMPARE, album=album.path, mbid=sc.mb_release_id
+        ):
+            return _compare_response(request, album, sc.mb_release_id, reread=reread)
+
+    def _compare_response(request: Request, album: Album, mbid: str, *, reread: bool) -> Response:
+        """The body of `library_compare`, split out only so the timing guard
+        above can wrap it — every `return` in here is a way the comparison can
+        end, and a guard that covered some of them would report the fast paths
+        and stay silent on whichever one was slow.
+
+        Takes the release id rather than the sidecar: the caller has already
+        established it is present, and passing the narrowed value states that
+        precondition in the signature instead of leaving it as something the
+        two functions have to agree about silently."""
         try:
-            release = mb_cache.fetch_release(
-                sc.mb_release_id, max_age=mb_cache.FRESH if reread else None
-            )
+            release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH if reread else None)
         except mb_lookup.ReleaseGoneError:
             # A 404 is an ANSWER, not a failure: the release has been deleted
             # from MusicBrainz, and no amount of retrying will bring it back.
@@ -3717,7 +3751,7 @@ def _register_routes(app: FastAPI) -> None:
             log.warning(
                 "album %s names release %s, which MusicBrainz no longer has",
                 album.path,
-                sc.mb_release_id,
+                mbid,
             )
             comparison, tracks = _album_disk_view(album.path, album.folders)
             return _templates(request).TemplateResponse(
@@ -3774,7 +3808,7 @@ def _register_routes(app: FastAPI) -> None:
             # Falls back to now only when the row is somehow missing (a store
             # that failed the write it was just asked for) — "read just now" is
             # then still true of the fetch that produced this response.
-            mb_read_at=mb_cache.fetched_at(sc.mb_release_id) or datetime.now(UTC),
+            mb_read_at=mb_cache.fetched_at(mbid) or datetime.now(UTC),
             # What a re-tag would actually change, field by field (#291). Free:
             # `refresh_flag` just built this plan to set the flag, so rendering
             # it costs no further reads — and without it the page can show every

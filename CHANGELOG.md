@@ -6,6 +6,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- **Harmonist now says in its log when something took too long** (#300) — a
+  MusicBrainz fetch, reading one album's tags, or a whole album comparison. One
+  line naming what was slow, how slow, and which album, and nothing at all when
+  things are normal. Until now a page that took ninety seconds and a page that
+  never finished left exactly the same trace: none. These lines stay in the log
+  and deliberately do **not** appear in the Activity feed, which is for what
+  Harmonist did rather than how long it took.
+
 ### Fixed
 
 - **The Tags comparison on an album's page now covers every album tag Harmonist

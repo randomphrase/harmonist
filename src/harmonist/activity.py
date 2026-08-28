@@ -152,6 +152,18 @@ class _ActivityLogHandler(logging.Handler):
     def emit(self, rec: logging.LogRecord) -> None:
         if getattr(rec, "_activity", False):
             return  # already recorded via record(); don't loop it back
+        if getattr(rec, "_diagnostic", False):
+            # A measurement, not news. The feed is what Harmonist DID — actions
+            # and the failures that interrupted them — and a line saying an
+            # album took twelve seconds to read is neither: nothing went wrong,
+            # nothing was lost, and there is nothing for the user to act on.
+            #
+            # Load-bearing, not tidiness. `timing.warn_if_slow` (#300) fires on
+            # a threshold, so under exactly the conditions worth investigating
+            # (#299) it fires on every album page view — and the feed would fill
+            # with rows about its own slowness. That is #272's shape: a notice
+            # reporting a recurring condition rather than a change.
+            return
         try:
             msg = rec.getMessage()
         except Exception:

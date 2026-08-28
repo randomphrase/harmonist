@@ -48,7 +48,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import activity_store, mb_lookup
+from . import activity_store, mb_lookup, timing
 from .models import Release
 
 log = logging.getLogger(__name__)
@@ -67,6 +67,16 @@ _ttl = timedelta(hours=1)
 # refreshes the stored row, which keeps the gardener's baseline current. Calling
 # `mb_lookup` directly would bypass the fetch and the recording both.
 FRESH = timedelta(0)
+
+# When a live fetch is slow enough to be worth a line in the log (#300).
+#
+# Comfortably above the floor rather than near it: musicbrainzngs paces requests
+# at one per second (`MB_RATE_LIMIT_SECONDS`), so a *healthy* fetch can spend a
+# second waiting its turn before the network is touched at all. A threshold near
+# that would warn on every album and the log would be noise inside a day. Five
+# seconds means something else is happening — a queue behind other callers, or a
+# request that has stalled.
+_SLOW_FETCH = timedelta(seconds=5)
 
 
 def configure(ttl: timedelta) -> None:
@@ -116,7 +126,8 @@ def fetch_release(mbid: str, *, max_age: timedelta | None = None) -> Release:
     cached = activity_store.cached_release(mbid, inc)
     if cached is not None and _fresh(cached, _ttl if max_age is None else max_age):
         return cached.payload
-    release = mb_lookup.fetch_release(mbid)
+    with timing.warn_if_slow("MusicBrainz release fetch", _SLOW_FETCH, mbid=mbid):
+        release = mb_lookup.fetch_release(mbid)
     # Stored under the id the release ACTUALLY has, which after a merge is not
     # the one asked for (#268). Keying the row by the requested id would cache
     # the surviving release under a dead MBID — served to nobody, and leaving
