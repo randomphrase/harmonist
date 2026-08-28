@@ -3809,17 +3809,28 @@ def _register_routes(app: FastAPI) -> None:
             # that failed the write it was just asked for) — "read just now" is
             # then still true of the fetch that produced this response.
             mb_read_at=mb_cache.fetched_at(mbid) or datetime.now(UTC),
-            # What a re-tag would actually change, field by field (#291). Free:
-            # `refresh_flag` just built this plan to set the flag, so rendering
-            # it costs no further reads — and without it the page can show every
-            # field matching while the Library says an update is waiting, which
-            # is a dead end with no third place to look.
+            # What a re-tag would change in the fields nothing else on this page
+            # shows (#291, narrowed by #297). Free: `refresh_flag` just built
+            # this plan to set the flag, so rendering it costs no further reads.
             #
-            # The panel above compares nine curated fields; the plan covers all
-            # thirty Harmonist owns, which is exactly the gap. Rendered through
-            # `tag_history`, so it reads like the History entry it will become.
+            # Scoped rather than complete, and that is the whole point. The box
+            # was written when the panel compared nine album fields out of the
+            # thirty the plan covers; #295 widened the panel to all of them, so
+            # an unfiltered box restates every album-level difference directly
+            # underneath itself. What survives `SHOWN_FIELDS` is the per-track
+            # tags — ISRCs, recording ids, sort names — which the four-column
+            # tracklist has nowhere to put and which are otherwise invisible.
+            #
+            # Rendered through `tag_history`, so it reads like the History entry
+            # it will become.
             update_changes=(
-                tag_history.from_plan(plan, album.path, album_files.for_paths(album.folders))
+                tuple(
+                    c
+                    for c in tag_history.from_plan(
+                        plan, album.path, album_files.for_paths(album.folders)
+                    )
+                    if c.field not in compare.SHOWN_FIELDS
+                )
                 if plan is not None and plan.changes
                 else ()
             ),

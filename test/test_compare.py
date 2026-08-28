@@ -14,6 +14,7 @@ from pathlib import Path
 
 from harmonist import formats
 from harmonist.compare import (
+    SHOWN_FIELDS,
     TRACK_COLUMNS,
     Agreement,
     AlbumComparison,
@@ -29,6 +30,7 @@ from harmonist.compare import (
     disk_tracklist,
     tracklist,
 )
+from harmonist.formats.owned import Owned
 from harmonist.formats.types import TagSet, TrackTags
 
 
@@ -829,3 +831,31 @@ def test_a_field_outside_the_old_nine_is_compared(tmp_path):
     row = {f.label: f for f in differing}["Original date"]
     assert row.agreement is Agreement.DIFFERS
     assert (row.disk, row.mb) == ("2019-03-15", "1994-03-07")
+
+
+def test_shown_fields_names_exactly_the_tags_with_another_surface():
+    """What the album page renders somewhere, so the re-tag box can be scoped to
+    the complement (#297).
+
+    The complement is the interesting half, so it is what gets pinned — and as a
+    whole set, not a sample: `SHOWN_FIELDS` is derived, so a field added to
+    `Owned` lands OUTSIDE it by default and starts appearing in the box. That is
+    the right default, and it should still be a decision someone made rather than
+    one that happened to them.
+
+    These ten are the box's entire reason to exist. The tracklist is four fixed
+    columns — #, Title, Artist, Length — so an ISRC MusicBrainz has filled in or
+    a recording id a merge has moved has nowhere else on the page to appear.
+    """
+    assert {f.value for f in Owned} - SHOWN_FIELDS == {
+        "artist_sort",
+        "artists",
+        "track_total",
+        "disc_num",
+        "disc_subtitle",
+        "media",
+        "mb_track_id",
+        "mb_release_track_id",
+        "mb_artist_ids",
+        "isrcs",
+    }

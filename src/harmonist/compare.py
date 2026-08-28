@@ -814,6 +814,36 @@ _TRACK_FIELDS: tuple[tuple[str, str, str, Kind], ...] = (
 TRACK_COLUMNS: tuple[str, ...] = ("#", "Title", "Artist", "Length")
 
 
+#: The owned fields the album page already shows somewhere — every compared row
+#: of the panel, plus the tracklist's Title, Artist and number columns.
+#:
+#: Exists so the re-tag plan's box (#291) can be scoped to what has NO other
+#: surface here (#297). Until #295 the panel compared nine fields out of thirty
+#: and the box was the only place the rest appeared; now the panel compares them
+#: all, and a box repeating them says the same thing twice on the same screen.
+#:
+#: **Derived from the two rendering tables, not listed beside them**, for the
+#: reason `_ALBUM_FIELDS` is: a hand-kept copy drifts, and here the drift shows
+#: up as a row printed twice — the exact complaint #297 was filed about. Taken
+#: from `_ALBUM_FIELDS` rather than `ALBUM_FIELDS` so it tracks what the panel
+#: RENDERS rather than what the album scope contains; a row the panel drops
+#: falls back to the box by itself. The `mb_attr` guard is what keeps Genre and
+#: Comment out — they are displayed, but they are not owned fields and a plan
+#: can never carry them.
+#:
+#: `disc_num` is deliberately NOT in here even though the number column can show
+#: it. `_number` reads it as `disc or 1`, so a track gaining an explicit disc
+#: number it lacked renders identically on both sides and the column stays
+#: silent. A field this set claims wrongly is a change the page cannot report at
+#: all; one it omits is a row shown twice on a multi-disc renumbering. Those are
+#: not the same size of mistake.
+SHOWN_FIELDS: frozenset[str] = frozenset(
+    [disk_attr for _, disk_attr, mb_attr, _ in _ALBUM_FIELDS if mb_attr]
+    + [mb_attr for _, _, mb_attr, _ in _TRACK_FIELDS]
+    + [Owned.TRACK_NUM.value]
+)
+
+
 def tracklist(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: Sequence[MBTrack],

@@ -19,14 +19,21 @@
     {% include 'partials/_track_list.html' %}
 </section>
 
-{# Why this album is in the Library's "Update available" filter (#291).
+{# The part of a waiting re-tag that has nowhere else on this page to appear
+   (#291, scoped by #297).
 
-   The panel above compares nine curated album fields; the flag is derived from
-   all thirty Harmonist owns, plus the per-track ones. So the two could disagree
-   in a way that read as a bug and wasn't — an album listed as having an update
-   whose page showed every field matching, with no third place to look. This is
-   that third place, and it sits in the Tags section because that is where the
-   reader already is when the question occurs to them.
+   It began as the whole plan, because the panel above compared nine album
+   fields and the flag was derived from thirty — so an album could sit in the
+   Library's "Update available" filter and read as matching on every row shown.
+   #295 closed that gap from the other end: the panel now compares every
+   album-scoped tag Harmonist writes, and an unscoped box repeats each of those
+   differences immediately below itself.
+
+   What is left is the per-track tags. The tracklist is four fixed columns — #,
+   Title, Artist, Length — so an ISRC MusicBrainz has filled in, a recording id
+   a merge has moved, a sort name Picard never wrote, appear NOWHERE else. The
+   filtering is `compare.SHOWN_FIELDS`, applied in the view, so this partial
+   renders whatever survives rather than knowing the rule itself.
 
    Rendered through the SAME partial as a History entry's change list, from the
    same `tag_history.FieldChange` rows: what is waiting reads exactly like the
@@ -35,10 +42,11 @@
    and the partial's Undo blocks are guarded on those being truthy. #}
 {% if update_changes %}
 <div class="mt-4 pt-3 border-t border-line">
-    <h3 class="text-2xs font-bold text-ink uppercase tracking-widest">Update available</h3>
+    <h3 class="text-2xs font-bold text-ink uppercase tracking-widest">Track tags a re-tag would change</h3>
     <p class="text-2xs text-muted mt-1 mb-2">
-        MusicBrainz has information these files don't. Re-tagging would make the
-        changes below; nothing is changed until you do.
+        Per-track fields the tracklist has no column for — sort names, ISRCs and
+        the MusicBrainz ids of each recording. Re-tagging would make the changes
+        below; nothing is changed until you do.
     </p>
     {% with changes = update_changes %}
     {% include 'partials/_tag_changes.html' %}

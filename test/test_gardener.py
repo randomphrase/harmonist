@@ -449,33 +449,58 @@ def test_reach_counts_every_file_not_just_the_changed_ones(tmp_path):
 
 
 def test_the_album_page_explains_an_update_the_comparison_cannot_show(engaged, monkeypatch):
-    """The bug this closes: `original_date` and `mb_album_type` are not among the
-    nine fields `compare._ALBUM_FIELDS` shows, so an album could be listed under
-    Update available and read as fully matching when opened, with no third place
-    to look."""
+    """The bug this closes: a re-tag can change tags the page has no other place
+    for. An ISRC is the everyday one — MusicBrainz fills them in constantly, and
+    the tracklist's four columns (#, Title, Artist, Length) have nowhere to put
+    it — so without this box the album sits under Update available and reads as
+    matching on every row shown."""
     cfg, engage = engaged
     _tagged(cfg.paths.music_dir, _release())
-    moved = _release() | {
-        "release-group": {
-            "id": "rg-aaa",
-            "primary-type": "Album",
-            "first-release-date": "1994-03-07",
-        }
-    }
-    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: moved)
+    filled_in = copy.deepcopy(_release())
+    track = filled_in["medium-list"][0]["track-list"][0]
+    track["recording"]["isrc-list"] = ["GBAYE0000123"]
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: filled_in)
     client, runner = engage()
 
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
 
-    assert "Update available" in body
-    assert "Original date" in body  # the field the Tags panel never shows
-    assert "1994-03-07" in body
+    assert "Track tags a re-tag would change" in body
+    assert "ISRC" in body
+    assert "GBAYE0000123" in body
+
+
+def test_an_album_scoped_update_is_not_stated_twice(engaged, monkeypatch):
+    """#297. The box was written when the Tags panel compared nine album fields
+    out of the thirty a plan covers. #295 widened the panel to all of them, so a
+    single album-level difference now renders in the comparison AND again in the
+    box directly beneath it — the same row, twice, on a page where one field
+    differs.
+
+    The comparison keeps it; the box drops out entirely rather than showing an
+    empty heading."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    catalogued = copy.deepcopy(_release())
+    catalogued["label-info-list"] = [
+        {"label": {"name": "Warp"}, "catalog-number": "WARPCD-999"},
+    ]
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: catalogued)
+    client, runner = engage()
+
+    body = client.get(f"/library/{runner.albums()[0].id}/compare").text
+
+    # The comparison still reports it — this is a real difference, not a
+    # suppressed one, and the flag it sets stays explained.
+    assert runner.albums()[0].update_available is True
+    assert body.count("Cat. no.") == 1
+    assert body.count("WARPCD-999") == 1
+    assert "Track tags a re-tag would change" not in body
 
 
 def test_an_album_with_nothing_waiting_says_nothing(engaged, monkeypatch):
-    """No empty "Update available" heading on an album that is up to date — the
-    section has to be absent, not present-and-blank, or every album grows a box
-    telling the reader there is nothing to tell them."""
+    """No empty heading on an album that is up to date — the section has to be
+    absent, not present-and-blank, or every album grows a box telling the reader
+    there is nothing to tell them."""
     cfg, engage = engaged
     _tagged(cfg.paths.music_dir, _release())
     monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: _release())
@@ -483,7 +508,7 @@ def test_an_album_with_nothing_waiting_says_nothing(engaged, monkeypatch):
 
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
 
-    assert "Update available" not in body
+    assert "Track tags a re-tag would change" not in body
 
 
 # ---------------------------------------------------------------------------

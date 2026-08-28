@@ -201,12 +201,13 @@ you tagged it — each with its count:
   corrected, a release date fixed, a track retitled. Re-tag from the album's page
   to take it, and the album drops off the list.
 
-  The album's own page says *what* the update is, under the Tags comparison —
-  each field with its before and after, laid out the way the History entry will
-  be once you've applied it. The comparison above it covers every album-level tag
-  Harmonist writes, so the two agree; the list below adds the per-track fields —
-  ISRCs, recording IDs, track titles — which the comparison shows in the tracklist
-  rather than the field table.
+  The album's own page says *what* the update is. The Tags comparison covers
+  every album-level tag Harmonist writes, and the tracklist covers each track's
+  number, title, artist and length — between them, most of an update is visible
+  where you would look for it anyway. What is left goes in a short list under the
+  comparison: the per-track tags no column has room for — sort names, ISRCs, the
+  MusicBrainz ID of each recording — each with its before and after, laid out the
+  way the History entry will be once you've applied it.
 
   Harmonist works this out from the MusicBrainz releases it has already fetched,
   so the filter costs no lookups and fills in as you browse — an album you open
