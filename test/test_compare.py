@@ -30,7 +30,7 @@ from harmonist.compare import (
     disk_tracklist,
     tracklist,
 )
-from harmonist.formats.owned import Owned
+from harmonist.formats.owned import ALBUM_FIELDS, Owned
 from harmonist.formats.types import TagSet, TrackTags
 
 
@@ -887,3 +887,49 @@ def test_only_id_rows_carry_a_musicbrainz_entity():
         "Album artist IDs": "artist",
         "Release group": "release-group",
     }
+
+
+def test_the_panel_pairs_release_fields_against_artist_fields():
+    """#307. The grid fills row-major, two label/value pairs per row, so the
+    field sequence decides which COLUMN each row lands in — and `Owned` order,
+    which this used until now, was never chosen for that. It split the artist
+    fields across both columns and the release fields across both, so reading
+    down either one gave three subjects interleaved.
+
+    Pinned as the whole sequence, because the property being asserted is about
+    ADJACENCY: it lives in the pairs, and sampling two of them cannot see a
+    third that has drifted into the wrong column.
+    """
+    fields = album_fields([("1.flac", TrackTags(album="Obreel"))], _tagset(album="Obreel"))
+
+    assert [f.label for f in fields] == [
+        "Album",           "Album artist",
+        "Release group",   "Album artist sort",
+        "Release type",    "Album artist IDs",
+        "Release status",  "Country",
+        "Date",            "Original date",
+        "Label",           "Cat. no.",
+        "Barcode",         "ASIN",
+        "Disc total",      "Script",
+        "Genre",           "Comment",
+    ]  # fmt: skip
+
+
+def test_display_order_cannot_drop_a_field():
+    """The order is a sort key, not a second list of what to show.
+
+    That distinction is the whole safety property. A hand-written list of rows
+    is exactly what let this panel omit twenty-one fields (#295), and it is
+    still hand-written here — so a field nobody remembered to place has to end
+    up at the BOTTOM of the panel, never absent from it.
+
+    `mb_album_id` is a real album field that `_DISPLAY_ORDER` genuinely does not
+    name, so this asserts against the live gap rather than a fabricated one.
+    """
+    from harmonist.compare import _DISPLAY_ORDER, _in_display_order
+
+    assert Owned.MB_ALBUM_ID not in _DISPLAY_ORDER
+
+    placed = _in_display_order(list(ALBUM_FIELDS))
+    assert set(placed) == set(ALBUM_FIELDS)  # nothing lost
+    assert placed[-1] is Owned.MB_ALBUM_ID  # and the unplaced one is last

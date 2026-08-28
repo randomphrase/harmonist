@@ -468,7 +468,7 @@ def _as_display(raw: object) -> str | None:
 
 
 def _rows(fields: Sequence[Owned]) -> tuple[tuple[str, str, str | None, Kind], ...]:
-    """`(label, disk key, mb attr, kind)` for each owned field, in `Owned` order."""
+    """`(label, disk key, mb attr, kind)` for each owned field, in the given order."""
     return tuple((LABELS[f], f.value, f.value, _KINDS[f]) for f in fields)
 
 
@@ -492,8 +492,68 @@ def _rows(fields: Sequence[Owned]) -> tuple[tuple[str, str, str | None, Kind], .
 _NOT_COMPARED: frozenset[Owned] = frozenset({Owned.MB_ALBUM_ID})
 
 
+#: The order the panel shows its rows in (#307).
+#:
+#: The grid fills row-major, two label/value pairs per row (#295), so this
+#: sequence decides which COLUMN each field lands in — and `Owned` order, which
+#: the panel used until now, was never chosen for that. It put the artist fields
+#: in both columns and the release fields in both, so reading down either one
+#: gave three subjects interleaved: Album, Album artist sort, Release group,
+#: Release status.
+#:
+#: Paired up here instead: the release block down one column, the artist block
+#: down the other, and then the pairs that belong together side by side — Date
+#: with Original date, Label with Cat. no., Barcode with ASIN.
+#:
+#: **A sort key, not a replacement.** `_ALBUM_FIELDS` is derived rather than
+#: listed precisely so a field added to `Owned` is compared from the day it
+#: exists (#295), and a second hand-written list is exactly what let the panel
+#: omit twenty-one fields. So a field missing from here sorts to the END and is
+#: still shown; it never disappears. `test_display_order_cannot_drop_a_field`
+#: holds that.
+#:
+#: Below 60rem the panel is one column and this sequence is what it reads top to
+#: bottom, where the interleaving is the other way round: Album, Album artist,
+#: Release group, Album artist sort. Accepted deliberately — one order cannot be
+#: grouped for one column and for two, and the wide layout is the one being read
+#: on the machine someone tags from.
+_DISPLAY_ORDER: tuple[Owned, ...] = (
+    # Row 1-3: what the release IS, beside who it is BY.
+    Owned.ALBUM,
+    Owned.ALBUM_ARTIST,
+    Owned.MB_RELEASE_GROUP_ID,
+    Owned.ALBUM_ARTIST_SORT,
+    Owned.MB_ALBUM_TYPE,
+    Owned.MB_ALBUM_ARTIST_IDS,
+    # Row 4-5: which edition, and when.
+    Owned.MB_ALBUM_STATUS,
+    Owned.MB_ALBUM_COUNTRY,
+    Owned.DATE,
+    Owned.ORIGINAL_DATE,
+    # Row 6-8: the release's paperwork.
+    Owned.LABEL,
+    Owned.CATALOG_NUMBER,
+    Owned.BARCODE,
+    Owned.ASIN,
+    Owned.DISC_TOTAL,
+    Owned.SCRIPT,
+)
+
+
+def _in_display_order(fields: Sequence[Owned]) -> list[Owned]:
+    """`fields` sorted by `_DISPLAY_ORDER`, with anything unlisted at the end.
+
+    Stable, so unlisted fields keep their `Owned` order among themselves — a
+    field added to `Owned` and forgotten here appears in the panel, at the
+    bottom, rather than vanishing from it.
+    """
+    last = len(_DISPLAY_ORDER)
+    order = {f: i for i, f in enumerate(_DISPLAY_ORDER)}
+    return sorted(fields, key=lambda f: order.get(f, last))
+
+
 #: The album panel's rows: every album-scoped tag Harmonist writes bar the one
-#: above, then the two it only displays.
+#: above, in the display order above, then the two it only displays.
 #:
 #: **Derived, not listed.** It used to be a hand-written tuple of nine, and the
 #: gap between it and `Owned` grew to twenty-one fields without anyone noticing
@@ -503,7 +563,7 @@ _NOT_COMPARED: frozenset[Owned] = frozenset({Owned.MB_ALBUM_ID})
 #: re-tag would write (#295). Deriving it means a field added to `Owned` is
 #: compared from the day it exists.
 _ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = (
-    _rows([f for f in ALBUM_FIELDS if f not in _NOT_COMPARED]) + _DISPLAY_ONLY
+    _rows(_in_display_order([f for f in ALBUM_FIELDS if f not in _NOT_COMPARED])) + _DISPLAY_ONLY
 )
 
 
