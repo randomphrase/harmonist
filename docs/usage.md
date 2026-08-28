@@ -203,10 +203,10 @@ you tagged it — each with its count:
 
   The album's own page says *what* the update is, under the Tags comparison —
   each field with its before and after, laid out the way the History entry will
-  be once you've applied it. Worth knowing that this list is longer than the
-  comparison above it: the comparison shows nine headline fields a person would
-  recognise, while a re-tag writes all thirty Harmonist owns, so most of what
-  turns up here is detail the comparison never had room for.
+  be once you've applied it. The comparison above it covers every album-level tag
+  Harmonist writes, so the two agree; the list below adds the per-track fields —
+  ISRCs, recording IDs, track titles — which the comparison shows in the tracklist
+  rather than the field table.
 
   Harmonist works this out from the MusicBrainz releases it has already fetched,
   so the filter costs no lookups and fills in as you browse — an album you open

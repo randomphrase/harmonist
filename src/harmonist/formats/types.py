@@ -8,8 +8,9 @@ Vorbis comments, etc.).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from mutagen import MutagenError
 
@@ -144,15 +145,33 @@ class TrackTags:
     this is what it *finds*, where every field is legitimately absent and the
     difference between "absent" and "unreadable" is the whole point.
 
-    Deliberately narrower than `TagSet` too. It carries the fields a user would
-    recognise on an album page — not MusicBrainz ids, which are plumbing, and
-    not sort names. Arbitrary/unknown tags are a later addition (see #106); the
-    shape here doesn't preclude them.
+    The named fields below are the ones a user recognises on an album page.
+    They are NOT the whole story, and used to be: the comparison compared only
+    what was named here, which was 9 of the 30 tags Harmonist writes, so a
+    release that had grown an ISRC or an original date differed on disk while
+    the panel reported every field matching — and its "N of M fields differ"
+    count measured the wrong M (#295). `owned` closes that without turning this
+    into a second copy of `TagSet`.
     """
 
     #: The file could not be opened at all. Every other field is then None, and
     #: that is NOT the same as an untagged file — see ScanFields.unreadable.
     unreadable: bool = False
+
+    #: Every owned field as this file currently carries it — the `read_owned`
+    #: snapshot, keyed by `Owned` value, taken from the handle `read_tags`
+    #: already has open. Empty when the file could not be read.
+    #:
+    #: A dict rather than thirty more typed attributes, because the comparison
+    #: table is then *derivable* from `Owned` instead of hand-listed beside it.
+    #: Two hand-maintained lists are what let twenty-one fields go uncompared
+    #: without anyone noticing, and a thirty-first added later would have joined
+    #: them silently.
+    #:
+    #: Costs one dict per track on the album page and during the tagger's
+    #: identity check. Deliberately not on the scan path — the scanner reads
+    #: `read_scan_fields`, which stays as narrow as it was.
+    owned: Mapping[str, Any] = field(default_factory=dict)
 
     # Album-level: the same on every track, which is what makes disagreement
     # between tracks meaningful rather than expected.

@@ -314,6 +314,10 @@ class VorbisTagger:
             duration_ms=duration,
             comment=first(KEY_COMMENT),
             release_track_id=first(KEY_RELEASE_TRACK_ID),
+            # Every owned field too, off the tag block already read — see the
+            # m4a note and #295. Covers FLAC, Ogg and Opus in one place, since
+            # all three delegate here.
+            owned=self._read_owned(tags),
         )
 
     def read_cover(self, path: Path) -> tuple[bytes, str] | None:

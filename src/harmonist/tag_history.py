@@ -28,45 +28,13 @@ from typing import Any
 
 from . import album_files
 from .compare import Run, diff_runs
-from .formats.owned import ARTWORK, SCOPE, Owned, Scope
+from .formats.owned import ARTWORK, LABELS, SCOPE, Owned, Scope
 
-#: Human labels for every owned field, plus artwork. Unknown keys fall back to
-#: the key itself — deliberately, and load-bearing: these records are permanent
-#: and unversioned, so a payload written today may name a field this build has
-#: since renamed or dropped. Rendering must degrade to "show the raw name"
-#: rather than raise, or one old row takes a whole album page down with it.
-_LABELS: dict[str, str] = {
-    Owned.MB_ALBUM_ID: "MusicBrainz release",
-    Owned.ALBUM: "Album",
-    Owned.ALBUM_ARTIST: "Album artist",
-    Owned.ALBUM_ARTIST_SORT: "Album artist sort",
-    Owned.MB_ALBUM_ARTIST_IDS: "Album artist IDs",
-    Owned.MB_RELEASE_GROUP_ID: "Release group",
-    Owned.MB_ALBUM_TYPE: "Release type",
-    Owned.MB_ALBUM_STATUS: "Release status",
-    Owned.MB_ALBUM_COUNTRY: "Country",
-    Owned.DATE: "Date",
-    Owned.ORIGINAL_DATE: "Original date",
-    Owned.SCRIPT: "Script",
-    Owned.LABEL: "Label",
-    Owned.CATALOG_NUMBER: "Cat. no.",
-    Owned.BARCODE: "Barcode",
-    Owned.ASIN: "ASIN",
-    Owned.DISC_TOTAL: "Disc total",
-    Owned.TITLE: "Title",
-    Owned.ARTIST: "Artist",
-    Owned.ARTIST_SORT: "Artist sort",
-    Owned.ARTISTS: "Artists",
-    Owned.TRACK_NUM: "Track no.",
-    Owned.TRACK_TOTAL: "Track total",
-    Owned.DISC_NUM: "Disc no.",
-    Owned.MEDIA: "Media",
-    Owned.MB_TRACK_ID: "Recording",
-    Owned.MB_RELEASE_TRACK_ID: "Release track",
-    Owned.MB_ARTIST_IDS: "Artist IDs",
-    Owned.ISRCS: "ISRC",
-    ARTWORK: "Artwork",
-}
+#: Local alias for the shared label map, which moved to `owned` so the album
+#: comparison can build its rows from it too (#295) — one name per field for
+#: History, the re-tag plan and the comparison alike.
+_LABELS = LABELS
+
 
 #: Display order: the owned fields as `Owned` declares them (album-level first,
 #: then per-track), with artwork last. Artwork is not an owned field and has no

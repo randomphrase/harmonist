@@ -8,6 +8,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **The Tags comparison on an album's page now covers every album tag Harmonist
+  writes** — seventeen, where it compared six (#295). It could previously report
+  that all your fields matched MusicBrainz while a field it simply wasn't looking
+  at differed on every track, and its "N of M fields differ" line counted a total
+  that had nothing to do with what a re-tag would write. Original date, release
+  type and status, country, script, ASIN, disc total, sort names and the
+  MusicBrainz IDs all now appear. On a wide window the panel lays out in two
+  columns, so it takes about the space it did before.
 - Harmonist wrote **MusicBrainz Album Type** capitalised (`Album`) where Picard
   writes it lowercase (`album`), so nearly every album in a library adopted from
   Picard disagreed with Harmonist on that one field permanently — showing up as a

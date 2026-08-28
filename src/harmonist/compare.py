@@ -32,7 +32,14 @@ from difflib import SequenceMatcher
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:  # keeps this module free of runtime imports — it stays pure
+# The field set, its labels and its scopes, at runtime: the album panel's rows
+# are DERIVED from `Owned` rather than listed beside it (#295), so this module
+# needs the real values, not just their types. `owned` is pure stdlib itself,
+# and `tag_history` — the sibling that describes itself as "pure functions over
+# values, like `compare`" — already imports it the same way.
+from .formats.owned import ALBUM_FIELDS, LABELS, Owned
+
+if TYPE_CHECKING:  # `types` stays type-only: importing it at runtime pulls mutagen in
     from .formats.types import TagSet, TrackTags
 
 # Emphasis is dropped only when a change is BOTH large and scattered. Size alone
@@ -361,17 +368,110 @@ def compare_field(
 #: recovered Bandcamp URL, MusicBrainz has no opinion on it, and comparing would
 #: invent a difference. Absent from this table entirely would be worse — the
 #: user can't see a tag Harmonist is keeping for them.
-_ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = (
-    ("Album", "album", "album", Kind.TEXT),
-    ("Album artist", "album_artist", "album_artist", Kind.TEXT),
-    ("Date", "date", "date", Kind.SCALAR),
-    ("Label", "label", "label", Kind.TEXT),
-    ("Cat. no.", "catalog_number", "catalog_number", Kind.SCALAR),
-    ("Barcode", "barcode", "barcode", Kind.SCALAR),
-    ("Media", "media", "media", Kind.SCALAR),
+#: Which owned fields want the stacked (TEXT) treatment rather than an inline
+#: arrow. Prose and identifiers stack because they are long; everything else is
+#: short enough to sit on one line. Total over `Owned` — a field added later
+#: without an entry fails the test beside `SCOPE`'s, rather than silently
+#: rendering as a scalar.
+_KINDS: dict[str, Kind] = {
+    Owned.MB_ALBUM_ID: Kind.TEXT,
+    Owned.ALBUM: Kind.TEXT,
+    Owned.ALBUM_ARTIST: Kind.TEXT,
+    Owned.ALBUM_ARTIST_SORT: Kind.TEXT,
+    Owned.MB_ALBUM_ARTIST_IDS: Kind.TEXT,
+    Owned.MB_RELEASE_GROUP_ID: Kind.TEXT,
+    Owned.MB_ALBUM_TYPE: Kind.SCALAR,
+    Owned.MB_ALBUM_STATUS: Kind.SCALAR,
+    Owned.MB_ALBUM_COUNTRY: Kind.SCALAR,
+    Owned.DATE: Kind.SCALAR,
+    Owned.ORIGINAL_DATE: Kind.SCALAR,
+    Owned.SCRIPT: Kind.SCALAR,
+    Owned.LABEL: Kind.TEXT,
+    Owned.CATALOG_NUMBER: Kind.SCALAR,
+    Owned.BARCODE: Kind.SCALAR,
+    Owned.ASIN: Kind.SCALAR,
+    Owned.DISC_TOTAL: Kind.SCALAR,
+    Owned.TITLE: Kind.TEXT,
+    Owned.ARTIST: Kind.TEXT,
+    Owned.ARTIST_SORT: Kind.TEXT,
+    Owned.ARTISTS: Kind.TEXT,
+    Owned.TRACK_NUM: Kind.SCALAR,
+    Owned.TRACK_TOTAL: Kind.SCALAR,
+    Owned.DISC_NUM: Kind.SCALAR,
+    Owned.DISC_SUBTITLE: Kind.TEXT,
+    Owned.MEDIA: Kind.SCALAR,
+    Owned.MB_TRACK_ID: Kind.TEXT,
+    Owned.MB_RELEASE_TRACK_ID: Kind.TEXT,
+    Owned.MB_ARTIST_IDS: Kind.TEXT,
+    Owned.ISRCS: Kind.TEXT,
+}
+
+#: Rows the panel shows but cannot compare, because Harmonist does not write the
+#: tag and so has no MusicBrainz counterpart to put beside it (#164). `mb=None`
+#: is what marks a row uncomparable, and it states a fact rather than a policy:
+#:
+#: * **Genre** — `RELEASE_INCLUDES` does not request `genres`, so no genre is
+#:   ever fetched. There is nothing to compare against. Writing one is #12; if
+#:   that lands, genre becomes owned and joins the compared set automatically,
+#:   because the table below is derived rather than listed.
+#: * **Comment** — user data Harmonist preserves and will never write. Its row
+#:   answers a different question from the rest of the table: not "does this
+#:   match MusicBrainz" but "here is the evidence this album was linked from",
+#:   since `url_recovery` and `reconcile` read a Bandcamp URL out of it.
+_DISPLAY_ONLY: tuple[tuple[str, str, None, Kind], ...] = (
     ("Genre", "genre", None, Kind.TEXT),
     ("Comment", "comment", None, Kind.TEXT),
 )
+
+
+def _disk_value(tags: TrackTags, key: str) -> str | None:
+    """One field's value as this file carries it, as a display string.
+
+    Owned fields come from the `owned` snapshot `read_tags` took off the handle
+    it already had open (#295), which is why widening this panel to thirty
+    fields costs no extra file reads. Genre and Comment are not owned, so they
+    keep their named attribute.
+
+    Lists join with "; " and numbers stringify, matching how the same values are
+    rendered in a History entry — the panel and the record must not describe one
+    tag two ways. Absent, empty and empty-list all collapse to None, the way
+    `owned.values_differ` treats them, so a field the tagger considers unset
+    never renders as a difference against MusicBrainz having nothing either.
+    """
+    return _as_display(tags.owned[key] if key in tags.owned else getattr(tags, key, None))
+
+
+def _as_display(raw: object) -> str | None:
+    """A raw owned value as the page shows it, or None when it counts as absent.
+
+    Shared by both sides of every row so the disk and MusicBrainz halves are
+    formatted by the same code. When they were two expressions they were free to
+    disagree, and a list joined one way here and another way there would render
+    as a difference in a field that matched.
+    """
+    if raw is None or raw == "" or raw == []:
+        return None
+    if isinstance(raw, (list, tuple)):
+        return "; ".join(str(v) for v in raw)
+    return str(raw)
+
+
+def _rows(fields: Sequence[Owned]) -> tuple[tuple[str, str, str | None, Kind], ...]:
+    """`(label, disk key, mb attr, kind)` for each owned field, in `Owned` order."""
+    return tuple((LABELS[f], f.value, f.value, _KINDS[f]) for f in fields)
+
+
+#: The album panel's rows: every album-scoped tag Harmonist writes, then the two
+#: it only displays.
+#:
+#: **Derived, not listed.** It used to be a hand-written tuple of nine, and the
+#: gap between it and `Owned` grew to twenty-one fields without anyone noticing
+#: — so an album whose release had gained an `original_date` differed on disk
+#: while this panel reported every field matching, and its "N of M fields
+#: differ" count measured a denominator that had nothing to do with what a
+#: re-tag would write (#295). Deriving it means a field added to `Owned` is
+#: compared from the day it exists.
+_ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = _rows(ALBUM_FIELDS) + _DISPLAY_ONLY
 
 
 #: The one album field with a second legitimate on-disk spelling — see
@@ -408,13 +508,13 @@ def album_fields(
         # Unreadable files contribute no value — they'd otherwise vote "absent"
         # and drag a field to ONLY_MB, reporting a tag as missing when the truth
         # is that Harmonist couldn't look (#112).
-        values = [(name, getattr(t, disk_attr)) for name, t in tracks if not t.unreadable]
-        mb_value = getattr(mb, mb_attr) if (mb is not None and mb_attr) else None
+        values = [(name, _disk_value(t, disk_attr)) for name, t in tracks if not t.unreadable]
+        mb_value = _as_display(getattr(mb, mb_attr)) if (mb is not None and mb_attr) else None
         row = compare_field(
             label,
             kind=kind,
             disk=consensus(values),
-            mb=mb_value or None,
+            mb=mb_value,
             unreadable=unreadable,
             also_matches=album_title_alias if disk_attr == _ALIASED_FIELD else None,
         )

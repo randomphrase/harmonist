@@ -283,10 +283,17 @@ def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
     assert by_label["Genre"].comparable is False
     assert by_label["Comment"].comparable is False
     assert by_label["Album"].comparable is True
-    # Nine rows shown, seven of them actually compared.
-    assert len(fields) == 9
-    assert len(AlbumComparison(fields=fields).comparable) == 7
-    assert AlbumComparison(fields=fields).summary == "All 7 fields match MusicBrainz"
+    # Every album-scoped tag Harmonist writes is compared, and the two it only
+    # displays are not. Stated against `owned` rather than as literals: the gap
+    # between a hand-written count here and the real field set is what let this
+    # panel omit twenty-one fields (#295), and a test asserting "19" would have
+    # to be edited by the same person who forgot to add the field.
+    from harmonist.formats.owned import ALBUM_FIELDS, LABELS
+
+    assert len(fields) == len(ALBUM_FIELDS) + 2
+    comparable = AlbumComparison(fields=fields).comparable
+    assert len(comparable) == len(ALBUM_FIELDS)
+    assert {f.label for f in comparable} == {LABELS[f] for f in ALBUM_FIELDS}
 
 
 def test_unreadable_files_cannot_push_the_count_past_the_total():
@@ -296,9 +303,13 @@ def test_unreadable_files_cannot_push_the_count_past_the_total():
     fields = album_fields([("1.flac", TrackTags(unreadable=True))], _tagset(album="Obreel"))
     album = AlbumComparison(fields=fields)
 
+    from harmonist.formats.owned import ALBUM_FIELDS
+
     n = len([f for f in album.comparable if f.differs])
     assert n <= len(album.comparable)
-    assert album.summary == "7 of 7 fields differ in MusicBrainz"
+    assert (
+        album.summary == f"{len(ALBUM_FIELDS)} of {len(ALBUM_FIELDS)} fields differ in MusicBrainz"
+    )
 
 
 # ---------- what the consensus pill says (#164) ----------
@@ -775,3 +786,46 @@ def test_the_alias_applies_to_the_album_row_alone():
 
     assert rows["Album"].agreement is Agreement.MATCHES
     assert rows["Album artist"].agreement is Agreement.DIFFERS
+
+
+def test_a_field_outside_the_old_nine_is_compared(tmp_path):
+    """The bug #295 is about, in the shape it was found in.
+
+    *Selected Ambient Works, Volume II* was listed under Update available while
+    its page reported every field matching: MusicBrainz had an `original_date`
+    the files did not carry, and `original_date` was not one of the nine fields
+    this panel compared. The panel was not being terse — its "N of M fields
+    differ" line was measuring a denominator that had nothing to do with what a
+    re-tag would write.
+
+    Goes through `formats.read_tags` rather than a hand-built `TrackTags`,
+    because the fix depends on the `owned` snapshot being taken off the handle
+    that read the file: a fixture that filled `owned` by hand would pass with
+    the backends still not populating it.
+    """
+    d = tmp_path / "Artist" / "Album"
+    d.mkdir(parents=True)
+    dst = d / "01 Track.m4a"
+    shutil.copy(Path(__file__).parent / "fixtures" / "sine.m4a", dst)
+    formats.write_tags(dst, _tagset(album="Obreel", original_date="2019-03-15"), None)
+
+    tags = formats.read_tags(dst)
+
+    # MusicBrainz has an original date the files DO carry — so the row must read
+    # MATCHES. Asserting a difference instead would prove nothing: an absent disk
+    # side is what a broken snapshot produces too, and the test would pass with
+    # the backends not populating `owned` at all.
+    matching = album_fields(
+        [("01 Track.m4a", tags)], _tagset(album="Obreel", original_date="2019-03-15")
+    )
+    by_label = {f.label: f for f in matching}
+    assert by_label["Original date"].agreement is Agreement.MATCHES
+    assert by_label["Original date"].disk == "2019-03-15"
+
+    # And when it genuinely differs, the row says so — the Aphex case.
+    differing = album_fields(
+        [("01 Track.m4a", tags)], _tagset(album="Obreel", original_date="1994-03-07")
+    )
+    row = {f.label: f for f in differing}["Original date"]
+    assert row.agreement is Agreement.DIFFERS
+    assert (row.disk, row.mb) == ("2019-03-15", "1994-03-07")

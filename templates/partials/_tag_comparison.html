@@ -50,7 +50,10 @@
     {% endif %}
 </div>
 
-<dl class="tag-fields">
+{# `--paired`: two label/value pairs per row on a wide viewport (#295). This panel
+   compares every album tag Harmonist writes, so it is nineteen rows; the album
+   header above uses the same grid for three facts and keeps one pair per row. #}
+<dl class="tag-fields tag-fields--paired">
     {% for f in comparison.fields %}
     <dt>{{ f.label }}</dt>
     <dd>

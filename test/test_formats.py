@@ -1311,3 +1311,56 @@ def test_a_superseded_atom_is_reported_so_a_write_can_clear_it(tmp_path):
 def test_an_unsupported_extension_has_no_superseded_tags(tmp_path):
     """Nothing here writes it, so nothing here has anything to clear."""
     assert not formats.has_superseded_tags(tmp_path / "cover.jpg")
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_read_tags_carries_the_same_owned_snapshot_as_read_owned(tmp_path, ext, fixture):
+    """`TrackTags.owned` must equal what a dedicated `read_owned` returns, for
+    every backend and every field (#295).
+
+    The album comparison reads all thirty owned tags off the handle `read_tags`
+    already has open, rather than opening each file a second time. That is only
+    safe while the two reads agree — and a backend where the piggy-backed read
+    was forgotten, or drifted, would not fail loudly: its files would simply
+    report every extra field as "MusicBrainz only" forever, on that format
+    alone. That is the shape of the KNOWN_GAPS escape, so it is checked per
+    format rather than on whichever fixture a test happened to pick.
+    """
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+
+    assert formats.read_tags(f).owned == formats.read_owned(f)
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_the_owned_snapshot_is_populated_not_merely_present(tmp_path, ext, fixture):
+    """The equality above would also hold if both sides were empty. A tagged
+    album has to actually carry values, or a backend returning `{}` from both
+    reads would pass while showing nothing on the page."""
+    d = _make_album(tmp_path, fixture)
+    tag_album(d, _release_one_track())
+    f = next(d.glob(f"*{ext}"))
+
+    owned = formats.read_tags(f).owned
+
+    # Fields the fixture release sets, spanning album- and track-scoped, and
+    # including two the comparison could never show before #295.
+    assert owned["album"] == "Format Album"
+    assert owned["original_date"] or owned["date"]
+    assert owned["mb_album_id"] == "rel-fmt-1"
+
+
+def test_an_unreadable_file_has_an_empty_owned_snapshot(tmp_path):
+    """`read_owned` raises on a file it cannot open; `read_tags` reports
+    `unreadable=True` and the page depends on that difference (#112, #228). The
+    piggy-backed snapshot must follow `read_tags`, not `read_owned` — an
+    exception here would take down the album page for one bad file."""
+    d = _make_album(tmp_path, "sine.m4a")
+    f = next(d.glob("*.m4a"))
+    f.write_bytes(b"not audio at all")
+
+    tags = formats.read_tags(f)
+
+    assert tags.unreadable is True
+    assert tags.owned == {}

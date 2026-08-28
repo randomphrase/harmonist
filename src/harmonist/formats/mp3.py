@@ -243,6 +243,10 @@ def read_tags(path: Path) -> TrackTags:
         duration_ms=round(audio.info.length * 1000) if audio.info.length else None,
         comment=_comment_text(tags),
         release_track_id=_txxx(tags, TXXX_RELEASE_TRACK_ID),
+        # Every owned field too, off the tags already read — see the m4a note
+        # and #295. The album comparison covers all thirty tags Harmonist
+        # writes; doing it with a second read would double the page's opens.
+        owned=_read_owned(tags),
     )
 
 

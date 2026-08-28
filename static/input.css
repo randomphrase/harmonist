@@ -161,9 +161,33 @@ button[disabled],
    near-miss that reads as broken. */
 .tag-fields {
   display: grid;
-  grid-template-columns: 7rem 1fr;
+  grid-template-columns: 7rem minmax(0, 1fr);
   gap: .5rem 1.1rem;
   align-items: baseline;
+}
+/* Two pairs per row once there's width for them (#295). The panel compares every
+   album tag Harmonist writes — nineteen rows, up from nine — and a single column
+   of those pushed the album's actions and its tracklist off the screen.
+
+   No markup change: `dt`/`dd` already flow into this grid in order, so four
+   columns lay them out as two label/value pairs per row. Reading becomes
+   left-to-right, which suits a reference table (nobody reads it top to bottom
+   looking for prose) and is why this is a grid rather than CSS `columns`, which
+   would break a stacked pair across the fold.
+
+   `minmax(0, 1fr)` rather than `1fr`: a grid track's default minimum is its
+   content, so one long value — a joined ISRC list, an artist-credit — would
+   otherwise widen its column and shove the other pair off the panel.
+
+   Scoped to a modifier rather than applied to `.tag-fields` itself, because the
+   album header (`library_detail.html`) uses the same grid for its three or four
+   facts. Those were not the problem and pairing them up is a different design
+   decision nobody asked for. */
+@media (min-width: 60rem) {
+  .tag-fields--paired {
+    grid-template-columns: 7rem minmax(0, 1fr) 7rem minmax(0, 1fr);
+    column-gap: 1.6rem;
+  }
 }
 .tag-fields dt {
   font-size: .62rem;

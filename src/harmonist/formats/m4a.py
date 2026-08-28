@@ -275,6 +275,11 @@ def read_tags(path: Path) -> TrackTags:
         duration_ms=int(audio.info.length * 1000) if audio.info else None,
         comment=_text_atom(audio, ATOM_COMMENT),
         release_track_id=_binary_atom_str(audio, ATOM_MB_RELEASE_TRACK_ID),
+        # Every owned field too, off the handle already open — so the album
+        # comparison can cover all thirty tags Harmonist writes without a second
+        # pass over the file (#295). Free here; a separate `read_owned` call on
+        # the same request would double the page's file opens.
+        owned=_read_owned(audio),
     )
 
 

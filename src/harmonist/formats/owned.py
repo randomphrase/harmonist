@@ -339,3 +339,46 @@ def diff(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, list[
         if values_differ(was, now):
             changed[field.value] = [was, now]
     return changed
+
+
+#: The human name of every owned field, plus artwork. ONE name per field, shared
+#: by History, the re-tag plan (#291) and the album comparison (#295) — a field
+#: called "Original date" in one place and "Original release date" in another
+#: reads as two different facts about the same tag.
+#:
+#: Lives here rather than in a renderer because the label belongs to the field,
+#: and because two renderers each keeping their own list is exactly how the
+#: comparison came to omit twenty-one fields without anyone noticing.
+#:
+LABELS: dict[str, str] = {
+    Owned.MB_ALBUM_ID: "MusicBrainz release",
+    Owned.ALBUM: "Album",
+    Owned.ALBUM_ARTIST: "Album artist",
+    Owned.ALBUM_ARTIST_SORT: "Album artist sort",
+    Owned.MB_ALBUM_ARTIST_IDS: "Album artist IDs",
+    Owned.MB_RELEASE_GROUP_ID: "Release group",
+    Owned.MB_ALBUM_TYPE: "Release type",
+    Owned.MB_ALBUM_STATUS: "Release status",
+    Owned.MB_ALBUM_COUNTRY: "Country",
+    Owned.DATE: "Date",
+    Owned.ORIGINAL_DATE: "Original date",
+    Owned.SCRIPT: "Script",
+    Owned.LABEL: "Label",
+    Owned.CATALOG_NUMBER: "Cat. no.",
+    Owned.BARCODE: "Barcode",
+    Owned.ASIN: "ASIN",
+    Owned.DISC_TOTAL: "Disc total",
+    Owned.TITLE: "Title",
+    Owned.ARTIST: "Artist",
+    Owned.ARTIST_SORT: "Artist sort",
+    Owned.ARTISTS: "Artists",
+    Owned.TRACK_NUM: "Track no.",
+    Owned.TRACK_TOTAL: "Track total",
+    Owned.DISC_NUM: "Disc no.",
+    Owned.MEDIA: "Media",
+    Owned.MB_TRACK_ID: "Recording",
+    Owned.MB_RELEASE_TRACK_ID: "Release track",
+    Owned.MB_ARTIST_IDS: "Artist IDs",
+    Owned.ISRCS: "ISRC",
+    ARTWORK: "Artwork",
+}
