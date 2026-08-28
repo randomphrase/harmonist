@@ -24,6 +24,11 @@ versions follow [semantic versioning](https://semver.org).
   landed where nobody saw them. Harmonist fills the filter in from the releases
   it has already fetched — no MusicBrainz traffic — and keeps it current as you
   browse; re-tagging an album takes it off the list.
+- An album with an update waiting now **says what the update is**, on its own
+  page under the Tags comparison (#291) — field by field, before and after, in
+  the same form the History entry takes once you've applied it. The comparison
+  above it shows nine headline fields, so an album could previously be listed as
+  having an update and still read as matching on every row shown.
 - Harmonist now **rescans your library once an hour** as a backstop (#151), for
   the cases where its file watcher isn't working and can't tell you so — a
   library mounted over the network, where the watcher is blind, or a watcher

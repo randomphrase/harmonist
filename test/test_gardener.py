@@ -62,6 +62,19 @@ def _album_dir(root: Path, *, tracks: int = 1) -> Path:
     return d
 
 
+def _flag(album: Album, release: dict) -> bool:
+    """Look at `album` against `release` and report the verdict.
+
+    Asserts go through the flag rather than `refresh_flag`'s return value on
+    purpose: the return is the *plan*, which is None both for an album that
+    could not be read and for one whose tracklist no longer fits — two opposite
+    verdicts. `update_available` is the single answer, and it is what the
+    Library reads.
+    """
+    gardener.refresh_flag(album, release)
+    return album.update_available
+
+
 def _tagged(root: Path, release: dict, *, tracks: int = 1) -> Album:
     """An album tagged from `release`, as the scanner sees it afterwards."""
     d = _album_dir(root, tracks=tracks)
@@ -77,14 +90,14 @@ def test_an_album_carrying_what_musicbrainz_says_has_no_update(tmp_path):
     release = _release()
     album = _tagged(tmp_path, release)
 
-    assert gardener.would_change(album, release) is False
+    assert _flag(album, release) is False
 
 
 def test_an_edit_upstream_is_an_update(tmp_path):
     """The case the feature exists for: MusicBrainz moved, the files didn't."""
     album = _tagged(tmp_path, _release())
 
-    assert gardener.would_change(album, _release("Test Album (remastered)")) is True
+    assert _flag(album, _release("Test Album (remastered)")) is True
 
 
 def test_an_edit_that_was_taken_back_upstream_leaves_nothing_outstanding(tmp_path):
@@ -95,8 +108,8 @@ def test_an_edit_that_was_taken_back_upstream_leaves_nothing_outstanding(tmp_pat
     original = _release()
     album = _tagged(tmp_path, original)
 
-    assert gardener.refresh_flag(album, _release("Test Album (remastered)")) is True
-    assert gardener.refresh_flag(album, original) is False
+    assert _flag(album, _release("Test Album (remastered)")) is True
+    assert _flag(album, original) is False
     assert album.update_available is False
 
 
@@ -107,7 +120,7 @@ def test_the_release_growing_a_track_is_an_update_not_an_error(tmp_path):
     hide exactly the case the user most needs to see."""
     album = _tagged(tmp_path, _release())
 
-    assert gardener.would_change(album, _release(tracks=2)) is True
+    assert _flag(album, _release(tracks=2)) is True
 
 
 def test_an_unreadable_file_leaves_the_flag_as_it_was(tmp_path):
@@ -121,7 +134,7 @@ def test_an_unreadable_file_leaves_the_flag_as_it_was(tmp_path):
 
     (album.path / "01 Track 1.m4a").write_bytes(b"not an m4a at all")
 
-    assert gardener.refresh_flag(album, release) is True  # unchanged, not cleared
+    assert _flag(album, release) is True  # unchanged, not cleared
 
 
 def test_the_warm_up_rebuilds_flags_without_asking_musicbrainz(tmp_path, monkeypatch):
@@ -386,4 +399,88 @@ def test_a_picard_tagged_album_does_not_flag_on_the_release_type(tmp_path):
     f[ATOM_MB_ALBUM_TYPE] = [b"album"]
     f.save()
 
-    assert gardener.would_change(album, release) is False
+    assert _flag(album, release) is False
+
+
+# ---------------------------------------------------------------------------
+# Explaining the flag (#291)
+# ---------------------------------------------------------------------------
+
+
+def test_the_plan_renders_the_same_rows_as_a_history_entry(tmp_path):
+    """One renderer, two questions — *what did that tagging change?* and *what
+    would this one change?* — so an update waiting on an album reads exactly like
+    the History entry it becomes. Two views of one plan would drift, and the one
+    nobody was looking at would be the one that went wrong."""
+    from harmonist import tag_history
+
+    album = _tagged(tmp_path, _release())
+    plan = gardener.refresh_flag(album, _release("Test Album (remastered)"))
+    assert plan is not None
+
+    rows = tag_history.from_plan(plan, album.path, sorted(album.path.glob("*.m4a")))
+
+    assert [(r.label, r.before, r.after) for r in rows] == [
+        ("Album", "Test Album", "Test Album (remastered)")
+    ]
+
+
+def test_reach_counts_every_file_not_just_the_changed_ones(tmp_path):
+    """`summarise` takes its total from the record count, so handing it only the
+    files the plan touches would report "all tracks" for a field that moved on
+    one of three."""
+    from mutagen.mp4 import MP4
+
+    from harmonist import tag_history
+    from harmonist.tagger import ATOM_TITLE
+
+    release = _release(tracks=3)
+    album = _tagged(tmp_path, release, tracks=3)
+    # One track's title drifts; the other two already match MusicBrainz.
+    f = MP4(album.path / "02 Track 2.m4a")
+    f[ATOM_TITLE] = ["Trak 2"]
+    f.save()
+
+    plan = gardener.refresh_flag(album, release)
+    assert plan is not None
+    rows = tag_history.from_plan(plan, album.path, sorted(album.path.glob("*.m4a")))
+
+    assert [(r.label, r.reach) for r in rows] == [("Title", "1 of 3 tracks")]
+
+
+def test_the_album_page_explains_an_update_the_comparison_cannot_show(engaged, monkeypatch):
+    """The bug this closes: `original_date` and `mb_album_type` are not among the
+    nine fields `compare._ALBUM_FIELDS` shows, so an album could be listed under
+    Update available and read as fully matching when opened, with no third place
+    to look."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    moved = _release() | {
+        "release-group": {
+            "id": "rg-aaa",
+            "primary-type": "Album",
+            "first-release-date": "1994-03-07",
+        }
+    }
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: moved)
+    client, runner = engage()
+
+    body = client.get(f"/library/{runner.albums()[0].id}/compare").text
+
+    assert "Update available" in body
+    assert "Original date" in body  # the field the Tags panel never shows
+    assert "1994-03-07" in body
+
+
+def test_an_album_with_nothing_waiting_says_nothing(engaged, monkeypatch):
+    """No empty "Update available" heading on an album that is up to date — the
+    section has to be absent, not present-and-blank, or every album grows a box
+    telling the reader there is nothing to tell them."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: _release())
+    client, runner = engage()
+
+    body = client.get(f"/library/{runner.albums()[0].id}/compare").text
+
+    assert "Update available" not in body

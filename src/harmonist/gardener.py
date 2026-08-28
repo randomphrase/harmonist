@@ -62,13 +62,19 @@ log = logging.getLogger(__name__)
 WARM_PAUSE = timedelta(milliseconds=50)
 
 
-def would_change(album: Album, release: Release) -> bool:
-    """Whether re-tagging `album` against `release` would change an owned tag.
+def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
+    """What re-tagging `album` against `release` would change, without writing.
 
-    `TagMismatchError` counts as **True**, not as a failure: the file count no
-    longer matching the release's tracklist is a structural change, which is one
-    of the loudest things MusicBrainz can do to an album and precisely what the
-    user needs to be told about (#266, #267).
+    The plan is both the verdict and the explanation: a non-empty `changes` is
+    the update-available flag, and the very same object renders the field-by-
+    field account the album page shows (#291). One computation, so the Library
+    and the album page can never disagree about whether there is anything to
+    take — the confusion #291 was filed for.
+
+    `TagMismatchError` propagates rather than being folded into an empty plan:
+    the file count no longer matching the release's tracklist is a structural
+    change, one of the loudest things MusicBrainz can do to an album, and it
+    counts as an update (#266, #267). `update_flag` is what turns it into one.
 
     Artwork is out of scope — `cover_path=None`, so the plan leaves each file's
     own art alone and the verdict is about tags only. Asking the Cover Art
@@ -87,28 +93,24 @@ def would_change(album: Album, release: Release) -> bool:
     be read: that is "I could not tell", which is not the same as "nothing to
     take" and must not be returned as one. `refresh_flag` absorbs it.
     """
-    try:
-        plan = tagger.plan_album(
-            album.path,
-            release,
-            cover_path=None,
-            # Same reading the re-tag button makes (`web/main.py:3829`), so the
-            # flag never promises an update that the button would refuse to
-            # apply. Without it every INCOMPLETE album raises below and flags
-            # permanently — a defect the Incomplete filter already gathers, and
-            # not an update MusicBrainz is offering.
-            incomplete=album.state == AlbumState.INCOMPLETE,
-            # An album can span several directories (#197); planning over the
-            # primary one alone would miss whatever the other discs need.
-            files=album_files.for_paths(album.folders),
-        )
-    except tagger.TagMismatchError:
-        return True
-    return bool(plan.changes)
+    return tagger.plan_album(
+        album.path,
+        release,
+        cover_path=None,
+        # Same reading the re-tag button makes (`web/main.py:3829`), so the
+        # flag never promises an update that the button would refuse to apply.
+        # Without it every INCOMPLETE album raises `TagMismatchError` and flags
+        # permanently — a defect the Incomplete filter already gathers, and not
+        # an update MusicBrainz is offering.
+        incomplete=album.state == AlbumState.INCOMPLETE,
+        # An album can span several directories (#197); planning over the
+        # primary one alone would miss whatever the other discs need.
+        files=album_files.for_paths(album.folders),
+    )
 
 
-def refresh_flag(album: Album, release: Release) -> bool:
-    """Set `album.update_available` from `release`, and return what it now says.
+def refresh_flag(album: Album, release: Release) -> tagger.AlbumPlan | None:
+    """Set `album.update_available` from `release`; return the plan behind it.
 
     The tolerant wrapper every caller uses. A file that cannot be read leaves
     the flag **as it was** rather than clearing it: the album page's comparison
@@ -116,19 +118,33 @@ def refresh_flag(album: Album, release: Release) -> bool:
     mount must not quietly empty the filter. Under-reporting is the direction
     this feature fails in by design (see `Album.update_available`).
 
+    **A None is not "nothing to take".** It means no plan could be built — the
+    files could not be read, or the release no longer fits them — and in the
+    second of those the flag is set to True. Read the verdict off
+    `album.update_available`; the return value is only for callers that want to
+    *show* the difference, and there is nothing to show in either case. (The
+    structural case is not left unexplained: the album page reports it through
+    `_shape_mismatch` and `absent_media`, which say far more about it than a
+    field diff could.)
+
     Mutating the Album in place is what makes the flag visible to the Library:
     `ScanRunner.albums()` hands out the live snapshot, so this is the same
     object the grid will render.
     """
     try:
-        album.update_available = would_change(album, release)
+        plan = plan_for(album, release)
+    except tagger.TagMismatchError:
+        album.update_available = True
+        return None
     except formats.READ_ERRORS:
         # Loud, per the unattended rule: at 3am the log is the only channel.
         # ERROR rather than WARNING — nothing recovered, we simply cannot say
         # whether this album has an update, and it will keep reporting whatever
         # it last said until something can read it.
         log.exception("could not tell whether %s has a tag update available", album.path)
-    return album.update_available
+        return None
+    album.update_available = bool(plan.changes)
+    return plan
 
 
 def warm_from_cache(albums: Iterable[Album], *, pause: timedelta = WARM_PAUSE) -> int:
@@ -164,7 +180,11 @@ def warm_from_cache(albums: Iterable[Album], *, pause: timedelta = WARM_PAUSE) -
         if release is None:
             continue  # never fetched, or fetched under a different `inc`
         looked += 1
-        if refresh_flag(album, release):
+        refresh_flag(album, release)
+        # The verdict is the flag, not the return value — a None comes back both
+        # for an unreadable album (not flagged) and for one whose tracklist no
+        # longer fits (flagged), so counting the return would undercount.
+        if album.update_available:
             flagged += 1
         if pause > timedelta(0):
             time.sleep(pause.total_seconds())

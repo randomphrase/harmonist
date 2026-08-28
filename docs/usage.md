@@ -201,6 +201,13 @@ you tagged it — each with its count:
   corrected, a release date fixed, a track retitled. Re-tag from the album's page
   to take it, and the album drops off the list.
 
+  The album's own page says *what* the update is, under the Tags comparison —
+  each field with its before and after, laid out the way the History entry will
+  be once you've applied it. Worth knowing that this list is longer than the
+  comparison above it: the comparison shows nine headline fields a person would
+  recognise, while a re-tag writes all thirty Harmonist owns, so most of what
+  turns up here is detail the comparison never had room for.
+
   Harmonist works this out from the MusicBrainz releases it has already fetched,
   so the filter costs no lookups and fills in as you browse — an album you open
   is checked while you're there. That does mean the list is what Harmonist has

@@ -3756,7 +3756,7 @@ def _register_routes(app: FastAPI) -> None:
         # Costs one read per file on top of the comparison, which is affordable
         # on a page the user asked for and is exactly why the Library's own
         # render cannot do this for every tile.
-        gardener.refresh_flag(album, release)
+        plan = gardener.refresh_flag(album, release)
         ctx = _ctx(
             request,
             album=album,
@@ -3775,6 +3775,20 @@ def _register_routes(app: FastAPI) -> None:
             # that failed the write it was just asked for) — "read just now" is
             # then still true of the fetch that produced this response.
             mb_read_at=mb_cache.fetched_at(sc.mb_release_id) or datetime.now(UTC),
+            # What a re-tag would actually change, field by field (#291). Free:
+            # `refresh_flag` just built this plan to set the flag, so rendering
+            # it costs no further reads — and without it the page can show every
+            # field matching while the Library says an update is waiting, which
+            # is a dead end with no third place to look.
+            #
+            # The panel above compares nine curated fields; the plan covers all
+            # thirty Harmonist owns, which is exactly the gap. Rendered through
+            # `tag_history`, so it reads like the History entry it will become.
+            update_changes=(
+                tag_history.from_plan(plan, album.path, album_files.for_paths(album.folders))
+                if plan is not None and plan.changes
+                else ()
+            ),
         )
         return _templates(request).TemplateResponse(request, "partials/library_compare.html", ctx)
 

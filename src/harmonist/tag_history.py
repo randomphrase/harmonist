@@ -23,8 +23,10 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+from . import album_files
 from .compare import Run, diff_runs
 from .formats.owned import ARTWORK, SCOPE, Owned, Scope
 
@@ -350,6 +352,53 @@ def _pair(entry: Any) -> tuple[Any, Any] | None:
     if isinstance(entry, (list, tuple)) and len(entry) == 2:
         return entry[0], entry[1]
     return None
+
+
+@dataclass(frozen=True)
+class _PlannedFile:
+    """One file's share of a re-tag that has NOT happened, shaped like the
+    stored record `summarise` expects — `file`, `position`, `changes`.
+
+    Deliberately structural rather than a shared base class: `summarise` is
+    already duck-typed over `activity_store.TagChanges` because the two live in
+    different layers, and this is the second caller taking advantage of it, not
+    a new coupling.
+    """
+
+    file: str
+    position: str | None
+    changes: Mapping[str, Any]
+
+
+def from_plan(plan: Any, album_dir: Path, files: Sequence[Path]) -> tuple[FieldChange, ...]:
+    """The same field-first rows as `summarise`, for a re-tag not yet done.
+
+    This is what lets one renderer serve two questions — *what did that tagging
+    change?* and *what would this one change?* — so an update waiting on an
+    album reads exactly like the History entry it will become (#291). Two views
+    of one plan would drift, and the second would be the one nobody noticed had
+    gone wrong.
+
+    `files` is **every** file in the album, not just the ones the plan touches:
+    `summarise` takes its `total` from the record count, and that total is what
+    `reach` renders. Passing only the changed files would report "all tracks"
+    for a field that moved on three of twenty-seven.
+
+    `position` is the file's place in track order rather than a tag read. The
+    plan does not carry track numbers, and this value reaches exactly one place
+    — the "#" column of the per-track disclosure — where the album's own file
+    order is what the reader is looking at anyway.
+    """
+    return summarise(
+        [
+            _PlannedFile(
+                file=album_files.rel_name(album_dir, path),
+                position=str(i),
+                changes=plan.changes.get(path, {}),
+            )
+            for i, path in enumerate(files, start=1)
+        ]
+    )
 
 
 def summarise(records: Sequence[Any]) -> tuple[FieldChange, ...]:
