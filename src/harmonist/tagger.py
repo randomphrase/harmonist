@@ -991,8 +991,19 @@ def _build_tagset(
         script=(release.get("text-representation") or {}).get("script") or None,
         mb_album_artist_ids=_artist_ids(release.get("artist-credit")),
         mb_release_group_id=rg.get("id"),
-        mb_album_type=rg.get("primary-type"),
-        # Picard writes the status lower-cased (e.g. "official", not "Official").
+        # Picard lower-cases BOTH of these — "album", not "Album"; "official",
+        # not "Official" — so Harmonist does too, or an adopted library differs
+        # from us on a field forever (#290). It differed on the type for exactly
+        # that reason: the status was normalised here and the type was not, and
+        # the gap is invisible because both fields look right in isolation.
+        #
+        # Cost of getting it wrong is not one bad row: `mb_album_type` is
+        # Identity under the significance map (design §"Identity"), so the
+        # gardener would route ~90% of an adopted library to the Inbox on its
+        # first night over a capital letter — #283's failure mode on a second
+        # field. Any future field taken from a MusicBrainz vocabulary belongs in
+        # this pair, not beside it.
+        mb_album_type=(rg.get("primary-type") or "").lower() or None,
         mb_album_status=(release.get("status") or "").lower() or None,
         mb_album_country=release.get("country"),
         mb_track_id=(track.get("recording") or {}).get("id"),

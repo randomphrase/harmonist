@@ -365,3 +365,25 @@ def test_stored_release_reads_the_store_and_never_the_network(tmp_path, monkeypa
     activity_store.store_release(mbid, "+".join(sorted(mb_lookup.RELEASE_INCLUDES)), stored)
 
     assert mb_cache.stored_release(mbid) == copy.deepcopy(stored)
+
+
+def test_a_picard_tagged_album_does_not_flag_on_the_release_type(tmp_path):
+    """Picard writes `MusicBrainz Album Type` lowercase, as it does the status.
+    Harmonist wrote the status the same way and the type verbatim from
+    MusicBrainz, so every Picard-tagged album in an adopted library differed on
+    that one field forever — ~90% of a real library, and `mb_album_type` is
+    classified Identity, so the gardener would have sent all of it to the Inbox
+    on its first night (#290).
+    """
+    from mutagen.mp4 import MP4
+
+    from harmonist.tagger import ATOM_MB_ALBUM_TYPE
+
+    release = _release()
+    album = _tagged(tmp_path, release)
+    # What Picard leaves on disk, which is what an adopted library carries.
+    f = MP4(album.path / "01 Track 1.m4a")
+    f[ATOM_MB_ALBUM_TYPE] = [b"album"]
+    f.save()
+
+    assert gardener.would_change(album, release) is False

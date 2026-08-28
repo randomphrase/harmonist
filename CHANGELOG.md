@@ -6,6 +6,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- Harmonist wrote **MusicBrainz Album Type** capitalised (`Album`) where Picard
+  writes it lowercase (`album`), so nearly every album in a library adopted from
+  Picard disagreed with Harmonist on that one field permanently — showing up as a
+  re-tag that never settled, and, once the Update available filter arrived, as
+  most of the library apparently needing an update (#290). Both this and
+  **Album Status** now match Picard. Albums Harmonist tagged itself will show one
+  corrective update.
+
 ### Added
 
 - The Library has an **Update available** filter (#287), gathering albums whose

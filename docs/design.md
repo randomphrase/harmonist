@@ -814,8 +814,10 @@ Per-album (same on every track):
 - `----:com.apple.iTunes:MusicBrainz Album Id` — release MBID
 - `----:com.apple.iTunes:MusicBrainz Album Artist Id` — release-artist MBID(s)
 - `----:com.apple.iTunes:MusicBrainz Release Group Id`
-- `----:com.apple.iTunes:MusicBrainz Album Type`
-- `----:com.apple.iTunes:MusicBrainz Album Status`
+- `----:com.apple.iTunes:MusicBrainz Album Type` — **lower-cased** (`album`, not
+  `Album`), matching Picard. Primary type only; secondary types are not written.
+- `----:com.apple.iTunes:MusicBrainz Album Status` — **lower-cased** (`official`),
+  matching Picard.
 - `----:com.apple.iTunes:MusicBrainz Album Release Country`
 
 Per-track:

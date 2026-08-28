@@ -407,8 +407,9 @@ def test_tag_album_writes_all_album_atoms(album_with_tracks):
     assert _atom_str(track1, ATOM_MB_ALBUM_ID) == "rel-aaa"
     assert _atom_strs(track1, ATOM_MB_ALBUM_ARTIST_ID) == ["art-aaa"]
     assert _atom_str(track1, ATOM_MB_RELEASE_GROUP_ID) == "rg-aaa"
-    assert _atom_str(track1, ATOM_MB_ALBUM_TYPE) == "Album"
-    assert _atom_str(track1, ATOM_MB_ALBUM_STATUS) == "official"  # Picard lower-cases status
+    # Both lower-cased, matching Picard — see #290.
+    assert _atom_str(track1, ATOM_MB_ALBUM_TYPE) == "album"
+    assert _atom_str(track1, ATOM_MB_ALBUM_STATUS) == "official"
     assert _atom_str(track1, ATOM_MB_ALBUM_COUNTRY) == "GB"
     assert _atom_str(track1, ATOM_LABEL) == "Test Label"
     assert _atom_str(track1, ATOM_CATALOG) == "CAT-001"
