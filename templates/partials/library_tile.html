@@ -29,6 +29,40 @@
         {# Bandcamp-style "New" flag (teal — a reserved badge colour). #}
         <span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-2xs font-bold uppercase tracking-widest rounded bg-bc-teal text-white shadow-sm">New</span>
         {% endif %}
+        {% if album.update_available %}
+        {# MusicBrainz purple, because that is already what it means everywhere
+           else in Harmonist — the MB side of a tag comparison, the Reconciling
+           and Tagging pills. This badge reports a MusicBrainz fact, so it says
+           so in Harmonist's existing word for one rather than introducing a
+           fourth colour for the palette to mean something by.
+
+           Tinted rather than solid: amber is "this needs attention" and teal is
+           the New flag, and an available update is neither a defect nor an
+           event. Same weight as the Incomplete badge, so it reads as a note.
+
+           The tint is an OPAQUE token, not `bg-mb-purple/15` as the inbox pills
+           use. Those sit on the page's white ground, where the alpha resolves
+           to this exact colour; a badge sits on album art, where it resolves to
+           whatever the cover is and the artwork shows straight through the
+           word. `bg-amber-50` on the Incomplete badge below is opaque for the
+           same reason.
+
+           Top-left is the last free corner that keeps the two flags on one
+           eye-line: New is top-right, Incomplete bottom-left.
+
+           **The badge is a positive claim only.** `update_available` under-
+           reports by design — it is False for an album nothing has compared
+           yet — so no badge means "nothing found *or* not looked at", never
+           "this one is fine". That is why there is no third, "unchecked" state
+           here: on a library the background check (#270) has not swept, it
+           would mark almost every tile and read as though the whole library
+           were broken. What makes the absence close to meaningful is turning
+           that check on; see docs/usage.md. #}
+        <span class="absolute top-1.5 left-1.5 px-1.5 py-0.5 text-2xs font-bold rounded bg-mb-purple-soft text-mb-purple border border-mb-purple/40"
+              title="MusicBrainz has something these files don't have yet — open the album to see what, and re-tag to take it">
+            Update
+        </span>
+        {% endif %}
         {% if album.state == AlbumState.INCOMPLETE %}
         {# The count comes from the files' own tags (#195), and is absent when a
            whole disc is missing — nothing on disk records how long it was. Say

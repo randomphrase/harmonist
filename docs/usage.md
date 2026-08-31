@@ -217,6 +217,12 @@ you tagged it — each with its count:
   Harmonist met it hasn't been compared yet, so it won't be here even if there is
   something waiting. The filter under-reports rather than inventing work.
 
+  A flagged album also carries a purple **Update** badge on its Library tile, so
+  you meet one while browsing rather than only when you go looking for them. The
+  badge is a positive signal only: it appears where there *is* something waiting,
+  and its absence means "nothing found, or not compared yet" — never "this one is
+  fine".
+
   You can have Harmonist go and look instead of waiting to be asked. Set
   `level = "review"` under `[gardener]` in `harmonist.toml` and a small
   background pass works through the library, checking the albums it has looked

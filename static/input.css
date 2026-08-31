@@ -29,6 +29,12 @@
   --color-mb-purple: #BA478F;
   --color-mb-orange: #EB743B;
   --color-bc-teal: #00A19D;
+  /* mb-purple at 15% composited on white, as an OPAQUE colour. The pills on
+     the inbox get the same tint from `bg-mb-purple/15`, which works because
+     they sit on the page's white ground — over a cover image that same class
+     is translucent and the artwork bleeds through the badge (#293). Anything
+     that tints on top of album art needs the flat value, not the alpha. */
+  --color-mb-purple-soft: #F5E3EE;
 
   /* Primary accent — orange. Contrasts with the purple/teal badges. Hue-
      neutral token name so the colour can change without touching templates.

@@ -8,6 +8,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- An album with a MusicBrainz update waiting carries an **Update** badge on its
+  Library tile (#293).
 - Harmonist can **check your library against MusicBrainz in the background**, so
   the **Update available** filter finds albums nobody has opened (#270). Off by
   default — set `level = "review"` under `[gardener]`. It never writes to your

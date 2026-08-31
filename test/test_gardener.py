@@ -344,6 +344,44 @@ def test_the_library_filter_narrows_to_albums_with_an_update(engaged, monkeypatc
     assert "Untouched Album" not in body
 
 
+def test_a_flagged_album_says_so_on_its_tile(engaged):
+    """The filter gathers them; the badge means you meet one while browsing
+    rather than only when you go looking (#293).
+
+    The absence half is asserted because a live path produces it: the very same
+    template renders the badge for the album beside this one, so this is "the
+    badge is conditional", not "a string is missing from the page"."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    other = _release("Untouched Album") | {"id": "rel-bbb"}
+    d = cfg.paths.music_dir / "Test Artist" / "Untouched"
+    d.mkdir(parents=True)
+    shutil.copy(SINE_M4A, d / "01 Track 1.m4a")
+    tagger.tag_album(d, other)
+    sc.write(d, Sidecar(mb_release_id="rel-bbb", tagged_at=datetime.now(UTC)))
+    client, runner = engage()
+    flagged = next(a for a in runner.albums() if a.title == "Test Album")
+    flagged.update_available = True
+
+    body = client.get("/library").text
+
+    assert "Update" in _tile_for(body, "Test Album")
+    assert "bg-mb-purple-soft" in _tile_for(body, "Test Album")
+    assert "bg-mb-purple-soft" not in _tile_for(body, "Untouched Album")
+
+
+def _tile_for(body: str, title: str) -> str:
+    """The one Library tile for `title`, as HTML.
+
+    Asserting against the whole page would let "Update" match the filter chip
+    or anything else on it, so the badge would read as present on every album —
+    including the one it must not be on, which is the half of the test with
+    something to prove.
+    """
+    tiles = body.split('<a id="lib-')[1:]
+    return next(t for t in tiles if f">{title}</div>" in t)
+
+
 def test_the_filter_chip_is_dead_until_something_has_an_update(engaged):
     """A chip worth 0 says so before it is picked, rather than answering with an
     empty grid — the same promise the other three filters make, and the reason
