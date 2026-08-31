@@ -70,13 +70,24 @@ FRESH = timedelta(0)
 
 # When a live fetch is slow enough to be worth a line in the log (#300).
 #
-# Comfortably above the floor rather than near it: musicbrainzngs paces requests
-# at one per second (`MB_RATE_LIMIT_SECONDS`), so a *healthy* fetch can spend a
-# second waiting its turn before the network is touched at all. A threshold near
-# that would warn on every album and the log would be noise inside a day. Five
-# seconds means something else is happening — a queue behind other callers, or a
-# request that has stalled.
-_SLOW_FETCH = timedelta(seconds=5)
+# Calibrated against the SLOWEST SUPPORTED TARGET, not the developer's machine
+# (#314). The two are far enough apart to invert the answer: a dev Mac fetches a
+# release in 0.6–3.3s (median ~2s), while the same fetch on a NAS costs ~7.3s
+# every time — six-include releases (`RELEASE_INCLUDES`) are a large XML document
+# and parsing one is CPU-bound, so the gap is the hardware, not the network.
+#
+# The first value here was five seconds, chosen against the one-per-second pacing
+# floor (`MB_RATE_LIMIT_SECONDS`) on the reasoning that a threshold near the floor
+# would warn on every album. Right principle, wrong reference point: the floor is
+# not the cost. On a NAS it warned on 11 fetches out of 11, which is the failure
+# the reasoning was trying to avoid — and a warning that fires every time is one
+# nobody reads, which costs us the stalled request (#299) the guard exists to
+# catch.
+#
+# Twenty seconds sits well clear of ~7.3s with room for a slower box still, and
+# well under the point a user would call the page hung. Raise it, don't lower it,
+# if a supported platform ever reports normal fetches near this.
+_SLOW_FETCH = timedelta(seconds=20)
 
 
 def configure(ttl: timedelta) -> None:

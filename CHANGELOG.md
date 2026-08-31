@@ -17,6 +17,12 @@ versions follow [semantic versioning](https://semver.org).
 - **Check now**, beside that setting, runs a background check straight away
   instead of waiting up to an hour for the next one (#312).
 
+### Fixed
+
+- The log no longer warns that a **MusicBrainz fetch was slow** on every single
+  fetch. The threshold sat below what a normal fetch costs on a NAS, so the
+  warning fired constantly and drowned out the stalls it exists to report (#314).
+
 ## [1.12.0] - 2026-08-28
 
 ### Added
