@@ -403,9 +403,17 @@ button[disabled],
    can compare down, rather than a ragged edge.
    By CLASS, not `:last-child`: the "not on disk" and "couldn't read" notes span
    the value columns and so are a last child too, and they belong under the title
-   they're about, not flung to the right margin. */
-.track-diff__num,
-.track-diff__len {
+   they're about, not flung to the right margin.
+
+   Scoped under `.track-diff` purely for SPECIFICITY, and that is the whole of
+   #261's item 2 (the "Length heading looks wrong" nobody had pinned down). The
+   heading rule above is `.track-diff th` — one class and one element, 0-1-1 —
+   and the bare `.track-diff__len` it was fighting is 0-1-0, so `text-align:
+   left` won on every `<th>` that carried the class. The # and Length headings
+   sat left over columns of right-aligned values. Two classes settles it without
+   touching the cascade anywhere else; `!important` would have hidden the reason. */
+.track-diff .track-diff__num,
+.track-diff .track-diff__len {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
