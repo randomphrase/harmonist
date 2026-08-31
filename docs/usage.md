@@ -217,6 +217,15 @@ you tagged it — each with its count:
   Harmonist met it hasn't been compared yet, so it won't be here even if there is
   something waiting. The filter under-reports rather than inventing work.
 
+  You can have Harmonist go and look instead of waiting to be asked. Set
+  `level = "review"` under `[gardener]` in `harmonist.toml` and a small
+  background pass works through the library, checking the albums it has looked
+  at least recently against MusicBrainz — roughly a hundred an hour while
+  nothing else is happening, so every album comes round about weekly. It only
+  ever *looks*: taking an update is still a button you press. It waits for any
+  sync, reconcile or scan to finish rather than competing with them, and it is
+  off until you turn it on.
+
 Search and the filters compose: searching inside a filter narrows within it, and
 the chip counts follow the search, so each one tells you what it would actually
 show. When both are on, the box says which filter it's searching inside, and an

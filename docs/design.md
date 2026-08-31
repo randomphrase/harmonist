@@ -1058,7 +1058,7 @@ src/harmonist/
     reconcile_runner.py Reconciliation pass over the library (rate-limited MB)
     scan_runner.py      Cache-backed library scan + status
     dir_watcher.py      watchfiles watcher → rescan when the music dir settles
-    periodic.py         Generic interval task → the hourly library rescan
+    periodic.py         Generic interval task → the hourly rescan + update check
 ```
 
 Templates and static assets live at the **project root** (`/templates`,
@@ -1100,6 +1100,9 @@ user_agent = "Harmonist/0.1 ( harmonist@girtby.net )"
 [server]
 host = "0.0.0.0"
 port = 8000
+
+[gardener]
+level = "off"      # off | review  (#273 adds enrich)
 
 [test]
 mode = "fixture"   # fixture | cassette | live
@@ -1321,6 +1324,56 @@ level is right for the log and wrong for the feed: nothing failed, nothing was
 lost, and there is nothing to act on. The distinction is worth holding onto when
 adding any new WARNING: the mirror's rule is *every warning is news the user
 should see*, which is true of a failure and false of a stopwatch.
+
+#### The background update check
+
+The second caller of that timer, and the scheduled half of the metadata
+gardener (#270): `gardener.sweep`, on a worker thread, asking MusicBrainz about
+the albums whose release payload is stalest and setting `update_available` from
+what comes back. It is what makes the Library's **Update available** filter
+report on albums nobody has opened, rather than only on the ones a human has
+already looked at.
+
+**Off unless asked for** (`[gardener] level`, `off` by default). The pass writes
+nothing to anybody's files, so the default is not protecting the library — it is
+protecting the MusicBrainz budget, which is a volunteer service and one request
+per second for everything Harmonist does. `review` is the only other level
+today; #273 adds `enrich`, the level at which some of what the pass finds gets
+applied on its own.
+
+**Detect-only is the classifier's answer, not a phase.** `owned.AUTO_APPLY` is
+empty, so every change needs a person; until #271 gives a finding somewhere to
+live there is nothing for an unattended pass to hand one to. The consequence
+worth stating is that this pass *cannot damage a library* — the strongest thing
+that can be said about a background job that runs while nobody is watching.
+
+**The early exit is the idempotency invariant, mechanically.** The stored
+payload is read before the fetch and an unchanged one ends that album there: no
+file reads, no plan, nothing recorded. A second pass over a library MusicBrainz
+has not touched costs its requests and nothing else. Note the asymmetry that
+makes this correct — an unchanged payload *skips* an album, it never *clears*
+its flag, because "MusicBrainz has not moved" and "the files have nothing
+outstanding" are different facts and an album whose update was never applied
+still has one.
+
+**The queue is dated off the cache**, `mb_cache.fetch_times()`, so scheduling
+needs no state of its own: `fetched_at` already says when each release was last
+read, never-fetched sorts first, and an album asked about inside
+`gardener.RECHECK_AFTER` is skipped. Two cases escape that clock and would
+otherwise cost a request per pass forever, because neither leaves a refreshed
+row under the id the sidecar names — a **merged** release, whose row lands under
+the id MusicBrainz redirected to (§5), and a **deleted** one, which stores
+nothing at all because a negative is never cached. `gardener._asked` remembers
+the ids this process has spent a request on, which closes both.
+
+**It stands aside** for a sync, a reconcile pass, or a library that has not been
+scanned yet, and refuses to start on top of a pass still running. One reason
+between them: the rate limit is a single shared queue and anything the user set
+in motion is waiting on it, while the check's albums have waited a week and can
+wait another hour. And when MusicBrainz keeps failing it gives up for the pass
+rather than spending a request per album to learn the same thing each time — a
+404 is an answer and does not count towards that, or a library with five
+deleted releases would abort every pass at the fifth.
 
 #### The per-album refresh
 

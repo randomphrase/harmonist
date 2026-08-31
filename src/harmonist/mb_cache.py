@@ -188,3 +188,20 @@ def fetched_at(mbid: str) -> datetime | None:
     """
     cached = activity_store.cached_release(mbid, _key(mb_lookup.RELEASE_INCLUDES))
     return None if cached is None else cached.fetched_at
+
+
+def fetch_times() -> dict[str, datetime]:
+    """`fetched_at` for every release this install has fetched, in one query.
+
+    What the background pass schedules off (#270): it wants the stalest albums
+    first, which is a question about the whole table rather than about one
+    album, and asking `fetched_at` per album would parse a release payload each
+    time to reach a timestamp beside it.
+
+    Keyed by the id the release ACTUALLY has, because that is how the rows are
+    keyed (#268) — so an album whose release has been merged away has no entry
+    here even though it has been fetched, and reads as never-asked. That is the
+    caller's problem to solve rather than this function's to hide: see
+    `gardener._asked`.
+    """
+    return activity_store.release_fetch_times(_key(mb_lookup.RELEASE_INCLUDES))

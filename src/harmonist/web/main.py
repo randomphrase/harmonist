@@ -231,6 +231,18 @@ _LIBRARY_QUERY_MAX = 100
 # isn't there either: an unchanged library is a stat per file and no tag reads.
 _RESCAN_INTERVAL = timedelta(hours=1)
 
+# How often the gardener's update check runs when it is switched on (#270).
+# Also a constant for now, and for a different reason from the rescan's: it is
+# half of a rate — with `gardener.ALBUMS_PER_PASS` it says how fast the library
+# is swept — and the two are no use apart. #273 makes the pair a setting
+# together, alongside the trust level.
+#
+# Deliberately the same hour as the rescan rather than a nightly slot: the pass
+# is short, capped, and skipped whenever anything else is working, so spreading
+# it thinly across the day keeps it out of the way better than concentrating it
+# at 3am would — and there is no hour at which a NAS is reliably idle.
+_UPDATE_CHECK_INTERVAL = timedelta(hours=1)
+
 # The header that tells `/library` to name the resolved view in the address bar
 # (#180). The search form cannot spell its own `hx-push-url`: it does not know the
 # query until the reader types it, and the page size and filter it must carry come
@@ -663,16 +675,37 @@ def create_app(
                 stop_event=watch_stop,
             )
         )
+        # And ask MusicBrainz what it has been doing (#270) — off unless the
+        # user turned it on, because it spends the rate-limited budget while
+        # nobody is watching. The task isn't created at all when it is off, so
+        # the default install has no extra timer, not a timer that does nothing.
+        check_task = (
+            asyncio.create_task(
+                periodic.run_periodically(
+                    _UPDATE_CHECK_INTERVAL,
+                    lambda: _update_check_if_idle(sync_runner, reconcile_runner, scan_runner),
+                    name="update check",
+                    stop_event=watch_stop,
+                )
+            )
+            if cfg.gardener.level != "off"
+            else None
+        )
         try:
             yield
         finally:
             watch_stop.set()
             watch_task.cancel()
             rescan_task.cancel()
+            if check_task is not None:
+                check_task.cancel()
             with suppress(asyncio.CancelledError):
                 await watch_task
             with suppress(asyncio.CancelledError):
                 await rescan_task
+            if check_task is not None:
+                with suppress(asyncio.CancelledError):
+                    await check_task
 
     app = FastAPI(title="Harmonist", lifespan=lifespan)
     app.state.cfg = cfg
@@ -2122,6 +2155,62 @@ def _periodic_rescan_if_idle(
         log.info("Skipping periodic rescan: sync or reconcile in progress")
         return
     scan_runner.request_quiet_rescan()
+
+
+# Held for the duration of a pass, so a slow one cannot be started again on top
+# of itself. A pass is capped at a hundred albums and normally takes two
+# minutes, but a MusicBrainz that answers slowly rather than failing can stretch
+# it past the hour — and two passes at once would ask about the same albums
+# twice and spend twice the budget doing it.
+_update_check_lock = threading.Lock()
+
+
+def _update_check_if_idle(
+    sync_runner: SyncRunner, reconcile_runner: ReconcileRunner, scan_runner: ScanRunner
+) -> None:
+    """One gardener pass (#270), unless something with a better claim is running.
+
+    Three things get out of the way, for one reason between them: the
+    MusicBrainz rate limit is a single shared queue, and anything the user set
+    in motion is waiting on it. A sync or a reconcile pass is spending it
+    already, and the check is in no hurry — its albums have been unasked-about
+    for a week and one more hour changes nothing. It skips the tick rather than
+    deferring it, like the periodic rescan does, because the next one comes
+    round soon and nothing is waiting on this one.
+
+    The third is the first scan: the pass reads `scan_runner.albums()`, which is
+    empty until then, so an early tick would report a library of nothing.
+
+    **Its own thread.** The pass blocks on the network for a second per album
+    and then on the disk, which are the two things that must never happen on the
+    event loop. Daemon, and not cancelled at shutdown: it records a hint and
+    persists nothing but the cache rows it fills on the way, so being killed
+    part-way through loses only work the next pass redoes.
+    """
+    if sync_runner.is_running or reconcile_runner.is_running:
+        log.info("Skipping update check: sync or reconcile in progress")
+        return
+    if not scan_runner.has_completed():
+        log.info("Skipping update check: the library has not been scanned yet")
+        return
+    if not _update_check_lock.acquire(blocking=False):
+        log.warning("Skipping update check: the previous pass is still running")
+        return
+
+    def _run() -> None:
+        try:
+            gardener.sweep(scan_runner.albums())
+        except Exception:
+            # Boundary catch: the pass already absorbs the failures it expects
+            # — a fetch that errors, a file it cannot read — so anything
+            # arriving here is a defect rather than a bad night. Loud, and
+            # loud every time: at 3am the log is the only channel, and a pass
+            # that has been dying quietly for a month is worth repeating.
+            log.exception("update check failed")
+        finally:
+            _update_check_lock.release()
+
+    threading.Thread(target=_run, name="harmonist-update-check", daemon=True).start()
 
 
 def _start_flag_warm_up(scan_runner: ScanRunner) -> None:

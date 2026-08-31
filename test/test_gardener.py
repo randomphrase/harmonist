@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import shutil
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -26,10 +27,10 @@ from harmonist.web.scan_runner import ScanRunner
 SINE_M4A = Path(__file__).parent / "fixtures" / "sine.m4a"
 
 
-def _release(title: str = "Test Album", *, tracks: int = 1) -> dict:
+def _release(title: str = "Test Album", *, tracks: int = 1, mbid: str = "rel-aaa") -> dict:
     """A minimal release the tagger can write from, in musicbrainzngs' shape."""
     return {
-        "id": "rel-aaa",
+        "id": mbid,
         "title": title,
         "status": "Official",
         "artist-credit": [
@@ -54,8 +55,8 @@ def _release(title: str = "Test Album", *, tracks: int = 1) -> dict:
     }
 
 
-def _album_dir(root: Path, *, tracks: int = 1) -> Path:
-    d = root / "Test Artist" / "Test Album"
+def _album_dir(root: Path, *, tracks: int = 1, name: str = "Test Album") -> Path:
+    d = root / "Test Artist" / name
     d.mkdir(parents=True)
     for i in range(1, tracks + 1):
         shutil.copy(SINE_M4A, d / f"{i:02d} Track {i}.m4a")
@@ -75,9 +76,9 @@ def _flag(album: Album, release: dict) -> bool:
     return album.update_available
 
 
-def _tagged(root: Path, release: dict, *, tracks: int = 1) -> Album:
+def _tagged(root: Path, release: dict, *, tracks: int = 1, name: str = "Test Album") -> Album:
     """An album tagged from `release`, as the scanner sees it afterwards."""
-    d = _album_dir(root, tracks=tracks)
+    d = _album_dir(root, tracks=tracks, name=name)
     tagger.tag_album(d, release)
     sc.write(d, Sidecar(mb_release_id=release["id"], tagged_at=datetime.now(UTC)))
     return next(a for a in scanner.scan(root) if a.path == d)
@@ -569,3 +570,439 @@ def test_pacing_can_be_switched_off_entirely(monkeypatch):
     gardener._rest(worked=1.0, duty=0)
 
     assert slept == []
+
+
+# --- The background pass (#270) ---------------------------------------------
+#
+# The pass is detect-only, so what these have to pin is not what it writes — it
+# writes nothing — but what it SPENDS and what it skips. Every assertion about
+# the number of MusicBrainz requests is load-bearing for that reason: the flags
+# come out identical whether the pass asked once or a hundred times, so nothing
+# else in the suite can notice a budget leak.
+
+
+@pytest.fixture(autouse=True)
+def _forget_what_was_asked():
+    """`gardener._asked` is module-level pacing state that outlives a test.
+
+    A leak would make a later pass skip an album for reasons that test never set
+    up — and it would do it by making the pass *quieter*, which is the direction
+    an assertion about call counts reads as success.
+    """
+    gardener._asked.clear()
+    yield
+    gardener._asked.clear()
+
+
+def _inc() -> str:
+    return "+".join(sorted(mb_lookup.RELEASE_INCLUDES))
+
+
+def _store(release: dict, *, age: timedelta = timedelta(0)) -> None:
+    """Record `release` as `fetch_release` would have done, `age` ago."""
+    activity_store.store_release(str(release["id"]), _inc(), release)
+    conn = activity_store._ensure()
+    conn.execute(
+        "UPDATE mb_release_cache SET fetched_at = ? WHERE mbid = ?",
+        ((datetime.now(UTC) - age).isoformat(), str(release["id"])),
+    )
+    conn.commit()
+
+
+def _serving(monkeypatch, *releases: dict) -> list[str]:
+    """Answer MusicBrainz from `releases`, and return the list of ids asked for.
+
+    Patched on `mb_lookup` rather than on `mb_cache`, so the cache's own
+    behaviour — which row it reads, which row it writes back, and under which id
+    — is part of what these tests exercise rather than something stubbed past.
+
+    An id nothing answers for raises `ReleaseGoneError`, which is what
+    MusicBrainz does for a release that has been deleted.
+    """
+    by_id = {str(r["id"]): r for r in releases}
+    asked: list[str] = []
+
+    def _fetch(mbid: str) -> dict:
+        asked.append(mbid)
+        if mbid not in by_id:
+            raise mb_lookup.ReleaseGoneError(f"MusicBrainz no longer has release {mbid}")
+        return copy.deepcopy(by_id[mbid])
+
+    monkeypatch.setattr(mb_lookup, "fetch_release", _fetch)
+    return asked
+
+
+def _stale() -> timedelta:
+    """Old enough that the pass considers an album due."""
+    return gardener.RECHECK_AFTER + timedelta(days=1)
+
+
+def test_a_pass_finds_an_update_nobody_went_looking_for(tmp_path, monkeypatch):
+    """The reason the pass exists. Every other route to the flag needs a human —
+    opening the album, or a payload some earlier human's visit left behind — so
+    an album nobody has touched since MusicBrainz edited it stays silent forever
+    without this."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release(), age=_stale())
+    asked = _serving(monkeypatch, _release("Test Album (remastered)"))
+
+    result = gardener.sweep([album])
+
+    assert asked == ["rel-aaa"]
+    assert album.update_available is True
+    assert (result.examined, result.flagged) == (1, 1)
+
+
+def test_an_unchanged_release_never_reaches_the_files(tmp_path, monkeypatch):
+    """The early exit, which is what makes a nightly pass over an unchanged
+    library cost its requests and nothing else. Asserted as *no plan was built*
+    rather than as "the flag came out the same", because the flag comes out the
+    same either way — reading every album's files every night would be invisible
+    to any assertion about the answer."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release(), age=_stale())
+    _serving(monkeypatch, _release())
+    monkeypatch.setattr(
+        tagger, "plan_album", lambda *a, **k: pytest.fail("the pass read the files")
+    )
+
+    assert gardener.sweep([album]).examined == 0
+
+
+def test_an_unchanged_release_does_not_clear_a_flag_already_raised(tmp_path, monkeypatch):
+    """The trap the early exit sets. "MusicBrainz has not moved since we last
+    looked" and "the files have nothing outstanding" are different facts, and an
+    album whose update was never applied keeps it however long MusicBrainz sits
+    still. Skipping the album is right; clearing it would empty the filter of
+    exactly the albums the user has yet to act on."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    moved = _release("Test Album (remastered)")
+    _store(moved, age=_stale())
+    gardener.refresh_flag(album, moved)
+    assert album.update_available is True
+
+    _serving(monkeypatch, moved)
+    gardener.sweep([album])
+
+    assert album.update_available is True
+
+
+def test_the_pass_writes_nothing_to_the_files(tmp_path, monkeypatch):
+    """Detect-only, stated as a property rather than as a claim in a docstring.
+    `owned.AUTO_APPLY` is empty, so there is nothing the classifier permits the
+    pass to apply — and this is the assertion that fails the day someone widens
+    it without meaning to."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    before = {p: p.read_bytes() for p in sorted(album.path.iterdir())}
+    _store(_release(), age=_stale())
+    _serving(monkeypatch, _release("Test Album (remastered)"))
+
+    gardener.sweep([album])
+
+    assert album.update_available is True  # it found the change ...
+    assert {p: p.read_bytes() for p in sorted(album.path.iterdir())} == before  # ... and left it
+
+
+def test_a_second_pass_over_an_unchanged_library_does_nothing_at_all(tmp_path, monkeypatch):
+    """Idempotency, stated end to end: the pass runs twice and the second one
+    asks nothing, reads nothing and changes nothing. This is the outer of the
+    two mechanisms — the recheck window, which keeps the album out of the queue
+    entirely; the early exit behind it has its own test, and never gets a turn
+    here. Under a timer that fires every hour forever, this is the property that
+    decides whether the feature is quiet or unbearable."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release(), age=_stale())
+    asked = _serving(monkeypatch, _release("Test Album (remastered)"))
+
+    first = gardener.sweep([album])
+    second = gardener.sweep([album])
+
+    assert (first.asked, first.examined) == (1, 1)
+    assert (second.asked, second.examined) == (0, 0)
+    assert asked == ["rel-aaa"]
+    assert album.update_available is True  # the first pass's answer still stands
+
+
+def test_an_album_asked_about_recently_is_not_asked_again(tmp_path, monkeypatch):
+    """What stops an hourly timer being an hourly request per album. The clock
+    is the cache row's own `fetched_at`, so this needs no state of its own — and
+    a library the pass has just swept costs nothing until the window is up."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release(), age=gardener.RECHECK_AFTER - timedelta(hours=1))
+    asked = _serving(monkeypatch, _release())
+
+    assert gardener.sweep([album]).asked == 0
+    assert asked == []
+
+
+def test_an_album_musicbrainz_was_never_asked_about_goes_first(tmp_path, monkeypatch):
+    """Never-fetched sorts before every real timestamp, which puts the albums
+    the flag is silent about at the front of the queue. Those are the ones a
+    pass is worth most on: the warm-up cannot speak for them, so until the pass
+    reaches one, "no update" is a guess rather than an answer."""
+    activity_store.init(tmp_path / "activity.db")
+    seen = _tagged(tmp_path, _release(mbid="rel-seen"), name="Seen")
+    never = _tagged(tmp_path, _release(mbid="rel-never"), name="Never")
+    _store(_release(mbid="rel-seen"), age=_stale())
+    asked = _serving(monkeypatch, _release(mbid="rel-seen"), _release(mbid="rel-never"))
+
+    gardener.sweep([seen, never], limit=1)
+
+    assert asked == ["rel-never"]
+
+
+def test_the_stalest_album_goes_first_when_the_cap_bites(tmp_path, monkeypatch):
+    """The cap is what bounds one pass; the ordering is what stops the cap
+    starving the same albums forever. Least-recently-asked first means every
+    album reaches the front eventually, which a stable library order would not
+    give — it would sweep the first N albums nightly and never reach the rest."""
+    activity_store.init(tmp_path / "activity.db")
+    recent = _tagged(tmp_path, _release(mbid="rel-recent"), name="Recent")
+    ancient = _tagged(tmp_path, _release(mbid="rel-ancient"), name="Ancient")
+    _store(_release(mbid="rel-recent"), age=_stale())
+    _store(_release(mbid="rel-ancient"), age=_stale() * 2)
+    asked = _serving(monkeypatch, _release(mbid="rel-recent"), _release(mbid="rel-ancient"))
+
+    gardener.sweep([recent, ancient], limit=1)
+
+    assert asked == ["rel-ancient"]
+
+
+def test_two_albums_on_one_release_cost_one_request(tmp_path, monkeypatch):
+    """A duplicate rip in two folders (#243) names one release twice. One fetch
+    answers for both, and asking again would spend a second rate-limited request
+    on a payload already in hand — invisible in the result, which is correct
+    either way."""
+    activity_store.init(tmp_path / "activity.db")
+    one = _tagged(tmp_path, _release(), name="Test Album")
+    two = _tagged(tmp_path, _release(), name="Test Album (copy)")
+    _store(_release(), age=_stale())
+    asked = _serving(monkeypatch, _release("Test Album (remastered)"))
+
+    result = gardener.sweep([one, two])
+
+    assert asked == ["rel-aaa"]
+    assert (one.update_available, two.update_available) == (True, True)
+    assert result.examined == 2
+
+
+def test_a_deleted_release_is_not_asked_about_again_next_pass(tmp_path, monkeypatch):
+    """A 404 stores nothing — a negative is never cached — so the cache clock
+    says "never asked" forever and the album would come back to the front of the
+    queue on every pass. Its remedy is a human decision (#194/#210) that
+    re-asking brings no closer, so the pass remembers having asked."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    asked = _serving(monkeypatch)  # nothing answers: MusicBrainz has deleted it
+
+    first = gardener.sweep([album])
+    second = gardener.sweep([album])
+
+    assert first.gone == 1
+    assert asked == ["rel-aaa"]  # asked once, across both passes
+    assert second.asked == 0
+
+
+def test_a_merged_release_is_not_asked_about_again_next_pass(tmp_path, monkeypatch):
+    """MusicBrainz redirects a merged id, so the row lands under the id it gave
+    back (#268) and nothing ever refreshes the one the sidecar names. Same leak
+    as the deleted case and a more common one — without the memory, every merged
+    album in the library costs a request on every pass, forever."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release(), age=_stale())
+    merged = _release(mbid="rel-merged-target")
+    asked: list[str] = []
+
+    def _redirects(mbid: str) -> dict:
+        """What a merge looks like from here: the id asked for is answered by a
+        release carrying a different one."""
+        asked.append(mbid)
+        return copy.deepcopy(merged)
+
+    monkeypatch.setattr(mb_lookup, "fetch_release", _redirects)
+
+    gardener.sweep([album])
+    gardener.sweep([album])
+
+    assert asked == ["rel-aaa"]
+    assert album.update_available is True  # the id in the files no longer matches
+
+
+def test_a_musicbrainz_outage_stops_the_pass_rather_than_grinding_through_it(tmp_path, monkeypatch):
+    """When MusicBrainz is down every album fails identically. Continuing spends
+    a rate-limited request per album to learn the same thing each time, and
+    buries the first failure — the only one that says anything — under the rest.
+    The next pass retries from the top."""
+    activity_store.init(tmp_path / "activity.db")
+    albums = []
+    for i in range(gardener._GIVE_UP_AFTER + 3):
+        albums.append(_tagged(tmp_path, _release(mbid=f"rel-{i:03d}"), name=f"Album {i}"))
+    asked: list[str] = []
+
+    def _down(mbid: str) -> dict:
+        asked.append(mbid)
+        raise mb_lookup.MBError("MusicBrainz is not answering")
+
+    monkeypatch.setattr(mb_lookup, "fetch_release", _down)
+
+    result = gardener.sweep(albums)
+
+    assert result.gave_up is True
+    assert len(asked) == gardener._GIVE_UP_AFTER
+    assert result.failed == gardener._GIVE_UP_AFTER
+
+
+def test_a_deleted_release_does_not_count_towards_giving_up(tmp_path, monkeypatch):
+    """A 404 is an answer, not a failure. A library with five albums MusicBrainz
+    has deleted — which is a library that has been adopted, not a broken one —
+    would otherwise abort every pass at the fifth and never reach the rest."""
+    activity_store.init(tmp_path / "activity.db")
+    albums = [
+        _tagged(tmp_path, _release(mbid=f"rel-{i:03d}"), name=f"Album {i}")
+        for i in range(gardener._GIVE_UP_AFTER + 2)
+    ]
+    asked = _serving(monkeypatch)  # nothing answers for any of them
+
+    result = gardener.sweep(albums)
+
+    assert result.gave_up is False
+    assert result.gone == len(albums)
+    assert len(asked) == len(albums)
+
+
+def test_an_album_with_no_release_of_its_own_is_never_asked_about(tmp_path, monkeypatch):
+    """An unlinked album has no id to ask with. The pass must skip it rather
+    than hand a None to the cache — the same guard the warm-up carries."""
+    activity_store.init(tmp_path / "activity.db")
+    d = _album_dir(tmp_path)
+    album = next(a for a in scanner.scan(tmp_path) if a.path == d)
+    assert album.sidecar is None
+    asked = _serving(monkeypatch)
+
+    assert gardener.sweep([album]).asked == 0
+    assert asked == []
+
+
+def _stub_runner(*, running: bool = False, scanned: bool = True):
+    """Enough of a runner for the tick's guards to read."""
+
+    class _Stub:
+        is_running = running
+
+        def has_completed(self) -> bool:
+            return scanned
+
+        def albums(self) -> list:
+            return []
+
+    return _Stub()
+
+
+def _sweep_signal(monkeypatch) -> threading.Event:
+    """Set when the tick actually starts a pass."""
+    done = threading.Event()
+
+    def _sweep(albums, **kwargs):
+        done.set()
+        return gardener.PassResult(asked=0, examined=0, flagged=0, gone=0, failed=0)
+
+    monkeypatch.setattr(gardener, "sweep", _sweep)
+    return done
+
+
+def test_a_tick_starts_a_pass_when_nothing_else_is_working(monkeypatch):
+    """The positive case the three guards below are exceptions to — without it
+    they would all pass against a tick that never runs anything at all."""
+    from harmonist.web import main as web_main
+
+    done = _sweep_signal(monkeypatch)
+
+    web_main._update_check_if_idle(_stub_runner(), _stub_runner(), _stub_runner())
+
+    assert done.wait(5) is True
+
+
+@pytest.mark.parametrize(
+    ("sync", "reconcile", "scanned"),
+    [(True, False, True), (False, True, True), (False, False, False)],
+)
+def test_a_tick_stands_aside_for_work_with_a_better_claim(monkeypatch, sync, reconcile, scanned):
+    """A sync and a reconcile pass are already spending the one shared
+    MusicBrainz rate limit, on something the user set in motion; the check's
+    albums have waited a week and can wait another hour. Before the first scan
+    there is no library to look at — `albums()` is empty, so a tick then would
+    report a library of nothing."""
+    from harmonist.web import main as web_main
+
+    done = _sweep_signal(monkeypatch)
+
+    web_main._update_check_if_idle(
+        _stub_runner(running=sync),
+        _stub_runner(running=reconcile),
+        _stub_runner(scanned=scanned),
+    )
+
+    assert done.wait(0.25) is False
+
+
+def test_a_pass_still_running_is_not_started_on_top_of_itself(monkeypatch):
+    """A pass is capped and normally takes two minutes, but a MusicBrainz that
+    answers slowly rather than failing can stretch one past the hour. Two at
+    once would ask about the same albums twice and pay twice for the answer."""
+    from harmonist.web import main as web_main
+
+    done = _sweep_signal(monkeypatch)
+    web_main._update_check_lock.acquire()
+    try:
+        web_main._update_check_if_idle(_stub_runner(), _stub_runner(), _stub_runner())
+        assert done.wait(0.25) is False
+    finally:
+        web_main._update_check_lock.release()
+
+
+def _timer_names(cfg, monkeypatch) -> list[str]:
+    """The periodic tasks the lifespan actually engages."""
+    from fastapi.testclient import TestClient
+
+    from harmonist.web import main as web_main
+
+    names: list[str] = []
+
+    async def _record(interval, action, *, name, stop_event=None):
+        names.append(name)
+        if stop_event is not None:
+            await stop_event.wait()
+
+    monkeypatch.setattr(web_main.periodic, "run_periodically", _record)
+    with TestClient(web_main.create_app(cfg), headers={"HX-Request": "true"}):
+        pass
+    return names
+
+
+def test_the_update_check_does_not_run_unless_it_was_turned_on(engaged, monkeypatch):
+    """The default. `review` writes nothing to anybody's files, so this is not
+    protecting the library — it is protecting a volunteer service from an
+    install that started asking it a hundred questions an hour because somebody
+    upgraded. No task is created at all, rather than a task that does nothing."""
+    cfg, _ = engaged
+
+    assert "update check" not in _timer_names(cfg, monkeypatch)
+
+
+def test_turning_it_on_engages_the_timer(engaged, monkeypatch):
+    """The other half: an install that asked for the pass gets one, on the same
+    generic timer the hourly rescan runs on rather than a second pattern beside
+    it (#151)."""
+    from harmonist.config import GardenerConfig
+
+    cfg, _ = engaged
+    cfg = cfg.model_copy(update={"gardener": GardenerConfig(level="review")})
+
+    assert "update check" in _timer_names(cfg, monkeypatch)

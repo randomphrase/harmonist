@@ -6,6 +6,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- Harmonist can **check your library against MusicBrainz in the background**, so
+  the **Update available** filter finds albums nobody has opened (#270). Off by
+  default — set `level = "review"` under `[gardener]`. It never writes to your
+  files.
+
 ## [1.12.0] - 2026-08-28
 
 ### Added

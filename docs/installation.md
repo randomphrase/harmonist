@@ -87,6 +87,9 @@ cache_ttl_seconds = 3600          # re-serve a fetched release for this long
 
 [library]
 watch_settle_seconds = 5          # quiet time before a watched change rescans
+
+[gardener]
+level = "off"                     # "off" | "review" — background update checks
 ```
 
 Harmonist watches the music dir and rescans when files change under it, but
@@ -107,6 +110,16 @@ fetches and re-serves it for `cache_ttl_seconds` rather than asking again. An
 album's page shows when its release was last read, with a **read again** link
 beside it, so you can always force a fresh look after editing MusicBrainz — and
 re-tagging and **Recheck** never use the cache. Set it to `0` to always fetch.
+
+`[gardener] level` decides whether Harmonist checks your library against
+MusicBrainz on its own. It ships **`off`**, and the only other setting today is
+**`review`**: a small, paced background pass that asks MusicBrainz about the
+albums it has looked at least recently and updates the Library's **Update
+available** filter from the answers. It never writes to your files — applying an
+update is still something you press a button for. Turning it on means Harmonist
+asks MusicBrainz about roughly a hundred albums an hour while it is idle, so
+every album is re-checked about weekly; it stands aside for any sync, reconcile
+or scan rather than competing with them for the one-request-per-second budget.
 
 Bandcamp sync needs a `cookies.txt` (exported from a logged-in browser) — paste
 or upload it via the in-app **Set up Bandcamp sync** prompt.

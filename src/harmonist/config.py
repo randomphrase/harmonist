@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 TestMode = Literal["fixture", "cassette", "live"]
 CoverArtSize = Literal["250", "500", "1200", "original"]
+GardenerLevel = Literal["off", "review"]
 
 
 class PathsConfig(BaseModel):
@@ -93,6 +94,30 @@ class LibraryConfig(BaseModel):
     watch_settle_seconds: float = 5.0
 
 
+class GardenerConfig(BaseModel):
+    """How much of the metadata gardener (#32) is allowed to run by itself.
+
+    Levels are ordered by how much Harmonist is trusted to do while nobody is
+    watching, which is the only ordering a setting like this needs to be
+    intelligible: `off` does nothing at all, `review` looks and reports but
+    **never writes to a file**, and #273 adds `enrich` above them for applying
+    the safe half of a change on its own.
+
+    A named level rather than a boolean, even though only two exist today. The
+    third is already designed, and an `enabled = true` that later has to become
+    `level = "review"` breaks a config file on somebody's NAS during an upgrade
+    for no reason but our convenience.
+
+    **`off` by default.** `review` writes nothing either, so the default is not
+    protecting the user's files — it is protecting the MusicBrainz budget. The
+    pass spends a rate-limited request per album per cycle against a volunteer
+    service, and starting to do that to somebody's install because they
+    upgraded is not a decision this project gets to make for them.
+    """
+
+    level: GardenerLevel = "off"
+
+
 class TestConfig(BaseModel):
     mode: TestMode = "fixture"
     unignore_item_ids: list[int] = Field(default_factory=list)
@@ -107,6 +132,7 @@ class Config(BaseModel):
     cover_art: CoverArtConfig = Field(default_factory=CoverArtConfig)
     artwork_store: ArtworkStoreConfig = Field(default_factory=ArtworkStoreConfig)
     library: LibraryConfig = Field(default_factory=LibraryConfig)
+    gardener: GardenerConfig = Field(default_factory=GardenerConfig)
     test: TestConfig = Field(default_factory=TestConfig)
     log_level: str = "info"
     demo_mode: bool = False
@@ -170,6 +196,7 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     auth = data.setdefault("auth", {})
     cover_art = data.setdefault("cover_art", {})
     library = data.setdefault("library", {})
+    gardener = data.setdefault("gardener", {})
     test = data.setdefault("test", {})
 
     if v := env.get("HARMONIST_MUSIC_DIR"):
@@ -199,6 +226,13 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         cover_art["size"] = v
     if v := env.get("HARMONIST_WATCH_SETTLE_SECONDS"):
         library["watch_settle_seconds"] = float(v)
+    if v := env.get("HARMONIST_GARDENER_LEVEL"):
+        # Passed through unvalidated so pydantic rejects a typo at startup with
+        # the level names in the message. Coercing an unknown value to "off"
+        # here would give someone who meant to turn the pass on a container
+        # that starts cleanly and does nothing, with no way to tell from the
+        # outside which of the two they got.
+        gardener["level"] = v.strip()
     if v := env.get("HARMONIST_DEMO_MODE"):
         data["demo_mode"] = v.strip() not in ("", "0", "false", "False", "no")
     return data

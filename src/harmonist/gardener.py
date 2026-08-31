@@ -5,6 +5,12 @@ The detector half of #32's metadata gardener, and the whole of what #287's
 re-tag against the release MusicBrainz currently holds change any owned tag?* —
 and records the answer on the in-memory `Album`.
 
+Three callers ask it, and they differ only in where the release comes from: the
+album page, from the cache as it renders; `warm_from_cache`, from every stored
+payload after a restart, spending no requests; and `sweep` (#270), from a fresh
+fetch on a timer, which is the only one that can find an update nobody has gone
+looking for. `sweep` writes nothing to anybody's files — see its docstring.
+
 ## Why this and not the album page's comparison
 
 `compare.album_fields` / `compare.tracklist` are display-shaped: their per-track
@@ -45,12 +51,14 @@ lifetime, and it lives in `activity.db` (#271). This is only the flag.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Sequence
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
-from . import album_files, formats, mb_cache, tagger
+from . import album_files, formats, mb_cache, mb_lookup, tagger
 from .models import Album, AlbumState, Release
 
 log = logging.getLogger(__name__)
@@ -246,3 +254,257 @@ def _rest(worked: float, duty: float) -> None:
     if duty <= 0 or duty >= 1:
         return  # 0 disables pacing (tests); 1 means "no rest", same thing here
     time.sleep(min(worked * (1 / duty - 1), _MAX_REST.total_seconds()))
+
+
+# --- The background pass (#270) ---------------------------------------------
+
+#: How long an album's release payload may go unasked-about before the pass asks
+#: MusicBrainz again. A week rather than a night: edits arrive on the scale of
+#: months for most releases, so noticing one six days late costs nothing, while
+#: asking six times too often costs six times the budget for the same answer.
+RECHECK_AFTER = timedelta(days=7)
+
+#: The most albums one pass will ask about. At the 1 req/s MusicBrainz floor
+#: this is the pass's *duration* as much as its size — a hundred albums is under
+#: two minutes — which is what keeps it off the shared rate limiter while
+#: somebody is using the app.
+#:
+#: With the interval it is also the sweep rate: a hundred an hour is 2,400 a
+#: day, so a library big enough to matter still completes a cycle well inside
+#: `RECHECK_AFTER`. #273 turns both into settings for anyone whose does not.
+ALBUMS_PER_PASS = 100
+
+#: How many MusicBrainz failures in a row end a pass early. MusicBrainz being
+#: down looks exactly like this, and grinding through the rest of the queue to
+#: fail at each one spends a request apiece and buries the first failure — the
+#: only one that says anything — under ninety-nine identical ones.
+_GIVE_UP_AFTER = 5
+
+#: Sorts before every real timestamp, so "never asked" is the stalest thing
+#: there is and an album nobody has ever looked at goes to the front of the
+#: queue. Those are the albums the flag is silent about (see
+#: `Album.update_available`), which makes them the ones a pass is worth most on.
+_NEVER = datetime.min.replace(tzinfo=UTC)
+
+#: When this process last ASKED about a release id, as distinct from when a
+#: payload was last stored under one (`mb_cache.fetch_times`). Normally the same
+#: fact; two cases separate them, and in both the album is asked about on every
+#: pass forever without this:
+#:
+#: * a **merged** release — the fetch follows MusicBrainz's redirect and the row
+#:   lands under the id it gave back (#268), so the id the sidecar names never
+#:   gets a fresher row;
+#: * a **deleted** release — the fetch raises and nothing is stored at all,
+#:   which is right (a negative is never cached), but leaves the same gap on an
+#:   album whose remedy is a human decision that re-asking brings no closer.
+#:
+#: In memory, because it paces a pass rather than describing the library:
+#: losing it on a restart costs one extra request for each affected album and
+#: nothing else. One entry per distinct release id asked about, so it is bounded
+#: by the size of the library — the same order as the album list itself.
+_asked: dict[str, datetime] = {}
+
+
+@dataclass(frozen=True)
+class PassResult:
+    """What one pass did — the log line reads off this, and so will #274's
+    digest."""
+
+    #: Releases fetched from MusicBrainz. The pass's whole budget cost.
+    asked: int
+    #: Of those, the ones whose files were then read — because the payload had
+    #: moved, or because there was nothing stored to compare it against. The gap
+    #: between this and `asked` is the early exit doing its job.
+    examined: int
+    #: Of those, the ones that turned out to have an update outstanding.
+    flagged: int
+    #: Releases MusicBrainz no longer has (#194/#210).
+    gone: int
+    #: Fetches that failed — a network error, a 503. Not an answer either way.
+    failed: int
+    #: Whether the pass stopped early because MusicBrainz kept failing. Read by
+    #: the closing log line, so a short pass says why it was short rather than
+    #: leaving a small number of albums looking like a quiet night.
+    gave_up: bool = False
+
+
+def sweep(
+    albums: Sequence[Album],
+    *,
+    limit: int = ALBUMS_PER_PASS,
+    recheck_after: timedelta = RECHECK_AFTER,
+) -> PassResult:
+    """Ask MusicBrainz about the albums whose release we have looked at least
+    recently, and update their flags from what comes back.
+
+    The scheduled half of #32, and **detect-only**: it fetches, compares and
+    sets `album.update_available`, and writes nothing to anybody's files. That
+    is not a stage of a plan, it is what the classifier currently permits —
+    `owned.AUTO_APPLY` is empty, so every change needs a person, and until #271
+    gives a finding somewhere to live there is nothing for this to hand one to.
+    Two things fall out of that: the pass cannot damage a library, and its whole
+    value is that the Library's Update available filter stops depending on
+    somebody having happened to open the album (#287, #293).
+
+    **The early exit is the design.** The stored payload is read BEFORE the
+    fetch, and an unchanged one ends the album there — no file reads, no plan,
+    nothing recorded. So a second pass over a library MusicBrainz has not
+    touched costs its requests and nothing else, which is #32's idempotency
+    invariant enforced by construction rather than by care.
+
+    An unchanged payload never *clears* a flag, only skips it. The two are easy
+    to conflate and the difference is a bug: an album whose files never took the
+    previous update still has one outstanding, however long MusicBrainz has sat
+    still (see this module's header).
+
+    `max_age=FRESH`, which no other read-only caller passes. Serving this the
+    cached row would make the pass a no-op that costs nothing and reports
+    nothing — going and looking IS the operation, and the refreshed row it
+    leaves behind is what dates the next pass's queue.
+
+    Blocking on both the network and the disk, so call it from a worker thread,
+    never the event loop.
+    """
+    now = datetime.now(UTC)
+    due = _due(albums, recheck_after=recheck_after, now=now)
+    log.info("update check: %d album(s) due, asking MusicBrainz about up to %d", len(due), limit)
+    asked = examined = flagged = gone = failed = 0
+    consecutive = 0
+    gave_up = False
+    reported = time.monotonic()
+    for mbid, group in due[:limit]:
+        # Read the baseline BEFORE the fetch: `fetch_release` replaces the row
+        # on its way back, so afterwards there is nothing left to compare with.
+        before = mb_cache.stored_release(mbid)
+        # Recorded whatever happens next, including a failure. This is "we spent
+        # a request on this id", which is the thing that must not repeat every
+        # pass — and the ids it protects are exactly the ones a fetch does not
+        # leave a row for.
+        _asked[mbid] = datetime.now(UTC)
+        asked += 1
+        try:
+            release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH)
+        except mb_lookup.ReleaseGoneError:
+            # An answer, not a failure — so it does not count towards giving up.
+            # INFO rather than WARNING on purpose: a release deleted last year is
+            # still deleted tonight, and a mirrored WARNING would post that
+            # non-news to the Activity feed every pass forever. The album page
+            # already says so whenever the user looks (#194/#210), and #271 is
+            # what turns it into something waiting for them.
+            log.info("update check: MusicBrainz no longer has release %s", mbid)
+            gone += 1
+            consecutive = 0
+            continue
+        except mb_lookup.MBError:
+            failed += 1
+            consecutive += 1
+            # Kept out of the Activity feed (`_diagnostic`): nothing was lost,
+            # the next pass retries, and a MusicBrainz wobble is not the user's
+            # to act on. The log still has it, with the traceback.
+            log.warning(
+                "update check: could not fetch release %s",
+                mbid,
+                exc_info=True,
+                extra={"_diagnostic": True},
+            )
+            if consecutive >= _GIVE_UP_AFTER:
+                # This one IS mirrored. A pass that gave up leaves the flags
+                # stale for a week, and that is a thing the user can only find
+                # out from us.
+                log.warning(
+                    "update check: giving up this pass after %d MusicBrainz failures in a row",
+                    consecutive,
+                )
+                gave_up = True
+                break
+            continue
+        consecutive = 0
+        if before is not None and _same_release(before, release):
+            continue  # MusicBrainz has said nothing new; read no files
+        examined += len(group)
+        for album in group:
+            refresh_flag(album, release)
+            if album.update_available:
+                flagged += 1
+        if time.monotonic() - reported >= _PROGRESS_EVERY.total_seconds():
+            reported = time.monotonic()
+            log.info("update check: %d asked, %d with something new", asked, examined)
+    result = PassResult(
+        asked=asked, examined=examined, flagged=flagged, gone=gone, failed=failed, gave_up=gave_up
+    )
+    log.info(
+        "update check: %s — asked about %d release(s), %d had moved, %d album(s) "
+        "have an update, %d gone from MusicBrainz, %d fetch(es) failed",
+        "gave up early" if result.gave_up else "done",
+        result.asked,
+        result.examined,
+        result.flagged,
+        result.gone,
+        result.failed,
+    )
+    return result
+
+
+def _due(
+    albums: Sequence[Album], *, recheck_after: timedelta, now: datetime
+) -> list[tuple[str, list[Album]]]:
+    """The releases worth asking about, stalest first, grouped by release id.
+
+    **Grouped**, because two albums can name the same release — a duplicate rip
+    in two folders (#243), or one album split across directories that resolved
+    apart. One fetch answers for all of them, and asking twice would spend a
+    second rate-limited request on a payload we already have in hand.
+    """
+    times = mb_cache.fetch_times()
+    by_release: dict[str, list[Album]] = {}
+    for album in albums:
+        sc = album.sidecar
+        if sc is None or not sc.mb_release_id:
+            continue  # nothing to ask about; not an error
+        by_release.setdefault(sc.mb_release_id, []).append(album)
+    due: list[tuple[datetime, str, list[Album]]] = []
+    for mbid, group in by_release.items():
+        last = _last_look(mbid, times)
+        # A stamp in the FUTURE — a NAS clock corrected backwards by NTP — reads
+        # as due rather than as fresh for however long the clock is out, so the
+        # worst a bad clock can do here is cost a request. Same reading
+        # `mb_cache._fresh` takes.
+        if last is not None and timedelta(0) <= now - last < recheck_after:
+            continue
+        due.append((last or _NEVER, mbid, group))
+    due.sort(key=lambda item: item[0])
+    return [(mbid, group) for _, mbid, group in due]
+
+
+def _last_look(mbid: str, times: dict[str, datetime]) -> datetime | None:
+    """When this release was last looked at, by either measure, or None if it
+    never has been. See `_asked` for why there are two."""
+    seen = [t for t in (times.get(mbid), _asked.get(mbid)) if t is not None]
+    return max(seen) if seen else None
+
+
+def _same_release(before: Release, after: Release) -> bool:
+    """Whether MusicBrainz has anything to say that it had not already said.
+
+    Compared as the JSON the store would write rather than as dicts, because
+    that is precisely the question — *would re-storing this change the row?* —
+    and it is immune to the one way a dict comparison here can lie. A payload
+    that has round-tripped through `json.dumps` has had any tuple flattened to a
+    list, so a fresh payload carrying one would compare unequal to its own
+    stored copy forever. Nothing would break: the pass would simply read every
+    album's files every night for no reason, and no assertion about the *answer*
+    would ever notice.
+
+    An unserialisable payload answers "not the same", which sends the album to
+    the plan — the direction that costs file reads rather than the one that
+    silently skips an album that might have an update outstanding.
+    """
+    try:
+        return json.dumps(before, sort_keys=True) == json.dumps(after, sort_keys=True)
+    except (TypeError, ValueError):
+        log.warning(
+            "update check: could not compare release payloads; reading the files instead",
+            exc_info=True,
+            extra={"_diagnostic": True},
+        )
+        return False

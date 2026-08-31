@@ -49,7 +49,13 @@ before it exists.
   payload writes metadata Harmonist has already been told was superseded;
 - **the user pressed something meaning "look again".** Recheck, the album page's
   re-read control. Serving those a stored answer makes the button a silent
-  no-op with nothing on screen to say why.
+  no-op with nothing on screen to say why;
+- **going and looking IS the operation.** `gardener.sweep`, the background
+  update check, whose entire job is to find out whether MusicBrainz has moved.
+  A stored answer would make it a no-op that costs nothing and reports nothing.
+  This is the only read-only caller in that position, and it is not a licence
+  for the next one: the test is whether the caller exists *to refresh the
+  baseline*, not whether fresher data would be nicer.
 
 Everything that merely displays or compares may take the stored answer.
 

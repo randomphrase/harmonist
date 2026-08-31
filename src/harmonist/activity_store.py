@@ -965,6 +965,54 @@ def store_release(mbid: str, inc: str, payload: Mapping[str, Any]) -> None:
         )
 
 
+def release_fetch_times(inc: str) -> dict[str, datetime]:
+    """When each cached release under `inc` was last read from MusicBrainz.
+
+    The gardener's scheduling clock (#270): a pass asks about the albums whose
+    payload is stalest, which means reading every row's timestamp and none of
+    their payloads. `cached_release` in a loop would answer the same question
+    and `json.loads` a whole release per album to do it — the one cost this
+    query exists to avoid, and invisible in a test, because the answer is
+    identical either way.
+
+    An unindexed scan of `WHERE inc = ?` on purpose. The table has one row per
+    release the install has ever fetched, this runs once per pass rather than
+    once per album, and an index on `inc` would be an index over a handful of
+    distinct values — all cost, no selectivity.
+
+    **An empty dict on failure, like `cached_release`'s None.** It means "no
+    row is known to be recent", so every album reads as due and the pass spends
+    requests it might not have needed — the same safe direction a cache miss
+    takes. It can never mean "nothing to do", which is the answer that would be
+    wrong to guess at. Loud anyway: a pass silently re-asking about the whole
+    library every night is exactly the budget leak the cache exists to stop.
+    """
+    try:
+        conn = _ensure()
+        with _LOCK:
+            rows = conn.execute(
+                "SELECT mbid, fetched_at FROM mb_release_cache WHERE inc = ?", (inc,)
+            ).fetchall()
+    except sqlite3.Error:
+        log.exception(
+            "activity_store release_fetch_times() failed — the background update "
+            "check will treat every album as due and re-ask MusicBrainz about all "
+            "of them",
+            extra=_QUIET_MIRROR,
+        )
+        return {}
+    times: dict[str, datetime] = {}
+    for mbid, stamp in rows:
+        try:
+            times[mbid] = datetime.fromisoformat(stamp)
+        except (ValueError, TypeError):
+            # A timestamp that cannot be read leaves its album out of the map,
+            # so it reads as never-fetched and gets asked about. Same direction
+            # as an unparseable payload in `cached_release`: go and look.
+            log.warning("activity_store: unreadable fetched_at for %s", mbid, extra=_QUIET_MIRROR)
+    return times
+
+
 # There is deliberately no `forget_release`. Three things would want one and
 # none of them survives contact:
 #
