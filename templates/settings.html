@@ -108,6 +108,33 @@
             <span class="block text-2xs text-muted mt-1">Sent with every MusicBrainz request. Form: <code>Name/Version ( contact )</code>.</span>
         </label>
 
+        {# ---- The gardener's trust level (#312) ----
+           Both values here are read-only passes: `off` looks at nothing and
+           `review` looks but never writes to a file, which is what makes this an
+           ordinary form field rather than something that needs a confirmation.
+           #273's `enrich` writes unattended and will need more friction. #}
+        <label class="block">
+            <span class="block text-xs font-bold text-ink mb-1">Background update checks</span>
+            <select name="gardener_level"
+                    class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+                {% for value, label in [('off', 'Off — an album is checked when you open it'),
+                                        ('review', 'Look and report — never writes to your files')] %}
+                <option value="{{ value }}" {{ 'selected' if value == cfg.gardener.level }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <span class="block text-2xs text-muted mt-1">
+                Asks MusicBrainz about roughly a hundred albums an hour while nothing
+                else is running, so every album comes round about weekly, and flags
+                what has moved under the Library's <span class="font-bold">Update available</span> filter.
+            </span>
+        </label>
+
+        {# Why the button is inert is said in the note beside it rather than in a
+           `title` on it: a tooltip is invisible on a touch device, unreliable on
+           a disabled button, and — being the only other name source — takes over
+           the button's own label in the accessibility tree. #}
+        {% include 'partials/_update_check.html' %}
+
         <label class="block">
             <span class="block text-xs font-bold text-ink mb-1">Log level</span>
             <select name="log_level"

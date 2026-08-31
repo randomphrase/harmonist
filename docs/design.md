@@ -1102,7 +1102,7 @@ host = "0.0.0.0"
 port = 8000
 
 [gardener]
-level = "off"      # off | review  (#273 adds enrich)
+level = "off"      # off | review  (#273 adds enrich); also editable in Settings
 
 [test]
 mode = "fixture"   # fixture | cassette | live
@@ -1340,6 +1340,27 @@ protecting the MusicBrainz budget, which is a volunteer service and one request
 per second for everything Harmonist does. `review` is the only other level
 today; #273 adds `enrich`, the level at which some of what the pass finds gets
 applied on its own.
+
+**The level is a live setting, so the timer is not conditional** (#312). It sits
+on the Settings page as **Background update checks** — the internal name is not
+a user-facing one — beside the other knobs that apply without a restart, and
+`_update_check_if_idle` re-reads `app.state.cfg` on every tick and returns early
+when the level is `off`. The task is therefore created unconditionally, which
+inverts the earlier reasoning that a default install should carry no idle timer:
+a config change cannot retroactively start a task that was never created, and
+one sleeping asyncio task costs less than the restart it saves. The lifespan
+closure holds the *startup* config, so reading the level from there would leave
+the setting saved, looking applied, and silently doing nothing — worse than
+having required the restart.
+
+**And a way out of the first empty hour.** `run_periodically` fires one full
+interval after startup and never at startup, so turning the check on at 10:00
+buys an hour in which the library looks exactly as it did. `POST
+/settings/update-check` — **Check now**, beside the level — runs one pass
+immediately. It shares the tick's guards rather than bypassing them, `off`
+included: the level is what the button asks permission from, so it cannot be the
+way round it. Whichever guard declines says so in the flash, because a control
+answered with silence reads as broken whether it ran or refused.
 
 **Detect-only is the classifier's answer, not a phase.** `owned.AUTO_APPLY` is
 empty, so every change needs a person; until #271 gives a finding somewhere to

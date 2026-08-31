@@ -14,8 +14,11 @@ import asyncio
 import copy
 import shutil
 import threading
+import time
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -955,15 +958,28 @@ def _sweep_signal(monkeypatch) -> threading.Event:
     return done
 
 
+def _stub_app(level: str = "review"):
+    """Enough of the app for the tick to read the live level off (#312)."""
+    from harmonist.config import Config, GardenerConfig, PathsConfig
+
+    cfg = Config(
+        paths=PathsConfig(config_dir=Path("/nonexistent"), music_dir=Path("/nonexistent")),
+        gardener=GardenerConfig.model_validate({"level": level}),
+    )
+    return SimpleNamespace(state=SimpleNamespace(cfg=cfg))
+
+
 def test_a_tick_starts_a_pass_when_nothing_else_is_working(monkeypatch):
-    """The positive case the three guards below are exceptions to — without it
+    """The positive case the four guards below are exceptions to — without it
     they would all pass against a tick that never runs anything at all."""
     from harmonist.web import main as web_main
 
     done = _sweep_signal(monkeypatch)
 
-    web_main._update_check_if_idle(_stub_runner(), _stub_runner(), _stub_runner())
-
+    assert (
+        web_main._update_check_if_idle(_stub_app(), _stub_runner(), _stub_runner(), _stub_runner())
+        is None
+    )
     assert done.wait(5) is True
 
 
@@ -981,13 +997,33 @@ def test_a_tick_stands_aside_for_work_with_a_better_claim(monkeypatch, sync, rec
 
     done = _sweep_signal(monkeypatch)
 
-    web_main._update_check_if_idle(
+    reason = web_main._update_check_if_idle(
+        _stub_app(),
         _stub_runner(running=sync),
         _stub_runner(running=reconcile),
         _stub_runner(scanned=scanned),
     )
 
     assert done.wait(0.25) is False
+    # Named rather than merely refused: **Check now** (#312) shows this to
+    # whoever pressed it, and a control that declines in silence reads as broken.
+    assert reason
+
+
+def test_a_tick_does_nothing_while_the_level_is_off(monkeypatch):
+    """The default, and now a per-tick decision rather than a task that was
+    never created (#312): the timer runs from startup either way, so `off` has
+    to be checked here or an install that never asked for the pass gets one."""
+    from harmonist.web import main as web_main
+
+    done = _sweep_signal(monkeypatch)
+
+    reason = web_main._update_check_if_idle(
+        _stub_app(level="off"), _stub_runner(), _stub_runner(), _stub_runner()
+    )
+
+    assert done.wait(0.25) is False
+    assert reason
 
 
 def test_a_pass_still_running_is_not_started_on_top_of_itself(monkeypatch):
@@ -999,48 +1035,79 @@ def test_a_pass_still_running_is_not_started_on_top_of_itself(monkeypatch):
     done = _sweep_signal(monkeypatch)
     web_main._update_check_lock.acquire()
     try:
-        web_main._update_check_if_idle(_stub_runner(), _stub_runner(), _stub_runner())
+        reason = web_main._update_check_if_idle(
+            _stub_app(), _stub_runner(), _stub_runner(), _stub_runner()
+        )
         assert done.wait(0.25) is False
+        assert reason
     finally:
         web_main._update_check_lock.release()
 
 
-def _timer_names(cfg, monkeypatch) -> list[str]:
-    """The periodic tasks the lifespan actually engages."""
+@contextmanager
+def _engaged_timers(cfg, monkeypatch):
+    """The periodic tasks the lifespan engages, and the app they tick against.
+
+    The actions are captured rather than run, so a test drives a tick when it
+    wants one instead of waiting out an hour-long interval.
+    """
     from fastapi.testclient import TestClient
 
     from harmonist.web import main as web_main
 
-    names: list[str] = []
+    actions: dict[str, object] = {}
 
     async def _record(interval, action, *, name, stop_event=None):
-        names.append(name)
+        actions[name] = action
         if stop_event is not None:
             await stop_event.wait()
 
     monkeypatch.setattr(web_main.periodic, "run_periodically", _record)
-    with TestClient(web_main.create_app(cfg), headers={"HX-Request": "true"}):
-        pass
-    return names
+    app = web_main.create_app(cfg)
+    with TestClient(app, headers={"HX-Request": "true"}):
+        for _ in range(500):  # the first scan, which the tick waits for
+            if app.state.scan_runner.has_completed():
+                break
+            time.sleep(0.01)
+        yield app, actions
 
 
-def test_the_update_check_does_not_run_unless_it_was_turned_on(engaged, monkeypatch):
-    """The default. `review` writes nothing to anybody's files, so this is not
-    protecting the library — it is protecting a volunteer service from an
-    install that started asking it a hundred questions an hour because somebody
-    upgraded. No task is created at all, rather than a task that does nothing."""
-    cfg, _ = engaged
-
-    assert "update check" not in _timer_names(cfg, monkeypatch)
-
-
-def test_turning_it_on_engages_the_timer(engaged, monkeypatch):
-    """The other half: an install that asked for the pass gets one, on the same
-    generic timer the hourly rescan runs on rather than a second pattern beside
-    it (#151)."""
+@pytest.mark.parametrize("level", ["off", "review"])
+def test_the_update_check_timer_is_engaged_whatever_the_level(engaged, monkeypatch, level):
+    """The timer starts with the process at every level, on the same generic
+    timer the hourly rescan runs on rather than a second pattern beside it
+    (#151). It used not to when the level was `off`, on the grounds that a
+    default install should carry no idle timer — but the level is a Settings
+    control now (#312), and a config change cannot retroactively create a task
+    that was never started. One sleeping task per process buys the restart."""
     from harmonist.config import GardenerConfig
 
     cfg, _ = engaged
-    cfg = cfg.model_copy(update={"gardener": GardenerConfig(level="review")})
+    cfg = cfg.model_copy(update={"gardener": GardenerConfig.model_validate({"level": level})})
 
-    assert "update check" in _timer_names(cfg, monkeypatch)
+    with _engaged_timers(cfg, monkeypatch) as (_app, actions):
+        assert "update check" in actions
+
+
+def test_turning_the_check_on_takes_effect_without_a_restart(engaged, monkeypatch):
+    """What the Settings control (#312) is worth: the tick reads the level from
+    `app.state.cfg`, which the save replaces. The lifespan closure holds the
+    *startup* config, and a tick reading that would leave the setting saved,
+    looking applied, and doing nothing until the container came back — worse
+    than having required the restart in the first place."""
+    from harmonist.config import GardenerConfig
+
+    cfg, _ = engaged  # ships `off`
+    done = _sweep_signal(monkeypatch)
+
+    with _engaged_timers(cfg, monkeypatch) as (app, actions):
+        tick = actions["update check"]
+        tick()
+        assert done.wait(0.25) is False
+
+        app.state.cfg = app.state.cfg.model_copy(
+            update={"gardener": GardenerConfig(level="review")}
+        )
+        tick()
+
+        assert done.wait(5) is True

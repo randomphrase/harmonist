@@ -675,21 +675,21 @@ def create_app(
                 stop_event=watch_stop,
             )
         )
-        # And ask MusicBrainz what it has been doing (#270) — off unless the
-        # user turned it on, because it spends the rate-limited budget while
-        # nobody is watching. The task isn't created at all when it is off, so
-        # the default install has no extra timer, not a timer that does nothing.
-        check_task = (
-            asyncio.create_task(
-                periodic.run_periodically(
-                    _UPDATE_CHECK_INTERVAL,
-                    lambda: _update_check_if_idle(sync_runner, reconcile_runner, scan_runner),
-                    name="update check",
-                    stop_event=watch_stop,
-                )
+        # And ask MusicBrainz what it has been doing (#270) — still off unless
+        # the user turned it on, but the *tick* is what checks, not the startup
+        # config. The level moves from Settings now (#312), and a task that was
+        # never created cannot be started by a config change; a sleeping timer
+        # that returns immediately costs one asyncio task per process, which is
+        # cheaper than the restart it saves. `_app.state.cfg` is read per tick
+        # for the same reason — the closure's `cfg` is the startup one, and
+        # reading it would make the setting save, look applied, and do nothing.
+        check_task = asyncio.create_task(
+            periodic.run_periodically(
+                _UPDATE_CHECK_INTERVAL,
+                lambda: _update_check_if_idle(_app, sync_runner, reconcile_runner, scan_runner),
+                name="update check",
+                stop_event=watch_stop,
             )
-            if cfg.gardener.level != "off"
-            else None
         )
         try:
             yield
@@ -697,15 +697,13 @@ def create_app(
             watch_stop.set()
             watch_task.cancel()
             rescan_task.cancel()
-            if check_task is not None:
-                check_task.cancel()
+            check_task.cancel()
             with suppress(asyncio.CancelledError):
                 await watch_task
             with suppress(asyncio.CancelledError):
                 await rescan_task
-            if check_task is not None:
-                with suppress(asyncio.CancelledError):
-                    await check_task
+            with suppress(asyncio.CancelledError):
+                await check_task
 
     app = FastAPI(title="Harmonist", lifespan=lifespan)
     app.state.cfg = cfg
@@ -1127,6 +1125,18 @@ def _completeness_oob(request: Request, album: Album) -> str:
     """
     template = _templates(request).env.get_template("partials/_completeness.html")
     return template.render(_ctx(request, album=album, oob=True))
+
+
+def _update_check_oob(request: Request, outcome: str, *, ok: bool) -> str:
+    """The background update check's note + Check now button, as an out-of-band
+    swap carrying what the press just produced (#312).
+
+    A partial rather than a string of markup built here, so its class names sit
+    under `templates/` where Tailwind's `@source` globs can see them — a utility
+    minted only in Python is silently absent from the bundle.
+    """
+    template = _templates(request).env.get_template("partials/_update_check.html")
+    return template.render(_ctx(request, outcome=outcome, outcome_ok=ok, oob=True))
 
 
 def _retag_short_oob(
@@ -2166,20 +2176,38 @@ _update_check_lock = threading.Lock()
 
 
 def _update_check_if_idle(
-    sync_runner: SyncRunner, reconcile_runner: ReconcileRunner, scan_runner: ScanRunner
-) -> None:
+    app: FastAPI,
+    sync_runner: SyncRunner,
+    reconcile_runner: ReconcileRunner,
+    scan_runner: ScanRunner,
+) -> str | None:
     """One gardener pass (#270), unless something with a better claim is running.
 
-    Three things get out of the way, for one reason between them: the
-    MusicBrainz rate limit is a single shared queue, and anything the user set
-    in motion is waiting on it. A sync or a reconcile pass is spending it
-    already, and the check is in no hurry — its albums have been unasked-about
-    for a week and one more hour changes nothing. It skips the tick rather than
-    deferring it, like the periodic rescan does, because the next one comes
-    round soon and nothing is waiting on this one.
+    Returns `None` when a pass was started, and otherwise the reason it wasn't,
+    phrased for a person: the hourly tick discards it — the log line beside each
+    guard is its channel — but **Check now** on the Settings page is a button a
+    user just pressed, and a control that answers a press with silence reads as
+    broken whether it declined or ran.
 
-    The third is the first scan: the pass reads `scan_runner.albums()`, which is
-    empty until then, so an early tick would report a library of nothing.
+    `app` rather than the level itself, because the level moves at runtime
+    (#312): `app.state.cfg` is re-read on every tick, so saving the setting
+    takes effect on the next one instead of at the next restart. The runners are
+    the same three objects for the life of the process, so they are passed.
+
+    Four guards, in the order they are checked. The **level** comes first and is
+    not about timing at all: `off` means Harmonist has not been given the budget
+    to go and look, so there is nothing to weigh.
+
+    The other three share one reason: the MusicBrainz rate limit is a single
+    shared queue, and anything the user set in motion is waiting on it. A sync or
+    a reconcile pass is spending it already, and the check is in no hurry — its
+    albums have been unasked-about for a week and one more hour changes nothing.
+    It skips the tick rather than deferring it, like the periodic rescan does,
+    because the next one comes round soon and nothing is waiting on this one. The
+    first scan is the same argument at startup: the pass reads
+    `scan_runner.albums()`, which is empty until then, so an early tick would
+    report a library of nothing. And a pass still running refuses a second on top
+    of itself, which would ask about the same albums twice.
 
     **Its own thread.** The pass blocks on the network for a second per album
     and then on the disk, which are the two things that must never happen on the
@@ -2187,15 +2215,19 @@ def _update_check_if_idle(
     persists nothing but the cache rows it fills on the way, so being killed
     part-way through loses only work the next pass redoes.
     """
+    cfg: config_mod.Config = app.state.cfg
+    if cfg.gardener.level == "off":
+        log.debug("Skipping update check: background update checks are off")
+        return "background update checks are off"
     if sync_runner.is_running or reconcile_runner.is_running:
         log.info("Skipping update check: sync or reconcile in progress")
-        return
+        return "a sync or reconcile is using the MusicBrainz budget"
     if not scan_runner.has_completed():
         log.info("Skipping update check: the library has not been scanned yet")
-        return
+        return "the library hasn't finished scanning yet"
     if not _update_check_lock.acquire(blocking=False):
         log.warning("Skipping update check: the previous pass is still running")
-        return
+        return "a check is already running"
 
     def _run() -> None:
         try:
@@ -2211,6 +2243,7 @@ def _update_check_if_idle(
             _update_check_lock.release()
 
     threading.Thread(target=_run, name="harmonist-update-check", daemon=True).start()
+    return None
 
 
 def _start_flag_warm_up(scan_runner: ScanRunner) -> None:
@@ -3455,6 +3488,7 @@ def _register_routes(app: FastAPI) -> None:
         max_downloads_per_sync: int = Form(...),
         user_agent: str = Form(...),
         cover_art_size: str = Form(...),
+        gardener_level: str = Form(...),
         log_level: str = Form(...),
     ) -> Response:
         cfg: config_mod.Config = request.app.state.cfg
@@ -3471,11 +3505,15 @@ def _register_routes(app: FastAPI) -> None:
             # model_validate (vs the constructor) keeps mypy happy about the
             # str→Literal narrowing while still validating the value at runtime.
             new_cover = config_mod.CoverArtConfig.model_validate({"size": cover_art_size})
+            new_gardener = config_mod.GardenerConfig.model_validate(
+                {"level": gardener_level.strip()}
+            )
             new_cfg = cfg.model_copy(
                 update={
                     "bandcamp": new_bandcamp,
                     "musicbrainz": new_mb,
                     "cover_art": new_cover,
+                    "gardener": new_gardener,
                     "log_level": log_level.strip().lower(),
                 }
             )
@@ -3491,17 +3529,72 @@ def _register_routes(app: FastAPI) -> None:
                 "bandcamp.max_downloads_per_sync": new_bandcamp.max_downloads_per_sync,
                 "musicbrainz.user_agent": new_mb.user_agent,
                 "cover_art.size": new_cover.size,
+                "gardener.level": new_gardener.level,
                 "log_level": new_cfg.log_level,
             },
         )
         # Apply live — code reads these from app.state.cfg at use-time. The
         # MB user-agent is applied at startup, so re-configure it now too.
+        # The gardener's level needs nothing further: its timer is always
+        # running and reads the level off this config on its next tick (#312).
         request.app.state.cfg = new_cfg
         mb_lookup.configure(new_cfg.musicbrainz.user_agent)
         activity.info("Settings updated")
 
         return _templates(request).TemplateResponse(
             request, "settings.html", _settings_ctx(request, new_cfg, saved=True)
+        )
+
+    @app.post("/settings/update-check", response_class=HTMLResponse)
+    def run_update_check_now(request: Request) -> Response:
+        """Run the background pass now, instead of waiting for the next tick.
+
+        `run_periodically` fires one full interval after startup and never at
+        startup, so turning the check on at 10:00 buys an hour of a library that
+        looks exactly as it did — which reads as a setting that didn't take
+        (#312). This is the escape hatch from that hour, and the only way to see
+        the pass work on demand.
+
+        Not a mutation: it starts a read-only pass on a worker thread and
+        returns at once, so there is nothing for the inbox or the library to
+        refresh yet (`tasks_changed=False`). What it finds arrives the way the
+        pass's findings always arrive — the Update badge on a tile, and the
+        Library's **Update available** filter.
+
+        The outcome goes back out of band as well as in the flash, because on
+        this page the flash alone is silence: the status bar's JS is defined in
+        index.html, so a `harmonist-status` event fired on /settings has nobody
+        listening for it. The OOB fragment answers beside the button that was
+        pressed, which is where the answer belongs anyway.
+        """
+        state = request.app.state
+        reason = _update_check_if_idle(
+            request.app, state.sync_runner, state.reconcile_runner, state.scan_runner
+        )
+        if reason is not None:
+            return _flash_response(
+                "Update check not started",
+                reason,
+                level=Level.WARNING,
+                tasks_changed=False,
+                # No feed entry: nothing happened, the press has its answer on
+                # screen, and the one decline that IS news — a pass still
+                # running — already reaches the feed through its mirrored
+                # `log.warning`. Recording here too would post it twice (#258).
+                record_activity=False,
+                oob=_update_check_oob(request, f"Not started — {reason}.", ok=False),
+            )
+        return _flash_response(
+            "Update check started",
+            "asking MusicBrainz about the albums due; anything it finds appears "
+            "under the Library's Update available filter",
+            tasks_changed=False,
+            oob=_update_check_oob(
+                request,
+                "Checking now — anything it finds appears under the Library's "
+                "Update available filter.",
+                ok=True,
+            ),
         )
 
     @app.get("/sync/status")

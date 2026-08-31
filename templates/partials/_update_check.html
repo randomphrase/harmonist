@@ -1,0 +1,31 @@
+{# The background update check's status line and its Check now button (#312).
+
+   Rendered inline by settings.html, and out of band by POST
+   /settings/update-check so the press has a visible answer *here*. It cannot
+   rely on the usual flash: the status bar's JS lives in index.html, so on
+   /settings a `harmonist-status` event goes nowhere — the same reason
+   `globals_off_reason` is derived server-side rather than by the poll.
+
+   Swapping the whole row also re-renders the button, so a pass that started
+   leaves it in whatever state the current level says it should be in. #}
+<div id="update-check-control" class="flex items-center justify-between gap-3 -mt-1"
+     {% if oob %}hx-swap-oob="true"{% endif %}>
+    <p class="text-2xs {{ 'text-red-700 font-bold' if outcome and not outcome_ok else 'text-muted' }}"
+       {% if outcome %}role="status"{% endif %}>
+        {% if outcome %}
+        {{ outcome }}
+        {% elif cfg.gardener.level == 'off' %}
+        Choose a level and save, and you can run the first check straight away
+        rather than waiting for it to come round.
+        {% else %}
+        The first check is up to an hour after you turn this on — run one
+        straight away instead.
+        {% endif %}
+    </p>
+    <button id="update-check-now" type="button"
+            hx-post="/settings/update-check" hx-swap="none" hx-disabled-elt="this"
+            {% if cfg.gardener.level == 'off' %}disabled{% endif %}
+            class="flex-shrink-0 px-3 py-1.5 border border-accent text-accent hover:bg-accent-soft disabled:opacity-40 disabled:hover:bg-transparent rounded text-xs font-bold uppercase tracking-widest transition">
+        Check now
+    </button>
+</div>

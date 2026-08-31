@@ -12,8 +12,10 @@ versions follow [semantic versioning](https://semver.org).
   Library tile (#293).
 - Harmonist can **check your library against MusicBrainz in the background**, so
   the **Update available** filter finds albums nobody has opened (#270). Off by
-  default — set `level = "review"` under `[gardener]`. It never writes to your
-  files.
+  default, turned on under **Background update checks** in Settings (#312), and
+  it never writes to your files.
+- **Check now**, beside that setting, runs a background check straight away
+  instead of waiting up to an hour for the next one (#312).
 
 ## [1.12.0] - 2026-08-28
 

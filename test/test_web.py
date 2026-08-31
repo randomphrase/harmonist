@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import threading
 import zipfile
 from collections.abc import Sequence
 from dataclasses import replace
@@ -5072,6 +5073,17 @@ def _button_tag(html: str, button_id: str) -> str:
     return m.group(0)
 
 
+def _button_is_disabled(html: str, button_id: str) -> bool:
+    """Whether THAT button carries the bare `disabled` attribute.
+
+    A plain `"disabled" in tag` would be true for free on any button carrying
+    `hx-disabled-elt` or a `disabled:` Tailwind variant — the update-check
+    button has both — so it would pass with the attribute never rendered.
+    Values are blanked first, then the attribute names are matched whole.
+    """
+    return "disabled" in re.sub(r'"[^"]*"', '""', _button_tag(html, button_id)).split()
+
+
 def test_settings_page_disables_the_global_sync_actions(client, cfg):
     """Sync is inert on Settings: it would read configuration the user is
     partway through changing (#108)."""
@@ -5131,6 +5143,7 @@ def test_settings_save_persists_and_applies_live(client, cfg):
             "max_downloads_per_sync": "12",
             "user_agent": "Harmonist/9.9 ( me@example.com )",
             "cover_art_size": "500",
+            "gardener_level": "review",
             "log_level": "warning",
         },
     )
@@ -5141,11 +5154,13 @@ def test_settings_save_persists_and_applies_live(client, cfg):
     assert live.bandcamp.download_format == "alac"
     assert live.bandcamp.max_downloads_per_sync == 12
     assert live.cover_art.size == "500"
+    assert live.gardener.level == "review"
     assert live.log_level == "warning"
     # Persisted to harmonist.toml (round-trips on next load)
     toml = (cfg.paths.config_dir / "harmonist.toml").read_text()
     assert "alac" in toml
     assert "max_downloads_per_sync = 12" in toml
+    assert 'level = "review"' in toml
 
 
 def test_settings_save_rejects_invalid_cover_size(client, cfg):
@@ -5156,6 +5171,7 @@ def test_settings_save_rejects_invalid_cover_size(client, cfg):
             "max_downloads_per_sync": "5",
             "user_agent": "Harmonist/0.1 ( x@y.z )",
             "cover_art_size": "999",  # not a valid Literal
+            "gardener_level": "off",
             "log_level": "info",
         },
     )
@@ -5163,6 +5179,98 @@ def test_settings_save_rejects_invalid_cover_size(client, cfg):
     assert "Couldn't save" in r.text
     # nothing persisted
     assert not (cfg.paths.config_dir / "harmonist.toml").exists()
+
+
+def test_settings_save_rejects_an_unknown_gardener_level(client, cfg):
+    """The level is a Literal, not free text, and it decides what Harmonist does
+    to a library unattended — so a value nobody defined is a rejection, never a
+    quiet fall back to `off` (which would look identical to a saved setting) or
+    to `review` (which would start spending the MusicBrainz budget)."""
+    r = client.post(
+        "/settings",
+        data={
+            "download_format": "flac",
+            "max_downloads_per_sync": "5",
+            "user_agent": "Harmonist/0.1 ( x@y.z )",
+            "cover_art_size": "original",
+            "gardener_level": "enrich",  # #273's level, not implemented yet
+            "log_level": "info",
+        },
+    )
+    assert r.status_code == 200
+    assert "Couldn't save" in r.text
+    assert client.app.state.cfg.gardener.level == "off"
+    assert not (cfg.paths.config_dir / "harmonist.toml").exists()
+
+
+def test_settings_offers_check_now_only_once_the_check_is_on(client, cfg):
+    """The control's escape hatch from the empty hour after enabling it (#312).
+    Inert while the level is `off`: there is no background pass to pre-empt, and
+    a button that spends a hundred MusicBrainz requests must not be the way round
+    a setting that says not to."""
+    from harmonist.config import GardenerConfig
+
+    assert cfg.gardener.level == "off"
+    assert _button_is_disabled(client.get("/settings").text, "update-check-now") is True
+
+    client.app.state.cfg = cfg.model_copy(update={"gardener": GardenerConfig(level="review")})
+
+    assert _button_is_disabled(client.get("/settings").text, "update-check-now") is False
+
+
+def test_check_now_starts_a_pass(client, cfg, monkeypatch):
+    """`run_periodically` fires one full interval after startup, so enabling the
+    check at 10:00 does nothing until 11:00. This is what stops that hour
+    reading as a setting that didn't take."""
+    from harmonist import gardener
+    from harmonist.config import GardenerConfig
+
+    swept = threading.Event()
+
+    def _sweep(albums, **kw):
+        swept.set()
+        return gardener.PassResult(asked=0, examined=0, flagged=0, gone=0, failed=0)
+
+    monkeypatch.setattr(client.app.state.scan_runner, "has_completed", lambda: True, raising=False)
+    monkeypatch.setattr(gardener, "sweep", _sweep)
+    client.app.state.cfg = cfg.model_copy(update={"gardener": GardenerConfig(level="review")})
+
+    r = client.post("/settings/update-check")
+
+    assert r.status_code == 200
+    assert "Update check started" in r.text
+    assert swept.wait(5) is True
+    # And the page says so where the button is. The flash alone is silence on
+    # /settings — the status bar's JS is defined in index.html — so the outcome
+    # rides back as an out-of-band swap of the control's own row.
+    assert 'id="update-check-control"' in r.text
+    assert 'hx-swap-oob="true"' in r.text
+    assert "Checking now" in r.text
+
+
+def test_check_now_says_why_when_it_declines(client, cfg, monkeypatch):
+    """A press answered with silence reads as broken, so the tick's reason goes
+    back to whoever pressed — here the level, which the button is disabled for
+    but a stale page or a direct POST can still reach."""
+    from harmonist import gardener
+
+    swept = threading.Event()
+
+    def _sweep(albums, **kw):
+        swept.set()
+        return gardener.PassResult(asked=0, examined=0, flagged=0, gone=0, failed=0)
+
+    monkeypatch.setattr(gardener, "sweep", _sweep)
+
+    r = client.post("/settings/update-check")  # cfg ships `off`
+
+    assert r.status_code == 200
+    assert "Update check not started" in r.text
+    assert "background update checks are off" in r.text
+    assert swept.wait(0.25) is False
+    # Refusals get the same out-of-band answer as a start, for the same reason.
+    assert 'hx-swap-oob="true"' in r.text
+    assert "Not started — background update checks are off." in r.text
 
 
 def test_tasks_shows_scanning_placeholder_while_scanning(client, cfg, monkeypatch):

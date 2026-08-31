@@ -90,6 +90,7 @@ watch_settle_seconds = 5          # quiet time before a watched change rescans
 
 [gardener]
 level = "off"                     # "off" | "review" — background update checks
+                                  # (also on the Settings page)
 ```
 
 Harmonist watches the music dir and rescans when files change under it, but
@@ -120,6 +121,12 @@ update is still something you press a button for. Turning it on means Harmonist
 asks MusicBrainz about roughly a hundred albums an hour while it is idle, so
 every album is re-checked about weekly; it stands aside for any sync, reconcile
 or scan rather than competing with them for the one-request-per-second budget.
+
+It is also on the **Settings** page, as **Background update checks**, and takes
+effect there without a restart — this is the setting most likely to be changed
+after install, since it ships off and its whole point is turning it on once you
+trust it. The first pass is otherwise up to an hour away, so the control has a
+**Check now** beside it that runs one straight away.
 
 Bandcamp sync needs a `cookies.txt` (exported from a logged-in browser) — paste
 or upload it via the in-app **Set up Bandcamp sync** prompt.
