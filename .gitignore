@@ -16,6 +16,8 @@ docker-compose.override.yml
 
 # Local scratch / dev data dirs
 /music/
+# Bandcamp payload captures for #289 — hold account-scoped ids and signed URLs
+/.preorder-capture/
 
 # Runtime logs (never commit — may contain private data)
 *.log
