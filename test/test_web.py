@@ -5826,6 +5826,104 @@ def test_tracks_disagreeing_about_a_field_are_counted_not_hidden(client, cfg, mo
     assert "The others differ." not in body
 
 
+def test_the_columns_a_tracklist_drops_are_named_under_it(client, cfg, monkeypatch):
+    """The #112 half of #309: a collapsed column must not be indistinguishable
+    from a tag nobody looked at.
+
+    So the dropped set is named, with its values a press away — and behind a
+    native <details>, which brings its own keyboard handling and open state
+    rather than a scripted toggle beside the hx-* attributes this page runs on.
+    """
+    d = _make_tagged_album(cfg, "Quiet", mbid="rel-quiet", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_TITLE] = ["Ground Glass"]
+    audio[ATOM_ARTIST] = ["Benoît Pioulard"]
+    audio["aART"] = ["Benoît Pioulard"]
+    audio.save()
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Quiet",
+            "artist-credit": [{"artist": {"id": "art-1", "name": "Benoît Pioulard"}}],
+            "medium-list": [
+                {
+                    "position": "1",
+                    "track-list": [{"id": "t1", "title": "Ground Glass", "length": "1000"}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    # Nothing about this track differs from its album or from MusicBrainz, so the
+    # Artist column is a name repeated down a column and is dropped.
+    assert not re.search(r"<th [^>]*>\s*Artist\s*</th>", body)
+    assert '<details class="track-same">' in body
+    assert "are the same on every track and match MusicBrainz" in body
+    # Named, and its one value reachable — not silently absent.
+    assert "<dt>Artist</dt>" in body
+    assert "Benoît Pioulard" in body
+
+
+def test_a_featured_credit_reads_as_the_artists_it_names(client, cfg, monkeypatch):
+    """#309's second half, end to end.
+
+    MusicBrainz assembles a credit from named artists and the words between them,
+    and Picard flattens it into one string on the way to the file. The page has
+    the release in hand, so it can put the structure back: each artist a link,
+    joined by MusicBrainz's own " feat. ".
+
+    The web rung, not the pure one. `compare` deliberately never sees the release
+    payload — it is told a value is a credit and nothing more — so whether the
+    parts actually reach the markup is decided by the template and the context,
+    which only a rendered response can show.
+    """
+    d = _make_tagged_album(cfg, "Featured", mbid="rel-feat", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_TITLE] = ["Empire Systems"]
+    audio[ATOM_ARTIST] = ["Rafael Anton Irisarri feat. Julia Kent"]
+    audio["aART"] = ["Rafael Anton Irisarri"]
+    audio.save()
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "A Fragile Geography",
+            "artist-credit": [{"artist": {"id": "art-1", "name": "Rafael Anton Irisarri"}}],
+            "medium-list": [
+                {
+                    "position": "1",
+                    "track-list": [
+                        {
+                            "id": "rt-1",
+                            "title": "Empire Systems",
+                            "length": "1000",
+                            "artist-credit": [
+                                {"artist": {"id": "art-1", "name": "Rafael Anton Irisarri"}},
+                                " feat. ",
+                                {"artist": {"id": "art-2", "name": "Julia Kent"}},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    # The track is credited to two artists where the album is credited to one, so
+    # the Artist column is earned rather than collapsed.
+    assert re.search(r"<th [^>]*>\s*Artist\s*</th>", body)
+    # Both artists linked, and the join phrase between them as MusicBrainz spells
+    # it — not the "; " a list of ids would have been joined with.
+    assert 'href="https://musicbrainz.org/artist/art-1"' in body
+    assert 'href="https://musicbrainz.org/artist/art-2"' in body
+    assert re.search(r">Rafael Anton Irisarri</a> feat\. <a [^>]*>Julia Kent</a>", body)
+
+
 def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     """When on-disk track titles differ from MB (e.g. a featured-artist tidy-up
     on MB after tagging), the tracklist reports the metadata difference even
@@ -5856,7 +5954,12 @@ def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     # marked in place — so the assertion is on the marked run itself.
     assert '<em class="diff-run"> [w/ Foxes in Fiction]</em>' in r.text
     assert "1 of 1 tracks differs from MusicBrainz" in r.text
-    assert "match MusicBrainz" not in r.text
+    # Neither wording the tracklist's headline uses when nothing differs. Named
+    # exactly rather than as a bare "match MusicBrainz", which the collapsed
+    # columns note under the table now says truthfully about fields that DO
+    # agree (#309) — a substring that broad stopped being about the headline.
+    assert "tracks match MusicBrainz" not in r.text
+    assert "Matches MusicBrainz" not in r.text
 
 
 def test_album_page_loads_the_comparison_lazily(client, cfg, monkeypatch):

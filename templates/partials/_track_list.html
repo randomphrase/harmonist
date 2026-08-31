@@ -1,8 +1,17 @@
 {# The album's tracks against its MusicBrainz release, field by field (#135).
 
-   The table's columns are `compare.TRACK_COLUMNS` and each row's cells are
-   `ComparedTrack.fields` in the same order — so the headings live here and the
-   values come from the model, rather than both being written out twice.
+   The table's columns are `tracklist.columns` and each row's cells are
+   `ComparedTrack.fields` in the same order — so both come from the model,
+   rather than the headings being written out here and hoped to line up.
+
+   Which columns those are is EARNED, per album (#309). A per-track tag gets one
+   when it differs from MusicBrainz on some track, when the tracks disagree with
+   each other, or when it differs from the album-level value; otherwise it is a
+   column of N identical rows restating something the page already says, and it
+   is named under the table instead with its one value a disclosure away. That
+   is what puts a per-track change — an artist sort on track 6, an ISRC — beside
+   the track it belongs to, where the re-tag box below could only ever state it
+   as "1 of 7 tracks" and leave the reader to work out which.
 
    Two lines per track, not two columns: a track that agrees is one plain line,
    and a track that differs gains a second beneath it in mb-purple carrying only
@@ -43,8 +52,8 @@
         {% if not multi_disc %}
         <thead>
             <tr>
-                {% for heading in track_columns %}
-                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">{{ heading }}</th>
+                {% for col in tracklist.columns %}
+                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">{{ col.label }}</th>
                 {% endfor %}
             </tr>
         </thead>
@@ -60,11 +69,11 @@
            spacer row — predictable, and it keeps the heading's background band
            from stretching to fill it. #}
         {% if not loop.first %}
-        <tbody class="track-diff__disc-gap"><tr><td colspan="{{ track_columns|length }}"></td></tr></tbody>
+        <tbody class="track-diff__disc-gap"><tr><td colspan="{{ tracklist.columns|length }}"></td></tr></tbody>
         {% endif %}
         <tbody class="track-diff__disc">
             <tr>
-                <th scope="colgroup" colspan="{{ track_columns|length }}" class="track-diff__disc-head">
+                <th scope="colgroup" colspan="{{ tracklist.columns|length }}" class="track-diff__disc-head">
                     {% if group.absent %}<span class="track-diff__disc-absent">Not on disk:</span>{% endif %}
                     {{ group.medium.label }}
                     <span class="track-diff__disc-meta">{{ group.summary }}</span>
@@ -77,8 +86,8 @@
                read as part of it. #}
             {% if not group.absent %}
             <tr class="track-diff__disc-cols">
-                {% for heading in track_columns %}
-                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">{{ heading }}</th>
+                {% for col in tracklist.columns %}
+                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">{{ col.label }}</th>
                 {% endfor %}
             </tr>
             {% endif %}
@@ -94,7 +103,7 @@
         <tbody class="track-diff__track">
             <tr>
                 <td class="track-diff__num"></td>
-                <td colspan="{{ track_columns|length - 1 }}" class="track-diff__absent">
+                <td colspan="{{ tracklist.columns|length - 1 }}" class="track-diff__absent">
                     <details>
                         <summary>None of this disc's {{ group.tracks | length }} tracks are on disk</summary>
                         <ol class="track-diff__disc-list">
@@ -136,7 +145,14 @@
                         ><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg></span>
                     {%- endif -%}
                     {%- if f.disk -%}
-                    {%- with runs = f.disk_runs, value = f.disk %}{% include 'partials/_diff_runs.html' %}{% endwith -%}
+                    {#- Through `_field_value`, not `_diff_runs` directly (#309).
+                        That is what makes an id column a named link instead of a
+                        column of hex, and an artist column the artists it names
+                        joined by MusicBrainz's own " feat. ". `_diff_runs` is
+                        still what an ordinary tag reaches — it is the fallback
+                        inside `_field_value`, so nothing about the marking of a
+                        differing run changes. -#}
+                    {%- with runs = f.disk_runs, value = f.disk, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
                     {%- endif -%}
                 </td>
                 {% endfor %}
@@ -149,7 +165,7 @@
                "which one?" is the immediate next question. #}
             <tr>
                 <td class="track-diff__num"></td>
-                <td colspan="{{ track_columns|length - 1 }}" class="track-diff__unreadable">
+                <td colspan="{{ tracklist.columns|length - 1 }}" class="track-diff__unreadable">
                     Couldn't read {{ t.file_name }}
                 </td>
             </tr>
@@ -160,7 +176,7 @@
                incomplete, and the MusicBrainz line below says what's absent. #}
             <tr>
                 <td class="track-diff__num"></td>
-                <td colspan="{{ track_columns|length - 1 }}" class="track-diff__absent">
+                <td colspan="{{ tracklist.columns|length - 1 }}" class="track-diff__absent">
                     Not on disk
                 </td>
             </tr>
@@ -173,7 +189,7 @@
                from MusicBrainz, and the purple would say it did. #}
             <tr>
                 <td class="track-diff__num"></td>
-                <td colspan="{{ track_columns|length - 1 }}" class="track-diff__absent">
+                <td colspan="{{ tracklist.columns|length - 1 }}" class="track-diff__absent">
                     Not in MusicBrainz
                 </td>
             </tr>
@@ -194,7 +210,7 @@
                         ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span>
                     {%- endif -%}
                     {%- if f.agreement in ('differs', 'only_mb', 'unreadable') and f.mb -%}
-                    {%- with runs = f.mb_runs, value = f.mb %}{% include 'partials/_diff_runs.html' %}{% endwith -%}
+                    {%- with runs = f.mb_runs, value = f.mb, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
                     {%- endif -%}
                 </td>
                 {% endfor %}
@@ -206,3 +222,43 @@
         {% endfor %}
     </table>
 </div>
+
+{% if tracklist.collapsed %}
+{# The per-track tags with no column, NAMED (#309).
+
+   A column that simply vanished would be indistinguishable from a tag nobody
+   looked at, which is the #112 distinction the rest of this page is careful
+   about: "checked, and every track agrees" and "never examined" must not read
+   the same. So the set is named, and the values are one press away.
+
+   A list rather than the columns themselves, because a collapsed column is N
+   identical rows by construction — every track agreed, or it would have earned
+   a column — so revealing it needs one row per field, not one per track. That is
+   also why it can sit outside the table's horizontal scroll.
+
+   <details>, not a scripted toggle: focus, keyboard handling and the open state
+   come free, and no `onclick` goes anywhere near an element the page also drives
+   with hx-* attributes. #}
+<details class="track-same">
+    <summary>{{ tracklist.collapsed_summary }}</summary>
+    <dl class="track-same__fields">
+        {% for f in tracklist.collapsed %}
+        <dt>{{ f.label }}</dt>
+        <dd>
+            {% if f.value %}
+            {# Same renderer as a cell, so an id here is the same named link it
+               would have been in a column and an artist credit reads the same
+               way. A collapsed field agrees with MusicBrainz by definition, so
+               its value is one MusicBrainz has a name for. #}
+            {% with runs = none, value = f.value, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith %}
+            {% else %}
+            {# No track carries it and MusicBrainz has none either. That is still
+               agreement — it is simply agreement about nothing — and saying so
+               is the point of listing the field at all. #}
+            <span class="track-same__absent">not set</span>
+            {% endif %}
+        </dd>
+        {% endfor %}
+    </dl>
+</details>
+{% endif %}

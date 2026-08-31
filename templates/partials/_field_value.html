@@ -20,9 +20,39 @@
    URL; Jinja autoescapes it into the attribute, which is what keeps an
    off-box, unsanitised payload from being markup.
 
-   Expects `value`, `runs` and `entity` from an enclosing {% with %};
-   `mb_names` comes from the page context, since it is the same for every row. #}
-{%- if entity and value -%}
+   An ARTIST CREDIT is the third shape (#309). "Rafael Anton Irisarri feat.
+   Julia Kent" is not one value but two artists and the words MusicBrainz puts
+   between them, and it reads far better as the two links it describes. The parts
+   come from `mb_credits`, keyed by the phrase they build — so a credit is only
+   ever applied to a value it spells character for character, and a tag that has
+   drifted from MusicBrainz misses the lookup and renders as the flat string it
+   is. Same fallback, and the same reason, as an id with no name.
+
+   `credit` gates it rather than "does this value happen to be a credit phrase",
+   because an album named after its artist would otherwise turn its Album row
+   into an artist link.
+
+   Expects `value`, `runs`, `entity` and `credit` from an enclosing {% with %};
+   `mb_names` and `mb_credits` come from the page context, since they are the
+   same for every row. #}
+{%- if credit and value and mb_credits.get(value) -%}
+    {%- for part in mb_credits[value] -%}
+        {%- if part.mbid -%}
+        {#- `mbid`, but never `mbid--raw`: a credit part is always a NAME, so it
+            wants the surrounding prose face rather than the mono one an
+            unresolved hex id falls back to. -#}
+        <a class="mbid"
+           href="https://musicbrainz.org/artist/{{ part.mbid }}"
+           target="_blank" rel="noopener"
+           title="{{ part.name }} · {{ part.mbid }}">{{ part.name }}</a>
+        {%- else -%}
+        {#- MusicBrainz names this artist without identifying them. Plain text,
+            not a dead link: there is nowhere for it to go. -#}
+        {{- part.name -}}
+        {%- endif -%}
+        {{- part.join -}}
+    {%- endfor -%}
+{%- elif entity and value -%}
     {%- for id in value.split('; ') -%}
         {%- if not loop.first %}; {% endif -%}
         {%- set name = mb_names.get(id) -%}

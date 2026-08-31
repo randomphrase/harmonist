@@ -759,6 +759,24 @@ def test_every_owned_field_has_a_significance():
     assert BY_VALUE <= set(Owned)
 
 
+def test_every_owned_field_has_a_label():
+    """The same guard, for the name a field is shown under.
+
+    `LABELS` was NOT total — `disc_subtitle` was missing, so History rendered it
+    as the raw key `disc_subtitle` while every field beside it read as prose. It
+    went unnoticed because `_LABELS.get(field, field)` falls back rather than
+    raising, which is right for a record written by an older version and wrong as
+    the only thing standing behind a field added today (#309).
+
+    Over the whole diff vocabulary, like `SIGNIFICANCE`: `ARTWORK` is a key the
+    History really renders a row for.
+    """
+    from harmonist.formats.owned import ARTWORK, LABELS, Owned
+
+    assert set(LABELS) == {f.value for f in Owned} | {ARTWORK}
+    assert all(LABELS.values()), "a blank label renders a row with no name at all"
+
+
 def test_a_value_sensitive_field_is_declared_at_its_higher_significance():
     """The runtime adjustment only ever lowers.
 

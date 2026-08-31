@@ -375,6 +375,7 @@ LABELS: dict[str, str] = {
     Owned.TRACK_NUM: "Track no.",
     Owned.TRACK_TOTAL: "Track total",
     Owned.DISC_NUM: "Disc no.",
+    Owned.DISC_SUBTITLE: "Disc subtitle",
     Owned.MEDIA: "Media",
     Owned.MB_TRACK_ID: "Recording",
     Owned.MB_RELEASE_TRACK_ID: "Release track",

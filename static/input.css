@@ -496,6 +496,38 @@ button[disabled],
 }
 .track-diff__disc-list li { padding: .05rem 0; }
 
+/* The per-track tags with no column, named under the table (#309). Quiet: it
+   reports that nothing is wrong, which is the least urgent thing on the page —
+   but it is still reported, because a column that silently vanished would look
+   exactly like a tag Harmonist never checked (#112). */
+.track-same {
+  margin-top: .6rem;
+  font-size: .7rem;
+  color: var(--color-muted);
+}
+.track-same > summary {
+  cursor: pointer;
+  padding: .15rem 0;
+}
+.track-same > summary:hover { color: var(--color-ink); }
+/* Label/value pairs, the label in the same small-caps voice as the table's
+   column headings — because that is what each of these was going to be. */
+.track-same__fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .15rem .75rem;
+  margin: .4rem 0 0 .9rem;
+}
+.track-same__fields dt {
+  font-size: .62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  padding-top: .05rem;
+}
+.track-same__fields dd { color: var(--color-ink); word-break: break-word; }
+.track-same__absent { font-style: italic; color: var(--color-muted); }
+
 .track-diff__absent,
 .track-diff__unreadable { font-style: italic; }
 .track-diff__absent { color: var(--color-muted); }

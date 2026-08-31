@@ -202,13 +202,13 @@ you tagged it — each with its count:
   to take it, and the album drops off the list.
 
   The album's own page says *what* the update is. The Tags comparison covers
-  every album-level tag Harmonist writes, and the tracklist covers each track's
-  number, title, artist and length — between them, most of an update is visible
-  where you would look for it anyway. What is left goes in a short list under the
-  comparison — **Other tags a re-tag would change**: mostly the per-track tags no
-  column has room for, such as sort names, ISRCs and the MusicBrainz ID of each
-  recording. Each has its before and after, laid out the way the History entry
-  will be once you've applied it.
+  every album-level tag Harmonist writes, and the tracklist grows a column for
+  each per-track tag that has actually moved — so a sort name MusicBrainz has
+  corrected on one track appears against *that* track. Between them, most of an
+  update is visible where you would look for it anyway. Anything left over — more
+  differing tags than the table will take — goes in a short list under the
+  comparison, **Other tags a re-tag would change**, each with its before and
+  after, laid out the way the History entry will be once you've applied it.
 
   Harmonist works this out from the MusicBrainz releases it has already fetched,
   so the filter costs no lookups and fills in as you browse — an album you open
@@ -281,10 +281,24 @@ ago" — with **read again** beside it if you've just edited MusicBrainz and wan
 to see the edit now. Re-tagging and **Recheck** always go to MusicBrainz itself,
 so an action never runs on a cached answer.
 
-**Tracks** compares the tracklist — title, artist, number and length — flagging
-tracks that are missing, unreadable, or absent from MusicBrainz. Video files are
-listed as present and marked *video*; Harmonist reads their tags but never writes
-them, so they aren't compared against MusicBrainz.
+**Tracks** compares the tracklist, flagging tracks that are missing, unreadable,
+or absent from MusicBrainz. Video files are listed as present and marked *video*;
+Harmonist reads their tags but never writes them, so they aren't compared against
+MusicBrainz.
+
+Its columns fit the album rather than being fixed. Number, title and length are
+always there; beyond those, a per-track tag gets a column when it has something
+to say — it differs from MusicBrainz on some track, the tracks disagree with each
+other, or a track is credited to somebody the album isn't. On a single-artist
+album where every track agrees, an Artist column would be one name repeated all
+the way down, so it isn't drawn; on a compilation, or an album with a guest on
+track 6, it is. The tags that were checked and agreed are named under the table —
+*"Artist, ISRC and 3 others are the same on every track and match MusicBrainz"* —
+with their values one press away, so a tag Harmonist looked at never reads like
+one it ignored.
+
+Artist credits are shown as the artists they name: *Rafael Anton Irisarri feat.
+Julia Kent* is two links to MusicBrainz, joined the way MusicBrainz joins them.
 
 **History** gathers everything Harmonist has recorded about the album, including
 records written before it was last re-identified, so history doesn't rot when a

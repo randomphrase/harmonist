@@ -483,6 +483,15 @@ def _release(
     if lengths_ms is None:
         lengths_ms = [1000] * len(tracks)
     credits = track_artists or [artist] * len(tracks)
+    # One id per distinct artist NAME, and the release credit's own id for the
+    # release artist. MusicBrainz gives one artist one id however many tracks
+    # credit them; minting a fresh id per track made a single name ambiguous —
+    # two ids behind one phrase — which #309's credit lookup correctly refuses to
+    # choose between. The demo was then the one place the artists-as-links
+    # rendering could never appear, which is the mode people meet it in.
+    artist_ids = {artist: f"demo-art-{mbid}"}
+    for name in credits:
+        artist_ids.setdefault(name, f"demo-art-{mbid}-{len(artist_ids)}")
     return {
         "id": mbid,
         "title": title,
@@ -518,7 +527,7 @@ def _release(
                         "title": title,
                         "artist-credit": [
                             {
-                                "artist": {"id": f"demo-art-{mbid}-{i}", "name": credit},
+                                "artist": {"id": artist_ids[credit], "name": credit},
                                 "name": credit,
                             },
                         ],

@@ -14,8 +14,8 @@ from pathlib import Path
 
 from harmonist import formats
 from harmonist.compare import (
-    SHOWN_FIELDS,
-    TRACK_COLUMNS,
+    MAX_EARNED_COLUMNS,
+    PANEL_FIELDS,
     Agreement,
     AlbumComparison,
     ComparedTrack,
@@ -30,7 +30,7 @@ from harmonist.compare import (
     disk_tracklist,
     tracklist,
 )
-from harmonist.formats.owned import ALBUM_FIELDS, Owned
+from harmonist.formats.owned import ALBUM_FIELDS, LABELS, Owned
 from harmonist.formats.types import TagSet, TrackTags
 
 
@@ -454,9 +454,22 @@ def test_summary_when_everything_matches():
 # ---------- the tracklist (#135) ----------
 
 
-def _mb_track(num: int, title: str, *, artist="Kavinsky", length=180_000, disc=1) -> MBTrack:
+#: What the album's release says its media hold, on both sides of the fixture —
+#: named rather than written twice, because a file and a release disagreeing
+#: about the track total is a difference the tracklist now reports (#309), and
+#: two literals drifting apart would make every fixture album report one.
+_TRACK_TOTAL = 4
+
+
+def _mb_track(
+    num: int, title: str, *, artist="Kavinsky", length=180_000, disc=1, **tags
+) -> MBTrack:
     """One MusicBrainz track as the comparison sees it — what tagging would
-    write, plus the length, which is not a tag."""
+    write, plus the length, which is not a tag.
+
+    `**tags` sets any other TagSet field, so a test can name the one thing
+    MusicBrainz says that the file does not.
+    """
     return MBTrack(
         tags=TagSet(
             mb_album_id="rel-1",
@@ -465,18 +478,47 @@ def _mb_track(num: int, title: str, *, artist="Kavinsky", length=180_000, disc=1
             title=title,
             artist=artist,
             track_num=num,
-            track_total=4,
+            track_total=_TRACK_TOTAL,
             disc_num=disc,
+            **tags,
         ),
         length_ms=length,
     )
 
 
-def _file(num: int | None, title: str, *, artist="Kavinsky", length=180_000, disc=None):
-    """One file on disk, named after its number the way a tagger would."""
+def _file(num: int | None, title: str, *, artist="Kavinsky", length=180_000, disc=1, **owned):
+    """One file on disk, named after its number the way a tagger would.
+
+    Carries the `owned` snapshot a real `read_tags` takes off the handle, not
+    just the four named attributes. Without it every per-track tag MusicBrainz
+    has and the fixture doesn't reads as a difference — and since #309 the
+    tracklist's COLUMNS are derived from exactly those differences, so a thin
+    fixture doesn't merely under-test, it changes the shape of the table under
+    every assertion about it. (A fixture narrower than the code is how
+    KNOWN_GAPS asserted for months that Harmonist doesn't write `DISCSUBTITLE`
+    while the tagger was writing it.)
+
+    Defaults to a file `_mb_track` agrees with completely, so a test makes ONE
+    thing differ and names it in the call: `_file(6, "…", artist_sort="…")`.
+    """
     name = f"{num:02d} {title}.flac" if num is not None else f"{title}.flac"
+    snapshot = {
+        "title": title,
+        "artist": artist,
+        "album": "OutRun",
+        "album_artist": "Kavinsky",
+        "track_num": num,
+        "track_total": _TRACK_TOTAL,
+        "disc_num": disc,
+    }
+    snapshot.update(owned)
     return name, TrackTags(
-        title=title, artist=artist, track_num=num, disc_num=disc, duration_ms=length
+        title=title,
+        artist=artist,
+        track_num=num,
+        disc_num=disc,
+        duration_ms=length,
+        owned=snapshot,
     )
 
 
@@ -485,11 +527,33 @@ def _labels(track: ComparedTrack) -> list[str]:
 
 
 def test_every_row_carries_the_columns_in_order():
-    """The template renders one column per field, positionally, and takes its
-    headings from TRACK_COLUMNS — so a field reordered here without the headings
-    would silently put values under the wrong column."""
-    tl = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall")])
-    assert _labels(tl.tracks[0]) == list(TRACK_COLUMNS)
+    """The template renders one <td> per field, positionally, under headings it
+    takes from `columns` — so a row whose fields disagree with them in order or
+    in LENGTH puts every value after the divergence under the wrong heading.
+
+    Asserted over every row of an album that has one of each state, because the
+    rows are built by four different branches and only the present one is
+    exercised by an album where nothing is wrong.
+    """
+    short = tracklist(
+        [_file(1, "Nightcall"), ("dead.flac", TrackTags(unreadable=True))],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look"), _mb_track(3, "Rampage")],
+    )
+    over = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Testarossa Autodrive")],
+        [_mb_track(1, "Nightcall")],
+    )
+    assert {t.state for t in short.tracks} == {
+        TrackState.PRESENT,
+        TrackState.UNREADABLE,
+        TrackState.MISSING,
+    }
+    assert TrackState.EXTRA in {t.state for t in over.tracks}
+
+    for tl in (short, over):
+        headings = [c.label for c in tl.columns]
+        assert headings[0] == "#" and headings[-1] == "Length"
+        assert all(_labels(t) == headings for t in tl.tracks)
 
 
 def test_a_faithfully_tagged_album_shows_no_differences():
@@ -840,27 +904,26 @@ def test_a_field_outside_the_old_nine_is_compared(tmp_path):
     assert (row.disk, row.mb) == ("2019-03-15", "1994-03-07")
 
 
-def test_shown_fields_names_exactly_the_tags_with_another_surface():
-    """What the album page renders somewhere, so the re-tag box can be scoped to
-    the complement (#297).
+def test_panel_fields_names_exactly_the_album_tags_the_panel_compares():
+    """The album half of what scopes the re-tag box (#297).
 
-    The complement is the interesting half, so it is what gets pinned — and as a
-    whole set, not a sample: `SHOWN_FIELDS` is derived, so a field added to
+    As a whole set, not a sample: `PANEL_FIELDS` is derived, so a field added to
     `Owned` lands OUTSIDE it by default and starts appearing in the box. That is
     the right default, and it should still be a decision someone made rather than
     one that happened to them.
-
-    These are the box's entire reason to exist. The tracklist is four fixed
-    columns — #, Title, Artist, Length — so an ISRC MusicBrainz has filled in or
-    a recording id a merge has moved has nowhere else on the page to appear.
     """
-    assert {f.value for f in Owned} - SHOWN_FIELDS == {
+    assert {f.value for f in Owned} - PANEL_FIELDS == {
         # Not a per-track tag: the panel dropped this row because the fetch is
         # made BY this id and the header already links it, so the box is where a
         # merge that moved it now surfaces (#298).
         "mb_album_id",
+        # Every per-track tag. These are the tracklist's to place, and where it
+        # places them depends on the album — see the columns tests below.
+        "title",
+        "artist",
         "artist_sort",
         "artists",
+        "track_num",
         "track_total",
         "disc_num",
         "disc_subtitle",
@@ -870,6 +933,203 @@ def test_shown_fields_names_exactly_the_tags_with_another_surface():
         "mb_artist_ids",
         "isrcs",
     }
+
+
+# ---------- which columns a tracklist earns (#309) ----------
+
+
+def _headings(tl) -> list[str]:
+    return [c.label for c in tl.columns]
+
+
+def test_a_column_every_track_agrees_on_is_named_below_instead_of_shown():
+    """The change #309 exists for, from the quiet end.
+
+    A single-artist album's `Artist` column is its album artist printed once per
+    row: it says nothing, and it was costing a quarter of a table whose width is
+    the whole problem. It is dropped — but NAMED, because a column that simply
+    vanished is indistinguishable from a tag Harmonist never looked at (#112).
+    """
+    tl = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look")],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look")],
+    )
+
+    assert _headings(tl) == ["#", "Title", "Length"]
+    collapsed = {c.label: c.value for c in tl.collapsed}
+    assert collapsed["Artist"] == "Kavinsky"
+    # Its one value is still on the page, and so is the fact that it was checked.
+    assert "Artist" in tl.collapsed_summary
+    assert tl.collapsed_summary.endswith("are the same on every track and match MusicBrainz")
+
+
+def test_a_field_differing_on_one_track_earns_a_column_there():
+    """#309's own example: one field, one track, and the box could only ever say
+    "1 of 7 tracks" — correct, and not enough to act on."""
+    # The shape of the real one: a sort name the pre-#183 tagger wrote without
+    # its join phrase, on the one track with two credited artists.
+    tl = tracklist(
+        [
+            _file(1, "Nightcall", artist_sort="Kavinsky"),
+            _file(2, "Odd Look", artist_sort="KavinskySebastian"),
+        ],
+        [
+            _mb_track(1, "Nightcall", artist_sort="Kavinsky"),
+            _mb_track(2, "Odd Look", artist_sort="Kavinsky & Sebastian"),
+        ],
+    )
+
+    assert _headings(tl) == ["#", "Title", "Artist sort", "Length"]
+    assert [c.label for c in tl.collapsed] and "Artist sort" not in tl.collapsed_summary
+    # And it is on the row it belongs to, which is the entire point.
+    sort_cells = [next(f for f in t.fields if f.label == "Artist sort") for t in tl.tracks]
+    assert [f.differs for f in sort_cells] == [False, True]
+    assert (sort_cells[1].disk, sort_cells[1].mb) == ("KavinskySebastian", "Kavinsky & Sebastian")
+
+
+def test_tracks_disagreeing_with_each_other_earn_a_column_without_musicbrainz():
+    """Rule 2, which is what an album tagged unevenly over decades trips — and it
+    fires with no MusicBrainz difference at all, which rule 1 alone cannot see."""
+    tl = tracklist(
+        [_file(1, "Nightcall", artist="Kavinsky"), _file(2, "Odd Look", artist="Kavinsky ")],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look", artist="Kavinsky ")],
+    )
+    assert "Artist" in _headings(tl)
+
+
+def test_a_featured_credit_earns_the_artist_column_back():
+    """Rule 3. Every track matches MusicBrainz and the tracks all differ from
+    each other only on the one that carries a guest — but track 6 is credited to
+    two artists where the album is credited to one, and that IS the finding."""
+    guest = "Kavinsky feat. Lovefoxxx"
+    tl = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look", artist=guest)],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look", artist=guest)],
+    )
+
+    assert "Artist" in _headings(tl)
+    assert not any(t.differs for t in tl.tracks)  # nothing here differs from MB
+
+
+def test_the_table_stops_at_the_cap_and_the_rest_falls_to_the_box():
+    """The pressure valve. Rule 1 would otherwise hand a column to every field a
+    re-tag would touch, and an adopted album differs on most of them at once.
+
+    What overflows is deliberately NOT collapsed: the collapsed set claims the
+    field is the same on every track and matches MusicBrainz, which of a field
+    that overflowed *because* it differs would be false. It goes to the re-tag
+    box, which is the one surface left that can state it — so `shown_fields`
+    must not claim it.
+    """
+    # An adopted file — the title and artist someone else tagged, and none of the
+    # MusicBrainz furniture — against a release that has all of it.
+    tl = tracklist(
+        [_file(1, "Nightcall")],
+        [
+            _mb_track(
+                1,
+                "Nightcall",
+                artist_sort="Kavinsky",
+                artists=["Kavinsky"],
+                isrcs=["FRZ109800001"],
+                media="Digital Media",
+                mb_track_id="rec-1",
+                mb_release_track_id="trk-1",
+                mb_artist_ids=["art-1"],
+            )
+        ],
+    )
+
+    earned = [h for h in _headings(tl) if h not in ("#", "Title", "Length")]
+    assert len(earned) == MAX_EARNED_COLUMNS
+    assert earned == ["Artist sort", "Artists", "ISRC"]  # priority order, ids last
+    # The ids overflowed. Nothing collapsed them, and the table does not claim
+    # them — so the box picks them up.
+    assert not {c.label for c in tl.collapsed} & {"Recording", "Release track", "Artist IDs"}
+    assert not tl.shown_fields & {"mb_track_id", "mb_release_track_id", "mb_artist_ids"}
+
+
+def test_a_tag_musicbrainz_does_not_have_is_not_collapsed_as_agreement():
+    """The third destination, and the one that is easy to lose.
+
+    A per-track tag the files carry and MusicBrainz does not is deliberately NOT
+    a difference — ONLY_DISK never reads as a finding, or the recovered Bandcamp
+    URL becomes one — so it earns no column. But it is a CHANGE: a re-tag removes
+    it. Collapsing it would file it under "the same on every track and matches
+    MusicBrainz", which is false twice, and would then also leave it in the box —
+    the same field in two places, saying opposite things.
+    """
+    tl = tracklist(
+        [
+            _file(1, "Nightcall", artist_sort="Kavinsky"),
+            _file(2, "Odd Look", artist_sort="Kavinsky"),
+        ],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look")],  # MusicBrainz has no sort name
+    )
+
+    assert "Artist sort" not in _headings(tl), "not a difference, so not a column"
+    assert "Artist sort" not in {c.label for c in tl.collapsed}, "and not agreement either"
+    assert "artist_sort" not in tl.shown_fields, "so the box is free to state the removal"
+
+
+def test_the_disk_only_view_collapses_on_agreement_between_the_tracks_alone():
+    """MusicBrainz has deleted the release (#228), so every field is ONLY_DISK
+    and `_matches_everywhere` has nothing to check. The tracks still agree with
+    each other, which is all that was looked at — and all the summary claims."""
+    tl = disk_tracklist([_file(1, "Nightcall"), _file(2, "Odd Look")])
+
+    assert "Artist" in {c.label for c in tl.collapsed}
+    assert tl.collapsed_summary.endswith("are the same on every track")
+    assert "MusicBrainz" not in tl.collapsed_summary
+
+
+def test_the_collapsed_summary_names_the_fields_rather_than_counting_them():
+    """ "5 fields hidden" is a fact about the table; naming them is a finding
+    about the album, and it is what keeps checked-and-agrees distinguishable
+    from never-examined (#112)."""
+    tl = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall")])
+
+    assert tl.collapsed_summary.startswith("Artist, Artist sort and ")
+    assert tl.collapsed_summary.endswith(" are the same on every track and match MusicBrainz")
+
+
+def test_the_number_column_accounts_for_the_disc_on_a_multi_disc_release():
+    """`_number` renders "2-4" there, so `disc_num` must not ALSO take a column —
+    the same fact twice across one row. On a single-disc release it renders
+    `disc or 1`, saying nothing about the disc, so the field stays eligible."""
+    one_disc = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall")])
+    assert one_disc.shown_fields == {"track_num", "title"}
+
+    two_discs = tracklist(
+        [_file(1, "Nightcall", disc=1), _file(1, "Rampage", disc=2)],
+        [_mb_track(1, "Nightcall", disc=1), _mb_track(1, "Rampage", disc=2)],
+    )
+    assert "disc_num" in two_discs.shown_fields
+    assert "Disc no." not in _headings(two_discs)
+
+
+def test_no_per_track_tag_is_in_two_places_or_in_none():
+    """#309's invariant, over an album built to make each rule fire.
+
+    Every per-track tag ends up in exactly one place: a column, the named
+    collapsed set, or — by being in neither — the re-tag box. The failure this
+    catches is a field claimed by `shown_fields` AND listed as collapsed, which
+    reads on the page as a row printed twice: the exact complaint #297 was filed
+    about, one level down.
+    """
+    tl = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look", artist_sort="Kavinsky, DJ", isrcs=["X"])],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look")],
+    )
+
+    per_track = {f.value for f in Owned} - PANEL_FIELDS - {"mb_album_id"}
+    collapsed = {c.label for c in tl.collapsed}
+    columns = {c.label for c in tl.columns}
+    assert not collapsed & columns
+    # Nothing is missing either: what neither surface holds is what the box gets,
+    # and every per-track tag is accounted for by one of the three.
+    overflow = per_track - tl.shown_fields - {f.value for f in Owned if LABELS[f] in collapsed}
+    assert overflow == set()
 
 
 def test_only_id_rows_carry_a_musicbrainz_entity():
@@ -887,6 +1147,26 @@ def test_only_id_rows_carry_a_musicbrainz_entity():
         "Album artist IDs": "artist",
         "Release group": "release-group",
     }
+
+
+def test_only_credit_rows_are_marked_as_credits():
+    """`credit` is what lets a value be redrawn as the artists it names (#309),
+    and it is scoped to the fields that ARE credits rather than to any value that
+    happens to match a credit phrase.
+
+    Asserted as the whole set, for the reason above: the failure worth catching
+    is a row wrongly gaining it — an album named after its artist turning its
+    Album row into an artist link — which sampling the right ones cannot see.
+    """
+    fields = album_fields([("1.flac", TrackTags(album="Obreel"))], _tagset(album="Obreel"))
+
+    assert {f.label for f in fields if f.credit} == {"Album artist"}
+    # And the per-track half, which reaches the same table through a column.
+    tl = tracklist(
+        [_file(1, "Nightcall", artist="Kavinsky feat. Lovefoxxx")],
+        [_mb_track(1, "Nightcall", artist="Kavinsky feat. Lovefoxxx")],
+    )
+    assert {f.label for f in tl.tracks[0].fields if f.credit} == {"Artist"}
 
 
 def test_the_panel_pairs_release_fields_against_artist_fields():

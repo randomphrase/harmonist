@@ -114,14 +114,42 @@ def _mb(disc: int, n: int, title: str, total: int, length: int | None = 200_000)
     )
 
 
-def _audio_track(n: int, title: str) -> tuple[str, TrackTags]:
+def _owned(title: str, disc: int, n: int, total: int) -> dict[str, object]:
+    """The snapshot a real `read_tags` takes, matching `_mb`'s track exactly.
+
+    Named rather than inlined into both helpers below because the two sides have
+    to agree: since #309 a per-track tag MusicBrainz has and the file does not is
+    a difference that earns a COLUMN, so a fixture short of one changes the shape
+    of the table under every assertion here.
+    """
+    return {
+        "title": title,
+        "artist": "DJ Shadow",
+        "album": "Live! In Tune and on Time",
+        "album_artist": "DJ Shadow",
+        "disc_num": disc,
+        "track_num": n,
+        "track_total": total,
+    }
+
+
+def _audio_track(n: int, title: str, total: int = 2) -> tuple[str, TrackTags]:
     return (
         f"1-{n:02d} {title}.m4a",
-        TrackTags(title=title, artist="DJ Shadow", disc_num=1, track_num=n, duration_ms=200_000),
+        TrackTags(
+            title=title,
+            artist="DJ Shadow",
+            disc_num=1,
+            track_num=n,
+            duration_ms=200_000,
+            owned=_owned(title, 1, n, total),
+        ),
     )
 
 
-def _video_track(n: int, title: str, *, duration: int = 200_000) -> tuple[str, TrackTags]:
+def _video_track(
+    n: int, title: str, *, duration: int = 200_000, total: int = 4
+) -> tuple[str, TrackTags]:
     return (
         f"2-{n:02d} {title}.m4v",
         TrackTags(
@@ -131,6 +159,7 @@ def _video_track(n: int, title: str, *, duration: int = 200_000) -> tuple[str, T
             track_num=n,
             duration_ms=duration,
             video=True,
+            owned=_owned(title, 2, n, total),
         ),
     )
 
@@ -186,7 +215,11 @@ def test_a_video_track_is_reported_as_present_and_nothing_more():
     assert row.state is TrackState.PRESENT
     assert row.differs is False, "no finding against a file nothing can change"
     assert row.shows_mb is False, "and so no MusicBrainz line beneath it"
-    assert [f.disk for f in row.fields] == ["2-1", "Intro (live)", "DJ Shadow", "3:20"]
+    # Every column the table has, carrying this file's own values and nothing
+    # else. There is no Artist column: every track on this release is credited
+    # to DJ Shadow and so is the album, so it collapsed (#309) — which is a fact
+    # about the release, not about the video.
+    assert [f.disk for f in row.fields] == ["2-1", "Intro (live)", "3:20"]
     assert all(f.agreement is compare.Agreement.ONLY_DISK for f in row.fields)
 
 
@@ -248,9 +281,20 @@ def _album_on_disk(cfg, *, videos: int, of: int = 4) -> Path:
         a["\xa9nam"] = [f"Song {i}"]
         a["\xa9alb"] = ["Live! In Tune and on Time"]
         a["\xa9ART"] = ["DJ Shadow"]
+        a["aART"] = ["DJ Shadow"]
         a["trkn"] = [(i, 2)]
         a["disk"] = [(1, 2)]
         a["----:com.apple.iTunes:MusicBrainz Album Id"] = [MBID.encode()]
+        # Tagged by Picard like everything else, which is what the module
+        # docstring says these files are — the per-track MusicBrainz ids and the
+        # multi-value artist included. Left off, they read as real differences
+        # against the release and the CD half of this album stops being the
+        # quiet control the video half is measured against (#309).
+        a["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [f"rt-1-{i}".encode()]
+        a["----:com.apple.iTunes:MusicBrainz Track Id"] = [f"rec-1-{i}".encode()]
+        a["----:com.apple.iTunes:MusicBrainz Artist Id"] = [b"art-1"]
+        a["----:com.apple.iTunes:ARTISTS"] = [b"DJ Shadow"]
+        a["----:com.apple.iTunes:MEDIA"] = [b"CD"]
         a.save()
     for i in range(1, videos + 1):
         _video(d / f"2-{i:02d} Video {i}.m4v", track=i, total=of, title=f"Video {i}")

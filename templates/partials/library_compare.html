@@ -20,7 +20,7 @@
 </section>
 
 {# The part of a waiting re-tag that has nowhere else on this page to appear
-   (#291, scoped by #297).
+   (#291, scoped by #297, narrowed again by #309).
 
    It began as the whole plan, because the panel above compared nine album
    fields and the flag was derived from thirty — so an album could sit in the
@@ -29,13 +29,17 @@
    album-scoped tag Harmonist writes, and an unscoped box repeats each of those
    differences immediately below itself.
 
-   What is left is mostly the per-track tags. The tracklist is four fixed columns
-   — #, Title, Artist, Length — so an ISRC MusicBrainz has filled in, a recording
-   id a merge has moved, a sort name Picard never wrote, appear NOWHERE else.
-   Since #298 the release id joins them: its comparison row went, because the
-   fetch is made by that id and the header already links it, so a merge that
-   moved it lands here instead. The filtering is `compare.SHOWN_FIELDS`, applied
-   in the view, so this partial renders whatever survives rather than knowing the
+   #309 then took the other half. The tracklist was four fixed columns, so a
+   per-track difference could only be stated here, in the aggregate — "artist
+   sort · 1 of 7 tracks", which is correct and does not say WHICH track. Now a
+   per-track tag that differs earns a column and the change appears against its
+   own track. What reaches this box is the OVERFLOW: the fields that earned a
+   column and did not fit the cap, plus the release id, whose comparison row went
+   in #298 because the fetch is made by that id and the header already links it,
+   so a merge that moved it lands here.
+
+   The filtering is `compare.PANEL_FIELDS | tracklist.shown_fields`, applied in
+   the view, so this partial renders whatever survives rather than knowing the
    rule itself — which is also why the heading says "other" and not "per-track".
 
    Rendered through the SAME partial as a History entry's change list, from the
@@ -47,9 +51,10 @@
 <div class="mt-4 pt-3 border-t border-line">
     <h3 class="text-2xs font-bold text-ink uppercase tracking-widest">Other tags a re-tag would change</h3>
     <p class="text-2xs text-muted mt-1 mb-2">
-        Fields the comparison and the tracklist above have no room for — sort
-        names, ISRCs and the MusicBrainz ids of each recording. Re-tagging would
-        make the changes below; nothing is changed until you do.
+        Fields the comparison and the tracklist above have no room for — the
+        tracklist shows what it can as its own columns, and these are what would
+        not fit. Re-tagging would make the changes below; nothing is changed
+        until you do.
     </p>
     {% with changes = update_changes %}
     {% include 'partials/_tag_changes.html' %}

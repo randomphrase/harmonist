@@ -615,11 +615,12 @@ def create_app(
     templates.env.globals["ago"] = _ago
     templates.env.globals["missing_discs"] = _missing_discs
     templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
-    # The tracklist table's headings. A global rather than a per-route context
-    # value because it must stay in lockstep with the field order the model
-    # emits — one source, so a column can't be added to the table without one
-    # being added to the row (#135).
-    templates.env.globals["track_columns"] = compare.TRACK_COLUMNS
+    # No `track_columns` global any more (#309). The tracklist's headings used
+    # to be a module constant, which only worked while the answer was the same
+    # for every album; they are now a property of the comparison, which is what
+    # lets a column be EARNED by this album's tags. `_track_list.html` reads
+    # `tracklist.columns`, so the headings and the row's cells still come from
+    # one source and cannot get out of step.
     templates.env.globals["demo_mode"] = cfg.demo_mode
     # Evaluated per-render (callable, not a constant) so the header's
     # Sync/Set-up button flips the moment cookies are saved.
@@ -3940,14 +3941,17 @@ def _register_routes(app: FastAPI) -> None:
                 request,
                 "partials/_release_gone.html",
                 # No release, so no names to put on the ids the files carry
-                # (#298) — they render as raw MBIDs, still linked, which is what
-                # the user searches MusicBrainz with to find the replacement.
+                # (#298) and no credits to break an artist phrase into (#309) —
+                # they render as raw MBIDs, still linked, and as the flat strings
+                # the files carry, which is what the user searches MusicBrainz
+                # with to find the replacement.
                 _ctx(
                     request,
                     album=album,
                     comparison=comparison,
                     tracklist=tracks,
                     mb_names={},
+                    mb_credits={},
                 ),
             )
         except mb_lookup.MBError as e:
@@ -4005,27 +4009,38 @@ def _register_routes(app: FastAPI) -> None:
             # for it can never come from two different payloads — which is the
             # one way this could put an artist's name over another artist's id.
             mb_names=tagger_mod.mbid_names(release),
+            # How MusicBrainz spells each artist credit on this release, keyed by
+            # the phrase it renders as (#309), so "A feat. B" can be drawn as the
+            # two artists it names rather than as one flat string. Off the same
+            # release as the comparison, for the reason `mb_names` is: the phrase
+            # and its parts must come from one payload, or the page shows one
+            # artist's name over another artist's link.
+            mb_credits=tagger_mod.artist_credits(release),
             # What a re-tag would change in the fields nothing else on this page
-            # shows (#291, narrowed by #297). Free: `refresh_flag` just built
-            # this plan to set the flag, so rendering it costs no further reads.
+            # shows (#291, narrowed by #297, narrowed again by #309). Free:
+            # `refresh_flag` just built this plan to set the flag, so rendering
+            # it costs no further reads.
             #
             # Scoped rather than complete, and that is the whole point. The box
             # was written when the panel compared nine album fields out of the
-            # thirty the plan covers; #295 widened the panel to all of them, so
-            # an unfiltered box restates every album-level difference directly
-            # underneath itself. What survives `SHOWN_FIELDS` is the per-track
-            # tags — ISRCs, recording ids, sort names — which the four-column
-            # tracklist has nowhere to put and which are otherwise invisible.
+            # thirty the plan covers; #295 widened the panel to all of them, and
+            # #309 gave the tracklist columns for the per-track ones that
+            # actually differ. What is left is the overflow — the fields that
+            # earned a column but did not fit the cap — which has nowhere else
+            # on this page to appear.
             #
-            # Rendered through `tag_history`, so it reads like the History entry
-            # it will become.
+            # The two halves of the scope come from the two surfaces themselves:
+            # the panel's rows are a module constant because they are the same
+            # for every album, and the tracklist's are a property of THIS
+            # comparison because its columns are earned. Union, not either — a
+            # field the box may show is one neither surface did.
             update_changes=(
                 tuple(
                     c
                     for c in tag_history.from_plan(
                         plan, album.path, album_files.for_paths(album.folders)
                     )
-                    if c.field not in compare.SHOWN_FIELDS
+                    if c.field not in compare.PANEL_FIELDS | tracks.shown_fields
                 )
                 if plan is not None and plan.changes
                 else ()

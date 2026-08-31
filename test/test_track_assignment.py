@@ -176,7 +176,13 @@ def _tism_media() -> list[Medium]:
 
 def _tism_files(*, stale_disc: bool) -> list[tuple[str, TrackTags]]:
     """The sixteen CD files. `stale_disc` is the state they were in before the
-    re-tag: correct ids, and a disc number from when the CD was disc 1."""
+    re-tag: correct ids, and a disc number from when the CD was disc 1.
+
+    `owned` is the whole snapshot `read_tags` takes, matching `_tism_release`
+    except for the one stale field — otherwise every tag the release has and
+    the fixture omits reads as a difference, and since #309 those differences
+    are what the tracklist's columns are built from.
+    """
     return [
         (
             f"2-{n:02d} Song {n}.m4a",
@@ -187,6 +193,16 @@ def _tism_files(*, stale_disc: bool) -> list[tuple[str, TrackTags]]:
                 disc_num=1 if stale_disc else 2,
                 track_num=n,
                 duration_ms=200_000,
+                owned={
+                    "title": f"Song {n}",
+                    "artist": "TISM",
+                    "album": "The White Albun",
+                    "album_artist": "TISM",
+                    "mb_release_track_id": f"rt-2-{n}",
+                    "track_total": 16,
+                    "track_num": n,
+                    "disc_num": 1 if stale_disc else 2,
+                },
             ),
         )
         for n in range(1, 17)

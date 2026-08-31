@@ -15,7 +15,7 @@ import logging
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from . import (
     activity_store,
@@ -1130,12 +1130,29 @@ def _isrcs(track: Track) -> list[str]:
     return [str(code) for code in (recording.get("isrc-list") or [])]
 
 
+def _credits_of(release: Release) -> Iterator[list[Any]]:
+    """Every artist credit in a release: the release's own, then each track's.
+
+    A track's credit is where a featured artist actually lives — MusicBrainz's
+    style moves the guest out of the track title and into the credit — so a
+    walker that stops at the release sees only the album artist. `mbid_names`
+    did exactly that, which is why on *A Fragile Geography* the second credited
+    artist's id had no name available anywhere on the page (#309).
+    """
+    if release_credit := release.get("artist-credit"):
+        yield release_credit
+    for _, _, track in _flatten_tracks(release):
+        if track_credit := track.get("artist-credit"):
+            yield track_credit
+
+
 def mbid_names(release: Release) -> dict[str, str]:
     """The human name behind each MusicBrainz id `tagsets_for` writes, by id.
 
-    For the album page (#298), which otherwise renders `mb_album_artist_ids` and
-    `mb_release_group_id` as raw hex — a wall of characters carrying nothing a
-    reader can act on, in a panel whose whole job is to be scannable.
+    For the album page (#298), which otherwise renders `mb_album_artist_ids`,
+    `mb_release_group_id` and — since #309 gave them a column — the per-track
+    id fields as raw hex: a wall of characters carrying nothing a reader can act
+    on, in a panel whose whole job is to be scannable.
 
     Lives here, beside `_artist_ids` and `_build_tagset`, for the same reason
     `tagsets_for` does: the id and the name have to come out of the same corner
@@ -1146,12 +1163,22 @@ def mbid_names(release: Release) -> dict[str, str]:
     that this release has moved away from is not in here and cannot be — we know
     the hex and nothing else about it. The caller falls back to showing it raw,
     which is what keeps a differing row from rendering two identical names.
+
+    **Recordings and release tracks are deliberately absent.** The name of a
+    recording is the track's title, which the tracklist's Title column already
+    carries one cell to the left — so captioning a moved recording id with it
+    would put the same words on both sides of a row whose whole content is that
+    something changed. The raw hex, linked, states that honestly.
+
+    The ARTIST name here is the artist's own, not the credited-as name: this
+    table answers "which entity is this id", where `artist_credits` below
+    answers "how is this release spelling it". They differ on a release that
+    credits Prince as ✧, and each row wants the one it asks for.
     """
     names: dict[str, str] = {}
-    for ac in release.get("artist-credit") or []:
-        # Bare join-phrase strings sit between the artist dicts (#183).
-        if isinstance(ac, dict):
-            artist = ac.get("artist") or {}
+    for credit in _credits_of(release):
+        for entry in _credit_entries(credit):
+            artist = entry.get("artist") or {}
             if (artist_id := artist.get("id")) and (name := artist.get("name")):
                 names[artist_id] = name
     rg = release.get("release-group") or {}
@@ -1160,17 +1187,117 @@ def mbid_names(release: Release) -> dict[str, str]:
     return names
 
 
+class CreditPart(NamedTuple):
+    """One artist within an artist credit, as the page renders it.
+
+    `name` is the CREDITED-AS name, so the parts spell the credit phrase exactly;
+    `join` is the text that runs from this artist to the next — " feat. ", " & ",
+    ", " — and is empty on the last. `mbid` is None for an artist MusicBrainz
+    names without identifying, which renders as plain text rather than a link.
+    """
+
+    name: str
+    mbid: str | None
+    join: str
+
+
+def _credit_entries(artist_credit: list[Any] | None) -> Iterator[dict[str, Any]]:
+    """The artist dicts of one credit, in order.
+
+    musicbrainzngs emits each join phrase as a **bare string element** between
+    the artist dicts (`[{...}, ' & ', {...}]`), not as a `joinphrase` key on the
+    dict — the key is the JSON web service's shape, which Picard consumes but we
+    never see. Every walker over an artist-credit must handle the string
+    elements or it will silently concatenate the artists with no separator
+    (#183), so they are skipped in exactly one place: here.
+    """
+    for entry in artist_credit or []:
+        if isinstance(entry, dict):
+            yield entry
+
+
+def _credit_parts(artist_credit: list[Any] | None) -> tuple[CreditPart, ...]:
+    """One artist credit as its parts — the structured form of `_artist_phrase`.
+
+    The two cannot drift, because `_artist_phrase` is built from this. That
+    matters more than it looks: the page only ever applies a credit to a value
+    that IS the phrase this produces, so the moment the parts stopped spelling
+    the phrase, the page would replace a user's tag with different words and
+    call it the same value.
+
+    Both spellings of the join phrase are handled — the bare string element
+    musicbrainzngs actually emits, and the `joinphrase` key the JSON service
+    uses — because the walker they replaced handled both and dropping either
+    silently loses a separator.
+    """
+    parts: list[CreditPart] = []
+    for entry in artist_credit or []:
+        if isinstance(entry, str):
+            # A join phrase, and it belongs to the artist BEFORE it. A credit
+            # that OPENS with one has no artist to attach it to, so it becomes a
+            # nameless part carrying only the text: nothing to link, and the
+            # phrase still reproduces character for character. That case does not
+            # arise in musicbrainzngs' output, and it is handled anyway because
+            # this feeds `_artist_phrase`, which writes tags — a payload shape
+            # that made the two disagree would change what lands in a file.
+            if parts:
+                parts[-1] = parts[-1]._replace(join=parts[-1].join + entry)
+            else:
+                parts.append(CreditPart("", None, entry))
+        elif isinstance(entry, dict):
+            artist = entry.get("artist") or {}
+            parts.append(
+                CreditPart(
+                    entry.get("name") or artist.get("name", ""),
+                    artist.get("id"),
+                    entry.get("joinphrase") or "",
+                )
+            )
+    return tuple(parts)
+
+
+def artist_credits(release: Release) -> dict[str, tuple[CreditPart, ...]]:
+    """Every artist credit in `release`, keyed by the phrase it renders as.
+
+    For the album page (#309), where a credit — "Rafael Anton Irisarri feat.
+    Julia Kent" — should read as the two artists it names, each linked, joined
+    by the words MusicBrainz itself uses. Picard and Harmonist both write that
+    phrase into `artist` / `albumartist` as one flat string, so the file on disk
+    has no structure left to recover; this is the corner of the payload where it
+    still exists.
+
+    **Keyed by the phrase, not by the field**, which is what makes applying it
+    safe. A credit is only ever put on a value that is character-for-character
+    the phrase these parts build, so the links are guaranteed to spell the value
+    they replace. A tag that has drifted from MusicBrainz — the whole reason the
+    page exists — simply misses the lookup and renders as the flat string it is,
+    the same fallback `mbid_names` leans on.
+
+    **A phrase two different credits produce is dropped, not resolved.** That is
+    the design's exact-scoped-unique rule: two artists sharing a spelling is
+    ambiguity, and picking the first would link one artist's name to the other's
+    page. Rendering it flat loses a link; guessing states something false.
+    """
+    found: dict[str, tuple[CreditPart, ...] | None] = {}
+    for credit in _credits_of(release):
+        parts = _credit_parts(credit)
+        if not parts:
+            continue
+        phrase = _artist_phrase(credit)
+        if phrase in found and found[phrase] != parts:
+            found[phrase] = None
+        else:
+            found.setdefault(phrase, parts)
+    return {phrase: parts for phrase, parts in found.items() if parts}
+
+
 def _artist_ids(artist_credit: list[Any] | None) -> list[str]:
     """Pull MBIDs out of an MB artist-credit list."""
-    if not artist_credit:
-        return []
-    ids: list[str] = []
-    for ac in artist_credit:
-        if isinstance(ac, dict):
-            artist = ac.get("artist") or {}
-            if artist_id := artist.get("id"):
-                ids.append(artist_id)
-    return ids
+    return [
+        artist_id
+        for entry in _credit_entries(artist_credit)
+        if (artist_id := (entry.get("artist") or {}).get("id"))
+    ]
 
 
 def _album_label(release: dict[str, Any], album_dir: Path) -> str:
@@ -1190,23 +1317,11 @@ def _album_label(release: dict[str, Any], album_dir: Path) -> str:
 def _artist_phrase(artist_credit: list[Any] | None) -> str:
     """Build a display string from an MB artist-credit list.
 
-    musicbrainzngs emits each join phrase as a **bare string element** between the
-    artist dicts (`[{...}, ' & ', {...}]`), not as a `joinphrase` key on the dict —
-    the key is the JSON web service's shape, which Picard consumes but we never see.
-    Every walker over an artist-credit must handle the string elements or it will
-    silently concatenate the artists with no separator (#183)."""
-    if not artist_credit:
-        return ""
-    parts: list[str] = []
-    for ac in artist_credit:
-        if isinstance(ac, str):
-            parts.append(ac)
-        elif isinstance(ac, dict):
-            name = ac.get("name") or ac.get("artist", {}).get("name", "")
-            parts.append(name)
-            if jp := ac.get("joinphrase"):
-                parts.append(jp)
-    return "".join(parts).strip()
+    Derived from `_credit_parts` rather than walking the credit a second time,
+    so the flat phrase written to `artist` / `albumartist` and the linked parts
+    the album page renders cannot disagree about what the credit says (#309).
+    """
+    return "".join(part.name + part.join for part in _credit_parts(artist_credit)).strip()
 
 
 def _artist_sort_phrase(artist_credit: list[Any] | None) -> str:

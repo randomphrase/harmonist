@@ -1586,3 +1586,143 @@ def test_mbid_names_is_empty_rather_than_partial_on_a_thin_release():
     Returning an entry with an empty name would render a link with no text."""
     assert tagger.mbid_names({"id": "rel-1"}) == {}
     assert tagger.mbid_names({"artist-credit": [{"artist": {"id": "art-1"}}]}) == {}
+
+
+def _featured_release() -> dict:
+    """*A Fragile Geography* in miniature: an album credited to one artist, with
+    one track credited to two — which is where a guest actually lives, since
+    MusicBrainz's style moves them out of the track title and into the credit."""
+    return {
+        "id": "rel-1",
+        "title": "A Fragile Geography",
+        "artist-credit": [{"artist": {"id": "art-1", "name": "Rafael Anton Irisarri"}}],
+        "release-group": {"id": "rg-1", "title": "A Fragile Geography"},
+        "medium-list": [
+            {
+                "position": "1",
+                "track-list": [
+                    {"id": "rt-1", "position": "1", "title": "Hiatus"},
+                    {
+                        "id": "rt-2",
+                        "position": "2",
+                        "title": "Empire Systems",
+                        "artist-credit": [
+                            {"artist": {"id": "art-1", "name": "Rafael Anton Irisarri"}},
+                            " feat. ",
+                            {"artist": {"id": "art-2", "name": "Julia Kent"}},
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+
+
+def test_mbid_names_reaches_the_artists_credited_on_a_track():
+    """The gap #309 names: `mbid_names` walked the RELEASE credit and stopped, so
+    on this very album the guest's artist id had no name available anywhere on
+    the page — and the tracklist now gives that id a column."""
+    names = tagger.mbid_names(_featured_release())
+
+    assert names["art-2"] == "Julia Kent", "credited on a track, not on the release"
+    assert names["art-1"] == "Rafael Anton Irisarri"
+
+
+def test_a_credit_is_keyed_by_the_phrase_the_tagger_writes():
+    """What makes it safe to draw a credit as its parts (#309): the key IS the
+    flat string written to `artist`, so a credit can only ever be applied to a
+    value it spells character for character.
+
+    Asserted against `_build_tagset`'s own output rather than a literal, because
+    a phrase built one way here and another way there is precisely the failure —
+    the page would replace the user's tag with different words and call it the
+    same value.
+    """
+    release = _featured_release()
+    credits = tagger.artist_credits(release)
+    written = {t.artist for t in tagger.tagsets_for(release)}
+
+    assert written <= set(credits), "every artist phrase tagging writes is a key"
+    parts = credits["Rafael Anton Irisarri feat. Julia Kent"]
+    assert [(p.name, p.mbid, p.join) for p in parts] == [
+        ("Rafael Anton Irisarri", "art-1", " feat. "),
+        ("Julia Kent", "art-2", ""),
+    ]
+    assert "".join(p.name + p.join for p in parts) == "Rafael Anton Irisarri feat. Julia Kent"
+
+
+def test_the_written_phrase_is_exactly_what_the_parts_spell():
+    """`_artist_phrase` writes a TAG, and #309 rebuilt it on top of `_credit_parts`
+    so the flat string and the linked parts cannot disagree. That rebuild is only
+    safe if it reproduces the old walk character for character — a payload shape
+    the two handled differently would change what lands in the user's file.
+
+    Both spellings of a join phrase are covered: the bare string element
+    musicbrainzngs actually emits, and the `joinphrase` key the JSON service uses
+    (#183). So is a credit that opens with a bare string, which is malformed and
+    is carried through rather than swallowed.
+    """
+    from harmonist.tagger import _artist_phrase, _credit_parts
+
+    def before_309(artist_credit):
+        """The walk `_artist_phrase` was, verbatim.
+
+        Written out here rather than asserted against `_credit_parts`, which
+        would be circular — `_artist_phrase` is now built from it, so comparing
+        the two can only ever agree. This is the reference the rewrite has to
+        match, and it is the only thing in this file that can say it does.
+        """
+        if not artist_credit:
+            return ""
+        parts = []
+        for ac in artist_credit:
+            if isinstance(ac, str):
+                parts.append(ac)
+            elif isinstance(ac, dict):
+                parts.append(ac.get("name") or ac.get("artist", {}).get("name", ""))
+                if jp := ac.get("joinphrase"):
+                    parts.append(jp)
+        return "".join(parts).strip()
+
+    for credit in (
+        [
+            {"artist": {"id": "a", "name": "zakè"}},
+            " & ",
+            {"artist": {"id": "b", "name": "rhubiqs"}},
+        ],
+        [{"artist": {"id": "a", "name": "zakè"}, "joinphrase": " feat. "}, {"name": "rhubiqs"}],
+        # The credited-as name wins over the artist's own, which is what makes the
+        # parts spell the phrase rather than a corrected version of it.
+        [{"name": "Prince", "artist": {"id": "a", "name": "The Artist"}}],
+        ["presenting ", {"artist": {"id": "a", "name": "zakè"}}],
+        [{"artist": {}, "name": ""}],
+        [],
+    ):
+        assert _artist_phrase(credit) == before_309(credit), credit
+        assert "".join(p.name + p.join for p in _credit_parts(credit)).strip() == before_309(credit)
+
+
+def test_one_phrase_two_different_credits_is_dropped_rather_than_guessed():
+    """The design's exact-scoped-unique rule, one level down. Two artists sharing
+    a spelling is ambiguity, and picking the first would link one artist's name
+    to the other's page — rendering it flat loses a link, guessing states
+    something false."""
+    release = {
+        "id": "rel-1",
+        "artist-credit": [{"artist": {"id": "art-1", "name": "Nova"}}],
+        "medium-list": [
+            {
+                "position": "1",
+                "track-list": [
+                    {
+                        "id": "rt-1",
+                        "position": "1",
+                        "title": "One",
+                        "artist-credit": [{"artist": {"id": "art-2", "name": "Nova"}}],
+                    }
+                ],
+            }
+        ],
+    }
+
+    assert tagger.artist_credits(release) == {}

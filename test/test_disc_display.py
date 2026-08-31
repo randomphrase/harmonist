@@ -32,11 +32,32 @@ def _mb(disc: int, n: int, title: str, total: int) -> MBTrack:
     )
 
 
-def _file(n: int, disc: int, title: str) -> tuple[str, TrackTags]:
+def _file(n: int, disc: int, title: str, total: int = 16) -> tuple[str, TrackTags]:
+    """A file the matching `_mb` track agrees with completely.
+
+    `owned` carries the snapshot a real `read_tags` takes, `track_total`
+    included — since #309 a per-track tag the file lacks and MusicBrainz has is a
+    difference the tracklist reports as its own column, so a fixture short of one
+    makes every album here differ on it.
+    """
     return (
         f"{disc}-{n:02d}.m4a",
         TrackTags(
-            title=title, album="A", artist="X", disc_num=disc, track_num=n, duration_ms=200_000
+            title=title,
+            album="A",
+            artist="X",
+            disc_num=disc,
+            track_num=n,
+            duration_ms=200_000,
+            owned={
+                "title": title,
+                "album": "A",
+                "artist": "X",
+                "album_artist": "X",
+                "disc_num": disc,
+                "track_num": n,
+                "track_total": total,
+            },
         ),
     )
 
@@ -48,7 +69,7 @@ def _two_disc(present_disc: int = 2):
     files = (
         [_file(i, 2, f"Song {i}") for i in range(1, 17)]
         if present_disc == 2
-        else [_file(i, 1, f"Video {i}") for i in range(1, 45)]
+        else [_file(i, 1, f"Video {i}", 44) for i in range(1, 45)]
     )
     return files, mb
 
@@ -65,7 +86,7 @@ def test_a_disc_is_named_when_musicbrainz_names_it():
     """MusicBrainz calls Hybrid's two discs Wide Angle and Live Angle, which is
     a good deal more use than "Disc 1" and "Disc 2"."""
     mb = [_mb(1, i, f"T{i}", 2) for i in (1, 2)] + [_mb(2, i, f"U{i}", 2) for i in (1, 2)]
-    files = [_file(i, 1, f"T{i}") for i in (1, 2)] + [_file(i, 2, f"U{i}") for i in (1, 2)]
+    files = [_file(i, 1, f"T{i}", 2) for i in (1, 2)] + [_file(i, 2, f"U{i}", 2) for i in (1, 2)]
 
     t = compare.tracklist(files, mb, [Medium(1, "Wide Angle"), Medium(2, "Live Angle")])
 
@@ -74,7 +95,7 @@ def test_a_disc_is_named_when_musicbrainz_names_it():
 
 def test_a_disc_without_a_name_falls_back_to_its_number():
     mb = [_mb(1, i, f"T{i}", 2) for i in (1, 2)]
-    files = [_file(i, 1, f"T{i}") for i in (1, 2)]
+    files = [_file(i, 1, f"T{i}", 2) for i in (1, 2)]
 
     t = compare.tracklist(files, mb, [Medium(1, None, "CD")])
 
@@ -85,7 +106,7 @@ def test_a_single_disc_album_is_one_group():
     """The template renders no heading for it — nearly every album is one disc,
     and a heading above the only disc is noise."""
     mb = [_mb(1, i, f"T{i}", 3) for i in (1, 2, 3)]
-    files = [_file(i, 1, f"T{i}") for i in (1, 2, 3)]
+    files = [_file(i, 1, f"T{i}", 3) for i in (1, 2, 3)]
 
     assert len(compare.tracklist(files, mb).discs) == 1
 
@@ -104,7 +125,7 @@ def test_a_partly_present_disc_is_not_absent():
     """`absent` means NOT ONE track is here. A short disc is a different thing,
     with a different remedy, and still gets its tracks listed."""
     mb = [_mb(1, i, f"T{i}", 4) for i in range(1, 5)]
-    files = [_file(i, 1, f"T{i}") for i in (1, 2)]
+    files = [_file(i, 1, f"T{i}", 4) for i in (1, 2)]
 
     assert compare.tracklist(files, mb, [Medium(1)]).discs[0].absent is False
 
@@ -121,7 +142,7 @@ def test_the_headline_reports_an_absent_disc_once_not_track_by_track():
 
 def test_an_absent_named_disc_is_named_in_the_headline():
     mb = [_mb(1, i, f"T{i}", 2) for i in (1, 2)] + [_mb(2, i, f"U{i}", 2) for i in (1, 2)]
-    files = [_file(i, 2, f"U{i}") for i in (1, 2)]
+    files = [_file(i, 2, f"U{i}", 2) for i in (1, 2)]
 
     t = compare.tracklist(files, mb, [Medium(1, "Bonus DVD"), Medium(2, "Album")])
 
@@ -132,7 +153,7 @@ def test_a_genuinely_short_disc_still_counts_its_missing_tracks():
     """The control. Suppressing per-track counts is only right for a disc that
     is ENTIRELY absent; a half-ripped one is a real defect to report."""
     mb = [_mb(1, i, f"T{i}", 4) for i in range(1, 5)]
-    files = [_file(i, 1, f"T{i}") for i in (1, 2)]
+    files = [_file(i, 1, f"T{i}", 4) for i in (1, 2)]
 
     summary = compare.tracklist(files, mb, [Medium(1)]).summary
 
@@ -142,7 +163,7 @@ def test_a_genuinely_short_disc_still_counts_its_missing_tracks():
 
 def test_a_single_disc_album_headline_is_unchanged():
     mb = [_mb(1, i, f"T{i}", 3) for i in (1, 2, 3)]
-    files = [_file(i, 1, f"T{i}") for i in (1, 2, 3)]
+    files = [_file(i, 1, f"T{i}", 3) for i in (1, 2, 3)]
 
     assert compare.tracklist(files, mb).summary == "All 3 tracks match MusicBrainz"
 

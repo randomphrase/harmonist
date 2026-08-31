@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import re
 import shutil
 import threading
 import time
@@ -492,10 +493,15 @@ def test_reach_counts_every_file_not_just_the_changed_ones(tmp_path):
 
 def test_the_album_page_explains_an_update_the_comparison_cannot_show(engaged, monkeypatch):
     """The bug this closes: a re-tag can change tags the page has no other place
-    for. An ISRC is the everyday one — MusicBrainz fills them in constantly, and
-    the tracklist's four columns (#, Title, Artist, Length) have nowhere to put
-    it — so without this box the album sits under Update available and reads as
-    matching on every row shown."""
+    for — so without a surface for them the album sits under Update available and
+    reads as matching on every row shown.
+
+    An ISRC was the everyday example, and since #309 it is no longer an example
+    of THIS: a per-track tag that differs earns a tracklist column and appears
+    against the track it belongs to, which is strictly better than a box saying
+    "1 of 3 tracks". So the assertion moved with it — the finding still has to be
+    on the page, and now it has to be on the right ROW.
+    """
     cfg, engage = engaged
     _tagged(cfg.paths.music_dir, _release())
     filled_in = copy.deepcopy(_release())
@@ -506,9 +512,43 @@ def test_the_album_page_explains_an_update_the_comparison_cannot_show(engaged, m
 
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
 
-    assert "Other tags a re-tag would change" in body
-    assert "ISRC" in body
+    assert runner.albums()[0].update_available is True
     assert "GBAYE0000123" in body
+    # In a column of the tracklist, once — not in the box, and not in both.
+    assert body.count("GBAYE0000123") == 1
+    assert re.search(r"<th [^>]*>\s*ISRC\s*</th>", body)
+    assert "Other tags a re-tag would change" not in body
+
+
+def test_a_tag_past_the_column_cap_still_reaches_the_box(engaged, monkeypatch):
+    """What the box is FOR, once the tracklist takes what it can (#309).
+
+    The table stops at `MAX_EARNED_COLUMNS` earned columns, and the surplus has
+    to land somewhere or the page silently stops reporting a change a re-tag
+    would make. Driven with more differing per-track tags than the cap, so the
+    overflow is real rather than assumed.
+    """
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    enriched = copy.deepcopy(_release())
+    for medium in enriched["medium-list"]:
+        for i, track in enumerate(medium["track-list"], start=1):
+            track["recording"]["isrc-list"] = [f"GBAYE000012{i}"]
+            track["recording"]["id"] = f"rec-moved-{i}"
+            track["id"] = f"rt-moved-{i}"
+            track["artist-credit"] = [
+                {"artist": {"id": "art-moved", "name": "Someone Else"}, "name": "Someone Else"}
+            ]
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: enriched)
+    client, runner = engage()
+
+    body = client.get(f"/library/{runner.albums()[0].id}/compare").text
+
+    # Three columns earned; the rest are stated by the box. Asserted on the row's
+    # LABEL, not on the id: the box marks a changed run in place, so the value
+    # arrives as `rt-<em>moved-</em>1` and no substring of it is the id.
+    assert "Other tags a re-tag would change" in body
+    assert "<dt>Release track</dt>" in body, "past the cap, and still on the page"
 
 
 def test_an_album_scoped_update_is_not_stated_twice(engaged, monkeypatch):
