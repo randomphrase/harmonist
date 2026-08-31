@@ -496,28 +496,52 @@ def test_the_album_page_explains_an_update_the_comparison_cannot_show(engaged, m
     for — so without a surface for them the album sits under Update available and
     reads as matching on every row shown.
 
-    An ISRC was the everyday example, and since #309 it is no longer an example
-    of THIS: a per-track tag that differs earns a tracklist column and appears
-    against the track it belongs to, which is strictly better than a box saying
-    "1 of 3 tracks". So the assertion moved with it — the finding still has to be
-    on the page, and now it has to be on the right ROW.
+    An ISRC MusicBrainz has filled in is the everyday one, and it is still the
+    box's after #309: MusicBrainz filled the SAME one in for the whole album, so
+    every track reads the same way and "which track" has no answer to give. A
+    column would print one position three times over; the box's single line is
+    the whole fact. `test_a_per_track_change_lands_on_its_own_row` is the other
+    half of that decision, and the two are only worth reading together.
     """
     cfg, engage = engaged
-    _tagged(cfg.paths.music_dir, _release())
-    filled_in = copy.deepcopy(_release())
-    track = filled_in["medium-list"][0]["track-list"][0]
-    track["recording"]["isrc-list"] = ["GBAYE0000123"]
+    _tagged(cfg.paths.music_dir, _release(tracks=3), tracks=3)
+    filled_in = copy.deepcopy(_release(tracks=3))
+    for track in filled_in["medium-list"][0]["track-list"]:
+        track["recording"]["isrc-list"] = ["GBAYE0000123"]
     monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: filled_in)
     client, runner = engage()
 
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
 
     assert runner.albums()[0].update_available is True
-    assert "GBAYE0000123" in body
-    # In a column of the tracklist, once — not in the box, and not in both.
-    assert body.count("GBAYE0000123") == 1
+    assert "Other tags a re-tag would change" in body
+    assert "<dt>ISRC</dt>" in body
+    assert not re.search(r"<th [^>]*>\s*ISRC\s*</th>", body), "no column: it says the same thing"
+
+
+def test_a_per_track_change_lands_on_its_own_row(engaged, monkeypatch):
+    """#309's own complaint, end to end.
+
+    The same field as above, differing DIFFERENTLY per track — which is where the
+    box's aggregate stopped being enough: "3 different values → 3 different
+    values, all tracks" is true and tells the reader nothing. A column puts each
+    one beside the track it belongs to, and the box then has nothing to add.
+    """
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release(tracks=3), tracks=3)
+    filled_in = copy.deepcopy(_release(tracks=3))
+    for i, track in enumerate(filled_in["medium-list"][0]["track-list"], start=1):
+        track["recording"]["isrc-list"] = [f"GBAYE000012{i}"]
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: filled_in)
+    client, runner = engage()
+
+    body = client.get(f"/library/{runner.albums()[0].id}/compare").text
+
     assert re.search(r"<th [^>]*>\s*ISRC\s*</th>", body)
-    assert "Other tags a re-tag would change" not in body
+    # Each on its own row, and each exactly once — not in a column AND the box.
+    for i in (1, 2, 3):
+        assert body.count(f"GBAYE000012{i}") == 1
+    assert "<dt>ISRC</dt>" not in body
 
 
 def test_a_tag_past_the_column_cap_still_reaches_the_box(engaged, monkeypatch):
@@ -525,19 +549,19 @@ def test_a_tag_past_the_column_cap_still_reaches_the_box(engaged, monkeypatch):
 
     The table stops at `MAX_EARNED_COLUMNS` earned columns, and the surplus has
     to land somewhere or the page silently stops reporting a change a re-tag
-    would make. Driven with more differing per-track tags than the cap, so the
-    overflow is real rather than assumed.
+    would make. Driven with more per-track tags differing track by track than the
+    cap will take, so the overflow is real rather than assumed.
     """
     cfg, engage = engaged
-    _tagged(cfg.paths.music_dir, _release())
-    enriched = copy.deepcopy(_release())
+    _tagged(cfg.paths.music_dir, _release(tracks=3), tracks=3)
+    enriched = copy.deepcopy(_release(tracks=3))
     for medium in enriched["medium-list"]:
         for i, track in enumerate(medium["track-list"], start=1):
             track["recording"]["isrc-list"] = [f"GBAYE000012{i}"]
             track["recording"]["id"] = f"rec-moved-{i}"
             track["id"] = f"rt-moved-{i}"
             track["artist-credit"] = [
-                {"artist": {"id": "art-moved", "name": "Someone Else"}, "name": "Someone Else"}
+                {"artist": {"id": f"art-moved-{i}", "name": f"Someone Else {i}"}}
             ]
     monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: enriched)
     client, runner = engage()

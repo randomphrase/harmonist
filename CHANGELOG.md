@@ -21,10 +21,12 @@ versions follow [semantic versioning](https://semver.org).
 
 - An album's **tracklist now shows the per-track tags that differ**, as extra
   columns, so a change lands beside the track it belongs to instead of being
-  summarised as "1 of 7 tracks" in the box below. A column appears when a tag
-  differs from MusicBrainz, when the tracks disagree with each other, or when a
-  track's credit differs from the album's — otherwise it is dropped, and named
-  under the table with its value one press away (#309).
+  summarised as "1 of 7 tracks" in the box below. A column appears when it can
+  say *which* track — the tag differs from MusicBrainz on some tracks and not
+  others, the tracks disagree with each other, or a track's credit differs from
+  the album's. A change that reads the same on every track stays in the box,
+  where one line says all of it, and a tag that agrees everywhere is named under
+  the table with its value one press away (#309).
 - Because of that, the **Artist column is no longer always shown**: on an album
   where every track is credited to the album artist it said nothing, and it comes
   straight back on a compilation or a featured credit.
@@ -39,6 +41,8 @@ versions follow [semantic versioning](https://semver.org).
   used to render as raw hex with no name available anywhere (#309).
 - History rows for **Disc subtitle** no longer read as the raw tag name
   `disc_subtitle` (#309).
+- The tracklist's **#** and **Length** headings are right-aligned over their
+  columns again, instead of sitting left above right-aligned values (#261).
 
 - The log no longer warns that a **MusicBrainz fetch was slow** on every single
   fetch. The threshold sat below what a normal fetch costs on a NAS, so the

@@ -1011,9 +1011,38 @@ def test_a_featured_credit_earns_the_artist_column_back():
     assert not any(t.differs for t in tl.tracks)  # nothing here differs from MB
 
 
+def test_a_change_that_reads_the_same_on_every_track_is_left_to_the_box():
+    """Rule 1's second half, isolated to the one field it turns on.
+
+    ISRC has no album-level counterpart and the files carry none of it, so rules
+    2 and 3 are both silent and only rule 1 can decide. When MusicBrainz has one
+    ISRC for the whole album, every track reads "— → that", the box's single line
+    is the entire fact, and a column would spend one of three slots printing a
+    position nobody asked for. When MusicBrainz has a different one per track,
+    "which track" has an answer and the column is the only thing that gives it.
+    """
+
+    def album(*isrcs: str):
+        return tracklist(
+            [_file(1, "Nightcall"), _file(2, "Odd Look")],
+            [
+                _mb_track(1, "Nightcall", isrcs=[isrcs[0]]),
+                _mb_track(2, "Odd Look", isrcs=[isrcs[1]]),
+            ],
+        )
+
+    uniform = album("FRZ109800001", "FRZ109800001")
+    assert "ISRC" not in _headings(uniform)
+    assert "ISRC" not in {c.label for c in uniform.collapsed}, "it differs — that is not agreement"
+    assert "isrcs" not in uniform.shown_fields, "so the box states it, once"
+
+    assert "ISRC" in _headings(album("FRZ109800001", "FRZ109800002"))
+
+
 def test_the_table_stops_at_the_cap_and_the_rest_falls_to_the_box():
-    """The pressure valve. Rule 1 would otherwise hand a column to every field a
-    re-tag would touch, and an adopted album differs on most of them at once.
+    """The second limit on rule 1, for the album where its first limit does not
+    bite: an inconsistently tagged one, where a dozen per-track tags genuinely
+    part company track by track and would all arrive at once.
 
     What overflows is deliberately NOT collapsed: the collapsed set claims the
     field is the same on every track and matches MusicBrainz, which of a field
@@ -1021,22 +1050,21 @@ def test_the_table_stops_at_the_cap_and_the_rest_falls_to_the_box():
     box, which is the one surface left that can state it — so `shown_fields`
     must not claim it.
     """
-    # An adopted file — the title and artist someone else tagged, and none of the
-    # MusicBrainz furniture — against a release that has all of it.
+    titles = ["Nightcall", "Odd Look", "Protovision"]
     tl = tracklist(
-        [_file(1, "Nightcall")],
+        [_file(i, t) for i, t in enumerate(titles, 1)],
         [
             _mb_track(
-                1,
-                "Nightcall",
-                artist_sort="Kavinsky",
-                artists=["Kavinsky"],
-                isrcs=["FRZ109800001"],
-                media="Digital Media",
-                mb_track_id="rec-1",
-                mb_release_track_id="trk-1",
-                mb_artist_ids=["art-1"],
+                i,
+                t,
+                artist_sort=f"Kavinsky {i}",
+                artists=[f"Kavinsky {i}"],
+                isrcs=[f"FRZ10980000{i}"],
+                mb_track_id=f"rec-{i}",
+                mb_release_track_id=f"trk-{i}",
+                mb_artist_ids=[f"art-{i}"],
             )
+            for i, t in enumerate(titles, 1)
         ],
     )
 

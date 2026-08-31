@@ -287,9 +287,12 @@ Harmonist reads their tags but never writes them, so they aren't compared agains
 MusicBrainz.
 
 Its columns fit the album rather than being fixed. Number, title and length are
-always there; beyond those, a per-track tag gets a column when it has something
-to say — it differs from MusicBrainz on some track, the tracks disagree with each
-other, or a track is credited to somebody the album isn't. On a single-artist
+always there; beyond those, a per-track tag gets a column when it can answer
+*which track* — it differs from MusicBrainz on some tracks and not others (or
+differently on each), the tracks disagree with each other, or a track is credited
+to somebody the album isn't. A change that reads the same on every track needs no
+column: it goes in the list under the comparison, where one line says the whole
+of it. On a single-artist
 album where every track agrees, an Artist column would be one name repeated all
 the way down, so it isn't drawn; on a compilation, or an album with a guest on
 track 6, it is. The tags that were checked and agreed are named under the table —

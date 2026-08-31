@@ -1033,9 +1033,19 @@ PANEL_FIELDS: frozenset[str] = frozenset(
 # So a field earns a column when ANY of these holds, judged over the tracks that
 # are present and readable:
 #
-#   1. **It differs from MusicBrainz on at least one track.** The finding the
-#      page exists to show — and the one the re-tag box could only ever state in
-#      the aggregate, as "1 of 7 tracks", leaving the reader to work out which.
+#   1. **It differs from MusicBrainz, and not identically on every track.** The
+#      finding the page exists to show — and the one the re-tag box could only
+#      ever state in the aggregate, as "1 of 7 tracks", leaving the reader to
+#      work out which.
+#
+#      The second half is what keeps that from meaning "every field a re-tag
+#      would touch". Where the change is the SAME on every track — every file
+#      missing `media`, every one gaining "Digital Media" — the box's one line
+#      already says the whole of it, and a column repeating "— → Digital Media"
+#      eleven times adds a position nobody needed and spends one of three slots
+#      doing it. A column earns its place by answering *which track*, so it is
+#      drawn exactly when that question has an answer: some tracks differ and
+#      others don't, or they differ in different ways.
 #   2. **The tracks disagree with each other.** An album tagged unevenly over
 #      decades; the compilation whose `Artist` column is the whole point.
 #   3. **It differs from its album-level counterpart.** The featured credit,
@@ -1051,12 +1061,15 @@ PANEL_FIELDS: frozenset[str] = frozenset(
 #: How many EARNED columns the table will take, over and above the three it
 #: always has: the number, the title and the length.
 #:
-#: The pressure valve for rule 1. Without a cap, every field the re-tag box used
-#: to hold would take a column the moment it differed, and a badly-tagged
-#: compilation would reach thirteen of them. Above the cap the overflow stays in
-#: the box, which leaves each surface a job it can do well: a column shows a
-#: difference against the track it belongs to, and the box is where the ones
-#: that would not fit go.
+#: The second limit on rule 1, and the one that does not depend on judgment.
+#: Rule 1's own "not identically on every track" clause is what keeps the
+#: uninteresting fields out; this is what stops the interesting ones from
+#: arriving all at once, on the album tagged unevenly over decades where a dozen
+#: of them genuinely part company track by track.
+#:
+#: Above the cap the overflow stays in the box, which leaves each surface a job
+#: it can do well: a column shows a difference against the track it belongs to,
+#: and the box is where the ones that would not fit go.
 MAX_EARNED_COLUMNS = 3
 
 
@@ -1207,11 +1220,21 @@ def _earns_column(candidate: _Candidate, present: Sequence[_Present], multi_disc
     disk = [_disk_value(t, key) for t, _ in present]
     mb = [_as_display(getattr(m.tags, key)) if m else None for _, m in present]
 
-    # 1. Differs from MusicBrainz. A MusicBrainz value of None is not a finding
-    #    — that is a video track, or the disk-only view (#228), where MB has no
-    #    opinion and a comparison would invent one. Matches ONLY_DISK's exclusion
-    #    from `FieldComparison.differs`, for the same reason.
-    if any(v is not None and d != v for d, v in zip(disk, mb, strict=True)):
+    # 1. Differs from MusicBrainz, and not identically on every track.
+    #
+    #    `pairs` is the set of (on disk, in MusicBrainz) readings, over the tracks
+    #    MusicBrainz has an opinion about. A MusicBrainz value of None is not one
+    #    — that is a video track (#226), or the disk-only view (#228), where a
+    #    comparison would invent an opinion nobody offered; the same exclusion
+    #    ONLY_DISK gets from `FieldComparison.differs`, for the same reason.
+    #
+    #    One pair means every comparable track reads the same way, so "which
+    #    track" has no answer to give and the box's single line is the whole
+    #    fact. Two or more means the tracks part company somewhere — some differ
+    #    and others don't, or they differ differently — which is precisely what a
+    #    column shows and a count cannot.
+    pairs = {(d, v) for d, v in zip(disk, mb, strict=True) if v is not None}
+    if len(pairs) > 1 and any(d != v for d, v in pairs):
         return True
     # 2. The tracks disagree with each other. None counts as a value here: a tag
     #    on six of eight tracks is uneven tagging, and the unevenness IS the
