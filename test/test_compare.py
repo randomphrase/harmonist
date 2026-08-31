@@ -462,7 +462,7 @@ _TRACK_TOTAL = 4
 
 
 def _mb_track(
-    num: int, title: str, *, artist="Kavinsky", length=180_000, disc=1, **tags
+    num: int, title: str, *, artist="Kavinsky", length=180_000, disc=1, total=_TRACK_TOTAL, **tags
 ) -> MBTrack:
     """One MusicBrainz track as the comparison sees it — what tagging would
     write, plus the length, which is not a tag.
@@ -478,7 +478,7 @@ def _mb_track(
             title=title,
             artist=artist,
             track_num=num,
-            track_total=_TRACK_TOTAL,
+            track_total=total,
             disc_num=disc,
             **tags,
         ),
@@ -1039,10 +1039,80 @@ def test_a_change_that_reads_the_same_on_every_track_is_left_to_the_box():
     assert "ISRC" in _headings(album("FRZ109800001", "FRZ109800002"))
 
 
+def test_identifier_columns_are_off_the_cap_and_named_by_their_control():
+    """#319. An MBID and an ISRC are correct to keep and correct to link, and not
+    what anyone opens this page to look at — so they start hidden, and a hidden
+    column has no business spending one of the three slots the readable tags are
+    competing for.
+
+    They are still COLUMNS, and `shown_fields` still claims them: the control
+    that reveals them is named and states what is behind it, which is the same
+    standing the collapsed set has. A hidden column and a column nobody checked
+    must not read the same (#112).
+    """
+    tl = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look")],
+        [
+            _mb_track(
+                i,
+                t,
+                artist_sort=f"Kavinsky {i}",
+                isrcs=[f"FRZ10980000{i}"],
+                mb_track_id=f"rec-{i}",
+                mb_release_track_id=f"trk-{i}",
+            )
+            for i, t in enumerate(["Nightcall", "Odd Look"], 1)
+        ],
+    )
+
+    assert [c.label for c in tl.identifier_columns] == ["ISRC", "Recording", "Release track"]
+    # Three identifiers AND the readable one, on a cap of three: the identifiers
+    # did not crowd out `Artist sort`, which is the whole point.
+    assert "Artist sort" in _headings(tl)
+    assert tl.shown_fields >= {"isrcs", "mb_track_id", "mb_release_track_id"}
+    assert tl.identifier_summary == "ISRC, Recording and Release track differ here."
+
+
+def test_a_row_whose_only_difference_is_hidden_hides_its_musicbrainz_line_too():
+    """`shows_mb` exists to stop a row being given "an empty purple row carrying
+    only a hexagon — a difference marked against nothing". Hiding the identifier
+    CELLS while leaving the line recreated exactly that, one #319 later: three
+    tracks, each with a lone hexagon under it and nothing beside it.
+
+    A display state, not a finding — the line is still worth drawing, and is
+    drawn the moment the identifiers are revealed.
+    """
+    hidden = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look")],
+        [
+            _mb_track(i, t, mb_track_id=f"rec-{i}")
+            for i, t in enumerate(["Nightcall", "Odd Look"], 1)
+        ],
+    )
+    assert all(t.shows_mb for t in hidden.tracks), "there IS a line, once you ask"
+    assert all(t.mb_only_identifiers for t in hidden.tracks)
+
+    # A readable difference on the same row and the line stays: it has something
+    # to show without the identifiers being revealed.
+    mixed = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look")],
+        [
+            _mb_track(1, "Nightcall", mb_track_id="rec-1"),
+            _mb_track(2, "Odd Look (radio edit)", mb_track_id="rec-2"),
+        ],
+    )
+    assert [t.mb_only_identifiers for t in mixed.tracks] == [True, False]
+
+
 def test_the_table_stops_at_the_cap_and_the_rest_falls_to_the_box():
     """The second limit on rule 1, for the album where its first limit does not
-    bite: an inconsistently tagged one, where a dozen per-track tags genuinely
-    part company track by track and would all arrive at once.
+    bite: an inconsistently tagged one, where the readable per-track tags part
+    company track by track and would all arrive at once.
+
+    A multi-disc release, because since #319 it is the only shape that can reach
+    the cap. Within one medium the readable per-track tags are title (pinned),
+    artist, artist sort and artists — three earnable, which is the cap exactly.
+    The medium-derived three are what push it over.
 
     What overflows is deliberately NOT collapsed: the collapsed set claims the
     field is the same on every track and matches MusicBrainz, which of a field
@@ -1050,31 +1120,78 @@ def test_the_table_stops_at_the_cap_and_the_rest_falls_to_the_box():
     box, which is the one surface left that can state it — so `shown_fields`
     must not claim it.
     """
-    titles = ["Nightcall", "Odd Look", "Protovision"]
     tl = tracklist(
-        [_file(i, t) for i, t in enumerate(titles, 1)],
+        [
+            _file(1, "Nightcall", disc=1, track_total=None),
+            _file(1, "Rampage", disc=2, track_total=None),
+        ],
         [
             _mb_track(
-                i,
+                1,
                 t,
-                artist_sort=f"Kavinsky {i}",
-                artists=[f"Kavinsky {i}"],
-                isrcs=[f"FRZ10980000{i}"],
-                mb_track_id=f"rec-{i}",
-                mb_release_track_id=f"trk-{i}",
-                mb_artist_ids=[f"art-{i}"],
+                disc=d,
+                total=d,
+                artist=f"Kavinsky {d}",
+                artist_sort=f"Kavinsky, {d}",
+                artists=[f"Kavinsky {d}"],
+                disc_subtitle=f"Side {d}",
+                media="CD" if d == 1 else "DVD",
             )
-            for i, t in enumerate(titles, 1)
+            for d, t in ((1, "Nightcall"), (2, "Rampage"))
         ],
     )
 
     earned = [h for h in _headings(tl) if h not in ("#", "Title", "Length")]
+    assert earned == ["Artist", "Artist sort", "Artists"]  # priority order
     assert len(earned) == MAX_EARNED_COLUMNS
-    assert earned == ["Artist sort", "Artists", "ISRC"]  # priority order, ids last
-    # The ids overflowed. Nothing collapsed them, and the table does not claim
-    # them — so the box picks them up.
-    assert not {c.label for c in tl.collapsed} & {"Recording", "Release track", "Artist IDs"}
-    assert not tl.shown_fields & {"mb_track_id", "mb_release_track_id", "mb_artist_ids"}
+    # The medium-derived three overflowed. Nothing collapsed them, and the table
+    # does not claim them — so the box picks them up.
+    assert not {c.label for c in tl.collapsed} & {"Disc subtitle", "Media", "Track total"}
+    assert not tl.shown_fields & {"disc_subtitle", "media", "track_total"}
+
+
+def test_the_artist_column_accounts_for_artists_rather_than_repeating_it():
+    """#319. `artists` is the same credit unjoined, and since #309 the `Artist`
+    column renders the artists it names as links — so a column beside it saying
+    "Ben Lukas Boysen; Sebastian Plano" is one fact twice.
+
+    Absorbed, not collapsed and not boxed: it is not missing from the page, it is
+    there and spelled better. The invariant survives — `shown_fields` claims it,
+    so the box cannot list it too.
+    """
+    # The compilation shape: every track a different artist, so `artist` and
+    # `artists` BOTH earn by rule 2, and both are correct on disk.
+    tl = tracklist(
+        [
+            _file(1, "Nightcall", artist="Bing & Ruth", artists=["Bing & Ruth"]),
+            _file(2, "Odd Look", artist="Nils Frahm", artists=["Nils Frahm"]),
+        ],
+        [
+            _mb_track(1, "Nightcall", artist="Bing & Ruth", artists=["Bing & Ruth"]),
+            _mb_track(2, "Odd Look", artist="Nils Frahm", artists=["Nils Frahm"]),
+        ],
+    )
+
+    assert "Artist" in _headings(tl), "the tracks disagree, so it earns"
+    assert "Artists" not in _headings(tl)
+    assert "Artists" not in {c.label for c in tl.collapsed}
+    assert {"artist", "artists"} <= tl.shown_fields, "accounted for, so never in the box"
+
+
+def test_artists_keeps_its_own_column_when_it_has_its_own_difference():
+    """The guard on that. `Artist` can only stand in for `artists` while there is
+    nothing of its own to report — a column cannot represent a change it is not
+    showing, and swallowing one would be the "never none" half of #309's
+    invariant broken quietly."""
+    tl = tracklist(
+        [_file(1, "Nightcall", artist="Bing & Ruth"), _file(2, "Odd Look", artist="Nils Frahm")],
+        [
+            _mb_track(1, "Nightcall", artist="Bing & Ruth", artists=["Bing", "Ruth"]),
+            _mb_track(2, "Odd Look", artist="Nils Frahm", artists=["Nils Frahm"]),
+        ],
+    )
+
+    assert "Artists" in _headings(tl)
 
 
 def test_a_tag_musicbrainz_does_not_have_is_not_collapsed_as_agreement():

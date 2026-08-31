@@ -544,13 +544,18 @@ def test_a_per_track_change_lands_on_its_own_row(engaged, monkeypatch):
     assert "<dt>ISRC</dt>" not in body
 
 
-def test_a_tag_past_the_column_cap_still_reaches_the_box(engaged, monkeypatch):
-    """What the box is FOR, once the tracklist takes what it can (#309).
+def test_identifiers_are_rendered_short_and_start_hidden(engaged, monkeypatch):
+    """#319, at the rung that can see it.
 
-    The table stops at `MAX_EARNED_COLUMNS` earned columns, and the surplus has
-    to land somewhere or the page silently stops reporting a change a re-tag
-    would make. Driven with more per-track tags differing track by track than the
-    cap will take, so the overflow is real rather than assumed.
+    `compare` decides a column is an identifier; whether that actually reaches
+    the markup as a hidden column, a named control and a trimmed id is the
+    template's business, and only a rendered response shows it.
+
+    The cap is deliberately not asserted here. Since #319 the identifiers are
+    exempt from it, and within one medium the readable per-track tags are title
+    (pinned), artist, artist sort and artists — three earnable, which IS the cap.
+    A single-disc album can no longer exceed it, so the overflow property lives
+    in `test_compare`, where a multi-disc release can be built freely.
     """
     cfg, engage = engaged
     _tagged(cfg.paths.music_dir, _release(tracks=3), tracks=3)
@@ -568,11 +573,19 @@ def test_a_tag_past_the_column_cap_still_reaches_the_box(engaged, monkeypatch):
 
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
 
-    # Three columns earned; the rest are stated by the box. Asserted on the row's
-    # LABEL, not on the id: the box marks a changed run in place, so the value
-    # arrives as `rt-<em>moved-</em>1` and no substring of it is the id.
-    assert "Other tags a re-tag would change" in body
-    assert "<dt>Release track</dt>" in body, "past the cap, and still on the page"
+    # On the page, in columns of their own — and every cell of them carrying the
+    # class that hides them until asked for.
+    assert re.search(r"<th [^>]*track-diff__id[^>]*>\s*Recording\s*</th>", body)
+    assert re.search(r"<td [^>]*track-diff__id[^>]*>", body)
+    # The control that reveals them, naming what is behind it rather than
+    # counting it — a hidden column must not read as one nobody checked (#112).
+    assert "Show identifiers" in body
+    assert "ISRC, Artist IDs, Recording and Release track differ here." in body
+    # Trimmed to eight characters, with the whole id still in the link and the
+    # tooltip. `rec-moved-1` is 11 characters, so a full render would show it.
+    assert "rec-move…" in body
+    assert 'href="https://musicbrainz.org/recording/rec-moved-1"' in body
+    assert 'title="rec-moved-1"' in body
 
 
 def test_an_album_scoped_update_is_not_stated_twice(engaged, monkeypatch):

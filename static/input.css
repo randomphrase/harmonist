@@ -504,6 +504,30 @@ button[disabled],
 }
 .track-diff__disc-list li { padding: .05rem 0; }
 
+/* The identifier columns (#319): MBIDs and ISRCs, hidden until asked for. Done
+   in CSS because the page already holds every cell — a round trip to reveal what
+   we've already rendered would be silly, and it is the same handling the album
+   History's "Show details" gets. `display: none` on the cells rather than a
+   width of 0, so the table reflows to the width it actually needs. */
+.tracklist:not(.tracklist--ids) .track-diff__id { display: none; }
+/* The control, in the same quiet voice as the collapsed-columns line below it —
+   both report that there is more here, neither is urgent. */
+.track-ids {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-top: .6rem;
+  font-size: .7rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.track-ids:hover { color: var(--color-ink); }
+.track-ids input { cursor: pointer; }
+/* Names what is behind the checkbox rather than counting it (#112): a hidden
+   column must not read as one nobody checked. */
+.track-ids__note { color: var(--color-muted); }
+
 /* The per-track tags with no column, named under the table (#309). Quiet: it
    reports that nothing is wrong, which is the least urgent thing on the page —
    but it is still reported, because a column that silently vanished would look

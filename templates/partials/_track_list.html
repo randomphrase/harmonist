@@ -46,6 +46,11 @@
     <span class="mb-note__legend">{{ tracklist.summary }}</span>
 </div>
 
+{# One wrapper around the table and the two controls beneath it, so `--ids` can
+   govern every cell of the identifier columns at once (#319) — and so the
+   toggle reaches its table without climbing out of this partial into markup
+   that belongs to whoever included it. #}
+<div class="tracklist">
 <div class="overflow-x-auto">
     <table class="track-diff">
         {# The number and length columns are named so they can be aligned by
@@ -57,7 +62,7 @@
         <thead>
             <tr>
                 {% for col in tracklist.columns %}
-                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">{{ col.label }}</th>
+                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}{{ ' track-diff__id' if col.identifier }}">{{ col.label }}</th>
                 {% endfor %}
             </tr>
         </thead>
@@ -91,7 +96,7 @@
             {% if not group.absent %}
             <tr class="track-diff__disc-cols">
                 {% for col in tracklist.columns %}
-                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">{{ col.label }}</th>
+                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}{{ ' track-diff__id' if col.identifier }}">{{ col.label }}</th>
                 {% endfor %}
             </tr>
             {% endif %}
@@ -129,7 +134,7 @@
             {% if t.state == 'present' or t.state == 'extra' %}
             <tr>
                 {% for f in t.fields %}
-                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}{{ ' track-diff__id' if tracklist.columns[loop.index0].identifier }}">
                     {#- A video track (#226). Shown like any other present track,
                         because it IS present — but marked, because it is the one
                         row a re-tag will never touch, and a track that silently
@@ -205,9 +210,13 @@
                whole row rather than one per cell — the mark is what carries the
                meaning for anyone who can't distinguish the purple, and repeating
                it four times across a table of them is noise. #}
-            <tr class="track-diff__mb">
+            {#- The whole line hides with the identifier columns when they are
+                the only thing on it (#319). Leaving it visible would draw the
+                empty purple row `shows_mb` exists to prevent: a hexagon marking
+                a difference whose cells are not on screen. -#}
+            <tr class="track-diff__mb{{ ' track-diff__id' if t.mb_only_identifiers }}">
                 {% for f in t.fields %}
-                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}">
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}{{ ' track-diff__id' if tracklist.columns[loop.index0].identifier }}">
                     {%- if loop.first -%}
                     <span class="mb-mark" role="img" aria-label="MusicBrainz" title="MusicBrainz's values for this track"><svg
                         viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"
@@ -226,6 +235,30 @@
         {% endfor %}
     </table>
 </div>
+
+{% if tracklist.identifier_columns %}
+{# The identifier columns, and the control that reveals them (#319).
+
+   An MBID and an ISRC are correct to keep, correct to link, and not what anyone
+   opens this page to look at — so they start hidden and the readable tags get
+   the width. They are exempt from the column cap for the same reason: a column
+   nobody sees by default has no business spending one of three slots.
+
+   NAMED, like the collapsed set below it, and for the same #112 reason — every
+   column in this table earned its place, so a hidden one has something to show,
+   and "3 columns hidden" would read as housekeeping instead.
+
+   CSS, not a request: the page already holds every cell, so revealing them is a
+   class flip. `onchange` on a checkbox that carries no hx-* of its own is the
+   pattern the album's History "Show details" already uses; the rule the web-ui
+   skill enforces is against an inline handler on an element htmx also drives. #}
+<label class="track-ids">
+    <input type="checkbox"
+           onchange="this.closest('.tracklist').classList.toggle('tracklist--ids', this.checked)">
+    Show identifiers
+    <span class="track-ids__note">{{ tracklist.identifier_summary }}</span>
+</label>
+{% endif %}
 
 {% if tracklist.collapsed %}
 {# The per-track tags with no column, NAMED (#309).
@@ -266,3 +299,4 @@
     </dl>
 </details>
 {% endif %}
+</div>

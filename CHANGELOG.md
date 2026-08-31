@@ -33,6 +33,17 @@ versions follow [semantic versioning](https://semver.org).
 - **Artist credits read as the artists they name.** "Rafael Anton Irisarri feat.
   Julia Kent" is now two links joined by MusicBrainz's own wording, in both the
   tracklist and the album's Album artist row (#309).
+- The tracklist's **identifier columns start hidden**, behind a **Show
+  identifiers** checkbox that names what is in it. MusicBrainz ids and ISRCs are
+  worth keeping and worth linking, and are not what you open the page to read —
+  so the readable tags get the width, and identifiers no longer take up any of
+  the three columns those tags compete for (#319).
+- A MusicBrainz id with no name to show is **shortened to its first characters**,
+  with the whole of it still in the link and on hover (#319).
+- The tracklist no longer draws an **Artists** column beside **Artist**. It is the
+  same credit unjoined, and since the Artist column became the artists it names,
+  it was one fact in two columns. It comes back if it ever differs from
+  MusicBrainz where Artist does not (#319).
 
 ### Fixed
 

@@ -56,10 +56,18 @@
     {%- for id in value.split('; ') -%}
         {%- if not loop.first %}; {% endif -%}
         {%- set name = mb_names.get(id) -%}
+        {#- An id with no name is TRIMMED to its first characters (#319). A full
+            UUID is 36 of them and none are readable; eight is ample to see that
+            two ids differ, which is the only thing a reader does with one here.
+            The whole id stays in the href and the tooltip, so nothing is lost —
+            and the ellipsis says it was shortened rather than truncating in
+            silence. Never applied to a NAME: that is the readable form, and
+            cutting "Rafael Anton Irisarri" short would be the opposite of the
+            point. -#}
         <a class="mbid{{ ' mbid--raw' if not name }}"
            href="https://musicbrainz.org/{{ entity }}/{{ id }}"
            target="_blank" rel="noopener"
-           title="{% if name %}{{ name }} · {% endif %}{{ id }}">{{ name or id }}</a>
+           title="{% if name %}{{ name }} · {% endif %}{{ id }}">{{ name or (id[:8] ~ '…' if id|length > 8 else id) }}</a>
     {%- endfor -%}
 {%- else -%}
     {%- with runs = runs, value = value %}{% include 'partials/_diff_runs.html' %}{% endwith -%}

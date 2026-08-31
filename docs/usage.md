@@ -302,6 +302,14 @@ one it ignored.
 
 Artist credits are shown as the artists they name: *Rafael Anton Irisarri feat.
 Julia Kent* is two links to MusicBrainz, joined the way MusicBrainz joins them.
+There is no separate *Artists* column beside it — that tag is the same credit
+unjoined, so the Artist column stands for both.
+
+MusicBrainz ids and ISRCs are identifiers rather than anything to read, so they
+start hidden behind **Show identifiers**, which names what is in it. They are
+still links, and an id with no name is shortened to its first few characters with
+the whole of it on hover — enough to see that two ids differ, which is all anyone
+does with one here.
 
 **History** gathers everything Harmonist has recorded about the album, including
 records written before it was last re-identified, so history doesn't rot when a

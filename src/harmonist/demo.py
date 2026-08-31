@@ -461,6 +461,23 @@ PENDING_PURCHASES: list[dict[str, Any]] = [
 # musicbrainzngs returns under release[...]: enough for tagger + assess_match.
 
 
+def _demo_mbid(kind: str, mbid: str, index: int = 0) -> str:
+    """A stable UUID-shaped id for a demo recording, release track or artist.
+
+    Shaped like a real MBID rather than spelled `demo-rec-<album>-3`, and the
+    difference is not cosmetic: an MBID is a random UUID, so the album page
+    shortens one to its first characters and trusts that to distinguish two
+    (#319). Readable synthetic ids share a long prefix, so every id on the album
+    trimmed to the same `demo-rec…` — the demo library being the one place that
+    exercised a rendering nobody with a real library will ever see.
+
+    Derived from the name so it is stable across a reseed, and so the same artist
+    keeps one id everywhere they are credited.
+    """
+    digest = hashlib.sha1(f"{kind}:{mbid}:{index}".encode()).hexdigest()[:32]
+    return f"{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}"
+
+
 def _release(
     mbid: str,
     artist: str,
@@ -489,9 +506,9 @@ def _release(
     # two ids behind one phrase — which #309's credit lookup correctly refuses to
     # choose between. The demo was then the one place the artists-as-links
     # rendering could never appear, which is the mode people meet it in.
-    artist_ids = {artist: f"demo-art-{mbid}"}
+    artist_ids = {artist: _demo_mbid("art", mbid)}
     for name in credits:
-        artist_ids.setdefault(name, f"demo-art-{mbid}-{len(artist_ids)}")
+        artist_ids.setdefault(name, _demo_mbid("art", mbid, len(artist_ids)))
     return {
         "id": mbid,
         "title": title,
@@ -501,7 +518,7 @@ def _release(
         "date": "2024-01-01",
         "barcode": None,
         "artist-credit": [
-            {"artist": {"id": f"demo-art-{mbid}", "name": artist}, "name": artist},
+            {"artist": {"id": artist_ids[artist], "name": artist}, "name": artist},
         ],
         "release-group": {
             "id": rg or f"demo-rg-{mbid}",
@@ -522,7 +539,7 @@ def _release(
                 "format": "Digital Media",
                 "track-list": [
                     {
-                        "id": f"demo-rt-{mbid}-{i}",
+                        "id": _demo_mbid("rt", mbid, i),
                         "position": str(i),
                         "title": title,
                         "artist-credit": [
@@ -532,7 +549,7 @@ def _release(
                             },
                         ],
                         "recording": {
-                            "id": f"demo-rec-{mbid}-{i}",
+                            "id": _demo_mbid("rec", mbid, i),
                             "title": title,
                             "length": str(length),
                         },
