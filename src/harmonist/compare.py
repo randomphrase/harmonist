@@ -412,7 +412,9 @@ _KINDS: dict[str, Kind] = {
     Owned.ORIGINAL_DATE: Kind.SCALAR,
     Owned.SCRIPT: Kind.SCALAR,
     Owned.LABEL: Kind.TEXT,
-    Owned.CATALOG_NUMBER: Kind.SCALAR,
+    # TEXT since #334: a release can name several catalogue numbers, and a
+    # joined pair stacks better than it fits beside an arrow.
+    Owned.CATALOG_NUMBER: Kind.TEXT,
     Owned.BARCODE: Kind.SCALAR,
     Owned.ASIN: Kind.SCALAR,
     Owned.DISC_TOTAL: Kind.SCALAR,

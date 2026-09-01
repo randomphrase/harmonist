@@ -106,6 +106,12 @@ versions follow [semantic versioning](https://semver.org).
   available* on this alone. Harmonist now writes and reads Picard's spelling,
   and clears the upper-case tags it wrote before, so no album is left carrying
   both (#333).
+- **Every label and catalogue number a release names is now written**, not just
+  the first. Co-releases and licensed reissues routinely name two labels, and
+  Harmonist kept one. The two are also collected independently now, which fixes
+  a case that affected albums Harmonist tagged itself: a release whose first
+  label entry had no catalogue number, while a later one did, got **no
+  catalogue number at all** (#334).
 - **A re-tag no longer deletes MusicBrainz secondary release types.** Harmonist
   wrote only the primary type, so nothing on disk recorded that an album was
   live, a remix or a soundtrack — and on a Picard-tagged library it was worse

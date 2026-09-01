@@ -970,8 +970,7 @@ def _build_tagset(
 ) -> TagSet:
     """Translate one MB track within a release to a TagSet."""
     track_artist_credit = track.get("artist-credit") or release.get("artist-credit")
-    label_info = release.get("label-info-list") or []
-    first_label = label_info[0] if label_info else {}
+    labels, catalog_numbers = _label_info(release.get("label-info-list") or [])
     rg = release.get("release-group") or {}
 
     track_total = len(medium.get("track-list", []))
@@ -1020,8 +1019,8 @@ def _build_tagset(
         date=release.get("date") or None,
         disc_num=disc_num,
         disc_total=media_total,
-        label=first_label.get("label", {}).get("name") if first_label else None,
-        catalog_number=first_label.get("catalog-number") if first_label else None,
+        label=labels,
+        catalog_number=catalog_numbers,
         barcode=release.get("barcode") or None,
         asin=release.get("asin") or None,
         media=medium.get("format") or None,
@@ -1351,6 +1350,32 @@ def _release_types(rg: Release) -> list[str]:
     if not primary:
         return []
     return [primary, *((t or "").lower() for t in rg.get("secondary-type-list") or [])]
+
+
+def _label_info(entries: list[Any]) -> tuple[list[str], list[str]]:
+    """Every label and catalogue number the release names, deduped (#334).
+
+    The two collected INDEPENDENTLY, which is the whole point and is what
+    Picard's `label_info_from_node` does. Reading both off `label-info[0]` lost
+    two different things: every label after the first — a co-release or a
+    licensed reissue names two routinely — and, less obviously, the catalogue
+    number of any release whose first entry has a label and no number while a
+    later one does. That second case fires on Harmonist's own output, not only
+    on files adopted from Picard.
+
+    Order is MusicBrainz's, and duplicates are dropped rather than repeated: the
+    same label named on two entries is one label.
+    """
+    labels: list[str] = []
+    catalog_numbers: list[str] = []
+    for entry in entries:
+        name = ((entry.get("label") or {}).get("name") or "").strip()
+        if name and name not in labels:
+            labels.append(name)
+        number = (entry.get("catalog-number") or "").strip()
+        if number and number not in catalog_numbers:
+            catalog_numbers.append(number)
+    return labels, catalog_numbers
 
 
 def _artist_ids(artist_credit: list[Any] | None) -> list[str]:

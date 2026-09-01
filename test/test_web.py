@@ -3722,7 +3722,7 @@ def _tagging_with_tag_changes(cfg, name, *, release_id=None):
                     artist="A",
                     track_num=i + 1,
                     track_total=len(files),
-                    label="Warp Records",
+                    label=["Warp Records"],
                 ),
                 None,
             )
@@ -3742,14 +3742,14 @@ def test_undo_puts_back_the_tags_a_tagging_changed(client, cfg):
 
     album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagUndo")
     path = min(p for p in d.iterdir() if formats.is_supported(p))
-    assert formats.read_owned(path)["label"] == "Warp Records"
+    assert formats.read_owned(path)["label"] == ["Warp Records"]
 
     r = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
 
     assert r.status_code == 200
     assert "Tags put back" in r.text
     after = formats.read_owned(path)
-    assert after["label"] is None, "the added tag was removed, not blanked"
+    assert after["label"] in (None, []), "the added tag was removed, not blanked"
     assert after["album"] is None
 
 
@@ -3872,13 +3872,15 @@ def test_undo_names_the_fields_it_left_alone(client, cfg):
 
     album_id, d, anchor = _tagging_with_tag_changes(cfg, "TagStale")
     for path in sorted(p for p in d.iterdir() if formats.is_supported(p)):
-        formats.write_owned(path, {**formats.read_owned(path), "label": "Changed Since"})
+        # A LIST, as `read_owned` returns for a multi-value field (#334) —
+        # handing `write_owned` a bare string writes it one character per value.
+        formats.write_owned(path, {**formats.read_owned(path), "label": ["Changed Since"]})
 
     r = client.post(f"/tags/restore/{album_id}", data={"event_id": anchor})
 
     assert "Label left alone (changed since)" in r.text
     path = min(p for p in d.iterdir() if formats.is_supported(p))
-    assert formats.read_owned(path)["label"] == "Changed Since"
+    assert formats.read_owned(path)["label"] == ["Changed Since"]
 
 
 def test_undo_tags_button_appears_on_a_tagging_that_changed_tags(client, cfg):

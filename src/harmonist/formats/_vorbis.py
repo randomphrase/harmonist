@@ -125,8 +125,6 @@ _SINGLE_KEYS: dict[Owned, str] = {
     Owned.DATE: KEY_DATE,
     Owned.ORIGINAL_DATE: KEY_ORIGINAL_DATE,
     Owned.SCRIPT: KEY_SCRIPT,
-    Owned.LABEL: KEY_LABEL,
-    Owned.CATALOG_NUMBER: KEY_CATALOG,
     Owned.BARCODE: KEY_BARCODE,
     Owned.ASIN: KEY_ASIN,
     Owned.DISC_TOTAL: KEY_DISC_TOTAL,
@@ -144,6 +142,9 @@ _SINGLE_KEYS: dict[Owned, str] = {
 
 #: Owned fields carried as several values under one key.
 _LIST_KEYS: dict[Owned, str] = {
+    # Multi-value since #334: every label / catalogue number the release names.
+    Owned.LABEL: KEY_LABEL,
+    Owned.CATALOG_NUMBER: KEY_CATALOG,
     # Multi-value since #331: the primary type plus the secondaries.
     Owned.MB_ALBUM_TYPE: KEY_RELEASE_TYPE,
     Owned.ALBUM_ARTISTS: KEY_ALBUM_ARTISTS,
@@ -303,14 +304,19 @@ class VorbisTagger:
             values = tags.get(key)
             return (str(values[0]) or None) if values else None
 
+        def every(key: str) -> list[str]:
+            """Every comment under one key — Vorbis repeats the key per value,
+            which is how Picard writes the multi-value tags (#334)."""
+            return [str(v) for v in tags.get(key) or [] if str(v)]
+
         track_num = first(KEY_TRACK_NUMBER)
         disc_num = first(KEY_DISC_NUMBER)
         return TrackTags(
             album=first(KEY_ALBUM),
             album_artist=first(KEY_ALBUM_ARTIST),
             date=first(KEY_DATE),
-            label=first(KEY_LABEL),
-            catalog_number=first(KEY_CATALOG),
+            label=every(KEY_LABEL),
+            catalog_number=every(KEY_CATALOG),
             barcode=first(KEY_BARCODE),
             media=first(KEY_MEDIA),
             genre=first(KEY_GENRE),
@@ -381,8 +387,8 @@ class VorbisTagger:
             Owned.DATE: one(KEY_DATE),
             Owned.ORIGINAL_DATE: one(KEY_ORIGINAL_DATE),
             Owned.SCRIPT: one(KEY_SCRIPT),
-            Owned.LABEL: one(KEY_LABEL),
-            Owned.CATALOG_NUMBER: one(KEY_CATALOG),
+            Owned.LABEL: many(KEY_LABEL),
+            Owned.CATALOG_NUMBER: many(KEY_CATALOG),
             Owned.BARCODE: one(KEY_BARCODE),
             Owned.ASIN: one(KEY_ASIN),
             Owned.DISC_TOTAL: num(KEY_DISC_TOTAL),
@@ -483,9 +489,9 @@ class VorbisTagger:
         tags[KEY_DISC_TOTAL] = [str(tagset.disc_total)]
 
         if tagset.label:
-            tags[KEY_LABEL] = [tagset.label]
+            tags[KEY_LABEL] = list(tagset.label)
         if tagset.catalog_number:
-            tags[KEY_CATALOG] = [tagset.catalog_number]
+            tags[KEY_CATALOG] = list(tagset.catalog_number)
         if tagset.barcode:
             tags[KEY_BARCODE] = [tagset.barcode]
         if tagset.asin:

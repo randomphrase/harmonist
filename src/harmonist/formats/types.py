@@ -167,8 +167,17 @@ class TagSet:
     # sold as bringing their tags up to date (#218). Most releases have none.
     disc_subtitle: str | None = None
 
-    label: str | None = None
-    catalog_number: str | None = None
+    #: Every label and catalogue number the release names, deduped, the two
+    #: collected INDEPENDENTLY of each other (#334) — Picard's
+    #: `label_info_from_node`. A co-release or a licensed reissue names two
+    #: labels routinely, and taking both fields off `label-info[0]` also dropped
+    #: a catalogue number whenever the first entry had a label and no number.
+    #:
+    #: Singular names for the reason `mb_album_type` keeps its: the strings are
+    #: `Owned` values, and those are persisted in `activity.db` as the keys of
+    #: each tagging's change record.
+    label: list[str] = field(default_factory=list)
+    catalog_number: list[str] = field(default_factory=list)
     barcode: str | None = None
     asin: str | None = None
     media: str | None = None
@@ -216,8 +225,17 @@ class TrackTags:
     album: str | None = None
     album_artist: str | None = None
     date: str | None = None
-    label: str | None = None
-    catalog_number: str | None = None
+    #: Every label and catalogue number the release names, deduped, the two
+    #: collected INDEPENDENTLY of each other (#334) — Picard's
+    #: `label_info_from_node`. A co-release or a licensed reissue names two
+    #: labels routinely, and taking both fields off `label-info[0]` also dropped
+    #: a catalogue number whenever the first entry had a label and no number.
+    #:
+    #: Singular names for the reason `mb_album_type` keeps its: the strings are
+    #: `Owned` values, and those are persisted in `activity.db` as the keys of
+    #: each tagging's change record.
+    label: list[str] = field(default_factory=list)
+    catalog_number: list[str] = field(default_factory=list)
     barcode: str | None = None
     media: str | None = None
     genre: str | None = None

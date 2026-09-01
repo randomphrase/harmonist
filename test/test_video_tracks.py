@@ -76,7 +76,7 @@ def test_a_video_file_carries_the_whole_picard_tag_set(tmp_path):
     assert tags.title == "Intro"
     assert tags.album == "Live! In Tune and on Time"
     assert tags.artist == "DJ Shadow"
-    assert tags.label == "Geffen Records"
+    assert tags.label == ["Geffen Records"]
     assert (tags.disc_num, tags.track_num) == (2, 5)
     assert tags.duration_ms is not None
     assert tags.video is True, "and it says which half of the album it came from"

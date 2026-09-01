@@ -838,7 +838,7 @@ Standard text tags refreshed from MB:
 - `©nam` (title), `©alb` (album), `©ART` (artist), `aART` (album artist)
 - `©day` (date)
 - `trkn` (track / total), `disk` (disc / total)
-- `----:com.apple.iTunes:LABEL`, `----:com.apple.iTunes:CATALOGNUMBER`, `----:com.apple.iTunes:BARCODE`, `----:com.apple.iTunes:MEDIA`, `----:com.apple.iTunes:ASIN` when present
+- `----:com.apple.iTunes:LABEL`, `----:com.apple.iTunes:CATALOGNUMBER`, `----:com.apple.iTunes:BARCODE`, `----:com.apple.iTunes:MEDIA`, `----:com.apple.iTunes:ASIN` when present. **`LABEL` and `CATALOGNUMBER` are multi-valued** (#334): a release names every label and catalogue number it carries, and the two are collected independently of each other — Picard's `label_info_from_node`. Taking both off the first `label-info` entry dropped every label after the first, and dropped the catalogue number entirely whenever the first entry had a label and no number.
 
 **Genre (`©gen` / `TCON` / `GENRE`) and copyright (`cprt`) are NOT written**, and never have been. This list claimed both until the claim was checked against the code: genre is absent from `formats.owned.Owned` and excluded from every backend's clear-before-write mapping (deferred — §1, #12), and `cprt` appears nowhere in `src/` at all. `owned.Owned` is the authoritative set — a tag named here but missing from it is a documentation bug, and the mechanical check that keeps the backends honest (`test_every_backend_maps_every_owned_field`) cannot see this prose.
 

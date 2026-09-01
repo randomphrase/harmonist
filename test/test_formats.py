@@ -170,8 +170,8 @@ def test_read_tags_recovers_what_the_tagger_wrote(tmp_path, ext, fixture):
     assert t.artist == "Format Artist"
     assert t.title == "The Track"
     assert t.date == "2022-03-04"
-    assert t.label == "Test Label"
-    assert t.catalog_number == "CAT-9"
+    assert t.label == ["Test Label"]
+    assert t.catalog_number == ["CAT-9"]
     assert t.barcode == "5051234567890"
     assert t.track_num == 1
     assert t.disc_num == 1
@@ -187,8 +187,13 @@ def test_read_tags_reports_absent_fields_as_none_not_empty_string(tmp_path, ext,
     t = formats.read_tags(next(d.glob(f"*{ext}")))
 
     assert t.unreadable is False  # readable, just untagged
-    for name in ("album", "album_artist", "artist", "title", "label", "catalog_number"):
+    for name in ("album", "album_artist", "artist", "title"):
         assert getattr(t, name) is None, f"{name} came back {getattr(t, name)!r}"
+    # The multi-value fields say absent with an empty list rather than None
+    # (#334) — the same shape `isrcs` and `artists` have always used. What the
+    # test is really about survives: neither says absent with "".
+    for name in ("label", "catalog_number"):
+        assert getattr(t, name) == [], f"{name} came back {getattr(t, name)!r}"
 
 
 @pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
@@ -875,13 +880,13 @@ def test_retag_removes_owned_tags_the_new_release_lacks(tmp_path, ext, fixture):
     carried them. FLAC did this; MP3 and M4A silently didn't."""
     path = _copy_fixture(tmp_path, fixture)
 
-    formats.write_tags(path, _tagset(label="Warp", catalog_number="WARP1", media="CD"), None)
-    assert formats.read_tags(path).label == "Warp"
+    formats.write_tags(path, _tagset(label=["Warp"], catalog_number=["WARP1"], media="CD"), None)
+    assert formats.read_tags(path).label == ["Warp"]
 
     formats.write_tags(path, _tagset(), None)  # same album, release has no label
     after = formats.read_tags(path)
-    assert after.label is None
-    assert after.catalog_number is None
+    assert after.label == []
+    assert after.catalog_number == []
     assert after.media is None
     assert after.album == "Album"  # the fields that ARE written still land
 
@@ -1014,8 +1019,9 @@ def _full_tagset() -> Any:
         date="1998-04-20",
         disc_num=1,
         disc_total=1,
-        label="Warp Records",
-        catalog_number="WARP55",
+        # Multi-value since #334: every label the release names.
+        label=["Warp Records", "Studio !K7"],
+        catalog_number=["WARP55"],
         barcode="5021603055520",
         asin="B000024T4T",
         media="CD",
@@ -1137,7 +1143,7 @@ def test_tagging_result_does_not_depend_on_what_was_tagged_before(tmp_path, ext,
     B outright. That made the operation non-idempotent in the way that matters:
     the outcome depended on what had happened to the file before.
     """
-    release_a = _tagset(album="First", label="Warp", catalog_number="WARP1", media="CD")
+    release_a = _tagset(album="First", label=["Warp"], catalog_number=["WARP1"], media="CD")
     release_b = _tagset(album="Second", barcode="5099999999999")
 
     history = _copy_fixture(tmp_path, fixture)
@@ -1200,16 +1206,17 @@ def test_write_owned_removes_a_field_it_is_given_as_absent(tmp_path, ext, fixtur
     f = next(d.glob(f"*{ext}"))
 
     snapshot = formats.read_owned(f)
-    assert snapshot["label"] == "Test Label"
+    assert snapshot["label"] == ["Test Label"]
     assert snapshot["isrcs"] == ["GBFMT2100001"]
 
     formats.write_owned(f, {**snapshot, "label": None, "isrcs": []})
 
     after = formats.read_owned(f)
-    assert after["label"] is None
+    assert after["label"] in (None, [])
     assert after["isrcs"] == []
     # Absent, not present-and-empty: the comparison would render "" as a value.
-    assert formats.read_tags(f).label is None
+    # `[]` for a multi-value field, exactly as `isrcs` above (#334).
+    assert formats.read_tags(f).label == []
     # Everything else is untouched.
     assert after["album"] == "Format Album"
     assert after["mb_album_id"] == "rel-fmt-1"

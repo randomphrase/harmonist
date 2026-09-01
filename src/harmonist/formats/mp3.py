@@ -155,6 +155,17 @@ def _text(tags: Any, frame_id: str) -> str | None:
     return str(frame.text[0]) or None
 
 
+def _text_list(tags: Any, frame_id: str) -> list[str]:
+    """Every string of a standard text frame. ID3v2.4 carries a multi-value tag
+    as several strings in ONE frame, which is how Picard writes `TPUB` (#334)."""
+    if tags is None:
+        return []
+    frame = tags.get(frame_id)
+    if frame is None or not frame.text:
+        return []
+    return [str(v) for v in frame.text if str(v)]
+
+
 def read_album_id(path: Path) -> str | None:
     audio = _open(path)
     return _txxx(audio.tags, TXXX_ALBUM_ID) if audio else None
@@ -233,8 +244,9 @@ def read_tags(path: Path) -> TrackTags:
         album=_text(tags, "TALB"),
         album_artist=_text(tags, "TPE2"),
         date=_text(tags, "TDRC"),
-        label=_text(tags, "TPUB"),  # a real frame, unlike the two below
-        catalog_number=_txxx(tags, TXXX_CATALOG),
+        # Multi-value since #334. TPUB is a real frame, unlike the two below.
+        label=_text_list(tags, "TPUB"),
+        catalog_number=_txxx_list(tags, TXXX_CATALOG),
         barcode=_txxx(tags, TXXX_BARCODE),
         # TMED — the frame `write_tags` actually writes. Read as TXXX:MEDIA
         # until #149, so `media` never round-tripped and every MP3 Harmonist
@@ -360,8 +372,10 @@ def _read_owned(tags: Any) -> dict[str, Any]:
         Owned.DATE: _text(tags, "TDRC"),
         Owned.ORIGINAL_DATE: _text(tags, "TDOR"),
         Owned.SCRIPT: _txxx(tags, TXXX_SCRIPT),
-        Owned.LABEL: _text(tags, "TPUB"),
-        Owned.CATALOG_NUMBER: _txxx(tags, TXXX_CATALOG),
+        # Multi-value since #334. ID3v2.4 carries several strings in one
+        # frame, which is how Picard writes both of these.
+        Owned.LABEL: _text_list(tags, "TPUB"),
+        Owned.CATALOG_NUMBER: _txxx_list(tags, TXXX_CATALOG),
         Owned.BARCODE: _txxx(tags, TXXX_BARCODE),
         Owned.ASIN: _txxx(tags, TXXX_ASIN),
         Owned.DISC_TOTAL: disc_total,
@@ -451,7 +465,11 @@ def _apply_owned(tags: ID3, values: Mapping[str, Any]) -> None:
     """
     for fld, frame in _TEXT_FRAMES.items():
         if (value := values.get(fld)) not in (None, ""):
-            tags.setall(frame.__name__, [frame(encoding=Encoding.UTF8, text=[str(value)])])
+            # `text` takes a LIST, so a multi-value field lands as several
+            # strings in one frame — ID3v2.4's own shape, and Picard's for
+            # `TPUB` (#334). A scalar field still writes its single string.
+            text = [str(v) for v in value or []] if fld in _TEXT_LIST_FIELDS else [str(value)]
+            tags.setall(frame.__name__, [frame(encoding=Encoding.UTF8, text=text)])
     for fld, desc in _TXXX_FIELDS.items():
         if (value := values.get(fld)) not in (None, ""):
             _set_txxx(tags, desc, [str(value)])
@@ -489,6 +507,12 @@ def _set_pair(tags: ID3, frame_id: str, frame: Any, num: Any, total: Any) -> Non
 #: Owned fields that are a single standard text frame, by frame class. The class
 #: doubles as the frame id (`TALB.__name__ == "TALB"`), which is what mutagen's
 #: `setall` keys on.
+#: Standard text frames whose owned value is a LIST rather than a scalar (#334).
+#: Named separately rather than inferred from the value's type, so the write is
+#: driven by the field's declared shape and cannot be changed by what a
+#: particular release happens to carry.
+_TEXT_LIST_FIELDS: frozenset[Owned] = frozenset({Owned.LABEL})
+
 _TEXT_FRAMES: dict[Owned, Any] = {
     Owned.ALBUM: TALB,
     Owned.ALBUM_ARTIST: TPE2,
@@ -510,7 +534,6 @@ _TXXX_FIELDS: dict[Owned, str] = {
     Owned.MB_ALBUM_STATUS: TXXX_ALBUM_STATUS,
     Owned.MB_ALBUM_COUNTRY: TXXX_ALBUM_COUNTRY,
     Owned.SCRIPT: TXXX_SCRIPT,
-    Owned.CATALOG_NUMBER: TXXX_CATALOG,
     Owned.BARCODE: TXXX_BARCODE,
     Owned.ASIN: TXXX_ASIN,
     Owned.MB_RELEASE_TRACK_ID: TXXX_RELEASE_TRACK_ID,
@@ -518,6 +541,8 @@ _TXXX_FIELDS: dict[Owned, str] = {
 
 #: Owned fields carried as several strings in one TXXX frame.
 _TXXX_LIST_FIELDS: dict[Owned, str] = {
+    # Multi-value since #334: every label / catalogue number the release names.
+    Owned.CATALOG_NUMBER: TXXX_CATALOG,
     # Multi-value since #331: the primary type plus the secondaries.
     Owned.MB_ALBUM_TYPE: TXXX_ALBUM_TYPE,
     Owned.ALBUM_ARTISTS: TXXX_ALBUM_ARTISTS,
@@ -619,9 +644,9 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
 
     # ---- Optional album-level metadata ----
     if tagset.label:
-        tags.setall("TPUB", [TPUB(encoding=Encoding.UTF8, text=[tagset.label])])
+        tags.setall("TPUB", [TPUB(encoding=Encoding.UTF8, text=list(tagset.label))])
     if tagset.catalog_number:
-        _set_txxx(tags, TXXX_CATALOG, [tagset.catalog_number])
+        _set_txxx(tags, TXXX_CATALOG, list(tagset.catalog_number))
     if tagset.barcode:
         _set_txxx(tags, TXXX_BARCODE, [tagset.barcode])
     if tagset.asin:

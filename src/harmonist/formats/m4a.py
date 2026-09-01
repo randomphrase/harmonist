@@ -310,8 +310,8 @@ def read_tags(path: Path) -> TrackTags:
         album_artist=_text_atom(audio, ATOM_ALBUM_ARTIST),
         date=_text_atom(audio, ATOM_DATE),
         # Freeform (----) atoms, so they come back as bytes.
-        label=_binary_atom_str(audio, ATOM_LABEL),
-        catalog_number=_binary_atom_str(audio, ATOM_CATALOG),
+        label=_binary_atom_list(audio, ATOM_LABEL),
+        catalog_number=_binary_atom_list(audio, ATOM_CATALOG),
         barcode=_binary_atom_str(audio, ATOM_BARCODE),
         media=_binary_atom_str(audio, ATOM_MEDIA),
         genre=_text_atom(audio, ATOM_GENRE),
@@ -392,8 +392,8 @@ def _read_owned(audio: MP4) -> dict[str, Any]:
         Owned.DATE: _text_atom(audio, ATOM_DATE),
         Owned.ORIGINAL_DATE: _binary_atom_str(audio, ATOM_ORIGINAL_DATE),
         Owned.SCRIPT: _binary_atom_str(audio, ATOM_SCRIPT),
-        Owned.LABEL: _binary_atom_str(audio, ATOM_LABEL),
-        Owned.CATALOG_NUMBER: _binary_atom_str(audio, ATOM_CATALOG),
+        Owned.LABEL: _binary_atom_list(audio, ATOM_LABEL),
+        Owned.CATALOG_NUMBER: _binary_atom_list(audio, ATOM_CATALOG),
         Owned.BARCODE: _binary_atom_str(audio, ATOM_BARCODE),
         Owned.ASIN: _binary_atom_str(audio, ATOM_ASIN),
         Owned.DISC_TOTAL: disk[1] if disk else None,
@@ -518,8 +518,6 @@ _BINARY_ATOMS: dict[Owned, str] = {
     Owned.MB_ALBUM_COUNTRY: ATOM_MB_ALBUM_COUNTRY,
     Owned.ORIGINAL_DATE: ATOM_ORIGINAL_DATE,
     Owned.SCRIPT: ATOM_SCRIPT,
-    Owned.LABEL: ATOM_LABEL,
-    Owned.CATALOG_NUMBER: ATOM_CATALOG,
     Owned.BARCODE: ATOM_BARCODE,
     Owned.ASIN: ATOM_ASIN,
     Owned.MEDIA: ATOM_MEDIA,
@@ -530,6 +528,9 @@ _BINARY_ATOMS: dict[Owned, str] = {
 
 #: Owned fields stored as multi-valued freeform atoms.
 _BINARY_LIST_ATOMS: dict[Owned, str] = {
+    # Multi-value since #334: every label / catalogue number the release names.
+    Owned.LABEL: ATOM_LABEL,
+    Owned.CATALOG_NUMBER: ATOM_CATALOG,
     # Multi-value since #331: the primary type plus the secondaries.
     Owned.MB_ALBUM_TYPE: ATOM_MB_ALBUM_TYPE,
     Owned.ALBUM_ARTISTS: ATOM_ALBUM_ARTISTS,
@@ -622,9 +623,9 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
 
     # ---- Optional album-level metadata ----
     if tagset.label:
-        audio[ATOM_LABEL] = [tagset.label.encode("utf-8")]
+        audio[ATOM_LABEL] = [v.encode("utf-8") for v in tagset.label]
     if tagset.catalog_number:
-        audio[ATOM_CATALOG] = [tagset.catalog_number.encode("utf-8")]
+        audio[ATOM_CATALOG] = [v.encode("utf-8") for v in tagset.catalog_number]
     if tagset.barcode:
         audio[ATOM_BARCODE] = [tagset.barcode.encode("utf-8")]
     if tagset.asin:

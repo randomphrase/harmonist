@@ -230,7 +230,7 @@ def test_tagging_records_a_field_the_new_release_removed(album_with_tracks, tmp_
 
     removals = _detail()[before:]
     assert len(removals) == 2
-    assert removals[0].changes["label"][1] is None
+    assert removals[0].changes["label"][1] in (None, [])
     assert removals[0].changes["label"][0]  # there WAS a label, and we know it
     # Only what changed — the untouched fields stay out of the record.
     assert "title" not in removals[0].changes
@@ -571,6 +571,46 @@ def test_an_ordinary_release_carries_no_compilation_flag():
     with no extra code — and `owned.as_flag` never produces a False that would
     read as a value and differ from MusicBrainz forever."""
     assert [t.compilation for t in tagger.tagsets_for(_release_2_tracks())] == [None, None]
+
+
+def test_every_label_and_catalogue_number_is_written(tmp_path):
+    """#334. Picard collects EVERY `label-info` entry into two lists, and the
+    two independently of each other (`picard/mbjson.py:756`,
+    `label_info_from_node`). Co-releases and licensed reissues carry two labels
+    routinely, and Harmonist kept only the first.
+    """
+    release = _release_2_tracks()
+    release["label-info-list"] = [
+        {"label": {"name": "Kompakt"}, "catalog-number": "KOM 001"},
+        {"label": {"name": "Studio !K7"}, "catalog-number": "K7 999"},
+    ]
+
+    tags = tagger.tagsets_for(release)[0]
+
+    assert tags.label == ["Kompakt", "Studio !K7"]
+    assert tags.catalog_number == ["KOM 001", "K7 999"]
+
+
+def test_a_catalogue_number_on_a_later_label_is_not_lost(tmp_path):
+    """The half of #334 that fires on Harmonist's OWN output, not just adopted
+    files.
+
+    Both fields came off `label-info[0]`, so a release whose first entry names a
+    label but carries no catalogue number — while a later entry has one — got no
+    catalogue number written at all. Picard writes it, because it walks the two
+    fields independently.
+    """
+    release = _release_2_tracks()
+    release["label-info-list"] = [
+        {"label": {"name": "Kompakt"}},
+        {"label": {"name": "Kompakt"}, "catalog-number": "KOM 001"},
+    ]
+
+    tags = tagger.tagsets_for(release)[0]
+
+    assert tags.catalog_number == ["KOM 001"]
+    # Deduped, like Picard's — the same label named twice is one label.
+    assert tags.label == ["Kompakt"]
 
 
 def test_a_greatest_hits_release_by_one_artist_is_not_a_compilation():
