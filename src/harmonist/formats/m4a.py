@@ -48,8 +48,27 @@ ATOM_ASIN = f"{ATOM_PREFIX}ASIN"
 ATOM_ISRC = f"{ATOM_PREFIX}ISRC"
 ATOM_ARTISTS = f"{ATOM_PREFIX}ARTISTS"
 ATOM_ALBUM_ARTISTS = f"{ATOM_PREFIX}ALBUMARTISTS"
-ATOM_ORIGINAL_DATE = f"{ATOM_PREFIX}ORIGINALDATE"
-ATOM_ORIGINAL_YEAR = f"{ATOM_PREFIX}ORIGINALYEAR"
+# LOWER case, and that is Picard's spelling rather than a style choice (#333).
+# Picard has no MP4 mapping for either tag — they are absent from its
+# `__freeform_tags`, `__r_freeform_tags_ci` and `__text_tags` — so they fall
+# through to the generic branch of its save, which writes the tag name
+# unchanged: `tags['----:com.apple.iTunes:' + name] = values`.
+#
+# MP4 freeform keys are case-sensitive in mutagen, so the upper-case spelling
+# Harmonist used could not see Picard's atom at all. `read_owned` reported the
+# original date ABSENT on every Picard-tagged M4A, which made `owned.diff` find
+# a change on every pass, so #266's write-skip never fired and the gardener
+# rewrote every dated album in the library forever — #283's failure mode on a
+# second field, and one a whole dogfood library sat in.
+ATOM_ORIGINAL_DATE = f"{ATOM_PREFIX}originaldate"
+ATOM_ORIGINAL_YEAR = f"{ATOM_PREFIX}originalyear"
+
+#: The upper-case spellings Harmonist itself wrote before #333. Retired, not
+#: renamed: they are already in users' files, and switching spelling without
+#: clearing them would leave both on disk, free to diverge the moment
+#: MusicBrainz corrects the date.
+LEGACY_ORIGINAL_DATE = f"{ATOM_PREFIX}ORIGINALDATE"
+LEGACY_ORIGINAL_YEAR = f"{ATOM_PREFIX}ORIGINALYEAR"
 ATOM_SCRIPT = f"{ATOM_PREFIX}SCRIPT"
 
 # Legacy (non-Picard) atom written by older versions; removed on retag.
@@ -99,7 +118,16 @@ OWNED_ATOMS: dict[Owned, tuple[str, ...]] = {
     Owned.MB_ALBUM_COUNTRY: (ATOM_MB_ALBUM_COUNTRY,),
     Owned.COMPILATION: (ATOM_COMPILATION,),
     Owned.DATE: (ATOM_DATE,),
-    Owned.ORIGINAL_DATE: (ATOM_ORIGINAL_DATE, ATOM_ORIGINAL_YEAR),
+    # The retired upper-case spellings ride along with the pair they were an
+    # older spelling of (#333), the same way the legacy release id rides with
+    # its own — so a write clears them by construction rather than as a
+    # separate step, and no album ends up carrying both.
+    Owned.ORIGINAL_DATE: (
+        ATOM_ORIGINAL_DATE,
+        ATOM_ORIGINAL_YEAR,
+        LEGACY_ORIGINAL_DATE,
+        LEGACY_ORIGINAL_YEAR,
+    ),
     Owned.SCRIPT: (ATOM_SCRIPT,),
     Owned.LABEL: (ATOM_LABEL,),
     Owned.CATALOG_NUMBER: (ATOM_CATALOG,),
@@ -129,12 +157,22 @@ OWNED_ATOMS: dict[Owned, tuple[str, ...]] = {
 #: an `OWNED_ATOMS` pair such as `ATOM_ORIGINAL_YEAR`, which a write clears and
 #: then re-derives, so its presence is normal rather than something to clean up.
 #:
+#: The original-date pair is now on BOTH sides of that line, which is worth
+#: stating plainly because it looks like a contradiction: the lower-case
+#: `originalyear` is a re-derived pair member and must never be listed here,
+#: while the upper-case `ORIGINALYEAR` Harmonist wrote before #333 is genuine
+#: residue and must be. Same tag, two spellings, opposite dispositions.
+#:
 #: `_read_owned` cannot report these — that is the point of them — so a file can
 #: match a release on all thirty owned fields and still carry one. Naming them
 #: lets `has_superseded_tags` answer for the write-skip in `tagger.tag_album`
 #: (#266), which would otherwise leave a stale legacy MBID in place forever on
 #: exactly the albums #32 cares about: the ones adopted from an older Picard.
-SUPERSEDED_ATOMS: tuple[str, ...] = (LEGACY_RELEASE_ID,)
+SUPERSEDED_ATOMS: tuple[str, ...] = (
+    LEGACY_RELEASE_ID,
+    LEGACY_ORIGINAL_DATE,
+    LEGACY_ORIGINAL_YEAR,
+)
 
 
 # ---------------------------------------------------------------------------

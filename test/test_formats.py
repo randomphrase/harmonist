@@ -418,8 +418,11 @@ def _read_new_tags(path: Path) -> tuple[str | None, list[str], str | None, str |
         return (
             _first([str(v) for v in a.get("soar", [])]),
             [b.decode("utf-8") for b in a.get(f"{pre}ARTISTS", [])],
-            ff("ORIGINALDATE"),
-            ff("ORIGINALYEAR"),
+            # LOWER case: Picard's spelling, and since #333 Harmonist's too.
+            # MP4 freeform keys are case-sensitive, so this helper reading the
+            # wrong case would report the tag missing rather than mis-named.
+            ff("originaldate"),
+            ff("originalyear"),
             ff("SCRIPT"),
         )
     if ext == ".mp3":
@@ -1377,6 +1380,54 @@ def test_a_superseded_atom_is_reported_so_a_write_can_clear_it(tmp_path):
     f = next(d.glob("*.m4a"))
     audio = MP4(f)
     audio[m4a.LEGACY_RELEASE_ID] = [b"old-broken-mbid"]
+    audio.save()
+
+    assert formats.has_superseded_tags(f)
+
+
+def test_picards_original_date_is_read_from_an_m4a(tmp_path):
+    """#333, and the half that made it severe.
+
+    Picard has no MP4 mapping for `originaldate`, so it falls through to the
+    generic branch and writes the tag name unchanged — LOWER case. Harmonist
+    wrote and read UPPER case, and MP4 freeform keys are case-sensitive, so a
+    Picard-tagged album read back with no original date at all.
+
+    That is not merely a blank row: `owned.diff` then reports a change on every
+    pass, #266's write-skip can never fire, and the gardener rewrites every dated
+    M4A in the library forever. An entire dogfood library sat in "update
+    available" on it.
+    """
+    d = _make_album(tmp_path, "sine.m4a")
+    f = next(d.glob("*.m4a"))
+    audio = MP4(f)
+    audio["----:com.apple.iTunes:originaldate"] = [b"1994-03-07"]
+    audio.save()
+
+    from harmonist.formats.owned import Owned
+
+    assert formats.read_owned(f)[Owned.ORIGINAL_DATE] == "1994-03-07"
+
+
+def test_harmonists_own_upper_case_original_date_is_cleaned_up(tmp_path):
+    """The other half of #333, and the reason the fix is two changes not one.
+
+    Harmonist has already written `ORIGINALDATE` / `ORIGINALYEAR` into users'
+    files. Simply switching to Picard's spelling would leave those behind as
+    orphans nothing clears — the same "two atoms that diverge" problem in the
+    other direction, on every album Harmonist has ever tagged.
+
+    So the upper-case pair is SUPERSEDED: unread, never written back, and
+    reported so the write-skip clears it. The lower-case `originalyear` stays a
+    re-derived member of its `OWNED_ATOMS` pair, which is a different thing —
+    `test_a_freshly_tagged_file_carries_no_superseded_tag` is what holds that
+    line, and it must keep passing.
+    """
+    d = _make_album(tmp_path, "sine.m4a")
+    tag_album(d, _release_one_track())
+    f = next(d.glob("*.m4a"))
+    audio = MP4(f)
+    audio["----:com.apple.iTunes:ORIGINALDATE"] = [b"1994-03-07"]
     audio.save()
 
     assert formats.has_superseded_tags(f)

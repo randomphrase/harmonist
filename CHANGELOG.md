@@ -98,6 +98,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **Every dated M4A album no longer reports an update available forever.**
+  Harmonist wrote the original-date tags in upper case where Picard writes them
+  in lower, and MP4 tag names are case-sensitive — so it could not see its own
+  or Picard's original date, reported it missing on every check, and rewrote the
+  file each time without ever settling. A whole library could sit in *Update
+  available* on this alone. Harmonist now writes and reads Picard's spelling,
+  and clears the upper-case tags it wrote before, so no album is left carrying
+  both (#333).
 - **A re-tag no longer deletes MusicBrainz secondary release types.** Harmonist
   wrote only the primary type, so nothing on disk recorded that an album was
   live, a remix or a soundtrack — and on a Picard-tagged library it was worse
