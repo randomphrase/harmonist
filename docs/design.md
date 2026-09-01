@@ -849,6 +849,7 @@ Sort names, multi-value artists, original date, and script (Picard parity — th
 | `album_artist_sort` | release artist-credit `sort-name`s               | `soaa`                                 | `TSO2`          | `ALBUMARTISTSORT` |
 | `artist_sort`       | track artist-credit `sort-name`s                 | `soar`                                 | `TSOP`          | `ARTISTSORT`      |
 | `artists`           | per-artist names, no join phrases                | `----:com.apple.iTunes:ARTISTS`        | `TXXX:ARTISTS`  | `ARTISTS`         |
+| `album_artists`     | release credit's per-artist names                | `----:com.apple.iTunes:ALBUMARTISTS`   | `TXXX:ALBUMARTISTS` | `ALBUMARTISTS` |
 | `original_date`     | release-group `first-release-date`               | `----:com.apple.iTunes:originaldate`   | `TDOR`          | `ORIGINALDATE`    |
 | `original_date[:4]` | year derived from the above                      | `----:com.apple.iTunes:originalyear`   | — (in `TDOR`)   | `ORIGINALYEAR`    |
 | `script`            | release `text-representation.script` (e.g. Latn) | `----:com.apple.iTunes:SCRIPT`         | `TXXX:SCRIPT`   | `SCRIPT`          |
@@ -924,7 +925,7 @@ The table is the standing answer to "why doesn't Harmonist write X" — so it is
 
 | Picard tag(s) | Verdict | Why |
 | --- | --- | --- |
-| `genre` | Deferred (#12) | Read-only today: a genre tagged elsewhere is displayed and never clobbered. Needs the `genres` include and a policy on genre-vs-folksonomy-tag. |
+| `genre` | Deferred (#12) | Read-only today: a genre tagged elsewhere is displayed and never clobbered. Costlier than it looks: musicbrainzngs has **no `genres` include** for a release — only `tags` and `user-tags` — so doing it as Picard does (which reads all four, `picard/mbjson.py`) needs a client change or a raw ws2 request, not an entry in `RELEASE_INCLUDES`. Plus a policy on genre-vs-folksonomy-tag. |
 | `composer`, `composersort`, `lyricist`, `writer`, `arranger`, `conductor`, `performer:*`, `producer`, `engineer`, `mixer`, `djmixer`, `remixer`, `director`, `work`, `musicbrainz_workid`, `musicbrainz_composerid`, `language`, `license`, `website` | Undecided | The entire advanced set is one `RELEASE_INCLUDES` change away, in the same single request — but that tuple **is the `mb_cache` key** (§4), so adding to it invalidates every cached release and re-fetches the library at one rate-limited request per album. `Owned` roughly doubles, landing on the comparison (#106), the audit records (#86) and undo (#157); ID3 needs the `TMCL`/`TIPL` multi-value frames, which no backend writes. Relationships also churn in MusicBrainz far more than release facts, so #32's pass would report updates constantly. Worth splitting: composer/lyricist/work is the classical and soundtrack case; the credits half is a much larger surface for much less benefit. |
 | `comment` | Never | Claimed as **user space**. It carries a recovered Bandcamp URL and is excluded from every backend's owned mapping so a re-tag preserves it. Picard puts the release disambiguation here; Harmonist shows that on the album page instead. |
 | `originalalbum`, `originalartist`, `musicbrainz_originalalbumid`, `musicbrainz_originalartistid` | Undecided, leaning no | Needs the release group's *release list*, which the release fetch doesn't carry — one extra lookup per release group, against the call budget. `original_date` already carries the part users sort on. |
@@ -936,9 +937,17 @@ The table is the standing answer to "why doesn't Harmonist write X" — so it is
 | `copyright`, `encodedby`, `encodersettings`, `originalfilename` | Never | Facts about the file or the rip, not about the release. Preserved as found. |
 | `podcast`, `podcasturl`, `show`, `showsort`, `itunes_cddb_1`, `gapless` | Never | Podcast, TV and iTunes-store plumbing. |
 | `showmovement`, `subtitle` | Rides on the row above | Classical movement handling, only meaningful with the work relationships. |
-| `releasedate` | Nothing to do | Maps to the same slot as `date` (`DATE` / `TDRC`), which *is* written. It exists in Picard so a script can retarget `date`. |
+| `releasedate` | Nothing to do | Picard never fills it from MusicBrainz either — `picard/const/tags.py` marks it `is_from_mb=False`. (It has a slot of its own in every format, `TDRL` / `----:RELEASEDATE` / `RELEASEDATE`, so the earlier reason here — that it shares `date`'s slot — was wrong about Picard even though the verdict was right.) |
 
 One apparent gap that isn't: `originalyear` is written on Vorbis and MP4 but not MP3, because **ID3v2.4 has no frame for it** — `TDOR` carries the full original date and consumers derive the year.
+
+### How this section is kept honest
+
+**Every mechanical check in the repo is self-referential.** `test_every_backend_maps_every_owned_field` and `test_complete_inventory_against_picard_spec` are both built from Harmonist's own `ATOM_*` constants, so they catch an accidental extra tag or a backend that forgot a field — and can never catch a tag *name*, *case* or *arity* that disagrees with Picard. That is not an oversight to fix with a better assertion: the facts they would have to check live in Picard's source, which is not a dependency here.
+
+So this section is verified by **periodic manual audit against the Picard source**, and the audit is the only thing that can find that class of defect. #331 (release type written as a scalar where Picard writes a list), #333 (original-date atoms in the wrong case) and #334 (label and catalogue number truncated to the first of each) were all found that way, and all three were invisible to the suite, to the album page and to the update check simultaneously — a truncating reader compares equal to a truncating writer.
+
+**Last audited:** 2026-09-01, against Picard `3.0.0rc1` (`5ff1656fd`). Worth repeating when Picard cuts a major release, and worth checking the five axes rather than the tag list: name per format, arity, casing, join, and which corner of the payload the value comes from.
 
 **Everything above is still preserved.** "Not written" is not "removed": anything outside `Owned` is left exactly as found, so a library tagged by Picard with composers and performers keeps them through a Harmonist re-tag.
 
