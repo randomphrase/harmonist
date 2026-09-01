@@ -1012,6 +1012,7 @@ def _build_tagset(
         mb_album_type=(rg.get("primary-type") or "").lower() or None,
         mb_album_status=(release.get("status") or "").lower() or None,
         mb_album_country=release.get("country"),
+        compilation=_compilation_flag(release.get("artist-credit")),
         mb_track_id=(track.get("recording") or {}).get("id"),
         mb_release_track_id=track.get("id"),
         mb_artist_ids=_artist_ids(track_artist_credit),
@@ -1295,6 +1296,33 @@ def artist_credits(release: Release) -> dict[str, tuple[CreditPart, ...]]:
         else:
             found.setdefault(phrase, parts)
     return {phrase: parts for phrase, parts in found.items() if parts}
+
+
+#: MusicBrainz's special **Various Artists** artist. A real MBID like any other,
+#: and the whole of the compilation rule (#323).
+#:
+#: The test is an id comparison because the id is what MusicBrainz gives us:
+#: Harmonist already writes this exact string into `mb_album_artist_ids`, so
+#: matching on the *string* "Various Artists" would be guessing at an identity
+#: that is available exactly — the thing review-gate item 2 forbids. It would
+#: also be wrong in both directions: a real band could be called that, and a
+#: release credited to VA in another language would be missed.
+VARIOUS_ARTISTS_ID = "89ad4ac3-39f7-470e-963a-56509c546377"
+
+
+def _compilation_flag(artist_credit: list[Any] | None) -> bool | None:
+    """True when this release is credited to Various Artists, else None (#323).
+
+    None rather than False because the tag is written only when set — see
+    `owned.as_flag`, and `formats.types.TagSet.compilation`.
+
+    Deliberately NOT the release group's `compilation` secondary type. That
+    describes the release group's nature, so a greatest-hits album by one artist
+    carries it — and flagging one of those is precisely what makes a player
+    shatter it into one album per track artist, the failure this tag exists to
+    prevent. Harmonist writes the primary type only (design §5).
+    """
+    return True if VARIOUS_ARTISTS_ID in _artist_ids(artist_credit) else None
 
 
 def _artist_ids(artist_credit: list[Any] | None) -> list[str]:

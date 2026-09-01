@@ -1325,10 +1325,10 @@ def test_the_panel_pairs_release_fields_against_artist_fields():
     ADJACENCY: it lives in the pairs, and sampling two of them cannot see a
     third that has drifted into the wrong column.
 
-    `Album artists` (#322) made the artist column four long, so `Script` moved up
-    from the paperwork block to square the two — and left an odd number of album
-    fields, which is why `Genre` now pairs with `Disc total` and `Comment` ends
-    the grid alone.
+    `Album artists` and `Compilation` (#322, #323) both landed in the release/
+    artist blocks, which makes the album fields an even eighteen again — so
+    `Script` keeps its old place beside `Disc total` and `Genre` and `Comment`
+    stay paired at the end.
     """
     fields = album_fields([("1.flac", TrackTags(album="Obreel"))], _tagset(album="Obreel"))
 
@@ -1336,13 +1336,13 @@ def test_the_panel_pairs_release_fields_against_artist_fields():
         "Album",           "Album artist",
         "Release group",   "Album artists",
         "Release type",    "Album artist sort",
-        "Script",          "Album artist IDs",
+        "Compilation",     "Album artist IDs",
         "Release status",  "Country",
         "Date",            "Original date",
         "Label",           "Cat. no.",
         "Barcode",         "ASIN",
-        "Disc total",      "Genre",
-        "Comment",
+        "Disc total",      "Script",
+        "Genre",           "Comment",
     ]  # fmt: skip
 
 

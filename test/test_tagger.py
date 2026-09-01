@@ -532,6 +532,79 @@ def test_a_collaboration_names_both_album_artists_on_every_track():
     assert tagsets[1].artists == ["Featured Artist", "Other"]
 
 
+def _various_artists_release() -> dict:
+    """`_release_2_tracks` credited to MusicBrainz's Various Artists, with each
+    track credited to its own artist — the shape of a real compilation."""
+    release = _release_2_tracks()
+    release["artist-credit"] = [
+        {
+            "artist": {
+                "id": tagger.VARIOUS_ARTISTS_ID,
+                "name": "Various Artists",
+                "sort-name": "Various Artists",
+            },
+            "name": "Various Artists",
+        },
+    ]
+    tracks = release["medium-list"][0]["track-list"]
+    tracks[0]["artist-credit"] = [
+        {"artist": {"id": "art-ccc", "name": "Kangding Ray", "sort-name": "Kangding Ray"}},
+    ]
+    return release
+
+
+def test_a_various_artists_release_carries_the_compilation_flag():
+    """#323. Without it Plex and every iTunes-lineage player shatter a VA
+    compilation into one album per track artist.
+
+    Album-scoped, so the flag is on EVERY track however the tracks are credited
+    — which is the whole point: a player groups by what the files agree on.
+    """
+    tagsets = tagger.tagsets_for(_various_artists_release())
+
+    assert [t.compilation for t in tagsets] == [True, True]
+
+
+def test_an_ordinary_release_carries_no_compilation_flag():
+    """Absent, not False. Harmonist writes the tag only when set, so an album
+    that stops being a compilation has it removed by the owned-set clear (#149)
+    with no extra code — and `owned.as_flag` never produces a False that would
+    read as a value and differ from MusicBrainz forever."""
+    assert [t.compilation for t in tagger.tagsets_for(_release_2_tracks())] == [None, None]
+
+
+def test_a_greatest_hits_release_by_one_artist_is_not_a_compilation():
+    """The wrong turn this rule is most likely to take.
+
+    MusicBrainz's release-group `compilation` SECONDARY TYPE describes the
+    release group's nature, so a one-artist greatest-hits album carries it — and
+    flagging one of those is precisely what makes a player split the album apart.
+    The flag is about the release ARTIST, and nothing else.
+    """
+    release = _release_2_tracks()
+    release["release-group"]["secondary-type-list"] = ["Compilation"]
+
+    assert tagger.tagsets_for(release)[0].compilation is None
+
+
+def test_a_band_merely_named_various_artists_is_not_flagged():
+    """The identity is an id comparison, never a name match (review-gate item 2).
+
+    Matching the string would guess at an identity MusicBrainz gives exactly —
+    and would be wrong in both directions: it flags a real act with that name,
+    and it misses a release credited to Various Artists in another language.
+    """
+    release = _release_2_tracks()
+    release["artist-credit"] = [
+        {
+            "artist": {"id": "art-imposter", "name": "Various Artists", "sort-name": "V"},
+            "name": "Various Artists",
+        },
+    ]
+
+    assert tagger.tagsets_for(release)[0].compilation is None
+
+
 def test_tag_album_track_artist_credit_overrides_release(album_with_tracks):
     """Track 2 has its own artist-credit; should be used for ©ART and Artist Id atom."""
     album_dir = album_with_tracks(2)

@@ -8,6 +8,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Harmonist now writes the **`compilation`** flag on Various Artists releases.
+  Plex and every iTunes-lineage player read it to decide whether an album is a
+  VA compilation; without it a 20-track compilation is shattered into twenty
+  one-track albums, one per track artist. Set only when MusicBrainz credits the
+  release to Various Artists itself — a greatest-hits album by one artist does
+  **not** get it, because flagging one of those is what makes a player split it
+  apart. An album that stops being a compilation on a re-match has the tag
+  removed (#323).
 - Harmonist now writes **`albumartists`**, the album-level list of artist names
   Picard writes alongside `albumartist`. On a collaboration the joined phrase —
   *zakè & rhubiqs* — leaves a player guessing where one name ends and the next

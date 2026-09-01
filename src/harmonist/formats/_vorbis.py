@@ -21,7 +21,7 @@ from typing import Any
 from mutagen.flac import Picture
 
 from . import quality
-from .owned import Owned
+from .owned import FLAG_TRUE, Owned, as_flag
 from .types import ScanFields, TagSet, TrackTags
 
 # Vorbis comment keys (uppercase by convention; lookups are case-insensitive).
@@ -35,6 +35,8 @@ KEY_ISRC = "ISRC"
 KEY_RELEASE_TYPE = "RELEASETYPE"
 KEY_RELEASE_STATUS = "RELEASESTATUS"
 KEY_RELEASE_COUNTRY = "RELEASECOUNTRY"
+#: Picard's `compilation` — the Various Artists flag (#323), written as "1".
+KEY_COMPILATION = "COMPILATION"
 KEY_TITLE = "TITLE"
 KEY_ALBUM = "ALBUM"
 KEY_ARTIST = "ARTIST"
@@ -79,6 +81,7 @@ OWNED_KEYS: dict[Owned, tuple[str, ...]] = {
     Owned.MB_ALBUM_TYPE: (KEY_RELEASE_TYPE,),
     Owned.MB_ALBUM_STATUS: (KEY_RELEASE_STATUS,),
     Owned.MB_ALBUM_COUNTRY: (KEY_RELEASE_COUNTRY,),
+    Owned.COMPILATION: (KEY_COMPILATION,),
     Owned.DATE: (KEY_DATE,),
     # One field, two keys: Picard writes the year alongside the full date.
     Owned.ORIGINAL_DATE: (KEY_ORIGINAL_DATE, KEY_ORIGINAL_YEAR),
@@ -371,6 +374,7 @@ class VorbisTagger:
             Owned.MB_ALBUM_TYPE: one(KEY_RELEASE_TYPE),
             Owned.MB_ALBUM_STATUS: one(KEY_RELEASE_STATUS),
             Owned.MB_ALBUM_COUNTRY: one(KEY_RELEASE_COUNTRY),
+            Owned.COMPILATION: as_flag(one(KEY_COMPILATION)),
             Owned.DATE: one(KEY_DATE),
             Owned.ORIGINAL_DATE: one(KEY_ORIGINAL_DATE),
             Owned.SCRIPT: one(KEY_SCRIPT),
@@ -436,6 +440,10 @@ class VorbisTagger:
             tags[KEY_RELEASE_STATUS] = [tagset.mb_album_status]
         if tagset.mb_album_country:
             tags[KEY_RELEASE_COUNTRY] = [tagset.mb_album_country]
+        # Written only when true — absence IS "not a compilation", so an album
+        # that stops being one has the key removed by the clear above (#149).
+        if tagset.compilation:
+            tags[KEY_COMPILATION] = [FLAG_TRUE]
 
         if tagset.mb_track_id:
             tags[KEY_TRACK_ID] = [tagset.mb_track_id]
@@ -553,6 +561,11 @@ class VorbisTagger:
         for fld, key in _LIST_KEYS.items():
             if value := values.get(fld):
                 tags[key] = [str(v) for v in value]
+
+        # Not in `_SINGLE_KEYS`: those write `str(value)`, which would put the
+        # word "True" in the file where `_read_owned` expects "1".
+        if values.get(Owned.COMPILATION):
+            tags[KEY_COMPILATION] = [FLAG_TRUE]
 
         # ORIGINALYEAR is derived from the date rather than stored separately —
         # `_read_owned` reads only ORIGINALDATE, so taking the year from

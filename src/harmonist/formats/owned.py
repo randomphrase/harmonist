@@ -76,6 +76,7 @@ class Owned(StrEnum):
     MB_ALBUM_TYPE = "mb_album_type"
     MB_ALBUM_STATUS = "mb_album_status"
     MB_ALBUM_COUNTRY = "mb_album_country"
+    COMPILATION = "compilation"
     DATE = "date"
     ORIGINAL_DATE = "original_date"
     SCRIPT = "script"
@@ -115,6 +116,9 @@ SCOPE: dict[Owned, Scope] = {
     Owned.MB_ALBUM_TYPE: Scope.ALBUM,
     Owned.MB_ALBUM_STATUS: Scope.ALBUM,
     Owned.MB_ALBUM_COUNTRY: Scope.ALBUM,
+    # A property of the RELEASE artist — whether it is MusicBrainz's Various
+    # Artists — so it cannot vary between tracks, however varied their credits.
+    Owned.COMPILATION: Scope.ALBUM,
     Owned.DATE: Scope.ALBUM,
     Owned.ORIGINAL_DATE: Scope.ALBUM,
     Owned.SCRIPT: Scope.ALBUM,
@@ -238,6 +242,12 @@ SIGNIFICANCE: dict[str, Significance] = {
     # an unchanged release payload carries no such evidence. It is a merge, a
     # re-point, or a MusicBrainz edit that replaced the track, and nothing here
     # can tell those apart.
+    # A restatement of who the release artist is: the flag is set exactly when
+    # that artist is MusicBrainz's Various Artists, so it moves only when
+    # `album_artist` does, and it is Identity for the same reason. Its
+    # consequence argues the same way — a player reads it to decide whether the
+    # album is one album at all.
+    Owned.COMPILATION: Significance.IDENTITY,
     Owned.MB_ALBUM_ID: Significance.IDENTITY,
     Owned.MB_RELEASE_GROUP_ID: Significance.IDENTITY,
     Owned.MB_ALBUM_ARTIST_IDS: Significance.IDENTITY,
@@ -313,6 +323,37 @@ def _absent(value: object) -> bool:
     return value is None or value == "" or value == []
 
 
+#: How a set boolean tag is spelled in the text formats — ID3's `TCMP` and the
+#: Vorbis `COMPILATION` comment both carry `"1"`, which is what Picard writes and
+#: what `as_flag` reads back. MP4's `cpil` is a native boolean atom and needs
+#: none of this. Named so the writer and the reader cannot drift on the spelling.
+FLAG_TRUE = "1"
+
+
+def as_flag(raw: object) -> bool | None:
+    """A boolean tag as `True`, or None when it isn't set (#323).
+
+    The three backends spell the same flag three ways — `"1"` in a Vorbis
+    comment, `"1"` in ID3's `TCMP`, a native `cpil` bool in MP4 — and all three
+    have to hand `_read_owned` a value shaped exactly like the `TagSet`
+    attribute, or the field reports a phantom change on every re-tag. One
+    reading, shared, is what keeps them from each inventing their own.
+
+    **Never `False`.** Harmonist writes the flag only when true, so "not a
+    compilation" is the tag's ABSENCE — and `_absent` below already collapses
+    `None`, `""` and `[]` into one answer. Returning `False` would add a fourth
+    spelling of nothing that `values_differ` treats as a value, so an ordinary
+    album would differ from MusicBrainz on this field forever. A file carrying
+    an explicit `COMPILATION=0` therefore reads as absent, which is what a write
+    would leave it as anyway.
+    """
+    if isinstance(raw, bool):
+        return raw or None
+    if isinstance(raw, (list, tuple)):
+        raw = raw[0] if raw else None
+    return True if str(raw).strip().lower() in {"1", "true", "yes"} else None
+
+
 def values_differ(a: object, b: object) -> bool:
     """Whether two values of one owned field are meaningfully different.
 
@@ -367,6 +408,7 @@ LABELS: dict[str, str] = {
     Owned.MB_ALBUM_TYPE: "Release type",
     Owned.MB_ALBUM_STATUS: "Release status",
     Owned.MB_ALBUM_COUNTRY: "Country",
+    Owned.COMPILATION: "Compilation",
     Owned.DATE: "Date",
     Owned.ORIGINAL_DATE: "Original date",
     Owned.SCRIPT: "Script",

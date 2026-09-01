@@ -280,6 +280,36 @@ def test_sort_artists_original_date_script_atoms(tmp_path):
     assert _atom_strs(t2, ATOM_ALBUM_ARTISTS) == ["Reference Artist"]
 
 
+def test_the_compilation_atom_is_a_native_boolean(tmp_path):
+    """#323. `cpil` is MP4's own boolean atom, not a freeform `----:` one, so it
+    is the single owned field that goes through none of this backend's three
+    value tables — written through them it would land as the string "True",
+    which every iTunes-lineage player reads as unset.
+
+    Its own test rather than an entry in the inventory below, because the
+    inventory's release is single-artist: `cpil` is correctly absent there, so
+    that test cannot see this atom at all. Naming that is the point — it is the
+    exact shape of the DISCSUBTITLE gap, where a fixture that didn't exercise a
+    field certified for months that the field wasn't written.
+    """
+    release = _fully_populated_release()
+    release["artist-credit"] = [
+        {
+            "artist": {
+                "id": "89ad4ac3-39f7-470e-963a-56509c546377",
+                "name": "Various Artists",
+                "sort-name": "Various Artists",
+            },
+            "name": "Various Artists",
+        },
+    ]
+    album_dir = _setup_album(tmp_path, 2)
+    PicardCompatibleTagger().tag_album(album_dir, release)
+
+    for name in ("01 Track 1.m4a", "02 Track 2.m4a"):
+        assert MP4(album_dir / name)["cpil"] is True
+
+
 # ---------- exhaustive atom inventory ----------
 #
 # Picard atoms Harmonist does not write yet, as of this list: LANGUAGE, WORK,
@@ -291,6 +321,11 @@ def test_sort_artists_original_date_script_atoms(tmp_path):
 # DISCSUBTITLE was on the list while the tagger had been writing it for months
 # (test_disc_subtitle.py); the assertion passed because the fixture release gave
 # its medium no title, so the gap was true of the fixture and false of the code.
+#
+# `cpil` is deliberately NOT in the set below and is not a gap either: the
+# release here is single-artist, so the compilation flag is correctly unwritten
+# (#323, covered above). Leaving it out keeps this test's "extra" half live — a
+# change that started writing the flag unconditionally would fail here.
 
 EXPECTED_PICARD_ATOMS_WE_WRITE = {
     # Album-level MBIDs

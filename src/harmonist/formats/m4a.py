@@ -14,7 +14,7 @@ from typing import Any
 from mutagen.mp4 import MP4, MP4Cover
 
 from . import quality
-from .owned import Owned
+from .owned import Owned, as_flag
 from .types import ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".m4a", ".mp4")
@@ -68,6 +68,12 @@ ATOM_COMMENT = "\xa9cmt"
 ATOM_ARTIST_SORT = "soar"
 ATOM_ALBUM_ARTIST_SORT = "soaa"
 
+#: Picard's `compilation` — the Various Artists flag (#323). A NATIVE BOOLEAN
+#: atom, unlike every other owned atom here: mutagen stores `cpil` as a bare
+#: `True`/`False` rather than a list, so it goes through neither the text nor
+#: the freeform tables below.
+ATOM_COMPILATION = "cpil"
+
 # Numeric / binary
 ATOM_TRACK_NUM = "trkn"
 ATOM_DISC_NUM = "disk"
@@ -91,6 +97,7 @@ OWNED_ATOMS: dict[Owned, tuple[str, ...]] = {
     Owned.MB_ALBUM_TYPE: (ATOM_MB_ALBUM_TYPE,),
     Owned.MB_ALBUM_STATUS: (ATOM_MB_ALBUM_STATUS,),
     Owned.MB_ALBUM_COUNTRY: (ATOM_MB_ALBUM_COUNTRY,),
+    Owned.COMPILATION: (ATOM_COMPILATION,),
     Owned.DATE: (ATOM_DATE,),
     Owned.ORIGINAL_DATE: (ATOM_ORIGINAL_DATE, ATOM_ORIGINAL_YEAR),
     Owned.SCRIPT: (ATOM_SCRIPT,),
@@ -337,6 +344,9 @@ def _read_owned(audio: MP4) -> dict[str, Any]:
         Owned.MB_ALBUM_TYPE: _binary_atom_str(audio, ATOM_MB_ALBUM_TYPE),
         Owned.MB_ALBUM_STATUS: _binary_atom_str(audio, ATOM_MB_ALBUM_STATUS),
         Owned.MB_ALBUM_COUNTRY: _binary_atom_str(audio, ATOM_MB_ALBUM_COUNTRY),
+        # `audio.get` returns the bare bool for `cpil`, not a list — see the
+        # atom's definition above.
+        Owned.COMPILATION: as_flag(audio.get(ATOM_COMPILATION)),
         Owned.DATE: _text_atom(audio, ATOM_DATE),
         Owned.ORIGINAL_DATE: _binary_atom_str(audio, ATOM_ORIGINAL_DATE),
         Owned.SCRIPT: _binary_atom_str(audio, ATOM_SCRIPT),
@@ -418,6 +428,11 @@ def _apply_owned(audio: MP4, values: Mapping[str, Any]) -> None:
     for fld, atom in _BINARY_LIST_ATOMS.items():
         if value := values.get(fld):
             audio[atom] = [str(v).encode("utf-8") for v in value]
+
+    # A native boolean atom, so it belongs to none of the three tables above —
+    # writing it through them would put the string "True" in the file.
+    if values.get(Owned.COMPILATION):
+        audio[ATOM_COMPILATION] = True
 
     # ORIGINALYEAR is derived rather than stored: `_read_owned` reads only
     # ORIGINALDATE, so writing the year from anywhere else could disagree with
@@ -527,6 +542,10 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
         audio[ATOM_MB_ALBUM_STATUS] = [tagset.mb_album_status.encode("utf-8")]
     if tagset.mb_album_country:
         audio[ATOM_MB_ALBUM_COUNTRY] = [tagset.mb_album_country.encode("utf-8")]
+    # Written only when true — absence IS "not a compilation", so an album that
+    # stops being one has the atom removed by the clear above (#149).
+    if tagset.compilation:
+        audio[ATOM_COMPILATION] = True
 
     # ---- Per-track MBID atoms ----
     if tagset.mb_track_id:

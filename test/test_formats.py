@@ -916,6 +916,59 @@ def test_write_with_no_cover_preserves_embedded_art(tmp_path, ext, fixture):
 
 
 @pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_the_compilation_flag_is_written_as_a_flag_and_removed_when_it_goes(tmp_path, ext, fixture):
+    """#323, both halves, in the order a re-match performs them.
+
+    Two assertions, and the RAW one is the load-bearing half. `owned.as_flag`
+    reads `"true"` as set — deliberately, for files another tagger wrote — so a
+    round trip through `read_owned` alone goes green with `str(True)` in the
+    file, where an iTunes-lineage player reads TCMP="True" as unset. The value
+    on disk has to be the one those players read: `"1"` in ID3 and the Vorbis
+    comment, a native boolean in MP4's `cpil`.
+
+    The `read_owned` assertion earns its place beside it for the opposite
+    reason: that is the shape the comparison and the undo consume, and a flag
+    written correctly but read back as `"1"` would report a change on every
+    re-tag forever.
+
+    The removal is what makes "written only when true" safe: an album that stops
+    being a VA compilation must lose the tag, and being owned is what does it
+    with no code of its own (#149).
+    """
+    from harmonist.formats.owned import Owned
+
+    path = _copy_fixture(tmp_path, fixture)
+
+    formats.write_tags(path, _tagset(compilation=True), None)
+    assert _read_raw_compilation(path) is True
+    assert formats.read_owned(path)[Owned.COMPILATION] is True
+
+    formats.write_tags(path, _tagset(), None)  # re-matched to a single-artist release
+    assert _read_raw_compilation(path) is None
+    assert formats.read_owned(path)[Owned.COMPILATION] is None
+
+
+def _read_raw_compilation(path: Path) -> bool | None:
+    """The compilation flag exactly as it sits in the file, through the native
+    tag layer — True only for the value that format's players read as set."""
+    ext = path.suffix.lower()
+    if ext in (".m4a", ".mp4"):
+        from mutagen.mp4 import MP4
+
+        raw = MP4(path).get("cpil")
+        return True if raw is True else None
+    if ext == ".mp3":
+        from mutagen.mp3 import MP3
+
+        frame = MP3(path).tags.get("TCMP")
+        return True if frame is not None and list(frame.text) == ["1"] else None
+    from mutagen import File as MutagenFile
+
+    values = MutagenFile(path).tags.get("COMPILATION")
+    return True if list(values or []) == ["1"] else None
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
 def test_media_round_trips(tmp_path, ext, fixture):
     """Regression for #149: MP3 wrote `media` to TMED and read it back from
     TXXX:MEDIA, so every MP3 Harmonist tagged reported Media missing on the
@@ -949,6 +1002,7 @@ def _full_tagset() -> Any:
         mb_album_type="Album",
         mb_album_status="official",
         mb_album_country="GB",
+        compilation=True,
         mb_track_id="rec-1",
         mb_release_track_id="rt-1",
         mb_artist_ids=["ar-1"],

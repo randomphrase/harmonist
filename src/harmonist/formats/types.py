@@ -120,6 +120,18 @@ class TagSet:
     mb_album_status: str | None = None
     mb_album_country: str | None = None
 
+    # Picard's `compilation` — the Various Artists flag (#323). Plex and every
+    # iTunes-lineage player read it to decide whether the album is a VA
+    # compilation; without it a 20-track compilation is shattered into twenty
+    # one-track albums, one per track artist.
+    #
+    # `True` or absent, never `False`: Harmonist writes it only when set, so
+    # "not a compilation" is the tag's absence — see `owned.as_flag`. NOT the
+    # release group's `compilation` secondary type, which a greatest-hits album
+    # by one artist also carries, and flagging one of those is precisely what
+    # makes a player split it apart.
+    compilation: bool | None = None
+
     mb_track_id: str | None = None
     mb_release_track_id: str | None = None
     mb_artist_ids: list[str] = field(default_factory=list)

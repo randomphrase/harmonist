@@ -23,6 +23,7 @@ from mutagen.id3 import (
     APIC,
     ID3,
     TALB,
+    TCMP,
     TDOR,
     TDRC,
     TIT2,
@@ -44,7 +45,7 @@ from mutagen.id3 import (
 from mutagen.mp3 import MP3
 
 from . import quality
-from .owned import Owned
+from .owned import FLAG_TRUE, Owned, as_flag
 from .types import ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".mp3",)
@@ -88,6 +89,9 @@ OWNED_FRAMES: dict[Owned, tuple[str, ...]] = {
     Owned.MB_ALBUM_TYPE: (f"TXXX:{TXXX_ALBUM_TYPE}",),
     Owned.MB_ALBUM_STATUS: (f"TXXX:{TXXX_ALBUM_STATUS}",),
     Owned.MB_ALBUM_COUNTRY: (f"TXXX:{TXXX_ALBUM_COUNTRY}",),
+    # iTunes' non-standard frame, and the one every iTunes-lineage player reads
+    # for the Various Artists flag (#323). mutagen has it.
+    Owned.COMPILATION: ("TCMP",),
     Owned.DATE: ("TDRC",),
     Owned.ORIGINAL_DATE: ("TDOR",),
     Owned.SCRIPT: (f"TXXX:{TXXX_SCRIPT}",),
@@ -350,6 +354,7 @@ def _read_owned(tags: Any) -> dict[str, Any]:
         Owned.MB_ALBUM_TYPE: _txxx(tags, TXXX_ALBUM_TYPE),
         Owned.MB_ALBUM_STATUS: _txxx(tags, TXXX_ALBUM_STATUS),
         Owned.MB_ALBUM_COUNTRY: _txxx(tags, TXXX_ALBUM_COUNTRY),
+        Owned.COMPILATION: as_flag(_text(tags, "TCMP")),
         Owned.DATE: _text(tags, "TDRC"),
         Owned.ORIGINAL_DATE: _text(tags, "TDOR"),
         Owned.SCRIPT: _txxx(tags, TXXX_SCRIPT),
@@ -451,6 +456,11 @@ def _apply_owned(tags: ID3, values: Mapping[str, Any]) -> None:
     for fld, desc in _TXXX_LIST_FIELDS.items():
         if value := values.get(fld):
             _set_txxx(tags, desc, [str(v) for v in value])
+
+    # Not in `_TEXT_FRAMES`: those write `str(value)`, which would put the word
+    # "True" in the frame where `_read_owned` expects "1".
+    if values.get(Owned.COMPILATION):
+        tags.setall("TCMP", [TCMP(encoding=Encoding.UTF8, text=[FLAG_TRUE])])
 
     if track_id := values.get(Owned.MB_TRACK_ID):
         tags.add(UFID(owner=UFID_OWNER, data=str(track_id).encode("ascii")))
@@ -560,6 +570,10 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
         _set_txxx(tags, TXXX_ALBUM_STATUS, [tagset.mb_album_status])
     if tagset.mb_album_country:
         _set_txxx(tags, TXXX_ALBUM_COUNTRY, [tagset.mb_album_country])
+    # Written only when true — absence IS "not a compilation", so an album that
+    # stops being one has the frame removed by the clear above (#149).
+    if tagset.compilation:
+        tags.setall("TCMP", [TCMP(encoding=Encoding.UTF8, text=[FLAG_TRUE])])
 
     # ---- Per-track MB IDs ----
     if tagset.mb_track_id:
