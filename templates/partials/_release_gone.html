@@ -13,7 +13,7 @@
    tags — those tags are what they will use to go and find the replacement
    release, and until this they had to open Picard to see them. "No comparison"
    is still true, so it stays; it just sits above the values instead of in place
-   of them, which `mb_available` is what tells the two partials to do.
+   of them, which the comparison's `mb_available` is what tells the note to do.
 
    The banner ASKS rather than acts. The album does need an MBID and the inbox is
    where it belongs, but the user may have opened this page for something else
@@ -26,12 +26,10 @@
 {# Out-of-band into the page's Tracks section, exactly as the success path does
    — the placeholder there is otherwise never replaced, and no further request
    is coming, so it claims to be working while the rest of the page has already
-   given the answer (#228). #}
-<section id="album-tracks" hx-swap-oob="true"
-         class="border border-line rounded-lg p-4 space-y-3">
-    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
-    {% include 'partials/_track_list.html' %}
-</section>
+   given the answer (#228). The panel's note goes the same way, and says the
+   comparison did not happen rather than being left blank. #}
+{% include 'partials/_tracks_section.html' %}
+{% include 'partials/_mb_note.html' %}
 
 <div id="album-alert-{{ album.id }}" hx-swap-oob="true">
     <div class="border border-amber-300 bg-amber-50 rounded-lg p-3 mb-3 flex items-start gap-3">

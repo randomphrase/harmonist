@@ -1,4 +1,4 @@
-"""The "read again" control on the Tags panel actually fires (#127).
+"""The "read again" control in the album panel actually fires (#127).
 
 This is the #40 bug class, and the Python suite structurally cannot see it: it
 asserts the right `hx-get` came back in the markup, which was also true of the
@@ -46,11 +46,12 @@ def test_read_again_issues_a_compare_request_and_refills_the_panel(demo_server: 
             button.click()
         assert got.value.ok
 
-        # ...and the response was SWAPPED IN, not merely received: the panel is
-        # still a comparison rather than the "Checking tags…" placeholder or an
-        # empty box, which is what a mis-targeted swap would leave behind.
-        page.wait_for_selector(f"#compare-{ALBUM} .mb-note", timeout=10_000)
-        assert page.locator(f"#compare-{ALBUM} .mb-note__when").is_visible()
+        # ...and the response was SWAPPED IN, not merely received. Since #328
+        # that is TWO destinations from one response, and a mis-targeted swap
+        # would leave either behind: the comparison itself lands in the Tags
+        # section in-band, and the note lands in the album panel out-of-band.
+        page.wait_for_selector(f"#compare-{ALBUM} .tag-fields", timeout=10_000)
+        assert page.locator(f"#album-mb-note-{ALBUM} .mb-note__when").is_visible()
 
         browser.close()
 
@@ -63,7 +64,7 @@ def test_the_panel_reports_when_it_last_read_musicbrainz(demo_server: str) -> No
         page = browser.new_page()
 
         page.goto(f"{demo_server}/album/{ALBUM}")
-        when = page.locator(f"#compare-{ALBUM} .mb-note__when")
+        when = page.locator(f"#album-mb-note-{ALBUM} .mb-note__when")
         when.wait_for(timeout=10_000)
 
         assert "read" in (when.text_content() or "")

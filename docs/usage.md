@@ -284,7 +284,14 @@ so an action never runs on a cached answer.
 **Tracks** compares the tracklist, flagging tracks that are missing, unreadable,
 or absent from MusicBrainz. Video files are listed as present and marked *video*;
 Harmonist reads their tags but never writes them, so they aren't compared against
-MusicBrainz.
+MusicBrainz. **Show identifiers**, top right of the heading, reveals the
+MusicBrainz ids and ISRCs, which start hidden.
+
+The whole comparison is summed up once, on the album panel above: a hexagon note
+between the Format line and the buttons, saying how much of the tags and the
+tracklist differ, when the release was last read from MusicBrainz, and offering
+**read again**. It sits beside **Re-tag from MB** because that is the action a
+difference leads to.
 
 A track MusicBrainz lists that you don't have says *"Not in your files"*, with a
 dashed ring beside its number — so a half-ripped disc reads as a column of them
@@ -300,10 +307,11 @@ column: it goes in the list under the comparison, where one line says the whole
 of it. On a single-artist
 album where every track agrees, an Artist column would be one name repeated all
 the way down, so it isn't drawn; on a compilation, or an album with a guest on
-track 6, it is. The tags that were checked and agreed are named under the table —
-*"Artist, ISRC and 3 others are the same on every track and match MusicBrainz"* —
-with their values one press away, so a tag Harmonist looked at never reads like
-one it ignored.
+track 6, it is. The tags that were checked and agreed sit in a band under the table, headed
+*"The same on every track"*, with their values laid out like the album's own tags
+— so a tag Harmonist looked at never reads like one it ignored. The band spans the
+whole section rather than trailing the last disc, because it describes the whole
+release.
 
 Artist credits are shown as the artists they name: *Rafael Anton Irisarri feat.
 Julia Kent* is two links to MusicBrainz, joined the way MusicBrainz joins them.
@@ -321,9 +329,9 @@ those tags behave like any other; and a disc whose own files disagree with each
 other keeps its columns, because the heading can only state a value the whole disc
 shares.
 
-MusicBrainz ids and ISRCs are identifiers rather than anything to read, so they
-start hidden behind **Show identifiers**, which names what is in it. They are
-still links, and an id with no name is shortened to its first few characters with
+MusicBrainz ids and ISRCs are identifiers rather than anything to read, which is
+why they start hidden — and the control names what is behind it rather than
+counting it. They are still links, and an id with no name is shortened to its first few characters with
 the whole of it on hover — enough to see that two ids differ, which is all anyone
 does with one here.
 

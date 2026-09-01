@@ -714,28 +714,33 @@ class AlbumComparison:
 
     @property
     def summary(self) -> str:
-        """The line beside the MusicBrainz hexagon.
+        """The TAGS clause of the MusicBrainz note (#328) — see `headline`.
 
-        A whole sentence rather than a count to be glued to a label, so the two
-        cases can read naturally — "differ in" and "match" want different
-        prepositions, and assembling that in a template would scatter the
+        A whole clause rather than a count to be glued to a label, so the two
+        cases read naturally; assembling that in a template would scatter the
         wording across two files.
+
+        It no longer names MusicBrainz. The note it sits in is the MusicBrainz
+        note — it carries the hexagon — and since #328 joined this to the
+        tracklist's clause in one line, saying it in both said it twice.
 
         Counted over `comparable` on BOTH sides. It used to say "All 9 fields
         match MusicBrainz" for an album whose genre and comment MusicBrainz had
         never been asked about — and, with unreadable files, could reach
         "9 of 7 differ", since every field goes UNREADABLE while only seven of
         them were ever comparable.
+
+        Assumes there was a release to compare against. `headline` answers for
+        the disk-only view (#228) before reaching here, so that "nothing was
+        compared" is said once for the whole note rather than twice in it.
         """
-        if not self.mb_available:
-            return "No comparison — showing your files' tags"
         fields = self.comparable
         n = len([f for f in fields if f.differs])
         if not fields:
-            return "Nothing to compare against MusicBrainz"
+            return "No tags to compare"
         if n == 0:
-            return f"All {len(fields)} fields match MusicBrainz"
-        return f"{n} of {len(fields)} fields differ in MusicBrainz"
+            return f"All {len(fields)} tags match"
+        return f"{n} of {len(fields)} tags differ"
 
 
 # ---------------------------------------------------------------------------
@@ -1014,10 +1019,16 @@ class TracklistComparison:
     #: The release's media, in position order. Empty for a caller that has none
     #: to give, in which case `discs` falls back to what the tracks say.
     media: tuple[Medium, ...] = field(default_factory=tuple)
-    #: Whether there was a MusicBrainz release to compare against at all — the
-    #: tracklist half of `AlbumComparison.mb_available` (#228). False for the
-    #: disk-only view built by `disk_tracklist`.
-    mb_available: bool = True
+    # `mb_available` lived here, the tracklist half of the same flag the album
+    # panel carries (#228). It went in #328, when its last two readers did: the
+    # summary's "no comparison" branch (moved to `headline`, which asks the album
+    # once for the whole note) and `collapsed_summary`'s conditional tail
+    # (dropped — see above).
+    #
+    # Deleted rather than left for a future reader, and deliberately: "was there
+    # a release?" is ONE fact, and two flags for one fact is a pair that can
+    # disagree. They were only ever set together, by `_album_disk_view`, which is
+    # exactly the shape that holds right up until someone sets one of them.
     #: The table's columns, in order, matching each row's `fields` positionally
     #: (#309). A property of THIS comparison rather than a module constant: which
     #: per-track tags are worth a column is a fact about this album's tags, not
@@ -1090,29 +1101,23 @@ class TracklistComparison:
         named = labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} and {labels[-1]}"
         return f"{named} {'differs' if len(labels) == 1 else 'differ'} here."
 
-    @property
-    def collapsed_summary(self) -> str:
-        """What the disclosure under the table says.
-
-        Names the fields rather than counting them. "5 fields hidden" is a fact
-        about the table; "Artist sort, ISRC and 3 others are the same on every
-        track" is a finding about the album — and it is the finding that keeps
-        checked-and-agrees distinguishable from never-examined (#112).
-        """
-        labels = [c.label for c in self.collapsed]
-        if not labels:
-            return ""
-        named, rest = labels[:2], labels[2:]
-        if rest:
-            phrase = f"{', '.join(named)} and {len(rest)} other{'s' if len(rest) != 1 else ''}"
-        else:
-            phrase = " and ".join(named)
-        one = len(labels) == 1
-        # No "and match MusicBrainz" without a release to have matched (#228).
-        # The tracks still agree with each other, and that is all that was
-        # checked, so it is all the sentence may claim.
-        tail = f" and {'matches' if one else 'match'} MusicBrainz" if self.mb_available else ""
-        return f"{phrase} {'is' if one else 'are'} the same on every track{tail}"
+    # `collapsed_summary` lived here: "Artist sort, ISRC and 3 others are the
+    # same on every track and match MusicBrainz", the label on a <details> that
+    # hid the values (#309).
+    #
+    # Both halves of it went in #328. The values are now shown IN THE OPEN, in
+    # the same label/value grid the album panel uses, so a sentence naming the
+    # fields directly above a grid that names them again was the same list
+    # twice — and the grid is the better proof that they were checked, which is
+    # all #112 ever wanted from it. What is left is a static caption in the
+    # template, so there is nothing here to compute.
+    #
+    # "and match MusicBrainz" went with it, and that removed a conditional
+    # rather than shortening a string: the clause was guarded on `mb_available`
+    # because a disk-only view (#228) compared nothing and could claim nothing.
+    # With no claim about MusicBrainz in the caption at all, both views tell the
+    # truth with one sentence. Agreement is already carried visually — a value
+    # that differs gets a hexagon and a purple line, and this band has neither.
 
     @property
     def discs(self) -> tuple[DiscGroup, ...]:
@@ -1138,17 +1143,21 @@ class TracklistComparison:
 
     @property
     def summary(self) -> str:
-        """The line beside the Tracks section's hexagon.
+        """The TRACKS clause of the MusicBrainz note (#328) — see `headline`.
 
         Missing, unreadable and extra tracks get their own clause rather than
         being folded into the count: "3 of 10 tracks differ" is true of an album
         with a dead file, but it isn't what the user needs to be told.
+
+        MusicBrainz is not named here, for the reason `AlbumComparison.summary`
+        gives: since #328 this and the tags clause share one line under one
+        hexagon, and naming it in both said it twice.
+
+        Assumes there was a release to compare against — `headline` answers for
+        the disk-only view (#228) before reaching here.
         """
-        if not self.mb_available:
-            n = len(self.tracks)
-            return f"No comparison — showing your {n} track{'s' if n != 1 else ''}"
         if not self.tracks:
-            return "Nothing to compare against MusicBrainz"
+            return "No tracks to compare"
 
         # A disc with NOTHING on disk is reported ONCE, as an absent disc, and
         # its tracks are excluded from every count here. Counted individually
@@ -1163,25 +1172,33 @@ class TracklistComparison:
         total = len(counted)
         n = sum(1 for t in counted if t.differs)
         if total and n == 0:
-            clauses.append(
-                f"All {total} tracks match MusicBrainz" if total > 1 else "Matches MusicBrainz"
-            )
+            clauses.append(f"All {total} tracks match" if total > 1 else "The track matches")
         elif total:
             verb = "differs" if n == 1 else "differ"
-            clauses.append(f"{n} of {total} tracks {verb} from MusicBrainz")
+            clauses.append(f"{n} of {total} tracks {verb}")
+
         # A disc whose DESCRIPTION differs (#320). Its own clause, because the
         # roll-up moved those three tags off the rows: without this the album
-        # above reads "All 7 tracks match MusicBrainz" over a heading drawing a
-        # difference in purple, which is the headline contradicting the table.
-        # Not folded into the track count either — nothing is wrong with the
-        # tracks, and saying "7 of 7 differ" over a disc that is merely named
-        # differently would point at the wrong thing.
+        # above reads "All 7 tracks match" over a heading drawing a difference in
+        # purple, which is the headline contradicting the table. Not folded into
+        # the track count either — nothing is wrong with the tracks, and saying
+        # "7 of 7 differ" over a disc that is merely named differently would
+        # point at the wrong thing.
+        #
+        # By NUMBER, not by `medium.label` (#328). #216 put the medium's name in
+        # here — "Disc 1 — Bonus DVD not on disk" — because at the time the disc
+        # heading rendered at the column headings' size and colour and could not
+        # be read (the cascade bug #320 fixed). The heading carries the name
+        # legibly now, so repeating it here is the same fact twice on a line that
+        # already holds three clauses.
+        def named(discs: list[DiscGroup]) -> str:
+            return ", ".join(f"Disc {g.medium.position}" for g in discs)
+
         odd_discs = [g for g in self.discs if g.heading and g.heading.differs]
         if odd_discs:
-            named = ", ".join(g.medium.label for g in odd_discs)
-            clauses.append(f"{named} {'differs' if len(odd_discs) == 1 else 'differ'}")
+            clauses.append(f"{named(odd_discs)} {'differs' if len(odd_discs) == 1 else 'differ'}")
         if absent_discs:
-            clauses.append(f"{', '.join(g.medium.label for g in absent_discs)} not in your files")
+            clauses.append(f"{named(absent_discs)} not in your files")
         # "not in your files", not "not on disk" (#326). Three spellings of one
         # syllable — disk, Disc 2, DVD-Video — landed inside eleven words, which
         # is the pun #245 already removed from the Library tile one surface over.
@@ -1197,6 +1214,29 @@ class TracklistComparison:
             if count:
                 clauses.append(f"{count} {phrase}")
         return " · ".join(clauses)
+
+
+def headline(album: AlbumComparison, tracks: TracklistComparison) -> str:
+    """The legend of the page's ONE MusicBrainz note (#328).
+
+    The hexagon band used to be drawn twice — once over the Tags panel, once
+    over the tracklist — saying the same thing about the same fetch in two
+    places. It is now drawn once, in the album panel beside **Re-tag from MB**,
+    which is the action a difference leads to.
+
+    Composed HERE rather than in the template, for the reason each half is a
+    whole clause rather than a count: the wording of a sentence belongs in one
+    place, and a template joining fragments is how "MusicBrainz" ends up in a
+    line twice.
+
+    The disk-only view (#228) is answered once, for the whole note, instead of
+    each half saying "no comparison" beside the other. Neither clause has to
+    carry that case, which is why neither of them does.
+    """
+    if not album.mb_available:
+        n = len(tracks.tracks)
+        return f"No comparison — showing your own tags and {n} track{'s' if n != 1 else ''}"
+    return f"{album.summary} · {tracks.summary}"
 
 
 #: The owned fields the album PANEL shows — every compared row of it.
@@ -1869,8 +1909,8 @@ def disk_tracklist(tracks: Sequence[tuple[str, TrackTags]]) -> TracklistComparis
     Deliberately not `tracklist(tracks, mb=[])`. That reaches a similar shape by
     a different route, and calls every row EXTRA — "not in MusicBrainz", which
     is a finding about the track. Nothing here is a finding: MusicBrainz was
-    never asked. The rows are PRESENT with no counterpart, and `mb_available`
-    tells the summary and the template to say so once, at the top.
+    never asked. The rows are PRESENT with no counterpart, and the panel's
+    `mb_available` is what makes `headline` say so once, at the top.
     """
     multi_disc = any((t.disc_num or 1) > 1 for _, t in tracks)
     # Rule 1 can never fire here — there is no MusicBrainz side — so a column is
@@ -1898,7 +1938,6 @@ def disk_tracklist(tracks: Sequence[tuple[str, TrackTags]]) -> TracklistComparis
     ]
     return TracklistComparison(
         tracks=tuple(rows),
-        mb_available=False,
         columns=_columns(kept, multi_disc, absorbed),
         collapsed=collapsed,
     )

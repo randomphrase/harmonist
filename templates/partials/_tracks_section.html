@@ -1,0 +1,49 @@
+{# The page's Tracks section, swapped out-of-band by the /compare response.
+
+   One partial rather than the same <section> written out in both
+   `library_compare.html` and `_release_gone.html`: since #328 the header
+   carries a control, and a header duplicated across two files is one that will
+   eventually differ between them.
+
+   No count beside the heading. It counted FILES, and the table has a row per
+   MusicBrainz track — so an incomplete album read "Tracks · 2" above four rows.
+   The note in the album panel states both numbers, and correctly. #}
+<section id="album-tracks" hx-swap-oob="true"
+         class="border border-line rounded-lg p-4 space-y-3">
+    <div class="flex items-center justify-between gap-4">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
+        {% if tracklist.identifier_columns %}
+        {# The identifier columns, and the control that reveals them (#319),
+           moved up here in #328 to match History's "Show details" — under the
+           table it sat below the last disc's block and read as belonging to
+           that disc rather than to the table.
+
+           An MBID and an ISRC are correct to keep, correct to link, and not
+           what anyone opens this page to look at — so they start hidden and the
+           readable tags get the width. They are exempt from the column cap for
+           the same reason: a column nobody sees by default has no business
+           spending one of three slots.
+
+           NAMED, and the naming stays VISIBLE rather than moving into a
+           `title=` — that is the whole of #112 here: a hidden column must not
+           read as one nobody checked, and a tooltip is indistinguishable from
+           silence for anyone who does not hover it.
+
+           CSS, not a request: the page already holds every cell, so revealing
+           them is a class flip. From up here the control is OUTSIDE the
+           `.tracklist` wrapper it governs, so it reaches down into the section
+           rather than climbing out with `closest()`. `onchange` on a checkbox
+           carrying no hx-* of its own is the pattern History already uses; the
+           rule `make template-lint` enforces is against an inline handler on an
+           element htmx also drives. #}
+        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
+                      text-2xs uppercase tracking-widest font-bold text-muted hover:text-ink transition">
+            <input type="checkbox" class="cursor-pointer"
+                   onchange="this.closest('section').querySelector('.tracklist').classList.toggle('tracklist--ids', this.checked)">
+            Show identifiers
+            <span class="font-normal normal-case tracking-normal text-muted">{{ tracklist.identifier_summary }}</span>
+        </label>
+        {% endif %}
+    </div>
+    {% include 'partials/_track_list.html' %}
+</section>

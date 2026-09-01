@@ -1,0 +1,50 @@
+{# The page's ONE MusicBrainz note (#328), swapped out-of-band into the album
+   panel by whichever /compare response produced it.
+
+   It used to be drawn twice — a hexagon band over the Tags panel and another
+   over the tracklist — saying the same thing about the same fetch in two
+   places. One note now sits in the panel between the Format line and the
+   actions row, beside **Re-tag from MB**, which is the action a difference
+   leads to.
+
+   OUT OF BAND because of where it lives: the panel is rendered server-side when
+   the page is built, and both halves of what this says come from the /compare
+   fetch that lands afterwards. Same mechanism the Tracks section already uses,
+   for the same reason — one request, several destinations.
+
+   The legend is `compare.headline`, composed in the module rather than joined
+   from two values here: a sentence belongs in one place, and a template gluing
+   clauses together is how "MusicBrainz" ends up in one line twice. #}
+<div id="album-mb-note-{{ album.id }}" hx-swap-oob="true">
+    <div class="mb-note mb-note--panel">
+        <span class="mb-note__key">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
+                <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
+            </svg>
+        </span>
+        <span class="mb-note__legend">{{ headline(comparison, tracklist) }}</span>
+        {# No timestamp when there was nothing to read (#228): "read just now"
+           beside a note saying nothing was compared is a claim about a fetch
+           that returned a 404. The legend already says what happened; the
+           banner above says why. #}
+        {% if comparison.mb_available %}
+        <span class="mb-note__when">read {{ ago(mb_read_at) }}</span>
+        {# The way out of a stale answer (#127). Releases are served from a
+           cache, so what is on this page can legitimately be an hour old — and
+           a user who has just edited MusicBrainz needs to be able to say "no,
+           look again" without re-tagging or editing a config file.
+
+           A button, not a link: it re-fetches into the Tags section, and the
+           same response carries this note back out-of-band, so both update
+           together. `hx-disabled-elt` because this is a real MusicBrainz
+           request on a 1-req/sec budget and a double-press would spend two. No
+           `onclick` anywhere near it — HTMX owns the click. #}
+        <button type="button" class="mb-note__reread"
+                hx-get="/library/{{ album.id }}/compare?reread=1"
+                hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"
+                hx-disabled-elt="this"
+                title="Read this release from MusicBrainz again"
+                aria-label="Read this release from MusicBrainz again">read again</button>
+        {% endif %}
+    </div>
+</div>

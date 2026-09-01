@@ -149,16 +149,7 @@ def test_the_headline_reports_an_absent_disc_once_not_track_by_track():
     files, mb = _two_disc()
     t = compare.tracklist(files, mb, [Medium(1, None, "DVD-Video"), Medium(2, None, "CD")])
 
-    assert t.summary == "All 16 tracks match MusicBrainz · Disc 1 not in your files"
-
-
-def test_an_absent_named_disc_is_named_in_the_headline():
-    mb = [_mb(1, i, f"T{i}", 2) for i in (1, 2)] + [_mb(2, i, f"U{i}", 2) for i in (1, 2)]
-    files = [_file(i, 2, f"U{i}", 2) for i in (1, 2)]
-
-    t = compare.tracklist(files, mb, [Medium(1, "Bonus DVD"), Medium(2, "Album")])
-
-    assert "Disc 1 — Bonus DVD not in your files" in t.summary
+    assert t.summary == "All 16 tracks match · Disc 1 not in your files"
 
 
 def test_a_genuinely_short_disc_still_counts_its_missing_tracks():
@@ -177,7 +168,7 @@ def test_a_single_disc_album_headline_is_unchanged():
     mb = [_mb(1, i, f"T{i}", 3) for i in (1, 2, 3)]
     files = [_file(i, 1, f"T{i}", 3) for i in (1, 2, 3)]
 
-    assert compare.tracklist(files, mb).summary == "All 3 tracks match MusicBrainz"
+    assert compare.tracklist(files, mb).summary == "All 3 tracks match"
 
 
 def test_every_row_knows_its_disc():

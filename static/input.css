@@ -155,6 +155,10 @@ button[disabled],
 }
 .mb-note__reread:hover { color: var(--color-accent); }
 .mb-note__reread:disabled { opacity: .5; cursor: progress; }
+/* The note in the album panel (#328). The stacked blocks around it own their
+   spacing through the panel's `space-y-3`, so the bottom margin the standalone
+   note carried would double up here. */
+.mb-note--panel { margin-bottom: 0; }
 
 /* `align-items: baseline` so the label sits on the same baseline as its value,
    rather than both being top-aligned and nudged into place with padding. With a
@@ -571,53 +575,38 @@ button[disabled],
 .tracklist:not(.tracklist--ids) .track-diff__id { display: none; }
 /* The control, in the same quiet voice as the collapsed-columns line below it —
    both report that there is more here, neither is urgent. */
-.track-ids {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  margin-top: .6rem;
-  font-size: .7rem;
-  color: var(--color-muted);
-  cursor: pointer;
-  user-select: none;
-}
-.track-ids:hover { color: var(--color-ink); }
-.track-ids input { cursor: pointer; }
-/* Names what is behind the checkbox rather than counting it (#112): a hidden
-   column must not read as one nobody checked. */
-.track-ids__note { color: var(--color-muted); }
+/* The footer under the tracklist: the per-track tags with no column of their
+   own, shown in the open since #328 (they were behind a <details>, and the
+   values are better proof they were checked than a sentence naming them).
 
-/* The per-track tags with no column, named under the table (#309). Quiet: it
-   reports that nothing is wrong, which is the least urgent thing on the page —
-   but it is still reported, because a column that silently vanished would look
-   exactly like a tag Harmonist never checked (#112). */
-.track-same {
-  margin-top: .6rem;
-  font-size: .7rem;
-  color: var(--color-muted);
+   A BAND reaching the section's edges, which is the point rather than
+   decoration: on a three-disc release this sat directly under the last disc's
+   block and read as a statement about that disc. Negative margins because the
+   section's padding is what it has to break out of; `p-4` is `1rem`, so the
+   pull matches it exactly. */
+.track-foot {
+  margin: .9rem -1rem -1rem;
+  padding: .65rem 1rem .85rem;
+  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+  border-top: 1px solid var(--color-line);
 }
-.track-same > summary {
-  cursor: pointer;
-  padding: .15rem 0;
-}
-.track-same > summary:hover { color: var(--color-ink); }
-/* Label/value pairs, the label in the same small-caps voice as the table's
-   column headings — because that is what each of these was going to be. */
-.track-same__fields {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: .15rem .75rem;
-  margin: .4rem 0 0 .9rem;
-}
-.track-same__fields dt {
-  font-size: .62rem;
+/* The caption states the finding once, in the same small-caps voice the table's
+   column headings use — because that is what each of these was going to be.
+
+   It claims nothing about MusicBrainz. Agreement is carried visually everywhere
+   else here (a value that differs gets a hexagon and a purple line) and this
+   band has neither; saying it in words as well was also what forced the sentence
+   into two forms, since the disk-only view compared nothing (#228). */
+.track-foot__caption {
+  display: block;
+  font-size: .6rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .1em;
-  padding-top: .05rem;
+  letter-spacing: .12em;
+  color: var(--color-muted);
 }
-.track-same__fields dd { color: var(--color-ink); word-break: break-word; }
-.track-same__absent { font-style: italic; color: var(--color-muted); }
+.track-foot .tag-fields { margin-top: .55rem; }
+.track-foot__absent { font-style: italic; color: var(--color-muted); }
 
 .track-diff__absent,
 .track-diff__unreadable { font-style: italic; }

@@ -39,23 +39,10 @@
    `shows_mb` is false throughout and the table renders one plain line per
    track — no second layout, just the existing one with nothing to stack. #}
 
-{# The hexagon note, matching the album section's. Missing, unreadable and extra
-   tracks get their own clause in the summary: they are different problems with
-   different remedies, and folding them into "N tracks differ" would bury the
-   one the user most needs to see. #}
-<div class="mb-note">
-    <span class="mb-note__key">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
-            <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
-        </svg>
-    </span>
-    <span class="mb-note__legend">{{ tracklist.summary }}</span>
-</div>
-
-{# One wrapper around the table and the two controls beneath it, so `--ids` can
-   govern every cell of the identifier columns at once (#319) — and so the
-   toggle reaches its table without climbing out of this partial into markup
-   that belongs to whoever included it. #}
+{# One wrapper around the table and the footer beneath it, so `--ids` can
+   govern every cell of the identifier columns at once (#319). The toggle itself
+   is in the section's header since #328 and reaches down to this class; the
+   wrapper is what it reaches for. #}
 <div class="tracklist">
 <div class="overflow-x-auto">
     <table class="track-diff">
@@ -315,49 +302,32 @@
     </table>
 </div>
 
-{% if tracklist.identifier_columns %}
-{# The identifier columns, and the control that reveals them (#319).
-
-   An MBID and an ISRC are correct to keep, correct to link, and not what anyone
-   opens this page to look at — so they start hidden and the readable tags get
-   the width. They are exempt from the column cap for the same reason: a column
-   nobody sees by default has no business spending one of three slots.
-
-   NAMED, like the collapsed set below it, and for the same #112 reason — every
-   column in this table earned its place, so a hidden one has something to show,
-   and "3 columns hidden" would read as housekeeping instead.
-
-   CSS, not a request: the page already holds every cell, so revealing them is a
-   class flip. `onchange` on a checkbox that carries no hx-* of its own is the
-   pattern the album's History "Show details" already uses; the rule the web-ui
-   skill enforces is against an inline handler on an element htmx also drives. #}
-<label class="track-ids">
-    <input type="checkbox"
-           onchange="this.closest('.tracklist').classList.toggle('tracklist--ids', this.checked)">
-    Show identifiers
-    <span class="track-ids__note">{{ tracklist.identifier_summary }}</span>
-</label>
-{% endif %}
-
 {% if tracklist.collapsed %}
-{# The per-track tags with no column, NAMED (#309).
+{# The per-track tags with no column of their own (#309), shown in the OPEN
+   since #328 — the same label/value grid the album panel uses.
 
    A column that simply vanished would be indistinguishable from a tag nobody
    looked at, which is the #112 distinction the rest of this page is careful
    about: "checked, and every track agrees" and "never examined" must not read
-   the same. So the set is named, and the values are one press away.
+   the same. That used to be a sentence naming the fields over a <details> that
+   hid them. The values themselves are better proof, and they are cheap: a
+   collapsed column is N identical rows by construction — every track agreed, or
+   it would have earned a column — so showing it costs one row per field, not
+   one per track.
 
-   A list rather than the columns themselves, because a collapsed column is N
-   identical rows by construction — every track agreed, or it would have earned
-   a column — so revealing it needs one row per field, not one per track. That is
-   also why it can sit outside the table's horizontal scroll.
+   A BAND, breaking out to the section's edges, and that is the point of it
+   (#328): under a three-disc release this sat directly beneath the last disc's
+   block and read as a statement about that disc. The band says it belongs to
+   the table.
 
-   <details>, not a scripted toggle: focus, keyboard handling and the open state
-   come free, and no `onclick` goes anywhere near an element the page also drives
-   with hx-* attributes. #}
-<details class="track-same">
-    <summary>{{ tracklist.collapsed_summary }}</summary>
-    <dl class="track-same__fields">
+   The caption claims nothing about MusicBrainz. Agreement is carried visually
+   everywhere else on this page — a value that differs gets a hexagon and a
+   purple line — and there is neither here. Saying it in words as well was also
+   what forced the sentence to have two forms, since the disk-only view (#228)
+   compared nothing and could claim nothing. #}
+<div class="track-foot">
+    <span class="track-foot__caption">The same on every track</span>
+    <dl class="tag-fields tag-fields--paired">
         {% for f in tracklist.collapsed %}
         <dt>{{ f.label }}</dt>
         <dd>
@@ -371,11 +341,12 @@
             {# No track carries it and MusicBrainz has none either. That is still
                agreement — it is simply agreement about nothing — and saying so
                is the point of listing the field at all. #}
-            <span class="track-same__absent">not set</span>
+            <span class="track-foot__absent">not set</span>
             {% endif %}
         </dd>
         {% endfor %}
     </dl>
-</details>
+</div>
 {% endif %}
 </div>
+

@@ -69,6 +69,26 @@ versions follow [semantic versioning](https://semver.org).
   since the heading could not state that (#320).
 - **Disc headings are more prominent**: larger, in mixed case rather than small
   capitals, and marked with an accent rail (#320).
+- The album page draws **one MusicBrainz note instead of two**. The hexagon band
+  was rendered over both Tags and Tracks, saying the same thing about the same
+  fetch; it now sits once in the album panel — with both summaries, when the
+  release was last read, and **read again** — beside the Re-tag button, which is
+  the action a difference leads to (#328).
+- **Forget** has moved to the far right of the album's actions row, away from
+  Re-tag. It deletes the sidecar and reverts the album to NEW, and it was sitting
+  one button from the control you actually came to press (#328).
+- **Show identifiers** has moved to the top right of the Tracks heading, matching
+  **Show details** on History. Under the table it read as belonging to the last
+  disc rather than to the whole tracklist (#328).
+- The per-track tags that are **the same on every track are now shown in the
+  open**, in a footer band under the tracklist, laid out like the album's own
+  tags — instead of being named in a sentence with their values behind a
+  disclosure triangle. The band also settles what they cover: under a multi-disc
+  release the old line read as a statement about the last disc (#328).
+- The headline names an absent or differing disc **by number** — *"Disc 3 not in
+  your files"* rather than *"Disc 3 — A Documentary not in your files"*. The
+  disc's own heading carries its name a few lines below, now that #320 has made
+  that heading legible (#328).
 - A track MusicBrainz lists that you don't have now says **"Not in your files"**
   rather than "Not on disk", and carries a dashed ring beside its number — so a
   half-ripped disc reads as a column of marks rather than a stack of notices. The

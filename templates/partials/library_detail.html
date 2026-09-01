@@ -205,7 +205,22 @@
             {# The tag comparison used to sit here. It moved out to its own
                section on the album page (#160): this panel is what the album IS
                and what you can do to it, and a full field-by-field comparison
-               dwarfed both, pushing the actions below the fold. #}
+               dwarfed both, pushing the actions below the fold.
+
+               What DID come back is the one-line MusicBrainz note (#328) — the
+               hexagon band that used to be drawn twice, once over each of those
+               sections. It belongs here, between what the files are and what you
+               can do about them, because the action a difference leads to is the
+               Re-tag button directly below it.
+
+               Empty until the /compare fetch fills it out of band. The panel is
+               rendered when the page is built and both halves of what the note
+               says come from that fetch, so there is nothing to put here yet —
+               and deliberately nothing rather than a placeholder sentence: the
+               note is a finding, and an empty space says "not yet" where "Checking
+               tags…" in the panel's middle would read as the album's state. #}
+            <div id="album-mb-note-{{ album.id }}"></div>
+
 
             {# `hx-disabled-elt="this"` — the documented form, and the one htmx
                special-cases for the triggering element.
@@ -235,16 +250,6 @@
                    solves — and it can't be undone. Leaving a control that does
                    the wrong thing confidently is worse than not offering one.
                    The /retag?overwrite_art endpoint stays; only the button goes. #}
-                {# Same reason as the rematch pencil: forgetting reverts the album
-                   to NEW, so it leaves the Library and this page stops describing
-                   anything that exists. #}
-                <button hx-post="/forget/{{ album.id }}"
-                        hx-swap="none" hx-disabled-elt="this"
-                        hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
-                        hx-confirm="Forget this album? The sidecar is deleted and the album reverts to NEW. Files are not touched."
-                        class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-                    Forget
-                </button>
                 {# Re-download from Bandcamp (#132) — upgrade MP3s to FLAC, or pick
                    up tracks the artist has added to the release since the purchase.
                    Only offered where it can actually be done: a single Bandcamp
@@ -269,6 +274,24 @@
                     Re-download
                 </button>
                 {% endif %}
+                {# Same reason as the rematch pencil: forgetting reverts the album
+                   to NEW, so it leaves the Library and this page stops describing
+                   anything that exists.
+
+                   LAST in the row and pushed to the far right (#328). It used to
+                   sit one button away from Re-tag — the thing you actually came
+                   to press — which is the placement web-ui rule 4 warns about:
+                   rare and hard to undo should be out of the path, not adjacent
+                   to the common action. `ml-auto` rather than reordering with
+                   flex, so the DOM order matches the reading order and the tab
+                   order reaches it last too. #}
+                <button hx-post="/forget/{{ album.id }}"
+                        hx-swap="none" hx-disabled-elt="this"
+                        hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
+                        hx-confirm="Forget this album? The sidecar is deleted and the album reverts to NEW. Files are not touched."
+                        class="ml-auto px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+                    Forget
+                </button>
                 {# The acceptance used to sit here, as a button reading "No more
                    tracks to get" / "Mark incomplete again". It moved up to the
                    completeness badge as a checkbox (#227): it acts on that badge

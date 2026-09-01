@@ -223,7 +223,7 @@ def test_a_partly_ripped_dvd_is_short_not_absent():
 
     assert dvd.absent is False
     assert [r.state for r in dvd.tracks] == [TrackState.PRESENT] * 3 + [TrackState.MISSING]
-    assert t.summary == "1 of 6 tracks differs from MusicBrainz · 1 not in your files"
+    assert t.summary == "1 of 6 tracks differs · 1 not in your files"
     assert "Disc 2 not in your files" not in t.summary
 
 
@@ -253,7 +253,7 @@ def test_a_video_disc_is_described_but_not_compared():
     # Nothing on disc 2 is compared, even though its files carry no subtitle and
     # MusicBrainz names the medium "Bonus" — so the headline names disc 1 alone.
     assert dvd.heading is None
-    assert t.summary == "All 6 tracks match MusicBrainz · Disc 1 differs"
+    assert t.summary == "All 6 tracks match · Disc 1 differs"
 
 
 def test_an_album_of_nothing_but_video_keeps_its_columns():
@@ -446,7 +446,7 @@ def test_the_page_lists_the_videos_that_are_on_disk(client, cfg, monkeypatch):
     # asserting on a string that occurs elsewhere in the markup.
     missing_rows = re.findall(r'class="track-diff__absent">\s*Not in your files\s*<', body)
     assert len(missing_rows) == 1, "only the video that really is missing"
-    assert "1 of 6 tracks differs from MusicBrainz · 1 not in your files" in body
+    assert "1 of 6 tracks differs · 1 not in your files" in body
 
 
 def test_the_page_marks_a_video_as_one(client, cfg, monkeypatch):

@@ -248,7 +248,7 @@ def test_a_re_tagged_album_then_agrees_completely():
     t = compare_tracklist(_tism_files(stale_disc=False), _tism_release(), _tism_media())
 
     assert [r for r in t.discs[1].tracks if r.differs] == []
-    assert t.summary == "All 16 tracks match MusicBrainz · Disc 1, Disc 3 not in your files"
+    assert t.summary == "All 16 tracks match · Disc 1, Disc 3 not in your files"
 
 
 def test_the_videos_are_still_reported_as_absent_discs():

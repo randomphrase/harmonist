@@ -614,6 +614,11 @@ def create_app(
     templates.env.globals["rel_path"] = _rel_path
     templates.env.globals["ago"] = _ago
     templates.env.globals["missing_discs"] = _missing_discs
+    # The one MusicBrainz note's legend (#328), composed from BOTH comparisons.
+    # A global rather than a context key because the two partials that render
+    # the note are included from two different responses, and threading one more
+    # value through each call site is how they drift apart.
+    templates.env.globals["headline"] = compare.headline
     templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
     # No `track_columns` global any more (#309). The tracklist's headings used
     # to be a module constant, which only worked while the answer was the same

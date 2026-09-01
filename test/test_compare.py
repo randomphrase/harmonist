@@ -29,6 +29,7 @@ from harmonist.compare import (
     consensus,
     diff_runs,
     disk_tracklist,
+    headline,
     tracklist,
 )
 from harmonist.formats.owned import ALBUM_FIELDS, LABELS, Owned
@@ -265,7 +266,7 @@ def test_summary_counts_only_real_findings():
     # Three in the denominator, not four: MusicBrainz was never asked about the
     # comment, so counting it in a sentence about matching MusicBrainz claims a
     # check that didn't happen (#164).
-    assert album.summary == "2 of 3 fields differ in MusicBrainz"
+    assert album.summary == "2 of 3 tags differ"
 
 
 def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
@@ -319,7 +320,7 @@ def test_unreadable_files_cannot_push_the_count_past_the_total():
     total = len([f for f in ALBUM_FIELDS if f is not Owned.MB_ALBUM_ID])
     n = len([f for f in album.comparable if f.differs])
     assert n <= len(album.comparable)
-    assert album.summary == f"{total} of {total} fields differ in MusicBrainz"
+    assert album.summary == f"{total} of {total} tags differ"
 
 
 # ---------- what the consensus pill says (#164) ----------
@@ -448,8 +449,8 @@ def test_an_unreadable_track_does_not_report_its_tags_as_missing(tmp_path):
 
 def test_summary_when_everything_matches():
     fields = (compare_field("Album", disk=consensus([("1.flac", "Obreel")]), mb="Obreel"),)
-    assert AlbumComparison(fields=fields).summary == "All 1 fields match MusicBrainz"
-    assert AlbumComparison().summary == "Nothing to compare against MusicBrainz"
+    assert AlbumComparison(fields=fields).summary == "All 1 tags match"
+    assert AlbumComparison().summary == "No tags to compare"
 
 
 # ---------- the tracklist (#135) ----------
@@ -564,7 +565,7 @@ def test_a_faithfully_tagged_album_shows_no_differences():
     )
     assert [t.state for t in tl.tracks] == [TrackState.PRESENT] * 2
     assert tl.differing == ()
-    assert tl.summary == "All 2 tracks match MusicBrainz"
+    assert tl.summary == "All 2 tracks match"
 
 
 def test_a_differing_title_is_the_only_thing_flagged():
@@ -577,7 +578,7 @@ def test_a_differing_title_is_the_only_thing_flagged():
     flagged = {f.label: f for f in row.fields if f.differs}
     assert list(flagged) == ["Title"]
     assert flagged["Title"].mb == "Odd Look (feat. Kaas)"
-    assert tl.summary == "1 of 1 tracks differs from MusicBrainz"
+    assert tl.summary == "1 of 1 tracks differs"
 
 
 # ---------- pairing files to MusicBrainz tracks ----------
@@ -605,7 +606,7 @@ def test_a_missing_track_does_not_shift_every_row_after_it():
     ]
     # Exactly one finding: the track that genuinely isn't there.
     assert len(tl.differing) == 1
-    assert tl.summary == "1 of 4 tracks differs from MusicBrainz · 1 not in your files"
+    assert tl.summary == "1 of 4 tracks differs · 1 not in your files"
 
 
 def test_a_missing_track_shows_what_musicbrainz_says_is_absent():
@@ -668,7 +669,7 @@ def test_an_extra_file_is_stated_not_warned_about():
     assert extra.state is TrackState.EXTRA
     assert extra.differs  # the user should see it
     assert not extra.shows_mb  # ...but there is nothing to show it against
-    assert tl.summary == "1 of 2 tracks differs from MusicBrainz · 1 not in MusicBrainz"
+    assert tl.summary == "1 of 2 tracks differs · 1 not in MusicBrainz"
 
 
 # ---------- lengths ----------
@@ -721,7 +722,7 @@ def test_an_unreadable_file_is_not_a_missing_one():
     assert all(f.agreement is Agreement.UNREADABLE for f in row.fields)
     assert all(f.disk is None for f in row.fields)
     assert row.shows_mb  # MB still says what the track should be
-    assert tl.summary == "1 of 1 tracks differs from MusicBrainz · 1 unreadable"
+    assert tl.summary == "1 of 1 tracks differs · 1 unreadable"
 
 
 def test_an_unreadable_file_takes_the_slot_left_free_by_the_numbered_ones():
@@ -745,7 +746,7 @@ def test_an_unreadable_file_takes_the_slot_left_free_by_the_numbered_ones():
 
 
 def test_an_album_with_no_release_to_compare_against_says_so():
-    assert tracklist([], []).summary == "Nothing to compare against MusicBrainz"
+    assert tracklist([], []).summary == "No tracks to compare"
 
 
 # ---------- the disk-only view: MusicBrainz has deleted the release (#228) ----------
@@ -760,19 +761,29 @@ def test_a_disk_only_tracklist_shows_the_tracks_without_calling_them_extra():
 
     assert [t.state for t in tl.tracks] == [TrackState.PRESENT, TrackState.PRESENT]
     assert [t.fields[1].disk for t in tl.tracks] == ["Nightcall", "Odd Look"]
-    assert not tl.mb_available
     assert not any(t.shows_mb for t in tl.tracks), "no MusicBrainz line to draw"
 
 
-def test_a_disk_only_tracklist_says_it_compared_nothing():
-    """The header note is the one place the absence is stated. Left to the
-    default it would have said "All 2 tracks match MusicBrainz"."""
-    assert disk_tracklist([_file(1, "Nightcall"), _file(2, "Odd Look")]).summary == (
-        "No comparison — showing your 2 tracks"
+def test_a_disk_only_view_says_it_compared_nothing():
+    """The note is the one place the absence is stated. Left to the defaults it
+    would have read "All 7 tags match · All 2 tracks match" for a release
+    MusicBrainz has deleted — every field lands in ONLY_DISK, which is
+    deliberately not a finding (#228).
+
+    Said ONCE for the whole note since #328, by `headline` rather than by each
+    half: the two clauses share one line now, and "no comparison" twice in it
+    would be the same non-answer given twice.
+    """
+    fields = album_fields([_file(1, "Nightcall")], None)
+    tracks = disk_tracklist([_file(1, "Nightcall"), _file(2, "Odd Look")])
+
+    assert headline(AlbumComparison(fields=fields, mb_available=False), tracks) == (
+        "No comparison — showing your own tags and 2 tracks"
     )
-    assert disk_tracklist([_file(1, "Nightcall")]).summary == (
-        "No comparison — showing your 1 track"
-    )
+    assert headline(
+        AlbumComparison(fields=fields, mb_available=False),
+        disk_tracklist([_file(1, "Nightcall")]),
+    ).endswith("and 1 track")
 
 
 def test_a_disk_only_tracklist_keeps_the_unreadable_state():
@@ -788,17 +799,6 @@ def test_a_disk_only_tracklist_keeps_the_unreadable_state():
 def test_a_disk_only_tracklist_groups_by_the_files_own_discs():
     tl = disk_tracklist([_file(1, "Nightcall", disc=1), _file(1, "Protovision", disc=2)])
     assert [g.medium.position for g in tl.discs] == [1, 2]
-
-
-def test_a_disk_only_album_panel_says_it_compared_nothing():
-    """`album_fields(tracks, None)` already leaves every field ONLY_DISK, which
-    is deliberately not a finding — so without `mb_available` the summary read
-    "All 7 fields match MusicBrainz" for a release MusicBrainz has deleted."""
-    fields = album_fields([_file(1, "Nightcall")], None)
-    assert AlbumComparison(fields=fields).summary.startswith("All ")
-    assert AlbumComparison(fields=fields, mb_available=False).summary == (
-        "No comparison — showing your files' tags"
-    )
 
 
 # ---------- Picard's disambiguated album title (#283) ----------
@@ -960,8 +960,7 @@ def test_a_column_every_track_agrees_on_is_named_below_instead_of_shown():
     collapsed = {c.label: c.value for c in tl.collapsed}
     assert collapsed["Artist"] == "Kavinsky"
     # Its one value is still on the page, and so is the fact that it was checked.
-    assert "Artist" in tl.collapsed_summary
-    assert tl.collapsed_summary.endswith("are the same on every track and match MusicBrainz")
+    assert "Artist" in {c.label for c in tl.collapsed}
 
 
 def test_a_field_differing_on_one_track_earns_a_column_there():
@@ -981,7 +980,7 @@ def test_a_field_differing_on_one_track_earns_a_column_there():
     )
 
     assert _headings(tl) == ["#", "Title", "Artist sort", "Length"]
-    assert [c.label for c in tl.collapsed] and "Artist sort" not in tl.collapsed_summary
+    assert [c.label for c in tl.collapsed] and "Artist sort" not in {c.label for c in tl.collapsed}
     # And it is on the row it belongs to, which is the entire point.
     sort_cells = [next(f for f in t.fields if f.label == "Artist sort") for t in tl.tracks]
     assert [f.differs for f in sort_cells] == [False, True]
@@ -1224,22 +1223,16 @@ def test_a_tag_musicbrainz_does_not_have_is_not_collapsed_as_agreement():
 def test_the_disk_only_view_collapses_on_agreement_between_the_tracks_alone():
     """MusicBrainz has deleted the release (#228), so every field is ONLY_DISK
     and `_matches_everywhere` has nothing to check. The tracks still agree with
-    each other, which is all that was looked at — and all the summary claims."""
+    each other, which is all that was looked at — and all the footer claims.
+
+    The footer's caption used to have a second form for this view, because
+    "and match MusicBrainz" would have been a claim about a comparison that never
+    happened. #328 dropped the clause outright, which is why there is nothing to
+    assert about it here any more: the same sentence is now true either way.
+    """
     tl = disk_tracklist([_file(1, "Nightcall"), _file(2, "Odd Look")])
 
     assert "Artist" in {c.label for c in tl.collapsed}
-    assert tl.collapsed_summary.endswith("are the same on every track")
-    assert "MusicBrainz" not in tl.collapsed_summary
-
-
-def test_the_collapsed_summary_names_the_fields_rather_than_counting_them():
-    """ "5 fields hidden" is a fact about the table; naming them is a finding
-    about the album, and it is what keeps checked-and-agrees distinguishable
-    from never-examined (#112)."""
-    tl = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall")])
-
-    assert tl.collapsed_summary.startswith("Artist, Artist sort and ")
-    assert tl.collapsed_summary.endswith(" are the same on every track and match MusicBrainz")
 
 
 def test_the_number_column_accounts_for_the_disc_on_a_multi_disc_release():
@@ -1400,7 +1393,7 @@ def test_the_headline_reports_a_disc_that_differs():
         mb={2: {"disc_subtitle": "Live Angle"}},
     )
 
-    assert tl.summary == "All 2 tracks match MusicBrainz · Disc 2 — Live Angle differs"
+    assert tl.summary == "All 2 tracks match · Disc 2 differs"
 
 
 def test_a_disc_whose_tracks_disagree_keeps_its_column():

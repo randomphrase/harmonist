@@ -5678,7 +5678,7 @@ def test_album_page_compares_tags_field_by_field(client, cfg, monkeypatch):
 
     body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
 
-    assert "fields differ" in body  # the hexagon note's count
+    assert "tags differ" in body  # the note's count, now in the album panel
     assert "Dial Records" in body and "DIAL 042" in body
     # A MusicBrainz-only value says so without relying on its colour — someone
     # who can't distinguish the purple still gets the mark and its tooltip.
@@ -5860,9 +5860,11 @@ def test_the_columns_a_tracklist_drops_are_named_under_it(client, cfg, monkeypat
     # Nothing about this track differs from its album or from MusicBrainz, so the
     # Artist column is a name repeated down a column and is dropped.
     assert not re.search(r"<th [^>]*>\s*Artist\s*</th>", body)
-    assert '<details class="track-same">' in body
-    assert "are the same on every track and match MusicBrainz" in body
-    # Named, and its one value reachable — not silently absent.
+    # Shown in the open since #328, in the footer band under the table — the
+    # values themselves are what prove the tag was checked rather than skipped
+    # (#112), which a sentence naming them over a closed <details> only claimed.
+    assert '<div class="track-foot">' in body
+    assert "The same on every track" in body
     assert "<dt>Artist</dt>" in body
     assert "Benoît Pioulard" in body
 
@@ -5931,6 +5933,70 @@ def test_a_disc_subtitle_change_is_drawn_on_the_disc_heading(client, cfg, monkey
     # than absent because `:not(:empty)` is what suppresses their "·" separator,
     # so a cell that renders a stray space renders a bullet before nothing.
     assert body.count('<span class="disc-head__cell disc-head__mb disc-head__meta"></span>') == 2
+
+
+def test_one_musicbrainz_note_lands_in_the_album_panel(client, cfg, monkeypatch):
+    """#328. The hexagon band was drawn twice — over Tags and over the tracklist
+    — saying the same thing about the same fetch. One note now, in the panel
+    beside Re-tag from MB, carrying both summaries.
+
+    Two halves worth asserting together, because either alone is satisfied by a
+    broken page: the panel has to render an empty slot at page load, and the
+    compare response has to swap into THAT id. A typo in either produces a
+    perfectly correct-looking response that lands nowhere (#210).
+    """
+    d = _make_tagged_album(cfg, "Noted", mbid="rel-noted", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_TITLE] = ["Ground Glass"]
+    audio.save()
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Noted",
+            "medium-list": [
+                {"position": "1", "track-list": [{"id": "t1", "title": "Ground Glass"}]}
+            ],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    album_id = _id_for(cfg, d)
+
+    page = client.get(f"/album/{album_id}").text
+    assert f'<div id="album-mb-note-{album_id}"></div>' in page, "the panel's empty slot"
+
+    body = client.get(f"/library/{album_id}/compare").text
+    assert f'<div id="album-mb-note-{album_id}" hx-swap-oob="true">' in body
+
+    # Both summaries, in one legend, said once each. The count of the legend's
+    # own wrapper rather than of any phrase inside it: "tags" and "tracks" occur
+    # all over this response, and the thing being asserted is that there is ONE
+    # note, which only the wrapper can say.
+    assert body.count('class="mb-note mb-note--panel"') == 1
+    assert body.count('<span class="mb-note__legend">') == 1
+    legend = re.search(r'class="mb-note__legend">(.*?)</span>', body, re.DOTALL)
+    assert legend and " · " in legend.group(1), "both summaries, joined into one line"
+
+
+def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):
+    """#328, and web-ui rule 4: rare and hard to undo belongs out of the path.
+
+    Forget deletes the sidecar and reverts the album to NEW, and it sat one
+    button away from Re-tag — the thing you came to press. Asserted as the ORDER
+    of the row, not just the class, because `ml-auto` on a button that is not
+    last pushes the ones after it right along with it.
+    """
+    d = _make_tagged_album(cfg, "Ordered", mbid="rel-ordered", tagged_at=datetime.now(UTC))
+    page = client.get(f"/album/{_id_for(cfg, d)}").text
+
+    row = re.search(r'<div id="album-actions-[^"]+".*?\n            </div>', page, re.DOTALL)
+    assert row, "the actions row"
+    labels = [t.strip() for t in re.findall(r">\s*([A-Z][A-Za-z- ]+)\s*</button>", row.group(0))]
+    assert labels[0] == "Re-tag from MB"
+    assert labels[-1] == "Forget", "last in the DOM, so it is last in the tab order too"
+    assert re.search(r'class="ml-auto [^"]*"[^>]*>\s*Forget', row.group(0), re.DOTALL) or re.search(
+        r'class="ml-auto[^"]*"', row.group(0)
+    ), "and pushed to the far end"
 
 
 def test_a_missing_track_and_a_missing_disc_are_both_marked(client, cfg, monkeypatch):
@@ -6071,7 +6137,7 @@ def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     # file's arrives split across diff runs — the featured-artist suffix is
     # marked in place — so the assertion is on the marked run itself.
     assert '<em class="diff-run"> [w/ Foxes in Fiction]</em>' in r.text
-    assert "1 of 1 tracks differs from MusicBrainz" in r.text
+    assert "1 of 1 tracks differs" in r.text
     # Neither wording the tracklist's headline uses when nothing differs. Named
     # exactly rather than as a bare "match MusicBrainz", which the collapsed
     # columns note under the table now says truthfully about fields that DO
@@ -7296,7 +7362,7 @@ def test_a_deleted_release_still_shows_the_files_own_tags(client, cfg, monkeypat
     r = client.get(f"/library/{_id_for(cfg, d)}/compare")
 
     assert "Silent Season Sampler" in r.text, "the album's own tags, not an empty note"
-    assert "No comparison — showing your files" in r.text
+    assert "No comparison — showing your own tags and" in r.text
     assert "read " not in r.text, "nothing was read from MusicBrainz — don't claim a timestamp"
 
 
