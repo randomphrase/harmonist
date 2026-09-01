@@ -202,6 +202,11 @@ def _tism_files(*, stale_disc: bool) -> list[tuple[str, TrackTags]]:
                     "track_total": 16,
                     "track_num": n,
                     "disc_num": 1 if stale_disc else 2,
+                    # The medium `_tism_media` gives the CD. Since #320 the disc
+                    # HEADING compares it and the headline reports a disc that
+                    # differs, so omitting it would put "Disc 2 differs" into a
+                    # summary these tests assert in full.
+                    "media": "CD",
                 },
             ),
         )

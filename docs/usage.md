@@ -305,6 +305,17 @@ Julia Kent* is two links to MusicBrainz, joined the way MusicBrainz joins them.
 There is no separate *Artists* column beside it — that tag is the same credit
 unjoined, so the Artist column stands for both.
 
+A release with more than one disc gets a heading above each one — *Disc 2 — Live
+Angle · CD · 16 tracks*. That heading **is** the disc subtitle, the medium and the
+track count, so those three tags are shown there instead of in columns: they are
+one value all the way down a disc, and a column of them says the same thing
+twenty-nine times. If your files disagree with MusicBrainz about any of them, the
+heading gains a second line beneath it carrying just the part that changed. A
+single-disc album has no heading — one above the only disc is noise — so there
+those tags behave like any other; and a disc whose own files disagree with each
+other keeps its columns, because the heading can only state a value the whole disc
+shares.
+
 MusicBrainz ids and ISRCs are identifiers rather than anything to read, so they
 start hidden behind **Show identifiers**, which names what is in it. They are
 still links, and an id with no name is shortened to its first few characters with

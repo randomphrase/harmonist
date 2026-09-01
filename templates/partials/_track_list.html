@@ -17,6 +17,12 @@
    disclosure away; where it is a change every track shares, the box states it
    once, which is the whole of it.
 
+   The medium-derived three — disc subtitle, media, track total — are a fourth
+   case, and they go to the DISC HEADING (#320). They vary per track only in the
+   sense that they vary per disc, which the heading above each group already
+   states, so a column of them repeats one value down a whole disc. See
+   `DiscHeading`.
+
    Two lines per track, not two columns: a track that agrees is one plain line,
    and a track that differs gains a second beneath it in mb-purple carrying only
    the cells that actually differ. Both values keep the same left edge and the
@@ -84,8 +90,54 @@
             <tr>
                 <th scope="colgroup" colspan="{{ tracklist.columns|length }}" class="track-diff__disc-head">
                     {% if group.absent %}<span class="track-diff__disc-absent">Not on disk:</span>{% endif %}
+                    {% if group.heading %}
+                    {# The disc's three medium-derived tags, rolled up out of the
+                       tracklist into the heading that already names this disc
+                       (#320). They are per-disc constants wearing per-track
+                       clothes, and a column of them repeats one value down a
+                       whole disc.
+
+                       Three slots — name, medium, track count — laid out on a
+                       grid so the MusicBrainz line beneath can carry ONLY the
+                       ones that changed and still sit directly under its
+                       counterpart. That is the track rows' own rule applied to
+                       the heading: a cell that agrees stays blank rather than
+                       saying the same thing twice, and the difference is a
+                       vertical scan.
+
+                       The cells must stay whitespace-free: an empty slot is
+                       styled by `:not(:empty)`, and a stray newline inside the
+                       span would give it a "·" separating nothing. #}
+                    {% set h = group.heading %}
+                    <span class="disc-head">
+                        {%- for s in h.slots -%}
+                        <span class="disc-head__cell{{ ' disc-head__meta' if s.meta }}">{{ s.disk or '' }}</span>
+                        {%- endfor -%}
+                        {%- if h.differs -%}
+                        {%- for s in h.slots -%}
+                        <span class="disc-head__cell disc-head__mb{{ ' disc-head__meta' if s.meta }}">{{- s.mb or '' -}}
+                            {#- One hexagon for the line, on the last slot that
+                                differs — the same one-mark-per-line rule the
+                                track rows follow. It is what carries the meaning
+                                for a reader who can't distinguish the purple. -#}
+                            {%- if loop.index0 == h.mark_index -%}
+                            <span class="mb-mark" role="img" aria-label="MusicBrainz" title="MusicBrainz's description of this disc"><svg
+                                viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"
+                                ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span>
+                            {%- endif -%}
+                        </span>
+                        {%- endfor -%}
+                        {%- endif -%}
+                    </span>
+                    {% else %}
+                    {# Nothing to compare against: a disc nobody ripped, one
+                       Harmonist couldn't read, or the disk-only view (#228). The
+                       heading is then MusicBrainz's description of the disc and
+                       makes no claim about the files — which is why the
+                       medium-derived tags keep their ordinary columns here. #}
                     {{ group.medium.label }}
                     <span class="track-diff__disc-meta">{{ group.summary }}</span>
+                    {% endif %}
                 </th>
             </tr>
             {# The column headings repeat under each disc. A small duplication,

@@ -130,6 +130,11 @@ def _owned(title: str, disc: int, n: int, total: int) -> dict[str, object]:
         "disc_num": disc,
         "track_num": n,
         "track_total": total,
+        # The medium `_media()` gives this disc. Since #320 the disc HEADING
+        # compares it, and a headline clause reports a disc that differs — so a
+        # fixture that omits it makes every album here report both discs as
+        # differing, on a tag no test in this file is about.
+        "media": "CD" if disc == 1 else "DVD",
     }
 
 
@@ -160,6 +165,23 @@ def _video_track(
             duration_ms=duration,
             video=True,
             owned=_owned(title, 2, n, total),
+        ),
+    )
+
+
+def _only_video(disc: int, n: int, title: str, total: int = 2) -> tuple[str, TrackTags]:
+    """A video on whichever disc the caller says — `_video_track` is disc 2 by
+    construction, and the all-video album needs one on each."""
+    return (
+        f"{disc}-{n:02d} {title}.m4v",
+        TrackTags(
+            title=title,
+            artist="DJ Shadow",
+            disc_num=disc,
+            track_num=n,
+            duration_ms=200_000,
+            video=True,
+            owned=_owned(title, disc, n, total),
         ),
     )
 
@@ -202,6 +224,56 @@ def test_a_partly_ripped_dvd_is_short_not_absent():
     assert [r.state for r in dvd.tracks] == [TrackState.PRESENT] * 3 + [TrackState.MISSING]
     assert t.summary == "1 of 6 tracks differs from MusicBrainz · 1 not on disk"
     assert "Disc 2 not on disk" not in t.summary
+
+
+def test_a_video_disc_is_described_but_not_compared():
+    """#226 one level up, on the disc heading #320 added.
+
+    The heading compares the three tags that describe a medium — and Harmonist
+    never writes a video's tags, so a DVD whose files carry no `discsubtitle`
+    would get a purple heading stating a change no re-tag will ever make. It
+    would sit on the page for good, which is the whole reason videos aren't
+    compared row by row.
+
+    The audio disc is the control, and it is what makes this test able to fail:
+    its files say CD where MusicBrainz says Digital Media, so the mechanism is
+    demonstrably live on the same album that declines to use it on the DVD.
+    """
+    files, mb = _dvd_release(present=4)
+
+    t = compare.tracklist(files, mb, [Medium(1, None, "Digital Media"), Medium(2, "Bonus", "DVD")])
+    cd, dvd = t.discs
+
+    assert [(s.disk, s.mb) for s in cd.heading.slots] == [
+        ("Disc 1", None),
+        ("CD", "Digital Media"),
+        ("2 tracks", None),
+    ]
+    # Nothing on disc 2 is compared, even though its files carry no subtitle and
+    # MusicBrainz names the medium "Bonus" — so the headline names disc 1 alone.
+    assert dvd.heading is None
+    assert t.summary == "All 6 tracks match MusicBrainz · Disc 1 differs"
+
+
+def test_an_album_of_nothing_but_video_keeps_its_columns():
+    """The hole the roll-up could fall through, and why it is decided by whether
+    a heading was BUILT rather than by re-testing the condition that builds one.
+
+    Every disc here is video, so no disc gets a comparison — and if the columns
+    had skipped the medium-derived three anyway, all three would be off the page
+    entirely: no column, no heading, no collapsed entry, nothing.
+    """
+    mb = [_mb(1, i, f"Video {i}", 2) for i in (1, 2)] + [_mb(2, i, f"Clip {i}", 2) for i in (1, 2)]
+    files = [_only_video(1, i, f"Video {i}") for i in (1, 2)]
+    files += [_only_video(2, i, f"Clip {i}") for i in (1, 2)]
+
+    t = compare.tracklist(files, mb, _media())
+
+    assert t.headings == ()
+    # Still placed. Nothing here was compared, so they collapse rather than
+    # earning columns — but they are NAMED under the table, which is the whole
+    # difference between a tag that agreed and one nobody looked at (#112).
+    assert {"Disc subtitle", "Media", "Track total"} <= {c.label for c in t.collapsed}
 
 
 def test_a_video_track_is_reported_as_present_and_nothing_more():

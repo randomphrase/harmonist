@@ -60,8 +60,22 @@ versions follow [semantic versioning](https://semver.org).
   same credit unjoined, and since the Artist column became the artists it names,
   it was one fact in two columns. It comes back if it ever differs from
   MusicBrainz where Artist does not (#319).
+- On a multi-disc release, the **disc subtitle, medium and track count are shown
+  on the disc's heading** rather than in columns of their own. They describe the
+  disc, so a column of them repeated one value all the way down it — twenty-nine
+  rows of *Live Angle*. Where your files disagree with MusicBrainz about any of
+  them the heading gains a second line beneath it, carrying just the part that
+  changed. A disc whose own files disagree with each other keeps its columns,
+  since the heading could not state that (#320).
+- **Disc headings are more prominent**: larger, in mixed case rather than small
+  capitals, and marked with an accent rail (#320).
 
 ### Fixed
+
+- **Disc headings were rendering at the size and colour of the column headings
+  beneath them.** The rule that sizes them lost the cascade to a more specific
+  one, so none of it ever applied and a disc heading was indistinguishable from
+  the row under it (#320).
 
 - The album page can now put a **name on the MusicBrainz artist ids credited to a
   track**, not just the ones credited to the release — a featured artist's id

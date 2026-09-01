@@ -863,11 +863,130 @@ class Medium:
 
 
 @dataclass(frozen=True)
+class HeadingSlot:
+    """One cell of a disc heading (#320).
+
+    The heading lays out three of them — the disc's name, its medium, its track
+    count — and the MusicBrainz line beneath repeats ONLY the ones that changed,
+    each held in its own column so it sits directly under its counterpart. The
+    register the track rows already use: a difference is a vertical scan, and a
+    cell that agrees stays blank rather than saying the same thing twice.
+
+    `mb` is therefore None on a slot that matches, which is not the same as a
+    slot MusicBrainz has no value for — that one has nothing to restate either,
+    and both correctly render as empty.
+    """
+
+    disk: str | None
+    mb: str | None = None
+    #: Rendered in the quiet voice the medium and the track count share, rather
+    #: than as the heading's name. A property of the SLOT, so the template
+    #: doesn't have to know which of the three it is drawing.
+    meta: bool = False
+
+
+@dataclass(frozen=True)
+class DiscHeading:
+    """What a disc heading states, compared against the files that make it up.
+
+    The three tags `_MEDIUM_DERIVED` names, rolled up out of the tracklist and
+    into the one place on the page that already belongs to the disc (#320).
+
+    They are track-scoped for a real reason — `owned.Scope` explains it: they
+    describe the MEDIUM, and a multi-disc release genuinely carries a different
+    one per track. But that makes them per-disc CONSTANTS wearing per-track
+    clothes: a column of them says "Live Angle" twenty-nine times, or worse,
+    "— → Live Angle" twenty-nine times. #309's uniform-difference rule doesn't
+    catch it, because across the whole album the readings aren't uniform — they
+    vary by disc, which is exactly what the heading above each disc is for.
+
+    Only built where it can state the whole truth — see `_per_disc_constant`.
+    """
+
+    position: int
+    subtitle: FieldComparison
+    media: FieldComparison
+    track_total: FieldComparison
+
+    @property
+    def fields(self) -> tuple[FieldComparison, ...]:
+        return (self.subtitle, self.media, self.track_total)
+
+    @property
+    def differs(self) -> bool:
+        """Whether a MusicBrainz line is worth drawing under this heading."""
+        return any(f.differs for f in self.fields)
+
+    def _name(self, subtitle: str | None) -> str:
+        """ "Disc 2 — Live Angle", or plain "Disc 2" when the disc has no name.
+
+        The same shape `Medium.label` builds, from whichever side is being
+        rendered — the heading's whole point is that the disc's NAME is the disc
+        subtitle, so the two cannot be allowed to disagree about how it reads.
+        """
+        return f"Disc {self.position} — {subtitle}" if subtitle else f"Disc {self.position}"
+
+    def _count(self, total: str | None) -> str | None:
+        """ "16 tracks", from a track total that is a bare number on disk."""
+        if total is None:
+            return None
+        return f"{total} track{'' if total == '1' else 's'}"
+
+    @property
+    def slots(self) -> tuple[HeadingSlot, ...]:
+        """The three cells, in the order they are laid out.
+
+        A slot's `mb` is filled only where that field differs, so the second line
+        carries the change and nothing else. The name slot is the exception worth
+        noting: it restates the WHOLE name rather than the subtitle alone,
+        because "Disc 2" over "Disc 2 — Live Angle" is how a disc that has gained
+        a name reads, and a bare "Live Angle" under a bare "Disc 2" would not.
+        """
+        return (
+            HeadingSlot(
+                self._name(self.subtitle.disk),
+                self._name(self.subtitle.mb) if self.subtitle.differs else None,
+            ),
+            HeadingSlot(
+                self.media.disk,
+                self.media.mb if self.media.differs else None,
+                meta=True,
+            ),
+            HeadingSlot(
+                self._count(self.track_total.disk),
+                self._count(self.track_total.mb) if self.track_total.differs else None,
+                meta=True,
+            ),
+        )
+
+    @property
+    def mark_index(self) -> int:
+        """Which slot carries the hexagon: the LAST one that differs.
+
+        One mark per line rather than one per cell, the same rule the track rows
+        follow — the hexagon is what makes the line readable to someone who can't
+        distinguish the purple, and three of them across one heading is noise.
+        Last rather than first so it terminates the line it marks.
+        """
+        return max((i for i, s in enumerate(self.slots) if s.mb is not None), default=0)
+
+
+@dataclass(frozen=True)
 class DiscGroup:
     """A disc and the tracklist rows belonging to it."""
 
     medium: Medium
     tracks: tuple[ComparedTrack, ...]
+    #: What the files say this disc is, against what MusicBrainz says (#320).
+    #:
+    #: None wherever there is nothing to compare, and the template then renders
+    #: the heading from `medium` alone, exactly as it did before: a disc NOBODY
+    #: ripped (a difference against files that do not exist has nothing to say),
+    #: a disc whose files Harmonist could not read (#112 — it must not report
+    #: tags it never managed to look at), the disk-only view where MusicBrainz
+    #: has no opinion at all (#228), and every single-disc album, which draws no
+    #: heading to roll anything up into.
+    heading: DiscHeading | None = None
 
     @property
     def absent(self) -> bool:
@@ -908,6 +1027,27 @@ class TracklistComparison:
     #: MusicBrainz, each with the one value behind it. Named under the table so
     #: a collapsed column can't be mistaken for a field nobody looked at (#112).
     collapsed: tuple[CollapsedField, ...] = field(default_factory=tuple)
+    #: The disc headings that carry a comparison of their own (#320), by
+    #: position. Empty when the medium-derived tags were not rolled up — see
+    #: `_per_disc_constant` — in which case every heading renders from `media`
+    #: alone, as it did before.
+    headings: tuple[DiscHeading, ...] = field(default_factory=tuple)
+
+    @property
+    def heading_fields(self) -> frozenset[str]:
+        """The per-track tags the DISC HEADINGS account for (#320).
+
+        A fourth disposition and not a fourth place, exactly as #319's absorbed
+        set is: the tag is on the page, in the heading above the disc it belongs
+        to. So it gets no column, no collapsed entry and no re-tag-box row —
+        which is only true because the headings state it for every disc, the
+        condition `_per_disc_constant` enforces before any of this is built.
+
+        All three or none. The heading is one line describing one disc's shape,
+        and half of it comparing against the files while the other half quietly
+        described MusicBrainz would be two registers in one sentence.
+        """
+        return frozenset(f.value for f in _MEDIUM_DERIVED) if self.headings else frozenset()
 
     @property
     def shown_fields(self) -> frozenset[str]:
@@ -922,8 +1062,12 @@ class TracklistComparison:
         MusicBrainz on every track, so a re-tag has nothing to say about it and
         it cannot reach the box anyway — and if one ever did, that is a real
         difference the page had better state somewhere rather than swallow.
+
+        The disc headings ARE included, because they show what they account for
+        (#320) — a tag rolled up into them has been stated, per disc, and the box
+        restating it underneath would be the same row printed twice.
         """
-        return frozenset(f for c in self.columns for f in c.fields)
+        return frozenset(f for c in self.columns for f in c.fields) | self.heading_fields
 
     @property
     def identifier_columns(self) -> tuple[TrackColumn, ...]:
@@ -982,8 +1126,9 @@ class TracklistComparison:
         for t in self.tracks:
             by_position.setdefault(t.disc, []).append(t)
         known = {m.position: m for m in self.media}
+        headings = {h.position: h for h in self.headings}
         return tuple(
-            DiscGroup(known.get(pos, Medium(position=pos)), tuple(rows))
+            DiscGroup(known.get(pos, Medium(position=pos)), tuple(rows), headings.get(pos))
             for pos, rows in sorted(by_position.items())
         )
 
@@ -1024,6 +1169,17 @@ class TracklistComparison:
         elif total:
             verb = "differs" if n == 1 else "differ"
             clauses.append(f"{n} of {total} tracks {verb} from MusicBrainz")
+        # A disc whose DESCRIPTION differs (#320). Its own clause, because the
+        # roll-up moved those three tags off the rows: without this the album
+        # above reads "All 7 tracks match MusicBrainz" over a heading drawing a
+        # difference in purple, which is the headline contradicting the table.
+        # Not folded into the track count either — nothing is wrong with the
+        # tracks, and saying "7 of 7 differ" over a disc that is merely named
+        # differently would point at the wrong thing.
+        odd_discs = [g for g in self.discs if g.heading and g.heading.differs]
+        if odd_discs:
+            named = ", ".join(g.medium.label for g in odd_discs)
+            clauses.append(f"{named} {'differs' if len(odd_discs) == 1 else 'differ'}")
         if absent_discs:
             clauses.append(f"{', '.join(g.medium.label for g in absent_discs)} not on disk")
         for state, phrase in (
@@ -1159,9 +1315,16 @@ _COLUMN_ORDER: tuple[Owned, ...] = (
 #: uneven tagging rule 2 exists to surface, and the disc heading above each group
 #: already says "DVD, 29 tracks".
 #:
-#: Rule 1 still applies to them in full. A track total that has genuinely gone
-#: stale is a difference from MusicBrainz and still earns its column.
-_MEDIUM_DERIVED: frozenset[Owned] = frozenset({Owned.TRACK_TOTAL, Owned.MEDIA, Owned.DISC_SUBTITLE})
+#: Rule 1 applies to them only where the disc HEADINGS have not taken them — on
+#: a multi-disc release they normally have, and the heading is then the one place
+#: each of them appears (#320). Where the roll-up is off, rule 1 applies in full:
+#: a track total that has genuinely gone stale is a difference from MusicBrainz
+#: and still earns its column.
+#:
+#: The order is the order the heading lays them out in, and `DiscHeading` is
+#: built from the same three — one list, so the set that skips the columns and
+#: the set the heading states cannot drift apart.
+_MEDIUM_DERIVED: tuple[Owned, ...] = (Owned.DISC_SUBTITLE, Owned.MEDIA, Owned.TRACK_TOTAL)
 
 
 #: The per-track tags that are machine identifiers (#319).
@@ -1390,7 +1553,7 @@ def _matches_everywhere(candidate: _Candidate, present: Sequence[_Present]) -> b
 
 
 def _choose_columns(
-    present: Sequence[_Present], multi_disc: bool
+    present: Sequence[_Present], multi_disc: bool, rolled_up: bool = False
 ) -> tuple[list[_Candidate], tuple[CollapsedField, ...], dict[str, tuple[str, ...]]]:
     """Split the candidates into the ones with a column and the ones named below.
 
@@ -1403,6 +1566,9 @@ def _choose_columns(
     — a tag another column already says (#319), which is a fourth disposition and
     not a fourth place: the tag is on the page, in the absorbing column.
 
+    `rolled_up` says the disc headings have taken the medium-derived three (#320)
+    — the same disposition again, one surface further out.
+
     A candidate in none of the three is in the re-tag box, which shows whatever
     the surfaces above did not take.
     """
@@ -1413,6 +1579,8 @@ def _choose_columns(
     for candidate in _CANDIDATES:
         if multi_disc and candidate.owned is Owned.DISC_NUM:
             continue  # the number column already states it
+        if rolled_up and candidate.owned in _MEDIUM_DERIVED:
+            continue  # the disc heading above each group already states it (#320)
         if candidate.owned in _PINNED_COLUMNS:
             kept.append(candidate)
             continue
@@ -1463,6 +1631,89 @@ def _collapsed(candidate: _Candidate, present: Sequence[_Present]) -> CollapsedF
     )
 
 
+def _per_disc_constant(present: Sequence[tuple[int, TrackTags]]) -> bool:
+    """Whether the medium-derived tags may be rolled up into the headings (#320).
+
+    True when every disc's own present tracks agree about all three of them. Their
+    readings are then per-disc constants — a column of them answers *which disc*,
+    and the disc heading is where that question is already answered.
+
+    When one disc's tracks disagree with each other, they are not constants: the
+    column answers *which track*, which is a column earning its place under rule
+    1, and a heading built from a majority would quietly bury the outlier. So the
+    roll-up is off and all three go back to competing for columns exactly as they
+    did before — which is why this is checked over the whole album before a single
+    heading is built, rather than per disc.
+
+    All three together, for the reason `heading_fields` gives: the heading is one
+    line describing one disc's shape, and it states all of it or none of it.
+    """
+    by_disc: dict[int, list[TrackTags]] = {}
+    for disc, tags in present:
+        by_disc.setdefault(disc, []).append(tags)
+    return all(
+        len({_disk_value(t, f.value) for t in tagsets}) == 1
+        for tagsets in by_disc.values()
+        for f in _MEDIUM_DERIVED
+    )
+
+
+def _disc_headings(
+    present: Sequence[tuple[int, TrackTags]],
+    media: Sequence[Medium],
+    mb: Sequence[MBTrack],
+) -> tuple[DiscHeading, ...]:
+    """One heading per disc that has files, comparing the three medium tags.
+
+    Only for discs with present, readable, non-video tracks. A disc nobody ripped
+    has no files to compare (the difference would be against nothing); one whose
+    files Harmonist could not read has tags it never managed to look at (#112);
+    and one holding nothing but videos has tags Harmonist will never rewrite
+    (#226). All three keep the plain heading built from `media`, which describes
+    the disc without claiming anything about the files.
+
+    MusicBrainz's track total for a medium is how many tracks it HAS, which is
+    what `tagger` writes into the tag and what `DiscGroup.summary` has always
+    printed. Counted from `mb` rather than taken from a medium's own field, so
+    the number under the heading and the rows beneath it cannot disagree.
+    """
+    known = {m.position: m for m in media}
+    totals = Counter(t.tags.disc_num or 1 for t in mb)
+    by_disc: dict[int, list[TrackTags]] = {}
+    for disc, tags in present:
+        by_disc.setdefault(disc, []).append(tags)
+
+    out: list[DiscHeading] = []
+    for disc, tagsets in sorted(by_disc.items()):
+        medium = known.get(disc)
+        # Unanimous by construction — `_per_disc_constant` is the gate — so the
+        # first track's reading IS the disc's reading.
+        one = tagsets[0]
+        out.append(
+            DiscHeading(
+                position=disc,
+                subtitle=compare_value(
+                    LABELS[Owned.DISC_SUBTITLE],
+                    disk=_disk_value(one, Owned.DISC_SUBTITLE.value),
+                    mb=medium.title if medium else None,
+                ),
+                media=compare_value(
+                    LABELS[Owned.MEDIA],
+                    kind=Kind.SCALAR,
+                    disk=_disk_value(one, Owned.MEDIA.value),
+                    mb=medium.format if medium else None,
+                ),
+                track_total=compare_value(
+                    LABELS[Owned.TRACK_TOTAL],
+                    kind=Kind.SCALAR,
+                    disk=_disk_value(one, Owned.TRACK_TOTAL.value),
+                    mb=str(totals[disc]) if totals[disc] else None,
+                ),
+            )
+        )
+    return tuple(out)
+
+
 def tracklist(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: Sequence[MBTrack],
@@ -1484,12 +1735,40 @@ def tracklist(
     """
     multi_disc = any((t.tags.disc_num or 1) > 1 for t in mb)
     assigned, extras = _assign(tracks, mb)
+    # The disc comes from MusicBrainz, like the rows' own does, and NOT from the
+    # file: a file that says disc 1 while its release track id places it on disc
+    # 2 is exactly the case #232 exists for, and grouping it by what it claims
+    # would file its tags under the wrong heading.
+    #
+    # Videos take no part (#226). Harmonist reads their tags and never writes
+    # them, so a bonus DVD whose files carry no `discsubtitle` would get a purple
+    # heading stating a change no re-tag will ever make — the finding-you-cannot-
+    # act-on that #226 removed from the rows, reappearing one level up. A disc
+    # with nothing but videos on it therefore has no comparison at all, and its
+    # heading stays MusicBrainz's description of the disc.
+    on_disc: list[tuple[int, TrackTags]] = [
+        (mb[i].tags.disc_num or 1, tags)
+        for i, (_, tags) in sorted(assigned.items())
+        if not tags.unreadable and not tags.video
+    ]
     present: list[_Present] = [
         (tags, None if tags.video else mb[i])
         for i, (_, tags) in sorted(assigned.items())
         if not tags.unreadable
     ]
-    kept, collapsed, absorbed = _choose_columns(present, multi_disc)
+    # The medium-derived tags go to the disc headings where they can (#320),
+    # which is what keeps them out of the columns, the collapsed set and the box.
+    #
+    # The columns are told to skip them BY the headings existing, not by the same
+    # condition evaluated twice: an album of nothing but video discs satisfies
+    # every part of the test and still builds no heading, and two readings of one
+    # rule would then drop three tags off the page entirely — no column, no
+    # heading, nothing. Asking `bool(headings)` makes the two agree by
+    # construction rather than by staying in step.
+    headings = (
+        _disc_headings(on_disc, media, mb) if multi_disc and _per_disc_constant(on_disc) else ()
+    )
+    kept, collapsed, absorbed = _choose_columns(present, multi_disc, bool(headings))
 
     rows: list[ComparedTrack] = []
     for i, mb_track in enumerate(mb):
@@ -1569,6 +1848,7 @@ def tracklist(
         media=tuple(media),
         columns=_columns(kept, multi_disc, absorbed),
         collapsed=collapsed,
+        headings=headings,
     )
 
 

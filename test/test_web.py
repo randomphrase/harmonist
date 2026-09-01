@@ -5867,6 +5867,72 @@ def test_the_columns_a_tracklist_drops_are_named_under_it(client, cfg, monkeypat
     assert "Benoît Pioulard" in body
 
 
+def test_a_disc_subtitle_change_is_drawn_on_the_disc_heading(client, cfg, monkeypatch):
+    """#320, end to end.
+
+    MusicBrainz names Hybrid's second medium *Live Angle*; the files carry no
+    disc subtitle at all. That is a real change a re-tag would make, and as a
+    column it was one value repeated down a whole disc — so it is drawn on the
+    heading that already names the disc, with MusicBrainz's reading stacked
+    beneath the files'.
+
+    The web rung, not the pure one: `compare` can only say which slots differ.
+    Whether the template draws the second line, and draws it in the slot that
+    changed, is decided by the markup — and the model tests would stay green
+    against a heading that never rendered its MusicBrainz half at all.
+    """
+    d = _make_tagged_album(cfg, "Hybrid", mbid="rel-hybrid", tagged_at=datetime.now(UTC))
+    shutil.copy(SINE_M4A, d / "02 Track.m4a")
+    for name, disc, title in (("01 Track.m4a", 1, "Higher"), ("02 Track.m4a", 2, "Finished")):
+        audio = MP4(d / name)
+        audio[ATOM_TITLE] = [title]
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-hybrid"]
+        # One track per disc, stated on the file, so the heading's track count
+        # agrees and the subtitle is the only thing left to report.
+        audio["trkn"] = [(1, 1)]
+        audio["disk"] = [(disc, 2)]
+        audio.save()
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Hybrid",
+            "medium-list": [
+                {
+                    "position": "1",
+                    "track-list": [{"id": "t1", "title": "Higher", "length": "1000"}],
+                },
+                {
+                    "position": "2",
+                    "title": "Live Angle",
+                    "track-list": [{"id": "t2", "title": "Finished", "length": "1000"}],
+                },
+            ],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    # No column for it, and no entry in the collapsed set either — the heading
+    # accounts for it, so it is on the page in exactly one place.
+    assert not re.search(r"<th [^>]*>\s*Disc subtitle\s*</th>", body)
+    assert "<dt>Disc subtitle</dt>" not in body
+
+    # The heading is a comparison: what the files say, then what MusicBrainz
+    # says, in the slot that changed.
+    assert '<span class="disc-head">' in body
+    assert '<span class="disc-head__cell">Disc 2</span>' in body
+    assert '<span class="disc-head__cell disc-head__mb">Disc 2 — Live Angle' in body
+    # Disc 1 has nothing to report, so it draws one line and no hexagon.
+    assert body.count("MusicBrainz's description of this disc") == 1
+
+    # The slots that agree are EMPTY on the MusicBrainz line — held open so the
+    # changed one stays under its counterpart, but saying nothing. Empty rather
+    # than absent because `:not(:empty)` is what suppresses their "·" separator,
+    # so a cell that renders a stray space renders a bullet before nothing.
+    assert body.count('<span class="disc-head__cell disc-head__mb disc-head__meta"></span>') == 2
+
+
 def test_a_featured_credit_reads_as_the_artists_it_names(client, cfg, monkeypatch):
     """#309's second half, end to end.
 

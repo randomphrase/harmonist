@@ -457,25 +457,64 @@ button[disabled],
    track; adding a heavier one above each disc just put more lines into
    something that was already busy. A quiet background groups the heading with
    its column headings and reads as a block without drawing anything. */
-.track-diff__disc-head,
-.track-diff__disc-cols th {
+/* SCOPED `.track-diff .track-diff__disc-head` — 0-1-1 — so it beats `.track-diff
+   th`. Unscoped it is 0-1-0 and LOSES the cascade outright: every declaration
+   below was being dropped, and the disc heading rendered at the column headings'
+   .62rem muted grey, indistinguishable from the row directly beneath it. That is
+   the #261 item 2 collision again, on a second element (#320) — the reason the
+   heading read as de-emphasised was never the type scale, it was specificity. */
+.track-diff .track-diff__disc-head {
   background: var(--color-surface);
-}
-.track-diff__disc-head {
   text-align: left;
-  padding: .5rem .5rem .3rem;
-  font-size: .78rem;
+  padding: .6rem .5rem .55rem .75rem;
+  font-size: 1.05rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
+  letter-spacing: -.01em;
   color: var(--color-ink);
+  /* Mixed case, not the uppercase tracking every other heading here wears: a
+     disc's name is a NAME — "Live Angle", not a column label — and the caps that
+     make "ARTIST SORT" read as chrome made "LIVE ANGLE" read as chrome too. */
+  text-transform: none;
+  /* The rail is what makes the band a heading rather than a lighter row. Colour
+     and weight alone put it in the same family as the column headings it has to
+     outrank; a rule above it would have been a fourth horizontal line in a table
+     that already draws one per track. */
+  box-shadow: inset 3px 0 0 var(--color-accent);
 }
-/* Repeated column headings sit under the disc heading, inside the same band, so
-   they read as subordinate to it. */
-.track-diff__disc-cols th {
-  padding-top: 0;
+/* The repeated column headings sit on plain ground BELOW the band, not inside
+   it. They used to share the background, which made the band and the rail stop
+   at different places and left the rail looking cut short. The heading is loud
+   enough now to group them without tinting them. */
+.track-diff .track-diff__disc-cols th {
+  background: none;
+  padding-top: .45rem;
   padding-bottom: .35rem;
 }
+/* The heading's three slots (#320): the disc's name, its medium, its track
+   count. A grid rather than a run of inline spans, because the MusicBrainz line
+   beneath carries only the slots that CHANGED and each one has to land under its
+   counterpart — `max-content` columns are shared by both rows, so they do.
+
+   `:not(:empty)` on the separator is what lets a slot be blank: an empty cell
+   holds its column open and draws nothing, where `::before` alone would leave a
+   "·" separating a value from nothing. */
+.disc-head {
+  display: grid;
+  grid-template-columns: max-content max-content max-content;
+  column-gap: .55rem;
+  row-gap: .2rem;
+  align-items: baseline;
+}
+.disc-head__meta {
+  font-weight: 400;
+  font-size: .72rem;
+  letter-spacing: normal;
+  color: var(--color-muted);
+}
+.disc-head__meta:not(:empty)::before { content: "· "; }
+/* After `.disc-head__meta`, so a meta slot on the MusicBrainz line takes the
+   purple: both are one class, and source order settles the tie. */
+.disc-head__mb { color: var(--color-mb-purple); }
 /* The space between discs. A table cannot take it from margins, so it is an
    explicit spacer row — which also keeps the band from stretching to fill it. */
 .track-diff__disc-gap td {
@@ -483,9 +522,12 @@ button[disabled],
   border: 0;
   padding: 0;
 }
+/* The plain heading's meta, for the discs with nothing to compare. Sized
+   explicitly since #320: the heading is 1.05rem now, and these inherit it. */
 .track-diff__disc-meta,
 .track-diff__disc-absent {
   font-weight: 400;
+  font-size: .72rem;
   text-transform: none;
   letter-spacing: normal;
   color: var(--color-muted);

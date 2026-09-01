@@ -32,13 +32,20 @@ def _mb(disc: int, n: int, title: str, total: int) -> MBTrack:
     )
 
 
-def _file(n: int, disc: int, title: str, total: int = 16) -> tuple[str, TrackTags]:
+def _file(
+    n: int, disc: int, title: str, total: int = 16, media: str | None = None
+) -> tuple[str, TrackTags]:
     """A file the matching `_mb` track agrees with completely.
 
     `owned` carries the snapshot a real `read_tags` takes, `track_total`
     included — since #309 a per-track tag the file lacks and MusicBrainz has is a
     difference the tracklist reports as its own column, so a fixture short of one
     makes every album here differ on it.
+
+    `media` is the same trap one surface further out: since #320 the disc heading
+    compares it, and a disc that differs gets a clause in the headline these
+    tests assert on. Passed by the caller, because the value that agrees is
+    whatever `Medium` the caller handed the comparison.
     """
     return (
         f"{disc}-{n:02d}.m4a",
@@ -57,19 +64,24 @@ def _file(n: int, disc: int, title: str, total: int = 16) -> tuple[str, TrackTag
                 "disc_num": disc,
                 "track_num": n,
                 "track_total": total,
+                "media": media,
             },
         ),
     )
 
 
 def _two_disc(present_disc: int = 2):
-    """A 44-track disc 1 and a 16-track disc 2; only `present_disc` on disk."""
+    """A 44-track disc 1 and a 16-track disc 2; only `present_disc` on disk.
+
+    The media match the `Medium`s every caller passes, so the only finding in
+    this fixture is the absent disc these tests are about.
+    """
     mb = [_mb(1, i, f"Video {i}", 44) for i in range(1, 45)]
     mb += [_mb(2, i, f"Song {i}", 16) for i in range(1, 17)]
     files = (
-        [_file(i, 2, f"Song {i}") for i in range(1, 17)]
+        [_file(i, 2, f"Song {i}", media="CD") for i in range(1, 17)]
         if present_disc == 2
-        else [_file(i, 1, f"Video {i}", 44) for i in range(1, 45)]
+        else [_file(i, 1, f"Video {i}", 44, media="DVD-Video") for i in range(1, 45)]
     )
     return files, mb
 

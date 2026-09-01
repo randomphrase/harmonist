@@ -22,6 +22,7 @@ from harmonist.compare import (
     Consensus,
     Kind,
     MBTrack,
+    Medium,
     TrackState,
     album_fields,
     compare_field,
@@ -1109,10 +1110,12 @@ def test_the_table_stops_at_the_cap_and_the_rest_falls_to_the_box():
     bite: an inconsistently tagged one, where the readable per-track tags part
     company track by track and would all arrive at once.
 
-    A multi-disc release, because since #319 it is the only shape that can reach
-    the cap. Within one medium the readable per-track tags are title (pinned),
-    artist, artist sort and artists — three earnable, which is the cap exactly.
-    The medium-derived three are what push it over.
+    A SINGLE-disc release, which since #320 is the shape that can reach the cap:
+    a multi-disc one rolls the medium-derived three into its disc headings, and
+    they stop competing. With one disc there is no heading to roll them into, so
+    they are ordinary candidates again — and an album whose two halves were
+    tagged from different rips has them disagreeing with each other, which is
+    rule 2 and enough to earn.
 
     What overflows is deliberately NOT collapsed: the collapsed set claims the
     field is the same on every track and matches MusicBrainz, which of a field
@@ -1122,32 +1125,33 @@ def test_the_table_stops_at_the_cap_and_the_rest_falls_to_the_box():
     """
     tl = tracklist(
         [
-            _file(1, "Nightcall", disc=1, track_total=None),
-            _file(1, "Rampage", disc=2, track_total=None),
+            _file(
+                n,
+                t,
+                artist=a,
+                artist_sort=f"{a},",
+                artists=[a],
+                media=m,
+                disc_subtitle=f"Side {a}",
+            )
+            for n, t, a, m in ((1, "Nightcall", "A", "CD"), (2, "Rampage", "B", "DVD"))
         ],
         [
-            _mb_track(
-                1,
-                t,
-                disc=d,
-                total=d,
-                artist=f"Kavinsky {d}",
-                artist_sort=f"Kavinsky, {d}",
-                artists=[f"Kavinsky {d}"],
-                disc_subtitle=f"Side {d}",
-                media="CD" if d == 1 else "DVD",
-            )
-            for d, t in ((1, "Nightcall"), (2, "Rampage"))
+            # `artists` differs from MusicBrainz as well as between the tracks,
+            # so the `Artist` column cannot absorb it (#319) and it stays in the
+            # competition — it is the third earner, and the cap bites after it.
+            _mb_track(n, t, artist=a, artist_sort=f"{a},", artists=["Kavinsky"])
+            for n, t, a in ((1, "Nightcall", "A"), (2, "Rampage", "B"))
         ],
     )
 
     earned = [h for h in _headings(tl) if h not in ("#", "Title", "Length")]
     assert earned == ["Artist", "Artist sort", "Artists"]  # priority order
     assert len(earned) == MAX_EARNED_COLUMNS
-    # The medium-derived three overflowed. Nothing collapsed them, and the table
-    # does not claim them — so the box picks them up.
-    assert not {c.label for c in tl.collapsed} & {"Disc subtitle", "Media", "Track total"}
-    assert not tl.shown_fields & {"disc_subtitle", "media", "track_total"}
+    # `disc_subtitle` and `media` earned and overflowed. Nothing collapsed them,
+    # and the table does not claim them — so the box picks them up.
+    assert not {c.label for c in tl.collapsed} & {"Disc subtitle", "Media"}
+    assert not tl.shown_fields & {"disc_subtitle", "media"}
 
 
 def test_the_artist_column_accounts_for_artists_rather_than_repeating_it():
@@ -1275,6 +1279,204 @@ def test_no_per_track_tag_is_in_two_places_or_in_none():
     # and every per-track tag is accounted for by one of the three.
     overflow = per_track - tl.shown_fields - {f.value for f in Owned if LABELS[f] in collapsed}
     assert overflow == set()
+
+
+# ---------- the medium-derived tags roll up to the disc heading (#320) ----------
+
+
+def _two_discs(*, media: list, files: dict | None = None, mb: dict | None = None):
+    """A two-disc release of one track each, agreeing about all three medium tags.
+
+    The files take their `media` and `track_total` from `media` and from the
+    shape of the release itself, so the fixture starts with nothing to report and
+    a test names the ONE thing a disc says differently — the discipline `_file`
+    documents, and the one that stops a heading assertion passing because of a
+    difference the test never meant to create.
+
+    `files` and `mb` are keyed by disc number:
+    `_two_discs(media=[...], files={2: {"media": "Digital Media"}})`.
+    """
+    files, mb = files or {}, mb or {}
+    by_disc = {m.position: m for m in media}
+    discs = ((1, "Nightcall", 1), (1, "Rampage", 2))
+    return tracklist(
+        [
+            _file(
+                n,
+                t,
+                disc=d,
+                **{"media": by_disc[d].format, "track_total": 1, **files.get(d, {})},
+            )
+            for n, t, d in discs
+        ],
+        [_mb_track(n, t, disc=d, total=1, **mb.get(d, {})) for n, t, d in discs],
+        media,
+    )
+
+
+def test_a_disc_subtitle_change_lands_on_the_disc_heading_not_in_a_column():
+    """The case #320 was filed about.
+
+    MusicBrainz names Hybrid's two media *Wide Angle* and *Live Angle*; the files
+    carry neither. That is a real change a re-tag would make, and #309's
+    uniform-difference rule does NOT suppress it: the readings vary by disc, so
+    the column is earned and draws twenty-nine rows of "— → Live Angle".
+
+    They vary by disc because they ARE the disc. So the heading takes it, and the
+    column, the collapsed set and the box all decline it — `shown_fields` claims
+    it, which is what stops the box listing it underneath.
+    """
+    tl = _two_discs(
+        files={},
+        media=[Medium(1, "Wide Angle", "CD"), Medium(2, "Live Angle", "CD")],
+        mb={1: {"disc_subtitle": "Wide Angle"}, 2: {"disc_subtitle": "Live Angle"}},
+    )
+
+    assert "Disc subtitle" not in _headings(tl)
+    assert "Disc subtitle" not in {c.label for c in tl.collapsed}
+    assert "disc_subtitle" in tl.shown_fields
+
+    # And it is on the page, per disc, in the heading that names that disc.
+    two = tl.discs[1]
+    assert two.heading is not None
+    assert two.heading.differs
+    name, media, tracks = two.heading.slots
+    assert (name.disk, name.mb) == ("Disc 2", "Disc 2 — Live Angle")
+    # Only the slot that changed is restated. The medium and the track count
+    # agree, so their MusicBrainz cells stay blank rather than saying it twice.
+    assert (media.mb, tracks.mb) == (None, None)
+    assert two.heading.mark_index == 0
+
+
+def test_the_heading_states_the_medium_and_the_track_count_too():
+    """`media` and `track_total` are the same shape of thing — per-medium values
+    wearing per-track clothes — and the heading has always printed both, from
+    MusicBrainz, as "CD, 16 tracks". So they roll up with the subtitle.
+
+    All three or none: the heading is one line describing one disc's shape, and
+    half of it comparing against the files while the other half quietly described
+    MusicBrainz would be two registers in one sentence.
+    """
+    tl = _two_discs(
+        files={2: {"media": "Digital Media"}},
+        media=[Medium(1, None, "CD"), Medium(2, None, "CD")],
+        mb={1: {"media": "CD"}, 2: {"media": "CD"}},
+    )
+
+    assert not {"Media", "Track total", "Disc subtitle"} & set(_headings(tl))
+    assert {"media", "track_total", "disc_subtitle"} <= tl.shown_fields
+
+    name, media, tracks = tl.discs[1].heading.slots
+    assert (media.disk, media.mb) == ("Digital Media", "CD")
+    assert name.mb is None  # the disc's name did not change; it is not restated
+    # One track on each disc, and both sides agree — the count is stated once.
+    assert (tracks.disk, tracks.mb) == ("1 track", None)
+    assert tl.discs[1].heading.mark_index == 1
+
+    # With two slots changed the hexagon marks the LAST of them, so it
+    # terminates the line rather than sitting in the middle of it — one mark per
+    # line, the rule the track rows follow.
+    both = _two_discs(
+        files={2: {"media": "Digital Media"}},
+        media=[Medium(1, None, "CD"), Medium(2, "Live Angle", "CD")],
+        mb={2: {"disc_subtitle": "Live Angle"}},
+    )
+    assert [s.mb for s in both.discs[1].heading.slots] == ["Disc 2 — Live Angle", "CD", None]
+    assert both.discs[1].heading.mark_index == 1
+
+
+def test_the_headline_reports_a_disc_that_differs():
+    """The roll-up moves three tags off the rows, so a disc can now differ while
+    every track matches. Without a clause of its own the headline read "All 2
+    tracks match MusicBrainz" above a heading drawing a difference in purple —
+    the summary contradicting the table underneath it.
+
+    Its own clause rather than folded into the track count: nothing is wrong with
+    the tracks, and "2 of 2 differ" over a disc that is merely named differently
+    points at the wrong thing.
+    """
+    tl = _two_discs(
+        media=[Medium(1, None, "CD"), Medium(2, "Live Angle", "CD")],
+        mb={2: {"disc_subtitle": "Live Angle"}},
+    )
+
+    assert tl.summary == "All 2 tracks match MusicBrainz · Disc 2 — Live Angle differs"
+
+
+def test_a_disc_whose_tracks_disagree_keeps_its_column():
+    """The gate on the roll-up, and the reason it is a gate rather than a
+    majority vote.
+
+    When one disc's own files disagree about a medium tag — an album assembled
+    from two rips — the readings are no longer per-disc constants. The column
+    then answers *which track*, which is a column earning its place, and a
+    heading built from the majority would quietly bury the outlier.
+    """
+    tl = tracklist(
+        [
+            _file(1, "Nightcall", disc=1, media="CD"),
+            _file(2, "Odd Look", disc=1, media="Digital Media"),
+            _file(1, "Rampage", disc=2, media="DVD"),
+        ],
+        [
+            _mb_track(1, "Nightcall", disc=1, media="CD"),
+            _mb_track(2, "Odd Look", disc=1, media="CD"),
+            _mb_track(1, "Rampage", disc=2, media="DVD"),
+        ],
+        [Medium(1, None, "CD"), Medium(2, None, "DVD")],
+    )
+
+    assert "Media" in _headings(tl)
+    assert tl.headings == ()  # no heading claims anything, so none is built
+    assert all(g.heading is None for g in tl.discs)
+    # And with the roll-up off, the other two go back to competing as well.
+    assert "disc_subtitle" not in tl.shown_fields
+
+
+def test_a_single_disc_album_has_no_heading_to_roll_anything_up_into():
+    """#216: "a heading above the only disc is noise", so there is none — and
+    nowhere for a subtitle change to go.
+
+    Nothing is lost by that. With one disc the change is one fact rather than a
+    per-disc one, so rule 1's uniform-difference clause already declines it a
+    column and the re-tag box states it once, which is the whole of it. The
+    assertion that matters is that the roll-up did NOT fire and leave it stated
+    nowhere at all.
+    """
+    tl = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look")],
+        [
+            _mb_track(1, "Nightcall", disc_subtitle="Bonus"),
+            _mb_track(2, "Odd Look", disc_subtitle="Bonus"),
+        ],
+        [Medium(1, "Bonus", "CD")],
+    )
+
+    assert tl.headings == ()
+    assert "Disc subtitle" not in _headings(tl)
+    # Not collapsed either — it does not match MusicBrainz — so the box has it,
+    # which is exactly what `shown_fields` declining to claim it means.
+    assert "disc_subtitle" not in tl.shown_fields
+    assert "Disc subtitle" not in {c.label for c in tl.collapsed}
+
+
+def test_a_disc_nobody_ripped_gets_no_comparison():
+    """A difference against files that do not exist has nothing to say.
+
+    The absent disc is already collapsed to one line (#216); giving it a purple
+    heading would mark a change to tags there is no file to carry. The discs that
+    ARE on disk still get theirs — the absent one is skipped, not the roll-up.
+    """
+    tl = tracklist(
+        [_file(1, "Nightcall", disc=1)],
+        [_mb_track(1, "Nightcall", disc=1), _mb_track(1, "Rampage", disc=2)],
+        [Medium(1, "Wide Angle", "CD"), Medium(2, "Live Angle", "DVD")],
+    )
+
+    ripped, absent = tl.discs
+    assert absent.absent
+    assert absent.heading is None
+    assert ripped.heading is not None
 
 
 def test_only_id_rows_carry_a_musicbrainz_entity():
