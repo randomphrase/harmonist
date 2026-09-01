@@ -94,10 +94,18 @@ class TagSet:
     track_total: int
 
     # Sort names + multi-value artists (Picard: albumartistsort, artistsort,
-    # artists). Sort names drive correct alphabetisation in Plex/Navidrome
-    # ("The Beatles" under B); `artists` is the unjoined per-artist list.
+    # albumartists, artists). Sort names drive correct alphabetisation in
+    # Plex/Navidrome ("The Beatles" under B); the two list fields are the
+    # unjoined per-artist names.
+    #
+    # `album_artists` is `artists` one level up, and it exists for the same
+    # reason: `album_artist` is a single joined phrase — "zakè & rhubiqs" — so
+    # a player wanting to file a collaboration under BOTH artists has to guess
+    # where one name ends and the next begins. Navidrome and Plex read the
+    # album-level list to avoid that guess (#322).
     album_artist_sort: str | None = None
     artist_sort: str | None = None
+    album_artists: list[str] = field(default_factory=list)
     artists: list[str] = field(default_factory=list)
 
     # Original release date of the *work* (release-group first-release-date),

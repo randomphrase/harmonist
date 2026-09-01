@@ -70,6 +70,7 @@ class Owned(StrEnum):
     ALBUM = "album"
     ALBUM_ARTIST = "album_artist"
     ALBUM_ARTIST_SORT = "album_artist_sort"
+    ALBUM_ARTISTS = "album_artists"
     MB_ALBUM_ARTIST_IDS = "mb_album_artist_ids"
     MB_RELEASE_GROUP_ID = "mb_release_group_id"
     MB_ALBUM_TYPE = "mb_album_type"
@@ -105,6 +106,10 @@ SCOPE: dict[Owned, Scope] = {
     Owned.ALBUM: Scope.ALBUM,
     Owned.ALBUM_ARTIST: Scope.ALBUM,
     Owned.ALBUM_ARTIST_SORT: Scope.ALBUM,
+    # Derived from the RELEASE credit, so unlike `artists` it cannot vary
+    # between tracks — a compilation's tracks differ in `artists` while every
+    # one of them names the same album artists.
+    Owned.ALBUM_ARTISTS: Scope.ALBUM,
     Owned.MB_ALBUM_ARTIST_IDS: Scope.ALBUM,
     Owned.MB_RELEASE_GROUP_ID: Scope.ALBUM,
     Owned.MB_ALBUM_TYPE: Scope.ALBUM,
@@ -215,6 +220,7 @@ SIGNIFICANCE: dict[str, Significance] = {
     # --- Identity: what the album, or one of its tracks, IS ---
     Owned.ALBUM: Significance.IDENTITY,
     Owned.ALBUM_ARTIST: Significance.IDENTITY,
+    Owned.ALBUM_ARTISTS: Significance.IDENTITY,
     Owned.ARTIST: Significance.IDENTITY,
     Owned.ARTISTS: Significance.IDENTITY,
     # Identity even though it reads like a descriptor: MusicBrainz re-typing a
@@ -355,6 +361,7 @@ LABELS: dict[str, str] = {
     Owned.ALBUM: "Album",
     Owned.ALBUM_ARTIST: "Album artist",
     Owned.ALBUM_ARTIST_SORT: "Album artist sort",
+    Owned.ALBUM_ARTISTS: "Album artists",
     Owned.MB_ALBUM_ARTIST_IDS: "Album artist IDs",
     Owned.MB_RELEASE_GROUP_ID: "Release group",
     Owned.MB_ALBUM_TYPE: "Release type",

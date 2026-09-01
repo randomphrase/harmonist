@@ -1324,19 +1324,25 @@ def test_the_panel_pairs_release_fields_against_artist_fields():
     Pinned as the whole sequence, because the property being asserted is about
     ADJACENCY: it lives in the pairs, and sampling two of them cannot see a
     third that has drifted into the wrong column.
+
+    `Album artists` (#322) made the artist column four long, so `Script` moved up
+    from the paperwork block to square the two — and left an odd number of album
+    fields, which is why `Genre` now pairs with `Disc total` and `Comment` ends
+    the grid alone.
     """
     fields = album_fields([("1.flac", TrackTags(album="Obreel"))], _tagset(album="Obreel"))
 
     assert [f.label for f in fields] == [
         "Album",           "Album artist",
-        "Release group",   "Album artist sort",
-        "Release type",    "Album artist IDs",
+        "Release group",   "Album artists",
+        "Release type",    "Album artist sort",
+        "Script",          "Album artist IDs",
         "Release status",  "Country",
         "Date",            "Original date",
         "Label",           "Cat. no.",
         "Barcode",         "ASIN",
-        "Disc total",      "Script",
-        "Genre",           "Comment",
+        "Disc total",      "Genre",
+        "Comment",
     ]  # fmt: skip
 
 

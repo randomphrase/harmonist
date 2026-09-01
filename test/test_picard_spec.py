@@ -20,6 +20,7 @@ from mutagen.mp4 import MP4
 
 from harmonist.tagger import (
     ATOM_ALBUM_ARTIST_SORT,
+    ATOM_ALBUM_ARTISTS,
     ATOM_ARTIST_SORT,
     ATOM_ARTISTS,
     ATOM_ASIN,
@@ -253,8 +254,9 @@ def test_disc_number_atom(tmp_path):
 
 
 def test_sort_artists_original_date_script_atoms(tmp_path):
-    """Picard: soaa/soar (sort names), ARTISTS (multi-value), ORIGINALDATE +
-    ORIGINALYEAR (release-group first release), SCRIPT (text-representation)."""
+    """Picard: soaa/soar (sort names), ARTISTS and ALBUMARTISTS (multi-value),
+    ORIGINALDATE + ORIGINALYEAR (release-group first release), SCRIPT
+    (text-representation)."""
     album_dir = _setup_album(tmp_path, 2)
     PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
 
@@ -262,6 +264,7 @@ def test_sort_artists_original_date_script_atoms(tmp_path):
     assert t1["soaa"] == ["Reference Artist, The"]
     assert t1["soar"] == ["Reference Artist, The"]
     assert _atom_strs(t1, ATOM_ARTISTS) == ["Reference Artist"]
+    assert _atom_strs(t1, ATOM_ALBUM_ARTISTS) == ["Reference Artist"]
     assert _atom_str(t1, ATOM_ORIGINAL_DATE) == "1990-01-01"
     assert _atom_str(t1, ATOM_ORIGINAL_YEAR) == "1990"
     assert _atom_str(t1, ATOM_SCRIPT) == "Latn"
@@ -270,6 +273,11 @@ def test_sort_artists_original_date_script_atoms(tmp_path):
     t2 = MP4(album_dir / "02 Track 2.m4a")
     assert t2["soar"] == ["Guest feat. Host"]
     assert _atom_strs(t2, ATOM_ARTISTS) == ["Guest", "Host"]
+    # ALBUMARTISTS does NOT follow it: the album-level list comes from the
+    # RELEASE credit, so it is the same on every track however the tracks are
+    # credited (#322). Built from `artist-credit` on the track, this would read
+    # ["Guest", "Host"] and the album would file under its guest.
+    assert _atom_strs(t2, ATOM_ALBUM_ARTISTS) == ["Reference Artist"]
 
 
 # ---------- exhaustive atom inventory ----------
@@ -306,6 +314,7 @@ EXPECTED_PICARD_ATOMS_WE_WRITE = {
     # Sort names, multi-value artists, original date, script
     ATOM_ALBUM_ARTIST_SORT,
     ATOM_ARTIST_SORT,
+    ATOM_ALBUM_ARTISTS,
     ATOM_ARTISTS,
     ATOM_ORIGINAL_DATE,
     ATOM_ORIGINAL_YEAR,

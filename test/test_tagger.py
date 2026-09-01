@@ -505,6 +505,33 @@ def test_artist_phrases_keep_the_join_phrase(credit):
     assert tagger._artist_names(credit) == ["zakè", "rhubiqs"]
 
 
+def test_a_collaboration_names_both_album_artists_on_every_track():
+    """#322. `album_artist` is one joined phrase, so a player filing the album
+    under BOTH artists has to guess where "zakè" ends and "rhubiqs" begins —
+    the guess `artists` already removes at track level.
+
+    Asserted through `tagsets_for` rather than on a helper, because the claim is
+    that EVERY track carries the album-level list: it is derived from the release
+    credit, so it cannot vary between tracks, and a per-track derivation would
+    still pass a one-track assertion.
+    """
+    release = _release_2_tracks()
+    release["artist-credit"] = [
+        {"artist": {"id": "art-z", "name": "zakè", "sort-name": "zakè"}, "name": "zakè"},
+        " & ",
+        {"artist": {"id": "art-r", "name": "rhubiqs", "sort-name": "rhubiqs"}, "name": "rhubiqs"},
+    ]
+
+    tagsets = tagger.tagsets_for(release)
+
+    assert [t.album_artists for t in tagsets] == [["zakè", "rhubiqs"], ["zakè", "rhubiqs"]]
+    # The joined phrase is unchanged — the list is an addition, not a substitute.
+    assert {t.album_artist for t in tagsets} == {"zakè & rhubiqs"}
+    # Track 2 keeps its own credit in `artists`, which is what makes the two
+    # fields different questions rather than one written twice.
+    assert tagsets[1].artists == ["Featured Artist", "Other"]
+
+
 def test_tag_album_track_artist_credit_overrides_release(album_with_tracks):
     """Track 2 has its own artist-credit; should be used for ©ART and Artist Id atom."""
     album_dir = album_with_tracks(2)

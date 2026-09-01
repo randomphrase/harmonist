@@ -940,6 +940,7 @@ def _full_tagset() -> Any:
         track_total=18,
         album_artist_sort="Boards of Canada",
         artist_sort="Boards of Canada",
+        album_artists=["Boards of Canada"],
         artists=["Boards of Canada"],
         original_date="1998-04-20",
         script="Latn",

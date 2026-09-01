@@ -895,7 +895,7 @@ Everything not in the set is left exactly as found: the comment carrying a recov
 
 `Owned` is split by **scope** — whether a field's value depends on which track it is:
 
-- **Album** — `mb_album_id`, `album`, `album_artist`, `album_artist_sort`, `mb_album_artist_ids`, `mb_release_group_id`, `mb_album_type`, `mb_album_status`, `mb_album_country`, `date`, `original_date`, `script`, `label`, `catalog_number`, `barcode`, `asin`, `disc_total`.
+- **Album** — `mb_album_id`, `album`, `album_artist`, `album_artist_sort`, `album_artists`, `mb_album_artist_ids`, `mb_release_group_id`, `mb_album_type`, `mb_album_status`, `mb_album_country`, `date`, `original_date`, `script`, `label`, `catalog_number`, `barcode`, `asin`, `disc_total`.
 - **Track** — `title`, `artist`, `artist_sort`, `artists`, `track_num`, `track_total`, `disc_num`, `disc_subtitle`, `media`, `mb_track_id`, `mb_release_track_id`, `mb_artist_ids`, `isrcs`.
 
 `media`, `disc_subtitle`, `disc_num` and `track_total` are derived from the *medium*, so they are track-scoped even though they look album-level: on a 2-disc release, or a CD+DVD set, they genuinely differ between tracks. The scope drives the tagging audit records (#86), which record an album-level change once per album rather than once per track.
@@ -906,13 +906,12 @@ The `Owned` member values are exactly the `TagSet` attribute names, and a test a
 
 ### The tags Harmonist does *not* write
 
-`Owned` says what is written; this says what is deliberately left out, which the code cannot. Measured against [Picard's own tag documentation](https://picard-docs.musicbrainz.org/en/latest/variables/tags_basic.html), Harmonist's 30 owned fields land as 31 of the 38 **basic** tags and none of the ~19 **advanced** (relationship-derived) ones.
+`Owned` says what is written; this says what is deliberately left out, which the code cannot. Measured against [Picard's own tag documentation](https://picard-docs.musicbrainz.org/en/latest/variables/tags_basic.html), Harmonist's 31 owned fields land as 32 of the 38 **basic** tags and none of the ~19 **advanced** (relationship-derived) ones.
 
 The table is the standing answer to "why doesn't Harmonist write X" — so it is kept to the *reason*, and never restates the covered set, which would rot the moment `Owned` changed.
 
 | Picard tag(s) | Verdict | Why |
 | --- | --- | --- |
-| `albumartists` | Planned (#322) | The album-level twin of `artists`, from a credit already in hand. |
 | `compilation` | Planned (#323) | The Various Artists flag; without it players shatter a VA album per track artist. |
 | `genre` | Deferred (#12) | Read-only today: a genre tagged elsewhere is displayed and never clobbered. Needs the `genres` include and a policy on genre-vs-folksonomy-tag. |
 | `composer`, `composersort`, `lyricist`, `writer`, `arranger`, `conductor`, `performer:*`, `producer`, `engineer`, `mixer`, `djmixer`, `remixer`, `director`, `work`, `musicbrainz_workid`, `musicbrainz_composerid`, `language`, `license`, `website` | Undecided | The entire advanced set is one `RELEASE_INCLUDES` change away, in the same single request — but that tuple **is the `mb_cache` key** (§4), so adding to it invalidates every cached release and re-fetches the library at one rate-limited request per album. `Owned` roughly doubles, landing on the comparison (#106), the audit records (#86) and undo (#157); ID3 needs the `TMCL`/`TIPL` multi-value frames, which no backend writes. Relationships also churn in MusicBrainz far more than release facts, so #32's pass would report updates constantly. Worth splitting: composer/lyricist/work is the classical and soundtrack case; the credits half is a much larger surface for much less benefit. |

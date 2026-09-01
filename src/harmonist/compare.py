@@ -401,6 +401,7 @@ _KINDS: dict[str, Kind] = {
     Owned.ALBUM: Kind.TEXT,
     Owned.ALBUM_ARTIST: Kind.TEXT,
     Owned.ALBUM_ARTIST_SORT: Kind.TEXT,
+    Owned.ALBUM_ARTISTS: Kind.TEXT,
     Owned.MB_ALBUM_ARTIST_IDS: Kind.TEXT,
     Owned.MB_RELEASE_GROUP_ID: Kind.TEXT,
     Owned.MB_ALBUM_TYPE: Kind.SCALAR,
@@ -530,25 +531,30 @@ _NOT_COMPARED: frozenset[Owned] = frozenset({Owned.MB_ALBUM_ID})
 #: grouped for one column and for two, and the wide layout is the one being read
 #: on the machine someone tags from.
 _DISPLAY_ORDER: tuple[Owned, ...] = (
-    # Row 1-3: what the release IS, beside who it is BY.
+    # Row 1-4: what the release IS, beside who it is BY. `album_artists` sits
+    # directly under the singular phrase it unjoins (#322), and `script` — the
+    # writing system of the title above it — moved up from the paperwork block
+    # to keep the two columns square once the artist side grew to four.
     Owned.ALBUM,
     Owned.ALBUM_ARTIST,
     Owned.MB_RELEASE_GROUP_ID,
-    Owned.ALBUM_ARTIST_SORT,
+    Owned.ALBUM_ARTISTS,
     Owned.MB_ALBUM_TYPE,
+    Owned.ALBUM_ARTIST_SORT,
+    Owned.SCRIPT,
     Owned.MB_ALBUM_ARTIST_IDS,
-    # Row 4-5: which edition, and when.
+    # Row 5-6: which edition, and when.
     Owned.MB_ALBUM_STATUS,
     Owned.MB_ALBUM_COUNTRY,
     Owned.DATE,
     Owned.ORIGINAL_DATE,
-    # Row 6-8: the release's paperwork.
+    # Row 7-9: the release's paperwork. An odd field count leaves the last row
+    # half-full, which is the right place for the gap.
     Owned.LABEL,
     Owned.CATALOG_NUMBER,
     Owned.BARCODE,
     Owned.ASIN,
     Owned.DISC_TOTAL,
-    Owned.SCRIPT,
 )
 
 

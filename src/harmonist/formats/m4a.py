@@ -47,6 +47,7 @@ ATOM_ASIN = f"{ATOM_PREFIX}ASIN"
 # Per-track ISRC(s) and multi-value artists, original date, script (freeform).
 ATOM_ISRC = f"{ATOM_PREFIX}ISRC"
 ATOM_ARTISTS = f"{ATOM_PREFIX}ARTISTS"
+ATOM_ALBUM_ARTISTS = f"{ATOM_PREFIX}ALBUMARTISTS"
 ATOM_ORIGINAL_DATE = f"{ATOM_PREFIX}ORIGINALDATE"
 ATOM_ORIGINAL_YEAR = f"{ATOM_PREFIX}ORIGINALYEAR"
 ATOM_SCRIPT = f"{ATOM_PREFIX}SCRIPT"
@@ -84,6 +85,7 @@ OWNED_ATOMS: dict[Owned, tuple[str, ...]] = {
     Owned.ALBUM: (ATOM_ALBUM,),
     Owned.ALBUM_ARTIST: (ATOM_ALBUM_ARTIST,),
     Owned.ALBUM_ARTIST_SORT: (ATOM_ALBUM_ARTIST_SORT,),
+    Owned.ALBUM_ARTISTS: (ATOM_ALBUM_ARTISTS,),
     Owned.MB_ALBUM_ARTIST_IDS: (ATOM_MB_ALBUM_ARTIST_ID,),
     Owned.MB_RELEASE_GROUP_ID: (ATOM_MB_RELEASE_GROUP_ID,),
     Owned.MB_ALBUM_TYPE: (ATOM_MB_ALBUM_TYPE,),
@@ -329,6 +331,7 @@ def _read_owned(audio: MP4) -> dict[str, Any]:
         Owned.ALBUM: _text_atom(audio, ATOM_ALBUM),
         Owned.ALBUM_ARTIST: _text_atom(audio, ATOM_ALBUM_ARTIST),
         Owned.ALBUM_ARTIST_SORT: _text_atom(audio, ATOM_ALBUM_ARTIST_SORT),
+        Owned.ALBUM_ARTISTS: _binary_atom_list(audio, ATOM_ALBUM_ARTISTS),
         Owned.MB_ALBUM_ARTIST_IDS: _binary_atom_list(audio, ATOM_MB_ALBUM_ARTIST_ID),
         Owned.MB_RELEASE_GROUP_ID: _binary_atom_str(audio, ATOM_MB_RELEASE_GROUP_ID),
         Owned.MB_ALBUM_TYPE: _binary_atom_str(audio, ATOM_MB_ALBUM_TYPE),
@@ -471,6 +474,7 @@ _BINARY_ATOMS: dict[Owned, str] = {
 
 #: Owned fields stored as multi-valued freeform atoms.
 _BINARY_LIST_ATOMS: dict[Owned, str] = {
+    Owned.ALBUM_ARTISTS: ATOM_ALBUM_ARTISTS,
     Owned.MB_ALBUM_ARTIST_IDS: ATOM_MB_ALBUM_ARTIST_ID,
     Owned.ARTISTS: ATOM_ARTISTS,
     Owned.MB_ARTIST_IDS: ATOM_MB_ARTIST_ID,
@@ -545,6 +549,8 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
         audio[ATOM_ARTIST_SORT] = [tagset.artist_sort]
     if tagset.album_artist_sort:
         audio[ATOM_ALBUM_ARTIST_SORT] = [tagset.album_artist_sort]
+    if tagset.album_artists:
+        audio[ATOM_ALBUM_ARTISTS] = [a.encode("utf-8") for a in tagset.album_artists]
     if tagset.artists:
         audio[ATOM_ARTISTS] = [a.encode("utf-8") for a in tagset.artists]
 

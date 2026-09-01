@@ -8,6 +8,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Harmonist now writes **`albumartists`**, the album-level list of artist names
+  Picard writes alongside `albumartist`. On a collaboration the joined phrase —
+  *zakè & rhubiqs* — leaves a player guessing where one name ends and the next
+  begins, so the album files under a single composite artist; Navidrome and Plex
+  read the list instead. Written on the next tagging or re-tag (#322).
+  **Albums tagged by an earlier version don't carry it**, so they will report an
+  update available until re-tagged; a library Picard has tagged already has the
+  tag and is unaffected.
 - An album with a MusicBrainz update waiting carries an **Update** badge on its
   Library tile (#293).
 - Harmonist can **check your library against MusicBrainz in the background**, so

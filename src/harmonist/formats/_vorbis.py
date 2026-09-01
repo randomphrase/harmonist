@@ -42,6 +42,7 @@ KEY_ALBUM_ARTIST = "ALBUMARTIST"
 KEY_ARTIST_SORT = "ARTISTSORT"
 KEY_ALBUM_ARTIST_SORT = "ALBUMARTISTSORT"
 KEY_ARTISTS = "ARTISTS"
+KEY_ALBUM_ARTISTS = "ALBUMARTISTS"
 KEY_DATE = "DATE"
 KEY_ORIGINAL_DATE = "ORIGINALDATE"
 KEY_ORIGINAL_YEAR = "ORIGINALYEAR"
@@ -72,6 +73,7 @@ OWNED_KEYS: dict[Owned, tuple[str, ...]] = {
     Owned.ALBUM: (KEY_ALBUM,),
     Owned.ALBUM_ARTIST: (KEY_ALBUM_ARTIST,),
     Owned.ALBUM_ARTIST_SORT: (KEY_ALBUM_ARTIST_SORT,),
+    Owned.ALBUM_ARTISTS: (KEY_ALBUM_ARTISTS,),
     Owned.MB_ALBUM_ARTIST_IDS: (KEY_ALBUM_ARTIST_ID,),
     Owned.MB_RELEASE_GROUP_ID: (KEY_RELEASE_GROUP_ID,),
     Owned.MB_ALBUM_TYPE: (KEY_RELEASE_TYPE,),
@@ -140,6 +142,7 @@ _SINGLE_KEYS: dict[Owned, str] = {
 
 #: Owned fields carried as several values under one key.
 _LIST_KEYS: dict[Owned, str] = {
+    Owned.ALBUM_ARTISTS: KEY_ALBUM_ARTISTS,
     Owned.MB_ALBUM_ARTIST_IDS: KEY_ALBUM_ARTIST_ID,
     Owned.ARTISTS: KEY_ARTISTS,
     Owned.MB_ARTIST_IDS: KEY_ARTIST_ID,
@@ -362,6 +365,7 @@ class VorbisTagger:
             Owned.ALBUM: one(KEY_ALBUM),
             Owned.ALBUM_ARTIST: one(KEY_ALBUM_ARTIST),
             Owned.ALBUM_ARTIST_SORT: one(KEY_ALBUM_ARTIST_SORT),
+            Owned.ALBUM_ARTISTS: many(KEY_ALBUM_ARTISTS),
             Owned.MB_ALBUM_ARTIST_IDS: many(KEY_ALBUM_ARTIST_ID),
             Owned.MB_RELEASE_GROUP_ID: one(KEY_RELEASE_GROUP_ID),
             Owned.MB_ALBUM_TYPE: one(KEY_RELEASE_TYPE),
@@ -450,6 +454,8 @@ class VorbisTagger:
             tags[KEY_ARTIST_SORT] = [tagset.artist_sort]
         if tagset.album_artist_sort:
             tags[KEY_ALBUM_ARTIST_SORT] = [tagset.album_artist_sort]
+        if tagset.album_artists:
+            tags[KEY_ALBUM_ARTISTS] = list(tagset.album_artists)
         if tagset.artists:
             tags[KEY_ARTISTS] = list(tagset.artists)
         if tagset.date:

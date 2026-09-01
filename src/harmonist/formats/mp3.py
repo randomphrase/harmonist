@@ -64,6 +64,7 @@ TXXX_CATALOG = "CATALOGNUMBER"
 TXXX_BARCODE = "BARCODE"
 TXXX_ASIN = "ASIN"
 TXXX_ARTISTS = "ARTISTS"
+TXXX_ALBUM_ARTISTS = "ALBUMARTISTS"
 TXXX_SCRIPT = "SCRIPT"
 
 
@@ -81,6 +82,7 @@ OWNED_FRAMES: dict[Owned, tuple[str, ...]] = {
     Owned.ALBUM: ("TALB",),
     Owned.ALBUM_ARTIST: ("TPE2",),
     Owned.ALBUM_ARTIST_SORT: ("TSO2",),
+    Owned.ALBUM_ARTISTS: (f"TXXX:{TXXX_ALBUM_ARTISTS}",),
     Owned.MB_ALBUM_ARTIST_IDS: (f"TXXX:{TXXX_ALBUM_ARTIST_ID}",),
     Owned.MB_RELEASE_GROUP_ID: (f"TXXX:{TXXX_RELEASE_GROUP_ID}",),
     Owned.MB_ALBUM_TYPE: (f"TXXX:{TXXX_ALBUM_TYPE}",),
@@ -342,6 +344,7 @@ def _read_owned(tags: Any) -> dict[str, Any]:
         Owned.ALBUM: _text(tags, "TALB"),
         Owned.ALBUM_ARTIST: _text(tags, "TPE2"),
         Owned.ALBUM_ARTIST_SORT: _text(tags, "TSO2"),
+        Owned.ALBUM_ARTISTS: _txxx_list(tags, TXXX_ALBUM_ARTISTS),
         Owned.MB_ALBUM_ARTIST_IDS: _txxx_list(tags, TXXX_ALBUM_ARTIST_ID),
         Owned.MB_RELEASE_GROUP_ID: _txxx(tags, TXXX_RELEASE_GROUP_ID),
         Owned.MB_ALBUM_TYPE: _txxx(tags, TXXX_ALBUM_TYPE),
@@ -504,6 +507,7 @@ _TXXX_FIELDS: dict[Owned, str] = {
 
 #: Owned fields carried as several strings in one TXXX frame.
 _TXXX_LIST_FIELDS: dict[Owned, str] = {
+    Owned.ALBUM_ARTISTS: TXXX_ALBUM_ARTISTS,
     Owned.MB_ALBUM_ARTIST_IDS: TXXX_ALBUM_ARTIST_ID,
     Owned.ARTISTS: TXXX_ARTISTS,
     Owned.MB_ARTIST_IDS: TXXX_ARTIST_ID,
@@ -579,6 +583,8 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
         tags.setall("TSOP", [TSOP(encoding=Encoding.UTF8, text=[tagset.artist_sort])])
     if tagset.album_artist_sort:
         tags.setall("TSO2", [TSO2(encoding=Encoding.UTF8, text=[tagset.album_artist_sort])])
+    if tagset.album_artists:
+        _set_txxx(tags, TXXX_ALBUM_ARTISTS, tagset.album_artists)
     if tagset.artists:
         _set_txxx(tags, TXXX_ARTISTS, tagset.artists)
     if tagset.original_date:

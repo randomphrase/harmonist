@@ -33,6 +33,7 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_ALBUM,
     ATOM_ALBUM_ARTIST,
     ATOM_ALBUM_ARTIST_SORT,
+    ATOM_ALBUM_ARTISTS,
     ATOM_ARTIST,
     ATOM_ARTIST_SORT,
     ATOM_ARTISTS,
@@ -986,6 +987,11 @@ def _build_tagset(
         track_total=track_total,
         album_artist_sort=_artist_sort_phrase(release.get("artist-credit")) or None,
         artist_sort=_artist_sort_phrase(track_artist_credit) or None,
+        # The release credit unjoined, so a two-artist collaboration files under
+        # both names instead of under one composite pseudo-artist (#322). Bare
+        # names by construction — `_artist_names` drops the join phrases, which
+        # is the guess this tag exists to remove.
+        album_artists=_artist_names(release.get("artist-credit")),
         artists=_artist_names(track_artist_credit),
         original_date=rg.get("first-release-date") or None,
         script=(release.get("text-representation") or {}).get("script") or None,
