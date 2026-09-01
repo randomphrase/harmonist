@@ -815,7 +815,13 @@ Per-album (same on every track):
 - `----:com.apple.iTunes:MusicBrainz Album Artist Id` — release-artist MBID(s)
 - `----:com.apple.iTunes:MusicBrainz Release Group Id`
 - `----:com.apple.iTunes:MusicBrainz Album Type` — **lower-cased** (`album`, not
-  `Album`), matching Picard. Primary type only; secondary types are not written.
+  `Album`), matching Picard, and **multi-valued**: the primary type followed by
+  the release group's secondary types (`album`, `live`), in that order. One tag
+  holding both, exactly as Picard builds it — `releasetype = primary +
+  secondary` in its `mbjson.py`. The secondary types are what say an album is
+  live, a remix or a soundtrack, and Navidrome reads this tag and has no other
+  source for it (#331). They cost no extra request: `secondary-type-list` rides
+  along with the `release-groups` include §4 already asks for.
 - `----:com.apple.iTunes:MusicBrainz Album Status` — **lower-cased** (`official`),
   matching Picard.
 - `----:com.apple.iTunes:MusicBrainz Album Release Country`

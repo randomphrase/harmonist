@@ -341,7 +341,11 @@ def _read_owned(audio: MP4) -> dict[str, Any]:
         Owned.ALBUM_ARTISTS: _binary_atom_list(audio, ATOM_ALBUM_ARTISTS),
         Owned.MB_ALBUM_ARTIST_IDS: _binary_atom_list(audio, ATOM_MB_ALBUM_ARTIST_ID),
         Owned.MB_RELEASE_GROUP_ID: _binary_atom_str(audio, ATOM_MB_RELEASE_GROUP_ID),
-        Owned.MB_ALBUM_TYPE: _binary_atom_str(audio, ATOM_MB_ALBUM_TYPE),
+        # Multi-value: primary type then the secondaries (#331). Through the
+        # LIST reader, or a Picard-tagged live album reads back as plain
+        # "album" — equal to what Harmonist would write, so the difference
+        # never surfaced and the next re-tag wrote the truncation back.
+        Owned.MB_ALBUM_TYPE: _binary_atom_list(audio, ATOM_MB_ALBUM_TYPE),
         Owned.MB_ALBUM_STATUS: _binary_atom_str(audio, ATOM_MB_ALBUM_STATUS),
         Owned.MB_ALBUM_COUNTRY: _binary_atom_str(audio, ATOM_MB_ALBUM_COUNTRY),
         # `audio.get` returns the bare bool for `cpil`, not a list — see the
@@ -472,7 +476,6 @@ _TEXT_ATOMS: dict[Owned, str] = {
 _BINARY_ATOMS: dict[Owned, str] = {
     Owned.MB_ALBUM_ID: ATOM_MB_ALBUM_ID,
     Owned.MB_RELEASE_GROUP_ID: ATOM_MB_RELEASE_GROUP_ID,
-    Owned.MB_ALBUM_TYPE: ATOM_MB_ALBUM_TYPE,
     Owned.MB_ALBUM_STATUS: ATOM_MB_ALBUM_STATUS,
     Owned.MB_ALBUM_COUNTRY: ATOM_MB_ALBUM_COUNTRY,
     Owned.ORIGINAL_DATE: ATOM_ORIGINAL_DATE,
@@ -489,6 +492,8 @@ _BINARY_ATOMS: dict[Owned, str] = {
 
 #: Owned fields stored as multi-valued freeform atoms.
 _BINARY_LIST_ATOMS: dict[Owned, str] = {
+    # Multi-value since #331: the primary type plus the secondaries.
+    Owned.MB_ALBUM_TYPE: ATOM_MB_ALBUM_TYPE,
     Owned.ALBUM_ARTISTS: ATOM_ALBUM_ARTISTS,
     Owned.MB_ALBUM_ARTIST_IDS: ATOM_MB_ALBUM_ARTIST_ID,
     Owned.ARTISTS: ATOM_ARTISTS,
@@ -537,7 +542,7 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
     if tagset.mb_release_group_id:
         audio[ATOM_MB_RELEASE_GROUP_ID] = [tagset.mb_release_group_id.encode("utf-8")]
     if tagset.mb_album_type:
-        audio[ATOM_MB_ALBUM_TYPE] = [tagset.mb_album_type.encode("utf-8")]
+        audio[ATOM_MB_ALBUM_TYPE] = [t.encode("utf-8") for t in tagset.mb_album_type]
     if tagset.mb_album_status:
         audio[ATOM_MB_ALBUM_STATUS] = [tagset.mb_album_status.encode("utf-8")]
     if tagset.mb_album_country:

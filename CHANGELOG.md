@@ -98,6 +98,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A re-tag no longer deletes MusicBrainz secondary release types.** Harmonist
+  wrote only the primary type, so nothing on disk recorded that an album was
+  live, a remix or a soundtrack — and on a Picard-tagged library it was worse
+  than incomplete: the reader took only the first value, so a live album
+  compared as matching and then lost *live* on the next re-tag, with the album
+  page reporting agreement the whole time. The release type is now written the
+  way Picard writes it, as one multi-value tag holding the primary type and the
+  secondary ones. **Navidrome reads this tag and has no other source for it**, so
+  this is what makes its album *Type* filter work. Albums tagged by an earlier
+  version will report an update available until re-tagged (#331).
 - **Disc headings were rendering at the size and colour of the column headings
   beneath them.** The rule that sizes them lost the cascade to a more specific
   one, so none of it ever applied and a disc heading was indistinguishable from

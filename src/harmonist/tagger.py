@@ -1009,7 +1009,7 @@ def _build_tagset(
         # first night over a capital letter — #283's failure mode on a second
         # field. Any future field taken from a MusicBrainz vocabulary belongs in
         # this pair, not beside it.
-        mb_album_type=(rg.get("primary-type") or "").lower() or None,
+        mb_album_type=_release_types(rg),
         mb_album_status=(release.get("status") or "").lower() or None,
         mb_album_country=release.get("country"),
         compilation=_compilation_flag(release.get("artist-credit")),
@@ -1323,6 +1323,34 @@ def _compilation_flag(artist_credit: list[Any] | None) -> bool | None:
     prevent. Harmonist writes the primary type only (design §5).
     """
     return True if VARIOUS_ARTISTS_ID in _artist_ids(artist_credit) else None
+
+
+def _release_types(rg: Release) -> list[str]:
+    """The release group's type, as Picard writes it: primary then secondaries.
+
+    ONE multi-value tag (`picard/mbjson.py`, `release_group_to_metadata`):
+
+        m['releasetype'] = m.getall('~primaryreleasetype') + m.getall('~secondaryreleasetype')
+
+    Order is Picard's — primary first, then MusicBrainz's own order for the rest
+    — because the two libraries have to agree value for value or an adopted
+    album differs on this field forever (#290). Lower-cased for the same reason,
+    which the primary already was; the secondaries join it rather than sitting
+    beside it in a second convention.
+
+    The secondaries are what say an album is live, a remix or a soundtrack, and
+    Navidrome reads this tag and has no other source for that (#331). They cost
+    no extra request: `secondary-type-list` rides along with the `release-groups`
+    include `RELEASE_INCLUDES` already asks for.
+
+    Empty when the release group has no primary type, which is how the backends
+    know to leave the tag off entirely — a secondary type with no primary would
+    be a shape neither Picard nor a player expects.
+    """
+    primary = (rg.get("primary-type") or "").lower()
+    if not primary:
+        return []
+    return [primary, *((t or "").lower() for t in rg.get("secondary-type-list") or [])]
 
 
 def _artist_ids(artist_credit: list[Any] | None) -> list[str]:

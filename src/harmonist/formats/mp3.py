@@ -351,7 +351,9 @@ def _read_owned(tags: Any) -> dict[str, Any]:
         Owned.ALBUM_ARTISTS: _txxx_list(tags, TXXX_ALBUM_ARTISTS),
         Owned.MB_ALBUM_ARTIST_IDS: _txxx_list(tags, TXXX_ALBUM_ARTIST_ID),
         Owned.MB_RELEASE_GROUP_ID: _txxx(tags, TXXX_RELEASE_GROUP_ID),
-        Owned.MB_ALBUM_TYPE: _txxx(tags, TXXX_ALBUM_TYPE),
+        # Multi-value since #331 — see the m4a backend for what the scalar
+        # reader cost. ID3 carries the several values in one TXXX frame.
+        Owned.MB_ALBUM_TYPE: _txxx_list(tags, TXXX_ALBUM_TYPE),
         Owned.MB_ALBUM_STATUS: _txxx(tags, TXXX_ALBUM_STATUS),
         Owned.MB_ALBUM_COUNTRY: _txxx(tags, TXXX_ALBUM_COUNTRY),
         Owned.COMPILATION: as_flag(_text(tags, "TCMP")),
@@ -505,7 +507,6 @@ _TEXT_FRAMES: dict[Owned, Any] = {
 _TXXX_FIELDS: dict[Owned, str] = {
     Owned.MB_ALBUM_ID: TXXX_ALBUM_ID,
     Owned.MB_RELEASE_GROUP_ID: TXXX_RELEASE_GROUP_ID,
-    Owned.MB_ALBUM_TYPE: TXXX_ALBUM_TYPE,
     Owned.MB_ALBUM_STATUS: TXXX_ALBUM_STATUS,
     Owned.MB_ALBUM_COUNTRY: TXXX_ALBUM_COUNTRY,
     Owned.SCRIPT: TXXX_SCRIPT,
@@ -517,6 +518,8 @@ _TXXX_FIELDS: dict[Owned, str] = {
 
 #: Owned fields carried as several strings in one TXXX frame.
 _TXXX_LIST_FIELDS: dict[Owned, str] = {
+    # Multi-value since #331: the primary type plus the secondaries.
+    Owned.MB_ALBUM_TYPE: TXXX_ALBUM_TYPE,
     Owned.ALBUM_ARTISTS: TXXX_ALBUM_ARTISTS,
     Owned.MB_ALBUM_ARTIST_IDS: TXXX_ALBUM_ARTIST_ID,
     Owned.ARTISTS: TXXX_ARTISTS,
@@ -565,7 +568,7 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
     if tagset.mb_release_group_id:
         _set_txxx(tags, TXXX_RELEASE_GROUP_ID, [tagset.mb_release_group_id])
     if tagset.mb_album_type:
-        _set_txxx(tags, TXXX_ALBUM_TYPE, [tagset.mb_album_type])
+        _set_txxx(tags, TXXX_ALBUM_TYPE, list(tagset.mb_album_type))
     if tagset.mb_album_status:
         _set_txxx(tags, TXXX_ALBUM_STATUS, [tagset.mb_album_status])
     if tagset.mb_album_country:

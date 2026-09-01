@@ -169,9 +169,50 @@ def test_album_level_mbid_atoms_match_picard_names(tmp_path):
     # Picard lower-cases both of these vocabulary fields, so we do too — an
     # adopted library carries "album"/"official" and would otherwise differ from
     # Harmonist on the type forever (#290).
-    assert _atom_str(audio, ATOM_MB_ALBUM_TYPE) == "album"
+    assert _atom_strs(audio, ATOM_MB_ALBUM_TYPE) == ["album"]
     assert _atom_str(audio, ATOM_MB_ALBUM_STATUS) == "official"
     assert _atom_str(audio, ATOM_MB_ALBUM_COUNTRY) == "GB"
+
+
+def test_the_release_type_carries_the_secondary_types_too(tmp_path):
+    """#331. Picard writes ONE multi-value tag holding the primary type and every
+    secondary one — `picard/mbjson.py:971`:
+
+        m['releasetype'] = m.getall('~primaryreleasetype') + m.getall('~secondaryreleasetype')
+
+    Harmonist wrote the primary alone, so nothing on disk recorded that an album
+    was live, and Navidrome — which reads this tag and has no other source for
+    it — could not tell. Primary first, then MusicBrainz's own order, every value
+    lower-cased like the primary already was (#290).
+    """
+    release = _fully_populated_release()
+    release["release-group"]["secondary-type-list"] = ["Live", "Compilation"]
+    album_dir = _setup_album(tmp_path, 2)
+
+    PicardCompatibleTagger().tag_album(album_dir, release)
+
+    audio = MP4(album_dir / "01 Track 1.m4a")
+    assert _atom_strs(audio, ATOM_MB_ALBUM_TYPE) == ["album", "live", "compilation"]
+
+
+def test_a_picard_tagged_secondary_type_survives_a_re_tag(tmp_path):
+    """The half that made #331 a data-loss bug rather than a missing feature.
+
+    A Picard-tagged live album already carries ["album", "live"]. Harmonist's
+    reader took `value[0]`, so the page compared "album" against "album" and
+    reported agreement — and then the re-tag wrote a single value over the top
+    and "live" was gone, with nothing on the page having said so.
+    """
+    album_dir = _setup_album(tmp_path, 2)
+    picard_tagged = MP4(album_dir / "01 Track 1.m4a")
+    picard_tagged[ATOM_MB_ALBUM_TYPE] = [b"album", b"live"]
+    picard_tagged.save()
+
+    release = _fully_populated_release()
+    release["release-group"]["secondary-type-list"] = ["Live"]
+    PicardCompatibleTagger().tag_album(album_dir, release)
+
+    assert _atom_strs(MP4(album_dir / "01 Track 1.m4a"), ATOM_MB_ALBUM_TYPE) == ["album", "live"]
 
 
 def test_album_level_optional_metadata_atoms(tmp_path):

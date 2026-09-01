@@ -116,7 +116,25 @@ class TagSet:
 
     mb_album_artist_ids: list[str] = field(default_factory=list)
     mb_release_group_id: str | None = None
-    mb_album_type: str | None = None
+    #: Primary type first, then MusicBrainz's secondary types, all lower-cased
+    #: (#331). ONE multi-value tag, exactly as Picard builds it in
+    #: `mbjson.py`: `releasetype = primary + secondary`.
+    #:
+    #: A list rather than a scalar because the secondary types are what say an
+    #: album is live, a remix or a soundtrack — and Navidrome reads this tag and
+    #: has no other source for that. Written as a scalar it was worse than
+    #: incomplete: the readers took the first value, so a Picard-tagged live
+    #: album compared equal to Harmonist's "album" and then lost "live" on the
+    #: next re-tag, with the page reporting agreement throughout.
+    #:
+    #: SINGULAR still, though it holds several. The name is `Owned.MB_ALBUM_TYPE`'s
+    #: value, and that string is persisted: `activity_store` keeps each tagging's
+    #: changes as JSON `{field: [before, after]}`, and `tag_history` renders a row
+    #: through `_LABELS.get(field, field)`. Rename it and every release-type
+    #: change already in someone's history stops resolving to a label and renders
+    #: as raw `mb_album_type` — the #309 bug, on a field that has no reason to
+    #: pay for a plural.
+    mb_album_type: list[str] = field(default_factory=list)
     mb_album_status: str | None = None
     mb_album_country: str | None = None
 

@@ -120,7 +120,6 @@ _SINGLE_KEYS: dict[Owned, str] = {
     Owned.ALBUM_ARTIST: KEY_ALBUM_ARTIST,
     Owned.ALBUM_ARTIST_SORT: KEY_ALBUM_ARTIST_SORT,
     Owned.MB_RELEASE_GROUP_ID: KEY_RELEASE_GROUP_ID,
-    Owned.MB_ALBUM_TYPE: KEY_RELEASE_TYPE,
     Owned.MB_ALBUM_STATUS: KEY_RELEASE_STATUS,
     Owned.MB_ALBUM_COUNTRY: KEY_RELEASE_COUNTRY,
     Owned.DATE: KEY_DATE,
@@ -145,6 +144,8 @@ _SINGLE_KEYS: dict[Owned, str] = {
 
 #: Owned fields carried as several values under one key.
 _LIST_KEYS: dict[Owned, str] = {
+    # Multi-value since #331: the primary type plus the secondaries.
+    Owned.MB_ALBUM_TYPE: KEY_RELEASE_TYPE,
     Owned.ALBUM_ARTISTS: KEY_ALBUM_ARTISTS,
     Owned.MB_ALBUM_ARTIST_IDS: KEY_ALBUM_ARTIST_ID,
     Owned.ARTISTS: KEY_ARTISTS,
@@ -371,7 +372,9 @@ class VorbisTagger:
             Owned.ALBUM_ARTISTS: many(KEY_ALBUM_ARTISTS),
             Owned.MB_ALBUM_ARTIST_IDS: many(KEY_ALBUM_ARTIST_ID),
             Owned.MB_RELEASE_GROUP_ID: one(KEY_RELEASE_GROUP_ID),
-            Owned.MB_ALBUM_TYPE: one(KEY_RELEASE_TYPE),
+            # Multi-value since #331 — see the m4a backend for what the
+            # scalar reader cost on a Picard-tagged live album.
+            Owned.MB_ALBUM_TYPE: many(KEY_RELEASE_TYPE),
             Owned.MB_ALBUM_STATUS: one(KEY_RELEASE_STATUS),
             Owned.MB_ALBUM_COUNTRY: one(KEY_RELEASE_COUNTRY),
             Owned.COMPILATION: as_flag(one(KEY_COMPILATION)),
@@ -435,7 +438,7 @@ class VorbisTagger:
         if tagset.mb_release_group_id:
             tags[KEY_RELEASE_GROUP_ID] = [tagset.mb_release_group_id]
         if tagset.mb_album_type:
-            tags[KEY_RELEASE_TYPE] = [tagset.mb_album_type]
+            tags[KEY_RELEASE_TYPE] = list(tagset.mb_album_type)
         if tagset.mb_album_status:
             tags[KEY_RELEASE_STATUS] = [tagset.mb_album_status]
         if tagset.mb_album_country:

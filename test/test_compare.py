@@ -810,6 +810,30 @@ def _album_row(disk_album: str, *, alias: str | None = None, **track_overrides):
     return {f.label: f for f in fields}
 
 
+def test_a_missing_secondary_release_type_is_reported_as_a_difference():
+    """The half of #331 that made it invisible rather than merely incomplete.
+
+    Before the fix the release type was a scalar on both sides, so a file
+    carrying "album" compared equal to a release whose type is "album; live" —
+    the page said the tags matched, and the re-tag that followed wrote the
+    truncation back. The finding and the loss cancelled each other out.
+
+    Asserted through `album_fields`, because the panel is where the user would
+    have seen it: a difference this table declines to report is one nothing else
+    on the page can raise.
+    """
+    row = {
+        f.label: f
+        for f in album_fields(
+            [("1.flac", TrackTags(album="Obreel", owned={"mb_album_type": ["album"]}))],
+            _tagset(album="Obreel", mb_album_type=["album", "live"]),
+        )
+    }["Release type"]
+
+    assert row.agreement is Agreement.DIFFERS
+    assert (row.disk, row.mb) == ("album", "album; live")
+
+
 def test_the_disambiguated_album_title_reads_as_a_match():
     """Picard appends the release disambiguation to the album title when told to,
     so `Obreel (expanded edition)` and `Obreel` are the same album by the user's

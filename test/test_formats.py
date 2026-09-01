@@ -999,7 +999,8 @@ def _full_tagset() -> Any:
         script="Latn",
         mb_album_artist_ids=["aa-1"],
         mb_release_group_id="rg-1",
-        mb_album_type="Album",
+        # Multi-value since #331: primary type plus the secondaries.
+        mb_album_type=["album", "live"],
         mb_album_status="official",
         mb_album_country="GB",
         compilation=True,
