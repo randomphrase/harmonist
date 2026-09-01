@@ -177,8 +177,8 @@ you tagged it — each with its count:
   count towards completeness even though Harmonist can't tag them yet, so a
   CD+DVD release you've ripped in full reads as complete. If you *didn't* rip the
   bonus DVD at all, that's not counted against you either — the album's page
-  lists the discs that aren't on disk, so nothing is hidden. A DVD you ripped
-  only part of does still count as incomplete.
+  lists the discs you don't have, so nothing is hidden. A DVD you ripped only
+  part of does still count as incomplete.
 
   The album's own page says the same thing in words, under the MusicBrainz and
   Bandcamp badges, so you don't have to work it out from the tracklist below it:
@@ -285,6 +285,11 @@ so an action never runs on a cached answer.
 or absent from MusicBrainz. Video files are listed as present and marked *video*;
 Harmonist reads their tags but never writes them, so they aren't compared against
 MusicBrainz.
+
+A track MusicBrainz lists that you don't have says *"Not in your files"*, with a
+dashed ring beside its number — so a half-ripped disc reads as a column of them
+rather than as a stack of separate notices. A disc you never ripped at all carries
+the same ring on its heading, and its tracks are one press away underneath.
 
 Its columns fit the album rather than being fixed. Number, title and length are
 always there; beyond those, a per-track tag gets a column when it can answer

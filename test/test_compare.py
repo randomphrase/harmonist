@@ -605,7 +605,7 @@ def test_a_missing_track_does_not_shift_every_row_after_it():
     ]
     # Exactly one finding: the track that genuinely isn't there.
     assert len(tl.differing) == 1
-    assert tl.summary == "1 of 4 tracks differs from MusicBrainz · 1 not on disk"
+    assert tl.summary == "1 of 4 tracks differs from MusicBrainz · 1 not in your files"
 
 
 def test_a_missing_track_shows_what_musicbrainz_says_is_absent():

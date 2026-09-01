@@ -4,9 +4,9 @@
 which 26 videos are on disk — correctly named, correctly numbered, tagged by
 Picard like everything else. The page said:
 
-    All 21 tracks match MusicBrainz · Disc 2 not on disk
-      Not on disk: DISC 2 · DVD, 29 tracks
-         ▸ None of this disc's 29 tracks are on disk
+    All 21 tracks match MusicBrainz · Disc 2 not in your files
+      ◌ Disc 2 · DVD, 29 tracks
+         ▸ None of this disc's 29 tracks are in your files
 
 Twenty-six of them are right there. The scanner had already learnt to count
 video towards completeness (#193) and derived INCOMPLETE at 47 of 50, which is
@@ -23,6 +23,7 @@ twenty-six lengths disagree, five of them because MusicBrainz records none.
 
 from __future__ import annotations
 
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -222,8 +223,8 @@ def test_a_partly_ripped_dvd_is_short_not_absent():
 
     assert dvd.absent is False
     assert [r.state for r in dvd.tracks] == [TrackState.PRESENT] * 3 + [TrackState.MISSING]
-    assert t.summary == "1 of 6 tracks differs from MusicBrainz · 1 not on disk"
-    assert "Disc 2 not on disk" not in t.summary
+    assert t.summary == "1 of 6 tracks differs from MusicBrainz · 1 not in your files"
+    assert "Disc 2 not in your files" not in t.summary
 
 
 def test_a_video_disc_is_described_but_not_compared():
@@ -436,11 +437,16 @@ def test_the_page_lists_the_videos_that_are_on_disk(client, cfg, monkeypatch):
     body = client.get(f"/library/{_album_id(cfg, d)}/compare").text
 
     assert "None of this disc's" not in body, "the line the issue is named for"
-    assert "Disc 2 not on disk" not in body
+    assert "Disc 2 not in your files" not in body
     for i in (1, 2, 3):
         assert f"Video {i}" in body
-    assert body.count("Not on disk") == 1, "only the video that really is missing"
-    assert "1 of 6 tracks differs from MusicBrainz · 1 not on disk" in body
+    # By CELL, not by substring. "Not in your files" is also what the album panel
+    # above calls a field only MusicBrainz has (`_mb_value.html`), so counting the
+    # bare phrase counts eight panel rows as missing tracks — the #144 trap of
+    # asserting on a string that occurs elsewhere in the markup.
+    missing_rows = re.findall(r'class="track-diff__absent">\s*Not in your files\s*<', body)
+    assert len(missing_rows) == 1, "only the video that really is missing"
+    assert "1 of 6 tracks differs from MusicBrainz · 1 not in your files" in body
 
 
 def test_the_page_marks_a_video_as_one(client, cfg, monkeypatch):

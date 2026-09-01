@@ -5933,6 +5933,58 @@ def test_a_disc_subtitle_change_is_drawn_on_the_disc_heading(client, cfg, monkey
     assert body.count('<span class="disc-head__cell disc-head__mb disc-head__meta"></span>') == 2
 
 
+def test_a_missing_track_and_a_missing_disc_are_both_marked(client, cfg, monkeypatch):
+    """#326. Both placements of the mark, on one page.
+
+    On a track row it sits in the NUMBER cell — the slot the video mark uses, so
+    a half-ripped disc reads as a column of them rather than as nine notices —
+    and the words are beside it, so the glyph itself is `aria-hidden`.
+
+    On the heading of a disc nobody ripped it REPLACES the words, so there the
+    accessible name is load-bearing and is asserted as such: the text beside it
+    is the disc's name and says nothing about absence.
+    """
+    d = _make_tagged_album(cfg, "Halfrip", mbid="rel-halfrip", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_TITLE] = ["Song 1"]
+    audio["trkn"] = [(1, 2)]
+    audio["disk"] = [(1, 2)]
+    audio.save()
+
+    def fake_release(mbid):
+        def medium(pos, titles):
+            return {
+                "position": str(pos),
+                "track-list": [
+                    {"id": f"t{pos}{i}", "title": t, "length": "1000"}
+                    for i, t in enumerate(titles, 1)
+                ],
+            }
+
+        return {
+            "id": mbid,
+            "title": "Halfrip",
+            "medium-list": [medium(1, ["Song 1", "Song 2"]), medium(2, ["Bonus 1", "Bonus 2"])],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    # The missing track: mark in the number cell, words in the cell beside it.
+    assert re.search(r'class="track-diff__num">\s*<span class="track-diff__missing">', body), (
+        "the mark goes in the number cell, where the video mark goes"
+    )
+    assert re.search(r'class="track-diff__absent">\s*Not in your files\s*<', body)
+
+    # The absent disc: the mark carries the meaning on its own, so it has a name.
+    assert (
+        '<span class="track-diff__disc-missing" role="img" aria-label="Not in your files"' in body
+    )
+    assert "None of this disc's 2 tracks are in your files" in body
+    # And the headline says it in words, for the reader who never reaches either.
+    assert "Disc 2 not in your files" in body
+
+
 def test_a_featured_credit_reads_as_the_artists_it_names(client, cfg, monkeypatch):
     """#309's second half, end to end.
 

@@ -6,7 +6,7 @@ MusicBrainz's release held only the CD — so they say disc 1 — and in May 202
 two DVDs were added and the CD moved to position 2.
 
 The album page then paired all sixteen against disc 1's *videos*: "22 of 22
-tracks differ from MusicBrainz · Disc 2, Disc 3 not on disk", with a complete CD
+tracks differ from MusicBrainz · Disc 2, Disc 3 not in your files", with a complete CD
 reported as a disc that isn't there.
 
 Every one of those files carries a `MusicBrainz Release Track Id`, which names
@@ -248,7 +248,7 @@ def test_a_re_tagged_album_then_agrees_completely():
     t = compare_tracklist(_tism_files(stale_disc=False), _tism_release(), _tism_media())
 
     assert [r for r in t.discs[1].tracks if r.differs] == []
-    assert t.summary == "All 16 tracks match MusicBrainz · Disc 1, Disc 3 not on disk"
+    assert t.summary == "All 16 tracks match MusicBrainz · Disc 1, Disc 3 not in your files"
 
 
 def test_the_videos_are_still_reported_as_absent_discs():
@@ -257,4 +257,4 @@ def test_the_videos_are_still_reported_as_absent_discs():
     t = compare_tracklist(_tism_files(stale_disc=True), _tism_release(), _tism_media())
 
     assert [g.absent for g in t.discs] == [True, False, True]
-    assert "Disc 1, Disc 3 not on disk" in t.summary
+    assert "Disc 1, Disc 3 not in your files" in t.summary

@@ -69,6 +69,12 @@ versions follow [semantic versioning](https://semver.org).
   since the heading could not state that (#320).
 - **Disc headings are more prominent**: larger, in mixed case rather than small
   capitals, and marked with an accent rail (#320).
+- A track MusicBrainz lists that you don't have now says **"Not in your files"**
+  rather than "Not on disk", and carries a dashed ring beside its number — so a
+  half-ripped disc reads as a column of marks rather than a stack of notices. The
+  same ring replaces the words on the heading of a disc you never ripped, where
+  *"Not on disk: Disc 2 — Bonus DVD · DVD-Video"* had put three spellings of one
+  syllable inside eleven words (#326).
 
 ### Fixed
 

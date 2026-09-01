@@ -1181,9 +1181,15 @@ class TracklistComparison:
             named = ", ".join(g.medium.label for g in odd_discs)
             clauses.append(f"{named} {'differs' if len(odd_discs) == 1 else 'differ'}")
         if absent_discs:
-            clauses.append(f"{', '.join(g.medium.label for g in absent_discs)} not on disk")
+            clauses.append(f"{', '.join(g.medium.label for g in absent_discs)} not in your files")
+        # "not in your files", not "not on disk" (#326). Three spellings of one
+        # syllable — disk, Disc 2, DVD-Video — landed inside eleven words, which
+        # is the pun #245 already removed from the Library tile one surface over.
+        # The phrase that replaces it is chosen to MIRROR "not in MusicBrainz"
+        # below: they are the two opposite findings this table can reach, and
+        # reading as a pair is worth more than three characters of length.
         for state, phrase in (
-            (TrackState.MISSING, "not on disk"),
+            (TrackState.MISSING, "not in your files"),
             (TrackState.UNREADABLE, "unreadable"),
             (TrackState.EXTRA, "not in MusicBrainz"),
         ):

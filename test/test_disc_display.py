@@ -5,8 +5,8 @@ flat list, and the only hint of structure was a `2-4` prefix on each row.
 
 For Midnight Oil's *Best of Both Worlds* — a 44-track DVD the user never ripped
 plus the 16-track CD they did — that produced a headline of "44 of 60 tracks
-differ from MusicBrainz · 44 not on disk" above forty-four individual "Not on
-disk" rows, burying the sixteen tracks they actually have.
+differ from MusicBrainz · 44 not in your files" above forty-four individual
+"Not in your files" rows, burying the sixteen tracks they actually have.
 """
 
 from __future__ import annotations
@@ -144,12 +144,12 @@ def test_a_partly_present_disc_is_not_absent():
 
 def test_the_headline_reports_an_absent_disc_once_not_track_by_track():
     """The Midnight Oil case. It used to read "44 of 60 tracks differ from
-    MusicBrainz · 44 not on disk", which made a bonus DVD the user knowingly
+    MusicBrainz · 44 not in your files", which made a bonus DVD the user knowingly
     never ripped into the album's dominant problem."""
     files, mb = _two_disc()
     t = compare.tracklist(files, mb, [Medium(1, None, "DVD-Video"), Medium(2, None, "CD")])
 
-    assert t.summary == "All 16 tracks match MusicBrainz · Disc 1 not on disk"
+    assert t.summary == "All 16 tracks match MusicBrainz · Disc 1 not in your files"
 
 
 def test_an_absent_named_disc_is_named_in_the_headline():
@@ -158,7 +158,7 @@ def test_an_absent_named_disc_is_named_in_the_headline():
 
     t = compare.tracklist(files, mb, [Medium(1, "Bonus DVD"), Medium(2, "Album")])
 
-    assert "Disc 1 — Bonus DVD not on disk" in t.summary
+    assert "Disc 1 — Bonus DVD not in your files" in t.summary
 
 
 def test_a_genuinely_short_disc_still_counts_its_missing_tracks():
@@ -169,8 +169,8 @@ def test_a_genuinely_short_disc_still_counts_its_missing_tracks():
 
     summary = compare.tracklist(files, mb, [Medium(1)]).summary
 
-    assert "2 not on disk" in summary
-    assert "not on disk" in summary and "Disc 1 not on disk" not in summary
+    assert "2 not in your files" in summary
+    assert "not in your files" in summary and "Disc 1 not in your files" not in summary
 
 
 def test_a_single_disc_album_headline_is_unchanged():

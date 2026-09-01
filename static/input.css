@@ -524,8 +524,7 @@ button[disabled],
 }
 /* The plain heading's meta, for the discs with nothing to compare. Sized
    explicitly since #320: the heading is 1.05rem now, and these inherit it. */
-.track-diff__disc-meta,
-.track-diff__disc-absent {
+.track-diff__disc-meta {
   font-weight: 400;
   font-size: .72rem;
   text-transform: none;
@@ -533,11 +532,29 @@ button[disabled],
   color: var(--color-muted);
 }
 .track-diff__disc-meta::before { content: "· "; }
-/* The one part of a disc heading that is a statement about the user's library
-   rather than about the release, so it is the one part that carries colour. */
-.track-diff__disc-absent {
-  margin-left: .35rem;
+/* The "not in your files" mark (#326), on a disc nobody ripped. It replaced the
+   words "Not on disk:", which put three spellings of one syllable — disk, Disc
+   2, DVD-Video — inside eleven words; #245 removed the same pun from the Library
+   tile. Still the one part of a disc heading that is a statement about the
+   user's library rather than about the release, so it keeps the colour that
+   said so. */
+.track-diff__disc-missing {
+  display: inline-flex;
+  align-items: center;
+  margin-right: .45rem;
+  vertical-align: -3px;
   color: var(--color-mb-purple);
+  cursor: help;
+}
+/* The same mark on a track row, in the number cell — the slot the video mark
+   uses, so a half-ripped disc reads as a column of them rather than as nine
+   separate notices. Muted rather than purple: the words are beside it here, and
+   this is a statement about an album that may be legitimately incomplete. */
+.track-diff__missing {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-muted);
+  vertical-align: baseline;
 }
 .track-diff__disc-list {
   margin: .35rem 0 0 1.1rem;

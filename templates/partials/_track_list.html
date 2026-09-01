@@ -89,7 +89,23 @@
         <tbody class="track-diff__disc">
             <tr>
                 <th scope="colgroup" colspan="{{ tracklist.columns|length }}" class="track-diff__disc-head">
-                    {% if group.absent %}<span class="track-diff__disc-absent">Not on disk:</span>{% endif %}
+                    {%- if group.absent -%}
+                    {# A disc nobody ripped, marked rather than prefixed (#326).
+                       "Not on disk: Disc 2 — Bonus DVD · DVD-Video" put three
+                       spellings of one syllable inside eleven words — the pun
+                       #245 already took out of the Library tile.
+
+                       The mark carries this alone, since the text beside it is
+                       the disc's NAME and says nothing about absence — so the
+                       `aria-label` is load-bearing here in a way it isn't on a
+                       track row, where the words sit right next to it. The fact
+                       is still stated twice more regardless: in the headline
+                       above, and in the disclosure directly beneath. #}
+                    <span class="track-diff__disc-missing" role="img" aria-label="Not in your files"
+                          title="None of this disc is in your files"><svg
+                        viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"
+                        ><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.4"/></svg></span>
+                    {%- endif -%}
                     {% if group.heading %}
                     {# The disc's three medium-derived tags, rolled up out of the
                        tracklist into the heading that already names this disc
@@ -157,7 +173,7 @@
 
         {% if group.absent and multi_disc %}
         {# The whole disc is missing — a bonus DVD never ripped, a box set half
-           copied. Spelling out forty-four "Not on disk" rows made that disc the
+           copied. Spelling out forty-four "Not in your files" rows made that disc the
            page's dominant content and buried the tracks the user actually has,
            so the rows go behind a disclosure. <details> rather than a scripted
            toggle: focus, keyboard and the open/closed state come free. #}
@@ -166,7 +182,7 @@
                 <td class="track-diff__num"></td>
                 <td colspan="{{ tracklist.columns|length - 1 }}" class="track-diff__absent">
                     <details>
-                        <summary>None of this disc's {{ group.tracks | length }} tracks are on disk</summary>
+                        <summary>None of this disc's {{ group.tracks | length }} tracks are in your files</summary>
                         <ol class="track-diff__disc-list">
                             {% for t in group.tracks %}
                             <li>{{ t.fields[1].mb or t.fields[1].disk or '—' }}</li>
@@ -234,11 +250,22 @@
             {% else %}
             {# Missing: MusicBrainz lists the track and no file carries it. Stated
                plainly and in a muted voice — an album can be legitimately
-               incomplete, and the MusicBrainz line below says what's absent. #}
+               incomplete, and the MusicBrainz line below says what's absent.
+
+               The mark sits in the NUMBER cell (#326), where the video mark
+               already sits and for the same reason: a half-ripped disc is a run
+               of these, and down one column they read as a column rather than as
+               nine separate notices. `aria-hidden` because the words are right
+               there beside it — unlike the disc heading, where the mark is on
+               its own and has to carry the meaning itself. #}
             <tr>
-                <td class="track-diff__num"></td>
+                <td class="track-diff__num">
+                    <span class="track-diff__missing"><svg
+                        viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"
+                        ><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.4"/></svg></span>
+                </td>
                 <td colspan="{{ tracklist.columns|length - 1 }}" class="track-diff__absent">
-                    Not on disk
+                    Not in your files
                 </td>
             </tr>
             {% endif %}
