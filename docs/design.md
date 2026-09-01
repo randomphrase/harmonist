@@ -896,13 +896,41 @@ Everything not in the set is left exactly as found: the comment carrying a recov
 `Owned` is split by **scope** — whether a field's value depends on which track it is:
 
 - **Album** — `mb_album_id`, `album`, `album_artist`, `album_artist_sort`, `mb_album_artist_ids`, `mb_release_group_id`, `mb_album_type`, `mb_album_status`, `mb_album_country`, `date`, `original_date`, `script`, `label`, `catalog_number`, `barcode`, `asin`, `disc_total`.
-- **Track** — `title`, `artist`, `artist_sort`, `artists`, `track_num`, `track_total`, `disc_num`, `media`, `mb_track_id`, `mb_release_track_id`, `mb_artist_ids`, `isrcs`.
+- **Track** — `title`, `artist`, `artist_sort`, `artists`, `track_num`, `track_total`, `disc_num`, `disc_subtitle`, `media`, `mb_track_id`, `mb_release_track_id`, `mb_artist_ids`, `isrcs`.
 
 `media`, `disc_subtitle`, `disc_num` and `track_total` are derived from the *medium*, so they are track-scoped even though they look album-level: on a 2-disc release, or a CD+DVD set, they genuinely differ between tracks. The scope drives the tagging audit records (#86), which record an album-level change once per album rather than once per track.
 
 The `Owned` member values are exactly the `TagSet` attribute names, and a test asserts the two sets match. That guards drift in both directions: a new `TagSet` field nobody classified would be written but never cleared, and an `Owned` member with no field behind it would clear a tag Harmonist never writes.
 
 **Artwork is deliberately not in the set.** Embedded cover art is not a tag here — `tagger.tag_album` passes `cover=None` when the tracks carry differing per-track images precisely so `write_tags` leaves them alone, and clearing artwork with the owned set would make that protection a no-op. Per-track artwork is a third category that fits neither scope, which neither MusicBrainz nor Picard really models; it is handled in the tagger. See #131.
+
+### The tags Harmonist does *not* write
+
+`Owned` says what is written; this says what is deliberately left out, which the code cannot. Measured against [Picard's own tag documentation](https://picard-docs.musicbrainz.org/en/latest/variables/tags_basic.html), Harmonist's 30 owned fields land as 31 of the 38 **basic** tags and none of the ~19 **advanced** (relationship-derived) ones.
+
+The table is the standing answer to "why doesn't Harmonist write X" — so it is kept to the *reason*, and never restates the covered set, which would rot the moment `Owned` changed.
+
+| Picard tag(s) | Verdict | Why |
+| --- | --- | --- |
+| `albumartists` | Planned (#322) | The album-level twin of `artists`, from a credit already in hand. |
+| `compilation` | Planned (#323) | The Various Artists flag; without it players shatter a VA album per track artist. |
+| `genre` | Deferred (#12) | Read-only today: a genre tagged elsewhere is displayed and never clobbered. Needs the `genres` include and a policy on genre-vs-folksonomy-tag. |
+| `composer`, `composersort`, `lyricist`, `writer`, `arranger`, `conductor`, `performer:*`, `producer`, `engineer`, `mixer`, `djmixer`, `remixer`, `director`, `work`, `musicbrainz_workid`, `musicbrainz_composerid`, `language`, `license`, `website` | Undecided | The entire advanced set is one `RELEASE_INCLUDES` change away, in the same single request — but that tuple **is the `mb_cache` key** (§4), so adding to it invalidates every cached release and re-fetches the library at one rate-limited request per album. `Owned` roughly doubles, landing on the comparison (#106), the audit records (#86) and undo (#157); ID3 needs the `TMCL`/`TIPL` multi-value frames, which no backend writes. Relationships also churn in MusicBrainz far more than release facts, so #32's pass would report updates constantly. Worth splitting: composer/lyricist/work is the classical and soundtrack case; the credits half is a much larger surface for much less benefit. |
+| `comment` | Never | Claimed as **user space**. It carries a recovered Bandcamp URL and is excluded from every backend's owned mapping so a re-tag preserves it. Picard puts the release disambiguation here; Harmonist shows that on the album page instead. |
+| `originalalbum`, `originalartist`, `musicbrainz_originalalbumid`, `musicbrainz_originalartistid` | Undecided, leaning no | Needs the release group's *release list*, which the release fetch doesn't carry — one extra lookup per release group, against the call budget. `original_date` already carries the part users sort on. |
+| `lyrics`, `syncedlyrics` | Out of scope here | MusicBrainz serves no lyrics, only relationships to lyric sites. A second provider is a scope question about what Harmonist is, not a tag mapping. |
+| `bpm`, `key` | No source | AcousticBrainz is shut down. Would require local audio analysis, which Harmonist does not otherwise do. |
+| `acoustid_id`, `acoustid_fingerprint`, `musicip_fingerprint`, `musicip_puid` | Never | Audio fingerprinting. An album is identified by its Bandcamp URL or its MBID, never by analysing the audio; MusicIP is long dead. |
+| `musicbrainz_discid` | Never | Derived from a physical CD's table of contents. Harmonist never sees a disc. |
+| `albumsort`, `titlesort` | Never | MusicBrainz has no sort title for a release or a track — only for artists, which *are* written. Picard leaves these empty too. |
+| `copyright`, `encodedby`, `encodersettings`, `originalfilename` | Never | Facts about the file or the rip, not about the release. Preserved as found. |
+| `podcast`, `podcasturl`, `show`, `showsort`, `itunes_cddb_1`, `gapless` | Never | Podcast, TV and iTunes-store plumbing. |
+| `showmovement`, `subtitle` | Rides on the row above | Classical movement handling, only meaningful with the work relationships. |
+| `releasedate` | Nothing to do | Maps to the same slot as `date` (`DATE` / `TDRC`), which *is* written. It exists in Picard so a script can retarget `date`. |
+
+One apparent gap that isn't: `originalyear` is written on Vorbis and MP4 but not MP3, because **ID3v2.4 has no frame for it** — `TDOR` carries the full original date and consumers derive the year.
+
+**Everything above is still preserved.** "Not written" is not "removed": anything outside `Owned` is left exactly as found, so a library tagged by Picard with composers and performers keeps them through a Harmonist re-tag.
 
 ### A second correct spelling of the album title
 

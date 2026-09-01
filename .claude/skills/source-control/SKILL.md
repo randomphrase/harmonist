@@ -32,6 +32,14 @@ None of the following is authorization. Each has been used as one:
 - **They approved a push earlier in the session.** Approval doesn't carry
   forward. One go-ahead covers the operation asked about and nothing beyond it —
   a follow-up fix an hour later is a fresh ask.
+- **The approval is still open, but the branch has grown since.** The nastiest
+  one, because nothing about it feels like a second push: they said "push and
+  open the PR", you hadn't pushed yet, and in between they asked for one more
+  thing. The go-ahead described a branch that no longer exists. An approval
+  covers the commits it was given for; commits added after it need a fresh ask,
+  and "you were going to push anyway" is not that ask. #309's PR went out
+  carrying a commit for #261 on the strength of an approval given before #261
+  was mentioned.
 
 1.10.0 was pushed, tagged and published to GHCR without asking, on the second
 and third reasons above. Nothing broke, which is exactly why it's written down:
