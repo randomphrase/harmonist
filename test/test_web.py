@@ -5791,6 +5791,80 @@ def test_an_id_musicbrainz_cannot_name_stays_raw(client, cfg, monkeypatch):
     assert 'class="mbid mbid--raw"' in body
 
 
+def _three_country_release(mbid="rel-cmp"):
+    """The release #329 was raised about, trimmed: issued in Germany, then the
+    UK, then the US. `country` and `date` carry the German event alone."""
+    return _release_with_metadata(mbid) | {
+        "country": "DE",
+        "date": "2013-06-07",
+        "release-event-list": [
+            {"date": "2013-06-07", "area": {"name": "Germany", "iso-3166-1-code-list": ["DE"]}},
+            {
+                "date": "2013-06-10",
+                "area": {"name": "United Kingdom", "iso-3166-1-code-list": ["GB"]},
+            },
+            {
+                "date": "2013-06-11",
+                "area": {"name": "United States", "iso-3166-1-code-list": ["US"]},
+            },
+        ],
+    }
+
+
+def test_the_country_row_names_every_country_the_release_came_out_in(client, cfg, monkeypatch):
+    """#329: a release issued in three countries read as though MusicBrainz knew
+    of one, because the tag holds one and the row showed only the tag.
+
+    The tag is still one code, and must be — Picard's `releasecountry` is a
+    scalar too. What is added sits BESIDE it: the other countries, and the dates
+    that go with them, which is also the answer to why the Date row says June 7.
+    """
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _three_country_release(mbid)
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    assert "DE, GB, US" in body
+    assert "MusicBrainz lists 3 release events" in body
+    for area, date in (
+        ("Germany", "2013-06-07"),
+        ("United Kingdom", "2013-06-10"),
+        ("United States", "2013-06-11"),
+    ):
+        assert area in body and date in body
+    # The value the tagger will write is untouched by any of it: the row's own
+    # value is still the bare code, and the list is a sibling of it rather than
+    # something the tag grew into.
+    cell = re.search(r"<dt>Country</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert cell, "no Country row"
+    assert re.search(r'class="tag-fields__mb">DE<', cell.group(1))
+    assert 'class="tag-fields__more"' in cell.group(1)
+
+
+def test_one_release_country_gets_no_annotation(client, cfg, monkeypatch):
+    """The everyday album. One event says nothing the Country row didn't, and a
+    pill on every album in the library would be noise rather than information.
+
+    A live path could produce this markup — the test above asserts it present on
+    the same row of the same page — so its absence here is a real check.
+    """
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    one_event = _release_with_metadata() | {
+        "country": "DE",
+        "release-event-list": [
+            {"date": "2013-06-07", "area": {"name": "Germany", "iso-3166-1-code-list": ["DE"]}}
+        ],
+    }
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", lambda mbid: one_event)
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    assert "<dt>Country</dt>" in body
+    assert "release events" not in body
+
+
 def test_the_release_row_is_gone_from_the_comparison(client, cfg, monkeypatch):
     """#298 drops it: the comparison is fetched BY the release id the sidecar
     names, and the album header already shows and links that release, so the row

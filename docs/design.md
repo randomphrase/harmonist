@@ -961,6 +961,14 @@ So both places that judge a disk title against MusicBrainz's accept it: `compare
 
 **Only the comparison is tolerant, not the write.** A re-tag that happens for some other reason still puts MusicBrainz's plain title on the file. Harmonist writes what MusicBrainz says; preserving a spelling it did not derive is a different question, and it is the one that needs a setting to match Picard's — deferred until someone wants it. The consequence is worth naming: on an album where nothing else has changed the disambiguated title survives indefinitely, and on one where something else has changed it does not.
 
+### A release comes out in more than one country
+
+MusicBrainz records a release as a **list of release events** — `(area, date)` pairs — and collapses that list to the scalar `country` and `date` the tag can hold. So [*Amok*](https://musicbrainz.org/release/3587efcb-c42a-4da5-839b-2a9f9b8d933e) came out in Germany on 2013‑06‑07, the UK on the 10th and the US on the 11th, and carries `DE` / `2013-06-07`.
+
+The tag stays scalar and Harmonist keeps writing `release["country"]`. Picard's `releasecountry` is a scalar for the same reason — *"if more than one release country was specified, this tag will contain the first one in the list"* (`picard/const/tags.py`) — and its full list lives in the hidden `~releasecountries`, which is never written to a file.
+
+**The album page names them all** (#329). The Country row's value is the tag, unchanged; beside it sits every country the release names, with the dates, and which one the tags carry. `release-event-list` comes back with any release lookup, so this reads a corner of the payload the page already holds — no extra `includes`, no extra request.
+
 ### How significant a change is, and whether it needs review
 
 `Owned` is split a second way, by **significance**: what kind of change this is (#267). Deliberately *not* whether it needs a person — those are two questions, and an earlier draft answered them with one word. A change can be slight and still want an eye on it; a change can be far-reaching and still be one a particular user is happy to have applied for them. Significance is a property of the change. Review is a **policy over** significance.

@@ -6,7 +6,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **The album page names every country a release came out in.** MusicBrainz
+  collapses a release issued in several countries to the one country code the
+  tag can hold, so an album issued in Germany, the UK and the US read as though
+  MusicBrainz knew only of Germany. The Country row now lists them all beside
+  the tag, with each country's own release date (#329).
+
 ### Fixed
+
 
 - **Clearing a MusicBrainz match, or unlinking a Bandcamp purchase, writes one
   Activity entry instead of two** — the second was unlinked from the album and

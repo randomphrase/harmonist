@@ -1193,6 +1193,70 @@ def mbid_names(release: Release) -> dict[str, str]:
     return names
 
 
+class ReleaseEvent(NamedTuple):
+    """One (where, when) pair MusicBrainz records for a release (#329).
+
+    A release is issued in one country on one date only in the simple case. MB
+    models the general one as a LIST of release events, and collapses it to the
+    scalar `country` / `date` that Picard writes and Harmonist follows — so an
+    album issued in Germany, the UK and the US carries "DE" in its tags and the
+    other two are reachable only from `release-event-list`.
+
+    That is correct as a tag and wrong as an answer to "where did this come
+    out", which is what the album page's Country row was read as. This is the
+    rest of the answer, for the page alone: nothing here is ever written.
+
+    Lives beside `mbid_names` and `_build_tagset` for the reason those do — the
+    value the tag carries and the fuller picture that explains it have to be
+    read out of one payload, or the page annotates DE with somebody else's
+    release events.
+    """
+
+    #: ISO 3166-1 alpha-2, or None for an event with no area — how MusicBrainz
+    #: spells "worldwide". Kept rather than dropped, because the event's DATE is
+    #: half of what this list explains.
+    country: str | None
+    #: The area's name — "Germany" — or None alongside a None `country`.
+    area: str | None
+    date: str | None
+    #: Whether this is the event the tags come from. Read off the release's own
+    #: `country` rather than assumed to be the first, because MusicBrainz picks
+    #: it and `_build_tagset` follows; guessing here would let the page mark one
+    #: row as written while the tagger wrote another. False on every event when
+    #: the two cannot be reconciled — a list with no mark beats a wrong mark.
+    written: bool
+
+
+def release_events(release: Release) -> tuple[ReleaseEvent, ...]:
+    """Every release event MusicBrainz records, in its own order (#329).
+
+    MusicBrainz's order is chronological and is the order `country` was picked
+    from, so it is preserved rather than sorted — Picard sorts its
+    `~releasecountries` because it only ever asks that list for membership.
+
+    No include needed: `release-event-list` comes back with any release lookup,
+    so this reads a corner of the payload the page already holds.
+    """
+    events: list[ReleaseEvent] = []
+    tagged = (release.get("country") or "").strip() or None
+    claimed = False
+    for event in release.get("release-event-list") or []:
+        area = event.get("area") or {}
+        codes = area.get("iso-3166-1-code-list") or []
+        country = (codes[0] if codes else None) or None
+        written = not claimed and country is not None and country == tagged
+        claimed = claimed or written
+        events.append(
+            ReleaseEvent(
+                country=country,
+                area=(area.get("name") or None) if country else None,
+                date=event.get("date") or None,
+                written=written,
+            )
+        )
+    return tuple(events)
+
+
 class CreditPart(NamedTuple):
     """One artist within an artist credit, as the page renders it.
 

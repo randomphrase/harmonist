@@ -1866,3 +1866,83 @@ def test_one_phrase_two_different_credits_is_dropped_rather_than_guessed():
     }
 
     assert tagger.artist_credits(release) == {}
+
+
+# ---------- release events (#329) ----------
+
+
+def _multi_country_release() -> dict:
+    """*Amok* in miniature: one release, three release events.
+
+    MusicBrainz's own payload for `3587efcb-…`, trimmed — the release named in
+    #329. `country` and `date` carry the German event; the other two are
+    reachable only through `release-event-list`.
+    """
+    return {
+        "id": "rel-amok",
+        "country": "DE",
+        "date": "2013-06-07",
+        "release-event-list": [
+            {
+                "date": "2013-06-07",
+                "area": {"name": "Germany", "iso-3166-1-code-list": ["DE"]},
+            },
+            {
+                "date": "2013-06-10",
+                "area": {"name": "United Kingdom", "iso-3166-1-code-list": ["GB"]},
+            },
+            {
+                "date": "2013-06-11",
+                "area": {"name": "United States", "iso-3166-1-code-list": ["US"]},
+            },
+        ],
+    }
+
+
+def test_release_events_reports_every_country_not_just_the_tagged_one():
+    """#329: the album page showed "DE" for a release MusicBrainz issued in
+    three countries, because `country` is the only one the tag carries. The
+    other two exist in the payload the page already holds."""
+    events = tagger.release_events(_multi_country_release())
+
+    assert [(e.country, e.date) for e in events] == [
+        ("DE", "2013-06-07"),
+        ("GB", "2013-06-10"),
+        ("US", "2013-06-11"),
+    ]
+    assert [e.area for e in events] == ["Germany", "United Kingdom", "United States"]
+
+
+def test_release_events_marks_the_one_the_tags_come_from():
+    """Which event is written is what makes the list an explanation rather than
+    a contradiction of the Country row beside it. Read off `country` rather than
+    assumed to be the first: MusicBrainz picks it, and this must follow."""
+    release = _multi_country_release()
+    assert [e.written for e in tagger.release_events(release)] == [True, False, False]
+
+    release["country"] = "US"
+    assert [e.written for e in tagger.release_events(release)] == [False, False, True]
+
+    # Nothing is claimed when the two can't be reconciled — better a list with
+    # no mark than a mark on the wrong row.
+    release["country"] = "JP"
+    assert [e.written for e in tagger.release_events(release)] == [False, False, False]
+
+
+def test_release_events_keeps_a_worldwide_event_and_names_no_country():
+    """MusicBrainz spells "worldwide" as a release event with no area at all.
+    Dropping it would lose the DATE it carries, which is the other half of what
+    this list explains."""
+    events = tagger.release_events(
+        {"id": "rel-1", "date": "2020-01-01", "release-event-list": [{"date": "2020-01-01"}]}
+    )
+    assert len(events) == 1
+    assert events[0].country is None
+    assert events[0].area is None
+    assert events[0].date == "2020-01-01"
+
+
+def test_release_events_is_empty_when_musicbrainz_records_none():
+    """No events is a fact, not a failure: the page shows the Country row alone,
+    with nothing extra to explain."""
+    assert tagger.release_events({"id": "rel-1", "country": "GB"}) == ()

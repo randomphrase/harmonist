@@ -3957,6 +3957,10 @@ def _register_routes(app: FastAPI) -> None:
                     tracklist=tracks,
                     mb_names={},
                     mb_credits={},
+                    # …and no release events either (#329): MusicBrainz has
+                    # deleted the release, so there is nothing to say about
+                    # where it came out beyond the country the files carry.
+                    mb_release_events=(),
                 ),
             )
         except mb_lookup.MBError as e:
@@ -4021,6 +4025,15 @@ def _register_routes(app: FastAPI) -> None:
             # and its parts must come from one payload, or the page shows one
             # artist's name over another artist's link.
             mb_credits=tagger_mod.artist_credits(release),
+            # Where and when MusicBrainz says this release came out (#329). The
+            # Country row shows one code because that is what the tag carries —
+            # Picard's `releasecountry` is a scalar too — and a release issued
+            # in three countries then reads as MusicBrainz knowing only one.
+            #
+            # Page context rather than part of the comparison, alongside
+            # `mb_names` and `mb_credits` and for the same reason: `compare` is
+            # pure functions over values and never sees a release payload.
+            mb_release_events=tagger_mod.release_events(release),
             # What a re-tag would change in the fields nothing else on this page
             # shows (#291, narrowed by #297, narrowed again by #309). Free:
             # `refresh_flag` just built this plan to set the flag, so rendering

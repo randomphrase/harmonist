@@ -74,6 +74,57 @@
         <span class="tag-fields__absent">—</span>
         {% endif %}
 
+        {# Every country MusicBrainz says this release came out in (#329).
+
+           The Country row carries ONE code because the tag does: MusicBrainz
+           collapses its release events to a scalar `country`, and Picard's
+           `releasecountry` is a scalar for the same reason ("if more than one
+           release country was specified, this tag will contain the first one",
+           `picard/const/tags.py`). Harmonist follows that, and must — the tag is
+           right. What was wrong is the page reading as though MusicBrainz knew
+           of one country when it lists three.
+
+           So the value is left exactly as it will be written and the rest of
+           the truth sits beside it, never inside it. Shown only when there is
+           more than one country to name; one event says nothing the row didn't.
+
+           A worldwide event (MusicBrainz's spelling: an event with no area at
+           all) contributes no code, so it never triggers this on its own — but
+           it is still listed in the popover, because its DATE is the other half
+           of what the list explains. #}
+        {% set events = mb_release_events if f.key == 'mb_album_country' else () %}
+        {% set codes = events | map(attribute='country') | select | list %}
+        {% if codes | length > 1 %}
+        <button type="button" class="tag-fields__more" popovertarget="release-events"
+                style="anchor-name: --release-events"
+                aria-label="Every country MusicBrainz says this release came out in">
+            {{ codes[:4] | join(', ') }}{% if codes | length > 4 %} +{{ codes | length - 4 }}{% endif %}
+        </button>
+        {# One Country row per page, so a fixed id and anchor name are safe here
+           where the odd-track pill's had to be data-driven. #}
+        <div id="release-events" popover class="odd-pop"
+             style="position-anchor: --release-events">
+            <p class="odd-pop__title">MusicBrainz lists {{ events | length }} release events</p>
+            <p class="odd-pop__sub">
+                Your tags carry the first country and date MusicBrainz names, which
+                is what Picard writes too. The others are recorded here, not in
+                your files.
+            </p>
+            <ul class="odd-pop__list">
+                {% for e in events[:12] %}
+                <li>
+                    <span class="odd-pop__val">{{ e.area or e.country or 'Worldwide' }}</span>
+                    {% if e.date %}<span class="odd-pop__file">{{ e.date }}</span>{% endif %}
+                    {% if e.written %}<span class="odd-pop__file">— in your tags</span>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% if events | length > 12 %}
+            <p class="odd-pop__more">and {{ events | length - 12 }} more</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
         {# How united the album's own tracks are about this field. Shown only
            when they aren't: an album tagged unevenly over decades is normal, so
            this states a fact rather than flagging a problem.

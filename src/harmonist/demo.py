@@ -478,6 +478,18 @@ def _demo_mbid(kind: str, mbid: str, index: int = 0) -> str:
     return f"{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}"
 
 
+#: The areas a demo release can be issued in, by ISO 3166-1 code. Named rather
+#: than left as bare codes because the album page's release-event list shows the
+#: AREA — "United Kingdom", not "GB" — and a demo that only ever exercised the
+#: code fallback would be the one place that rendering is met wrong.
+_AREAS: dict[str, str] = {"US": "United States", "GB": "United Kingdom", "JP": "Japan"}
+
+#: One date per release event, in order. Staggered by a fortnight, the way a
+#: real staged release is — which is also what makes the Date row's value
+#: explainable: it is the first of these, not the only one.
+_EVENT_DATES: tuple[str, ...] = ("2024-01-01", "2024-01-15", "2024-02-01")
+
+
 def _release(
     mbid: str,
     artist: str,
@@ -488,6 +500,7 @@ def _release(
     rg: str | None = None,
     disambiguation: str = "",
     track_artists: list[str] | None = None,
+    countries: tuple[str, ...] = ("US",),
 ) -> Release:
     """One MusicBrainz release, as the demo's stubbed client returns it.
 
@@ -496,6 +509,12 @@ def _release(
     and the tracklist comparison's per-track Artist column can only ever agree —
     which makes the divergence that matters most (#106 names it) unreachable in
     the very mode people meet the feature in.
+
+    `countries` is the same argument in a different field: MusicBrainz issues a
+    release in a LIST of countries and collapses that to the one `country` the
+    tag holds, so the album page annotates its Country row only for a release
+    with several (#329). Most demo albums have one, because most releases do;
+    two have three, or the annotation is unreachable in the mode people meet it.
     """
     if lengths_ms is None:
         lengths_ms = [1000] * len(tracks)
@@ -514,8 +533,11 @@ def _release(
         "title": title,
         "disambiguation": disambiguation,
         "status": "Official",
-        "country": "US",
-        "date": "2024-01-01",
+        # `country` and `date` are the FIRST release event, which is what
+        # MusicBrainz does and what Picard writes. The rest are reachable only
+        # through `release-event-list` below.
+        "country": countries[0],
+        "date": _EVENT_DATES[0],
         "barcode": None,
         "artist-credit": [
             {"artist": {"id": artist_ids[artist], "name": artist}, "name": artist},
@@ -530,6 +552,10 @@ def _release(
             "title": title,
             "primary-type": "Album",
         },
+        "release-event-list": [
+            {"date": date, "area": {"name": _AREAS[c], "iso-3166-1-code-list": [c]}}
+            for c, date in zip(countries, _EVENT_DATES, strict=False)
+        ],
         "label-info-list": [
             {"label": {"name": "Demo Records"}, "catalog-number": "DEMO-001"},
         ],
@@ -612,6 +638,10 @@ MB_RELEASES: dict[str, Release] = {
         "Various Artists",
         "The Rural Juror (OST)",
         ["Main Title (The Rural Juror)", "Urban Fervor", "Closing Credits (Urinal Gerber)"],
+        # Three release events, so the album page's Country row has more than
+        # one country to name (#329) — reachable only on an album that reaches
+        # the LIBRARY, which is where that row is drawn.
+        countries=("US", "GB", "JP"),
         track_artists=[
             "Jenna Maroney",
             "Frank Rossitano & Toofer",

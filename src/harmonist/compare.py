@@ -209,6 +209,15 @@ class FieldComparison:
     #: of the FIELD, like `entity`: the two strings being compared cannot say
     #: whether they are a credit or an album title that reads like one.
     credit: bool = False
+    #: Which field this row IS — the `Owned` value, or `"genre"` / `"comment"`
+    #: for the two display-only rows. `label` is prose and free to be reworded;
+    #: this is the identity, and it is what lets the page hang a per-field
+    #: annotation off one row without matching on its wording (#329).
+    #:
+    #: The annotation itself is deliberately not here, for the reason the NAME
+    #: behind an id isn't: it comes from the release payload, which this module
+    #: never sees. This is the join key, not the data.
+    key: str | None = None
 
     @property
     def differs(self) -> bool:
@@ -699,6 +708,7 @@ def album_fields(
                 comparable=bool(mb_attr),
                 entity=_ENTITY.get(disk_attr),
                 credit=disk_attr in _CREDITED,
+                key=disk_attr,
             ),
         )
     return tuple(out)

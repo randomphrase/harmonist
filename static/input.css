@@ -296,11 +296,18 @@ button[disabled],
 }
 .tag-fields__mb .diff-run { background: color-mix(in srgb, var(--color-mb-purple) 16%, transparent); }
 
-/* "missing on 1 track" — the album's own tracks disagreeing about a field.
-   Deliberately not a warning colour: an album tagged unevenly over decades is
-   normal, not broken. A button rather than a hover target since #164, because
-   what it opens has to be reachable from the keyboard. */
-.tag-fields__odd {
+/* The two annotation pills a comparison row can carry. Same shape deliberately:
+   both are a muted aside on the value to their left, and both open a popover
+   rather than a `title=` so what they say is reachable from the keyboard (#164).
+
+   They annotate different halves of the row, which is why they are two classes
+   and not one. `__odd` — "missing on 1 track" — is about the album's own tracks
+   disagreeing with each other, and is deliberately not a warning colour: an
+   album tagged unevenly over decades is normal, not broken. `__more` — "DE, GB,
+   US" — is about MusicBrainz, and says the release came out in more places than
+   the one country the tag can hold (#329). */
+.tag-fields__odd,
+.tag-fields__more {
   display: inline-block;
   margin-left: .4rem;
   font-family: inherit;
@@ -317,8 +324,15 @@ button[disabled],
   white-space: nowrap;
   transition: color .12s, border-color .12s;
 }
-.tag-fields__odd:hover { color: var(--color-accent); border-color: var(--color-accent); }
-.tag-fields__odd:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.tag-fields__odd:hover,
+.tag-fields__more:hover { color: var(--color-accent); border-color: var(--color-accent); }
+.tag-fields__odd:focus-visible,
+.tag-fields__more:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+
+/* …with one difference: a country list is read, not scanned for a keyword, so
+   it keeps its own case. "DE, GB, US" uppercased is the same string; "Worldwide"
+   is not. */
+.tag-fields__more { text-transform: none; letter-spacing: .03em; }
 
 /* Which tracks disagree, and what they carry instead (#164). In the top layer,
    so it can't be clipped by the panel's overflow the way an absolutely
