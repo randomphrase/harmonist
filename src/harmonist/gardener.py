@@ -59,6 +59,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from . import album_files, formats, mb_cache, mb_lookup, tagger
+from .formats import owned
 from .models import Album, AlbumState, Release
 
 log = logging.getLogger(__name__)
@@ -169,7 +170,23 @@ def refresh_flag(album: Album, release: Release) -> tagger.AlbumPlan | None:
         # it last said until something can read it.
         log.exception("could not tell whether %s has a tag update available", album.path)
         return None
-    album.update_available = bool(plan.changes)
+    # Not `bool(plan.changes)` since #337. A change that only ADDS a credit list
+    # holding one name is one to make while tagging anyway and not a reason to
+    # tag: `album_artist` beside it already says the same thing, and a player
+    # without the list falls back to the phrase. `albumartists` is new in Picard
+    # too, so no existing library carries it — left counted, one field put every
+    # album in a real library into the Inbox.
+    #
+    # Filtered HERE rather than in `owned.diff`, and that is the whole of the
+    # design: `plan.changes` is also what the activity record and the undo are
+    # built from, so a re-tag that fills the tag in must still say that it did.
+    # The album page keeps showing it as a pending change for the same reason —
+    # the page says what a re-tag would do, this flag says whether you need one.
+    album.update_available = any(
+        not owned.is_opportunistic(field, before, after)
+        for changes in plan.changes.values()
+        for field, (before, after) in changes.items()
+    )
     return plan
 
 

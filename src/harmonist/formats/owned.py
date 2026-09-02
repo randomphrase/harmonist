@@ -311,6 +311,55 @@ def needs_review(significance: Significance) -> bool:
 BY_VALUE: frozenset[Owned] = frozenset({Owned.TITLE})
 
 
+#: Multi-value credit lists whose ABSENCE is not a defect while they would hold
+#: a single name — the scalar twin beside them already says it (#337).
+#:
+#: Mapped to that twin rather than listed on their own, so the entry states WHY
+#: it is exempt and can be checked rather than taken on trust. Same idiom as
+#: `compare._SUBSUMED_BY` and `_ALBUM_COUNTERPART`.
+#:
+#: The problem this answers: `albumartists` is new in Picard as well as here —
+#: `PICARD-700`, 2026-08-25, in `3.0.0rc1` only — so NO existing library carries
+#: it, and one IDENTITY-classified field put every album in a real library into
+#: the Inbox on its first pass. That is the failure `SIGNIFICANCE` above already
+#: warns about (#283, #290), met for the first time.
+#:
+#: Load-bearing on a real collaboration and redundant otherwise, which is what
+#: makes the exemption conditional rather than a blanket opt-out: the joined
+#: phrase cannot be split safely — "Nick Cave & the Bad Seeds" is ONE artist
+#: containing an ampersand — so with two names the list is the only way a player
+#: can recover them, and with one the phrase already is the name.
+DUPLICATES_WHEN_SINGLE: dict[Owned, Owned] = {
+    Owned.ALBUM_ARTISTS: Owned.ALBUM_ARTIST,
+    Owned.ARTISTS: Owned.ARTIST,
+}
+
+
+def is_opportunistic(field: str, before: object, after: object) -> bool:
+    """Whether this change is one to make while tagging, but not a reason to tag.
+
+    True only for an ABSENCE that would be filled with a single name. Three
+    things are deliberately outside it:
+
+    * A field not in `DUPLICATES_WHEN_SINGLE` — the exemption is per-field and
+      declared, never inferred from a value that happens to look redundant.
+    * A value that is present and disagrees. That is a defect whatever its
+      length, and reading "opportunistic" as "never worth flagging" would let a
+      wrong credit sit unreported forever.
+    * A value that would hold more than one name, where the list is the only
+      record of where one artist ends and the next begins.
+
+    Note what this does NOT do: it never stops the change being WRITTEN, or
+    recorded. A re-tag that happens for any other reason fills the tag in and
+    says so in the history. See `gardener.refresh_flag` for why the distinction
+    has to live at the flag rather than in `diff`.
+    """
+    twin = next((f for f in DUPLICATES_WHEN_SINGLE if f.value == field), None)
+    if twin is None or not _absent(before):
+        return False
+    return isinstance(after, list) and len(after) <= 1
+
+
 def _absent(value: object) -> bool:
     """Whether a value counts as "this tag isn't there".
 

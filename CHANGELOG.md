@@ -21,9 +21,12 @@ versions follow [semantic versioning](https://semver.org).
   *zakè & rhubiqs* — leaves a player guessing where one name ends and the next
   begins, so the album files under a single composite artist; Navidrome and Plex
   read the list instead. Written on the next tagging or re-tag (#322).
-  **Albums tagged by an earlier version don't carry it**, so they will report an
-  update available until re-tagged; a library Picard has tagged already has the
-  tag and is unaffected.
+  **No existing library carries this tag** — it is nearly as new in Picard, which
+  added it in 3.0.0rc1 — so an album missing it is the normal case rather than a
+  defect. Where the album has a single artist it is not reported as needing an
+  update at all, because `albumartist` beside it already says the same thing; on
+  a collaboration, where the list is the only record of where one name ends and
+  the next begins, a missing one **is** reported (#337).
 - An album with a MusicBrainz update waiting carries an **Update** badge on its
   Library tile (#293).
 - Harmonist can **check your library against MusicBrainz in the background**, so
@@ -98,6 +101,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A library that predates a newly added tag is no longer flagged wholesale.**
+  `albumartists` is new in Harmonist and nearly as new in Picard, so no existing
+  library carried it — and one field put every album in the *Update available*
+  filter. A credit list that would hold a single name is now written when
+  Harmonist tags anyway, but its absence is no longer a reason to re-tag: the
+  scalar `albumartist` beside it already says the same thing. A missing list on
+  a genuine collaboration is still reported, and a list that disagrees always
+  was and still is (#337).
 - **Every dated M4A album no longer reports an update available forever.**
   Harmonist wrote the original-date tags in upper case where Picard writes them
   in lower, and MP4 tag names are case-sensitive — so it could not see its own

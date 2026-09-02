@@ -445,6 +445,75 @@ def test_a_picard_tagged_album_does_not_flag_on_the_release_type(tmp_path):
     assert _flag(album, release) is False
 
 
+def test_a_library_that_predates_album_artists_is_not_flagged_by_it(tmp_path):
+    """#337, and the reason it was found: an entire dogfood library reported an
+    update whose only differing field was `Album artists`.
+
+    `albumartists` is new in Picard too — `PICARD-700`, 2026-08-25, in
+    `3.0.0rc1` only — so NO existing library carries it, however it was tagged.
+    One IDENTITY-classified field therefore put every album in the Inbox, which
+    is exactly the shape `owned.py` warns about (#283, #290).
+
+    On a single-artist credit the tag is pure redundancy: `album_artist` already
+    says it, and a player that lacks the list falls back to the phrase. So its
+    absence is not a reason to re-tag.
+    """
+    from mutagen.mp4 import MP4
+
+    from harmonist.tagger import ATOM_ALBUM_ARTISTS
+
+    release = _release()
+    album = _tagged(tmp_path, release)
+    # What every library tagged before last week looks like.
+    f = MP4(album.path / "01 Track 1.m4a")
+    del f[ATOM_ALBUM_ARTISTS]
+    f.save()
+
+    assert _flag(album, release) is False
+
+
+def test_a_collaboration_missing_album_artists_IS_flagged(tmp_path):
+    """The control, and the half that keeps the exemption honest.
+
+    With two artists credited the tag is load-bearing rather than redundant: the
+    joined phrase cannot be split safely — "Nick Cave & the Bad Seeds" is ONE
+    artist containing an ampersand — so a player has no way to recover the names
+    without it. Absent there, it IS a reason to re-tag.
+    """
+    from mutagen.mp4 import MP4
+
+    from harmonist.tagger import ATOM_ALBUM_ARTISTS
+
+    release = _release()
+    release["artist-credit"] = [
+        {"artist": {"id": "art-aaa", "name": "Jane", "sort-name": "Jane"}, "name": "Jane"},
+        " & ",
+        {"artist": {"id": "art-bbb", "name": "John", "sort-name": "John"}, "name": "John"},
+    ]
+    album = _tagged(tmp_path, release)
+    f = MP4(album.path / "01 Track 1.m4a")
+    del f[ATOM_ALBUM_ARTISTS]
+    f.save()
+
+    assert _flag(album, release) is True
+
+
+def test_a_wrong_album_artists_is_always_flagged(tmp_path):
+    """The exemption is for an ABSENCE, never for a disagreement. A single-artist
+    album whose list names somebody else is wrong, and stays a finding."""
+    from mutagen.mp4 import MP4
+
+    from harmonist.tagger import ATOM_ALBUM_ARTISTS
+
+    release = _release()
+    album = _tagged(tmp_path, release)
+    f = MP4(album.path / "01 Track 1.m4a")
+    f[ATOM_ALBUM_ARTISTS] = [b"Somebody Else"]
+    f.save()
+
+    assert _flag(album, release) is True
+
+
 # ---------------------------------------------------------------------------
 # Explaining the flag (#291)
 # ---------------------------------------------------------------------------
