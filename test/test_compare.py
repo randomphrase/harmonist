@@ -167,10 +167,17 @@ def test_absent_on_disk_reads_as_only_mb_not_as_a_conflict():
 def test_a_field_musicbrainz_has_no_opinion_on_is_not_a_difference():
     """The comment carries the Bandcamp URL. MB has no counterpart, so
     comparing would invent a finding."""
-    f = compare_field(
-        "Comment",
-        disk=consensus([("1.flac", "https://pioulard.bandcamp.com/album/obreel")]),
-        mb=None,
+    # `comparable=False` as `album_fields` marks it — the comment names no
+    # TagSet attribute, so MusicBrainz has no counterpart for it. Since #340 that
+    # flag is what separates this from a barcode MusicBrainz merely lacks, so a
+    # bare `compare_field` here would no longer be the object production builds.
+    f = replace(
+        compare_field(
+            "Comment",
+            disk=consensus([("1.flac", "https://pioulard.bandcamp.com/album/obreel")]),
+            mb=None,
+        ),
+        comparable=False,
     )
     assert f.agreement is Agreement.ONLY_DISK
     assert not f.differs
@@ -247,6 +254,39 @@ def _tagset(**overrides: object) -> TagSet:
         "track_total": 1,
     }
     return TagSet(**{**base, **overrides})  # type: ignore[arg-type]
+
+
+def test_a_tag_musicbrainz_lacks_is_reported_as_a_pending_removal():
+    """#340. A re-tag clears an owned field MusicBrainz has no value for, and the
+    panel used to say nothing at all about it — while the update flag counted it.
+    The page reported "1 of 18 tags differ" on an album flagged for two others.
+
+    Two rules over one set of facts: `owned.diff` sees `'X' -> None` as a change
+    because it is one, and `differs` excluded ONLY_DISK wholesale. The exclusion
+    was written for a field MusicBrainz has no counterpart for — it is now scoped
+    to exactly that.
+    """
+    row = compare_field("Barcode", disk=consensus([("1.flac", "602547690074")]), mb=None)
+
+    assert row.agreement is Agreement.ONLY_DISK
+    assert row.differs, "a re-tag would delete it, and the reader is never told"
+
+
+def test_a_tag_musicbrainz_never_had_a_counterpart_for_stays_quiet():
+    """The case the ONLY_DISK exclusion was written for, and it must keep working.
+
+    The recovered Bandcamp URL lives in `comment`, which MusicBrainz has no
+    counterpart for at all — `album_fields` marks it `comparable=False`. Nothing
+    is pending there: a re-tag preserves it, so calling it a finding would put
+    every adopted album permanently in the Inbox over a URL Harmonist put there.
+    """
+    row = replace(
+        compare_field("Comment", disk=consensus([("1.flac", "https://x")]), mb=None),
+        comparable=False,
+    )
+
+    assert row.agreement is Agreement.ONLY_DISK
+    assert not row.differs
 
 
 def test_summary_counts_only_real_findings():
@@ -1400,6 +1440,46 @@ def test_the_heading_states_the_medium_and_the_track_count_too():
     )
     assert [s.mb for s in both.discs[1].heading.slots] == ["Disc 2 — Live Angle", "CD", None]
     assert both.discs[1].heading.mark_index == 1
+
+
+def test_identifiers_are_revealed_when_hiding_them_would_show_nothing():
+    """#339. The page said "11 of 11 tracks differ" over a table where nothing at
+    all was marked.
+
+    Every track of *Surfing on Sine Waves* differs on its ISRC and nothing else.
+    ISRC is an identifier column, hidden by default (#319) — and because every
+    difference on those rows is hidden, `mb_only_identifiers` suppresses the
+    purple line too, which on its own terms is right (it exists to prevent "a
+    difference marked against nothing"). Together they state a finding and hide
+    all of its evidence.
+    """
+    tl = tracklist(
+        [_file(1, "Nightcall", isrcs=["GBAAA0000001"]), _file(2, "Odd Look", isrcs=["X"])],
+        [
+            _mb_track(1, "Nightcall", isrcs=["GBAAA0000002"]),
+            _mb_track(2, "Odd Look", isrcs=["Y"]),
+        ],
+    )
+
+    assert any(t.mb_only_identifiers for t in tl.tracks), "the shape this is about"
+    assert tl.reveal_identifiers
+
+
+def test_identifiers_stay_hidden_when_a_visible_column_explains_the_count():
+    """The narrower half, and what keeps #319 worth having.
+
+    A track differing on its title AND its ISRC has a visible difference that
+    accounts for the headline, so the identifiers stay behind their control and
+    the table stays narrow. Revealing on any identifier difference would undo
+    #319 on most albums that have one.
+    """
+    tl = tracklist(
+        [_file(1, "Nightcal", isrcs=["GBAAA0000001"])],
+        [_mb_track(1, "Nightcall", isrcs=["GBAAA0000002"])],
+    )
+
+    assert not any(t.mb_only_identifiers for t in tl.tracks)
+    assert not tl.reveal_identifiers
 
 
 def test_the_headline_reports_a_disc_that_differs():

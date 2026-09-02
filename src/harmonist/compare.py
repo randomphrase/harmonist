@@ -212,8 +212,26 @@ class FieldComparison:
 
     @property
     def differs(self) -> bool:
-        """Whether this row is something the user should look at. ONLY_DISK is
-        excluded on purpose: a Bandcamp URL in the comment is not a finding."""
+        """Whether this row is something the user should look at.
+
+        ONLY_DISK is a finding when the field is COMPARABLE, and silent when it
+        is not (#340). The two cases look identical in the agreement alone, and
+        `comparable` is the only thing that tells them apart:
+
+        * MusicBrainz has no counterpart for the field — `genre`, and the
+          recovered Bandcamp URL in `comment`. Nothing is pending; a re-tag
+          preserves them. Calling those findings would put every adopted album
+          permanently in the Inbox over a URL Harmonist put there itself. This is
+          the case the blanket exclusion was written for.
+        * MusicBrainz has a counterpart and simply no value — a barcode it does
+          not know. **A re-tag deletes that**, so it is exactly the kind of
+          pending change this table exists to state. Excluding it left the page
+          saying "1 of 18 tags differ" about an album the update flag had
+          flagged for two others, because `owned.diff` counts `'X' -> None` and
+          this did not.
+        """
+        if self.agreement is Agreement.ONLY_DISK:
+            return self.comparable
         return self.agreement in (
             Agreement.DIFFERS,
             Agreement.ONLY_MB,
@@ -1086,6 +1104,25 @@ class TracklistComparison:
     def identifier_columns(self) -> tuple[TrackColumn, ...]:
         """The columns the "Show identifiers" control reveals (#319)."""
         return tuple(c for c in self.columns if c.identifier)
+
+    @property
+    def reveal_identifiers(self) -> bool:
+        """Whether the identifier columns should start SHOWN (#339).
+
+        True exactly when hiding them would leave a stated difference with
+        nothing visible behind it: at least one row whose every difference is in
+        a hidden column. That row's own MusicBrainz line is suppressed too — by
+        `mb_only_identifiers`, which exists so a row cannot get "an empty purple
+        row carrying only a hexagon" — so the table shows the reader nothing at
+        all while the summary above it counts the row as differing.
+
+        Deliberately narrower than "any identifier differs". A track differing on
+        its title AND its ISRC already has a visible difference accounting for
+        the count, so the identifiers stay behind their control and the table
+        stays narrow — which is what #319 was for. Revealing on any identifier
+        difference would undo it on most albums that have one.
+        """
+        return any(t.mb_only_identifiers for t in self.tracks)
 
     @property
     def identifier_summary(self) -> str:
@@ -2158,6 +2195,14 @@ def _track_fields(
         # `album_fields` states: which MusicBrainz thing an id names, and whether
         # a value is a credit, are properties of the FIELD. The two strings being
         # compared cannot say.
+        #
+        # `comparable` is per-ROW here, not per-field, and that is load-bearing
+        # since #340 made a comparable ONLY_DISK field a finding. A video track
+        # (#226) and every row of the disk-only view (#228) have `mb=None` for
+        # ALL their fields, so without this each of them would light up as a row
+        # full of pending removals — when the whole claim of a video row is
+        # "present, and that is all". MusicBrainz has no counterpart for the row,
+        # which is precisely what `comparable` means.
         fields.append(replace(row, entity=c.entity, credit=c.credit))
     fields.append(
         _length_field(
@@ -2166,6 +2211,18 @@ def _track_fields(
             unreadable=unreadable,
         )
     )
+    # `comparable` is per-ROW here, not per-field, and it is load-bearing since
+    # #340 made a comparable ONLY_DISK field a finding. A video track (#226) and
+    # every row of the disk-only view (#228) have no MusicBrainz counterpart at
+    # all, so all their fields land in ONLY_DISK — and without this each row
+    # would light up as a set of pending removals, when the whole claim of a
+    # video row is "present, and that is all".
+    #
+    # Applied to the WHOLE row rather than inside the loop above: `#` and Length
+    # are built outside it, and marking only the tag columns left those two
+    # still reading as findings on exactly the rows this protects.
+    if mb is None:
+        return tuple(replace(f, comparable=False) for f in fields)
     return tuple(fields)
 
 
@@ -2185,8 +2242,21 @@ def _length_field(disk_ms: int | None, mb_ms: int | None, *, unreadable: bool) -
         return FieldComparison(
             "Length", Kind.SCALAR, Agreement.MATCHES, disk=_mmss(disk_ms), mb=_mmss(mb_ms)
         )
-    return compare_value(
-        "Length", kind=Kind.SCALAR, disk=_mmss(disk_ms), mb=_mmss(mb_ms), unreadable=unreadable
+    # `comparable=False`, always, and it is the one field that needs saying
+    # explicitly (#340). A length is NOT a tag — nothing writes one to a file —
+    # so a length MusicBrainz does not carry can never be a pending removal, and
+    # the rule that makes a comparable ONLY_DISK field a finding would otherwise
+    # report every digital release whose lengths MusicBrainz lacks. What
+    # `comparable` is really standing in for throughout is "a field Harmonist
+    # writes from MusicBrainz", which everywhere else it names exactly.
+    #
+    # A length that genuinely DIFFERS is untouched: that lands in DIFFERS, which
+    # does not consult this flag.
+    return replace(
+        compare_value(
+            "Length", kind=Kind.SCALAR, disk=_mmss(disk_ms), mb=_mmss(mb_ms), unreadable=unreadable
+        ),
+        comparable=False,
     )
 
 

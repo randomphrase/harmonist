@@ -101,6 +101,18 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A tag MusicBrainz has no value for is now shown as a pending removal.** The
+  album page reported nothing at all for it while the *Update available* flag
+  counted it, so an album could be flagged and then show no reason for it — a
+  barcode or ASIN your files carry and MusicBrainz doesn't is common on digital
+  releases, and a re-tag deletes it. A tag MusicBrainz has no *counterpart* for,
+  like a genre or the recovered Bandcamp URL in the comment, stays silent as
+  before — nothing is pending there (#340).
+- **Identifier columns are shown from the start when they are the only thing
+  that differs.** The tracklist could say *"11 of 11 tracks differ"* above a
+  table with nothing marked, because the difference was in a hidden column and
+  the MusicBrainz line hid with it. They stay hidden when a visible column
+  already accounts for the count (#339).
 - **A library that predates a newly added tag is no longer flagged wholesale.**
   `albumartists` is new in Harmonist and nearly as new in Picard, so no existing
   library carried it — and one field put every album in the *Update available*

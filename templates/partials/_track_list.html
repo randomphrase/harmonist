@@ -43,7 +43,7 @@
    govern every cell of the identifier columns at once (#319). The toggle itself
    is in the section's header since #328 and reaches down to this class; the
    wrapper is what it reaches for. #}
-<div class="tracklist">
+<div class="tracklist{{ ' tracklist--ids' if tracklist.reveal_identifiers }}">
 <div class="overflow-x-auto">
     <table class="track-diff">
         {# The number and length columns are named so they can be aligned by

@@ -6053,6 +6053,63 @@ def test_a_missing_track_and_a_missing_disc_are_both_marked(client, cfg, monkeyp
     assert "Disc 2 not in your files" in body
 
 
+def test_identifiers_start_revealed_when_they_are_the_only_difference(client, cfg, monkeypatch):
+    """#339, end to end and in both halves.
+
+    The page said "1 of 1 tracks differ" over a table where nothing was marked.
+    Asserted through the rendered response because the two halves of the initial
+    state live in different partials since #328 — the checkbox in the section
+    header, the class on the wrapper inside the tracklist — and a model test
+    cannot see them disagree.
+    """
+    # TWO tracks, with a different ISRC each: rule 1 only earns a column when the
+    # readings differ BETWEEN tracks, so a one-track album can never reach the
+    # state this is about.
+    d = _make_tagged_album(cfg, "Isrc", mbid="rel-isrc", tagged_at=datetime.now(UTC))
+    shutil.copy(SINE_M4A, d / "02 Track.m4a")
+    for name, title, isrc in (
+        ("01 Track.m4a", "Quoth", b"GBAAA0000001"),
+        ("02 Track.m4a", "Audax", b"GBAAA0000003"),
+    ):
+        audio = MP4(d / name)
+        audio[ATOM_TITLE] = [title]
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-isrc"]
+        audio["trkn"] = [(1 if "01" in name else 2, 2)]
+        audio["----:com.apple.iTunes:ISRC"] = [isrc]
+        audio.save()
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Isrc",
+            "medium-list": [
+                {
+                    "position": "1",
+                    "track-list": [
+                        {
+                            "id": "t1",
+                            "title": "Quoth",
+                            "length": "1000",
+                            "recording": {"id": "r1", "isrc-list": ["GBAAA0000002"]},
+                        },
+                        {
+                            "id": "t2",
+                            "title": "Audax",
+                            "length": "1000",
+                            "recording": {"id": "r2", "isrc-list": ["GBAAA0000004"]},
+                        },
+                    ],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    assert re.search(r'<div class="tracklist tracklist--ids">', body), "the wrapper"
+    assert re.search(r'<input type="checkbox" class="cursor-pointer" checked', body), "the box"
+
+
 def test_a_featured_credit_reads_as_the_artists_it_names(client, cfg, monkeypatch):
     """#309's second half, end to end.
 

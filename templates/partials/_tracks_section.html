@@ -36,9 +36,16 @@
            carrying no hx-* of its own is the pattern History already uses; the
            rule `make template-lint` enforces is against an inline handler on an
            element htmx also drives. #}
+        {# Checked from the start when hiding them would leave a stated
+           difference invisible (#339) — every difference on some row is in a
+           hidden column, so the table shows nothing while the note above counts
+           the row as differing. BOTH halves of the initial state have to agree:
+           this box and the `tracklist--ids` class on the wrapper inside
+           `_track_list.html`. Set one without the other and the control renders
+           checked over a hidden table, which reads as a broken toggle. #}
         <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
                       text-2xs uppercase tracking-widest font-bold text-muted hover:text-ink transition">
-            <input type="checkbox" class="cursor-pointer"
+            <input type="checkbox" class="cursor-pointer"{{ ' checked' if tracklist.reveal_identifiers }}
                    onchange="this.closest('section').querySelector('.tracklist').classList.toggle('tracklist--ids', this.checked)">
             Show identifiers
             <span class="font-normal normal-case tracking-normal text-muted">{{ tracklist.identifier_summary }}</span>
