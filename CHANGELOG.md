@@ -6,161 +6,81 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-09-01
+
 ### Added
 
-- Harmonist now writes the **`compilation`** flag on Various Artists releases.
-  Plex and every iTunes-lineage player read it to decide whether an album is a
-  VA compilation; without it a 20-track compilation is shattered into twenty
-  one-track albums, one per track artist. Set only when MusicBrainz credits the
-  release to Various Artists itself — a greatest-hits album by one artist does
-  **not** get it, because flagging one of those is what makes a player split it
-  apart. An album that stops being a compilation on a re-match has the tag
-  removed (#323).
-- Harmonist now writes **`albumartists`**, the album-level list of artist names
-  Picard writes alongside `albumartist`. On a collaboration the joined phrase —
-  *zakè & rhubiqs* — leaves a player guessing where one name ends and the next
-  begins, so the album files under a single composite artist; Navidrome and Plex
-  read the list instead. Written on the next tagging or re-tag (#322).
-  **No existing library carries this tag** — it is nearly as new in Picard, which
-  added it in 3.0.0rc1 — so an album missing it is the normal case rather than a
-  defect. Where the album has a single artist it is not reported as needing an
-  update at all, because `albumartist` beside it already says the same thing; on
-  a collaboration, where the list is the only record of where one name ends and
-  the next begins, a missing one **is** reported (#337).
+- **Harmonist can check your library against MusicBrainz in the background**, so
+  the **Update available** filter finds albums nobody has opened (#270). It is
+  off by default and never writes to your files: turn it on under **Background
+  update checks** in Settings, where **Check now** runs a pass immediately
+  rather than waiting up to an hour for the next one (#312).
 - An album with a MusicBrainz update waiting carries an **Update** badge on its
   Library tile (#293).
-- Harmonist can **check your library against MusicBrainz in the background**, so
-  the **Update available** filter finds albums nobody has opened (#270). Off by
-  default, turned on under **Background update checks** in Settings (#312), and
-  it never writes to your files.
-- **Check now**, beside that setting, runs a background check straight away
-  instead of waiting up to an hour for the next one (#312).
+- **Harmonist writes the `compilation` flag on Various Artists releases** —
+  without it, players in the iTunes lineage shatter a 20-track compilation into
+  twenty one-track albums, one per track artist (#323).
+- **Harmonist writes `albumartists`**, the album-level artist list Picard writes
+  beside `albumartist`, so a collaboration files under both names rather than
+  under one composite one (#322).
 
 ### Changed
 
-- An album's **tracklist now shows the per-track tags that differ**, as extra
-  columns, so a change lands beside the track it belongs to instead of being
-  summarised as "1 of 7 tracks" in the box below. A column appears when it can
-  say *which* track — the tag differs from MusicBrainz on some tracks and not
-  others, the tracks disagree with each other, or a track's credit differs from
-  the album's. A change that reads the same on every track stays in the box,
-  where one line says all of it, and a tag that agrees everywhere is named under
-  the table with its value one press away (#309).
-- Because of that, the **Artist column is no longer always shown**: on an album
-  where every track is credited to the album artist it said nothing, and it comes
-  straight back on a compilation or a featured credit.
-- **Artist credits read as the artists they name.** "Rafael Anton Irisarri feat.
-  Julia Kent" is now two links joined by MusicBrainz's own wording, in both the
-  tracklist and the album's Album artist row (#309).
-- The tracklist's **identifier columns start hidden**, behind a **Show
-  identifiers** checkbox that names what is in it. MusicBrainz ids and ISRCs are
-  worth keeping and worth linking, and are not what you open the page to read —
-  so the readable tags get the width, and identifiers no longer take up any of
-  the three columns those tags compete for (#319).
-- A MusicBrainz id with no name to show is **shortened to its first characters**,
-  with the whole of it still in the link and on hover (#319).
-- The tracklist no longer draws an **Artists** column beside **Artist**. It is the
-  same credit unjoined, and since the Artist column became the artists it names,
-  it was one fact in two columns. It comes back if it ever differs from
-  MusicBrainz where Artist does not (#319).
-- On a multi-disc release, the **disc subtitle, medium and track count are shown
-  on the disc's heading** rather than in columns of their own. They describe the
-  disc, so a column of them repeated one value all the way down it — twenty-nine
-  rows of *Live Angle*. Where your files disagree with MusicBrainz about any of
-  them the heading gains a second line beneath it, carrying just the part that
-  changed. A disc whose own files disagree with each other keeps its columns,
-  since the heading could not state that (#320).
-- **Disc headings are more prominent**: larger, in mixed case rather than small
-  capitals, and marked with an accent rail (#320).
-- The album page draws **one MusicBrainz note instead of two**. The hexagon band
-  was rendered over both Tags and Tracks, saying the same thing about the same
-  fetch; it now sits once in the album panel — with both summaries, when the
-  release was last read, and **read again** — beside the Re-tag button, which is
-  the action a difference leads to (#328).
-- **Forget** has moved to the far right of the album's actions row, away from
-  Re-tag. It deletes the sidecar and reverts the album to NEW, and it was sitting
-  one button from the control you actually came to press (#328).
-- **Show identifiers** has moved to the top right of the Tracks heading, matching
-  **Show details** on History. Under the table it read as belonging to the last
-  disc rather than to the whole tracklist (#328).
-- The per-track tags that are **the same on every track are now shown in the
-  open**, in a footer band under the tracklist, laid out like the album's own
-  tags — instead of being named in a sentence with their values behind a
-  disclosure triangle. The band also settles what they cover: under a multi-disc
-  release the old line read as a statement about the last disc (#328).
-- The headline names an absent or differing disc **by number** — *"Disc 3 not in
-  your files"* rather than *"Disc 3 — A Documentary not in your files"*. The
-  disc's own heading carries its name a few lines below, now that #320 has made
-  that heading legible (#328).
-- A track MusicBrainz lists that you don't have now says **"Not in your files"**
-  rather than "Not on disk", and carries a dashed ring beside its number — so a
-  half-ripped disc reads as a column of marks rather than a stack of notices. The
-  same ring replaces the words on the heading of a disc you never ripped, where
-  *"Not on disk: Disc 2 — Bonus DVD · DVD-Video"* had put three spellings of one
-  syllable inside eleven words (#326).
+- **An album's tracklist shows the per-track tags that differ, as columns**, so a
+  change lands beside the track it belongs to instead of being summarised as
+  "1 of 7 tracks" in the box below. A tag that reads the same on every track is
+  laid out in a band under the table instead (#309, #328).
+- **Artist credits read as the artists they name** — "Rafael Anton Irisarri feat.
+  Julia Kent" is two links, in both the tracklist and the Album artist row. The
+  separate **Artists** column goes with it, being the same credit unjoined
+  (#309, #319).
+- **The tracklist's identifier columns start hidden**, behind **Show identifiers**
+  at the top right of the Tracks heading, so the readable tags get the width
+  (#319, #328).
+- **A multi-disc release carries each disc's subtitle, medium and track count on
+  its heading**, rather than repeating one value all the way down a column of its
+  own — and those headings are legible now, where a lost cascade had been drawing
+  them at the size of the column headings beneath (#320).
+- **The album page draws one MusicBrainz note instead of two**, in the album panel
+  beside **Re-tag**: both summaries, when the release was last read, and **read
+  again** (#328).
+- **Forget has moved to the far right of the album's actions row**, away from
+  Re-tag (#328).
+- **A track MusicBrainz lists that you don't have reads "Not in your files"**,
+  with a dashed ring beside its number — so a half-ripped disc is a column of
+  marks rather than a stack of notices (#326).
 
 ### Fixed
 
-- **A tag MusicBrainz has no value for is now shown as a pending removal.** The
-  album page reported nothing at all for it while the *Update available* flag
-  counted it, so an album could be flagged and then show no reason for it — a
-  barcode or ASIN your files carry and MusicBrainz doesn't is common on digital
-  releases, and a re-tag deletes it. A tag MusicBrainz has no *counterpart* for,
-  like a genre or the recovered Bandcamp URL in the comment, stays silent as
-  before — nothing is pending there (#340).
-- **Identifier columns are shown from the start when they are the only thing
-  that differs.** The tracklist could say *"11 of 11 tracks differ"* above a
-  table with nothing marked, because the difference was in a hidden column and
-  the MusicBrainz line hid with it. They stay hidden when a visible column
-  already accounts for the count (#339).
-- **A library that predates a newly added tag is no longer flagged wholesale.**
-  `albumartists` is new in Harmonist and nearly as new in Picard, so no existing
-  library carried it — and one field put every album in the *Update available*
-  filter. A credit list that would hold a single name is now written when
-  Harmonist tags anyway, but its absence is no longer a reason to re-tag: the
-  scalar `albumartist` beside it already says the same thing. A missing list on
-  a genuine collaboration is still reported, and a list that disagrees always
-  was and still is (#337).
 - **Every dated M4A album no longer reports an update available forever.**
-  Harmonist wrote the original-date tags in upper case where Picard writes them
-  in lower, and MP4 tag names are case-sensitive — so it could not see its own
-  or Picard's original date, reported it missing on every check, and rewrote the
-  file each time without ever settling. A whole library could sit in *Update
-  available* on this alone. Harmonist now writes and reads Picard's spelling,
-  and clears the upper-case tags it wrote before, so no album is left carrying
-  both (#333).
-- **Every label and catalogue number a release names is now written**, not just
-  the first. Co-releases and licensed reissues routinely name two labels, and
-  Harmonist kept one. The two are also collected independently now, which fixes
-  a case that affected albums Harmonist tagged itself: a release whose first
-  label entry had no catalogue number, while a later one did, got **no
-  catalogue number at all** (#334).
-- **A re-tag no longer deletes MusicBrainz secondary release types.** Harmonist
-  wrote only the primary type, so nothing on disk recorded that an album was
-  live, a remix or a soundtrack — and on a Picard-tagged library it was worse
-  than incomplete: the reader took only the first value, so a live album
-  compared as matching and then lost *live* on the next re-tag, with the album
-  page reporting agreement the whole time. The release type is now written the
-  way Picard writes it, as one multi-value tag holding the primary type and the
-  secondary ones. **Navidrome reads this tag and has no other source for it**, so
-  this is what makes its album *Type* filter work. Albums tagged by an earlier
-  version will report an update available until re-tagged (#331).
-- **Disc headings were rendering at the size and colour of the column headings
-  beneath them.** The rule that sizes them lost the cascade to a more specific
-  one, so none of it ever applied and a disc heading was indistinguishable from
-  the row under it (#320).
-
-- The album page can now put a **name on the MusicBrainz artist ids credited to a
-  track**, not just the ones credited to the release — a featured artist's id
-  used to render as raw hex with no name available anywhere (#309).
-- History rows for **Disc subtitle** no longer read as the raw tag name
+  Harmonist wrote the original-date tags in a case Picard doesn't use, so it
+  could never see its own; it now writes Picard's spelling and clears the tags
+  it wrote before (#333).
+- **A re-tag no longer deletes MusicBrainz secondary release types**, so an album
+  keeps *live*, *remix* or *soundtrack* — and **Navidrome has no other source for
+  its album *Type* filter**. Albums tagged by an earlier version will show one
+  corrective update (#331).
+- **Every label and catalogue number a release names is written**, not just the
+  first — and a release whose first label entry carried no catalogue number no
+  longer ends up with none at all (#334).
+- **A library that predates a newly added tag is no longer flagged wholesale** —
+  a missing `albumartists` put every album into *Update available*, and its
+  absence is now reported only on a genuine collaboration (#337).
+- **A tag MusicBrainz has no value for is shown as a pending removal**, so an
+  album can no longer be flagged for an update and then show no reason for it
+  (#340).
+- **Identifier columns are shown from the start when they are the only thing that
+  differs** — the tracklist could say *"11 of 11 tracks differ"* above a table
+  with nothing marked (#339).
+- **The album page can put a name on the MusicBrainz artist ids credited to a
+  track**, not just the ones credited to the release (#309).
+- **History rows for Disc subtitle** no longer read as the raw tag name
   `disc_subtitle` (#309).
-- The tracklist's **#** and **Length** headings are right-aligned over their
-  columns again, instead of sitting left above right-aligned values (#261).
-
-- The log no longer warns that a **MusicBrainz fetch was slow** on every single
-  fetch. The threshold sat below what a normal fetch costs on a NAS, so the
-  warning fired constantly and drowned out the stalls it exists to report (#314).
+- **The tracklist's # and Length headings are right-aligned** over their columns
+  again (#261).
+- **The log no longer warns that a MusicBrainz fetch was slow on every fetch** —
+  the threshold sat below what a normal fetch costs on a NAS, drowning out the
+  stalls it exists to report (#314).
 
 ## [1.12.0] - 2026-08-28
 
