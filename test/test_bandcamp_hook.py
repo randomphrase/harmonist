@@ -58,6 +58,19 @@ class _StubItem:
         self.item_title = data.get("item_title", "Test Album")
 
 
+class _KeylessItem(_StubItem):
+    """A purchase whose payload has no `is_preorder` key at all — BandcampItem
+    raises KeyError (not AttributeError) for that, so `getattr(…, default)`
+    does not save you."""
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        del self.is_preorder  # fall through to __getattr__ below
+
+    def __getattr__(self, key):
+        raise KeyError(f'BandcampItem value "{key}" does not exist')
+
+
 # ---------- construct_bandcamp_url ----------
 
 
@@ -212,6 +225,8 @@ def _bare_syncer(max_downloads: int = 5) -> HarmonistSyncer:
     s.new_items = 0
     s.skipped_for_limit = 0
     s._pending_this_run = []
+    s.deferred_preorders = 0
+    s._unfinished = set()
     s._adopt_index = {}
     s._adopt_consumed = set()
     s.bandcamp = MagicMock()
@@ -409,16 +424,141 @@ def test_link_only_does_not_advance_checkpoint(monkeypatch):
     assert saved == []  # parent never reached → checkpoint left as-is
 
 
+def _capture_checkpoint(monkeypatch) -> list[int | None]:
+    """Record the item_id the parent would checkpoint on — i.e. the head of the
+    collection list we hand it. `None` if it was called with nothing to save;
+    an empty capture means it was never reached at all."""
+    seen: list[int | None] = []
+
+    def fake_save(self) -> None:
+        items = list(self.bandcamp.collection_items)
+        seen.append(int(items[0].item_id) if items else None)
+
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer._save_collection_checkpoint", fake_save)
+    return seen
+
+
 def test_normal_sync_advances_checkpoint(monkeypatch):
+    """Nothing left undone → the checkpoint covers the newest purchase, exactly
+    as bandcampsync would on its own."""
     s = _bare_syncer()
     s._link_only = False
-    saved: list[int] = []
-    monkeypatch.setattr(
-        "harmonist.bandcamp_hook._BCSyncer._save_collection_checkpoint",
-        lambda self: saved.append(1),
-    )
+    s.bandcamp.collection_items = [_StubItem(item_id=i) for i in (30, 20, 10)]
+    seen = _capture_checkpoint(monkeypatch)
     s._save_collection_checkpoint()
-    assert saved == [1]  # parent called → checkpoint advances normally
+    assert seen == [30]  # parent called with the whole collection → newest wins
+
+
+def test_checkpoint_stops_short_of_a_purchase_the_sync_left_undone(monkeypatch):
+    """The checkpoint is where the NEXT sync stops paginating, so it may only
+    cover purchases this run actually finished with. One left undone (a skipped
+    pre-order, a cap deferral) pulls it back to the first purchase older than
+    that one — otherwise it drops below the line and is never paged again (#351)."""
+    s = _bare_syncer()
+    s.bandcamp.collection_items = [_StubItem(item_id=i) for i in (30, 20, 10)]
+    s._unfinished = {20}
+    seen = _capture_checkpoint(monkeypatch)
+    s._save_collection_checkpoint()
+    assert seen == [10]  # 20 stays above the line and gets retried next sync
+
+
+def test_holding_the_checkpoint_is_idempotent(monkeypatch):
+    """The clamp works by handing the parent a truncated collection, so it must
+    put the real one back — otherwise a second save (or anything else reading
+    the collection afterwards) sees only the tail we cut it down to."""
+    s = _bare_syncer()
+    items = [_StubItem(item_id=i) for i in (30, 20, 10)]
+    s.bandcamp.collection_items = items
+    s._unfinished = {20}
+    seen = _capture_checkpoint(monkeypatch)
+    s._save_collection_checkpoint()
+    s._save_collection_checkpoint()
+    assert seen == [10, 10]
+    assert s.bandcamp.collection_items == items  # collection restored, not consumed
+
+
+def test_checkpoint_is_left_alone_when_the_oldest_purchase_is_undone(monkeypatch):
+    """Nothing paged this run is safe to checkpoint → don't write one at all.
+    The existing checkpoint is older still, so leaving it is the safe answer."""
+    s = _bare_syncer()
+    s.bandcamp.collection_items = [_StubItem(item_id=i) for i in (30, 20, 10)]
+    s._unfinished = {10}
+    seen = _capture_checkpoint(monkeypatch)
+    s._save_collection_checkpoint()
+    assert seen == []  # parent never reached
+
+
+def test_a_skipped_preorder_holds_the_checkpoint_back(tmp_path, monkeypatch):
+    """The real #351 sequence: bandcampsync skips a pre-order (downloading
+    nothing, logging at INFO on a logger we silence). It is the newest purchase,
+    so the checkpoint would otherwise land on its own token and bury it — the
+    release date never gets a chance to matter."""
+    s = _bare_syncer()
+    s.local_media.get_path_for_purchase = lambda item: tmp_path / str(item.item_id)
+    s.local_media.is_locally_downloaded = lambda item, path: False
+    s.ignores.is_ignored = lambda item: False
+    # The parent downloads nothing for any of them (it skips the pre-order; the
+    # other two are already on disk) — only the pre-order is UNFINISHED.
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item, encoding=None: False,
+    )
+    items = [
+        _StubItem(item_id=30),
+        _StubItem(item_id=20, is_preorder=True),
+        _StubItem(item_id=10),
+    ]
+    s.bandcamp.collection_items = items
+    for item in items:
+        s.sync_item(item)
+    seen = _capture_checkpoint(monkeypatch)
+    s._save_collection_checkpoint()
+    assert seen == [10]  # the pre-order stays above the line
+
+
+def test_a_cap_deferred_purchase_holds_the_checkpoint_back(tmp_path, monkeypatch):
+    """A cap deferral's "run Sync again" is only true if the next sync can still
+    see the deferred purchases. The cap defers the OLDEST purchases, so a capped
+    run must not advance the checkpoint at all."""
+    s = _bare_syncer(max_downloads=2)
+    s.local_media.get_path_for_purchase = lambda item: tmp_path / str(item.item_id)
+    s.local_media.is_locally_downloaded = lambda item, path: False
+    s.ignores.is_ignored = lambda item: False
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item, encoding=None: True,
+    )
+    monkeypatch.setattr("harmonist.bandcamp_hook.write_sidecar_for_item", lambda *a, **k: True)
+    items = [_StubItem(item_id=i) for i in (40, 30, 20, 10)]
+    s.bandcamp.collection_items = items
+    for item in items:
+        s.sync_item(item)
+    assert s.skipped_for_limit == 2  # 20 and 10 deferred to the next sync
+    seen = _capture_checkpoint(monkeypatch)
+    s._save_collection_checkpoint()
+    assert seen == []  # checkpoint untouched → the next sync re-pages and finishes
+
+
+def test_an_item_without_an_is_preorder_key_is_not_treated_as_unfinished(tmp_path, monkeypatch):
+    """`BandcampItem.__getattr__` raises KeyError for a missing key, which
+    `getattr(item, "is_preorder", False)` does NOT catch — its default only
+    covers AttributeError. A payload that drops the key must read as "not a
+    pre-order", not crash the sync or pin the checkpoint forever."""
+    s = _bare_syncer()
+    s.local_media.get_path_for_purchase = lambda item: tmp_path / str(item.item_id)
+    s.local_media.is_locally_downloaded = lambda item, path: False
+    s.ignores.is_ignored = lambda item: False
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook._BCSyncer.sync_item",
+        lambda self, item, encoding=None: False,
+    )
+    items = [_StubItem(item_id=30), _KeylessItem(item_id=20), _StubItem(item_id=10)]
+    s.bandcamp.collection_items = items
+    for item in items:
+        s.sync_item(item)  # must not raise
+    seen = _capture_checkpoint(monkeypatch)
+    s._save_collection_checkpoint()
+    assert seen == [30]  # nothing unfinished → the checkpoint advances normally
 
 
 def test_sync_item_skips_relink_for_already_linked_album(tmp_path, monkeypatch):

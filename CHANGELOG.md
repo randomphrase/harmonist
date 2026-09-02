@@ -22,6 +22,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A purchase a sync couldn't finish with is no longer lost for good.** The
+  sync remembered where it got to as "the newest purchase I saw", not "the
+  newest one I finished with" — so a pre-order Bandcamp wasn't serving yet, or
+  an album deferred by the per-sync download limit, dropped below that mark and
+  was never looked at again, even once released. The mark now stops short of
+  anything still owed, and the sync says so when it finishes: *"1 pre-order not
+  released yet — each sync retries them"* (#351).
+
 - **A release country Picard chose is no longer reported as out of date.**
   Picard writes whichever of the release's countries your
   `preferred_release_countries` setting names, which is rarely MusicBrainz's

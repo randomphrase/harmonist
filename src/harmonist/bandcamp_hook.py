@@ -116,6 +116,29 @@ def _case_collision(band_dir: Path) -> Path | None:
     return None
 
 
+def _item_id(item: Any) -> int:
+    """A purchase's Bandcamp item_id as an int, 0 if it has none."""
+    try:
+        return int(getattr(item, "item_id", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_preorder(item: Any) -> bool:
+    """True if this purchase is a Bandcamp pre-order.
+
+    `getattr(item, "is_preorder", False)` does NOT do this: BandcampItem's
+    `__getattr__` raises **KeyError** for an absent key, and getattr's default
+    only catches AttributeError. Every live collection item carries the key
+    today, so the difference would only show on a payload that drops it — i.e.
+    it would take the sync down at the exact moment there is least to go on.
+    """
+    try:
+        return bool(item.is_preorder)
+    except (KeyError, AttributeError):
+        return False
+
+
 def construct_bandcamp_url(item: Any) -> str | None:
     """Construct the public Bandcamp album URL from a BandcampItem.
 
@@ -341,6 +364,13 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # Genuinely-new albums NOT downloaded this run because the per-sync
         # download limit was reached — i.e. how many remain for the next sync.
         self.skipped_for_limit = 0
+        # Pre-orders Bandcamp won't serve yet (reported by the sync runner, so a
+        # skip that used to be silent is visible in the feed).
+        self.deferred_preorders = 0
+        # item_ids this run SAW but did not finish with — a skipped pre-order, a
+        # purchase deferred by the download cap. The collection checkpoint must
+        # not advance past any of them (#351); see _save_collection_checkpoint.
+        self._unfinished: set[int] = set()
         # Potential downloads accumulated this run (link mode: purchases we
         # couldn't confidently match and so didn't download). Swapped into the
         # module-level in-memory store at the end of the sync.
@@ -372,7 +402,60 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         if self._link_only:
             log.info("link-only sync: not advancing the collection checkpoint")
             return
-        super()._save_collection_checkpoint()
+        if not self._unfinished:
+            super()._save_collection_checkpoint()
+            return
+        # The parent checkpoints the NEWEST purchase it paged, whatever this run
+        # did with the ones below it — and the next sync stops paginating there.
+        # Anything left undone would drop below that line and never be offered
+        # again: a pre-order the parent skipped is by definition the newest
+        # purchase, so it buries itself, released or not (#351).
+        #
+        # This is upstream's bug (meeb/bandcampsync#69 — same symptom, same
+        # `last_seen_item_id`, same "delete the state file" workaround), fixed
+        # here at the adapter layer because Harmonist has to keep a purchase
+        # reachable regardless. Revisit if upstream lands its own fix.
+        #
+        # Hand the parent a collection truncated to just past the OLDEST
+        # unfinished purchase, so the checkpoint only ever covers finished work.
+        # Truncate rather than write our own state file: dry-run, sync-error and
+        # atomic-write handling stay the parent's, as does the file format.
+        items = list(getattr(self.bandcamp, "collection_items", None) or [])
+        if not items:
+            items = list(getattr(self.bandcamp, "purchases", None) or [])
+        # Bandcamp pages the collection newest → oldest, so the safe checkpoint
+        # is the first purchase OLDER than the oldest unfinished one.
+        cut = max(
+            (i for i, it in enumerate(items) if _item_id(it) in self._unfinished),
+            default=-1,
+        )
+        if cut < 0:
+            super()._save_collection_checkpoint()  # unfinished, but none of them paged
+            return
+        safe = items[cut + 1 :]
+        if not safe:
+            # Nothing paged this run is safe to checkpoint. Leave the existing
+            # one alone — it is older still, so it can only be conservative.
+            log.info(
+                "holding the collection checkpoint: %d purchase(s) left unfinished, "
+                "the oldest of them being the oldest purchase paged this sync",
+                len(self._unfinished),
+            )
+            audit.record("checkpoint.hold", held_for=_item_id(items[cut]), covers="-")
+            return
+        original = self.bandcamp.collection_items
+        self.bandcamp.collection_items = safe
+        try:
+            super()._save_collection_checkpoint()
+        finally:
+            self.bandcamp.collection_items = original
+        log.info(
+            "holding the collection checkpoint at purchase %s: %d newer purchase(s) "
+            "left unfinished this sync and must stay re-pageable",
+            _item_id(safe[0]),
+            len(self._unfinished),
+        )
+        audit.record("checkpoint.hold", held_for=_item_id(items[cut]), covers=_item_id(safe[0]))
 
     async def sync_items(self) -> None:
         # Seed dedup from the in-memory library index FIRST: any purchase whose
@@ -818,11 +901,14 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             local_path = self.local_media.get_path_for_purchase(item)
             if (
                 not self.ignores.is_ignored(item)
-                and not getattr(item, "is_preorder", False)
+                and not _is_preorder(item)
                 and not getattr(item, "hidden", False)
                 and not self.local_media.is_locally_downloaded(item, local_path)
             ):
                 self.skipped_for_limit += 1
+                # Deferred, not declined — the checkpoint must stay behind it or
+                # "run Sync again" can never reach it (#351).
+                self._unfinished.add(item_id_int)
                 return False
 
         # Detect a case-collision BEFORE the download creates the folder (after,
@@ -831,6 +917,8 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         local_path = self.local_media.get_path_for_purchase(item)
         collided = _case_collision(local_path.parent)
         result = bool(super().sync_item(item, encoding))
+        if not result:
+            self._note_preorder_deferral(item, local_path)
         if result:
             self.new_items += 1
             # Mint the album's id NOW, before the sidecar exists, so these audit
@@ -865,6 +953,39 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             else:
                 self._run_post_download(local_path)
         return result
+
+    def _note_preorder_deferral(self, item: Any, local_path: Path) -> None:
+        """Record a purchase the parent skipped because it is an unreleased
+        pre-order — the one skip that is genuinely *owed* rather than declined.
+
+        bandcampsync returns a bare False for it (`sync.py`: `if item.is_preorder`)
+        and says so at INFO on the `sync` logger, which `_configure_logging` pins
+        to WARNING — so today the skip reaches neither the log nor the feed. Mark
+        it unfinished so the collection checkpoint stays behind it and the next
+        sync can retry (#351), and count it so the sync's closing line can say a
+        purchase is still owed.
+
+        Guarded against the parent's *earlier* exits: an ignored, hidden or
+        already-downloaded purchase also returns False, for its own good reasons,
+        and is finished business — holding the checkpoint for one would pin it
+        there for good.
+        """
+        if not _is_preorder(item):
+            return
+        if (
+            self.ignores.is_ignored(item)
+            or getattr(item, "hidden", False)
+            or self.local_media.is_locally_downloaded(item, local_path)
+        ):
+            return
+        self._unfinished.add(_item_id(item))
+        self.deferred_preorders += 1
+        log.info(
+            "pre-order not downloadable yet: %s / %s (item_id=%s) — the next sync retries it",
+            getattr(item, "band_name", "?"),
+            getattr(item, "item_title", "?"),
+            _item_id(item),
+        )
 
     def _run_post_download(self, album_dir: Path) -> None:
         """Invoke the post-download hook (MB auto-resolve). Never aborts sync."""

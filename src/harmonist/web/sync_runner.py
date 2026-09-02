@@ -106,6 +106,7 @@ class SyncRunner:
         log.info("sync started")
         new_items = 0
         remaining = 0
+        preorders = 0
         error: str | None = None
         try:
             result = self._runner_fn()
@@ -116,6 +117,10 @@ class SyncRunner:
             )
             # Albums deferred because the per-sync download limit was reached.
             remaining = int(getattr(result, "skipped_for_limit", 0))
+            # Purchases Bandcamp won't serve yet (unreleased pre-orders). The
+            # skip happens inside bandcampsync on a logger we silence, so
+            # without this the sync just reports "0 new items" (#351).
+            preorders = int(getattr(result, "deferred_preorders", 0))
         except Exception as e:
             log.exception("sync failed")
             error = str(e)
@@ -133,4 +138,9 @@ class SyncRunner:
             msg = f"Bandcamp sync finished — {new_items} new item{plural}"
             if remaining:
                 msg += f"; {remaining} more reached the per-sync limit — run Sync again"
+            if preorders:
+                msg += (
+                    f"; {preorders} pre-order{'' if preorders == 1 else 's'} "
+                    "not released yet — each sync retries them"
+                )
             activity.info(msg)

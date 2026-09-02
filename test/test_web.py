@@ -6519,6 +6519,43 @@ def test_run_bandcamp_sync_keeps_existing_ignores_file(cfg, monkeypatch):
     assert cfg.ignores_file.read_text() == "12345  # keep me\n"
 
 
+def _sync_finished_message(monkeypatch, **result_fields) -> str:
+    """Run SyncRunner's body against a stub syncer result and return the single
+    Activity line it wrote."""
+    from types import SimpleNamespace
+
+    from harmonist.web.sync_runner import SyncRunner
+
+    said: list[str] = []
+    monkeypatch.setattr("harmonist.activity.info", lambda msg, **kw: said.append(msg))
+    runner = SyncRunner(runner_fn=lambda: SimpleNamespace(**result_fields))
+    runner._run()
+    assert len(said) == 1
+    return said[0]
+
+
+def test_sync_finish_reports_pre_orders_it_could_not_download(monkeypatch):
+    """A pre-order is skipped inside bandcampsync, on a logger we pin to
+    WARNING — so a sync that downloads nothing else reports "0 new items" and
+    the purchase looks lost. Say it is owed and being retried (#351)."""
+    msg = _sync_finished_message(
+        monkeypatch, new_items=0, skipped_for_limit=0, deferred_preorders=1
+    )
+    assert msg == (
+        "Bandcamp sync finished — 0 new items; 1 pre-order not released yet — "
+        "each sync retries them"
+    )
+
+
+def test_sync_finish_says_nothing_about_pre_orders_when_there_are_none(monkeypatch):
+    """The clause only appears when a pre-order was actually deferred — the
+    steady-state line stays as it was."""
+    msg = _sync_finished_message(
+        monkeypatch, new_items=2, skipped_for_limit=0, deferred_preorders=0
+    )
+    assert msg == "Bandcamp sync finished — 2 new items"
+
+
 # ---------- Potential-download actions ----------
 
 
