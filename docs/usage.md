@@ -276,8 +276,8 @@ value, which is what makes that row's difference visible.
 
 MusicBrainz allows one request per second, so the release behind this comparison
 is cached and re-used for an hour rather than re-fetched every time you open the
-page. The note above the fields says when it was last read — "read 20 minutes
-ago" — with **read again** beside it if you've just edited MusicBrainz and want
+page. The album panel's **Checked** date says when it was last read — "20 minutes
+ago" — with a refresh button beside it if you've just edited MusicBrainz and want
 to see the edit now. Re-tagging and **Recheck** always go to MusicBrainz itself,
 so an action never runs on a cached answer.
 
@@ -289,8 +289,7 @@ MusicBrainz ids and ISRCs, which start hidden.
 
 The whole comparison is summed up once, on the album panel above: a hexagon note
 between the Format line and the buttons, saying how much of the tags and the
-tracklist differ, when the release was last read from MusicBrainz, and offering
-**read again**. It sits beside **Re-tag from MB** because that is the action a
+tracklist differ. It sits beside **Re-tag from MB** because that is the action a
 difference leads to.
 
 A track MusicBrainz lists that you don't have says *"Not in your files"*, with a

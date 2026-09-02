@@ -8,10 +8,16 @@
    fragment could serve a smaller dialog. The dialog is gone (#129). #}
 {% include 'partials/_tag_comparison.html' %}
 
-{# Out-of-band: htmx swaps these into the page's Tracks section and into the
-   album panel's note. One request, three destinations. #}
+{# Out-of-band: htmx swaps these into the page's Tracks section, the album
+   panel's note, and the panel's "Checked" date. One request, four destinations.
+
+   The Checked line is rendered at page build too, from the same cache row, so
+   this is not what puts it on the page — it is what keeps it true when the
+   fetch behind this response refreshed an expired row, or when the user pressed
+   re-read (#355). #}
 {% include 'partials/_tracks_section.html' %}
 {% include 'partials/_mb_note.html' %}
+{% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
 
 {# The part of a waiting re-tag that has nowhere else on this page to appear
    (#291, scoped by #297, narrowed again by #309).

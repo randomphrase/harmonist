@@ -158,6 +158,12 @@
                     title="{{ when.strftime('%Y-%m-%d %H:%M:%S UTC') }}">{{ ago(when) }}</dd>
                 {% endif %}
                 {% endfor %}
+                {# …and when MusicBrainz was last read for this release (#355).
+                   Its own partial rather than a fourth entry in the list above:
+                   it comes from the release cache rather than the sidecar, it
+                   carries the re-read control, and it is swapped out of band
+                   after a /compare — none of which the loop can express. #}
+                {% include 'partials/_checked_at.html' %}
             </dl>
             </div>{# /badges + dates row #}
 

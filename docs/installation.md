@@ -108,8 +108,9 @@ before it renders.
 
 MusicBrainz allows one request per second, so Harmonist caches each release it
 fetches and re-serves it for `cache_ttl_seconds` rather than asking again. An
-album's page shows when its release was last read, with a **read again** link
-beside it, so you can always force a fresh look after editing MusicBrainz — and
+album's page shows when its release was last read, as the **Checked** date in the
+album panel with a refresh button beside it, so you can always force a fresh look
+after editing MusicBrainz — and
 re-tagging and **Recheck** never use the cache. Set it to `0` to always fetch.
 
 `[gardener] level` decides whether Harmonist checks your library against

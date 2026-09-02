@@ -141,20 +141,12 @@ button[disabled],
 .mb-note__key { display: flex; align-items: center; gap: .35rem; font-weight: 700; font-size: .8rem; }
 .mb-note__legend { font-size: .78rem; color: var(--color-muted); }
 .mb-note__legend b { color: var(--color-mb-purple); font-weight: 600; }
-.mb-note__when { margin-left: auto; font-size: .72rem; color: var(--color-muted); }
-/* The way out of a stale cached comparison (#127). Deliberately subtle — it is
-   a rare action and a real request against a 1-req/sec budget, so it should be
-   findable without competing with the summary beside it. No `margin-left: auto`
-   here: `__when` already claimed it, and the pair travels to the right together. */
-.mb-note__reread {
-  font-size: .72rem;
-  color: var(--color-muted);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-.mb-note__reread:hover { color: var(--color-accent); }
-.mb-note__reread:disabled { opacity: .5; cursor: progress; }
+/* `__when` and `__reread` lived here until #355. The note's timestamp and its
+   re-read button were the page's only pure provenance, and holding them inside
+   a band whose other job is reporting differences meant the band could never go
+   away on an album with nothing to report. Both moved to the album panel's
+   dates (`_checked_at.html`), where the re-read glyph borrows the "wrong match"
+   pencil's styling rather than needing rules of its own. */
 /* The note in the album panel (#328). The stacked blocks around it own their
    spacing through the panel's `space-y-3`, so the bottom margin the standalone
    note carried would double up here. */

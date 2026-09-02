@@ -16,6 +16,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **An album now says when Harmonist last read it from MusicBrainz, beside its
+  other dates.** *Checked* joins Downloaded, Added and Tagged in the album panel,
+  and the button that forces a fresh read moved there with it (#355).
+
 - **An album with nothing to fix says so quietly.** The MusicBrainz note keeps
   its hexagon and its wording, but drops to a neutral tint when every tag and
   track matches — the coloured band is now reserved for a note that has

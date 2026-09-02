@@ -797,7 +797,7 @@ MusicBrainz rate-limits at **one request per second, per request rather than per
 
 **A row outlives its TTL on purpose.** `max_age` decides whether a row may be *served*, not how long it is *kept*. An expired row is still the last thing MusicBrainz said, which is what makes it the change-detection baseline the gardener compares a fresh fetch against (#32) — so expiry means "ask again", never "forget", and a fetch that fails does not fall back to it. There is deliberately no eviction: once findings exist (#271), a row is the evidence its finding was raised against.
 
-**`fetched_at` is why this needs no sidecar field.** It answers "how current is what I'm looking at?" on the album page — rendered as "read 20 minutes ago", with a **read again** control beside it, which is the escape hatch that keeps a cached comparison from being a dead end. It is also the clock the gardener's incremental scheduling reads to decide which albums are due. That last reader is what dissolves the derived-state tension #32 carried: "when was this last checked" lives here, keyed by MBID, and needs nothing on disk beside the album.
+**`fetched_at` is why this needs no sidecar field.** It answers "how current is what I'm looking at?" on the album page — rendered as the panel's **Checked** date, with a re-read control beside it, which is the escape hatch that keeps a cached comparison from being a dead end. It is also the clock the gardener's incremental scheduling reads to decide which albums are due. That last reader is what dissolves the derived-state tension #32 carried: "when was this last checked" lives here, keyed by MBID, and needs nothing on disk beside the album.
 
 ---
 

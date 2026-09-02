@@ -3895,6 +3895,23 @@ def _register_routes(app: FastAPI) -> None:
             tag_changes=tag_changes,
             restorable=restorable,
             revertable=revertable,
+            # When this release was last read from MusicBrainz, for the panel's
+            # "Checked" date (#355). A local SQLite read with no MusicBrainz call
+            # in it, so the panel can state it as the page is built rather than
+            # waiting on the /compare fetch that lands afterwards — which is what
+            # let this move out of the note, whose every other value does need
+            # that fetch.
+            #
+            # None when nothing has ever been read, and on an untagged album
+            # there is no release to have read: both render no line at all,
+            # rather than a claim about a check that never happened. No fallback
+            # to `now` here, unlike /compare — that response IS a read, and this
+            # one is not.
+            mb_read_at=(
+                mb_cache.fetched_at(album.sidecar.mb_release_id)
+                if album.sidecar and album.sidecar.mb_release_id
+                else None
+            ),
             from_page=max(1, from_page),
             from_filter=_library_filter(from_filter),
             from_q=_library_search(from_q),

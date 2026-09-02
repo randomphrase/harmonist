@@ -36,7 +36,9 @@ def test_read_again_issues_a_compare_request_and_refills_the_panel(demo_server: 
         page.on("request", lambda r: requests.append(r.url))
 
         page.goto(f"{demo_server}/album/{ALBUM}")
-        # The control arrives with the /compare fetch, not with the page.
+        # The control ships with the page once anything has read this release
+        # (#355), and arrives with the /compare fetch on the very first view.
+        # Waiting covers both rather than asserting which one this run is.
         button = page.get_by_role("button", name="Read this release from MusicBrainz again")
         button.wait_for(timeout=10_000)
 
@@ -46,12 +48,13 @@ def test_read_again_issues_a_compare_request_and_refills_the_panel(demo_server: 
             button.click()
         assert got.value.ok
 
-        # ...and the response was SWAPPED IN, not merely received. Since #328
-        # that is TWO destinations from one response, and a mis-targeted swap
-        # would leave either behind: the comparison itself lands in the Tags
-        # section in-band, and the note lands in the album panel out-of-band.
+        # ...and the response was SWAPPED IN, not merely received. One response,
+        # several destinations (#328, #355), and a mis-targeted swap would leave
+        # any of them behind: the comparison itself lands in the Tags section
+        # in-band, while the note and the panel's Checked date land out-of-band.
         page.wait_for_selector(f"#compare-{ALBUM} .tag-fields", timeout=10_000)
-        assert page.locator(f"#album-mb-note-{ALBUM} .mb-note__when").is_visible()
+        assert page.locator(f"#album-mb-note-{ALBUM} .mb-note__legend").is_visible()
+        assert page.locator(f"#album-checked-{ALBUM} dd").is_visible()
 
         browser.close()
 
@@ -64,9 +67,16 @@ def test_the_panel_reports_when_it_last_read_musicbrainz(demo_server: str) -> No
         page = browser.new_page()
 
         page.goto(f"{demo_server}/album/{ALBUM}")
-        when = page.locator(f"#album-mb-note-{ALBUM} .mb-note__when")
+        when = page.locator(f"#album-checked-{ALBUM} dd")
         when.wait_for(timeout=10_000)
 
-        assert "read" in (when.text_content() or "")
+        # The elapsed time itself is the wrong thing to assert on: `ago` renders
+        # a read seconds old as "just now", so a demo server that has only just
+        # fetched says nothing containing "ago". What must hold on every run is
+        # that the value states WHICH read it is reporting — that is the claim
+        # the user checks a stale comparison against.
+        assert page.locator(f"#album-checked-{ALBUM} dt").text_content() == "Checked"
+        assert "MusicBrainz release last read" in (when.get_attribute("title") or "")
+        assert (when.text_content() or "").strip()
 
         browser.close()

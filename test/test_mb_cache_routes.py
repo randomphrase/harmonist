@@ -165,7 +165,7 @@ def test_the_compare_panel_says_when_it_last_read_musicbrainz(client, cfg, monke
     conn.commit()
     body = client.get(f"/library/{album_id}/compare").text
 
-    assert "read 3 hours ago" in body, body[:400]
+    assert "3 hours ago" in body, body[:400]
 
 
 def test_read_again_forces_a_live_fetch(client, cfg, monkeypatch):
@@ -193,6 +193,46 @@ def test_the_compare_panel_offers_the_re_read_control(client, cfg, monkeypatch):
     body = client.get(f"/library/{album_id}/compare").text
 
     assert f'hx-get="/library/{album_id}/compare?reread=1"' in body
+
+
+def test_the_album_page_states_the_read_time_without_waiting_for_compare(client, cfg, monkeypatch):
+    """The panel's "Checked" date is rendered as the page is built (#355).
+
+    It used to arrive with the /compare fetch, because it sat in the note and
+    everything else there needs that fetch. It doesn't: `mb_cache.fetched_at` is
+    a local SQLite read, so the page can state it immediately — which is the
+    whole reason it could move out of the note and let the note narrow to the
+    finding alone.
+
+    Asserted on a page load with NO compare behind it, since a compare would
+    swap the line in out of band and the test would pass either way.
+    """
+    d = _album(cfg)
+    monkeypatch.setattr(mb_lookup, "fetch_release", _Counter(_release()))
+    album_id = _album_id(cfg, d)
+    client.get(f"/library/{album_id}/compare")  # the read this date reports
+
+    body = client.get(f"/album/{album_id}").text
+
+    assert f'id="album-checked-{album_id}"' in body
+    assert "MusicBrainz release last read" in body
+
+
+def test_an_album_never_read_claims_no_read_time(client, cfg, monkeypatch):
+    """No line rather than a claim about a check that never happened.
+
+    The under-reporting direction is the safe one: a page can be silent about a
+    read it hasn't made, but it must never state one it has. Nothing has fetched
+    this release, so `fetched_at` is None and the row is absent — the same
+    markup the test above asserts present once a read exists.
+    """
+    d = _album(cfg)
+    monkeypatch.setattr(mb_lookup, "fetch_release", _Counter(_release()))
+    album_id = _album_id(cfg, d)
+
+    body = client.get(f"/album/{album_id}").text
+
+    assert "MusicBrainz release last read" not in body
 
 
 def test_a_retag_never_tags_from_a_cached_release(client, cfg, monkeypatch):
