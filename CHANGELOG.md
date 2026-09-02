@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Clearing a MusicBrainz match, or unlinking a Bandcamp purchase, writes one
+  Activity entry instead of two** — the second was unlinked from the album and
+  repeated its name in the message (#342).
+
 ## [1.13.0] - 2026-09-01
 
 ### Added

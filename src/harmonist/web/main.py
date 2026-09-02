@@ -4065,7 +4065,12 @@ def _register_routes(app: FastAPI) -> None:
           re-adopt it. The album stays correctly tagged in the Library (COMPLETE);
           the freed purchase re-surfaces as unmatched for correct handling. Without
           this, keeping the wrong `store_url` would just re-link the same wrong
-          purchase on the next sync."""
+          purchase on the next sync.
+
+        The activity entry is `_flash_response`'s, and only its — recording one
+        here as well wrote the feed twice for one press (#342). The purchase id
+        being dropped isn't lost with it: `_audit_sidecar_change` diffs `item_id`
+        (and `store_url`) as `old->new` under this request's action id."""
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None or sc.bandcamp is None or sc.bandcamp.item_id is None:
@@ -4075,17 +4080,13 @@ def _register_routes(app: FastAPI) -> None:
                 level=Level.WARNING,
                 album=album,
             )
-        old_id = sc.bandcamp.item_id
         if forget_url:
             new_sc = replace(sc, store_url=None, bandcamp=None)
-            dest, arrow = "Library (URL forgotten)", "Library → Library (forgot the wrong URL)"
+            dest = "Library (URL forgotten)"
         else:
             new_sc = replace(sc, bandcamp=BandcampInfo(item_id=None, band_id=sc.bandcamp.band_id))
-            dest, arrow = "Needs Link", "Library → Needs Link"
+            dest = "Needs Link"
         sidecar_mod.write(album.path, new_sc)
-        activity.record(
-            f"Unlinked {album.artist} — {album.title} (was Bandcamp purchase {old_id}): {arrow}"
-        )
         request.app.state.scan_runner.request_scan()
         return _flash_response("Unlinked", f"now {dest}", album=album)
 
@@ -4101,6 +4102,11 @@ def _register_routes(app: FastAPI) -> None:
         No candidate — re-offering the release the user just called wrong would
         undo their own judgement, which is the one way this differs from the undo.
 
+        The activity entry is `_flash_response`'s, and only its — recording one
+        here as well wrote the feed twice for one press (#342). The release id
+        being cleared isn't lost with it: the `sidecar.unlink` write above audits
+        `mbid` as `old->new` under this request's action id.
+
         The on-disk tags are left untouched until the user re-tags.
         Non-destructive."""
         album = _find_album(request, album_id)
@@ -4112,12 +4118,7 @@ def _register_routes(app: FastAPI) -> None:
                 level=Level.WARNING,
                 album=album,
             )
-        old_mbid = sc.mb_release_id
         sidecar_mod.unlink(album.path, sc)
-        activity.record(
-            f"Cleared MB match for {album.artist} — {album.title} "
-            f"(was {old_mbid}): Library → Needs MBID"
-        )
         request.app.state.scan_runner.request_scan()
         return _flash_response(
             "MB match cleared",

@@ -24,7 +24,7 @@ from mutagen.mp4 import MP4
 
 from harmonist import activity, activity_store, mb_lookup
 from harmonist import sidecar as sc
-from harmonist.activity_store import Level
+from harmonist.activity_store import Level, Source
 from harmonist.config import (
     BandcampConfig,
     Config,
@@ -2934,7 +2934,12 @@ def test_unlink_reverts_complete_album_to_needs_sync(client, cfg):
     assert loaded.bandcamp is None or loaded.bandcamp.item_id is None
     assert loaded.store_url == "https://x.bandcamp.com/album/undo-me"  # kept
     assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.NEEDS_SYNC
-    assert any("Unlinked" in e.message and "99" in e.message for e in activity.recent(5))
+    # The outcome is in the feed; the purchase id it dropped is in the audit row
+    # beneath it, where a structured value belongs (#342).
+    assert any("Unlinked" in e.message for e in activity.recent(5))
+    assert any(
+        "item_id=99->None" in e.message for e in activity_store.recent(5, source=Source.AUDIT)
+    )
 
 
 def test_unlink_wrong_match_forgets_url_and_stays_in_library(client, cfg):
@@ -3038,6 +3043,55 @@ def test_rematch_warns_when_no_mb_release(client, cfg):
     r = client.post(f"/library/{_id_for(cfg, d)}/rematch")
     assert r.status_code == 200
     assert "Nothing to re-match" in r.text
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "verb"),
+    [("rematch", "MB match cleared"), ("unlink", "Unlinked")],
+)
+def test_one_action_writes_one_activity_entry(client, cfg, endpoint, verb):
+    """#342: an action that both records and flashes wrote the feed twice.
+
+    `_flash_response` is the funnel for user actions — it writes the activity
+    entry itself — so a handler calling `activity.record()` as well produced two
+    entries for one press. The duplicate was also the worse of the pair: no
+    `album_id`, so it linked to nothing and never joined the album's history,
+    with the album's name inlined into the message instead (the #65 mistake).
+
+    The old identifier the duplicate carried is not lost: `_audit_sidecar_change`
+    diffs `mbid`/`item_id` as `old->new`, under the same `action_id`, which is
+    what the last two assertions hold in place.
+    """
+    d = _make_tagged_album(
+        cfg, f"Dup {endpoint}", mbid="rel-dup", tagged_at=datetime.now(UTC), item_id=7
+    )
+    aid = _id_for(cfg, d)
+    activity_store.clear()
+
+    r = client.post(f"/library/{aid}/{endpoint}")
+    assert r.status_code == 200
+
+    feed = activity_store.recent(50, source=Source.ACTIVITY)
+    assert len(feed) == 1, f"one press, one entry — got {[e.message for e in feed]}"
+    assert feed[0].message.startswith(verb)
+    # It is the well-formed one: linked to the album, with the name in its own
+    # column rather than inlined into the message.
+    assert feed[0].album_id is not None
+    assert "Dup" not in feed[0].message
+
+    # The old identifier still survives, in the audit row beneath the same action.
+    audit_rows = activity_store.recent(50, source=Source.AUDIT)
+    dropped = "mbid=rel-dup->None" if endpoint == "rematch" else "item_id=7->None"
+    assert any(dropped in e.message for e in audit_rows), [e.message for e in audit_rows]
+    assert {e.action_id for e in audit_rows} == {feed[0].action_id}
+
+    # Pressing it again is a no-op warning, not a second outcome: there is
+    # nothing left to clear, and the guard is what keeps the action idempotent.
+    r2 = client.post(f"/library/{aid}/{endpoint}")
+    assert r2.status_code == 200
+    assert "Nothing to" in r2.text
+    again = activity_store.recent(50, source=Source.ACTIVITY)
+    assert [e.message for e in again if e.message.startswith(verb)] == [feed[0].message]
 
 
 def test_library_detail_wrong_match_controls_beside_badges(client, cfg):
