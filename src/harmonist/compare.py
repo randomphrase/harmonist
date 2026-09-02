@@ -1236,6 +1236,32 @@ class TracklistComparison:
         return tuple(t for t in self.tracks if t.differs)
 
     @property
+    def clean(self) -> bool:
+        """Nothing in the tracklist for the user to act on (#352).
+
+        The other half of what decides whether the note is drawn as an advisory
+        or as a finding. Deliberately enumerated against `summary`'s clauses —
+        a differing track, one missing / unreadable / not in MusicBrainz, a
+        disc heading that differs, a disc absent from disk — because the two are
+        one statement in two registers, and a tint that disagrees with the
+        sentence beside it is worse than no tint at all. Add a clause there, add
+        it here; every clause it can emit has a test that would go red.
+
+        `not counted` is NOT clean: "No tracks to compare" is the disk-only view
+        saying nothing was checked, which is not the same as nothing being wrong.
+        """
+        absent = {g.medium.position for g in self.discs if g.absent}
+        counted = [t for t in self.tracks if t.disc not in absent]
+        if not counted or absent:
+            return False
+        # `differs` covers the three states as well as a mismatch: a track that
+        # is MISSING, UNREADABLE or EXTRA differs by virtue of being one — which
+        # is why the count alone is enough here, and why the tests pin it.
+        if any(t.differs for t in counted):
+            return False
+        return not any(g.heading and g.heading.differs for g in self.discs)
+
+    @property
     def summary(self) -> str:
         """The TRACKS clause of the MusicBrainz note (#328) — see `headline`.
 
@@ -1331,6 +1357,29 @@ def headline(album: AlbumComparison, tracks: TracklistComparison) -> str:
         n = len(tracks.tracks)
         return f"No comparison — showing your own tags and {n} track{'s' if n != 1 else ''}"
     return f"{album.summary} · {tracks.summary}"
+
+
+def advisory(album: AlbumComparison, tracks: TracklistComparison) -> bool:
+    """Is the note `headline` composed purely advisory — nothing to act on (#352)?
+
+    The note is one band whichever it is saying, and on a clean album a tinted
+    band reads as a warning about a page where nothing is wrong. This is what
+    lets the tint drop to neutral there while a note carrying findings keeps its
+    colour, so the two stay tellable apart at a glance.
+
+    Both halves must be clean, and there must have been something to compare:
+    the disk-only view (#228) is not an advisory that all is well, it is a note
+    saying MusicBrainz could not be reached for an answer.
+
+    The tags half is counted over `comparable`, not over `differing`, for the
+    reason `AlbumComparison.summary` is: Genre and the comment are shown but
+    never compared, and a tint drawn from a wider set than the sentence beside
+    it would contradict it on exactly the album that reads "All 22 tags match".
+    """
+    fields = album.comparable
+    if not (album.mb_available and fields):
+        return False
+    return not any(f.differs for f in fields) and tracks.clean
 
 
 #: The owned fields the album PANEL shows — every compared row of it.

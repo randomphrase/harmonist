@@ -615,6 +615,10 @@ def create_app(
     # the note are included from two different responses, and threading one more
     # value through each call site is how they drift apart.
     templates.env.globals["headline"] = compare.headline
+    # Whether that note has anything to act on (#352) — a global for the same
+    # reason, and reading the same two comparisons, so the tint cannot disagree
+    # with the legend it is drawn behind.
+    templates.env.globals["advisory"] = compare.advisory
     templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
     # No `track_columns` global any more (#309). The tracklist's headings used
     # to be a module constant, which only worked while the answer was the same

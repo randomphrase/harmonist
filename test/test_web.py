@@ -6159,6 +6159,31 @@ def test_one_musicbrainz_note_lands_in_the_album_panel(client, cfg, monkeypatch)
     assert body.count('<span class="mb-note__legend">') == 1
     legend = re.search(r'class="mb-note__legend">(.*?)</span>', body, re.DOTALL)
     assert legend and " · " in legend.group(1), "both summaries, joined into one line"
+    # This album has findings ("2 of 18 tags differ"), so the note keeps its
+    # colour — the class above is the whole of it, with no `--quiet` (#352).
+    assert "mb-note--quiet" not in body
+
+
+def test_a_note_with_nothing_to_act_on_is_drawn_quiet(client, cfg, monkeypatch):
+    """#352. Which albums are advisory is `compare.advisory`'s question and is
+    settled in test_compare; what this covers is the half that only a rendered
+    response can show — that the template asks, and that the answer reaches the
+    note's class rather than a mistyped one nothing styles.
+
+    Driven through the template global rather than by building an album whose
+    eighteen tags and every track match MusicBrainz: that fixture would assert
+    `advisory`'s logic a second time, and go stale the next time a tag is added
+    to the comparison.
+    """
+    d = _make_tagged_album(cfg, "Quiet", mbid="rel-quiet", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", lambda mbid: {"id": mbid})
+    album_id = _id_for(cfg, d)
+    env = client.app.state.templates.env
+    monkeypatch.setitem(env.globals, "advisory", lambda album, tracks: True)
+
+    body = client.get(f"/library/{album_id}/compare").text
+
+    assert 'class="mb-note mb-note--panel mb-note--quiet"' in body
 
 
 def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):

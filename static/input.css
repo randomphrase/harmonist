@@ -159,6 +159,16 @@ button[disabled],
    spacing through the panel's `space-y-3`, so the bottom margin the standalone
    note carried would double up here. */
 .mb-note--panel { margin-bottom: 0; }
+/* Nothing to act on (#352). The purple band is the note's finding voice; on an
+   album whose tags and tracks all match there is no finding, and the tint reads
+   as a warning about a page where nothing is wrong. Neutral surface + hairline
+   border drops it to the advisory it is — the hexagon keeps its MusicBrainz
+   orange, so the note is still recognisably about MusicBrainz, and a note that
+   DOES carry findings keeps the purple and stands out against this. */
+.mb-note--quiet {
+  border-color: var(--color-line);
+  background: var(--color-surface);
+}
 
 /* `align-items: baseline` so the label sits on the same baseline as its value,
    rather than both being top-aligned and nudged into place with padding. With a

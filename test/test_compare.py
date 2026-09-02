@@ -24,6 +24,7 @@ from harmonist.compare import (
     MBTrack,
     Medium,
     TrackState,
+    advisory,
     album_fields,
     compare_field,
     consensus,
@@ -824,6 +825,120 @@ def test_a_disk_only_view_says_it_compared_nothing():
         AlbumComparison(fields=fields, mb_available=False),
         disk_tracklist([_file(1, "Nightcall")]),
     ).endswith("and 1 track")
+
+
+# ---------- is the note advisory, or is it a finding? (#352) ----------
+
+
+def _matching_album() -> AlbumComparison:
+    """An album whose every comparable tag matches, with a Comment MusicBrainz
+    has no opinion on — the shape a clean adopted album really has."""
+    return AlbumComparison(
+        fields=(
+            compare_field("Album", disk=consensus([("1.flac", "Obreel")]), mb="Obreel"),
+            compare_field("Artist", disk=consensus([("1.flac", "A")]), mb="A"),
+            replace(
+                compare_field("Comment", disk=consensus([("1.flac", "https://x")]), mb=None),
+                comparable=False,
+            ),
+        )
+    )
+
+
+def _matching_tracks():
+    return tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall")], [Medium(1, None, "CD")])
+
+
+def test_a_note_with_nothing_to_act_on_is_advisory():
+    """The tint follows this, and the legend follows `headline` — so this has to
+    agree with the sentence it will be drawn behind."""
+    album, tracks = _matching_album(), _matching_tracks()
+
+    assert headline(album, tracks) == "All 2 tags match · The track matches"
+    assert advisory(album, tracks)
+
+
+def test_a_tag_that_differs_makes_the_note_a_finding():
+    album = AlbumComparison(
+        fields=(compare_field("Album", disk=consensus([("1.flac", "Obreel")]), mb="Obreel II"),)
+    )
+
+    assert not advisory(album, _matching_tracks())
+
+
+def test_a_track_that_differs_makes_the_note_a_finding():
+    tracks = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Odd Look")], [Medium(1, None, "CD")])
+
+    assert not advisory(_matching_album(), tracks)
+
+
+def test_a_missing_track_makes_the_note_a_finding():
+    """A track MusicBrainz lists and the files don't have is a clause of the
+    headline in its own right, so it must be one here too — the tags all match
+    and no compared track differs, which is exactly how it could be missed."""
+    tracks = tracklist(
+        [_file(1, "Nightcall")],
+        [_mb_track(1, "Nightcall", total=2), _mb_track(2, "Odd Look", total=2)],
+        [Medium(1, None, "CD")],
+    )
+
+    assert not advisory(_matching_album(), tracks)
+
+
+def test_a_disc_absent_from_disk_makes_the_note_a_finding():
+    """An absent disc's tracks are excluded from every count (#216), so the
+    tracks that ARE there all match and the tags all match — the album reads
+    entirely clean unless the absence is asked about directly."""
+    # `media` and `track_total` off the release, so disc 1 has nothing to say —
+    # else its heading differs and the assertion below passes for that instead.
+    tracks = tracklist(
+        [_file(1, "Nightcall", disc=1, track_total=1, media="CD")],
+        [
+            _mb_track(1, "Nightcall", disc=1, total=1),
+            _mb_track(1, "Rampage", disc=2, total=1),
+        ],
+        [Medium(1, None, "CD"), Medium(2, None, "DVD")],
+    )
+
+    assert tracks.summary == "The track matches · Disc 2 not in your files"
+    assert not advisory(_matching_album(), tracks)
+
+
+def test_a_disc_that_differs_makes_the_note_a_finding():
+    """The roll-up (#320) can put a difference on a disc heading while every
+    track matches — the case that already needed its own headline clause."""
+    tracks = _two_discs(
+        media=[Medium(1, None, "CD"), Medium(2, "Live Angle", "CD")],
+        mb={2: {"disc_subtitle": "Live Angle"}},
+    )
+
+    assert "Disc 2 differs" in tracks.summary
+    assert not advisory(_matching_album(), tracks)
+
+
+def test_a_disk_only_view_is_not_advisory():
+    """A note reading "No comparison" is not one saying nothing is wrong —
+    MusicBrainz was not reached, so every field lands in ONLY_DISK and nothing
+    was checked at all (#228)."""
+    album = replace(_matching_album(), mb_available=False)
+
+    assert not advisory(album, _matching_tracks())
+
+
+def test_an_album_with_no_comparable_tags_is_not_advisory():
+    """A note reading "No tags to compare" fails for the same reason: an empty
+    check is not a pass."""
+    album = AlbumComparison(
+        fields=(
+            replace(
+                compare_field("Comment", disk=consensus([("1.flac", "https://x")]), mb=None),
+                comparable=False,
+            ),
+        )
+    )
+
+    assert album.summary == "No tags to compare"
+    assert not advisory(album, _matching_tracks())
 
 
 def test_a_disk_only_tracklist_keeps_the_unreadable_state():

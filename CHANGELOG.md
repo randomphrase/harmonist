@@ -16,6 +16,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **An album with nothing to fix says so quietly.** The MusicBrainz note keeps
+  its hexagon and its wording, but drops to a neutral tint when every tag and
+  track matches — the coloured band is now reserved for a note that has
+  something to report (#352).
+
 - **Background update checks are gentler on MusicBrainz.** They now spread the
   albums they have to look at evenly across a day instead of asking about a
   hundred of them in a burst every hour (#349).
