@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -281,21 +282,84 @@ def _rest(worked: float, duty: float) -> None:
 #: asking six times too often costs six times the budget for the same answer.
 RECHECK_AFTER = timedelta(days=7)
 
-#: The most albums one pass will ask about. At the 1 req/s MusicBrainz floor
-#: this is the pass's *duration* as much as its size — a hundred albums is under
-#: two minutes — which is what keeps it off the shared rate limiter while
-#: somebody is using the app.
+#: How long a full sweep of everything currently due should take (#349). The
+#: *goal*, from which the rate is derived — not a rate that happens to reach the
+#: goal, which is what the hand-set hundred-an-hour cap this replaces was.
 #:
-#: With the interval it is also the sweep rate: a hundred an hour is 2,400 a
-#: day, so a library big enough to matter still completes a cycle well inside
-#: `RECHECK_AFTER`. #273 turns both into settings for anyone whose does not.
-ALBUMS_PER_PASS = 100
+#: Deriving is what makes it self-stabilising. A large backlog — a first run,
+#: where the whole library is due at once — yields a proportionally larger slice
+#: and still clears inside a day; steady state settles at exactly
+#: `len(library) / RECHECK_AFTER` a day, which is the demand and not a multiple
+#: of it. The old pair provisioned 2,400 fetches a day against a demand of ~286
+#: for a 2,000-album library, and spent them in hundred-request bursts.
+#:
+#: **Meaningfully shorter than `RECHECK_AFTER`, and that is not a taste.** The
+#: backlog settles where inflow meets outflow: albums come due at
+#: `len(library) / RECHECK_AFTER` a day and are cleared at `due / SWEEP_WINDOW`,
+#: so a day-long window holds the queue at a seventh of the library and the lag
+#: at about a day. Set it to a week and the equilibrium is the whole library
+#: permanently overdue. #273 exposes it; the arithmetic is why it should not be
+#: set much higher.
+SWEEP_WINDOW = timedelta(hours=24)
+
+#: How often a tick fires, and so how big a slice one gets: a tick is
+#: `SWEEP_TICK / SWEEP_WINDOW` of what is due, which at these values is 1/144 —
+#: two or three albums for a library of a couple of thousand.
+#:
+#: Ten minutes rather than the hour it replaces, because the tick length IS the
+#: burst length. An hourly tick doing the same daily total still delivers it as
+#: twelve back-to-back requests and then nothing; at ten minutes there is no
+#: burst left to speak of. Short enough, too, that the pass stands aside for a
+#: sync within ten minutes rather than an hour — the guards are re-read per
+#: tick.
+#:
+#: **Not jittered, deliberately.** A slice this small has no burst to spread and
+#: nothing to fall into lockstep with: what lands together is two or three
+#: albums, which is what a tick drains anyway. The pattern worth breaking up was
+#: the hundred-album one — `_due` orders off the fetch times an earlier pass
+#: wrote, so a burst comes due again as a burst one `RECHECK_AFTER` later, and
+#: the shape repeats forever — and sizing the slice is what breaks it, not
+#: randomising the clock. Between a start time nobody coordinates and a rate
+#: that already varies with the library, there is enough spread here without a
+#: knob to explain.
+#:
+#: Lives here beside the window rather than in `web/main.py` (where it was, as
+#: `_UPDATE_CHECK_INTERVAL`) precisely because `sweep` now has to know it: the
+#: slice is a fraction of the window, so the constant that *schedules* the pass
+#: and the constant the pass *divides by* must be the same one. Two constants in
+#: two modules that had to be kept in step is how the rate drifted to 8x the
+#: goal in the first place.
+SWEEP_TICK = timedelta(minutes=10)
+
+#: The most of a tick that may be spent fetching, so a slice always fits inside
+#: the tick that scheduled it. At the 1 req/s MusicBrainz floor a slice is
+#: roughly one second an album, and a library big enough for `SWEEP_WINDOW` to
+#: hand out more albums than that would run each pass into the next — which the
+#: lock refuses, so the excess is silently dropped anyway. Better to bound it
+#: here, where the reason is written down.
+_TICK_FETCH_BUDGET = 0.5
+
+#: Seconds one MusicBrainz request occupies. Not a limiter — `musicbrainzngs`
+#: owns the actual 1 req/s floor — just the figure `_slice_size` costs a fetch
+#: at when deciding how many fit in a tick.
+_SECONDS_PER_FETCH = 1.0
 
 #: How many MusicBrainz failures in a row end a pass early. MusicBrainz being
 #: down looks exactly like this, and grinding through the rest of the queue to
 #: fail at each one spends a request apiece and buries the first failure — the
 #: only one that says anything — under ninety-nine identical ones.
 _GIVE_UP_AFTER = 5
+
+#: The failure run, ACROSS ticks (#349). It was a local of `sweep`, which was
+#: sound while a pass was a hundred albums and is dead code now that one is
+#: two or three: a counter that resets every ten minutes can never reach five,
+#: so an outage would be met with a fresh slice of requests every tick, forever,
+#: which is the opposite of what #349 is for. Held here, five failures end the
+#: tick they land in and every tick after it ends on its first failure — one
+#: request and one line per ten minutes — until something succeeds.
+#:
+#: In memory, like `_asked`: a restart re-learns it at the cost of one slice.
+_consecutive_failures = 0
 
 #: Sorts before every real timestamp, so "never asked" is the stalest thing
 #: there is and an album nobody has ever looked at goes to the front of the
@@ -345,10 +409,35 @@ class PassResult:
     gave_up: bool = False
 
 
+def _slice_size(due_count: int, *, tick: timedelta, window: timedelta) -> int:
+    """How many of `due_count` releases this tick's share of `window` is worth.
+
+    The whole of #349's rate change, and deliberately one line of arithmetic
+    with its reasoning around it rather than a constant somebody chose. A tick
+    is `tick / window` of the goal, so the pass asks about that fraction of
+    whatever is outstanding — which means the rate answers to the size of the
+    backlog instead of to a number picked when the library was a different size.
+
+    Rounded **up**, so a due list smaller than the ratio still moves. Left at
+    exactly zero it would stall: a one-album backlog is 1/144th of a tick's
+    worth, and a floor would never let that album be asked about at all.
+
+    Capped so the slice fits inside the tick that scheduled it (see
+    `_TICK_FETCH_BUDGET`). A pass that outran its tick would be refused by the
+    lock rather than queued, so the excess is dropped either way; bounding it
+    here is the version that has a reason attached.
+    """
+    share = math.ceil(due_count * (tick / window))
+    fits = int(tick.total_seconds() * _TICK_FETCH_BUDGET / _SECONDS_PER_FETCH)
+    return max(0, min(share, fits))
+
+
 def sweep(
     albums: Sequence[Album],
     *,
-    limit: int = ALBUMS_PER_PASS,
+    tick: timedelta = SWEEP_TICK,
+    window: timedelta = SWEEP_WINDOW,
+    limit: int | None = None,
     recheck_after: timedelta = RECHECK_AFTER,
 ) -> PassResult:
     """Ask MusicBrainz about the albums whose release we have looked at least
@@ -379,17 +468,29 @@ def sweep(
     nothing — going and looking IS the operation, and the refreshed row it
     leaves behind is what dates the next pass's queue.
 
+    **How many it asks about is derived, not chosen** (#349). One tick gets
+    `tick / window` of whatever is currently due, so the pass sweeps everything
+    outstanding across `window` and no faster — see `_slice_size`. `limit`
+    overrides that outright, for a caller (and for tests) that means a specific
+    number rather than a rate; nothing in the app passes it.
+
     Blocking on both the network and the disk, so call it from a worker thread,
     never the event loop.
     """
+    global _consecutive_failures
     now = datetime.now(UTC)
     due = _due(albums, recheck_after=recheck_after, now=now)
-    log.info("update check: %d album(s) due, asking MusicBrainz about up to %d", len(due), limit)
+    slice_size = limit if limit is not None else _slice_size(len(due), tick=tick, window=window)
+    # DEBUG, not INFO: at one tick every ten minutes this line is 144 a day on a
+    # library with nothing to say. What a healthy pass has to report is the
+    # closing summary, and that only speaks up when there is something in it.
+    log.debug(
+        "update check: %d album(s) due, asking MusicBrainz about up to %d", len(due), slice_size
+    )
     asked = examined = flagged = gone = failed = 0
-    consecutive = 0
     gave_up = False
     reported = time.monotonic()
-    for mbid, group in due[:limit]:
+    for mbid, group in due[:slice_size]:
         # Read the baseline BEFORE the fetch: `fetch_release` replaces the row
         # on its way back, so afterwards there is nothing left to compare with.
         before = mb_cache.stored_release(mbid)
@@ -410,11 +511,11 @@ def sweep(
             # what turns it into something waiting for them.
             log.info("update check: MusicBrainz no longer has release %s", mbid)
             gone += 1
-            consecutive = 0
+            _consecutive_failures = 0
             continue
         except mb_lookup.MBError:
             failed += 1
-            consecutive += 1
+            _consecutive_failures += 1
             # Kept out of the Activity feed (`_diagnostic`): nothing was lost,
             # the next pass retries, and a MusicBrainz wobble is not the user's
             # to act on. The log still has it, with the traceback.
@@ -424,18 +525,34 @@ def sweep(
                 exc_info=True,
                 extra={"_diagnostic": True},
             )
-            if consecutive >= _GIVE_UP_AFTER:
-                # This one IS mirrored. A pass that gave up leaves the flags
-                # stale for a week, and that is a thing the user can only find
-                # out from us.
-                log.warning(
-                    "update check: giving up this pass after %d MusicBrainz failures in a row",
-                    consecutive,
-                )
+            if _consecutive_failures >= _GIVE_UP_AFTER:
+                # Only the FIRST tick to give up says so out loud. This warning
+                # IS mirrored into the Activity feed — a check that stopped
+                # looking is a thing the user can only find out from us — and
+                # the counter now spans ticks (#349), so without the transition
+                # test a sustained outage would post the same non-news every ten
+                # minutes for as long as it lasted. The same "one line per
+                # episode" rule `run_periodically` follows.
+                if _consecutive_failures == _GIVE_UP_AFTER:
+                    log.warning(
+                        "update check: giving up after %d MusicBrainz failures in a row; "
+                        "backing off until one succeeds",
+                        _consecutive_failures,
+                    )
+                else:
+                    log.debug(
+                        "update check: still backing off after %d failures in a row",
+                        _consecutive_failures,
+                    )
                 gave_up = True
                 break
             continue
-        consecutive = 0
+        if _consecutive_failures:
+            log.info(
+                "update check: MusicBrainz answered again after %d failure(s) in a row",
+                _consecutive_failures,
+            )
+        _consecutive_failures = 0
         if before is not None and _same_release(before, release):
             continue  # MusicBrainz has said nothing new; read no files
         examined += len(group)
@@ -449,7 +566,15 @@ def sweep(
     result = PassResult(
         asked=asked, examined=examined, flagged=flagged, gone=gone, failed=failed, gave_up=gave_up
     )
-    log.info(
+    # INFO only when the tick has something to report (#349). At an hourly tick
+    # asking about a hundred albums this line was always worth reading; at one
+    # every ten minutes asking about two it is 144 lines a day saying nothing
+    # happened, which is how a log stops being read. A tick that found something
+    # — a payload that moved, a release gone, a fetch that failed — still says
+    # so; #274's digest is what turns the rest into something a user sees.
+    notable = bool(result.examined or result.gone or result.failed or result.gave_up)
+    log.log(
+        logging.INFO if notable else logging.DEBUG,
         "update check: %s — asked about %d release(s), %d had moved, %d album(s) "
         "have an update, %d gone from MusicBrainz, %d fetch(es) failed",
         "gave up early" if result.gave_up else "done",

@@ -775,10 +775,17 @@ def _forget_what_was_asked():
     A leak would make a later pass skip an album for reasons that test never set
     up — and it would do it by making the pass *quieter*, which is the direction
     an assertion about call counts reads as success.
+
+    `_consecutive_failures` is the same shape and the same hazard since #349
+    made it span ticks: a run left standing at the threshold would make the next
+    test's pass give up on its first album, which again looks like success to
+    anything counting requests.
     """
     gardener._asked.clear()
+    gardener._consecutive_failures = 0
     yield
     gardener._asked.clear()
+    gardener._consecutive_failures = 0
 
 
 def _inc() -> str:
@@ -961,6 +968,148 @@ def test_the_stalest_album_goes_first_when_the_cap_bites(tmp_path, monkeypatch):
     assert asked == ["rel-ancient"]
 
 
+# --- How big a tick is (#349) ------------------------------------------------
+#
+# The pass used to ask about a hundred albums an hour because a hundred and an
+# hour were the two numbers chosen, and the pair worked out at roughly eight
+# times the rate `RECHECK_AFTER` actually asks for — spent in hundred-request
+# bursts at a volunteer service. These pin the replacement: the slice is a
+# fraction of what is outstanding, so the rate answers to the backlog rather
+# than to a constant somebody picked when the library was a different size.
+
+
+def test_a_tick_asks_about_its_share_of_the_window_and_no_more(tmp_path, monkeypatch):
+    """The change itself. A tick is `SWEEP_TICK / SWEEP_WINDOW` of what is due —
+    1/144 at the shipped values — so 288 outstanding releases cost two requests,
+    not the hundred the old cap would have spent."""
+    activity_store.init(tmp_path / "activity.db")
+    albums = [
+        _tagged(tmp_path, _release(mbid=f"rel-{i:03d}"), name=f"Album {i}") for i in range(288)
+    ]
+    asked = _serving(monkeypatch, *(_release(mbid=f"rel-{i:03d}") for i in range(288)))
+
+    result = gardener.sweep(albums, tick=timedelta(minutes=10), window=timedelta(hours=24))
+
+    assert len(asked) == 2
+    assert result.asked == 2
+
+
+@pytest.mark.parametrize("due", [1, 7, 143, 144, 288, 2000, 20000])
+def test_whatever_is_due_is_swept_inside_the_window(due):
+    """The goal, stated as the property it actually is: a tick's slice, repeated
+    for a window's worth of ticks, covers the backlog. That is what makes the
+    rate self-stabilising — a first run with the whole library due gets a
+    proportionally larger slice and still finishes in a day, while steady state
+    settles at the demand rather than at a multiple of it.
+
+    The old pair could not state this, because neither constant knew what was
+    outstanding.
+
+    True up to what a tick can physically fetch — past ~43,000 due releases the
+    per-tick cap bites and the window stops being reachable at 1 req/s. The
+    parametrised sizes stay under that on purpose: it is the honest ceiling of
+    the property, not a case the test is dodging."""
+    tick, window = timedelta(minutes=10), timedelta(hours=24)
+    ticks_per_window = window / tick
+
+    slice_size = gardener._slice_size(due, tick=tick, window=window)
+
+    assert slice_size * ticks_per_window >= due
+
+
+def test_one_album_due_is_still_asked_about():
+    """Rounded up, and this is why: one album is 1/144th of a tick's worth, so a
+    floor would leave it at zero and it would never be asked about at all — the
+    backlog would sit at one forever while the pass reported nothing wrong."""
+    assert gardener._slice_size(1, tick=timedelta(minutes=10), window=timedelta(hours=24)) == 1
+
+
+def test_nothing_due_asks_about_nothing():
+    """The quiet case, and the common one. Rounding up must not round an empty
+    queue up to one — that would spend a request per tick, forever, on a library
+    with nothing outstanding."""
+    assert gardener._slice_size(0, tick=timedelta(minutes=10), window=timedelta(hours=24)) == 0
+
+
+def test_a_slice_never_outruns_the_tick_that_scheduled_it():
+    """A library large enough for the window to hand out more albums than a tick
+    has seconds would run each pass into the next, where the lock refuses it and
+    the excess is dropped anyway. Bounded here, at half a tick's worth of
+    requests, so the drop has a reason rather than being a side effect."""
+    tick = timedelta(minutes=10)
+
+    slice_size = gardener._slice_size(1_000_000, tick=tick, window=timedelta(hours=24))
+
+    assert slice_size <= tick.total_seconds() / 2
+
+
+def test_an_outage_is_not_met_with_a_fresh_slice_every_tick(tmp_path, monkeypatch):
+    """The failure run spans ticks (#349), and has to. It was a local of `sweep`,
+    which was sound while a pass was a hundred albums: five failures in a row
+    ended it. A tick is two or three albums now, so a counter that reset every
+    ten minutes could never reach five — and MusicBrainz being down would be met
+    with a fresh handful of requests every tick, forever, which is the opposite
+    of what the pacing is for.
+
+    Held across ticks, the run reaches the threshold and every later tick ends
+    on its first failure: one request per ten minutes until something answers."""
+    activity_store.init(tmp_path / "activity.db")
+    albums = [
+        _tagged(tmp_path, _release(mbid=f"rel-{i:03d}"), name=f"Album {i}") for i in range(20)
+    ]
+    asked: list[str] = []
+
+    def _down(mbid: str) -> dict:
+        asked.append(mbid)
+        raise mb_lookup.MBError("MusicBrainz is not answering")
+
+    monkeypatch.setattr(mb_lookup, "fetch_release", _down)
+
+    for _ in range(gardener._GIVE_UP_AFTER):
+        gardener.sweep(albums, limit=1)
+    spent_getting_there = len(asked)
+    later = gardener.sweep(albums, limit=10)
+
+    assert spent_getting_there == gardener._GIVE_UP_AFTER
+    assert later.gave_up is True
+    assert later.asked == 1  # the tick ended on its first failure, not its tenth
+
+
+def test_musicbrainz_answering_again_ends_the_back_off(tmp_path, monkeypatch):
+    """Self-healing, and without it the back-off is a one-way door: a wobble
+    during the night would leave every later tick ending on its first album for
+    the life of the process, with the library quietly going stale behind it.
+
+    The proof has to be a **later failure**, not the successful tick. `gave_up`
+    only ever becomes true on a failure, so a tick where everything answered
+    reports False whether the run was cleared or not — asserting on it passes
+    identically with the reset deleted. So: recover, then fail once, and check
+    that one failure is treated as the first of a new run rather than the sixth
+    of the old one."""
+    activity_store.init(tmp_path / "activity.db")
+    albums = [
+        _tagged(tmp_path, _release(mbid=f"rel-{i:03d}"), name=f"Album {i}") for i in range(20)
+    ]
+    failing = True
+
+    def _flaky(mbid: str) -> dict:
+        if failing:
+            raise mb_lookup.MBError("MusicBrainz is not answering")
+        return _release(mbid=mbid)
+
+    monkeypatch.setattr(mb_lookup, "fetch_release", _flaky)
+    for _ in range(gardener._GIVE_UP_AFTER):
+        gardener.sweep(albums, limit=1)
+
+    failing = False
+    gardener.sweep(albums, limit=3)  # MusicBrainz is back
+    failing = True
+    wobble = gardener.sweep(albums, limit=3)
+
+    assert wobble.failed == 3  # all three tried: a new run, not a resumed one
+    assert wobble.gave_up is False
+
+
 def test_two_albums_on_one_release_cost_one_request(tmp_path, monkeypatch):
     """A duplicate rip in two folders (#243) names one release twice. One fetch
     answers for both, and asking again would spend a second rate-limited request
@@ -1039,7 +1188,11 @@ def test_a_musicbrainz_outage_stops_the_pass_rather_than_grinding_through_it(tmp
 
     monkeypatch.setattr(mb_lookup, "fetch_release", _down)
 
-    result = gardener.sweep(albums)
+    # `limit` rather than the derived slice: this is about how a run of failures
+    # is counted, not about how big a tick is, and the derived slice for eight
+    # albums is one — which would make the test pass without ever exercising the
+    # counter.
+    result = gardener.sweep(albums, limit=len(albums))
 
     assert result.gave_up is True
     assert len(asked) == gardener._GIVE_UP_AFTER
@@ -1057,7 +1210,7 @@ def test_a_deleted_release_does_not_count_towards_giving_up(tmp_path, monkeypatc
     ]
     asked = _serving(monkeypatch)  # nothing answers for any of them
 
-    result = gardener.sweep(albums)
+    result = gardener.sweep(albums, limit=len(albums))  # see the outage test above
 
     assert result.gave_up is False
     assert result.gone == len(albums)
@@ -1195,7 +1348,9 @@ def _engaged_timers(cfg, monkeypatch):
     """The periodic tasks the lifespan engages, and the app they tick against.
 
     The actions are captured rather than run, so a test drives a tick when it
-    wants one instead of waiting out an hour-long interval.
+    wants one instead of waiting out the interval. The interval each task was
+    engaged on is captured beside it, under `f"{name} cadence"`, because the
+    lifespan is the only place that decides it.
     """
     from fastapi.testclient import TestClient
 
@@ -1205,6 +1360,7 @@ def _engaged_timers(cfg, monkeypatch):
 
     async def _record(interval, action, *, name, stop_event=None):
         actions[name] = action
+        actions[f"{name} cadence"] = interval
         if stop_event is not None:
             await stop_event.wait()
 
@@ -1233,6 +1389,22 @@ def test_the_update_check_timer_is_engaged_whatever_the_level(engaged, monkeypat
 
     with _engaged_timers(cfg, monkeypatch) as (_app, actions):
         assert "update check" in actions
+
+
+def test_the_check_ticks_on_the_interval_its_slice_is_sized_against(engaged, monkeypatch):
+    """The two halves of the rate have to be the same constant (#349). `sweep`
+    sizes a slice as `SWEEP_TICK / SWEEP_WINDOW` of the queue, which is only the
+    truth if the lifespan schedules it on `SWEEP_TICK` — schedule it on anything
+    else and the pass sweeps at a rate nothing in the code states.
+
+    Nothing else would notice. The pass would still run, still stay inside the
+    rate limit, and still report identical flags; only the *rate* would be
+    wrong, and a rate is not visible in any one pass's result. That is exactly
+    how the constants this replaced drifted to eight times the goal."""
+    cfg, _ = engaged
+
+    with _engaged_timers(cfg, monkeypatch) as (_app, actions):
+        assert actions["update check cadence"] == gardener.SWEEP_TICK
 
 
 def test_turning_the_check_on_takes_effect_without_a_restart(engaged, monkeypatch):

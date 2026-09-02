@@ -1413,11 +1413,13 @@ closure holds the *startup* config, so reading the level from there would leave
 the setting saved, looking applied, and silently doing nothing — worse than
 having required the restart.
 
-**And a way out of the first empty hour.** `run_periodically` fires one full
-interval after startup and never at startup, so turning the check on at 10:00
-buys an hour in which the library looks exactly as it did. `POST
+**And a way out of the first empty interval.** `run_periodically` fires one full
+interval after startup and never at startup, so turning the check on buys ten
+minutes in which the library looks exactly as it did. `POST
 /settings/update-check` — **Check now**, beside the level — runs one pass
-immediately. It shares the tick's guards rather than bypassing them, `off`
+immediately. It runs an *ordinary* tick, a couple of albums rather than a sweep:
+giving the button its own larger budget would put the burst back in at the one
+moment somebody is certainly sitting in front of the app. It shares the tick's guards rather than bypassing them, `off`
 included: the level is what the button asks permission from, so it cannot be the
 way round it. Whichever guard declines says so in the flash, because a control
 answered with silence reads as broken whether it ran or refused.
@@ -1447,14 +1449,51 @@ the id MusicBrainz redirected to (§5), and a **deleted** one, which stores
 nothing at all because a negative is never cached. `gardener._asked` remembers
 the ids this process has spent a request on, which closes both.
 
+**The rate is derived from a goal, not chosen** (#349). `gardener.SWEEP_WINDOW`
+(24h) says how long a full sweep of everything currently due should take, and a
+tick — `gardener.SWEEP_TICK`, ten minutes — asks about `tick / window` of the
+queue, so two or three albums at a time. The point is that the rate answers to
+the size of the backlog: a first run with the whole library due gets a
+proportionally larger slice and still finishes inside the day, while steady state
+settles at `len(library) / RECHECK_AFTER` a day, which is the demand rather than
+a multiple of it.
+
+This replaced a hand-set pair — a hundred albums an hour — that worked out at
+roughly eight times what the goal needed and spent it in hundred-request bursts.
+Two properties of the replacement are worth stating because neither is obvious:
+
+* **The window must be well under `RECHECK_AFTER`.** The queue settles where
+  inflow meets outflow: albums come due at `len(library) / RECHECK_AFTER` a day
+  and clear at `due / SWEEP_WINDOW`. A day-long window holds the queue at a
+  seventh of the library; a week-long one settles with the whole library
+  permanently overdue.
+* **Sizing the slice is also what stops the pattern repeating.** `_due` orders
+  off the fetch times an earlier pass wrote, so whatever is swept together comes
+  due together one `RECHECK_AFTER` later and the shape recurs. Under the old cap
+  that shape was a hundred-album burst, stamped on the library by its first run
+  and replayed weekly; under a two-album slice there is nothing left to recur.
+  Deliberately no jitter: a start time nobody coordinates and a rate that varies
+  with the library are spread enough, and randomising the clock would be a knob
+  to document for no gain.
+
+The tick lives in `gardener` beside the window rather than in `web/main.py`,
+because the constant that schedules the pass and the constant the pass divides by
+are the same fact; keeping them in two modules is how the old pair drifted.
+
 **It stands aside** for a sync, a reconcile pass, or a library that has not been
 scanned yet, and refuses to start on top of a pass still running. One reason
 between them: the rate limit is a single shared queue and anything the user set
 in motion is waiting on it, while the check's albums have waited a week and can
-wait another hour. And when MusicBrainz keeps failing it gives up for the pass
-rather than spending a request per album to learn the same thing each time — a
-404 is an answer and does not count towards that, or a library with five
-deleted releases would abort every pass at the fifth.
+wait another ten minutes. And when MusicBrainz keeps failing it gives up rather
+than spending a request per album to learn the same thing each time — a 404 is an
+answer and does not count towards that, or a library with five deleted releases
+would abort every pass at the fifth. That failure run is held **across** ticks
+(`gardener._consecutive_failures`): a tick is a handful of albums now, so a
+counter reset every ten minutes could never reach the threshold, and an outage
+would be met with a fresh slice of requests every tick forever. Held, the
+threshold is reached once and every later tick ends on its first failure until
+something answers — one request and one line per ten minutes, and the loud
+warning fires only on the transition.
 
 #### The per-album refresh
 

@@ -231,17 +231,13 @@ _LIBRARY_QUERY_MAX = 100
 # isn't there either: an unchanged library is a stat per file and no tag reads.
 _RESCAN_INTERVAL = timedelta(hours=1)
 
-# How often the gardener's update check runs when it is switched on (#270).
-# Also a constant for now, and for a different reason from the rescan's: it is
-# half of a rate — with `gardener.ALBUMS_PER_PASS` it says how fast the library
-# is swept — and the two are no use apart. #273 makes the pair a setting
-# together, alongside the trust level.
-#
-# Deliberately the same hour as the rescan rather than a nightly slot: the pass
-# is short, capped, and skipped whenever anything else is working, so spreading
-# it thinly across the day keeps it out of the way better than concentrating it
-# at 3am would — and there is no hour at which a NAS is reliably idle.
-_UPDATE_CHECK_INTERVAL = timedelta(hours=1)
+# The update check's cadence lives in `gardener` (`SWEEP_TICK`), not here
+# (#349). It used to be `_UPDATE_CHECK_INTERVAL` beside the rescan's,
+# which was wrong in a way that only shows up in the arithmetic: the tick is not
+# an independent knob, it is the denominator the pass divides `SWEEP_WINDOW` by
+# to size its slice. Kept in two modules the pair drifted, and the rate ended up
+# at roughly eight times what the goal needed, delivered in hundred-request
+# bursts. One constant, owned by the code that has to reason about it.
 
 # The header that tells `/library` to name the resolved view in the address bar
 # (#180). The search form cannot spell its own `hx-push-url`: it does not know the
@@ -691,7 +687,7 @@ def create_app(
         # reading it would make the setting save, look applied, and do nothing.
         check_task = asyncio.create_task(
             periodic.run_periodically(
-                _UPDATE_CHECK_INTERVAL,
+                gardener.SWEEP_TICK,
                 lambda: _update_check_if_idle(_app, sync_runner, reconcile_runner, scan_runner),
                 name="update check",
                 stop_event=watch_stop,
@@ -2213,7 +2209,8 @@ def _update_check_if_idle(
     The other three share one reason: the MusicBrainz rate limit is a single
     shared queue, and anything the user set in motion is waiting on it. A sync or
     a reconcile pass is spending it already, and the check is in no hurry — its
-    albums have been unasked-about for a week and one more hour changes nothing.
+    albums have been unasked-about for a week and ten more minutes change
+    nothing.
     It skips the tick rather than deferring it, like the periodic rescan does,
     because the next one comes round soon and nothing is waiting on this one. The
     first scan is the same argument at startup: the pass reads
@@ -2232,10 +2229,18 @@ def _update_check_if_idle(
         log.debug("Skipping update check: background update checks are off")
         return "background update checks are off"
     if sync_runner.is_running or reconcile_runner.is_running:
-        log.info("Skipping update check: sync or reconcile in progress")
+        # DEBUG since #349 shortened the tick to ten minutes: a long sync would
+        # otherwise write this same line six times an hour for as long as it
+        # ran, which is the noise that makes a log unread. Nothing is lost by
+        # standing aside quietly — the user started the sync, and **Check now**
+        # still answers with the reason in words.
+        log.debug("Skipping update check: sync or reconcile in progress")
         return "a sync or reconcile is using the MusicBrainz budget"
     if not scan_runner.has_completed():
-        log.info("Skipping update check: the library has not been scanned yet")
+        # DEBUG for the same reason: the first scan of a large library outlasts
+        # several ten-minute ticks, and "not scanned yet" during the first scan
+        # is the expected state rather than news. The scan announces itself.
+        log.debug("Skipping update check: the library has not been scanned yet")
         return "the library hasn't finished scanning yet"
     if not _update_check_lock.acquire(blocking=False):
         log.warning("Skipping update check: the previous pass is still running")
@@ -3562,10 +3567,18 @@ def _register_routes(app: FastAPI) -> None:
         """Run the background pass now, instead of waiting for the next tick.
 
         `run_periodically` fires one full interval after startup and never at
-        startup, so turning the check on at 10:00 buys an hour of a library that
-        looks exactly as it did — which reads as a setting that didn't take
-        (#312). This is the escape hatch from that hour, and the only way to see
-        the pass work on demand.
+        startup, so turning the check on buys an interval of a library that looks
+        exactly as it did — which reads as a setting that didn't take (#312).
+        This is the escape hatch from that wait, and the only way to see the pass
+        work on demand.
+
+        **It runs one ordinary tick, not a bigger one** (#349). A tick is now a
+        share of `gardener.SWEEP_WINDOW` — a couple of albums rather than a
+        hundred — so the press buys the ten minutes to the next one and not a
+        sweep. Deliberately: giving the button its own larger budget would put
+        the burst #349 removed back into the app at the one moment somebody is
+        certainly sitting in front of it, and the honest reading of "check now"
+        is that the check starts now, which it does.
 
         Not a mutation: it starts a read-only pass on a worker thread and
         returns at once, so there is nothing for the inbox or the library to

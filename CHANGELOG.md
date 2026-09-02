@@ -14,6 +14,12 @@ versions follow [semantic versioning](https://semver.org).
   MusicBrainz knew only of Germany. The Country row now lists them all beside
   the tag, with each country's own release date (#329).
 
+### Changed
+
+- **Background update checks are gentler on MusicBrainz.** They now spread the
+  albums they have to look at evenly across a day instead of asking about a
+  hundred of them in a burst every hour (#349).
+
 ### Fixed
 
 - **A release country Picard chose is no longer reported as out of date.**
