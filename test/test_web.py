@@ -38,6 +38,7 @@ from harmonist.tagger import (
     ATOM_ALBUM,
     ATOM_ARTIST,
     ATOM_COMMENT,
+    ATOM_MB_ALBUM_COUNTRY,
     ATOM_MB_ALBUM_ID,
     ATOM_TITLE,
 )
@@ -5791,6 +5792,15 @@ def test_an_id_musicbrainz_cannot_name_stays_raw(client, cfg, monkeypatch):
     assert 'class="mbid mbid--raw"' in body
 
 
+def _set_owned_tag(album_dir: Path, atom: str, value: str) -> None:
+    """Put `value` in every track's `atom` — a tag written by something other
+    than Harmonist, which is what Picard with a non-default setting is."""
+    for f in sorted(album_dir.glob("*.m4a")):
+        audio = MP4(f)
+        audio[atom] = [value.encode("utf-8")]
+        audio.save()
+
+
 def _three_country_release(mbid="rel-cmp"):
     """The release #329 was raised about, trimmed: issued in Germany, then the
     UK, then the US. `country` and `date` carry the German event alone."""
@@ -5863,6 +5873,49 @@ def test_one_release_country_gets_no_annotation(client, cfg, monkeypatch):
 
     assert "<dt>Country</dt>" in body
     assert "release events" not in body
+
+
+def test_a_second_release_country_is_not_reported_as_a_difference(client, cfg, monkeypatch):
+    """#346, on the page: a file carrying "GB" for a release MusicBrainz issued
+    in DE, GB and US is not out of date — Picard writes whichever country
+    `preferred_release_countries` names, and all three are true of the release.
+
+    The web rung rather than the tagger's, because the failure this guards is
+    the two surfaces disagreeing: `plan_album` accepting the value while the
+    panel still drew an arrow through it would leave the page reporting a
+    difference the Library had already decided was not one.
+    """
+    from harmonist import tagger as tagger_mod
+
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    release = _three_country_release()
+    tagger_mod.tag_album(d, release)  # files now carry DE, MusicBrainz's first
+    _set_owned_tag(d, ATOM_MB_ALBUM_COUNTRY, "GB")  # …as Picard would have
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", lambda mbid: release)
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    cell = re.search(r"<dt>Country</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert cell, "no Country row"
+    assert "tag-fields__arrow" not in cell.group(1), "GB vs DE drawn as a difference"
+    assert tagger_mod.plan_album(d, release).empty  # …and the two agree
+
+
+def test_a_country_the_release_never_names_is_still_a_difference(client, cfg, monkeypatch):
+    """The limit of that tolerance, on the page. "JP" is not one of this
+    release's countries, so the row draws the arrow it should."""
+    from harmonist import tagger as tagger_mod
+
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    release = _three_country_release()
+    tagger_mod.tag_album(d, release)
+    _set_owned_tag(d, ATOM_MB_ALBUM_COUNTRY, "JP")
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", lambda mbid: release)
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    cell = re.search(r"<dt>Country</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert cell and "tag-fields__arrow" in cell.group(1)
 
 
 def test_the_release_row_is_gone_from_the_comparison(client, cfg, monkeypatch):

@@ -886,6 +886,12 @@ def _album_comparison(
                 album_title_alias=title_with_disambiguation(
                     release.get("title"), release.get("disambiguation")
                 ),
+                # …and any country the release names is the country it came out
+                # in, whichever one Picard's `preferred_release_countries` put
+                # on the file (#346). The panel has to reach the same verdict as
+                # `plan_album`, or the page reports a difference the Library has
+                # already decided is not one.
+                accepted_countries=tagger_mod.release_countries(release),
             )
         ),
         compare.tracklist(_in_track_order(audio + video), mb_tracks, _media_of(release)),

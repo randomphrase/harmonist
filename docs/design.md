@@ -965,9 +965,14 @@ So both places that judge a disk title against MusicBrainz's accept it: `compare
 
 MusicBrainz records a release as a **list of release events** — `(area, date)` pairs — and collapses that list to the scalar `country` and `date` the tag can hold. So [*Amok*](https://musicbrainz.org/release/3587efcb-c42a-4da5-839b-2a9f9b8d933e) came out in Germany on 2013‑06‑07, the UK on the 10th and the US on the 11th, and carries `DE` / `2013-06-07`.
 
-The tag stays scalar and Harmonist keeps writing `release["country"]`. Picard's `releasecountry` is a scalar for the same reason — *"if more than one release country was specified, this tag will contain the first one in the list"* (`picard/const/tags.py`) — and its full list lives in the hidden `~releasecountries`, which is never written to a file.
+The tag stays scalar and Harmonist keeps writing `release["country"]`. Picard's `releasecountry` is a scalar for the same reason — *"if more than one release country was specified, this tag will contain the first one in the list"* (`picard/const/tags.py`) — and its full list lives in the hidden `~releasecountries`, which is never written to a file. Two consequences, one for each surface:
 
-**The album page names them all** (#329). The Country row's value is the tag, unchanged; beside it sits every country the release names, with the dates, and which one the tags carry. `release-event-list` comes back with any release lookup, so this reads a corner of the payload the page already holds — no extra `includes`, no extra request.
+- **The album page names them all** (#329). The Country row's value is the tag, unchanged; beside it sits every country the release names, with the dates, and which one the tags carry. `release-event-list` comes back with any release lookup, so this reads a corner of the payload the page already holds — no extra `includes`, no extra request.
+- **A second release country is not a difference** (#346). Picard writes whichever country `preferred_release_countries` matches (`picard/mbjson.py`, `release_to_metadata`), so a library tagged that way carries a code that is not MusicBrainz's first and is not stale either. Both places that judge a disk country accept any country **this release** names — `compare.album_fields` for the panel and the tagging diff for the write-skip — exactly as they accept the disambiguated album title above, and with the same limit: the release's own release events, never "any country". A code MusicBrainz does not list for the release is genuinely stale and still reported.
+
+**Only the comparison is tolerant, not the write** — the same sentence as the album title's, and the same consequence. A re-tag that happens for another reason puts MusicBrainz's `country` back on the file.
+
+Picard also lets the user *pick* a preferred country, which changes `releasecountry` and nothing else — `date` is `node['date']` regardless. Offering that setting is a separate question and is not answered here.
 
 ### How significant a change is, and whether it needs review
 

@@ -1868,6 +1868,77 @@ def test_one_phrase_two_different_credits_is_dropped_rather_than_guessed():
     assert tagger.artist_credits(release) == {}
 
 
+def _set_country_tag(album_dir, value: str) -> None:
+    """Put `value` in every file's release-country atom — what Picard writes
+    when `preferred_release_countries` names one of the release's own."""
+    for f in sorted(album_dir.glob("*.m4a")):
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_COUNTRY] = [value.encode("utf-8")]
+        audio.save()
+
+
+def _multi_country_2_tracks() -> dict:
+    """`_release_2_tracks`, issued in three countries instead of one."""
+    return _release_2_tracks() | {
+        "release-event-list": [
+            {
+                "date": "2021-06-15",
+                "area": {"name": "United Kingdom", "iso-3166-1-code-list": ["GB"]},
+            },
+            {"date": "2021-06-18", "area": {"name": "Germany", "iso-3166-1-code-list": ["DE"]}},
+            {"date": "2021-06-22", "area": {"name": "Japan", "iso-3166-1-code-list": ["JP"]}},
+        ],
+    }
+
+
+def test_a_second_release_country_is_not_a_change(album_with_tracks):
+    """Picard writes whichever of the release's countries `preferred_release_
+    countries` names, so a library tagged that way carries "DE" where
+    MusicBrainz's scalar `country` is "GB" (`picard/mbjson.py`,
+    `release_to_metadata`).
+
+    Both are countries THIS release was issued in, so the file is not out of
+    date. Reported as a change it would differ on every pass forever — the #283
+    shape exactly: #266's write-skip could never fire on those albums, and
+    `mb_album_country` is ENRICHMENT, so #32's nightly pass would put every one
+    of them in the Inbox.
+    """
+    album_dir = album_with_tracks(2)
+    rel = _multi_country_2_tracks()
+    tagger.tag_album(album_dir, rel)
+    _set_country_tag(album_dir, "DE")
+
+    assert tagger.plan_album(album_dir, rel).empty
+
+
+def test_a_country_the_release_never_names_is_still_a_change(album_with_tracks):
+    """The tolerance is this release's own release events, not "any country".
+
+    Accepting a code MusicBrainz does not list for the release would be
+    inventing a fact it states for free — review-gate item 2. A file carrying
+    "US" for a release issued in GB, DE and JP is genuinely stale.
+    """
+    album_dir = album_with_tracks(2)
+    rel = _multi_country_2_tracks()
+    tagger.tag_album(album_dir, rel)
+    _set_country_tag(album_dir, "US")
+
+    plan = tagger.plan_album(album_dir, rel)
+    assert not plan.empty
+    assert all("mb_album_country" in c for c in plan.changes.values())
+
+
+def test_a_single_country_release_accepts_only_that_country(album_with_tracks):
+    """With one release event there is no second country to accept, so a
+    different code is just a wrong one — and this is the everyday album."""
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()  # country GB, no release events at all
+    tagger.tag_album(album_dir, rel)
+    _set_country_tag(album_dir, "DE")
+
+    assert not tagger.plan_album(album_dir, rel).empty
+
+
 # ---------- release events (#329) ----------
 
 

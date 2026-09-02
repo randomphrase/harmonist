@@ -340,7 +340,7 @@ def compare_value(
     mb: str | None = None,
     unreadable: bool = False,
     tracks: Consensus | None = None,
-    also_matches: str | None = None,
+    also_matches: _Accepted = (),
 ) -> FieldComparison:
     """Compare one on-disk value against one MusicBrainz value.
 
@@ -348,15 +348,27 @@ def compare_value(
     this is what the tracklist uses directly; `compare_field` wraps it for the
     album panel, where the on-disk value is a consensus across the tracks.
 
-    `also_matches` is a second on-disk spelling that counts as agreement — one
-    exact string, never a pattern. It exists because a field can have more than
-    one correct form on disk: Picard writes an album title with the release
-    disambiguation appended when told to, and that is the same album (#283).
+    `also_matches` holds the other on-disk spellings that count as agreement —
+    exact strings, never patterns. It exists because a field can have more than
+    one correct form on disk, and two fields do:
+
+    * an album title with the release disambiguation appended, which Picard
+      writes when told to and which is the same album (#283);
+    * any release country THIS release names, since Picard writes whichever of
+      them `preferred_release_countries` matches while MusicBrainz's scalar
+      `country` is only the first (#346).
+
+    A set rather than one string because of the second: a release is issued in
+    as many countries as it is issued in. Spelled as a union of concrete
+    containers rather than `Collection[str]`, deliberately: `str` satisfies
+    `Collection[str]`, so a future `also_matches="DE"` would type-check and
+    quietly become a SUBSTRING test — the shape of bug this repo keeps paying
+    for, since it works on the value that prompted it.
 
     This module stays deliberately free of runtime imports, so it is told the
-    accepted spelling rather than deriving it; what makes a second spelling
+    accepted spellings rather than deriving them; what makes a second spelling
     legitimate is MusicBrainz's business, and `models.title_with_disambiguation`
-    is where that knowledge lives.
+    and `tagger.release_events` are where that knowledge lives.
     """
     if unreadable:
         return FieldComparison(label, kind, Agreement.UNREADABLE, mb=mb, consensus=tracks)
@@ -366,7 +378,7 @@ def compare_value(
         return FieldComparison(label, kind, Agreement.ONLY_MB, mb=mb, consensus=tracks)
     if mb is None:
         return FieldComparison(label, kind, Agreement.ONLY_DISK, disk=disk, consensus=tracks)
-    if disk == mb or disk == also_matches:
+    if disk == mb or disk in also_matches:
         return FieldComparison(label, kind, Agreement.MATCHES, disk=disk, mb=mb, consensus=tracks)
     disk_runs, mb_runs = diff_runs(disk, mb)
     return FieldComparison(
@@ -388,7 +400,7 @@ def compare_field(
     disk: Consensus | None = None,
     mb: str | None = None,
     unreadable: bool = False,
-    also_matches: str | None = None,
+    also_matches: _Accepted = (),
 ) -> FieldComparison:
     """Build one row of the ALBUM panel.
 
@@ -615,10 +627,33 @@ _ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = (
 )
 
 
-#: The one album field with a second legitimate on-disk spelling — see
-#: `album_fields`. Named rather than inlined so the special case is visible from
-#: the table above rather than buried in the loop.
+#: The two album fields with a second legitimate on-disk spelling — see
+#: `album_fields`. Named rather than inlined so the special cases are visible
+#: from the table above rather than buried in the loop.
 _ALIASED_FIELD = "album"
+_MULTI_VALUED_FIELD = Owned.MB_ALBUM_COUNTRY.value
+
+#: The accepted-spellings container — see `compare_value`. Concrete types, never
+#: `Collection[str]`, so a bare string cannot be passed by mistake.
+type _Accepted = frozenset[str] | tuple[str, ...]
+
+
+def _accepted(
+    disk_attr: str,
+    album_title_alias: str | None,
+    accepted_countries: _Accepted,
+) -> _Accepted:
+    """The other on-disk values that count as agreement on this row.
+
+    Empty for every row but two, and that is the point: a tolerance wide enough
+    to apply generally would stop the panel reporting real drift. See
+    `album_fields` for what makes each of the two legitimate.
+    """
+    if disk_attr == _ALIASED_FIELD:
+        return (album_title_alias,) if album_title_alias else ()
+    if disk_attr == _MULTI_VALUED_FIELD:
+        return accepted_countries
+    return ()
 
 
 #: Which MusicBrainz entity each id-carrying row points at, which is both what
@@ -663,6 +698,7 @@ def album_fields(
     mb: TagSet | None,
     *,
     album_title_alias: str | None = None,
+    accepted_countries: _Accepted = (),
 ) -> tuple[FieldComparison, ...]:
     """Compare an album's per-track tags against what tagging would write.
 
@@ -677,8 +713,17 @@ def album_fields(
 
     `album_title_alias` is a second album title that counts as agreement —
     Picard's disambiguated spelling, built by `models.title_with_disambiguation`
-    from the release the caller already holds (#283). Only the Album row can
-    take one; nothing else here has a legitimate second form.
+    from the release the caller already holds (#283).
+
+    `accepted_countries` is the same idea on the Country row (#346): every
+    country the release names, from `tagger.release_events`, of which
+    MusicBrainz's scalar `country` is only the first. Picard writes whichever
+    one `preferred_release_countries` matches, and the page must agree with
+    `tagger.plan_album` about whether that is a difference — the page saying a
+    tag differs while the Library says the album is up to date is worse than
+    either answer alone.
+
+    Those two rows are the only ones with a legitimate second form.
     """
     unreadable = all(t.unreadable for _, t in tracks) if tracks else False
     out: list[FieldComparison] = []
@@ -694,7 +739,7 @@ def album_fields(
             disk=consensus(values),
             mb=mb_value,
             unreadable=unreadable,
-            also_matches=album_title_alias if disk_attr == _ALIASED_FIELD else None,
+            also_matches=_accepted(disk_attr, album_title_alias, accepted_countries),
         )
         # Marked here rather than threaded through `compare_value`, because THIS
         # table is where the knowledge lives: a field is comparable iff it names

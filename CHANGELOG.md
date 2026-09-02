@@ -16,6 +16,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A release country Picard chose is no longer reported as out of date.**
+  Picard writes whichever of the release's countries your
+  `preferred_release_countries` setting names, which is rarely MusicBrainz's
+  first — so those albums showed a difference on the album page and sat
+  permanently in the **Update available** filter, and a re-tag overwrote your
+  setting. Any country the release actually names now counts as correct (#346).
 
 - **Clearing a MusicBrainz match, or unlinking a Bandcamp purchase, writes one
   Activity entry instead of two** — the second was unlinked from the album and

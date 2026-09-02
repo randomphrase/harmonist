@@ -241,6 +241,7 @@ def tag_album(
             prep.art_before,
             prep.art_after,
             prep.accepted_album_title,
+            prep.accepted_countries,
         )
         if not changes and not formats.has_superseded_tags(file_path):
             # Nothing to write, so nothing is written. The file keeps its mtime
@@ -318,6 +319,7 @@ def plan_album(
             prep.art_before,
             prep.art_after,
             prep.accepted_album_title,
+            prep.accepted_countries,
         ):
             changes[file_path] = file_changes
     return AlbumPlan(changes=changes, preserves_per_track_art=prep.preserves_per_track_art)
@@ -431,6 +433,12 @@ class _Prepared:
     #: carries the same `album`, so it is settled once here rather than rebuilt
     #: per file.
     accepted_album_title: str | None
+    #: Every release country that counts as already correct: the ones THIS
+    #: release names. Picard writes whichever of them `preferred_release_
+    #: countries` matches, so a library tagged that way carries a code that is
+    #: not MusicBrainz's scalar `country` and is not stale either. Album-constant
+    #: for the reason above.
+    accepted_countries: frozenset[str]
 
 
 def _prepare(
@@ -515,6 +523,7 @@ def _prepare(
         accepted_album_title=title_with_disambiguation(
             release.get("title"), release.get("disambiguation")
         ),
+        accepted_countries=release_countries(release),
     )
 
 
@@ -525,6 +534,7 @@ def _changes_for(
     art_before: dict[Path, str | None],
     art_after: str | None,
     accepted_album_title: str | None = None,
+    accepted_countries: frozenset[str] = frozenset(),
 ) -> dict[str, list[Any]]:
     """What tagging this one file to `tagset` would change, as `{field: [was, now]}`.
 
@@ -554,6 +564,23 @@ def _changes_for(
         and album_change[0] == accepted_album_title
     ):
         del changes[owned.Owned.ALBUM]
+
+    # Nor is a release country the release actually names (#346). MusicBrainz
+    # collapses a release issued in several countries to one scalar `country`;
+    # Picard writes whichever of them `preferred_release_countries` matches
+    # (`picard/mbjson.py`, `release_to_metadata`), so a library tagged that way
+    # carries a different code that is every bit as true of the release.
+    #
+    # The same tolerance as the album title, for the same reason and with the
+    # same limit: THIS release's own release events, never "any country" — a
+    # code MusicBrainz does not list for it is genuinely stale, and accepting it
+    # would be inventing a fact the release states for free.
+    #
+    # Only the diff is tolerant. A write that happens for some other reason
+    # still puts MusicBrainz's `country` on the file.
+    country_change = changes.get(owned.Owned.MB_ALBUM_COUNTRY)
+    if country_change is not None and country_change[0] in accepted_countries:
+        del changes[owned.Owned.MB_ALBUM_COUNTRY]
 
     # Artwork rides alongside the owned fields but is not one of them: the
     # tagger, not `write_tags`, decides whether art is replaced or preserved,
@@ -1225,6 +1252,19 @@ class ReleaseEvent(NamedTuple):
     #: row as written while the tagger wrote another. False on every event when
     #: the two cannot be reconciled — a list with no mark beats a wrong mark.
     written: bool
+
+
+def release_countries(release: Release) -> frozenset[str]:
+    """Every country this release names, as a set (#346).
+
+    `release_events` with the order and the dates thrown away, which is what
+    both callers of *this* want: the album page and `plan_album` ask only
+    whether the code on a file is one the release was issued in. One derivation
+    rather than the same comprehension in three places — the page and the plan
+    disagreeing about which countries are acceptable is precisely the bug this
+    is here to prevent.
+    """
+    return frozenset(e.country for e in release_events(release) if e.country)
 
 
 def release_events(release: Release) -> tuple[ReleaseEvent, ...]:
