@@ -59,7 +59,15 @@
        update together. `hx-disabled-elt` because this is a real MusicBrainz
        request on a 1-req/sec budget and a double-press would spend two. No
        `onclick` anywhere near it — HTMX owns the click. #}
-    <dd class="col-start-3 self-baseline">
+    {# `flex`, not the default block box, and NOT `self-baseline`. A block <dd>
+       lays the button out on a line box, and an inline-flex element whose only
+       child is an SVG takes its baseline from its bottom margin edge — so the
+       16px button sits ON the text baseline and the line box adds the font's
+       descent underneath it. The cell came out 18px against the row's 16, which
+       made this row 2px taller than the three above and pushed its label and
+       value down by that much. Flex has no line box, so the cell is the button
+       and the row keeps the pitch of its neighbours. #}
+    <dd class="col-start-3 flex items-center">
         <button type="button"
                 hx-get="/library/{{ album.id }}/compare?reread=1"
                 hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"
