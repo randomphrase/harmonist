@@ -208,11 +208,12 @@ you tagged it — each with its count:
   The album's own page says *what* the update is. The Tags comparison covers
   every album-level tag Harmonist writes, and the tracklist grows a column for
   each per-track tag that has actually moved — so a sort name MusicBrainz has
-  corrected on one track appears against *that* track. Between them, most of an
-  update is visible where you would look for it anyway. Anything left over — more
-  differing tags than the table will take — goes in a short list under the
-  comparison, **Other tags a re-tag would change**, each with its before and
-  after, laid out the way the History entry will be once you've applied it.
+  corrected on one track appears against *that* track, and one it has corrected
+  on every track appears once, in the band beneath. Between them, an update is
+  visible where you would look for it anyway. The rare exception is a short list
+  under the comparison, for the two things with nowhere else to go: a release id
+  a MusicBrainz merge has moved, and more differing per-track tags than the table
+  will take.
 
   Harmonist works this out from the MusicBrainz releases it has already fetched,
   so the filter costs no lookups and fills in as you browse — an album you open
@@ -314,14 +315,18 @@ always there; beyond those, a per-track tag gets a column when it can answer
 *which track* — it differs from MusicBrainz on some tracks and not others (or
 differently on each), the tracks disagree with each other, or a track is credited
 to somebody the album isn't. A change that reads the same on every track needs no
-column: it goes in the list under the comparison, where one line says the whole
-of it. On a single-artist
-album where every track agrees, an Artist column would be one name repeated all
-the way down, so it isn't drawn; on a compilation, or an album with a guest on
-track 6, it is. The tags that were checked and agreed sit in a band under the table, headed
-*"The same on every track"*, with their values laid out like the album's own tags
-— so a tag Harmonist looked at never reads like one it ignored. The band spans the
-whole section rather than trailing the last disc, because it describes the whole
+column, because *which track* has no answer to give: one line says the whole of
+it. On a single-artist album where every track agrees, an Artist column would be
+one name repeated all the way down, so it isn't drawn; on a compilation, or an
+album with a guest on track 6, it is.
+
+Those single lines sit in a band under the table, headed *"The same on every
+track"*, with their values laid out like the album's own tags — so a tag
+Harmonist looked at never reads like one it ignored. The band carries what
+agreed and what didn't: a tag every track reads the same way but MusicBrainz
+disagrees with shows its current value struck through and MusicBrainz's beside
+it, the same way a difference is drawn everywhere else. The band spans the whole
+section rather than trailing the last disc, because it describes the whole
 release.
 
 Artist credits are shown as the artists they name: *Rafael Anton Irisarri feat.

@@ -21,6 +21,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **A tag that differs from MusicBrainz on every track is now shown with the
+  tracks.** It used to appear in a list under the album's Tags comparison,
+  headed *"Other tags a re-tag would change"* — a per-track fact stated away
+  from the tracks. It joins the band beneath the tracklist instead, showing its
+  current value and MusicBrainz's. That list now holds only what has nowhere
+  else to go, and says so (#360).
+
 - **An album with no MusicBrainz release is no longer offered a re-tag.** Its
   page showed **Re-tag from MB** as the main action, which could only fail;
   the way forward for those albums is the actions section below the panel

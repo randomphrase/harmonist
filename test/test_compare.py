@@ -1190,15 +1190,21 @@ def test_a_featured_credit_earns_the_artist_column_back():
     assert not any(t.differs for t in tl.tracks)  # nothing here differs from MB
 
 
-def test_a_change_that_reads_the_same_on_every_track_is_left_to_the_box():
+def test_a_change_that_reads_the_same_on_every_track_goes_to_the_band():
     """Rule 1's second half, isolated to the one field it turns on.
 
     ISRC has no album-level counterpart and the files carry none of it, so rules
     2 and 3 are both silent and only rule 1 can decide. When MusicBrainz has one
-    ISRC for the whole album, every track reads "— → that", the box's single line
-    is the entire fact, and a column would spend one of three slots printing a
+    ISRC for the whole album, every track reads the same way, a single line is
+    the entire fact, and a column would spend one of three slots printing a
     position nobody asked for. When MusicBrainz has a different one per track,
     "which track" has an answer and the column is the only thing that gives it.
+
+    Where that single line is drawn is what #360 changed. It used to be the
+    re-tag box, in the album's Tags section — a per-track fact stated away from
+    the tracks and labelled "all tracks", directly above a band whose caption is
+    "The same on every track". The band carries it now, and `shown_fields` names
+    it so the box cannot state it a second time.
     """
 
     def album(*isrcs: str):
@@ -1211,9 +1217,11 @@ def test_a_change_that_reads_the_same_on_every_track_is_left_to_the_box():
         )
 
     uniform = album("FRZ109800001", "FRZ109800001")
-    assert "ISRC" not in _headings(uniform)
-    assert "ISRC" not in {c.label for c in uniform.collapsed}, "it differs — that is not agreement"
-    assert "isrcs" not in uniform.shown_fields, "so the box states it, once"
+    assert "ISRC" not in _headings(uniform), "no column — 'which track' has no answer"
+    isrc = next(c for c in uniform.collapsed if c.label == "ISRC")
+    assert isrc.differs, "the band states it as the change it is, not as agreement"
+    assert isrc.mb == "FRZ109800001"
+    assert "isrcs" in uniform.shown_fields, "so the box does not state it a second time"
 
     assert "ISRC" in _headings(album("FRZ109800001", "FRZ109800002"))
 
@@ -1376,15 +1384,18 @@ def test_artists_keeps_its_own_column_when_it_has_its_own_difference():
     assert "Artists" in _headings(tl)
 
 
-def test_a_tag_musicbrainz_does_not_have_is_not_collapsed_as_agreement():
-    """The third destination, and the one that is easy to lose.
+def test_a_tag_musicbrainz_does_not_have_is_stated_as_a_removal():
+    """A per-track tag the files carry and MusicBrainz does not is deliberately
+    NOT a difference — ONLY_DISK never reads as a finding, or the recovered
+    Bandcamp URL becomes one — so it earns no column. But it IS a change: a
+    re-tag removes it, and the page has to say so.
 
-    A per-track tag the files carry and MusicBrainz does not is deliberately NOT
-    a difference — ONLY_DISK never reads as a finding, or the recovered Bandcamp
-    URL becomes one — so it earns no column. But it is a CHANGE: a re-tag removes
-    it. Collapsing it would file it under "the same on every track and matches
-    MusicBrainz", which is false twice, and would then also leave it in the box —
-    the same field in two places, saying opposite things.
+    It used to be kept out of the band on the grounds that filing it under "the
+    same on every track and matches MusicBrainz" would be false twice. Half of
+    that stopped being true in #328, which dropped the MusicBrainz clause from
+    the caption; #360 dropped the other half by letting the band state a change.
+    So it belongs here, said as a removal — and once, which `shown_fields` is
+    what enforces.
     """
     tl = tracklist(
         [
@@ -1395,8 +1406,11 @@ def test_a_tag_musicbrainz_does_not_have_is_not_collapsed_as_agreement():
     )
 
     assert "Artist sort" not in _headings(tl), "not a difference, so not a column"
-    assert "Artist sort" not in {c.label for c in tl.collapsed}, "and not agreement either"
-    assert "artist_sort" not in tl.shown_fields, "so the box is free to state the removal"
+    sort = next(c for c in tl.collapsed if c.label == "Artist sort")
+    assert sort.value == "Kavinsky"
+    assert sort.mb is None, "nothing to replace it with — the re-tag takes it away"
+    assert sort.differs, "which is a change, and the band must not read it as agreement"
+    assert "artist_sort" in tl.shown_fields, "so the box does not repeat the removal"
 
 
 def test_the_disk_only_view_collapses_on_agreement_between_the_tracks_alone():
@@ -1419,7 +1433,10 @@ def test_the_number_column_accounts_for_the_disc_on_a_multi_disc_release():
     the same fact twice across one row. On a single-disc release it renders
     `disc or 1`, saying nothing about the disc, so the field stays eligible."""
     one_disc = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall")])
-    assert one_disc.shown_fields == {"track_num", "title"}
+    # Asserted on the number column's own `fields` rather than on the whole of
+    # `shown_fields`, which since #360 also names everything the band under the
+    # table states — a wider set that would drown the one claim being made here.
+    assert one_disc.columns[0].fields == ("track_num",)
 
     two_discs = tracklist(
         [_file(1, "Nightcall", disc=1), _file(1, "Rampage", disc=2)],
@@ -1641,8 +1658,12 @@ def test_a_disc_whose_tracks_disagree_keeps_its_column():
     assert "Media" in _headings(tl)
     assert tl.headings == ()  # no heading claims anything, so none is built
     assert all(g.heading is None for g in tl.discs)
-    # And with the roll-up off, the other two go back to competing as well.
-    assert "disc_subtitle" not in tl.shown_fields
+    # And with the roll-up off, the other two go back to competing as well —
+    # asserted against what the HEADINGS claim, which is the roll-up's own
+    # output. `shown_fields` stopped answering this in #360: it now also names
+    # what the band under the table states, so a tag reaching the band would
+    # satisfy it without any heading being involved.
+    assert "disc_subtitle" not in tl.heading_fields
 
 
 def test_a_single_disc_album_has_no_heading_to_roll_anything_up_into():
@@ -1650,10 +1671,13 @@ def test_a_single_disc_album_has_no_heading_to_roll_anything_up_into():
     nowhere for a subtitle change to go.
 
     Nothing is lost by that. With one disc the change is one fact rather than a
-    per-disc one, so rule 1's uniform-difference clause already declines it a
-    column and the re-tag box states it once, which is the whole of it. The
+    per-disc one, so rule 1's uniform-difference clause declines it a column and
+    the band under the table states it once, which is the whole of it. The
     assertion that matters is that the roll-up did NOT fire and leave it stated
     nowhere at all.
+
+    Before #360 that one statement was made by the re-tag box, in the album's
+    Tags section. Same fact, and now it is beside the tracks it describes.
     """
     tl = tracklist(
         [_file(1, "Nightcall"), _file(2, "Odd Look")],
@@ -1666,10 +1690,12 @@ def test_a_single_disc_album_has_no_heading_to_roll_anything_up_into():
 
     assert tl.headings == ()
     assert "Disc subtitle" not in _headings(tl)
-    # Not collapsed either — it does not match MusicBrainz — so the box has it,
-    # which is exactly what `shown_fields` declining to claim it means.
-    assert "disc_subtitle" not in tl.shown_fields
-    assert "Disc subtitle" not in {c.label for c in tl.collapsed}
+    # The band has it, stated as the change it is: one reading on every track,
+    # and not MusicBrainz's (#360).
+    subtitle = next(c for c in tl.collapsed if c.label == "Disc subtitle")
+    assert subtitle.differs
+    assert subtitle.mb == "Bonus"
+    assert "disc_subtitle" in tl.shown_fields, "so the box does not state it a second time"
 
 
 def test_a_disc_nobody_ripped_gets_no_comparison():

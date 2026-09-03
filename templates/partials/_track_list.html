@@ -331,11 +331,34 @@
         {% for f in tracklist.collapsed %}
         <dt>{{ f.label }}</dt>
         <dd>
-            {% if f.value %}
+            {% if f.differs %}
+            {# One reading on every track, and not the one MusicBrainz holds
+               (#360). This used to fall past the band into the re-tag box, up in
+               the album's Tags section, where a per-track fact was stated among
+               leftovers and labelled "all tracks" — which is what this band's
+               own caption says.
+
+               The change is drawn the way the rest of the page draws one: the
+               disk's reading struck through, an arrow, and MusicBrainz's in
+               purple. Nothing here claims WHICH track, because there is no such
+               question — a tag whose tracks disagreed would have earned a column
+               under rule 2 and never reached this band. #}
+            {% if f.value %}<span class="track-foot__was">{{ f.value }}</span>
+            <span class="track-foot__arrow" aria-label="becomes">→</span>{% endif %}
+            {% if f.mb is none %}
+            {# MusicBrainz holds nothing, and a re-tag removes what the files
+               carry. Said as a removal rather than as an empty value, because
+               "not set" below means the opposite — nobody has one — and the two
+               must not read alike. #}
+            <span class="track-foot__absent">removed</span>
+            {% else %}
+            <span class="track-foot__now">{% with runs = none, value = f.mb, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
+            {% endif %}
+            {% elif f.value %}
             {# Same renderer as a cell, so an id here is the same named link it
                would have been in a column and an artist credit reads the same
-               way. A collapsed field agrees with MusicBrainz by definition, so
-               its value is one MusicBrainz has a name for. #}
+               way. This value agrees with MusicBrainz, so it is one MusicBrainz
+               has a name for. #}
             {% with runs = none, value = f.value, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith %}
             {% else %}
             {# No track carries it and MusicBrainz has none either. That is still

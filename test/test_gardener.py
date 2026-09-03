@@ -565,12 +565,18 @@ def test_the_album_page_explains_an_update_the_comparison_cannot_show(engaged, m
     for — so without a surface for them the album sits under Update available and
     reads as matching on every row shown.
 
-    An ISRC MusicBrainz has filled in is the everyday one, and it is still the
-    box's after #309: MusicBrainz filled the SAME one in for the whole album, so
-    every track reads the same way and "which track" has no answer to give. A
-    column would print one position three times over; the box's single line is
-    the whole fact. `test_a_per_track_change_lands_on_its_own_row` is the other
-    half of that decision, and the two are only worth reading together.
+    An ISRC MusicBrainz has filled in is the everyday one. MusicBrainz filled the
+    SAME one in for the whole album, so every track reads the same way and "which
+    track" has no answer to give: no column after #309, and since #360 the single
+    line that IS the whole fact is drawn in the band under the tracklist rather
+    than in the re-tag box two sections up.
+    `test_a_per_track_change_lands_on_its_own_row` is the other half of that
+    decision, and the two are only worth reading together.
+
+    Asserted through the band's own markup, because "the page explains it" is the
+    claim and the band is now where the explanation is. The box heading is
+    asserted ABSENT for the same reason it used to be asserted present: stating
+    this twice, in two sections, is the thing #360 removed.
     """
     cfg, engage = engaged
     _tagged(cfg.paths.music_dir, _release(tracks=3), tracks=3)
@@ -583,9 +589,42 @@ def test_the_album_page_explains_an_update_the_comparison_cannot_show(engaged, m
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
 
     assert runner.albums()[0].update_available is True
-    assert "Other tags a re-tag would change" in body
+    assert "The same on every track" in body
     assert "<dt>ISRC</dt>" in body
+    assert "GBAYE0000123" in body, "and the value a re-tag would write"
     assert not re.search(r"<th [^>]*>\s*ISRC\s*</th>", body), "no column: it says the same thing"
+    assert "Not shown anywhere else on this page" not in body, "and not a second time in the box"
+    # Nothing here is a REPLACEMENT — the files carry no ISRC and everything else
+    # matches — so no row may draw a struck-through "before". The band's value
+    # falls back to MusicBrainz's reading when no file carries the tag, which is
+    # right for agreement and would otherwise render this addition as "GBAYE…
+    # → GBAYE…", a change from itself.
+    assert "track-foot__was" not in body
+
+
+def test_a_uniform_per_track_change_shows_both_sides_under_the_tracklist(engaged, monkeypatch):
+    """#360's reported case, end to end: MusicBrainz has corrected a sort name.
+
+    Every track already carries one, so this is a REPLACEMENT rather than the
+    fill-in above, and the band has to show what a re-tag would take away as well
+    as what it would write — otherwise the row reads as a value the album already
+    has. It used to be stated in the re-tag box, two sections up, under a heading
+    calling it one of the "other tags a re-tag would change".
+    """
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release(tracks=2), tracks=2)
+    corrected = copy.deepcopy(_release(tracks=2))
+    corrected["artist-credit"][0]["artist"]["sort-name"] = "Test Artist"
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: corrected)
+    client, runner = engage()
+
+    body = client.get(f"/library/{runner.albums()[0].id}/compare").text
+
+    band = body[body.index("track-foot") :]
+    assert "<dt>Artist sort</dt>" in band
+    assert "Artist, Test" in band, "what the files carry, on its way out"
+    assert "Test Artist" in band, "and what a re-tag would write"
+    assert "Not shown anywhere else on this page" not in body, "not the box's job any more"
 
 
 def test_a_per_track_change_lands_on_its_own_row(engaged, monkeypatch):

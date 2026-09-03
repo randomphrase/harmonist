@@ -619,6 +619,18 @@ button[disabled],
 }
 .track-foot .tag-fields { margin-top: .55rem; }
 .track-foot__absent { font-style: italic; color: var(--color-muted); }
+/* A band row whose one reading differs from MusicBrainz (#360). Drawn in the
+   page's existing change language — the disk's reading struck through, then
+   MusicBrainz's in purple — rather than a voice of its own, because this is the
+   same kind of statement a differing cell in the table above makes, and the
+   reader should not have to learn it twice. */
+.track-foot__was {
+  color: var(--color-muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--color-muted) 55%, transparent);
+}
+.track-foot__arrow { color: var(--color-muted); font-size: .7rem; padding: 0 .15rem; }
+.track-foot__now { color: var(--color-mb-purple); font-weight: 600; }
 
 .track-diff__absent,
 .track-diff__unreadable { font-style: italic; }

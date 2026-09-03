@@ -1137,23 +1137,35 @@ class TracklistComparison:
 
     @property
     def shown_fields(self) -> frozenset[str]:
-        """The per-track owned tags this table has a column for.
+        """The per-track owned tags this section states, in a column or under it.
 
         The tracklist's half of what scopes the re-tag box (#291, #297); the
-        panel's half is `PANEL_FIELDS`. Read off the columns rather than
+        panel's half is `PANEL_FIELDS`. Read off what is rendered rather than
         recomputed, so "no field appears in both places" holds by construction
         rather than by two tables agreeing.
 
-        The collapsed set is deliberately absent. A collapsed field matches
-        MusicBrainz on every track, so a re-tag has nothing to say about it and
-        it cannot reach the box anyway — and if one ever did, that is a real
-        difference the page had better state somewhere rather than swallow.
-
-        The disc headings ARE included, because they show what they account for
+        The disc headings are included, because they show what they account for
         (#320) — a tag rolled up into them has been stated, per disc, and the box
         restating it underneath would be the same row printed twice.
+
+        **The collapsed set is included too, since #360.** It used to be left out
+        on the grounds that a collapsed field matched MusicBrainz everywhere, so
+        a re-tag had nothing to say about it and it could not reach the box — and
+        that omission doubled as a net: *"if one ever did, that is a real
+        difference the page had better state somewhere rather than swallow."*
+        The band now carries differing readings deliberately, so the net is no
+        longer needed and has become the bug it was guarding against: leaving
+        collapsed out would print every one of those rows a second time, in the
+        box, in another section.
+
+        What replaces the net is the band rendering the difference. A field in
+        `collapsed` is stated either way — this is the assertion that it is.
         """
-        return frozenset(f for c in self.columns for f in c.fields) | self.heading_fields
+        return (
+            frozenset(f for c in self.columns for f in c.fields)
+            | self.heading_fields
+            | frozenset(f.field for f in self.collapsed if f.field)
+        )
 
     @property
     def identifier_columns(self) -> tuple[TrackColumn, ...]:
@@ -1586,18 +1598,40 @@ class TrackColumn:
 
 @dataclass(frozen=True)
 class CollapsedField:
-    """A per-track tag with no column, and the one value every track carries.
+    """A per-track tag with no column, and the one reading every track carries.
 
-    Safe to state as a single value precisely BECAUSE the column was dropped: it
-    collapsed only because every present track agreed and matched MusicBrainz.
-    That is also why the affordance under the table is a short list and not a
-    wider table — revealing N identical rows needs one row, not N.
+    Safe to state as a single line precisely BECAUSE the column was dropped:
+    rule 2 hands a column to any tag whose tracks disagree with each other, so a
+    tag that got no column has one reading on disk. That is also why the band
+    under the table is a short list and not a wider table — stating N identical
+    rows needs one row, not N.
+
+    It used to mean agreement as well, and only agreement. A tag reading the
+    same on every track and DIFFERING from MusicBrainz fell past this into the
+    re-tag box, up in the album's Tags section — a per-track fact stated away
+    from the tracks, among leftovers, labelled `all tracks` forty pixels above a
+    band captioned "The same on every track" (#360). Both readings are carried
+    here now, and `differs` says which this is.
+
+    `field` is the owned key, so `shown_fields` can name what the band accounts
+    for. Before #360 it did not need one: nothing collapsed could reach the box,
+    so there was nothing to keep out of it.
     """
 
     label: str
     value: str | None = None
     entity: str | None = None
     credit: bool = False
+    #: The owned key this band row accounts for.
+    field: str = ""
+    #: What MusicBrainz reads, when there was a counterpart to read. None both
+    #: when MusicBrainz has no value and when nothing was comparable at all —
+    #: `differs` is what tells those apart, because only the first is a change.
+    mb: str | None = None
+    #: Whether a re-tag would change this tag. Decided in `_collapsed`, where the
+    #: tracks are still in scope: a band row must never claim a difference in the
+    #: disk-only view (#228), where MusicBrainz offered no opinion to differ from.
+    differs: bool = False
 
 
 @dataclass(frozen=True)
@@ -1718,6 +1752,23 @@ def _only_identifiers(fields: Sequence[FieldComparison], kept: Sequence[_Candida
     return bool(marked) and all(i in identifiers for i in marked)
 
 
+def _one_reading_on_disk(candidate: _Candidate, present: Sequence[_Present]) -> bool:
+    """Whether every present track carries the same value for this tag (#360).
+
+    What the band under the table claims, stated as a predicate so the claim is
+    checked rather than inferred. Rule 2 makes it true of almost everything that
+    reaches it — a tag whose tracks disagree earns a column — with the one
+    exemption that rule carves out, the medium-derived tags on a multi-disc
+    release, where per-disc variation is the release's shape and not a finding.
+
+    `None` counts as a value here, exactly as rule 2 counts it: a tag on six of
+    eight tracks is two readings, and a band line claiming one of them would be
+    hiding the other.
+    """
+    key = candidate.owned.value
+    return len({_disk_value(t, key) for t, _ in present}) <= 1
+
+
 def _matches_everywhere(candidate: _Candidate, present: Sequence[_Present]) -> bool:
     """Whether every track that HAS a MusicBrainz counterpart agrees with it.
 
@@ -1774,8 +1825,25 @@ def _choose_columns(
             kept.append(candidate)
             continue
         if not _earns_column(candidate, present, multi_disc):
-            if _matches_everywhere(candidate, present):
-                collapsed.append(_collapsed(candidate, present))
+            # Whether it agrees with MusicBrainz or not (#360) — but only if the
+            # files really do read the same way, which is the band's whole claim.
+            #
+            # Agreement used to be the gate, and it sent a uniform DIFFERENCE up
+            # into the album's Tags section to be listed among leftovers as "all
+            # tracks", directly above a band captioned "The same on every track"
+            # that did not carry it. Rule 2 hands a column to anything whose
+            # tracks disagree, so for almost everything "no column" already means
+            # one reading and the gate can simply go.
+            #
+            # Almost. Rule 2 exempts the medium-derived tags on a multi-disc
+            # release, where disagreeing is the release's shape rather than a
+            # defect — so `media` can reach here reading CD on one disc and
+            # Digital Media on another. That case is `_collapsed`'s to handle,
+            # and it handles it by declining to claim a change; it must still be
+            # collapsed, because being NAMED under the table is what separates a
+            # tag that agreed from one nobody looked at (#112), and for an album
+            # of nothing but video this band is the only surface left.
+            collapsed.append(_collapsed(candidate, present))
             continue
         # Absorbed by a column already keeping it — but only when it has no
         # MusicBrainz difference of its own, since a column cannot stand in for a
@@ -1806,17 +1874,55 @@ def _choose_columns(
 
 
 def _collapsed(candidate: _Candidate, present: Sequence[_Present]) -> CollapsedField:
-    """The one value behind a dropped column — the disk's, or MusicBrainz's when
-    no file carries the tag and MusicBrainz has it (which is agreement too, in
-    the direction where neither side has anything to say)."""
+    """The one reading behind a dropped column, and whether a re-tag would change it.
+
+    `value` is the disk's, falling back to MusicBrainz's when no file carries the
+    tag — which keeps the agreement case reading as it always has, including the
+    direction where neither side has anything to say.
+
+    `differs` is decided here rather than by the template comparing two strings,
+    because it takes two pieces of context the template does not have.
+
+    First, only tracks MusicBrainz has an opinion about count. Where none does —
+    the disk-only view (#228), a video track (#226) — there is nothing to differ
+    FROM, and a band row claiming a pending change would be inventing an opinion
+    nobody offered. That is the same exclusion `FieldComparison.differs` makes,
+    for the same reason.
+
+    Second, it takes ONE reading on disk. Rule 2 gives a column to any tag whose
+    tracks disagree, so that holds for nearly everything here — except the
+    medium-derived tags on a multi-disc release, which rule 2 exempts because
+    varying by disc is the release's shape. `media` can therefore arrive reading
+    CD on one disc and Digital Media on another, and a single "X → Y" line would
+    be asserting one reading and one change where there are two of each. Such a
+    field is still named — #112's distinction between a tag that agreed and one
+    nobody looked at is what the band exists for — but it states its value only,
+    exactly as it did before #360.
+    """
     key = candidate.owned.value
-    values = [_disk_value(t, key) for t, _ in present]
-    values += [_as_display(getattr(m.tags, key)) if m else None for _, m in present]
+    disk = [_disk_value(t, key) for t, _ in present]
+    comparable = [
+        (d, _as_display(getattr(m.tags, key)))
+        for d, (_, m) in zip(disk, present, strict=True)
+        if m is not None
+    ]
+    uniform = _one_reading_on_disk(candidate, present)
+    differs = uniform and any(d != v for d, v in comparable)
+    # On a DIFFERENCE `value` is what the files carry, even when that is nothing:
+    # it is the "before" of a change, and the row is about to state MusicBrainz's
+    # reading beside it. Falling back to MusicBrainz's here — which is right for
+    # agreement, where either side names the one value — printed "Digital Media →
+    # Digital Media" for a tag no file carried at all, turning an addition into a
+    # change from itself.
+    values = [*disk, *(v for _, v in comparable)]
     return CollapsedField(
         candidate.label,
-        next((v for v in values if v is not None), None),
+        disk[0] if differs and disk else next((v for v in values if v is not None), None),
         candidate.entity,
         candidate.credit,
+        field=key,
+        mb=comparable[0][1] if comparable and uniform else None,
+        differs=differs,
     )
 
 
