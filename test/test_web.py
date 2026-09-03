@@ -6280,7 +6280,10 @@ def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):
     d = _make_tagged_album(cfg, "Ordered", mbid="rel-ordered", tagged_at=datetime.now(UTC))
     page = client.get(f"/album/{_id_for(cfg, d)}").text
 
-    row = re.search(r'<div id="album-actions-[^"]+".*?\n            </div>', page, re.DOTALL)
+    # The row holds buttons and no nested div, so the first `</div>` after it
+    # closes it — matched that way rather than by its indentation, which is a
+    # property of where in the panel the row happens to sit (#363).
+    row = re.search(r'<div id="album-actions-[^"]+".*?</div>', page, re.DOTALL)
     assert row, "the actions row"
     labels = [t.strip() for t in re.findall(r">\s*([A-Z][A-Za-z- ]+)\s*</button>", row.group(0))]
     assert labels[0] == "Re-tag from MB"

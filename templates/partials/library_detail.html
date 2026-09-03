@@ -104,9 +104,11 @@
 
             {# How much of the release is on disk, and the control that accepts
                what's missing as final (#227). Directly under the identity badges
-               and above the actions, for the same reason the MusicBrainz-id note
-               below sits there: it is a finding about this album, and findings
-               belong next to the buttons that answer them. #}
+               and above what the files are, for the same reason the
+               MusicBrainz-id note below sits there: it is a finding about this
+               album, and the findings belong with the identity they qualify —
+               within a line or two of the actions at the panel's foot, which are
+               what answers them. #}
             {% include 'partials/_completeness.html' %}
 
             {# Only SOME files carry the MusicBrainz Album Id (#175). The Library
@@ -118,10 +120,10 @@
                IDENTITY rather than metadata, so a file missing it produces no
                finding anywhere on this page.
 
-               It sits with the badges and directly above the actions on purpose:
-               Re-tag from MB is the remedy — it writes the id to the files
-               missing it — and the finding is useless three sections away from
-               the button that fixes it.
+               It sits with the badges, a line or two above the actions, on
+               purpose: Re-tag from MB is the remedy — it writes the id to the
+               files missing it — and the finding is useless three sections away
+               from the button that fixes it.
 
                Derived, never stored: `partial_tag_count` is worked out by the
                scanner from the files themselves on every scan (§15.1). It is a
@@ -139,7 +141,54 @@
                 MusicBrainz id on {{ album.partial_tag_count[0] }} of {{ album.partial_tag_count[1] }} tracks
             </p>
             {% endif %}
-            </div>{# /left of the row: badges #}
+
+            {# Path and format read as label/value pairs like the tags below, and
+               share their label column, so the whole panel is one list rather
+               than a paragraph followed by a table. They sit ABOVE the
+               MusicBrainz note because they describe the files, not the release
+               — the note marks where MusicBrainz-derived rows begin.
+
+               Inside the badge column, so they continue straight on from the
+               badges (#363). As a block of their own below the whole row they
+               started again under the dates, a gap away from everything they
+               belong with; what the album IS now reads down one column, with
+               the dates keeping their own to the right.
+
+               The track count is gone: the Tracks section states it, and saying
+               it twice on one page invites them to disagree. #}
+            <dl class="tag-fields mt-3">
+                {# Every folder the album's files come from, not just the primary
+                   one (#216). Since #197 an album is the files that name its
+                   release wherever they sit, so one path is at best a partial
+                   answer — and listing them is how the reader confirms Harmonist
+                   found them all. A one-folder album, which is nearly all of
+                   them, reads exactly as it always did. #}
+                <dt>{{ "Paths" if folders else "Path" }}</dt>
+                <dd class="font-mono text-2xs text-muted break-all{{ ' tag-fields__stack' if folders }}">
+                    {% if folders %}
+                    {% for name, count in folders %}
+                    <div>{{ name }} <span class="text-muted/70">· {{ count }} track{{ 's' if count != 1 else '' }}</span></div>
+                    {% endfor %}
+                    {% else %}
+                    <span title="{{ album.path }}">{{ rel_path(album.path, cfg.paths.music_dir) }}</span>
+                    {% endif %}
+                </dd>
+                {# The codec alone doesn't say whether the download is the
+                   quality that was paid for, or whether two copies of an album
+                   are the same files — the sample rate and bit depth (or
+                   bitrate) do (#130). They join the codec here rather than the
+                   header line, which already carries artist and track count.
+
+                   The detail is a lossless/lossy-dependent shape, not a fixed
+                   set of columns: Opus records no sample rate at all, and bit
+                   depth against a lossy stream would be wrong rather than
+                   merely noisy. The scanner assembles it. #}
+                {% if album.audio_format %}
+                <dt>Format</dt>
+                <dd>{{ album.audio_format }}{% if album.audio_quality %} <span class="text-muted">· {{ album.audio_quality }}</span>{% endif %}</dd>
+                {% endif %}
+            </dl>
+            </div>{# /left of the row: badges, findings, and what the files are #}
 
             {# A two-column grid so labels and values each right-align into their
                own tidy column, kept narrow (shrink-0) so it sits beside the
@@ -177,47 +226,6 @@
             </dl>
             </div>{# /badges + dates row #}
 
-            {# Path and format read as label/value pairs like the tags below, and
-               share their label column, so the whole panel is one list rather
-               than a paragraph followed by a table. They sit ABOVE the
-               MusicBrainz note because they describe the files, not the release
-               — the note marks where MusicBrainz-derived rows begin.
-
-               The track count is gone: the Tracks section states it, and saying
-               it twice on one page invites them to disagree. #}
-            <dl class="tag-fields">
-                {# Every folder the album's files come from, not just the primary
-                   one (#216). Since #197 an album is the files that name its
-                   release wherever they sit, so one path is at best a partial
-                   answer — and listing them is how the reader confirms Harmonist
-                   found them all. A one-folder album, which is nearly all of
-                   them, reads exactly as it always did. #}
-                <dt>{{ "Paths" if folders else "Path" }}</dt>
-                <dd class="font-mono text-2xs text-muted break-all{{ ' tag-fields__stack' if folders }}">
-                    {% if folders %}
-                    {% for name, count in folders %}
-                    <div>{{ name }} <span class="text-muted/70">· {{ count }} track{{ 's' if count != 1 else '' }}</span></div>
-                    {% endfor %}
-                    {% else %}
-                    <span title="{{ album.path }}">{{ rel_path(album.path, cfg.paths.music_dir) }}</span>
-                    {% endif %}
-                </dd>
-                {# The codec alone doesn't say whether the download is the
-                   quality that was paid for, or whether two copies of an album
-                   are the same files — the sample rate and bit depth (or
-                   bitrate) do (#130). They join the codec here rather than the
-                   header line, which already carries artist and track count.
-
-                   The detail is a lossless/lossy-dependent shape, not a fixed
-                   set of columns: Opus records no sample rate at all, and bit
-                   depth against a lossy stream would be wrong rather than
-                   merely noisy. The scanner assembles it. #}
-                {% if album.audio_format %}
-                <dt>Format</dt>
-                <dd>{{ album.audio_format }}{% if album.audio_quality %} <span class="text-muted">· {{ album.audio_quality }}</span>{% endif %}</dd>
-                {% endif %}
-            </dl>
-
             {# The tag comparison used to sit here. It moved out to its own
                section on the album page (#160): this panel is what the album IS
                and what you can do to it, and a full field-by-field comparison
@@ -236,115 +244,122 @@
                note is a finding, and an empty space says "not yet" where "Checking
                tags…" in the panel's middle would read as the album's state. #}
             <div id="album-mb-note-{{ album.id }}"></div>
-
-
-            {# `hx-disabled-elt="this"` — the documented form, and the one htmx
-               special-cases for the triggering element.
-
-               A selector naming the whole group was tempting (a re-tag is long,
-               and Forget staying live over a rewrite in flight is wrong), but
-               htmx disables matching elements BEFORE issuing the request, so a
-               selector that covers the trigger is a plausible way to break it.
-               Not worth the risk here, because the other buttons are already
-               unusable meanwhile: the tagging overlay covers the panel opaquely
-               at z-20, which is what has always blocked them. #}
-            {# Every control in this row needs a sidecar — Re-tag needs the
-               release id in one, Re-download the Bandcamp item id in one, and
-               Forget deletes it. A NEW album has none, so the row would draw as
-               a rule with nothing under it (#150). #}
-            {% if album.sidecar %}
-            <div id="album-actions-{{ album.id }}" class="flex gap-2 pt-2 border-t border-line">
-                {# id so the /compare fetch can swap this out of band for a
-                   disabled one when it discovers the release is gone (#210):
-                   nothing behind Re-tag can succeed then, and a control that
-                   always fails should not look available. #}
-                {# Only on an album that HAS a MusicBrainz release to re-tag from
-                   (#150). This page serves every state, and on a New or Needs
-                   MBID album there is no release: the button was offered anyway,
-                   styled as the primary action, and could only fail. The way
-                   forward for those albums is the inbox actions section below,
-                   which is where the release gets found in the first place.
-
-                   Guarded on the release id rather than on a state list, because
-                   that is the thing the route actually needs — and it is exactly
-                   what `_derive_state` reads to tell NEEDS_MBID from the tagged
-                   states, so the two cannot drift apart. #}
-                {% if album.sidecar and album.sidecar.mb_release_id %}
-                <button id="retag-btn-{{ album.id }}"
-                        hx-post="/retag/{{ album.id }}"
-                        hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
-                        class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition"
-                        title="Re-tag from MusicBrainz. Per-track embedded artwork is preserved.">
-                    Re-tag from MB
-                </button>
-                {% endif %}
-                {# "Replace artwork" is hidden pending #131. It overwrites every
-                   track's embedded art with the album cover, which is the wrong
-                   remedy for most of the artwork problems it looks like it
-                   solves — and it can't be undone. Leaving a control that does
-                   the wrong thing confidently is worse than not offering one.
-                   The /retag?overwrite_art endpoint stays; only the button goes. #}
-                {# Re-download from Bandcamp (#132) — upgrade MP3s to FLAC, or pick
-                   up tracks the artist has added to the release since the purchase.
-                   Only offered where it can actually be done: a single Bandcamp
-                   purchase id. An album linked by `candidate_item_ids` alone has
-                   several purchases it might be, and fetching a guess is exactly
-                   what Harmonist doesn't do.
-
-                   Subtle until hover (web-ui rule 4): this is rare, and it deletes
-                   files. `hx-confirm` names the archive and the format, because
-                   both are things the user cannot see beforehand and would want to
-                   have known — the format especially, since it comes from Settings
-                   rather than from anything on this page. #}
-                {% set bc = album.sidecar.bandcamp if album.sidecar else None %}
-                {% if bc and bc.item_id %}
-                <button hx-post="/library/{{ album.id }}/redownload"
-                        hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
-                        hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
-                        hx-confirm="Re-download this album as {{ cfg.bandcamp.download_format|upper }}? The files you have now are zipped into the top of your music folder first, then removed, and the next sync fetches a fresh copy."
-                        class="px-3 py-1.5 bg-surface hover:bg-line text-muted hover:text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition"
-                        title="Archive this album to a .zip in your music folder and download it again from Bandcamp, in the format set in Settings ({{ cfg.bandcamp.download_format|upper }}). Use this to upgrade the format, or to pick up tracks added to the release since you bought it."
-                        aria-label="Re-download from Bandcamp — archives the current files to a zip first">
-                    Re-download
-                </button>
-                {% endif %}
-                {# Same reason as the rematch pencil: forgetting reverts the album
-                   to NEW, so it leaves the Library and this page stops describing
-                   anything that exists.
-
-                   LAST in the row and pushed to the far right (#328). It used to
-                   sit one button away from Re-tag — the thing you actually came
-                   to press — which is the placement web-ui rule 4 warns about:
-                   rare and hard to undo should be out of the path, not adjacent
-                   to the common action. `ml-auto` rather than reordering with
-                   flex, so the DOM order matches the reading order and the tab
-                   order reaches it last too. #}
-                {# Forget deletes the sidecar, so it needs one to delete (#150).
-                   A NEW album has none — it is already what forgetting would
-                   make it — and the button's own confirm text ("the album
-                   reverts to NEW") is the giveaway that it had nothing to say
-                   there. #}
-                {% if album.sidecar %}
-                <button hx-post="/forget/{{ album.id }}"
-                        hx-swap="none" hx-disabled-elt="this"
-                        hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
-                        hx-confirm="Forget this album? The sidecar is deleted and the album reverts to NEW. Files are not touched."
-                        class="ml-auto px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-                    Forget
-                </button>
-                {% endif %}
-                {# The acceptance used to sit here, as a button reading "No more
-                   tracks to get" / "Mark incomplete again". It moved up to the
-                   completeness badge as a checkbox (#227): it acts on that badge
-                   rather than on the album generally, and a button could only
-                   show the ACTION, leaving you to infer the state backwards from
-                   it. This row is for things that DO something to the album. #}
-                {# Unlink (clear the Bandcamp item_id) is temporarily removed —
-                   until a Library album can be re-linked, taking a link off is a
-                   dead end. It comes back with the re-link path in #42. The
-                   /unlink endpoint stays for now. #}
-            </div>
-            {% endif %}
         </div>
     </div>
+
+    {# `hx-disabled-elt="this"` — the documented form, and the one htmx
+       special-cases for the triggering element.
+
+       A selector naming the whole group was tempting (a re-tag is long, and
+       Forget staying live over a rewrite in flight is wrong), but htmx disables
+       matching elements BEFORE issuing the request, so a selector that covers
+       the trigger is a plausible way to break it. Not worth the risk here,
+       because the other buttons are already unusable meanwhile: the tagging
+       overlay covers the panel opaquely at z-20, which is what has always
+       blocked them. #}
+    {# Every control in this row needs a sidecar — Re-tag needs the release id in
+       one, Re-download the Bandcamp item id in one, and Forget deletes it. A NEW
+       album has none, so the row would draw as nothing at all (#150). #}
+    {# The panel's own floor, spanning its full width beneath the cover art as
+       well, rather than the last block of the metadata column (#363): these act
+       on the ALBUM, and starting them at the artwork's right edge read as if
+       they belonged to the column they were nested in. The rule that separated
+       them from it is gone with the nesting — the panel border is the boundary,
+       and a second line inside it divided a box that no longer holds enough to
+       need dividing.
+
+       `px-4 pb-4` and nothing on top: the row above keeps its own `p-4`, so its
+       bottom padding is the gap above the buttons and this only has to close the
+       panel off — which also means an album with no sidecar, where this row
+       isn't rendered at all, is padded exactly as it always was. #}
+    {% if album.sidecar %}
+    <div id="album-actions-{{ album.id }}" class="flex gap-2 px-4 pb-4">
+        {# id so the /compare fetch can swap this out of band for a disabled one
+           when it discovers the release is gone (#210): nothing behind Re-tag
+           can succeed then, and a control that always fails should not look
+           available. #}
+        {# Only on an album that HAS a MusicBrainz release to re-tag from (#150).
+           This page serves every state, and on a New or Needs MBID album there
+           is no release: the button was offered anyway, styled as the primary
+           action, and could only fail. The way forward for those albums is the
+           inbox actions section below, which is where the release gets found in
+           the first place.
+
+           Guarded on the release id rather than on a state list, because that is
+           the thing the route actually needs — and it is exactly what
+           `_derive_state` reads to tell NEEDS_MBID from the tagged states, so
+           the two cannot drift apart. #}
+        {% if album.sidecar and album.sidecar.mb_release_id %}
+        <button id="retag-btn-{{ album.id }}"
+                hx-post="/retag/{{ album.id }}"
+                hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition"
+                title="Re-tag from MusicBrainz. Per-track embedded artwork is preserved.">
+            Re-tag from MB
+        </button>
+        {% endif %}
+        {# "Replace artwork" is hidden pending #131. It overwrites every track's
+           embedded art with the album cover, which is the wrong remedy for most
+           of the artwork problems it looks like it solves — and it can't be
+           undone. Leaving a control that does the wrong thing confidently is
+           worse than not offering one. The /retag?overwrite_art endpoint stays;
+           only the button goes. #}
+        {# Re-download from Bandcamp (#132) — upgrade MP3s to FLAC, or pick up
+           tracks the artist has added to the release since the purchase. Only
+           offered where it can actually be done: a single Bandcamp purchase id.
+           An album linked by `candidate_item_ids` alone has several purchases it
+           might be, and fetching a guess is exactly what Harmonist doesn't do.
+
+           Subtle until hover (web-ui rule 4): this is rare, and it deletes
+           files. `hx-confirm` names the archive and the format, because both are
+           things the user cannot see beforehand and would want to have known —
+           the format especially, since it comes from Settings rather than from
+           anything on this page. #}
+        {% set bc = album.sidecar.bandcamp if album.sidecar else None %}
+        {% if bc and bc.item_id %}
+        <button hx-post="/library/{{ album.id }}/redownload"
+                hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
+                hx-confirm="Re-download this album as {{ cfg.bandcamp.download_format|upper }}? The files you have now are zipped into the top of your music folder first, then removed, and the next sync fetches a fresh copy."
+                class="px-3 py-1.5 bg-surface hover:bg-line text-muted hover:text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition"
+                title="Archive this album to a .zip in your music folder and download it again from Bandcamp, in the format set in Settings ({{ cfg.bandcamp.download_format|upper }}). Use this to upgrade the format, or to pick up tracks added to the release since you bought it."
+                aria-label="Re-download from Bandcamp — archives the current files to a zip first">
+            Re-download
+        </button>
+        {% endif %}
+        {# Same reason as the rematch pencil: forgetting reverts the album to
+           NEW, so it leaves the Library and this page stops describing anything
+           that exists.
+
+           LAST in the row and pushed to the far right (#328). It used to sit one
+           button away from Re-tag — the thing you actually came to press — which
+           is the placement web-ui rule 4 warns about: rare and hard to undo
+           should be out of the path, not adjacent to the common action.
+           `ml-auto` rather than reordering with flex, so the DOM order matches
+           the reading order and the tab order reaches it last too. #}
+        {# Forget deletes the sidecar, so it needs one to delete (#150). A NEW
+           album has none — it is already what forgetting would make it — and the
+           button's own confirm text ("the album reverts to NEW") is the giveaway
+           that it had nothing to say there. #}
+        {% if album.sidecar %}
+        <button hx-post="/forget/{{ album.id }}"
+                hx-swap="none" hx-disabled-elt="this"
+                hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
+                hx-confirm="Forget this album? The sidecar is deleted and the album reverts to NEW. Files are not touched."
+                class="ml-auto px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+            Forget
+        </button>
+        {% endif %}
+        {# The acceptance used to sit here, as a button reading "No more tracks to
+           get" / "Mark incomplete again". It moved up to the completeness badge
+           as a checkbox (#227): it acts on that badge rather than on the album
+           generally, and a button could only show the ACTION, leaving you to
+           infer the state backwards from it. This row is for things that DO
+           something to the album. #}
+        {# Unlink (clear the Bandcamp item_id) is temporarily removed — until a
+           Library album can be re-linked, taking a link off is a dead end. It
+           comes back with the re-link path in #42. The /unlink endpoint stays
+           for now. #}
+    </div>
+    {% endif %}
 </div>
