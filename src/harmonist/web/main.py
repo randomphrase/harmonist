@@ -14,7 +14,7 @@ import re
 import sys
 import threading
 import unicodedata
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -199,12 +199,59 @@ def _is_actionable_incomplete(a: Album) -> bool:
     )
 
 
-_LIBRARY_FILTERS: dict[str, tuple[str, Callable[[Album], bool]]] = {
-    "incomplete": ("Incomplete", _is_actionable_incomplete),
-    "partial": ("Partially tagged", lambda a: a.partial_tag_count is not None),
-    "no-artwork": ("No artwork", lambda a: not a.has_cover),
-    "update-available": ("Update available", lambda a: a.update_available),
+def _library_filters(
+    ignored: Mapping[str, activity_store.IgnoredUpdate],
+) -> dict[str, tuple[str, Callable[[Album], bool]]]:
+    """The filter chips, in the order the control offers them.
+
+    A function of this render's ignored updates rather than a constant, because
+    one of the four is: an album whose update the user has ignored (#271) is not
+    listed as work until MusicBrainz moves the release again.
+
+    Only the FILTER subtracts them. The tile keeps its Update badge, exactly as
+    an album accepted with `tracks_unavailable` keeps its Incomplete one — the
+    difference is still a true fact about the album, and hiding a fact is a
+    different act from not presenting it as something to do.
+    """
+    return {
+        "incomplete": ("Incomplete", _is_actionable_incomplete),
+        "partial": ("Partially tagged", lambda a: a.partial_tag_count is not None),
+        "no-artwork": ("No artwork", lambda a: not a.has_cover),
+        "update-available": (
+            "Update available",
+            lambda a: a.update_available and not gardener.is_ignored(a, ignored),
+        ),
+    }
+
+
+#: The slugs the filter control accepts, and the label each one renders under.
+#: Split out because two readers need only this half — validating a query
+#: parameter and titling a filtered grid — and neither has an ignore map to
+#: hand, nor any use for one.
+_LIBRARY_FILTER_LABELS: dict[str, str] = {
+    slug: label for slug, (label, _) in _library_filters({}).items()
 }
+
+
+def _ignored_updates() -> dict[str, activity_store.IgnoredUpdate]:
+    """The user's ignored updates, or an empty map when the store cannot answer.
+
+    **Falls open**, and the direction is the whole of the judgement. An empty map
+    lists albums the user has asked to be left alone, which is annoying and
+    visible and recoverable by pressing Ignore again; a map that wrongly said
+    "ignored" would hide real work with no symptom at all. So the failure that
+    shows too much is the one to take.
+
+    Loud in the log rather than on the page: the surface it degrades is a filter
+    count, and a banner over the Library saying a table could not be read is a
+    worse answer than the Library simply being complete.
+    """
+    try:
+        return activity_store.ignored_updates()
+    except activity_store.StoreUnavailableError:
+        log.exception("could not read which updates are ignored — listing them all this time")
+        return {}
+
 
 # When reading one album's tags is slow enough to say so (#300). Generous: this
 # is every file in the album opened and parsed, so a long album on a modest NAS
@@ -1139,6 +1186,18 @@ def _completeness_oob(request: Request, album: Album) -> str:
     return template.render(_ctx(request, album=album, oob=True))
 
 
+def _update_ignore_oob(request: Request, album: Album, *, ignored: bool) -> str:
+    """The album page's Ignore block, as an out-of-band swap (#271).
+
+    The album passed in must carry the flag and the version as they are AFTER
+    whatever just changed, since that is what the block reads. Renders to an
+    empty wrapper when there is no update to act on, which is what clears the
+    block after a re-tag has taken one.
+    """
+    template = _templates(request).env.get_template("partials/_update_ignore.html")
+    return template.render(_ctx(request, album=album, update_ignored=ignored))
+
+
 def _update_check_oob(request: Request, outcome: str, *, ok: bool) -> str:
     """The background update check's note + Check now button, as an out-of-band
     swap carrying what the press just produced (#312).
@@ -1218,7 +1277,7 @@ def _library_filter(value: str | None) -> str | None:
     is. An unrecognised value degrades to All rather than to an empty grid: a slug
     from an older build, or a mangled link, should show the reader their library.
     """
-    return value if value in _LIBRARY_FILTERS else None
+    return value if value in _LIBRARY_FILTER_LABELS else None
 
 
 def _library_search(value: str | None) -> str | None:
@@ -1341,12 +1400,16 @@ def _library_page_vars(
     # different population than selecting it would show. Computed on every render,
     # filtered or not — an option worth 0 albums should say so before it's picked
     # rather than answering with an empty grid.
+    # One read for the whole render, so the chip's count and the grid it yields
+    # are drawn from the same answer — two reads either side of a press would let
+    # the count and the grid disagree by one.
+    library_filters = _library_filters(_ignored_updates())
     filters = [
         {"slug": slug, "label": label, "count": sum(1 for a in done if pred(a))}
-        for slug, (label, pred) in _LIBRARY_FILTERS.items()
+        for slug, (label, pred) in library_filters.items()
     ]
     if filter_ is not None:
-        done = [a for a in done if _LIBRARY_FILTERS[filter_][1](a)]
+        done = [a for a in done if library_filters[filter_][1](a)]
     limit = max(1, min(limit, _LIBRARY_LIMIT_MAX))  # clamp; defensive
     total_pages = max(1, -(-len(done) // limit))  # ceil; always at least one page
     # `anchor` is the 1-based position of the first album on screen at the moment
@@ -1394,7 +1457,7 @@ def _library_page_vars(
         # Its human label, for the sentence the search box uses to say what it is
         # searching over. Resolved here so the template doesn't have to hunt through
         # `filters` for the active one (#180).
-        "filter_label": _LIBRARY_FILTERS[filter_][0] if filter_ else None,
+        "filter_label": _LIBRARY_FILTER_LABELS[filter_] if filter_ else None,
         "filters": filters,
         # The search query, normalised — None means no search. Rides in every URL
         # this page builds, and is echoed back into the box (#180).
@@ -3038,7 +3101,17 @@ def _tag_with_release(
         video_media=mb_lookup.video_media_of(release),
     )
     sidecar_mod.write(album_path, new)
+    # The files now carry what MusicBrainz says, so there is nothing left to be
+    # waiting for and an Ignore has nothing to mute (#271). Left behind, it would
+    # mute the NEXT divergence on this album if MusicBrainz happened not to have
+    # moved in between — an external re-tag in Picard is the way that happens.
+    #
+    # Under BOTH ids, because a merge moves the album's identity right here: the
+    # bookmark was written under the id the user was looking at, which is the one
+    # that was requested rather than the one that came back.
+    activity_store.unignore_update(mbid)
     if mbid != requested_mbid:
+        activity_store.unignore_update(requested_mbid)
         _record_merge(album_path, requested_mbid, mbid)
     _claim_pending_by_store_url(store_url)
 
@@ -4053,6 +4126,10 @@ def _register_routes(app: FastAPI) -> None:
         ctx = _ctx(
             request,
             album=album,
+            # Read AFTER `refresh_flag`, which is what sets `album.mb_version` —
+            # the thing an ignore is compared against. Reading it before would
+            # ask whether the ignore holds for the payload we had a moment ago.
+            update_ignored=gardener.is_ignored(album, _ignored_updates()),
             comparison=comparison,
             tracklist=tracks,
             absent_media=_absent_media_summary(album, release),
@@ -4908,6 +4985,81 @@ def _register_routes(app: FastAPI) -> None:
             "Accepted as complete" if accept else "Back in the Incomplete list",
             album=album,
             oob=_completeness_oob(request, replace(album, sidecar=updated)),
+        )
+
+    @app.post("/library/{album_id}/ignore-update", response_class=HTMLResponse)
+    def ignore_update(request: Request, album_id: str) -> Response:
+        """Stop listing this album's update until MusicBrainz changes the release.
+
+        A bookmark, not a refusal, and the wording of every surface says so
+        (#271). MusicBrainz is canonical — Harmonist keeps no local exception to
+        what it says — so the answer to an update you disagree with is to edit
+        the release, and this is how you stop being asked about it in the
+        meantime. The edit landing is exactly what brings the album back.
+
+        Recorded against `album.mb_version`, which is the version of the cached
+        payload the flag was last computed from. Refused when there isn't one:
+        nothing has compared this album yet, so there is no update on offer and
+        nothing to be ignoring — and a bookmark against no version could never
+        lapse, which would make the mute permanent.
+
+        Writes nothing to the album. The files, the sidecar and the derived state
+        are all untouched; the flag stays true, because it is a fact about the
+        files against MusicBrainz rather than a piece of work. Only the Library's
+        filter and this block change.
+        """
+        album = _find_album(request, album_id)
+        if not album.update_available or album.mb_version is None:
+            return _flash_response(
+                "Nothing to ignore",
+                "no update is outstanding for this album",
+                level=Level.WARNING,
+                album=album,
+                tasks_changed=False,
+            )
+        activity_store.ignore_update(album.id, release_version=album.mb_version)
+        # The Library's filter counts change and nothing else does — no state
+        # moved, so there is no `live_counts` adjustment to make. Refresh the
+        # snapshot in one render rather than letting the async rescan dim the
+        # page (#11).
+        runner = request.app.state.scan_runner
+        if runner.is_engaged():
+            runner.refresh_now()
+        request.state.skip_rescan = True
+        return _flash_response(
+            "Ignored",
+            "listed again when MusicBrainz next changes the release",
+            album=album,
+            oob=_update_ignore_oob(request, album, ignored=True),
+        )
+
+    @app.post("/library/{album_id}/unignore-update", response_class=HTMLResponse)
+    def unignore_update(request: Request, album_id: str) -> Response:
+        """Take back an Ignore — the escape hatch out of the one state this
+        feature can put an album in (#271).
+
+        Unconditional, unlike its opposite. Ignoring needs an update on offer to
+        bookmark; un-ignoring is undoing a bookmark, and refusing it on an album
+        whose flag happens to read False right now would leave the row in place
+        with no control anywhere that could remove it.
+        """
+        album = _find_album(request, album_id)
+        if not activity_store.unignore_update(album.id):
+            return _flash_response(
+                "Not ignored",
+                "this album's updates were already being listed",
+                level=Level.WARNING,
+                album=album,
+                tasks_changed=False,
+            )
+        runner = request.app.state.scan_runner
+        if runner.is_engaged():
+            runner.refresh_now()
+        request.state.skip_rescan = True
+        return _flash_response(
+            "Listing updates again",
+            album=album,
+            oob=_update_ignore_oob(request, album, ignored=False),
         )
 
     @app.post("/surrender/{album_id}/keep", response_class=HTMLResponse)

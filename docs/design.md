@@ -22,6 +22,36 @@ Concretely, this shows up as:
 
 Besides data loss, **usability is a top-tier concern**, not an afterthought.
 
+### MusicBrainz is canonical
+
+"Source of truth" above is meant literally, and it is the rule that settles a
+whole class of design questions before they are argued: **Harmonist applies what
+MusicBrainz says, and keeps no local exception to it.** If a release's data is
+wrong, the fix is to edit it on MusicBrainz, where it benefits everyone and comes
+back to the files on the next check for free. This is not a general-purpose
+tagger; Picard is that, and Harmonist deliberately does not compete with it.
+
+Two things follow, and both are load-bearing:
+
+- **There is no per-album override.** No "don't apply MusicBrainz's album title
+  to this album", no stored rejection of a particular change. Beyond being
+  against the principle, such a thing cannot be built honestly: what would be
+  overridden is a *diff*, and a diff is not a stable object — it is computed
+  between two moving sides, so it merges and splits as MusicBrainz is edited and
+  as the files change. There is no key that survives. #271 has the long version.
+- **A user can still decline to be nagged.** Ignoring an update (#271) is a
+  *bookmark*, not a rejection: it stops an album being listed as work until
+  MusicBrainz next changes the release, which is exactly what happens when the
+  edit the user went off to make lands. So the escape valve is temporal and
+  self-clearing rather than a permanent exception.
+
+Where Harmonist *does* accept a value MusicBrainz did not state, it is because a
+**rule** says the two spellings mean the same thing — Picard's release
+disambiguation in the album title (§5, #283), a release country Picard chose from
+the release's own events (#329). Those are computed fresh every time from what
+the release itself says, never remembered per album, and each one is a deliberate
+addition to this section rather than a user preference.
+
 ### Non-goals
 
 The following are explicitly out of scope for this prototype:

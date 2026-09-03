@@ -1157,10 +1157,13 @@ def ignored_updates() -> dict[str, IgnoredUpdate]:
     which of them to leave out.
 
     RAISES `StoreUnavailableError` on failure rather than returning `{}`. An
-    empty dict here does not hide anything — it would show MORE than it should,
-    listing albums the user has already asked to be left alone — but it says
-    "nothing is ignored" as a fact, which is the confident lie #104 is about, and
-    the surface can say so instead.
+    empty dict here does not hide anything — it shows MORE than it should,
+    listing albums the user has asked to be left alone — but it states "nothing
+    is ignored" as a fact, which is the confident lie #104 is about. Raising puts
+    the choice at the surface, which is where the safe direction is known:
+    `web.main._ignored_updates` falls open, and says so in the log rather than in
+    a banner, because being listed again is a visible symptom the user can act on
+    while a missing album is not.
     """
     try:
         conn = _ensure()

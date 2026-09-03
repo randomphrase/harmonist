@@ -244,6 +244,11 @@
                note is a finding, and an empty space says "not yet" where "Checking
                tags…" in the panel's middle would read as the album's state. #}
             <div id="album-mb-note-{{ album.id }}"></div>
+            {# What to do about an update other than take it (#271) — edit the
+               release upstream, or ignore it until MusicBrainz moves. Empty here
+               for the same reason the note above is: both halves of whether
+               there IS an update come from the /compare fetch. #}
+            <div id="album-update-ignore-{{ album.id }}"></div>
         </div>
     </div>
 

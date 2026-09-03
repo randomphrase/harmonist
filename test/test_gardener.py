@@ -1616,3 +1616,159 @@ def test_the_pass_keeps_asking_about_an_ignored_album(tmp_path, monkeypatch):
     assert asked == ["rel-aaa"]  # it went and looked ...
     assert album.mb_version == gardener.release_version(expanded)  # ... and moved on
     assert gardener.is_ignored(album, activity_store.ignored_updates()) is False
+
+
+# ---------------------------------------------------------------------------
+# Ignore, from the outside (#271)
+# ---------------------------------------------------------------------------
+
+
+def _flagged(runner, title: str = "Test Album") -> Album:
+    """The scanned album by that title, as the app holds it."""
+    return next(a for a in runner.albums() if a.title == title)
+
+
+def test_the_album_page_offers_ignore_and_the_way_to_fix_it_upstream(engaged, monkeypatch):
+    """Both halves of the answer to an update you disagree with, and the order
+    matters: MusicBrainz is canonical, so editing the release is the real
+    remedy and ignoring is only how you wait for it to land."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: _release("Test Album (remastered)")
+    )
+    client, runner = engage()
+
+    body = client.get(f"/library/{_flagged(runner).id}/compare").text
+
+    assert "musicbrainz.org/release/rel-aaa/edit" in body
+    assert "Ignore for now" in body
+
+
+def test_an_album_with_nothing_outstanding_is_offered_neither(engaged, monkeypatch):
+    """The block is about an update, so an album that has none must not carry
+    it. The same template renders both, so this is the condition being tested
+    and not a string that happens to be missing."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: _release())
+    client, runner = engage()
+
+    body = client.get(f"/library/{_flagged(runner).id}/compare").text
+
+    assert "Ignore for now" not in body
+
+
+def test_ignoring_takes_the_album_out_of_the_update_filter(engaged, monkeypatch):
+    """What the user asked Ignore to do: stop being listed as work."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: _release("Test Album (remastered)")
+    )
+    client, runner = engage()
+    album_id = _flagged(runner).id
+    client.get(f"/library/{album_id}/compare")  # the look that raises the flag
+    assert "Test Album" in client.get("/library?filter=update-available").text
+
+    r = client.post(f"/library/{album_id}/ignore-update")
+
+    assert r.status_code == 200
+    assert "Test Album" not in client.get("/library?filter=update-available").text
+
+
+def test_ignoring_leaves_the_flag_and_the_files_alone(engaged, monkeypatch):
+    """Ignoring is about what gets presented as work, never about what is true.
+    The difference is still there, the tile still says so, and nothing has been
+    written to the album — so nothing has to be recomputed when the ignore
+    lapses."""
+    cfg, engage = engaged
+    album_dir = _tagged(cfg.paths.music_dir, _release()).path
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: _release("Test Album (remastered)")
+    )
+    client, runner = engage()
+    album_id = _flagged(runner).id
+    client.get(f"/library/{album_id}/compare")
+    before = {p: p.read_bytes() for p in sorted(album_dir.iterdir())}
+
+    client.post(f"/library/{album_id}/ignore-update")
+
+    assert _flagged(runner).update_available is True
+    assert {p: p.read_bytes() for p in sorted(album_dir.iterdir())} == before
+
+
+def test_an_ignored_album_says_so_and_offers_the_way_back(engaged, monkeypatch):
+    """The escape hatch, and it has to be on the page rather than only in the
+    press that set it — the user comes back to this album a week later."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: _release("Test Album (remastered)")
+    )
+    client, runner = engage()
+    album_id = _flagged(runner).id
+    client.get(f"/library/{album_id}/compare")
+    client.post(f"/library/{album_id}/ignore-update")
+
+    body = client.get(f"/library/{album_id}/compare").text
+
+    assert "Stop ignoring" in body
+    # The promise, not just the state: "ignored" alone reads as "silenced", and
+    # someone who believed that would never press it.
+    assert "listed as an update again" in body
+
+
+def test_stopping_ignoring_lists_the_album_again(engaged, monkeypatch):
+    """The undo, end to end."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: _release("Test Album (remastered)")
+    )
+    client, runner = engage()
+    album_id = _flagged(runner).id
+    client.get(f"/library/{album_id}/compare")
+    client.post(f"/library/{album_id}/ignore-update")
+
+    client.post(f"/library/{album_id}/unignore-update")
+
+    assert "Test Album" in client.get("/library?filter=update-available").text
+
+
+def test_ignoring_an_album_nothing_has_compared_is_refused(engaged):
+    """There is no version to bookmark, so the mute could never lapse — which
+    is the one way this feature could silence an album for good."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    client, runner = engage()
+    album = _flagged(runner)
+    assert album.mb_version is None
+
+    r = client.post(f"/library/{album.id}/ignore-update")
+
+    assert r.status_code == 200
+    assert "Nothing to ignore" in r.text
+    assert activity_store.ignored_updates() == {}
+
+
+def test_taking_the_update_clears_the_ignore(engaged, monkeypatch):
+    """The files now say what MusicBrainz says, so there is nothing to wait for.
+    A bookmark left behind would mute the NEXT divergence on this album if
+    MusicBrainz happened not to move in between — which is what an external
+    re-tag in Picard produces."""
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release())
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: _release("Test Album (remastered)")
+    )
+    # The re-tag path asks the Cover Art Archive, which a test must not.
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    client, runner = engage()
+    album_id = _flagged(runner).id
+    client.get(f"/library/{album_id}/compare")
+    client.post(f"/library/{album_id}/ignore-update")
+    assert album_id in activity_store.ignored_updates()
+
+    assert client.post(f"/retag/{album_id}").status_code == 200
+    assert activity_store.ignored_updates() == {}

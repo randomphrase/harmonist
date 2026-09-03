@@ -8,6 +8,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- **An update you don't want can be ignored until MusicBrainz changes again.**
+  The album page now says what to do about an update other than take it: a link
+  to edit the release on MusicBrainz — where a correction belongs, and which
+  Harmonist picks up by itself — and **Ignore for now**, which takes the album
+  out of the **Update available** filter until MusicBrainz next moves the
+  release. It is a bookmark rather than a refusal: your edit landing is what
+  brings the album back. Nothing is written, the tile keeps its **Update** badge,
+  and **Stop ignoring** puts it back in the list at any time (#271).
+
 - **The album page names every country a release came out in.** MusicBrainz
   collapses a release issued in several countries to the one country code the
   tag can hold, so an album issued in Germany, the UK and the US read as though

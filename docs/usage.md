@@ -243,6 +243,37 @@ you tagged it — each with its count:
   the purple **Update** badge on the tiles. (`level` under `[gardener]` in
   `harmonist.toml` is the same setting, for a config-managed install.)
 
+### When you don't want the update
+
+Harmonist takes MusicBrainz at its word — that is the whole of what it does, and
+it keeps no private exceptions to what MusicBrainz says. So if an update looks
+wrong, the thing to fix is the release, and the album's page links you straight
+to it: **Edit the release**, beside the comparison. Your correction lands where
+everyone benefits from it, and Harmonist picks it up on the next check without
+you having to come back and tell it.
+
+Editing MusicBrainz is not instant, though, and in the meantime the album sits in
+the **Update available** list looking like work. **Ignore for now**, beside that
+link, takes it out of the list. It is not a refusal and it does not silence the
+album for good:
+
+- The album comes back the moment MusicBrainz next changes the release — which is
+  exactly what happens when your edit is accepted. That is the point of it.
+  Harmonist can't tell whose edit landed, so any change to the release brings the
+  album back for another look.
+- Nothing is written. The files, the tags and the album's state are untouched,
+  and the tile keeps its purple **Update** badge — the difference is still real,
+  it just stops presenting itself as something to do. (The **Incomplete** filter
+  behaves the same way for an album you've accepted as finished.)
+- The album's page says it is being ignored, and offers **Stop ignoring** to put
+  it back in the list straight away.
+- Re-tagging clears it too: once the files carry what MusicBrainz says, there is
+  nothing left to be waiting for.
+
+If what you actually want is for whole *kinds* of change to be left alone —
+"don't tell me about ISRCs, but do tell me if a track is retitled" — that is a
+setting rather than a per-album decision, and it is not built yet.
+
 Search and the filters compose: searching inside a filter narrows within it, and
 the chip counts follow the search, so each one tells you what it would actually
 show. When both are on, the box says which filter it's searching inside, and an
