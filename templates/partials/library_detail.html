@@ -146,14 +146,24 @@
                badges rather than stretching across the panel. Elapsed time,
                because these answer "how recently?" rather than "on what date?";
                the exact timestamp is one hover away. #}
-            <dl class="flex-shrink-0 grid grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-xs text-right">
+            {# THREE columns, the third for the Checked row's re-read control
+               (#358). It is empty on every other row and collapses to nothing,
+               and it is what lets all four values keep one right edge while the
+               control sits past them rather than in the gutter between label and
+               value, where it made its own row read as indented.
+
+               Every <dt> is pinned to column 1 for that to hold: grid
+               auto-placement fills cells in order, so a two-cell row would
+               otherwise run straight on into the third column and shear every
+               row after it. #}
+            <dl class="flex-shrink-0 grid grid-cols-[auto_auto_auto] gap-x-2 gap-y-0.5 text-xs text-right">
                 {% for label, when in [
                     ('Downloaded', sc.downloaded_at if sc else None),
                     ('Added', sc.added_at if sc else None),
                     ('Tagged', sc.tagged_at if sc else None),
                 ] %}
                 {% if when %}
-                <dt class="text-2xs text-muted uppercase tracking-widest self-baseline">{{ label }}</dt>
+                <dt class="col-start-1 text-2xs text-muted uppercase tracking-widest self-baseline">{{ label }}</dt>
                 <dd class="text-ink tabular-nums self-baseline whitespace-nowrap"
                     title="{{ when.strftime('%Y-%m-%d %H:%M:%S UTC') }}">{{ ago(when) }}</dd>
                 {% endif %}

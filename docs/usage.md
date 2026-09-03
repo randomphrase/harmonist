@@ -297,10 +297,12 @@ Harmonist reads their tags but never writes them, so they aren't compared agains
 MusicBrainz. **Show identifiers**, top right of the heading, reveals the
 MusicBrainz ids and ISRCs, which start hidden.
 
-The whole comparison is summed up once, on the album panel above: a hexagon note
-between the Format line and the buttons, saying how much of the tags and the
-tracklist differ. It sits beside **Re-tag from MB** because that is the action a
-difference leads to.
+When there is something to report, the whole comparison is summed up once on the
+album panel above: a hexagon note between the Format line and the buttons,
+saying how much of the tags and the tracklist differ. It sits beside **Re-tag
+from MB** because that is the action a difference leads to. An album where
+everything matches gets no note — the **Checked** date says when that was
+established, and there is nothing else to say.
 
 A track MusicBrainz lists that you don't have says *"Not in your files"*, with a
 dashed ring beside its number — so a half-ripped disc reads as a column of them

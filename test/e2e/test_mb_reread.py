@@ -54,7 +54,10 @@ def test_read_again_issues_a_compare_request_and_refills_the_panel(demo_server: 
         # in-band, while the note and the panel's Checked date land out-of-band.
         page.wait_for_selector(f"#compare-{ALBUM} .tag-fields", timeout=10_000)
         assert page.locator(f"#album-mb-note-{ALBUM} .mb-note__legend").is_visible()
-        assert page.locator(f"#album-checked-{ALBUM} dd").is_visible()
+        # `dd[title]` is the VALUE. Since #358 the row holds a second <dd> for
+        # the re-read control, in the grid's third column, and a bare `dd` here
+        # matches both.
+        assert page.locator(f"#album-checked-{ALBUM} dd[title]").is_visible()
 
         browser.close()
 
@@ -67,7 +70,7 @@ def test_the_panel_reports_when_it_last_read_musicbrainz(demo_server: str) -> No
         page = browser.new_page()
 
         page.goto(f"{demo_server}/album/{ALBUM}")
-        when = page.locator(f"#album-checked-{ALBUM} dd")
+        when = page.locator(f"#album-checked-{ALBUM} dd[title]")
         when.wait_for(timeout=10_000)
 
         # The elapsed time itself is the wrong thing to assert on: `ago` renders

@@ -6239,16 +6239,23 @@ def test_one_musicbrainz_note_lands_in_the_album_panel(client, cfg, monkeypatch)
     assert "mb-note--quiet" not in body
 
 
-def test_a_note_with_nothing_to_act_on_is_drawn_quiet(client, cfg, monkeypatch):
-    """#352. Which albums are advisory is `compare.advisory`'s question and is
-    settled in test_compare; what this covers is the half that only a rendered
-    response can show — that the template asks, and that the answer reaches the
-    note's class rather than a mistyped one nothing styles.
+def test_an_album_with_nothing_to_act_on_gets_no_note_at_all(client, cfg, monkeypatch):
+    """#358, finishing what #352 started. That issue dropped the band's tint on
+    an album whose tags and tracks all match; the band still had to be drawn
+    because it also carried the read timestamp, which #355 has since moved to
+    the panel's dates. With nothing else to say, the quietest form of "there is
+    nothing to do" is no band.
+
+    The wrapper still comes back, and that half matters as much as the absence:
+    it is the out-of-band swap target, so a later /compare that DOES find
+    something has somewhere to put it — and an empty one is what clears a note
+    that no longer applies.
 
     Driven through the template global rather than by building an album whose
     eighteen tags and every track match MusicBrainz: that fixture would assert
-    `advisory`'s logic a second time, and go stale the next time a tag is added
-    to the comparison.
+    `advisory`'s own logic a second time, and go stale the next time a tag joins
+    the comparison. The note-carrying path is covered by the test above, which
+    is what makes this absence worth asserting.
     """
     d = _make_tagged_album(cfg, "Quiet", mbid="rel-quiet", tagged_at=datetime.now(UTC))
     monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", lambda mbid: {"id": mbid})
@@ -6258,7 +6265,8 @@ def test_a_note_with_nothing_to_act_on_is_drawn_quiet(client, cfg, monkeypatch):
 
     body = client.get(f"/library/{album_id}/compare").text
 
-    assert 'class="mb-note mb-note--panel mb-note--quiet"' in body
+    assert f'<div id="album-mb-note-{album_id}" hx-swap-oob="true">' in body
+    assert "mb-note__legend" not in body
 
 
 def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):

@@ -30,10 +30,10 @@ versions follow [semantic versioning](https://semver.org).
   other dates.** *Checked* joins Downloaded, Added and Tagged in the album panel,
   and the button that forces a fresh read moved there with it (#355).
 
-- **An album with nothing to fix says so quietly.** The MusicBrainz note keeps
-  its hexagon and its wording, but drops to a neutral tint when every tag and
-  track matches — the coloured band is now reserved for a note that has
-  something to report (#352).
+- **An album with nothing to fix says nothing at all.** The MusicBrainz note is
+  now drawn only when it has something to report; an album whose every tag and
+  track matches shows no band, and its **Checked** date says when that was
+  established (#352, #358).
 
 - **Background update checks are gentler on MusicBrainz.** They now spread the
   albums they have to look at evenly across a day instead of asking about a

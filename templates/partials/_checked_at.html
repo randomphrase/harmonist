@@ -28,12 +28,8 @@
    `oob` is set by `library_compare.html`; unset at page build. #}
 <div id="album-checked-{{ album.id }}" class="contents"{% if oob %} hx-swap-oob="true"{% endif %}>
     {% if mb_read_at %}
-    <dt class="text-2xs text-muted uppercase tracking-widest self-baseline">Checked</dt>
-    {# `flex-row-reverse` so the VALUE keeps the right edge the three dates above
-       it share, and the control sits in the gutter to its left. Reversing the
-       visual order rather than the markup order leaves the dd reading
-       value-then-control, which is the order it should be announced in. #}
-    <dd class="text-ink tabular-nums self-baseline whitespace-nowrap flex flex-row-reverse justify-start items-center gap-1"
+    <dt class="col-start-1 text-2xs text-muted uppercase tracking-widest self-baseline">Checked</dt>
+    <dd class="text-ink tabular-nums self-baseline whitespace-nowrap"
         {# The other three dates are facts about the album, from its sidecar.
            This one is cache freshness, keyed by release id in activity.db, and
            it moves on its own every TTL — so the hover says what was read
@@ -41,22 +37,29 @@
            files. #}
         title="MusicBrainz release last read {{ mb_read_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
         {{ ago(mb_read_at) }}
-        {# The way out of a stale answer (#127): a user who has just edited
-           MusicBrainz can say "no, look again" without re-tagging or editing a
-           config file.
+    </dd>
+    {# The way out of a stale answer (#127): a user who has just edited
+       MusicBrainz can say "no, look again" without re-tagging or editing a
+       config file.
 
-           A glyph beside the value it acts on, muted until hover — the same
-           shape as the "wrong match" pencil beside the MusicBrainz badge in
-           this panel, so the panel gains no new interaction vocabulary for a
-           second rare, subtle action (web-ui rule 4). Not a popover: that is
-           the right shape for the sync control because it hosts a form with two
-           knobs, and this is one button.
+       In the grid's third column (#358), so the value above keeps the right
+       edge the three dates share and the control sits past them. A second <dd>
+       against the one <dt> rather than a wrapper, because a <dl> may hold only
+       dt, dd, div, script and template — and this genuinely is more about the
+       same term.
 
-           It re-fetches into the Tags section, and the same response carries
-           this line back out-of-band, so the timestamp and the comparison it
-           describes update together. `hx-disabled-elt` because this is a real
-           MusicBrainz request on a 1-req/sec budget and a double-press would
-           spend two. No `onclick` anywhere near it — HTMX owns the click. #}
+       A glyph, muted until hover — the same shape as the "wrong match" pencil
+       beside the MusicBrainz badge in this panel, so the panel gains no new
+       interaction vocabulary for a second rare, subtle action (web-ui rule 4).
+       Not a popover: that is the right shape for the sync control because it
+       hosts a form with two knobs, and this is one button.
+
+       It re-fetches into the Tags section, and the same response carries this
+       line back out-of-band, so the timestamp and the comparison it describes
+       update together. `hx-disabled-elt` because this is a real MusicBrainz
+       request on a 1-req/sec budget and a double-press would spend two. No
+       `onclick` anywhere near it — HTMX owns the click. #}
+    <dd class="col-start-3 self-baseline">
         <button type="button"
                 hx-get="/library/{{ album.id }}/compare?reread=1"
                 hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"

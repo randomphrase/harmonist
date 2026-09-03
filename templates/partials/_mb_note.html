@@ -23,15 +23,25 @@
    timestamp still had to be drawn somewhere. Both now live in the album panel's
    dates, as `_checked_at.html`: same fetch, stated where the page already
    answers "how recently?". #}
+{# The wrapper is emitted whatever the answer, because it is the out-of-band
+   target: a later /compare that DOES find something has to have somewhere to
+   put it, and an empty wrapper is also what clears a note that no longer
+   applies. #}
 <div id="album-mb-note-{{ album.id }}" hx-swap-oob="true">
-    {# `--quiet` when there is nothing to act on (#352): the tinted band reads
-       as a warning, and on an album whose tags and tracks all match there is
-       nothing to warn about. A note carrying findings keeps the colour, so the
-       two are still tellable apart without reading the sentence. Derived by
-       `compare.advisory` from the same values the legend is composed from —
-       a tint that could disagree with the sentence beside it would be worse
-       than no tint. #}
-    <div class="mb-note mb-note--panel{% if advisory(comparison, tracklist) %} mb-note--quiet{% endif %}">
+    {# Nothing at all when there is nothing to act on (#358).
+
+       #352 dropped the tint here for that case, and the note still had to draw
+       itself because it was also carrying the read timestamp. #355 moved that
+       out to the panel's dates, which took away the last reason to keep a band
+       whose whole content is that there is nothing to do. So this is not a
+       reversal of #352's reasoning but the end of it: a band about a page where
+       nothing is wrong reads as a warning, and the quietest form of it is
+       absence.
+
+       A note carrying findings is unchanged — band, tint and wording. That is
+       the sentence #271 takes into its own block, and the note goes for good. #}
+    {% if not advisory(comparison, tracklist) %}
+    <div class="mb-note mb-note--panel">
         <span class="mb-note__key">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
                 <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
@@ -39,4 +49,5 @@
         </span>
         <span class="mb-note__legend">{{ headline(comparison, tracklist) }}</span>
     </div>
+    {% endif %}
 </div>
