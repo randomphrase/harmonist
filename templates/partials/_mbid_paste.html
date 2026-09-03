@@ -1,8 +1,14 @@
+{% from 'macros.html' import reload_on_success %}
 {# Direct entry: paste a MusicBrainz release URL or 36-char MBID. The exact,
    no-search path — shared by the New and Needs MBID cards.
-   Expects: album (album.id). #}
+   Expects: album (album.id).
+
+   `on_album_page` rides in on the including context (#150): assigning a release
+   tags the album and moves it to the Library, so on the album page the page has
+   to be re-rendered to describe what it now is. #}
 <form hx-post="/manual/{{ album.id }}/assign"
       hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+      {{ reload_on_success(on_album_page | default(false)) }}
       class="flex gap-2">
     <input type="text" name="mbid" required
            placeholder="MB release URL or 36-char MBID"

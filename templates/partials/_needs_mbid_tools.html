@@ -4,8 +4,10 @@
    whose heading names the search that ran. Plus a direct MBID-paste fallback.
    The whole thing sits inside the card's hx-preserve wrapper, so a background
    re-render can't wipe the selected mode or the results. #}
+{% from 'macros.html' import reload_unless_retargeted %}
 {% set sc = album.sidecar %}
 {% set _private = sc and sc.bandcamp and sc.bandcamp.is_private %}
+{% set on_album = on_album_page | default(false) %}
 {% if sc and sc.store_url and not _private %}
 <div class="flex gap-2 flex-wrap mb-3">
     <a href="{{ harmony_base }}/release?url={{ sc.store_url|urlencode }}"
@@ -15,6 +17,8 @@
     </a>
     <button hx-post="/recheck/{{ album.id }}"
             hx-swap="none" hx-disabled-elt="this"
+            {{ reload_unless_retargeted(on_album) }}
+            hx-vals='{"on_album_page": "{{ 'true' if on_album else 'false' }}"}'
             title="Re-query MusicBrainz for this store URL. Tags automatically on a single exact match; lists the options if several releases share the URL."
             class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
         Recheck
@@ -36,6 +40,8 @@
     <div class="find-mode__panel find-mode__panel--url">
         <button hx-post="/manual/{{ album.id }}/candidates"
                 hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML" hx-disabled-elt="this"
+                {# Which page is asking — same reason as the name search (#150). #}
+                hx-vals='{"on_album_page": "{{ 'true' if on_album else 'false' }}"}'
                 class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
             Look up releases at this URL
         </button>

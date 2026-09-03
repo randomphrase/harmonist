@@ -6,6 +6,11 @@
       hx-target="#mbid-results-{{ album.id }}"
       hx-swap="innerHTML"
       class="flex gap-2">
+    {# Which page is asking (#150). The rows this comes back with carry a **Use**
+       button that assigns the release, and the right thing to do afterwards
+       differs between the inbox and the album page — so the flag has to reach
+       the response, which is rendered with none of this template around it. #}
+    <input type="hidden" name="on_album_page" value="{{ 'true' if on_album_page | default(false) else 'false' }}">
     <input type="text" name="artist" value="{{ album.artist }}" placeholder="Artist"
            class="flex-1 min-w-0 bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-mb-purple outline-none">
     <input type="text" name="title" value="{{ album.title }}" placeholder="Album"

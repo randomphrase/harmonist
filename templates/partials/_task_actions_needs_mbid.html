@@ -1,0 +1,247 @@
+{% from 'macros.html' import release_name, reload_on_success %}
+{# What you can do about a NEEDS MBID album — the inbox card's actions, and the
+   album page's (#150).
+
+   Extracted from `task_card_needs_mbid.html` so both hosts render one
+   definition rather than two that drift. This is the state with the most to
+   decide — a suggestion to confirm or dismiss, a mis-tag to look at, a
+   surrender to accept, or the find-a-release tools — and it was reachable only
+   from the inbox, which is the half of the album page #150 is about: the inbox
+   is where the decisions are, the album page is where the evidence is, and
+   until now following the link from one to the other stranded you.
+
+   `on_album_page` is set by the album page and unset in the inbox. It decides
+   only what an action does with its answer (`reload_on_success`) — never which
+   actions exist, because the decisions available about an album are a property
+   of the album, not of the page you happen to be reading it on. #}
+{% set on_album = on_album_page | default(false) %}
+{% set sc = album.sidecar %}
+{% set candidate = sc.mb_match_candidate if sc else None %}
+{% set has_store_url = sc and sc.store_url %}
+{# A mis-tag candidate carries the owned sibling release (store-URL match). It
+   gets its own explanatory panel, independent of the track-count match quality
+   below. #}
+{% set is_mistag = candidate and candidate.mistag_owned_url %}
+{# A surrender candidate is the album's OWN (correct) release, kept read-only
+   after a full sync found no matching Bandcamp purchase. No Confirm — the user
+   seeds/fixes via the tools below. #}
+{% set is_surrender = candidate and candidate.unmatched_purchase %}
+
+{% if is_mistag %}
+{# ---- (a) Possible mis-tag: the "wrong release?" panel, opened. Explains
+     WHY we're suggesting a different release — strictly store-URL based, so
+     no track-count talk here (that's the match-quality box below). ---- #}
+<details open class="rounded-lg border border-amber-300 bg-amber-50/60 p-3 mb-3">
+    <summary class="cursor-pointer select-none text-sm font-bold text-amber-800">
+        Wrong release?
+    </summary>
+    <div class="mt-2 text-xs text-ink/80 leading-relaxed">
+        <p>
+            This album is tagged as
+            {% if candidate.mistag_tagged_mbid and candidate.mistag_tagged_label %}
+            <a href="https://musicbrainz.org/release/{{ candidate.mistag_tagged_mbid }}"
+               target="_blank" rel="noopener"
+               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_tagged_label, candidate.mistag_tagged_disambig) }}</a>,
+            {% else %}
+            a different release,
+            {% endif %}
+            but you purchased
+            <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}"
+               target="_blank" rel="noopener"
+               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_owned_label, candidate.mistag_owned_disambig) }}</a>
+            on <a href="{{ candidate.mistag_owned_url }}" target="_blank" rel="noopener"
+               class="text-bc-teal hover:underline">Bandcamp</a>.
+            These are sibling releases in the same
+            {% if candidate.mistag_release_group_mbid %}
+            <a href="https://musicbrainz.org/release-group/{{ candidate.mistag_release_group_mbid }}"
+               target="_blank" rel="noopener"
+               class="text-mb-purple hover:underline">MusicBrainz release group</a>.
+            {% else %}
+            MusicBrainz release group.
+            {% endif %}
+            Confirm below to re-tag.
+        </p>
+    </div>
+</details>
+{% endif %}
+
+{% if is_surrender %}
+{% set sugg = (surrender_suggestions | default({})).get(album.id) %}
+{% if sugg %}
+{# ---- A potential download matches this album (artist + subsequence title):
+     the sync couldn't auto-link it (different URL/subdomain), but it's almost
+     certainly the same record. Lead with the Link — it un-surrenders the album
+     (restores its release id) → Library. ---- #}
+<div class="rounded-lg border border-accent/50 bg-accent-soft p-3 mb-3 flex items-center justify-between gap-3">
+    <div class="min-w-0 text-sm">
+        <p class="font-bold text-accent-dark mb-0.5">Looks like a purchase you own</p>
+        <p class="text-xs text-ink/80">
+            Link this to <span class="font-semibold">{{ sugg.band }} — {{ sugg.title }}</span>
+            and it moves to the Library.
+        </p>
+    </div>
+    {# The one action here whose inbox behaviour cannot travel: it swaps the
+       inbox's potential-downloads section, which does not exist on the album
+       page. There the answer is discarded and the page reloads, because what
+       the link changed is the album this page is about. #}
+    <button hx-post="/pending/{{ sugg.item_id }}/match" hx-vals='{"album_id": "{{ album.id }}"}'
+            {% if on_album %}hx-swap="none" {{ reload_on_success(true) }}
+            {% else %}hx-target="#pending-section" hx-swap="morph:outerHTML"{% endif %}
+            class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest shrink-0 transition">Link</button>
+</div>
+{% else %}
+{# ---- Surrender with NO matching purchase. Common when a release is WITHDRAWN
+     from Bandcamp (its page 404s and it drops out of your collection, so there's
+     nothing to link or re-download), or it was bought elsewhere / ripped. The
+     files are already correctly tagged, so the primary action is to accept it
+     into the Library; the "wrong release?" tools are the fallback. ---- #}
+<div class="rounded-lg border border-line bg-surface p-3 mb-3">
+    <p class="font-bold text-ink mb-1 text-sm">No matching Bandcamp purchase</p>
+    <p class="text-xs text-ink/80 leading-relaxed">
+        A full sync found no purchase to link. That's expected if the release was
+        <span class="font-semibold">withdrawn from Bandcamp</span> (its page no longer
+        resolves), or you bought it elsewhere / ripped it — there's nothing to link or
+        re-download.
+    </p>
+    <div class="mt-3">
+        <button hx-post="/surrender/{{ album.id }}/keep"
+                hx-swap="none" hx-disabled-elt="this"
+                {{ reload_on_success(on_album) }}
+                title="Accept this album as correctly tagged. It moves to your Library and won't be re-checked for a Bandcamp purchase on future syncs."
+                class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+            Move to Library
+        </button>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+{% if candidate and not is_surrender %}
+{# ---- (b) Match quality: how the suggested release lines up with the files
+     on disk. Independent of (a) — applies to any candidate, mis-tag or not.
+     Holds the Confirm action and the technical notes (file/track count).
+     Skipped for a surrender candidate (read-only — no Confirm). ---- #}
+{% set exact_count = candidate.file_count == candidate.track_count %}
+{% set incomplete_offered = candidate.file_count < candidate.track_count %}
+<div class="rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
+    {% if is_mistag %}
+    {# The mis-tag panel above already explains the suggestion; here just
+       flag the technical track-fit notes (if any) as a warning. #}
+    {% if candidate.notes %}
+    <div class="text-xs text-amber-700 mb-2 flex items-start gap-1.5">
+        <svg width="14" height="14" class="w-3.5 h-3.5 mt-px shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+        </svg>
+        <span><span class="font-bold">Note:</span> {% for note in candidate.notes %}{{ note }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="text-xs text-muted mb-2">
+        MusicBrainz suggests a release —
+        <span class="font-bold text-amber-700">{{ candidate.confidence }}</span> match.
+        {% for note in candidate.notes %}<span> · {{ note }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    {# Only when there is something to compare. A candidate can legitimately
+       carry no per-track rows — an unlink after an undo (#158) suggests the
+       album's own release without an MB fetch to build them from — and the
+       table would otherwise render as a header with nothing under it. #}
+    {% if candidate.track_comparisons %}
+    <div class="mb-3">{% include 'partials/_track_comparison.html' %}</div>
+    {% endif %}
+
+    <div class="flex gap-2 flex-wrap">
+        {% if exact_count %}
+        {# File count matches the release exactly — a plain tag is valid. #}
+        <button hx-post="/confirm/{{ album.id }}"
+                hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                {{ reload_on_success(on_album) }}
+                class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+            Confirm &amp; Tag
+        </button>
+        {% elif incomplete_offered %}
+        {# Fewer files than the release has tracks: a plain tag would fail
+           the exact-count check, so the incomplete tag IS the (highlighted)
+           primary action — no misleading "Confirm & Tag" button here. #}
+        <button hx-post="/confirm/{{ album.id }}/incomplete"
+                hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                {{ reload_on_success(on_album) }}
+                title="Your {{ candidate.file_count }} files are fewer than this release's {{ candidate.track_count }} tracks. Tag what's here and mark the album incomplete."
+                class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+            Confirm as Incomplete ({{ candidate.file_count }} of {{ candidate.track_count }})
+        </button>
+        {% else %}
+        {# More files than the release has tracks — can't tag against this
+           release at all (extra files are out of scope). Point at the picker. #}
+        <span class="text-xs text-amber-700 self-center">
+            {{ candidate.file_count }} files exceed this release's {{ candidate.track_count }} tracks — choose a different release below.
+        </span>
+        {% endif %}
+        {# Re-fetch this same release from MB and re-compare. Use after
+           correcting the release on MusicBrainz — a now-fixed track
+           length may turn an approximate match into an exact one. Works
+           whether or not there's a store URL (re-assigns the candidate
+           MBID rather than re-looking-up the URL). #}
+        <form hx-post="/manual/{{ album.id }}/assign" hx-swap="none" hx-disabled-elt="this"
+              hx-indicator="#tagging-{{ album.id }}" {{ reload_on_success(on_album) }}>
+            <input type="hidden" name="mbid" value="{{ candidate.mb_release_id }}">
+            <button type="submit"
+                    title="Re-fetch this release from MusicBrainz and re-compare — use after fixing the release on MB."
+                    class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+                Refresh from MB
+            </button>
+        </form>
+        <button hx-post="/reject/{{ album.id }}"
+                hx-swap="none" hx-disabled-elt="this"
+                {{ reload_on_success(on_album) }}
+                title="Clear this suggestion. The album stays here so you can assign a different release or recheck."
+                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+            Dismiss suggestion
+        </button>
+    </div>
+</div>
+{% endif %}
+
+{# ---- Always available: find / assign a different MBID. Primary when there's
+     no suggestion; collapsed under a disclosure when a suggestion is shown.
+     (For a mis-tag the explanatory panel above already says "Wrong release?",
+     so phrase this one as the manual fallback.)
+
+     The whole tools area is hx-preserve'd so a background poll re-rendering
+     this card can't wipe an open disclosure or in-progress search/picker
+     results (which live only in the DOM). ---- #}
+<div id="mbid-tools-{{ album.id }}" hx-preserve="true">
+{% if is_surrender %}
+{# Surrender: the primary action ("Keep in Library") is in the panel above. The
+   album is already correctly tagged, so the release tools are just an escape
+   hatch for a wrong tag — collapsed and de-emphasised, with a reduced set. #}
+<details class="text-xs">
+    <summary class="cursor-pointer text-muted hover:text-ink select-none">
+        Wrong release? Assign a different one
+    </summary>
+    <div class="mt-2 space-y-3">
+        {% include 'partials/_surrender_tools.html' %}
+    </div>
+</details>
+{% elif candidate %}
+<details class="text-xs">
+    <summary class="cursor-pointer text-muted hover:text-ink select-none">
+        {% if is_mistag %}Not that either? Find or assign a different release{% else %}Wrong release? Find or assign a different one{% endif %}
+    </summary>
+    <div class="mt-2 space-y-3">
+        {% include 'partials/_needs_mbid_tools.html' %}
+    </div>
+</details>
+{% else %}
+{% if has_store_url %}
+<p class="text-muted text-xs mb-3">
+    Store URL on file but no MusicBrainz match yet. Seed it on Harmony, then recheck —
+    or paste an MBID below.
+</p>
+{% else %}
+<p class="text-muted text-xs mb-3">No store URL — provide an MBID or search MusicBrainz.</p>
+{% endif %}
+{% include 'partials/_needs_mbid_tools.html' %}
+{% endif %}
+</div>

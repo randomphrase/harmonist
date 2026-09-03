@@ -238,11 +238,28 @@
                Not worth the risk here, because the other buttons are already
                unusable meanwhile: the tagging overlay covers the panel opaquely
                at z-20, which is what has always blocked them. #}
+            {# Every control in this row needs a sidecar — Re-tag needs the
+               release id in one, Re-download the Bandcamp item id in one, and
+               Forget deletes it. A NEW album has none, so the row would draw as
+               a rule with nothing under it (#150). #}
+            {% if album.sidecar %}
             <div id="album-actions-{{ album.id }}" class="flex gap-2 pt-2 border-t border-line">
                 {# id so the /compare fetch can swap this out of band for a
                    disabled one when it discovers the release is gone (#210):
                    nothing behind Re-tag can succeed then, and a control that
                    always fails should not look available. #}
+                {# Only on an album that HAS a MusicBrainz release to re-tag from
+                   (#150). This page serves every state, and on a New or Needs
+                   MBID album there is no release: the button was offered anyway,
+                   styled as the primary action, and could only fail. The way
+                   forward for those albums is the inbox actions section below,
+                   which is where the release gets found in the first place.
+
+                   Guarded on the release id rather than on a state list, because
+                   that is the thing the route actually needs — and it is exactly
+                   what `_derive_state` reads to tell NEEDS_MBID from the tagged
+                   states, so the two cannot drift apart. #}
+                {% if album.sidecar and album.sidecar.mb_release_id %}
                 <button id="retag-btn-{{ album.id }}"
                         hx-post="/retag/{{ album.id }}"
                         hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
@@ -250,6 +267,7 @@
                         title="Re-tag from MusicBrainz. Per-track embedded artwork is preserved.">
                     Re-tag from MB
                 </button>
+                {% endif %}
                 {# "Replace artwork" is hidden pending #131. It overwrites every
                    track's embedded art with the album cover, which is the wrong
                    remedy for most of the artwork problems it looks like it
@@ -291,6 +309,12 @@
                    to the common action. `ml-auto` rather than reordering with
                    flex, so the DOM order matches the reading order and the tab
                    order reaches it last too. #}
+                {# Forget deletes the sidecar, so it needs one to delete (#150).
+                   A NEW album has none — it is already what forgetting would
+                   make it — and the button's own confirm text ("the album
+                   reverts to NEW") is the giveaway that it had nothing to say
+                   there. #}
+                {% if album.sidecar %}
                 <button hx-post="/forget/{{ album.id }}"
                         hx-swap="none" hx-disabled-elt="this"
                         hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
@@ -298,6 +322,7 @@
                         class="ml-auto px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
                     Forget
                 </button>
+                {% endif %}
                 {# The acceptance used to sit here, as a button reading "No more
                    tracks to get" / "Mark incomplete again". It moved up to the
                    completeness badge as a checkbox (#227): it acts on that badge
@@ -309,6 +334,7 @@
                    dead end. It comes back with the re-link path in #42. The
                    /unlink endpoint stays for now. #}
             </div>
+            {% endif %}
         </div>
     </div>
 </div>

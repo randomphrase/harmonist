@@ -1,0 +1,39 @@
+{% from 'macros.html' import reload_on_success %}
+{# What you can do about a NEW album — the inbox card's actions, and the album
+   page's (#150).
+
+   Extracted from `task_card_new.html` so both hosts render one definition. The
+   album page used to offer **Re-tag from MB** here and nothing else, which
+   cannot work on an album with no MusicBrainz release: following a link from
+   the inbox landed you somewhere that could only look, with a primary button
+   that was certain to fail.
+
+   `on_album_page` is set by the album page and unset in the inbox; it decides
+   what an action does with its answer (see `reload_on_success`). #}
+{% set on_album = on_album_page | default(false) %}
+
+{% if album.has_tag_mbid %}
+{# Files carry a MusicBrainz Album Id but have no sidecar — reconcile derives
+   one from the existing tags. (Auto-reconcile normally handles these; this
+   is the manual retry.) #}
+<div class="flex gap-2 flex-wrap mb-3">
+    <button hx-post="/reconcile/{{ album.id }}"
+            hx-swap="none" hx-disabled-elt="this"
+            {{ reload_on_success(on_album) }}
+            class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition"
+            title="Derive a sidecar from existing MB tags + ©cmt evidence">
+        Reconcile from tags
+    </button>
+</div>
+{% endif %}
+
+{# Search-by-name or paste an MBID. hx-preserve'd so a background re-render
+   (New albums kick auto-reconcile, which polls) can't wipe in-progress
+   search results — they live only in the DOM. #}
+<div id="newtools-{{ album.id }}" hx-preserve="true" class="space-y-2">
+    <p class="text-muted font-bold uppercase tracking-widest text-2xs">Search MusicBrainz by name</p>
+    {% include 'partials/_name_search.html' %}
+    <div id="mbid-results-{{ album.id }}" class="mt-2"></div>
+    <p class="text-muted font-bold uppercase tracking-widest text-2xs mt-2">Or paste a MusicBrainz ID</p>
+    {% include 'partials/_mbid_paste.html' %}
+</div>

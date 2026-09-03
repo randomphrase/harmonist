@@ -3,7 +3,7 @@
    dicts), `album_id`, and the local facts for mismatch cues. Optional:
    `heading` (a label above the list) and `more_count` (total found when the
    list was truncated). #}
-{% from 'macros.html' import release_name %}
+{% from 'macros.html' import release_name, reload_on_success %}
 {% if heading %}
 <p class="text-2xs uppercase tracking-widest text-muted font-bold mb-1 px-1">{{ heading }}</p>
 {% endif %}
@@ -44,8 +44,15 @@
                class="inline-flex items-center gap-1 px-2 py-1 rounded text-2xs font-bold uppercase tracking-widest text-mb-purple border border-mb-purple/30 hover:bg-mb-purple/10 transition whitespace-nowrap">
                 MB ↗
             </a>
+            {# Rendered by a route, not included from a card, so the flag has to
+               be carried into this response rather than inherited from a
+               surrounding template (#150) — see `_render_release_picker`.
+               Assigning a release tags the album and moves it to the Library,
+               so on the album page it is the same "re-render what this page is
+               describing" case as every other decision here. #}
             <form hx-post="/manual/{{ album_id }}/assign" hx-swap="none" hx-disabled-elt="this"
-                  hx-indicator="#tagging-{{ album_id }}">
+                  hx-indicator="#tagging-{{ album_id }}"
+                  {{ reload_on_success(on_album_page | default(false)) }}>
                 <input type="hidden" name="mbid" value="{{ r.id }}">
                 <button type="submit"
                         class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-2xs font-bold uppercase tracking-widest transition whitespace-nowrap">

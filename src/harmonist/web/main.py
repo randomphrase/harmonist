@@ -3912,6 +3912,21 @@ def _register_routes(app: FastAPI) -> None:
                 if album.sidecar and album.sidecar.mb_release_id
                 else None
             ),
+            # The inbox's "you may already own this" pairing, for the action
+            # blocks this page now renders (#150). Without it a surrendered
+            # album's page would show the no-purchase panel while its inbox card
+            # offers the Link — the same album, two answers, decided by which
+            # surface you happened to open.
+            #
+            # In-memory and O(albums + potential downloads), against a page that
+            # has already re-read the album's folders from disk. `_inbox_albums`
+            # is not applied: this album's own suggestion is wanted whatever
+            # group it would or wouldn't be filed under.
+            surrender_suggestions=_reconcile_suggestions(
+                _albums(request),
+                pending_downloads.all_pending(),
+                request.app.state.cfg.paths.music_dir,
+            )[1],
             from_page=max(1, from_page),
             from_filter=_library_filter(from_filter),
             from_q=_library_search(from_q),
@@ -4684,7 +4699,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response("Reconciled", label, album=album)
 
     @app.post("/recheck/{album_id}", response_class=HTMLResponse)
-    def recheck(request: Request, album_id: str) -> Response:
+    def recheck(request: Request, album_id: str, on_album_page: bool = Form(False)) -> Response:
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None or not sc.store_url:
@@ -4729,6 +4744,7 @@ def _register_routes(app: FastAPI) -> None:
                 total,
                 heading="Several releases share this store URL — pick the right one",
                 retarget=True,
+                on_album_page=on_album_page,
             )
 
         try:
@@ -4955,6 +4971,10 @@ def _register_routes(app: FastAPI) -> None:
         album_id: str,
         artist: str = Form(""),
         title: str = Form(""),
+        # Which page asked (#150). The search form is rendered on both the inbox
+        # card and the album page, and the rows it comes back with carry an
+        # action whose right answer differs between the two.
+        on_album_page: bool = Form(False),
     ) -> Response:
         # Validate album exists; a 404 is the right signal for a stale UI.
         album = _find_album(request, album_id)
@@ -4971,11 +4991,18 @@ def _register_routes(app: FastAPI) -> None:
                 album=album,
             )
         return _render_release_picker(
-            request, album, results, len(results), heading="MusicBrainz search results"
+            request,
+            album,
+            results,
+            len(results),
+            heading="MusicBrainz search results",
+            on_album_page=on_album_page,
         )
 
     @app.post("/manual/{album_id}/candidates", response_class=HTMLResponse)
-    def manual_candidates(request: Request, album_id: str) -> Response:
+    def manual_candidates(
+        request: Request, album_id: str, on_album_page: bool = Form(False)
+    ) -> Response:
         """List the MB releases linked to this album's store URL so the user can
         pick the right one. Fresh lookup each call — no caching — so a fix made
         on MusicBrainz shows up immediately."""
@@ -4994,7 +5021,12 @@ def _register_routes(app: FastAPI) -> None:
                 album=album,
             )
         return _render_release_picker(
-            request, album, results, total, heading="Releases linked to this store URL"
+            request,
+            album,
+            results,
+            total,
+            heading="Releases linked to this store URL",
+            on_album_page=on_album_page,
         )
 
     @app.post("/manual/{album_id}/assign", response_class=HTMLResponse)
@@ -5211,10 +5243,18 @@ def _render_release_picker(
     *,
     heading: str | None,
     retarget: bool = False,
+    on_album_page: bool = False,
 ) -> Response:
     """Render the shared candidate-release list (store-URL picker or name
     search). `retarget` rewrites the swap to the card's preserved results box —
     needed when the trigger (e.g. the Recheck button) posts with hx-swap=none.
+
+    `on_album_page` is what the *rows* need (#150). Every other action block is
+    an include, so it inherits that flag from the template around it; this one
+    is a response, rendered with no such surroundings, and its **Use** button
+    assigns a release exactly as the paste box does. Without the flag travelling
+    with the request, picking a release from a search made on the album page
+    would tag the album and leave the page describing the album it used to be.
     """
     headers: dict[str, str] = {}
     if retarget:
@@ -5232,6 +5272,7 @@ def _render_release_picker(
             # Local facts so the rows can flag obvious mismatches inline.
             "local_track_count": album.track_count,
             "local_artist": album.artist,
+            "on_album_page": on_album_page,
         },
         headers=headers,
     )

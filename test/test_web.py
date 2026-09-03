@@ -3125,6 +3125,79 @@ def test_album_page_actions_navigate_after_success_not_onclick(client, cfg):
     assert any("hx-on::after-request" in b for b in action_buttons)
 
 
+def test_the_album_page_offers_the_inbox_decisions_for_an_untagged_album(client, cfg):
+    """#150's second half. An album still in the inbox has a page, and following
+    a card's link to it used to strand the reader: the page could only look.
+
+    Asserted through the assign form, which is what actually gets the album out
+    of Needs MBID — its presence is the difference between a page you can act on
+    and one you can only read.
+    """
+    d = _make_album(cfg, "Undecided")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/undecided"))
+    aid = _id_for(cfg, d)
+
+    html = client.get(f"/album/{aid}").text
+
+    assert 'id="album-inbox-actions"' in html
+    assert f'hx-post="/manual/{aid}/assign"' in html
+
+
+def test_a_page_that_cannot_re_tag_does_not_offer_to(client, cfg):
+    """The dead control #150 found. Re-tag posts to a route that needs a
+    MusicBrainz release id, and an album in Needs MBID has none by definition —
+    but the panel offered it anyway, styled as the primary action, on a page
+    reachable from every inbox card.
+
+    Both halves asserted together, because an absence is only worth checking
+    where a live path produces the thing: the tagged album below is that path.
+    """
+    untagged = _make_album(cfg, "NoRelease")
+    sc.write(untagged, Sidecar(store_url="https://x.bandcamp.com/album/norelease"))
+    untagged_id = _id_for(cfg, untagged)
+    tagged = _make_tagged_album(cfg, "HasRelease", mbid="rel-ok", tagged_at=datetime.now(UTC))
+    tagged_id = _id_for(cfg, tagged)
+
+    assert f'hx-post="/retag/{untagged_id}"' not in client.get(f"/album/{untagged_id}").text
+    assert f'hx-post="/retag/{tagged_id}"' in client.get(f"/album/{tagged_id}").text
+
+
+def test_an_inbox_card_links_to_the_album_it_is_about(client, cfg):
+    """#150's first half. The cards linked out to MusicBrainz, to Picard and to
+    Bandcamp — everywhere except the album they concern.
+
+    Against /tasks, not /: the index ships a shell and pulls the cards into it,
+    so the card markup is never in the page's own response."""
+    d = _make_album(cfg, "Linkable")
+    aid = _id_for(cfg, d)
+
+    assert f'href="/album/{aid}"' in client.get("/tasks").text
+
+
+def test_an_action_rendered_on_the_album_page_re_renders_it(client, cfg):
+    """The same block serves two hosts, and only one of them has an inbox to
+    re-render around it (#150). On the album page every one of these decisions
+    changes what the page is describing, so the page has to come back.
+
+    Asserted on the inbox copy too: the flag must change the answer, not merely
+    be present. Without that half this passes on a template that reloads
+    everywhere, which would reload the inbox out from under a half-worked list.
+
+    Matched on the whole attribute rather than on `window.location.reload()`,
+    which the page already contains for an unrelated reason — the re-tag
+    listener at the foot of album.html. Asserting the bare call passes with the
+    flag forced off, which is how this test failed its own mutation check first
+    time round.
+    """
+    reload_attr = 'hx-on::after-request="if (event.detail.successful) window.location.reload()"'
+    d = _make_album(cfg, "Reloader")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/reloader"))
+    aid = _id_for(cfg, d)
+
+    assert reload_attr in client.get(f"/album/{aid}").text
+    assert reload_attr not in client.get("/tasks").text
+
+
 # ---------- retag / forget ----------
 
 
@@ -4219,14 +4292,16 @@ def test_successful_deep_link_keeps_the_url_parameter(client, cfg):
     """The counterpart to #71: a WORKING deep link must resolve to its album
     rather than being stripped. Only the broken one is.
 
-    Anchored on the re-tag control, which every album page carries whatever its
-    state — unlike the MB comparison, which an untagged album has nothing to
-    show for."""
+    Anchored on the page's alert slot, which is keyed by the album id and drawn
+    for every state — so it holds whatever this album turns out to be. It used
+    to anchor on the re-tag control for that reason, which stopped being true in
+    #150: an album with no MusicBrainz release has nothing to re-tag from, so
+    that button is no longer offered on its page."""
     d = _make_album(cfg, "Keeper")
     aid = _id_for(cfg, d)
 
     body = client.get(f"/?album={aid}").text
-    assert f'hx-post="/retag/{aid}"' in body
+    assert f'id="album-alert-{aid}"' in body
     assert "searchParams.delete('album')" not in body
     assert 'id="deep-link-notice"' not in body
 

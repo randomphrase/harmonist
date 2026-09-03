@@ -40,6 +40,44 @@
 
     {% include 'partials/library_detail.html' %}
 
+    {# The decisions the inbox would offer about this album, offered here (#150).
+
+       The inbox is where the decisions are and the album page is where the
+       evidence is — the tag comparison, the tracklist, the history. Following a
+       link from one to the other used to strand you somewhere that could only
+       look, and worse: the panel above offered **Re-tag from MB** on an album
+       with no MusicBrainz release, a primary button certain to fail.
+
+       Directly under the panel and above Tags, because it is the ask and those
+       are the evidence for it. Rendered from the SAME partials the inbox cards
+       use, so the two can't drift; `on_album_page` tells them only what to do
+       with an answer, never which actions to offer — what you may decide about
+       an album is a property of the album, not of the page you are reading.
+
+       No section for INCONSISTENT or TAGGING: their cards carry an explanation
+       and no actions, and the explanation is the inbox's job. Nor for a Library
+       album, which has no inbox decision outstanding — its actions are the
+       panel's own. #}
+    {% set _inbox_actions = {
+        AlbumState.NEW: 'partials/_task_actions_new.html',
+        AlbumState.NEEDS_MBID: 'partials/_task_actions_needs_mbid.html',
+        AlbumState.NEEDS_SYNC: 'partials/_task_actions_needs_sync.html',
+    } %}
+    {% if album.state in _inbox_actions %}
+    <section id="album-inbox-actions"
+             class="border border-line rounded-lg p-4 space-y-3">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
+            {% if album.state == AlbumState.NEW %}Find this release
+            {% elif album.state == AlbumState.NEEDS_MBID %}Needs a MusicBrainz release
+            {% else %}Needs linking to a purchase
+            {% endif %}
+        </h2>
+        {% with on_album_page = true %}
+            {% include _inbox_actions[album.state] %}
+        {% endwith %}
+    </section>
+    {% endif %}
+
     {# Tags and Tracks each stand as their own section, siblings of the album
        panel and History rather than blocks inside it (#160). The panel above is
        what the album IS — its state, where it lives, what you can do to it —

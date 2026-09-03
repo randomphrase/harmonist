@@ -62,6 +62,10 @@ Every album is in exactly one state, **derived** from what's on disk each time
 Harmonist looks — there's no status field to get out of step with your files.
 The inbox groups by state, and each group says what will clear it.
 
+Every card's title links to that album's own page, and the page offers the same
+decisions the card does — so you can go and look at the tags, the tracklist and
+the history before deciding, and then decide there rather than coming back.
+
 <!-- screenshot: docs/screenshots/inbox.png -->
 
 **New** — no sidecar yet: an album Harmonist has seen but knows nothing about.
@@ -258,6 +262,12 @@ This page re-reads the album's folders every time you open it, so what it shows
 is what is on disk now — a track added by hand, or a title you fixed in Picard a
 moment ago, is already there. That matters here more than anywhere else, because
 this is the page where you decide whether to re-tag.
+
+An album still in the Inbox has a page too, and it carries that album's Inbox
+actions under the panel: search or assign a release for a New or Needs MBID
+album, accept a surrender, mark a Needs Link album as purchased elsewhere. What
+you're offered follows the album — an album with no MusicBrainz release yet
+isn't offered a re-tag, because there is nothing to re-tag it from.
 
 <!-- screenshot: docs/screenshots/album-tags.png -->
 

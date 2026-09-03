@@ -14,7 +14,17 @@ versions follow [semantic versioning](https://semver.org).
   MusicBrainz knew only of Germany. The Country row now lists them all beside
   the tag, with each country's own release date (#329).
 
+- **Inbox cards link to their album's page, and that page can now answer them.**
+  Search or assign a release, accept a surrender, mark an album purchased
+  elsewhere — the same decisions the card offers, taken where the tags, the
+  tracklist and the history are (#150).
+
 ### Changed
+
+- **An album with no MusicBrainz release is no longer offered a re-tag.** Its
+  page showed **Re-tag from MB** as the main action, which could only fail;
+  the way forward for those albums is the actions section below the panel
+  (#150).
 
 - **An album now says when Harmonist last read it from MusicBrainz, beside its
   other dates.** *Checked* joins Downloaded, Added and Tagged in the album panel,

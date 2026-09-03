@@ -38,3 +38,47 @@
 {% macro library_query(page, limit, filter, q) -%}
 {% if page %}page={{ page }}&{% endif %}limit={{ limit }}{% if filter %}&filter={{ filter }}{% endif %}{% if q %}&q={{ q | urlencode }}{% endif %}
 {%- endmacro %}
+
+{# What an inbox action swaps when it is rendered on the ALBUM page (#150).
+
+   The same action blocks serve two hosts. In the inbox a card mutates an album
+   and lets the inbox re-render around it, which is why nearly all of them are
+   `hx-swap="none"` and say nothing about where the answer goes. On the album
+   page there is no inbox to re-render, and every one of these actions changes
+   what the page is describing: a confirm tags the album and sends it to the
+   Library, a reject clears the very suggestion being shown, a surrender moves
+   it out of the inbox entirely.
+
+   So the page reloads itself and lets the server render the album's new state,
+   rather than patching regions from a response shaped for somewhere else. It
+   reloads rather than navigating away because the album still exists and is
+   still what the reader came for — and `_find_album` resolves the id in the URL
+   even after tagging has replaced a temp uid with the release MBID, which is
+   exactly what a confirm does.
+
+   Gated on `event.detail.successful`: reloading over a failure would throw away
+   the flash that says what went wrong.
+
+   `hx-on::after-request`, never `onclick` — an inline onclick beside hx-*
+   attributes runs first and can detach the element before htmx fires at all
+   (web-ui rule 2a, and `make template-lint` enforces it). #}
+{% macro reload_on_success(active) -%}
+{% if active %}hx-on::after-request="if (event.detail.successful) window.location.reload()"{% endif %}
+{%- endmacro %}
+
+{# The same, for a control whose response is sometimes a list to READ rather
+   than a change to absorb (#150).
+
+   Recheck is the one that does this. It re-queries MusicBrainz for the store
+   URL and then either tags the album outright — one exact match, nothing to
+   decide — or comes back with the several releases that share the URL, for the
+   user to pick from. The second answer arrives as `HX-Retarget` pointing at the
+   results box, and reloading the page on it would throw away the very list the
+   press went to fetch, leaving the album looking unchanged for no stated reason.
+
+   So the absence of that header IS the "it acted" signal, which is better than
+   guessing from the flash text and is set by the one place that knows
+   (`_render_release_picker`). #}
+{% macro reload_unless_retargeted(active) -%}
+{% if active %}hx-on::after-request="if (event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget')) window.location.reload()"{% endif %}
+{%- endmacro %}
