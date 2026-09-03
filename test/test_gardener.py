@@ -527,7 +527,7 @@ def test_the_plan_renders_the_same_rows_as_a_history_entry(tmp_path):
     from harmonist import tag_history
 
     album = _tagged(tmp_path, _release())
-    plan = gardener.refresh_flag(album, _release("Test Album (remastered)"))
+    plan = gardener.refresh_flag(album, _release("Test Album (remastered)")).plan
     assert plan is not None
 
     rows = tag_history.from_plan(plan, album.path, sorted(album.path.glob("*.m4a")))
@@ -553,7 +553,7 @@ def test_reach_counts_every_file_not_just_the_changed_ones(tmp_path):
     f[ATOM_TITLE] = ["Trak 2"]
     f.save()
 
-    plan = gardener.refresh_flag(album, release)
+    plan = gardener.refresh_flag(album, release).plan
     assert plan is not None
     rows = tag_history.from_plan(plan, album.path, sorted(album.path.glob("*.m4a")))
 
@@ -1468,3 +1468,151 @@ def test_turning_the_check_on_takes_effect_without_a_restart(engaged, monkeypatc
         tick()
 
         assert done.wait(5) is True
+
+
+# ---------------------------------------------------------------------------
+# The verdict, and Ignore (#271)
+# ---------------------------------------------------------------------------
+#
+# The flag says an album diverges; the significance says how far the difference
+# reaches, so a review list can sort and summarise without reading a file. Both
+# are derived and neither is stored. The one stored thing is Ignore, which is a
+# bookmark against a release version rather than a rejection of a diff — see the
+# 7->8 migration in `activity_store` for why that distinction is the design.
+
+
+def _ignore(album: Album) -> None:
+    """Ignore `album`'s update at the version the last look reached.
+
+    What the Ignore button does, with the assertion the button gets from having
+    a release in hand: a look must have happened, or there is no version to
+    bookmark and nothing to be ignoring.
+    """
+    assert album.mb_version is not None
+    activity_store.ignore_update(album.id, release_version=album.mb_version)
+
+
+def test_the_verdict_is_the_furthest_reaching_change_in_the_diff(tmp_path):
+    """An enrichment arriving beside a retitle does not make the retitle an
+    enrichment. The verdict decides how much of the album is in question, so it
+    has to be the loudest thing in the diff — not the first, the last, or the
+    most numerous."""
+    album = _tagged(tmp_path, _release())
+    both = _release("Test Album (remastered)")
+    both["barcode"] = "5051234567890"
+
+    gardener.refresh_flag(album, both)
+
+    assert album.update_significance == "identity"
+
+
+def test_an_enrichment_on_its_own_is_recorded_as_one(tmp_path):
+    """The other half of the test above: without it, a verdict hard-coded to
+    "identity" would pass. This is also the level #273 will let a user trust,
+    so it has to be reachable and it has to be right."""
+    album = _tagged(tmp_path, _release())
+    enriched = _release()
+    enriched["barcode"] = "5051234567890"
+
+    gardener.refresh_flag(album, enriched)
+
+    assert album.update_significance == "enrichment"
+
+
+def test_a_tracklist_that_no_longer_fits_is_a_structural_verdict(tmp_path):
+    """No plan can be built for this one, so the verdict cannot come from a
+    diff — but "MusicBrainz has changed how many tracks this release has" is
+    among the loudest things it can say, and reporting no verdict at all would
+    leave the album flagged with nothing to show for it."""
+    album = _tagged(tmp_path, _release(tracks=1))
+
+    assert _flag(album, _release(tracks=3)) is True
+    assert album.update_significance == "structure"
+
+
+def test_an_album_with_nothing_outstanding_has_no_verdict(tmp_path):
+    """The verdict is about an outstanding change, so an album that has none
+    must not carry one — otherwise a review list built by significance would
+    show every album in the library."""
+    release = _release()
+    album = _tagged(tmp_path, release)
+
+    gardener.refresh_flag(album, release)
+
+    assert (album.update_available, album.update_significance) == (False, None)
+
+
+def test_the_verdict_and_the_version_come_from_one_look(tmp_path):
+    """They are read together and must be true of the same payload. An album
+    carrying a verdict from one release beside a version from another would be
+    muted by an Ignore that answered a different change."""
+    album = _tagged(tmp_path, _release())
+    moved = _release("Test Album (remastered)")
+
+    gardener.refresh_flag(album, moved)
+
+    assert album.mb_version == gardener.release_version(moved)
+    assert album.update_significance == "identity"
+
+
+def test_an_ignore_holds_while_musicbrainz_sits_still(tmp_path):
+    """What the user asked for: they have gone off to fix the release upstream,
+    and until something lands they do not want to be asked about it again."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    gardener.refresh_flag(album, _release("Test Album (remastered)"))
+    _ignore(album)
+
+    assert gardener.is_ignored(album, activity_store.ignored_updates()) is True
+    assert album.update_available is True  # the flag stays a plain fact
+
+
+def test_an_ignore_lapses_the_moment_musicbrainz_moves(tmp_path):
+    """The point of ignoring rather than dismissing, and the reason the version
+    is stored: an edit landing upstream is exactly the news the user was waiting
+    for, and Harmonist cannot tell whether it was their own."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    gardener.refresh_flag(album, _release("Test Album (remastered)"))
+    _ignore(album)
+    ignored = activity_store.ignored_updates()
+
+    gardener.refresh_flag(album, _release("Test Album (remastered, expanded)"))
+
+    assert gardener.is_ignored(album, ignored) is False
+
+
+def test_an_album_nobody_has_looked_at_is_not_ignored(tmp_path):
+    """A stored bookmark plus an album with no version must not compare equal
+    to anything. It is not flagged either, so there is nothing to mute — but a
+    None matching a None would mute every unlooked-at album at once."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    assert album.mb_version is None
+    activity_store.ignore_update(album.id, release_version="whatever")
+
+    assert gardener.is_ignored(album, activity_store.ignored_updates()) is False
+
+
+def test_the_pass_keeps_asking_about_an_ignored_album(tmp_path, monkeypatch):
+    """Ignoring mutes the surfaces, never the check. Asking is the only thing
+    that can ever un-mute an album, so a pass that skipped ignored albums would
+    make Ignore permanent — the failure this whole design is arranged to
+    avoid."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release(), age=_stale())
+    moved = _release("Test Album (remastered)")
+    _serving(monkeypatch, moved)
+    gardener.sweep([album])
+    _ignore(album)
+
+    gardener._asked.clear()
+    _store(moved, age=_stale())
+    expanded = _release("Test Album (remastered, expanded)")
+    asked = _serving(monkeypatch, expanded)
+    gardener.sweep([album])
+
+    assert asked == ["rel-aaa"]  # it went and looked ...
+    assert album.mb_version == gardener.release_version(expanded)  # ... and moved on
+    assert gardener.is_ignored(album, activity_store.ignored_updates()) is False

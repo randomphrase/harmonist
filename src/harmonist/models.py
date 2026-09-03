@@ -390,6 +390,26 @@ class Album:
     # and starts False again, which is the self-invalidation we want: a re-tag
     # that took the update clears the flag by construction.
     update_available: bool = False
+    # How far the outstanding update reaches — `owned.Significance` (#271). Set
+    # by the same `gardener.refresh_flag` call as the flag beside it, from the
+    # same plan, so the two can never describe different releases. None when
+    # there is nothing outstanding, and None on a cold start for the same
+    # reason the flag is False.
+    #
+    # Derived and unpersisted, like the flag: it is what the review list sorts
+    # and groups by, and it is rebuilt from the cached release payloads at
+    # startup at the cost of no MusicBrainz requests at all.
+    update_significance: str | None = None
+    # Which version of the cached MusicBrainz payload the two fields above were
+    # computed against — `gardener.release_version`. None until something has
+    # looked.
+    #
+    # Load-bearing for Ignore (#271): ignoring an update records the version it
+    # was ignored at, and the ignore holds only while this still matches. Kept
+    # here rather than re-derived at render time so deciding whether a tile is
+    # muted is a string compare rather than a database read and a hash, which at
+    # Library scale is the difference between free and unusable.
+    mb_version: str | None = None
 
     @property
     def folders(self) -> tuple[Path, ...]:
@@ -397,6 +417,18 @@ class Album:
         every test fixture that constructs one by hand, and every caller that
         predates #197."""
         return self.paths or (self.path,)
+
+    @property
+    def label(self) -> str:
+        """ "Artist — Title", for anything that has to name this album in prose.
+
+        Chiefly the `album_label` column: events and gardener findings both
+        freeze a label at write time, because ids move and albums leave the
+        library, and a record that can no longer be read is not a record.
+
+        The dash goes when one half is missing, so an album with no artist yet
+        reads as its title rather than as "— Title"."""
+        return f"{self.artist} — {self.title}".strip(" —")
 
 
 # ---------------------------------------------------------------------------

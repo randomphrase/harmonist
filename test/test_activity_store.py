@@ -994,3 +994,95 @@ def test_clear_empties_the_release_cache_too():
 
     assert activity_store.cached_release("rel-4", "media") is None
     assert activity_store.cached_release("rel-4", "url-rels") is None
+
+
+# ---------------------------------------------------------------------------
+# Ignored updates (#271)
+# ---------------------------------------------------------------------------
+
+
+def test_an_ignored_update_reads_back_with_the_version_it_was_ignored_at():
+    """The version is the whole of the record. Without it an ignore could never
+    lapse, and muting an album forever is precisely what this must not do."""
+    activity_store.ignore_update("rel-1", release_version="v1")
+
+    stored = activity_store.ignored_updates()["rel-1"]
+
+    assert stored.album_id == "rel-1"
+    assert stored.release_version == "v1"
+    assert stored.ignored_at is not None
+
+
+def test_ignoring_again_moves_the_bookmark_rather_than_adding_one():
+    """MusicBrainz moved and the user ignored the new state of things too. One
+    album is ignored at one version — a second row would leave the older
+    bookmark able to mute an update that has already been superseded."""
+    activity_store.ignore_update("rel-1", release_version="v1")
+
+    activity_store.ignore_update("rel-1", release_version="v2")
+
+    stored = activity_store.ignored_updates()
+    assert list(stored) == ["rel-1"]
+    assert stored["rel-1"].release_version == "v2"
+
+
+def test_un_ignoring_removes_the_bookmark():
+    """Both the undo and what a re-tag uses: once the files carry what
+    MusicBrainz says there is nothing left to be waiting for."""
+    activity_store.ignore_update("rel-1", release_version="v1")
+
+    assert activity_store.unignore_update("rel-1") is True
+    assert activity_store.ignored_updates() == {}
+    assert activity_store.unignore_update("rel-1") is False
+
+
+def test_a_failed_read_says_so_rather_than_reporting_nothing_ignored():
+    """It would show more than it should rather than less — but it would state
+    "nothing is ignored" as a fact, which is the confident lie #104 is about.
+    The surface can say it doesn't know instead."""
+    activity_store.ignore_update("rel-1", release_version="v1")
+    activity_store._conn.close()  # as a locked or corrupt database presents
+
+    with pytest.raises(activity_store.StoreUnavailableError):
+        activity_store.ignored_updates()
+
+
+def test_clear_drops_ignored_updates_too():
+    """They name albums by id in the library being torn down, so one left
+    behind would mute an update on an album that no longer exists — or, after a
+    re-seed, on a different one."""
+    activity_store.ignore_update("rel-1", release_version="v1")
+
+    activity_store.clear()
+
+    assert activity_store.ignored_updates() == {}
+
+
+def test_migrates_a_v7_database_in_place_keeping_its_rows(tmp_path):
+    """7 -> 8 (gardener_ignores): gains the table in place and keeps existing
+    rows. Nothing is back-filled — nobody could have ignored an update before
+    there was a button for it, and a library upgrading into this simply has
+    none until someone presses one."""
+    db = tmp_path / "v7.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for step in activity_store._MIGRATIONS[:7]:
+        for stmt in step:
+            conn.execute(stmt)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message, album_id) VALUES (?, ?, ?, ?, ?)",
+        ("2026-07-01T00:00:00+00:00", "info", "activity", "written by v7", "rel-old"),
+    )
+    conn.execute(
+        "INSERT INTO mb_release_cache (mbid, inc, fetched_at, payload) VALUES (?, ?, ?, ?)",
+        ("rel-old", "media", "2026-07-01T00:00:00+00:00", '{"id": "rel-old"}'),
+    )
+    conn.execute("PRAGMA user_version = 7")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    events = activity_store.recent()
+    assert [e.message for e in events] == ["written by v7"]  # pre-existing data intact
+    assert activity_store.cached_release("rel-old", "media") is not None
+    assert activity_store.ignored_updates() == {}

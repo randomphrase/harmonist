@@ -229,6 +229,56 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
             PRIMARY KEY (mbid, inc)
         )""",
     ),
+    # 7 -> 8: updates the user has asked not to be shown again yet (#271).
+    #
+    # A BOOKMARK, NOT A DECISION, and the distinction is the whole design. An
+    # earlier draft of this table stored a *dismissal* — the user rejecting a
+    # particular set of changes — and it could not be keyed. Key a rejection to
+    # the release version and any unrelated later edit invalidates it, so what
+    # was rejected comes back attached to a change nobody has seen; key it to
+    # the fields instead and it stops being a decision and becomes a local
+    # override list ("never apply MusicBrainz's album title here"), which is a
+    # permanent per-album exception to the canonical source this whole project
+    # is built on (`docs/design.md` §1). There is no third key, because a
+    # divergence is not a thing — it is a diff between two moving sides, and
+    # diffs merge and split.
+    #
+    # Ignoring is a different object and keys cleanly. It says *mute this album
+    # until MusicBrainz moves*, because the answer to disliking what MusicBrainz
+    # says is to go and edit MusicBrainz. So the version below is what the user
+    # is waiting to see change, and an unrelated edit lapsing the ignore is the
+    # FEATURE: something landed upstream, which may well be their own edit, and
+    # nothing here can tell whether it was.
+    #
+    # HERE RATHER THAN IN THE SIDECAR. Ignoring fifty albums would otherwise be
+    # fifty writes into the user's music directory, each an audited
+    # `sidecar.update`, each invalidating a scan-cache entry and kicking the file
+    # watcher's settle timer; and every new sidecar field needs a merge rule for
+    # multi-directory albums (#197). None of this conflicts with review-gate item
+    # 3: the album's STATE stays derived, and what is stored is a decision only
+    # the user could have made.
+    #
+    # NOTHING ELSE IS STORED — not the diff, not its significance, not a label.
+    # All of those are recomputed from the cached release (migration 6->7) plus
+    # the files on disk, which costs no MusicBrainz request and cannot drift out
+    # of step with what the album page shows.
+    #
+    # Keyed by `Album.id`, which for a linked album IS its release MBID
+    # (`scanner._album_id`), so two copies of one release (#243) share a row
+    # exactly as they already share a history and a URL.
+    #
+    # A row whose version MusicBrainz has moved past is inert rather than
+    # deleted: it suppresses nothing, and ignoring again REPLACEs it. Collecting
+    # them would be a scan of the table to save a few dozen bytes.
+    #
+    # No index. One row per ignored album — tens, not thousands.
+    (
+        """CREATE TABLE gardener_ignores (
+            album_id        TEXT PRIMARY KEY,
+            release_version TEXT NOT NULL,
+            ignored_at      TEXT NOT NULL
+        )""",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -1021,11 +1071,121 @@ def release_fetch_times(inc: str) -> dict[str, datetime]:
 #     row to drop;
 #   * forcing a re-read — that is `max_age=FRESH`, which REPLACEs the row rather
 #     than leaving a gap, so the album page's "read again" never needs a delete;
-#   * eviction — which #271 argues directly against: once findings exist, a row
-#     is the evidence its finding was raised against, and dropping it leaves a
-#     review whose basis can no longer be shown.
+#   * eviction — which #271 argues directly against: a row is what the review
+#     list recomputes an album's pending changes from, and what an ignore's
+#     version is compared against, so dropping one silently un-ignores the album
+#     and empties its review of any explanation.
 #
 # `clear()` below is the whole of the deletion surface, and it is a teardown.
+
+
+@dataclass(frozen=True)
+class IgnoredUpdate:
+    """An album the user has asked not to be shown an update for yet (#271).
+
+    Three fields and no verdict, because ignoring is a bookmark rather than a
+    judgement: it says *stop showing me this until MusicBrainz moves*, and the
+    version is what "moves" is measured against. Everything about the change
+    itself is recomputed when someone looks.
+    """
+
+    album_id: str
+    #: The version of the release payload that was on offer when they ignored
+    #: it — `gardener.release_version`. The ignore lapses the moment the cached
+    #: payload stops matching this, which is how an upstream edit gets noticed.
+    release_version: str
+    ignored_at: datetime
+
+
+def ignore_update(album_id: str, *, release_version: str) -> None:
+    """Stop showing `album_id`'s update until MusicBrainz moves past this version.
+
+    REPLACE rather than INSERT, because an album is ignored at one version at a
+    time: ignoring again after an upstream edit supersedes the earlier bookmark
+    rather than queueing behind it.
+
+    Best-effort like every write here. The consequence of losing one is bounded
+    and self-correcting — the album keeps appearing in the review list, which is
+    the direction that annoys rather than the direction that hides something —
+    but it is still loud, because a user pressing Ignore and watching the album
+    stay put has no way to find out why.
+    """
+    try:
+        conn = _ensure()
+        with _LOCK:
+            conn.execute(
+                "INSERT OR REPLACE INTO gardener_ignores "
+                "(album_id, release_version, ignored_at) VALUES (?, ?, ?)",
+                (album_id, release_version, datetime.now(UTC).isoformat()),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        log.exception(
+            "activity_store ignore_update(%s) failed — the album will keep being listed",
+            album_id,
+            extra=_QUIET_MIRROR,
+        )
+
+
+def unignore_update(album_id: str) -> bool:
+    """Stop ignoring `album_id`'s update. True if it was being ignored.
+
+    The undo half, and also what a re-tag uses: once the files carry what
+    MusicBrainz says there is nothing left to be waiting for, and a row left
+    behind would mute the NEXT divergence if MusicBrainz happened not to have
+    moved in between.
+
+    Returns False on a store failure too, so a caller never reports an undo it
+    cannot vouch for.
+    """
+    try:
+        conn = _ensure()
+        with _LOCK:
+            cur = conn.execute("DELETE FROM gardener_ignores WHERE album_id = ?", (album_id,))
+            conn.commit()
+            return cur.rowcount > 0
+    except sqlite3.Error:
+        log.exception("activity_store unignore_update(%s) failed", album_id, extra=_QUIET_MIRROR)
+        return False
+
+
+def ignored_updates() -> dict[str, IgnoredUpdate]:
+    """Every ignored album, keyed by album id.
+
+    A dict because the caller is joining it to the live library rather than
+    iterating it in order: the review list has the albums and needs to know
+    which of them to leave out.
+
+    RAISES `StoreUnavailableError` on failure rather than returning `{}`. An
+    empty dict here does not hide anything — it would show MORE than it should,
+    listing albums the user has already asked to be left alone — but it says
+    "nothing is ignored" as a fact, which is the confident lie #104 is about, and
+    the surface can say so instead.
+    """
+    try:
+        conn = _ensure()
+        with _LOCK:
+            rows = conn.execute(
+                "SELECT album_id, release_version, ignored_at FROM gardener_ignores"
+            ).fetchall()
+    except sqlite3.Error as exc:
+        log.exception("activity_store ignored_updates() failed", extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read ignored updates") from exc
+    out: dict[str, IgnoredUpdate] = {}
+    for album_id, version, stamp in rows:
+        try:
+            ignored_at = datetime.fromisoformat(stamp)
+        except (TypeError, ValueError):
+            # An unreadable timestamp: the row still says WHICH version was
+            # ignored, which is the load-bearing half, so it is kept with the
+            # epoch rather than dropped — dropping it would silently un-ignore
+            # an album the user asked to be left alone.
+            log.warning("gardener_ignores row %s has an unreadable stamp", album_id)
+            ignored_at = datetime.fromtimestamp(0, UTC)
+        out[album_id] = IgnoredUpdate(
+            album_id=album_id, release_version=version, ignored_at=ignored_at
+        )
+    return out
 
 
 def clear() -> None:
@@ -1053,6 +1213,11 @@ def clear() -> None:
     would be served a payload fetched for a different catalogue, and be right to
     trust it. Re-fetching costs a request the tests never make anyway, since
     they patch the fetch.
+
+    Ignored updates (#271) go too, and for the sharper version of that reason:
+    they name albums by id in the library being torn down, so one left behind
+    would mute an update on an album that no longer exists — or, after a
+    re-seed, on a different one.
     """
     try:
         conn = _ensure()
@@ -1061,6 +1226,7 @@ def clear() -> None:
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM album_aliases")
             conn.execute("DELETE FROM mb_release_cache")
+            conn.execute("DELETE FROM gardener_ignores")
             conn.commit()
     except sqlite3.Error:
         # Swallowed rather than raised: the callers are teardown paths (test

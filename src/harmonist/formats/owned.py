@@ -266,6 +266,42 @@ SIGNIFICANCE: dict[str, Significance] = {
     ARTWORK: Significance.COVER_ART,
 }
 
+#: The tag levels, least far-reaching first — the ordering `Significance`'s
+#: docstring claims, written down so it can be used and checked rather than
+#: merely asserted in prose.
+#:
+#: What needs it: a diff usually contains changes of several kinds at once, and a
+#: finding (#271) records ONE verdict for the album. The verdict is the furthest-
+#: reaching change in the diff, because that is what decides how much of the
+#: album is in question — an ISRC arriving beside a retitle does not make the
+#: retitle an enrichment.
+#:
+#: COVER_ART IS ABSENT, and its absence is the enum's own position: cover art is
+#: "its own level rather than a rank among the others", so it has no place in a
+#: line the others sit on. `ranked` refuses it rather than guessing where it
+#: would go. Nothing is lost today — the gardener plans with `cover_path=None`,
+#: so artwork cannot appear in a diff it classifies (#269 owns art, on its own
+#: cadence) — and when something does classify artwork it will need a verdict of
+#: its own, not a rank pretending to compare with a retitle.
+ORDER: tuple[Significance, ...] = (
+    Significance.COSMETIC,
+    Significance.ENRICHMENT,
+    Significance.STRUCTURE,
+    Significance.IDENTITY,
+)
+
+
+def ranked(significance: Significance) -> int:
+    """How far `significance` reaches, as a sortable number.
+
+    Raises `ValueError` for COVER_ART — see `ORDER`. A caller that can produce
+    one has to say what it means before it can be compared, and the failure to
+    do that must not be silently resolved to "least significant", which is where
+    a `.get(..., 0)` would put it.
+    """
+    return ORDER.index(significance)
+
+
 #: Levels whose changes may be applied without asking anyone.
 #:
 #: **Empty, deliberately.** Every change goes to review, whatever its

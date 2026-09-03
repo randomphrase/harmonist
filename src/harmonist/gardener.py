@@ -38,28 +38,35 @@ That payload comparison still earns its keep as #270's early exit — it decides
 whether recomputing is worth the file reads — but it decides *whether to look*,
 not what the answer is.
 
-## Nothing here is persisted
+## Nothing computed here is persisted
 
-No sidecar field, no table, no lifecycle. The flag is a hint that can be rebuilt
-from durable state at any time (`warm_from_cache`), so there is nothing to
-migrate, nothing to dismiss, and nothing for review-gate item 3 to object to.
-The album's state stays derived.
+No sidecar field, no table. The flag, its significance and the version they were
+reached against are all hints that can be rebuilt from durable state at any time
+(`warm_from_cache`), so there is nothing to migrate and nothing for review-gate
+item 3 to object to. The album's state stays derived.
 
-A finding that a human has to *act* on is a different object with a different
-lifetime, and it lives in `activity.db` (#271). This is only the flag.
+The one thing that IS stored is the one thing nothing can recompute: that the
+user pressed **Ignore**, and which version of the release they pressed it
+against (#271). That is a decision, not a derivation — and deliberately a
+*bookmark* rather than a rejection, because MusicBrainz is canonical
+(`docs/design.md` §1): the answer to disliking what it says is to go and edit it,
+and an ignore exists to keep quiet until that lands. `is_ignored` is the whole
+of the reading side; the flag itself never consults it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from . import album_files, formats, mb_cache, mb_lookup, tagger
+from . import activity_store, album_files, formats, mb_cache, mb_lookup, tagger
 from .formats import owned
 from .models import Album, AlbumState, Release
 
@@ -137,25 +144,98 @@ def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
     )
 
 
-def refresh_flag(album: Album, release: Release) -> tagger.AlbumPlan | None:
-    """Set `album.update_available` from `release`; return the plan behind it.
+@dataclass(frozen=True)
+class Assessment:
+    """What one look at an album against a release found.
+
+    Two fields, because a caller acting on the answer has to tell three
+    situations apart and neither field can do it alone:
+
+    * `plan` set, `verdict` None — the files already carry what MusicBrainz
+      says. Positively nothing outstanding, which is the only answer that may
+      be used to retire a finding (#271).
+    * `plan` set, `verdict` a level — an update is outstanding, and the level
+      says how far it reaches.
+    * `plan` None — no plan could be built. `verdict` then separates the two
+      ways that happens: STRUCTURE when the release no longer fits the files (a
+      real finding, and one of the loudest things MusicBrainz can do), None when
+      the files could not be READ, which is not an answer at all and must not be
+      mistaken for either of the others.
+    """
+
+    plan: tagger.AlbumPlan | None
+    verdict: owned.Significance | None
+
+
+def _countable(plan: tagger.AlbumPlan) -> Iterator[tuple[str, Any, Any]]:
+    """The entries of `plan` that count as an update, as `(field, before, after)`.
+
+    Not every entry does, since #337. A change that only ADDS a credit list
+    holding one name is one to make while tagging anyway and not a reason to
+    tag: `album_artist` beside it already says the same thing, and a player
+    without the list falls back to the phrase. `albumartists` is new in Picard
+    too, so no existing library carries it — left counted, one field put every
+    album in a real library into the Inbox.
+
+    Filtered HERE rather than in `owned.diff`, and that is the whole of the
+    design: `plan.changes` is also what the activity record and the undo are
+    built from, so a re-tag that fills the tag in must still say that it did.
+    The album page keeps showing it as a pending change for the same reason —
+    the page says what a re-tag would do, this says whether you need one.
+
+    One definition for the flag and the verdict both, so an album cannot be
+    flagged for a change no finding can be raised about, or raised about a
+    change the Library never showed.
+    """
+    for changes in plan.changes.values():
+        for field, (before, after) in changes.items():
+            if not owned.is_opportunistic(field, before, after):
+                yield field, before, after
+
+
+def verdict_for(plan: tagger.AlbumPlan) -> owned.Significance | None:
+    """How far the outstanding change in `plan` reaches, or None if none does.
+
+    The **furthest-reaching** entry wins (`owned.ORDER`), because that is what
+    decides how much of the album is in question: an ISRC arriving beside a
+    retitle does not make the retitle an enrichment.
+
+    A `KeyError` from an unclassified field and a `ValueError` from artwork both
+    propagate, and neither is defended against here. Artwork cannot reach this:
+    `plan_for` passes `cover_path=None`, so `_changes_for` records no `ARTWORK`
+    entry (#269 owns cover art, on its own cadence and its own budget). If one
+    ever did arrive it would need a verdict of its own rather than a rank
+    pretending to compare with a retitle — so the loud failure is the correct
+    outcome, and the pass's boundary catch turns it into one.
+    """
+    levels = [
+        tagger.significance_of(field, before, after) for field, before, after in _countable(plan)
+    ]
+    return max(levels, key=owned.ranked) if levels else None
+
+
+def refresh_flag(album: Album, release: Release) -> Assessment:
+    """Set `album`'s update fields from `release`; return what was found.
+
+    Three fields move together and are meant to be read together:
+    `update_available` (is there anything to take), `update_significance` (how
+    far it reaches), and `mb_version` (which payload both of those are true of).
+    Setting them apart is how the Library would come to show a verdict from one
+    release beside a version from another.
 
     The tolerant wrapper every caller uses. A file that cannot be read leaves
-    the flag **as it was** rather than clearing it: the album page's comparison
+    them **as they were** rather than clearing them: the album page's comparison
     and the warm-up both run against libraries on network mounts, and a blinking
     mount must not quietly empty the filter. Under-reporting is the direction
     this feature fails in by design (see `Album.update_available`).
 
-    **A None is not "nothing to take".** It means no plan could be built — the
-    files could not be read, or the release no longer fits them — and in the
-    second of those the flag is set to True. Read the verdict off
-    `album.update_available`; the return value is only for callers that want to
-    *show* the difference, and there is nothing to show in either case. (The
-    structural case is not left unexplained: the album page reports it through
-    `_shape_mismatch` and `absent_media`, which say far more about it than a
-    field diff could.)
+    **A missing plan is not "nothing to take"**, and the two ways of missing one
+    are not the same either — see `Assessment`, which is the whole reason this
+    returns one rather than the plan alone. (The structural case is not left
+    unexplained on screen: the album page reports it through `_shape_mismatch`
+    and `absent_media`, which say far more about it than a field diff could.)
 
-    Mutating the Album in place is what makes the flag visible to the Library:
+    Mutating the Album in place is what makes this visible to the Library:
     `ScanRunner.albums()` hands out the live snapshot, so this is the same
     object the grid will render.
     """
@@ -163,32 +243,21 @@ def refresh_flag(album: Album, release: Release) -> tagger.AlbumPlan | None:
         plan = plan_for(album, release)
     except tagger.TagMismatchError:
         album.update_available = True
-        return None
+        album.update_significance = owned.Significance.STRUCTURE
+        album.mb_version = release_version(release)
+        return Assessment(plan=None, verdict=owned.Significance.STRUCTURE)
     except formats.READ_ERRORS:
         # Loud, per the unattended rule: at 3am the log is the only channel.
         # ERROR rather than WARNING — nothing recovered, we simply cannot say
         # whether this album has an update, and it will keep reporting whatever
         # it last said until something can read it.
         log.exception("could not tell whether %s has a tag update available", album.path)
-        return None
-    # Not `bool(plan.changes)` since #337. A change that only ADDS a credit list
-    # holding one name is one to make while tagging anyway and not a reason to
-    # tag: `album_artist` beside it already says the same thing, and a player
-    # without the list falls back to the phrase. `albumartists` is new in Picard
-    # too, so no existing library carries it — left counted, one field put every
-    # album in a real library into the Inbox.
-    #
-    # Filtered HERE rather than in `owned.diff`, and that is the whole of the
-    # design: `plan.changes` is also what the activity record and the undo are
-    # built from, so a re-tag that fills the tag in must still say that it did.
-    # The album page keeps showing it as a pending change for the same reason —
-    # the page says what a re-tag would do, this flag says whether you need one.
-    album.update_available = any(
-        not owned.is_opportunistic(field, before, after)
-        for changes in plan.changes.values()
-        for field, (before, after) in changes.items()
-    )
-    return plan
+        return Assessment(plan=None, verdict=None)
+    verdict = verdict_for(plan)
+    album.update_available = verdict is not None
+    album.update_significance = verdict
+    album.mb_version = release_version(release)
+    return Assessment(plan=plan, verdict=verdict)
 
 
 def warm_from_cache(albums: Sequence[Album], *, duty: float = WARM_DUTY) -> int:
@@ -444,13 +513,18 @@ def sweep(
     recently, and update their flags from what comes back.
 
     The scheduled half of #32, and **detect-only**: it fetches, compares and
-    sets `album.update_available`, and writes nothing to anybody's files. That
-    is not a stage of a plan, it is what the classifier currently permits —
-    `owned.AUTO_APPLY` is empty, so every change needs a person, and until #271
-    gives a finding somewhere to live there is nothing for this to hand one to.
-    Two things fall out of that: the pass cannot damage a library, and its whole
-    value is that the Library's Update available filter stops depending on
-    somebody having happened to open the album (#287, #293).
+    sets `album.update_available` and `album.update_significance`, and writes
+    nothing to anybody's files. That is not a stage of a plan, it is what the
+    classifier currently permits — `owned.AUTO_APPLY` is empty, so every change
+    needs a person. Two things fall out of that: the pass cannot damage a
+    library, and its whole value is that the Library's Update available filter
+    stops depending on somebody having happened to open the album (#287, #293).
+
+    **It keeps asking about an album the user has ignored** (#271), which is not
+    an oversight. Ignoring says *mute this until MusicBrainz moves*, so asking
+    is the only thing that can ever un-mute it. Nothing about an ignore is read
+    here: the flag stays a plain fact about the files against MusicBrainz, and
+    the surfaces subtract the ignored albums when they draw themselves.
 
     **The early exit is the design.** The stored payload is read BEFORE the
     fetch, and an unchanged one ends the album there — no file reads, no plan,
@@ -596,6 +670,11 @@ def _due(
     in two folders (#243), or one album split across directories that resolved
     apart. One fetch answers for all of them, and asking twice would spend a
     second rate-limited request on a payload we already have in hand.
+
+    An album whose update the user has ignored (#271) is still due, and that is
+    the point of ignoring rather than dismissing: what they are waiting for is
+    MusicBrainz to move, and asking is the only way anyone finds out that it
+    has.
     """
     times = mb_cache.fetch_times()
     by_release: dict[str, list[Album]] = {}
@@ -616,6 +695,27 @@ def _due(
         due.append((last or _NEVER, mbid, group))
     due.sort(key=lambda item: item[0])
     return [(mbid, group) for _, mbid, group in due]
+
+
+def is_ignored(album: Album, ignored: Mapping[str, activity_store.IgnoredUpdate]) -> bool:
+    """Whether the user's Ignore for `album` still holds (#271).
+
+    It holds exactly while MusicBrainz has not moved: the stored version is what
+    was on offer when they pressed Ignore, and `album.mb_version` is what is on
+    offer now. An edit upstream makes those differ and the album comes back —
+    which is the whole point, because the reason to ignore an update is that you
+    are off to go and fix the release, and this is how you find out that
+    something landed.
+
+    Compared against the in-memory version rather than re-reading and re-hashing
+    the cached payload, so a Library grid of two thousand tiles costs two
+    thousand string compares rather than two thousand database reads.
+
+    An album with no `mb_version` — never looked at, or looked at and unreadable
+    — is never ignored. It is not flagged either, so there is nothing to mute.
+    """
+    entry = ignored.get(album.id)
+    return entry is not None and entry.release_version == album.mb_version
 
 
 def _last_look(mbid: str, times: dict[str, datetime]) -> datetime | None:
@@ -642,7 +742,7 @@ def _same_release(before: Release, after: Release) -> bool:
     silently skips an album that might have an update outstanding.
     """
     try:
-        return json.dumps(before, sort_keys=True) == json.dumps(after, sort_keys=True)
+        return _canonical(before) == _canonical(after)
     except (TypeError, ValueError):
         log.warning(
             "update check: could not compare release payloads; reading the files instead",
@@ -650,3 +750,48 @@ def _same_release(before: Release, after: Release) -> bool:
             extra={"_diagnostic": True},
         )
         return False
+
+
+def _canonical(release: Release) -> str:
+    """`release` as the exact string `activity_store.store_release` would write.
+
+    `sort_keys=True` is what makes a stored payload compare equal to the fresh
+    fetch it came from, so it is borrowed from the store rather than chosen
+    here. Raises `TypeError` / `ValueError` on a payload that will not
+    serialise; both callers below decide for themselves what that means.
+    """
+    return json.dumps(release, sort_keys=True)
+
+
+def release_version(release: Release) -> str | None:
+    """A short, stable name for exactly this version of a release payload.
+
+    What a finding is judged against (#271), and the whole of how suppression
+    stays honest: a dismissal remembers the version the user declined, so it
+    lapses precisely when MusicBrainz moves the release and not before, and an
+    open finding whose cached payload no longer matches its version is
+    detectably stale rather than silently describing a change nobody is looking
+    at any more.
+
+    A content hash rather than anything MusicBrainz supplies, because it supplies
+    nothing that would do: a release has no version counter, and its edit history
+    is a separate request per release — the one thing this feature cannot spend.
+
+    Truncated to 16 hex characters. This names one release's own payloads across
+    a handful of versions, not a global namespace, so 64 bits is far past enough
+    and the untruncated digest would only make the row harder to read in a
+    `sqlite3` shell.
+
+    None when the payload will not serialise, which means it cannot be named —
+    and a finding that cannot say what it was judged against is worse than no
+    finding, since it could never be retired or re-raised correctly.
+    """
+    try:
+        return hashlib.sha256(_canonical(release).encode()).hexdigest()[:16]
+    except (TypeError, ValueError):
+        log.warning(
+            "update check: could not name this version of a release payload",
+            exc_info=True,
+            extra={"_diagnostic": True},
+        )
+        return None

@@ -4049,7 +4049,7 @@ def _register_routes(app: FastAPI) -> None:
         # Costs one read per file on top of the comparison, which is affordable
         # on a page the user asked for and is exactly why the Library's own
         # render cannot do this for every tile.
-        plan = gardener.refresh_flag(album, release)
+        plan = gardener.refresh_flag(album, release).plan
         ctx = _ctx(
             request,
             album=album,
