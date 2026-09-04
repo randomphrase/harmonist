@@ -322,9 +322,14 @@
 
    The caption claims nothing about MusicBrainz. Agreement is carried visually
    everywhere else on this page — a value that differs gets a hexagon and a
-   purple line — and there is neither here. Saying it in words as well was also
-   what forced the sentence to have two forms, since the disk-only view (#228)
-   compared nothing and could claim nothing. #}
+   purple line — and a row that agrees has neither. Saying it in words as well
+   was also what forced the sentence to have two forms, since the disk-only view
+   (#228) compared nothing and could claim nothing.
+
+   That reasoning is only sound while a row that DIFFERS gets the hexagon too,
+   which is why #373 gave the branches below one: for a release they carried
+   colour and no mark, and a caption reading "the same on every track" over an
+   unmarked change is the page telling the reader the opposite of the finding. #}
 <div class="track-foot">
     <span class="track-foot__caption">The same on every track</span>
     <dl class="tag-fields tag-fields--paired">
@@ -339,20 +344,38 @@
                own caption says.
 
                The change is drawn the way the rest of the page draws one: the
-               disk's reading struck through, an arrow, and MusicBrainz's in
-               purple. Nothing here claims WHICH track, because there is no such
-               question — a tag whose tracks disagreed would have earned a column
-               under rule 2 and never reached this band. #}
+               disk's reading struck through, an arrow, and MusicBrainz's marked
+               as MusicBrainz's. Nothing here claims WHICH track, because there
+               is no such question — a tag whose tracks disagreed on either side
+               would have earned a column under rule 2 and never reached this
+               band. #}
             {% if f.value %}<span class="track-foot__was">{{ f.value }}</span>
             <span class="track-foot__arrow" aria-label="becomes">→</span>{% endif %}
             {% if f.mb is none %}
             {# MusicBrainz holds nothing, and a re-tag removes what the files
                carry. Said as a removal rather than as an empty value, because
                "not set" below means the opposite — nobody has one — and the two
-               must not read alike. #}
-            <span class="track-foot__absent">removed</span>
+               must not read alike.
+
+               Its own class, because for one release of #360 they DID (#373):
+               both branches printed `track-foot__absent`, so "a re-tag drops
+               this" and "nobody has one, and that is agreement" were the same
+               muted italic three lines apart in the same <dl>. #}
+            <span class="track-foot__removed"
+                  title="A re-tag would remove this tag from every track">removed</span>
             {% else %}
-            <span class="track-foot__now">{% with runs = none, value = f.mb, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
+            {# Through `_mb_value`, the partial that carries the hexagon, rather
+               than colouring the value purple here (#373). Purple alone said
+               "this is MusicBrainz's reading" to everyone who can see it and
+               nothing at all to anyone who can't, which `_mb_value` calls an
+               accessibility failure rather than a style choice — and the same
+               partial's `why` separates the two facts the band can be stating:
+               MusicBrainz has this and no file does, or MusicBrainz disagrees
+               with what they carry. #}
+            {% with runs = none, value = f.mb, entity = f.entity, credit = f.credit,
+                    why = "MusicBrainz's value" if f.value else "Not in your files — this is MusicBrainz's value" %}
+            {% include 'partials/_mb_value.html' %}
+            {% endwith %}
             {% endif %}
             {% elif f.value %}
             {# Same renderer as a cell, so an id here is the same named link it

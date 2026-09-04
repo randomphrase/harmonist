@@ -659,7 +659,18 @@ button[disabled],
   text-decoration-color: color-mix(in srgb, var(--color-muted) 55%, transparent);
 }
 .track-foot__arrow { color: var(--color-muted); font-size: .7rem; padding: 0 .15rem; }
-.track-foot__now { color: var(--color-mb-purple); font-weight: 600; }
+/* MusicBrainz's reading, drawn by `_mb_value` since #373 so it carries the
+   hexagon as well as the colour — `.tag-fields__mb` brings the purple, and this
+   is the weight the band's own `__now` used to add. A class of its own here
+   would have been a second way to say "MusicBrainz", which is exactly how one
+   of them ended up without a mark. */
+.track-foot .tag-fields__mb { font-weight: 600; }
+/* "A re-tag drops this" — a CHANGE, and it must not wear `__absent`'s muted
+   italic, which on this same <dl> means "nobody has one, and that is agreement"
+   (#373). The page's own ink rather than purple: purple means a MusicBrainz
+   reading, and a removal has none to print. The word and its tooltip are what
+   carry it to a reader who sees no colour at all. */
+.track-foot__removed { font-weight: 600; }
 
 .track-diff__absent,
 .track-diff__unreadable { font-style: italic; }

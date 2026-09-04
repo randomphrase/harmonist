@@ -916,6 +916,65 @@ def test_a_disc_that_differs_makes_the_note_a_finding():
     assert not advisory(_matching_album(), tracks)
 
 
+def test_a_change_stated_under_the_tracklist_makes_the_note_a_finding():
+    """#373. `collapsed` was a clause `summary` and `clean` were never told about.
+
+    MusicBrainz holds an ISRC no file carries, and holds the same one on every
+    track — so there is no column to earn, and the band under the tracklist
+    states it as the pending change it is (#360). Every track still matches on
+    everything the table shows, so `clean` said the tracklist was clean and the
+    headline printed "The track matches" directly above a band saying a re-tag
+    would change it.
+
+    Worse where the tags match as well: both halves clean makes the note
+    advisory, and an advisory note draws NO update section — no significance
+    chip and no Re-tag button — on an album the Library is flagging as having an
+    update available.
+    """
+    tracks = tracklist(
+        [_file(1, "Nightcall")],
+        [_mb_track(1, "Nightcall", isrcs=["FRZ109800001"])],
+        [Medium(1, None, "CD")],
+    )
+
+    assert next(c for c in tracks.collapsed if c.label == "ISRC").differs
+    assert tracks.summary == "ISRC differs on every track"
+    assert not tracks.clean
+    assert not advisory(_matching_album(), tracks)
+
+
+def test_the_tracks_clause_names_every_tag_the_band_states_a_change_in():
+    """Named rather than counted, for the reason `identifier_summary` is (#112):
+    the reader has to know which band row to go and look at, and "2 tags differ
+    on every track" over a band of eight rows does not tell them.
+
+    The "All N tracks match" clause goes when one of these is present. It is not
+    a second finding beside the count — it is a change to every track of the
+    album, and printing both would be the headline arguing with itself.
+    """
+    tracks = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look")],
+        [
+            _mb_track(1, "Nightcall", isrcs=["FRZ109800001"], artist_sort="Kavinsky, Mr"),
+            _mb_track(2, "Odd Look", isrcs=["FRZ109800001"], artist_sort="Kavinsky, Mr"),
+        ],
+        [Medium(1, None, "CD")],
+    )
+
+    assert tracks.summary == "Artist sort and ISRC differ on every track"
+
+
+def test_a_band_row_that_agrees_leaves_the_tracks_clause_alone():
+    """The other side of it, and the one that would break loudly: nearly every
+    album has a band, and almost none of it is a change. A row stating a value
+    both sides agree on is what #112 put the band there for."""
+    tracks = _matching_tracks()
+
+    assert [c.label for c in tracks.collapsed] and not any(c.differs for c in tracks.collapsed)
+    assert tracks.summary == "The track matches"
+    assert tracks.clean and advisory(_matching_album(), tracks)
+
+
 def test_a_disk_only_view_is_not_advisory():
     """A note reading "No comparison" is not one saying nothing is wrong —
     MusicBrainz was not reached, so every field lands in ONLY_DISK and nothing

@@ -627,6 +627,59 @@ def test_a_uniform_per_track_change_shows_both_sides_under_the_tracklist(engaged
     assert "Not shown anywhere else on this page" not in body, "not the box's job any more"
 
 
+def test_a_change_the_band_states_is_marked_as_musicbrainzs(engaged, monkeypatch):
+    """#373. The band drew a pending change in purple and nothing else.
+
+    Everywhere else on this page a MusicBrainz reading carries the hexagon, for
+    the reason `_mb_value` states in full: colour alone is an accessibility
+    failure rather than a style choice. The band rendered through `_field_value`
+    instead — the partial WITHOUT the mark — so the one row on the page stating a
+    change with no column behind it was the one row not marked as MusicBrainz's.
+
+    The hexagon's tooltip is the other half: "MusicBrainz has this and you don't"
+    and "MusicBrainz disagrees with you" are different facts, and this album is
+    the first of them — no file carries an ISRC at all.
+    """
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release(tracks=3), tracks=3)
+    filled_in = copy.deepcopy(_release(tracks=3))
+    for track in filled_in["medium-list"][0]["track-list"]:
+        track["recording"]["isrc-list"] = ["GBAYE0000123"]
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: filled_in)
+    client, runner = engage()
+
+    body = client.get(f"/library/{runner.albums()[0].id}/compare").text
+    band = body[body.index("track-foot") :]
+
+    assert "mb-mark" in band, "the hexagon the rest of the page gives a MusicBrainz value"
+    assert "Not in your files" in band, "and which of the two facts this row is"
+
+
+def test_a_tag_a_re_tag_would_drop_does_not_read_as_one_nobody_has(engaged, monkeypatch):
+    """#373's other rendering half, and the one that was a contradiction rather
+    than an omission.
+
+    Both branches of the band printed `track-foot__absent` — muted italic — so
+    "a re-tag drops this" and "nobody has one, and that is agreement" were the
+    same three lines apart in the same <dl>. This album shows both at once: the
+    files carry ISRCs MusicBrainz has since dropped, and neither side has a disc
+    subtitle.
+    """
+    cfg, engage = engaged
+    filled_in = copy.deepcopy(_release(tracks=2))
+    for track in filled_in["medium-list"][0]["track-list"]:
+        track["recording"]["isrc-list"] = ["GBAYE0000123"]
+    _tagged(cfg.paths.music_dir, filled_in, tracks=2)
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: _release(tracks=2))
+    client, runner = engage()
+
+    body = client.get(f"/library/{runner.albums()[0].id}/compare").text
+    band = body[body.index("track-foot") :]
+
+    assert 'class="track-foot__removed"' in band, "a re-tag would take this away"
+    assert 'class="track-foot__absent">not set' in band, "and this is agreement about nothing"
+
+
 def test_a_per_track_change_lands_on_its_own_row(engaged, monkeypatch):
     """#309's own complaint, end to end.
 

@@ -522,6 +522,17 @@ def _as_display(raw: object) -> str | None:
     return str(raw)
 
 
+def _and_list(labels: Sequence[str]) -> str:
+    """`["a"]` → "a", `["a", "b"]` → "a and b", `["a", "b", "c"]` → "a, b and c".
+
+    Both callers NAME the tags they are talking about rather than counting them,
+    for the reason #112 gives: a reader told "2 tags differ" under a band of
+    eight rows still has to go and find which two. Callers guard the empty case
+    themselves — there is no sentence to build without a label in it.
+    """
+    return labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} and {labels[-1]}"
+
+
 def _rows(fields: Sequence[Owned]) -> tuple[tuple[str, str, str | None, Kind], ...]:
     """`(label, disk key, mb attr, kind)` for each owned field, in the given order."""
     return tuple((LABELS[f], f.value, f.value, _KINDS[f]) for f in fields)
@@ -1205,8 +1216,7 @@ class TracklistComparison:
         labels = [c.label for c in self.identifier_columns]
         if not labels:
             return ""
-        named = labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} and {labels[-1]}"
-        return f"{named} {'differs' if len(labels) == 1 else 'differ'} here."
+        return f"{_and_list(labels)} {'differs' if len(labels) == 1 else 'differ'} here."
 
     # `collapsed_summary` lived here: "Artist sort, ISRC and 3 others are the
     # same on every track and match MusicBrainz", the label on a <details> that
@@ -1255,10 +1265,17 @@ class TracklistComparison:
         The other half of what decides whether the note is drawn as an advisory
         or as a finding. Deliberately enumerated against `summary`'s clauses —
         a differing track, one missing / unreadable / not in MusicBrainz, a
-        disc heading that differs, a disc absent from disk — because the two are
-        one statement in two registers, and a tint that disagrees with the
-        sentence beside it is worse than no tint at all. Add a clause there, add
-        it here; every clause it can emit has a test that would go red.
+        disc heading that differs, a disc absent from disk, a tag the band under
+        the table states a change in — because the two are one statement in two
+        registers, and a tint that disagrees with the sentence beside it is
+        worse than no tint at all. Add a clause there, add it here; every clause
+        it can emit has a test that would go red.
+
+        That last one was a clause added to neither (#373), and it cost more
+        than a contradiction: on an album whose ONLY difference is a collapsed
+        per-track field, both halves read clean, the note went advisory, and
+        `_album_update.html` drew no section at all — no chip, no **Re-tag from
+        MB** — while the Library listed the album under Update available.
 
         `not counted` is NOT clean: "No tracks to compare" is the disk-only view
         saying nothing was checked, which is not the same as nothing being wrong.
@@ -1272,6 +1289,8 @@ class TracklistComparison:
         # is why the count alone is enough here, and why the tests pin it.
         if any(t.differs for t in counted):
             return False
+        if any(f.differs for f in self.collapsed):
+            return False
         return not any(g.heading and g.heading.differs for g in self.discs)
 
     @property
@@ -1280,7 +1299,9 @@ class TracklistComparison:
 
         Missing, unreadable and extra tracks get their own clause rather than
         being folded into the count: "3 of 10 tracks differ" is true of an album
-        with a dead file, but it isn't what the user needs to be told.
+        with a dead file, but it isn't what the user needs to be told. So does a
+        tag the band under the table states a change in (#373) — the count only
+        speaks for what the ROWS show, and that band is the rest of the table.
 
         MusicBrainz is not named here, for the reason `AlbumComparison.summary`
         gives: since #328 this and the tags clause share one line under one
@@ -1304,11 +1325,24 @@ class TracklistComparison:
         clauses: list[str] = []
         total = len(counted)
         n = sum(1 for t in counted if t.differs)
-        if total and n == 0:
-            clauses.append(f"All {total} tracks match" if total > 1 else "The track matches")
-        elif total:
+        # A tag with no column, stated as a pending change by the band under the
+        # table (#360). Named, not counted, and NOT folded into the track count:
+        # it reaches every track, so "24 of 24 tracks differ" would point the
+        # reader at a table where every row is unmarked.
+        stated = [f.label for f in self.collapsed if f.differs]
+        if total and n:
             verb = "differs" if n == 1 else "differ"
             clauses.append(f"{n} of {total} tracks {verb}")
+        elif total and not stated:
+            # "All 24 tracks match" is not a second clause beside one of these,
+            # it is its contradiction (#373): a re-tag would change a tag on
+            # every one of them. The band's clause is the whole of what the
+            # tracks have to say, so this one stands down.
+            clauses.append(f"All {total} tracks match" if total > 1 else "The track matches")
+        if stated:
+            clauses.append(
+                f"{_and_list(stated)} {'differs' if len(stated) == 1 else 'differ'} on every track"
+            )
 
         # A disc whose DESCRIPTION differs (#320). Its own clause, because the
         # roll-up moved those three tags off the rows: without this the album

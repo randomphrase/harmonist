@@ -96,6 +96,16 @@ versions follow [semantic versioning](https://semver.org).
   MusicBrainz reads two ways across a release now gets a column, and that line
   only speaks for one both sides read a single way (#374).
 
+- **A change stated under the tracklist is counted, marked, and can be acted
+  on.** A tag that differs from MusicBrainz on every track is shown in the band
+  beneath the table, and three surfaces hadn't been told: the sentence above it
+  still read *"All 24 tracks match"*, the value carried colour but not the
+  hexagon that says whose reading it is, and *removed* was drawn in the same
+  muted italic as *not set* — the opposite fact, three lines away. Worst of all,
+  an album whose ONLY difference was such a tag showed no update section at all
+  — no **Re-tag from MB** — while the Library listed it under **Update
+  available** (#373).
+
 ## [1.13.0] - 2026-09-01
 
 ### Added
