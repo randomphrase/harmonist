@@ -27,7 +27,16 @@
              class="w-full md:w-44 md:flex-shrink-0 self-start aspect-square object-cover rounded border border-line bg-white"
              style="max-width: 11rem;">
 
-        <div class="flex-grow min-w-0 space-y-3">
+        {# A flex COLUMN, not a plain block, so the action row at its foot can
+           take whatever height the cover beside it leaves over (#370). The
+           panel's row stretches this column to the taller of the two, and
+           without this the slack fell below the last row — leaving the buttons
+           floating mid-panel with the artwork still going past on the left.
+
+           `space-y-3` survives the change: in Tailwind v4 it is
+           `margin-block-end` on `:not(:last-child)`, so it sets the gaps between
+           these children and never touches the last one's top margin. #}
+        <div class="flex-grow min-w-0 flex flex-col space-y-3">
             {# Badges left, dates right, on ONE row. Both are small reference
                detail, so they sit at the same scale and share a baseline —
                pairing the dates with the (much larger) title made them look
@@ -305,9 +314,17 @@
 
                No padding of its own: the column's `space-y-3` sets the gap above
                it and the flex row's `p-4` closes the panel below, which is also
-               why an album with no sidecar is padded exactly as it always was. #}
+               why an album with no sidecar is padded exactly as it always was.
+
+               `mt-auto` puts it on the column's floor (#370). It is the last
+               child of a flex column, so it absorbs whatever height the cover
+               beside it leaves over — which is the whole difference between a
+               row that closes the panel and one that floats in the middle of it
+               with the artwork still going past. It is a FLOOR, not a stretch:
+               `mt-auto` moves the row and leaves its height alone, so a panel
+               whose metadata already runs past the cover is unchanged. #}
             {% if album.sidecar %}
-            <div id="album-actions-{{ album.id }}" class="flex gap-2">
+            <div id="album-actions-{{ album.id }}" class="mt-auto flex gap-2">
         {# Re-tag from MB moved to the update section beneath this panel (#366).
            It is an answer to MusicBrainz, and this row is album management —
            Re-download and Forget. Keeping it here put the action several rows
