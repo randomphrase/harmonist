@@ -6,115 +6,83 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-04
+
 ### Added
 
-- **An album whose release MusicBrainz has merged away says so on its page.**
-  The note sits beside the MusicBrainz badge, links the release MusicBrainz now
-  serves in its place, and points at the re-tag that follows the merge — where
-  it used to be a row in a box headed "other tags a re-tag would change" (#361).
+- **An album whose release MusicBrainz has merged away now says so on its
+  page**, beside the MusicBrainz badge, with the surviving release linked and
+  the re-tag that follows the merge offered there (#361).
 
-- **An update you don't want can be ignored until MusicBrainz changes again.**
-  The album page now says what to do about an update other than take it: a link
-  to edit the release on MusicBrainz — where a correction belongs, and which
-  Harmonist picks up by itself — and **Ignore for now**, which takes the album
-  out of the **Update available** filter until MusicBrainz next moves the
-  release. It is a bookmark rather than a refusal: your edit landing is what
-  brings the album back. Nothing is written, the tile keeps its **Update** badge,
-  and **Stop ignoring** puts it back in the list at any time (#271).
+- **An update you don't want can be ignored until MusicBrainz changes the
+  release again.** Tick **Ignore until MusicBrainz changes** on the album's page
+  and it leaves the **Update available** filter without anything being written;
+  the page also links **Edit the release**, which is where a correction belongs
+  (#271).
 
-- **The album page names every country a release came out in.** MusicBrainz
-  collapses a release issued in several countries to the one country code the
-  tag can hold, so an album issued in Germany, the UK and the US read as though
-  MusicBrainz knew only of Germany. The Country row now lists them all beside
-  the tag, with each country's own release date (#329).
+- **The album page names every country a release came out in, each with its own
+  release date** — where it could only show the single country code the tag
+  holds (#329).
 
-- **Inbox cards link to their album's page, and that page can now answer them.**
-  Search or assign a release, accept a surrender, mark an album purchased
-  elsewhere — the same decisions the card offers, taken where the tags, the
-  tracklist and the history are (#150).
+- **Inbox cards link to their album's page, and that page can now take the same
+  decisions** — search or assign a release, accept a surrender, mark an album
+  purchased elsewhere (#150).
 
 ### Changed
 
-- **An album's update now has a section of its own, under the panel.** The
-  sentence saying what differs, the button that takes it, and the answers to it
-  were in three places inside the album panel; they are one block now, with a
-  chip saying how far the change reaches — *Enrichment* for a catalogue number
-  filled in, *Identity* for a release MusicBrainz has merged. Ignoring an update
-  is a checkbox rather than a pair of buttons, so the state is what you read
-  rather than the action (#366).
+- **An album's update now has a section of its own, under the panel**, holding
+  the sentence saying what differs, the button that takes it and the answers to
+  it — with a chip saying how far the change reaches, *Enrichment* or *Identity*
+  (#366).
 
 - **A tag that differs from MusicBrainz on every track is now shown with the
-  tracks.** It used to appear in a list under the album's Tags comparison,
-  headed *"Other tags a re-tag would change"* — a per-track fact stated away
-  from the tracks. It joins the band beneath the tracklist instead, showing its
-  current value and MusicBrainz's. That list now holds only what has nowhere
-  else to go, and says so (#360).
+  tracks**, in the band beneath the tracklist, with its current value and
+  MusicBrainz's (#360).
 
-- **An album with no MusicBrainz release is no longer offered a re-tag.** Its
-  page showed **Re-tag from MB** as the main action, which could only fail;
-  the way forward for those albums is the actions section below the panel
-  (#150).
+- **An album with no MusicBrainz release is no longer offered a re-tag** that
+  could only fail — the actions section below the panel is the way forward for
+  those albums (#150).
 
-- **An album now says when Harmonist last read it from MusicBrainz, beside its
-  other dates.** *Checked* joins Downloaded, Added and Tagged in the album panel,
-  and the button that forces a fresh read moved there with it (#355).
+- **An album now says when Harmonist last read it from MusicBrainz.**
+  **Checked** joins Downloaded, Added and Tagged in the album panel, and the
+  button that forces a fresh read sits beside it (#355).
 
-- **An album with nothing to fix says nothing at all.** The MusicBrainz note is
-  now drawn only when it has something to report; an album whose every tag and
-  track matches shows no band, and its **Checked** date says when that was
-  established (#352, #358).
+- **An album with nothing to fix says nothing at all** — no MusicBrainz band,
+  just a **Checked** date saying when that was established (#352, #358).
 
-- **Background update checks are gentler on MusicBrainz.** They now spread the
-  albums they have to look at evenly across a day instead of asking about a
-  hundred of them in a burst every hour (#349).
+- **Background update checks now spread their work evenly across the day**
+  rather than asking about a hundred albums in a burst every hour (#349).
 
 ### Fixed
 
-- **A track title that differs only in typography no longer reads as a retitle.**
-  A curly apostrophe where your files have a straight one, an em dash for a
-  hyphen, a full-width bracket, an accent stored differently — one such character
-  in one track used to put the whole album into the Inbox under **Identity**.
-  Those now rank as **Cosmetic** (#379).
+- **A track title that differs only in typography no longer reads as a
+  retitle** — a curly apostrophe where your files have a straight one now ranks
+  **Cosmetic** instead of putting the whole album into the Inbox under
+  **Identity** (#379).
 
-- **Re-tagging an album whose release was merged away now takes you to the
-  surviving release's page**, instead of leaving the address bar on the release
-  the album has just stopped naming (#375).
+- **Re-tagging an album whose release was merged away now leaves you on the
+  surviving release's page** (#375).
 
-- **A purchase a sync couldn't finish with is no longer lost for good.** The
-  sync remembered where it got to as "the newest purchase I saw", not "the
-  newest one I finished with" — so a pre-order Bandcamp wasn't serving yet, or
-  an album deferred by the per-sync download limit, dropped below that mark and
-  was never looked at again, even once released. The mark now stops short of
-  anything still owed, and the sync says so when it finishes: *"1 pre-order not
-  released yet — each sync retries them"* (#351).
+- **A purchase a sync couldn't finish with is retried on the next sync instead
+  of being lost for good** — a pre-order Bandcamp wasn't serving yet, or an
+  album deferred by the per-sync download limit. The sync now says so when it
+  finishes: *"1 pre-order not released yet — each sync retries them"* (#351).
 
-- **A release country Picard chose is no longer reported as out of date.**
-  Picard writes whichever of the release's countries your
-  `preferred_release_countries` setting names, which is rarely MusicBrainz's
-  first — so those albums showed a difference on the album page and sat
-  permanently in the **Update available** filter, and a re-tag overwrote your
-  setting. Any country the release actually names now counts as correct (#346).
+- **A release country your `preferred_release_countries` setting chose is no
+  longer reported as out of date.** Any country the release actually names now
+  counts as correct, so those albums leave the **Update available** filter
+  (#346).
 
 - **Clearing a MusicBrainz match, or unlinking a Bandcamp purchase, writes one
-  Activity entry instead of two** — the second was unlinked from the album and
-  repeated its name in the message (#342).
+  Activity entry instead of two** (#342).
 
-- **A tag MusicBrainz holds on only some tracks is shown on the tracks that have
-  it.** An ISRC MusicBrainz had on one track of twenty-four earned no column, so
-  it fell to the line under the tracklist that speaks for tags every track agrees
-  on — which then reported the addition as a removal from all of them. A tag
-  MusicBrainz reads two ways across a release now gets a column, and that line
-  only speaks for one both sides read a single way (#374).
+- **A tag MusicBrainz holds on only some tracks is now shown on the tracks that
+  have it**, instead of being reported as removed from all of them (#374).
 
-- **A change stated under the tracklist is counted, marked, and can be acted
-  on.** A tag that differs from MusicBrainz on every track is shown in the band
-  beneath the table, and three surfaces hadn't been told: the sentence above it
-  still read *"All 24 tracks match"*, the value carried colour but not the
-  hexagon that says whose reading it is, and *removed* was drawn in the same
-  muted italic as *not set* — the opposite fact, three lines away. Worst of all,
-  an album whose ONLY difference was such a tag showed no update section at all
-  — no **Re-tag from MB** — while the Library listed it under **Update
-  available** (#373).
+- **An album whose only difference is a tag stated under the tracklist now gets
+  an update section**, with the **Re-tag from MB** that answers it. That change
+  is also counted in the sentence above the tracklist, which used to read *"All
+  24 tracks match"* over the top of it (#373).
 
 ## [1.13.0] - 2026-09-01
 
