@@ -1226,6 +1226,50 @@ def test_a_change_that_reads_the_same_on_every_track_goes_to_the_band():
     assert "ISRC" in _headings(album("FRZ109800001", "FRZ109800002"))
 
 
+def test_a_tag_musicbrainz_holds_on_only_some_tracks_earns_a_column():
+    """#374. The other half of rule 1's question, from the side nobody asked.
+
+    MusicBrainz has one ISRC on the release and it is on track 2; no file carries
+    one. Rule 1 used to count only the tracks whose MusicBrainz value was set, so
+    the twenty-three tracks MusicBrainz says nothing about dropped out, one pair
+    was left, and "which track" was ruled to have no answer — when it has a
+    perfectly good one. The field fell to a band captioned "The same on every
+    track", which is exactly what it is not.
+    """
+    tl = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look")],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look", isrcs=["FRZ109800002"])],
+    )
+
+    assert "ISRC" in _headings(tl), "the column that answers 'which track'"
+    assert "ISRC" not in {c.label for c in tl.collapsed}
+    cells = [next(f for f in t.fields if f.label == "ISRC") for t in tl.tracks]
+    assert [f.differs for f in cells] == [False, True]
+    assert cells[1].mb == "FRZ109800002"
+    # An identifier column starts hidden (#319), so the row that differs only
+    # there opens the control itself rather than showing the reader nothing.
+    assert tl.reveal_identifiers
+
+
+def test_a_field_musicbrainz_reads_two_ways_is_never_stated_as_one_band_line():
+    """#374's second half: what `_collapsed` said about the album above.
+
+    MusicBrainz's side of a band row was taken from the FIRST track on the
+    strength of a uniformity flag that only ever looked at the disk. Track 1 had
+    no ISRC, so the row read `mb=None` with `differs=True` — which the band draws
+    as a removal, the exact opposite of the addition MusicBrainz was offering.
+
+    Stated over the collapsed set as a whole rather than over ISRC alone: any
+    field that reaches the band must read one way on BOTH sides, because a single
+    line is all the band can say.
+    """
+    tl = tracklist(
+        [_file(1, "Nightcall"), _file(2, "Odd Look")],
+        [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look", isrcs=["FRZ109800002"])],
+    )
+    assert not any(c.differs and c.mb is None and c.value is None for c in tl.collapsed)
+
+
 def test_identifier_columns_are_off_the_cap_and_named_by_their_control():
     """#319. An MBID and an ISRC are correct to keep and correct to link, and not
     what anyone opens this page to look at — so they start hidden, and a hidden

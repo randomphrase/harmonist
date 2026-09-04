@@ -89,6 +89,13 @@ versions follow [semantic versioning](https://semver.org).
   Activity entry instead of two** — the second was unlinked from the album and
   repeated its name in the message (#342).
 
+- **A tag MusicBrainz holds on only some tracks is shown on the tracks that have
+  it.** An ISRC MusicBrainz had on one track of twenty-four earned no column, so
+  it fell to the line under the tracklist that speaks for tags every track agrees
+  on — which then reported the addition as a removal from all of them. A tag
+  MusicBrainz reads two ways across a release now gets a column, and that line
+  only speaks for one both sides read a single way (#374).
+
 ## [1.13.0] - 2026-09-01
 
 ### Added

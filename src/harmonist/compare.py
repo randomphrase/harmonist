@@ -1714,12 +1714,23 @@ def _earns_column(candidate: _Candidate, present: Sequence[_Present], multi_disc
     pairs = {(d, v) for d, v in zip(disk, mb, strict=True) if v is not None}
     if len(pairs) > 1 and any(d != v for d, v in pairs):
         return True
-    # 2. The tracks disagree with each other. None counts as a value here: a tag
-    #    on six of eight tracks is uneven tagging, and the unevenness IS the
-    #    finding — the same fact `consensus` reports for the album panel. Except
-    #    for the medium-derived tags on a multi-disc release, where disagreeing
-    #    is the release's shape rather than a defect — see `_MEDIUM_DERIVED`.
-    if len(set(disk)) > 1 and not (multi_disc and candidate.owned in _MEDIUM_DERIVED):
+    # 2. The tracks disagree with each other — ON EITHER SIDE. None counts as a
+    #    value here: a tag on six of eight tracks is uneven tagging, and the
+    #    unevenness IS the finding — the same fact `consensus` reports for the
+    #    album panel. Except for the medium-derived tags on a multi-disc release,
+    #    where disagreeing is the release's shape rather than a defect — see
+    #    `_MEDIUM_DERIVED`.
+    #
+    #    The MusicBrainz half was missing until #374, and rule 1's None filter
+    #    could not stand in for it: an ISRC MusicBrainz holds on one track of 24
+    #    leaves a single pair once the 23 it says nothing about drop out, so
+    #    "which track" was ruled unanswerable on an album where the answer is
+    #    track 3. Both halves together are also the band's whole claim — one
+    #    reading, on both sides — which is why `_collapsed` asks the same pair.
+    shaped_by_the_discs = multi_disc and candidate.owned in _MEDIUM_DERIVED
+    one_reading = _one_reading_on_disk(candidate, present)
+    one_answer = _one_reading_in_mb(candidate, present)
+    if not (one_reading and one_answer) and not shaped_by_the_discs:
         return True
     # 3. Differs from the album-level counterpart, on either side. Per track and
     #    per side, never across: a file's own `album_artist` is what its `artist`
@@ -1778,6 +1789,27 @@ def _one_reading_on_disk(candidate: _Candidate, present: Sequence[_Present]) -> 
     """
     key = candidate.owned.value
     return len({_disk_value(t, key) for t, _ in present}) <= 1
+
+
+def _one_reading_in_mb(candidate: _Candidate, present: Sequence[_Present]) -> bool:
+    """Whether MusicBrainz says the same thing about this tag on every track (#374).
+
+    The other half of the band's claim, and the half that went unchecked. A band
+    line is one reading and one arrow, so it can only be drawn over a field both
+    sides read one way; where MusicBrainz reads two ways the line has to pick one
+    of them, which is how an ISRC being ADDED to track 3 came out as an ISRC
+    being removed from all 24.
+
+    Over the tracks MusicBrainz has a counterpart for, and only those. A track it
+    has never heard of offers no reading to vary — a video track (#226), and every
+    row of the disk-only view (#228), where this is vacuously true and nothing can
+    earn a column on MusicBrainz's account. A counterpart that simply has NO value
+    for the tag is a reading like any other, and the one this rule turns on: it is
+    MusicBrainz saying "not here", which is what the tracks that do have one part
+    company with.
+    """
+    key = candidate.owned.value
+    return len({_as_display(getattr(m.tags, key)) for _, m in present if m is not None}) <= 1
 
 
 def _matches_everywhere(candidate: _Candidate, present: Sequence[_Present]) -> bool:
@@ -1900,15 +1932,20 @@ def _collapsed(candidate: _Candidate, present: Sequence[_Present]) -> CollapsedF
     nobody offered. That is the same exclusion `FieldComparison.differs` makes,
     for the same reason.
 
-    Second, it takes ONE reading on disk. Rule 2 gives a column to any tag whose
-    tracks disagree, so that holds for nearly everything here — except the
-    medium-derived tags on a multi-disc release, which rule 2 exempts because
-    varying by disc is the release's shape. `media` can therefore arrive reading
-    CD on one disc and Digital Media on another, and a single "X → Y" line would
-    be asserting one reading and one change where there are two of each. Such a
-    field is still named — #112's distinction between a tag that agreed and one
-    nobody looked at is what the band exists for — but it states its value only,
-    exactly as it did before #360.
+    Second, it takes ONE reading on EACH SIDE. Rule 2 gives a column to any tag
+    whose tracks disagree on either — so that holds for nearly everything here —
+    except the medium-derived tags on a multi-disc release, which rule 2 exempts
+    because varying by disc is the release's shape. `media` can therefore arrive
+    reading CD on one disc and Digital Media on another, and a single "X → Y"
+    line would be asserting one reading and one change where there are two of
+    each. Such a field is still named — #112's distinction between a tag that
+    agreed and one nobody looked at is what the band exists for — but it states
+    its value only, exactly as it did before #360.
+
+    The MusicBrainz half of that is #374's: it was assumed rather than asked, and
+    `mb` was taken from the first track regardless. On a release whose one ISRC
+    sits on track 3, track 1's silence became the whole album's MusicBrainz
+    reading, and the band drew an addition as a removal.
     """
     key = candidate.owned.value
     disk = [_disk_value(t, key) for t, _ in present]
@@ -1917,7 +1954,7 @@ def _collapsed(candidate: _Candidate, present: Sequence[_Present]) -> CollapsedF
         for d, (_, m) in zip(disk, present, strict=True)
         if m is not None
     ]
-    uniform = _one_reading_on_disk(candidate, present)
+    uniform = _one_reading_on_disk(candidate, present) and _one_reading_in_mb(candidate, present)
     differs = uniform and any(d != v for d, v in comparable)
     # On a DIFFERENCE `value` is what the files carry, even when that is nothing:
     # it is the "before" of a change, and the row is about to state MusicBrainz's
