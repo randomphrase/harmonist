@@ -1555,6 +1555,26 @@ def test_a_title_tidy_up_is_cosmetic_but_a_retitle_is_identity():
     )
 
 
+def test_a_mark_respelt_in_another_typeface_is_cosmetic():
+    """#379: the same reading the album page makes, since they share `norm_title`.
+
+    Kept beside the whitespace/casing case rather than folded into it: that one
+    is about the line existing at all, this is about where it now falls. The
+    third assertion is the load-bearing one — a rule that dropped punctuation
+    instead of canonicalising it would call a retitle cosmetic, and under #273's
+    setting that is a write nobody agreed to.
+    """
+    assert (
+        tagger.significance_of("title", "Humanity's Shadow", "Humanity’s Shadow")
+        is owned.Significance.COSMETIC
+    )
+    assert (
+        tagger.significance_of("title", "Blue - Green", "Blue — Green")
+        is owned.Significance.COSMETIC
+    )
+    assert tagger.significance_of("title", "Live?", "Live!") is owned.Significance.IDENTITY
+
+
 def test_a_title_arriving_or_leaving_is_not_cosmetic():
     """A field appearing or vanishing is a real change however the strings would
     have normalised, so it falls through to the REVIEW the map already gave."""

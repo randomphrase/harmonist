@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -96,11 +97,48 @@ class BandcampInfo:
     candidate_item_ids: list[int] | None = None
 
 
+def _canonical_mark(ch: str) -> str:
+    """One character, with a typographic respelling folded onto one spelling.
+
+    A **rule over Unicode's own classification**, not a table of characters to
+    forgive — which is the whole point (#379). A list is a chase with no end, and
+    it runs out first in the scripts we handle least: the next album is as likely
+    to arrive with a full-width bracket or a Greek dash as with a curly quote,
+    and nobody can enumerate those in advance. A category and a name pattern
+    cover the code points Unicode has and the ones it adds later.
+
+    Two classes, because these are the marks that have several spellings meaning
+    the same thing:
+
+    * **`Pd`** — every dash Unicode has: hyphen-minus, en, em, figure, small,
+      ideographic. A dash is a dash;
+    * **anything Unicode names a quotation mark, apostrophe or prime** — `'`,
+      `’`, `‘`, `“`, `«`, `′`, the modifier-letter apostrophe. Single and double
+      fold together too: a title cannot mean something different for having been
+      typeset with one rather than the other.
+
+    Anything else is returned untouched — see `norm_title` on why this
+    canonicalises rather than strips.
+
+    The `isalnum` guard is the fast path, not a rule: a letter or digit can never
+    be either class, and skipping `unicodedata.name` for it keeps this off the
+    album page's render cost.
+    """
+    if ch.isalnum():
+        return ch
+    if unicodedata.category(ch) == "Pd":
+        return "-"
+    name = unicodedata.name(ch, "")
+    if "QUOTATION MARK" in name or "APOSTROPHE" in name or "PRIME" in name:
+        return "'"
+    return ch
+
+
 def norm_title(s: str) -> str:
     """Light normalisation for comparing a disk title against an MB title:
-    collapse whitespace and casefold. Deliberately *not* the aggressive
-    `_norm_*` used for matching — here we want to surface real differences, so
-    only cosmetic noise (spacing, case) is ignored.
+    fold typographic respellings, collapse whitespace, casefold. Deliberately
+    *not* the aggressive `_norm_*` used for matching — here we want to surface
+    real differences, so only noise is ignored.
 
     Public because it draws the line between a cosmetic title change and a real
     one in two places now: `TrackComparison.title_differs`, and the significance
@@ -109,10 +147,24 @@ def norm_title(s: str) -> str:
     unchanged is not one the gardener may treat as a retitle — so they share the
     definition rather than each having a notion of "cosmetic".
 
+    **NFKC is where the non-English half is won** (#379). It composes a
+    decomposed accent, so a file written on a filesystem that stores `é` as
+    `e` + U+0301 stops differing from MusicBrainz's composed one; it folds the
+    full-width brackets and punctuation a CJK title arrives in onto their ASCII
+    forms; it turns `…` into `...` and a non-breaking space into a space. All of
+    that is a spelling of the same title, and none of it is enumerable by hand.
+
+    **Canonicalise, never strip.** Dropping punctuation outright would fold
+    `Live?` onto `Live!` and call a retitle cosmetic — and `owned.BY_VALUE` is
+    explicit that this rule may only ever *lower* a change's significance, so a
+    fold that fires wrongly is a write nobody agreed to. Presence, absence and
+    meaning of a mark all survive; only its typeface does not.
+
     Not to be confused with `bandcamp_hook._norm_title`, which is the aggressive
     matching normaliser and deliberately answers a different question.
     """
-    return " ".join(s.split()).casefold()
+    folded = "".join(_canonical_mark(ch) for ch in unicodedata.normalize("NFKC", s))
+    return " ".join(folded.split()).casefold()
 
 
 def title_with_disambiguation(title: str | None, disambiguation: str | None) -> str | None:

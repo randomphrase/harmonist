@@ -70,6 +70,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A track title that differs only in typography no longer reads as a retitle.**
+  A curly apostrophe where your files have a straight one, an em dash for a
+  hyphen, a full-width bracket, an accent stored differently — one such character
+  in one track used to put the whole album into the Inbox under **Identity**.
+  Those now rank as **Cosmetic** (#379).
+
 - **Re-tagging an album whose release was merged away now takes you to the
   surviving release's page**, instead of leaving the address bar on the release
   the album has just stopped naming (#375).

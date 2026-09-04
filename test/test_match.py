@@ -330,3 +330,54 @@ def test_title_mismatch_count_zero_on_clean_match():
         track_comparisons=[_tc("Same Title", "Same Title")],
     )
     assert cand.title_mismatch_count == 0
+
+
+# -- typographic variants of one mark (#379) --
+
+
+def test_title_differs_ignores_a_mark_respelt_in_another_typeface():
+    """One punctuation mark in two spellings is not a difference in the title.
+
+    The case that raised it: an adopted album whose files carry the ASCII
+    apostrophe MusicBrainz spells with U+2019 — one character, in one track, and
+    the whole album read as a retitle.
+
+    Each pair below is a different *class* of respelling rather than another
+    character, because a class is what `norm_title` claims to handle: quotes,
+    dashes, a decomposed accent, the full-width forms a CJK title arrives in, the
+    ellipsis, the non-breaking space.
+
+    Every pair is asserted unequal before it is compared, and that guard is not
+    ceremony: three of these rows differ by a character that is INVISIBLE in the
+    source — a combining accent, a non-breaking space, a full-width bracket. An
+    editor, a paste, or a well-meant reformat can flatten one of them into a
+    string compared with itself, which would pass here while testing nothing.
+    """
+    for on_disk, from_mb in [
+        ("Humanity's Shadow", "Humanity’s Shadow"),  # apostrophe
+        ('He Said "Hi"', "He Said “Hi”"),  # double quotes
+        ("Blue - Green", "Blue — Green"),  # hyphen vs em dash
+        ("Café Noir", "Café Noir"),  # decomposed vs composed accent
+        ("夜(よる)", "夜（よる）"),  # full-width brackets
+        ("Wait...", "Wait…"),  # ellipsis
+        ("Rock and Roll", "Rock and Roll"),  # non-breaking space
+    ]:
+        assert on_disk != from_mb, on_disk
+        assert _tc(on_disk, from_mb).title_differs is False, on_disk
+
+
+def test_title_differs_still_sees_punctuation_that_says_something():
+    """Marks are canonicalised, never dropped — so a title that genuinely gained,
+    lost or changed one is still a difference.
+
+    The direction matters more than the cases: understating a retitle is what
+    `owned.BY_VALUE` warns about, and a rule that stripped punctuation instead of
+    folding it would do exactly that.
+    """
+    for on_disk, from_mb in [
+        ("Live?", "Live!"),
+        ("Ground Glass", "Ground Glass?"),
+        ("Rock and Roll", "Rock & Roll"),
+        ("Dawn Chorus", "Dawn Chorus (Alt. Take)"),
+    ]:
+        assert _tc(on_disk, from_mb).title_differs is True, on_disk
