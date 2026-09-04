@@ -15,6 +15,7 @@ settled, and its History has to say why its identity moved.
 
 from __future__ import annotations
 
+import json
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -339,3 +340,48 @@ def test_a_merge_arriving_with_a_tag_update_is_answered_by_one_button(client, cf
     assert "merged this release" in html, html
     assert "Re-tag from MB" in html, html
     assert html.count(f'hx-post="/retag/{_scanned(cfg, d).id}"') == 1, html
+
+
+# ---------- where the album lives once the re-tag has followed the merge (#375) ----------
+#
+# A merge MOVES the album's id, and the page the re-tag was pressed on is at the
+# old one. `album-retagged` used to be a bare `true`, so the only thing the page
+# could do with it was reload itself — at the address it was already on, which
+# names a release the album no longer claims. The alias chain still resolves it,
+# so what came back was right; the address bar, a bookmark taken from it and a
+# refresh afterwards all stayed pointed at the superseded release.
+#
+# The event carries the album's live id now, and the page navigates when it has
+# moved. This rung sees the header; whether the browser then goes there is
+# `test/e2e/test_merge_retag.py`.
+
+
+def _retagged(response) -> dict:
+    """The `album-retagged` event the re-tag came back with."""
+    triggers = json.loads(response.headers["HX-Trigger"])
+    assert "album-retagged" in triggers, triggers
+    return triggers["album-retagged"]
+
+
+def test_a_retag_following_a_merge_says_which_album_the_page_should_go_to(client, cfg, monkeypatch):
+    """The id the album has AFTER the tagging, which is the surviving release —
+    not the one the request was addressed to."""
+    d = _album(cfg)
+    _redirects_to(monkeypatch, NEW_MBID)
+
+    r = client.post(f"/retag/{_scanned(cfg, d).id}")
+
+    assert _retagged(r) == {"album_id": NEW_MBID}
+
+
+def test_an_ordinary_retag_says_the_album_is_where_it_was(client, cfg, monkeypatch):
+    """The control, and what stops the page navigating on every re-tag: an album
+    whose release has not moved comes back naming the id it already had, so the
+    page reloads in place. Read off the sidecar rather than assumed, which is why
+    this can disagree with the test above."""
+    d = _album(cfg)
+    _redirects_to(monkeypatch, OLD_MBID)
+
+    r = client.post(f"/retag/{_scanned(cfg, d).id}")
+
+    assert _retagged(r) == {"album_id": OLD_MBID}

@@ -4408,7 +4408,7 @@ def _register_routes(app: FastAPI) -> None:
         # Reload the open detail modal so its disk-vs-MB comparison + metadata
         # reflect the just-written tags (tasks-changed only refreshes the tiles).
         return _flash_response(
-            "Re-tagged", details, extra_triggers={"album-retagged": True}, album=album
+            "Re-tagged", details, extra_triggers=_retagged_trigger(album), album=album
         )
 
     @app.post("/artwork/restore/{album_id}", response_class=HTMLResponse)
@@ -4457,7 +4457,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response(
             "Artwork restored",
             f"{restored} file{'s' if restored != 1 else ''}",
-            extra_triggers={"album-retagged": True},
+            extra_triggers=_retagged_trigger(album),
             album=album,
         )
 
@@ -4521,7 +4521,7 @@ def _register_routes(app: FastAPI) -> None:
         return _flash_response(
             "Tags put back",
             _revert_detail(outcome, unlinked=unlinked),
-            extra_triggers={"album-retagged": True},
+            extra_triggers=_retagged_trigger(album),
             album=album,
         )
 
@@ -5334,6 +5334,26 @@ def _live_album_ref(album: Album) -> tuple[str | None, str]:
     # No sidecar (still NEW, or it was just erased): the registry id the caller
     # already holds is the best available handle, and it IS resolvable.
     return album.id, label
+
+
+def _retagged_trigger(album: Album) -> dict[str, Any]:
+    """The `album-retagged` event, carrying where the album lives NOW (#375).
+
+    The album page listens for this and refreshes itself, because a tagging
+    rewrites everything on it. It used to be a bare `true`, so the only refresh
+    the page could perform was a reload of the address it was already on — and a
+    re-tag can MOVE the album's id out from under that address: MusicBrainz
+    redirects a merged release, so following the merge (#268) leaves the page at
+    an id the album has just stopped claiming. The alias chain still resolves it,
+    so the reload came back correct and looked settled; the address bar, a
+    bookmark taken from it and every later refresh stayed on the dead id.
+
+    The id is re-derived from the sidecar on disk — see `_live_album_ref`, for
+    exactly the reason it does: the caller's `Album` was resolved before the
+    mutation, so its `id` is the one that may have just been superseded.
+    """
+    album_id, _ = _live_album_ref(album)
+    return {"album-retagged": {"album_id": album_id}}
 
 
 def _flash_response(

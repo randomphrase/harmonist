@@ -70,6 +70,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **Re-tagging an album whose release was merged away now takes you to the
+  surviving release's page**, instead of leaving the address bar on the release
+  the album has just stopped naming (#375).
+
 - **A purchase a sync couldn't finish with is no longer lost for good.** The
   sync remembered where it got to as "the newest purchase I saw", not "the
   newest one I finished with" — so a pre-order Bandcamp wasn't serving yet, or

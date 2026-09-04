@@ -213,9 +213,27 @@
    would be more machinery for a worse guarantee. It also means the tagging
    overlay covering the panel doesn't have to reach the sections beside it:
    nothing outside the panel is interactive while a re-tag is in flight, and
-   what they show is replaced wholesale the moment it finishes. #}
+   what they show is replaced wholesale the moment it finishes.
+
+   …at the album's address as it is AFTERWARDS, which is not always the one this
+   page was opened at (#375). A re-tag follows a merge, and a merge MOVES the
+   album's id (#268) — so an in-place reload lands back on an id the album has
+   just stopped claiming. That still renders (the alias chain resolves it), which
+   is what made this so quiet: the page came back correct while the address bar,
+   any bookmark taken from it and every later refresh stayed on the superseded
+   release. The event carries the id the album now has, so the page can go there.
+
+   `replace`, not `assign`: the address behind us names a release this album no
+   longer claims, and Back should reach the Library rather than step through it.
+   The query string rides along — `from_page` / `from_filter` / `from_q` are what
+   Back is built out of, and a re-tag is not a reason to lose the way home. #}
 <script>
-    document.body.addEventListener('album-retagged', function () {
+    document.body.addEventListener('album-retagged', function (event) {
+        var now = event.detail && event.detail.album_id;
+        if (now && now !== {{ album.id | tojson }}) {
+            window.location.replace('/album/' + encodeURIComponent(now) + window.location.search);
+            return;
+        }
         window.location.reload();
     });
 </script>
