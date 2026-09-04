@@ -126,37 +126,66 @@ button[disabled],
    the in-value marking are one idea, and splitting them across a dozen class
    attributes would make the relationship unreadable. */
 
-/* The hexagon note: what we're comparing against, and when we last read it. */
-.mb-note {
-  display: flex;
-  align-items: center;
-  gap: .55rem;
-  flex-wrap: wrap;
-  padding: .4rem .6rem;
-  margin-bottom: .85rem;
-  border: 1px solid color-mix(in srgb, var(--color-mb-purple) 28%, transparent);
-  background: color-mix(in srgb, var(--color-mb-purple) 7%, transparent);
-  border-radius: 6px;
+/* The update section (#366): the sentence, how far it reaches, and the answers.
+   `.mb-note*` lived here and was a tinted band inside the album panel — one of
+   three places a single subject was stated from. A section of its own needs no
+   tint to separate it from what surrounds it, so the band's border and fill go
+   with the band; the hexagon stays, because it is what says MusicBrainz. */
+.album-update__head { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+.album-update__key { display: flex; align-items: center; align-self: center; }
+.album-update__legend { font-size: .85rem; color: var(--color-ink); font-weight: 600; }
+.album-update__legend b { color: var(--color-mb-purple); font-weight: 700; }
+/* The chip goes to the far end, so a column of sections ranks down one edge
+   rather than making the reader find the word inside each sentence. */
+.album-update__head .sev { margin-left: auto; }
+.album-update__acts { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: .7rem; }
+.album-update__answers { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.album-update__ignore {
+  display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; user-select: none;
+  font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--color-muted); transition: color .15s ease;
 }
-.mb-note__key { display: flex; align-items: center; gap: .35rem; font-weight: 700; font-size: .8rem; }
-.mb-note__legend { font-size: .78rem; color: var(--color-muted); }
-.mb-note__legend b { color: var(--color-mb-purple); font-weight: 600; }
-/* `__when` and `__reread` lived here until #355. The note's timestamp and its
-   re-read button were the page's only pure provenance, and holding them inside
-   a band whose other job is reporting differences meant the band could never go
-   away on an album with nothing to report. Both moved to the album panel's
-   dates (`_checked_at.html`), where the re-read glyph borrows the "wrong match"
-   pencil's styling rather than needing rules of its own. */
-/* The note in the album panel (#328). The stacked blocks around it own their
-   spacing through the panel's `space-y-3`, so the bottom margin the standalone
-   note carried would double up here. */
-.mb-note--panel { margin-bottom: 0; }
-/* `--quiet` lived here until #358. #352 added it to drop the tint on an album
-   whose tags and tracks all match, because a coloured band reads as a warning
-   about a page where nothing is wrong — and the note still had to draw itself
-   for that album, since it was also carrying the read timestamp. #355 moved
-   that out to the panel's dates, and #358 took the reasoning to its end: the
-   quietest form of a band whose only content is "nothing to do" is no band. */
+.album-update__ignore:hover { color: var(--color-ink); }
+.album-update__upstream { font-size: var(--text-2xs); color: var(--color-muted); }
+.album-update__upstream a { color: var(--color-mb-purple); }
+.album-update__upstream a:hover { text-decoration: underline; }
+
+/* How far an update reaches (#366) — see `severity_chip` in macros.html for why
+   the glyph and the fill carry different halves of it, and why none of this
+   borrows amber. */
+.sev {
+  display: inline-flex; align-items: center; gap: .25rem;
+  padding: .1rem .4rem; border-radius: 4px; border: 1px solid transparent;
+  font-size: var(--text-2xs); font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.sev__g { width: .625rem; height: .625rem; flex: none; }
+.sev__aa { font-size: .55rem; font-weight: 800; letter-spacing: -.04em; }
+.sev--cosmetic { background: #fff; color: var(--color-muted); border-color: var(--color-line); }
+.sev--enrichment {
+  background: #fff; color: var(--color-mb-purple);
+  border-color: color-mix(in srgb, var(--color-mb-purple) 45%, transparent);
+}
+.sev--structure {
+  background: var(--color-mb-purple-soft); color: var(--color-mb-purple);
+  border-color: color-mix(in srgb, var(--color-mb-purple) 50%, transparent);
+}
+.sev--identity { background: var(--color-mb-purple); color: #fff; border-color: var(--color-mb-purple); }
+/* Artwork has no rank on this scale — it is a fifth level on its own axis — so
+   it is marked out by a dashed edge instead of a place in the fill ramp. */
+.sev--artwork {
+  background: #fff; color: var(--color-mb-purple);
+  border: 1px dashed color-mix(in srgb, var(--color-mb-purple) 60%, transparent);
+}
+/* The band's own rules retired with it in #366, and the trail is worth keeping
+   because each step narrowed the same thing. `__when` and `__reread` went in
+   #355, when the timestamp and the re-read control moved to the panel's dates —
+   they were the page's only pure provenance, and holding them inside a band
+   whose other job is reporting differences meant it could never go away on an
+   album with nothing to report. `--quiet` went in #358, which took #352's
+   reasoning to its end: the quietest form of a band whose only content is
+   "nothing to do" is no band. `--panel` went here, with the band itself, once
+   the sentence stopped living inside the panel at all. */
 
 /* `align-items: baseline` so the label sits on the same baseline as its value,
    rather than both being top-aligned and nudged into place with padding. With a

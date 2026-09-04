@@ -140,6 +140,26 @@
                 </svg>
                 MusicBrainz id on {{ album.partial_tag_count[0] }} of {{ album.partial_tag_count[1] }} tracks
             </p>
+            {# The remedy, beside the finding — which is what this badge's own
+               note has always argued for, and what #366 finally had to build.
+
+               Re-tag from MB moved to the update section beneath the panel, and
+               it cannot serve this case: a file missing the release id produces
+               no finding anywhere on the page, so such an album is otherwise
+               clean and gets no section at all. Without a button here, the
+               remedy would have left with it and this badge would state a
+               problem the page offered no way to fix.
+
+               Same route, and deliberately not the same words. "Re-tag from MB"
+               describes the mechanism; here what matters is the effect on the
+               files this badge is counting. #}
+            <button hx-post="/retag/{{ album.id }}"
+                    hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                    class="mt-2 ml-1.5 px-2 py-1 rounded-md text-2xs font-bold uppercase tracking-widest
+                           bg-white hover:bg-surface text-ink border border-line transition"
+                    title="Re-tag from MusicBrainz, which writes the MusicBrainz Album Id to the {{ album.partial_tag_count[1] - album.partial_tag_count[0] }} file(s) missing it. Per-track embedded artwork is preserved.">
+                Write it to those files
+            </button>
             {% endif %}
 
             {# Path and format read as label/value pairs like the tags below, and
@@ -243,66 +263,52 @@
                and deliberately nothing rather than a placeholder sentence: the
                note is a finding, and an empty space says "not yet" where "Checking
                tags…" in the panel's middle would read as the album's state. #}
-            <div id="album-mb-note-{{ album.id }}"></div>
-            {# What to do about an update other than take it (#271) — edit the
-               release upstream, or ignore it until MusicBrainz moves. Empty here
-               for the same reason the note above is: both halves of whether
-               there IS an update come from the /compare fetch. #}
-            <div id="album-update-ignore-{{ album.id }}"></div>
-        </div>
-    </div>
+            {# The note, what to do about an update, and the action that takes it
+               all moved OUT of this panel in #366, into one section beneath it —
+               see `_album_update.html`. They were three placements of one
+               subject, and the action was furthest from the sentence it
+               answered. Nothing is left here to hold a slot for. #}
+            {# `hx-disabled-elt="this"` — the documented form, and the one htmx
+               special-cases for the triggering element.
 
-    {# `hx-disabled-elt="this"` — the documented form, and the one htmx
-       special-cases for the triggering element.
+               A selector naming the whole group was tempting (Forget staying
+               live over a rewrite in flight is wrong), but htmx disables
+               matching elements BEFORE issuing the request, so a selector that
+               covers the trigger is a plausible way to break it. Not worth the
+               risk here, because the other buttons are already unusable
+               meanwhile: the tagging overlay covers the panel opaquely at z-20,
+               which is what has always blocked them. #}
+            {# Both controls here need a sidecar — Re-download needs the Bandcamp
+               item id in one, and Forget deletes it. A NEW album has none, so
+               the row draws as nothing at all (#150). #}
+            {# Back inside the metadata column, to the right of the artwork
+               (#366), which is where #363 found it and moved it out of.
 
-       A selector naming the whole group was tempting (a re-tag is long, and
-       Forget staying live over a rewrite in flight is wrong), but htmx disables
-       matching elements BEFORE issuing the request, so a selector that covers
-       the trigger is a plausible way to break it. Not worth the risk here,
-       because the other buttons are already unusable meanwhile: the tagging
-       overlay covers the panel opaquely at z-20, which is what has always
-       blocked them. #}
-    {# Every control in this row needs a sidecar — Re-tag needs the release id in
-       one, Re-download the Bandcamp item id in one, and Forget deletes it. A NEW
-       album has none, so the row would draw as nothing at all (#150). #}
-    {# The panel's own floor, spanning its full width beneath the cover art as
-       well, rather than the last block of the metadata column (#363): these act
-       on the ALBUM, and starting them at the artwork's right edge read as if
-       they belonged to the column they were nested in. The rule that separated
-       them from it is gone with the nesting — the panel border is the boundary,
-       and a second line inside it divided a box that no longer holds enough to
-       need dividing.
+               That move was right for what the row held then: Re-tag, Re-
+               download and Forget, three buttons acting on the ALBUM, which
+               starting at the artwork's right edge read as the column's own
+               footer. Re-tag has since gone to the update section, and what is
+               left is two management buttons under a cover taller than the
+               column beside it — a full-width floor for them left the panel
+               taller than it needed to be and the pair looking stranded beneath
+               the artwork. In the column they fill space the cover was already
+               claiming.
 
-       `px-4 pb-4` and nothing on top: the row above keeps its own `p-4`, so its
-       bottom padding is the gap above the buttons and this only has to close the
-       panel off — which also means an album with no sidecar, where this row
-       isn't rendered at all, is padded exactly as it always was. #}
-    {% if album.sidecar %}
-    <div id="album-actions-{{ album.id }}" class="flex gap-2 px-4 pb-4">
-        {# id so the /compare fetch can swap this out of band for a disabled one
-           when it discovers the release is gone (#210): nothing behind Re-tag
-           can succeed then, and a control that always fails should not look
-           available. #}
-        {# Only on an album that HAS a MusicBrainz release to re-tag from (#150).
-           This page serves every state, and on a New or Needs MBID album there
-           is no release: the button was offered anyway, styled as the primary
-           action, and could only fail. The way forward for those albums is the
-           inbox actions section below, which is where the release gets found in
-           the first place.
+               No padding of its own: the column's `space-y-3` sets the gap above
+               it and the flex row's `p-4` closes the panel below, which is also
+               why an album with no sidecar is padded exactly as it always was. #}
+            {% if album.sidecar %}
+            <div id="album-actions-{{ album.id }}" class="flex gap-2">
+        {# Re-tag from MB moved to the update section beneath this panel (#366).
+           It is an answer to MusicBrainz, and this row is album management —
+           Re-download and Forget. Keeping it here put the action several rows
+           below the sentence it answers, and in the company of two controls it
+           has nothing to do with.
 
-           Guarded on the release id rather than on a state list, because that is
-           the thing the route actually needs — and it is exactly what
-           `_derive_state` reads to tell NEEDS_MBID from the tagged states, so
-           the two cannot drift apart. #}
-        {% if album.sidecar and album.sidecar.mb_release_id %}
-        <button id="retag-btn-{{ album.id }}"
-                hx-post="/retag/{{ album.id }}"
-                hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
-                class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition"
-                title="Re-tag from MusicBrainz. Per-track embedded artwork is preserved.">
-            Re-tag from MB
-        </button>
-        {% endif %}
+           What is left of #150's guard travels with it: the button is drawn only
+           where there is a release to re-tag FROM. The partial-tag badge above
+           keeps its own copy of the remedy, because a file missing the release
+           id produces no finding, so that album gets no section to hold one. #}
         {# "Replace artwork" is hidden pending #131. It overwrites every track's
            embedded art with the album cover, which is the wrong remedy for most
            of the artwork problems it looks like it solves — and it can't be
@@ -365,6 +371,8 @@
            Library album can be re-linked, taking a link off is a dead end. It
            comes back with the re-link path in #42. The /unlink endpoint stays
            for now. #}
-    </div>
-    {% endif %}
+            </div>
+            {% endif %}
+        </div>{# /metadata column #}
+    </div>{# /cover + column row #}
 </div>

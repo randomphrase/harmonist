@@ -1,0 +1,78 @@
+{% from 'macros.html' import severity_chip %}
+{# What MusicBrainz has that this album's files don't, and what to do about it
+   (#366) — one section under the panel, where three things used to be scattered
+   inside it.
+
+   The sentence was a tinted band in the middle of the panel (#328), the report
+   and ignore answers were a line under that band (#271), and the action was
+   **Re-tag from MB**, several rows further down in a row it shared with
+   Re-download and Forget. Those two are album management; an answer to
+   MusicBrainz is not one of them, and the action ended up furthest from the
+   sentence it answers.
+
+   This is also the shape an Inbox card would render if updates were ever
+   promoted there, minus the header the panel above already provides — so it is
+   built once rather than reworked then (#150's "one definition, two hosts").
+
+   OUT OF BAND, and empty at page build, for the reason the band was: everything
+   in it comes from the /compare fetch that lands after the page. An empty
+   wrapper is also what clears the section once a re-tag has taken the update.
+
+   Rendered exactly when the band was — `advisory` false, meaning there is
+   something to act on. #358 established that an album with nothing to report
+   gets nothing at all, and moving the sentence into a section does not change
+   the question of whether to draw it. #}
+<div id="album-update-{{ album.id }}" hx-swap-oob="true">
+    {% if not advisory(comparison, tracklist) %}
+    <section class="album-update border border-line rounded-lg p-4">
+        <div class="album-update__head">
+            <span class="album-update__key">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
+                    <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
+                </svg>
+            </span>
+            {# The heading IS the finding, not a title above it. A separate
+               "Update available" would be a claim about the PLAN while the
+               sentence under it came from the comparison, and those two can
+               disagree — which is #291 exactly, re-created inside one box where
+               the contradiction would be a heading arguing with its subtitle. #}
+            <h2 class="album-update__legend">{{ headline(comparison, tracklist) }}</h2>
+            {# How far it reaches (#366). Absent when nothing set it: the verdict
+               comes from `plan_album` and the sentence beside it from the
+               comparison, so an album whose files differ in ways a re-tag would
+               not write has a finding to state and no rank to state it at. #}
+            {% if album.update_significance %}{{ severity_chip(album.update_significance) }}{% endif %}
+        </div>
+
+        <div class="album-update__acts">
+            {# Moved here from the panel's action row. Keeps `retag-btn-<id>`,
+               which is not decoration: it is what a release-gone response used
+               to swap out of band, and what any future control addressing this
+               button will look for.
+
+               `hx-indicator` still points at the panel's overlay above. The
+               overlay covers the panel rather than this section, so the button
+               that started the re-tag stays visible while it runs — but it is
+               disabled by `hx-disabled-elt`, and the page reloads on
+               `album-retagged` the moment it finishes. #}
+            {# `mb_available` as well as a release id, which is what makes the
+               deleted-release case safe (#210). This section is also rendered by
+               `_release_gone.html`, where the album still NAMES a release and
+               MusicBrainz no longer has it: the id alone would put a button here
+               that could only fail. A disabled one used to be swapped in to
+               cover that; not drawing it at all is better, and the endpoint's
+               own refusal (#194) was always the real guard. #}
+            {% if comparison.mb_available and album.sidecar and album.sidecar.mb_release_id %}
+            <button id="retag-btn-{{ album.id }}"
+                    hx-post="/retag/{{ album.id }}"
+                    hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                    class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition"
+                    title="Re-tag from MusicBrainz. Per-track embedded artwork is preserved.">
+                Re-tag from MB
+            </button>
+            {% endif %}
+            {% include 'partials/_update_ignore.html' %}
+        </div>
+    </section>
+    {% endif %}
+</div>

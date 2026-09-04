@@ -51,9 +51,10 @@ def test_read_again_issues_a_compare_request_and_refills_the_panel(demo_server: 
         # ...and the response was SWAPPED IN, not merely received. One response,
         # several destinations (#328, #355), and a mis-targeted swap would leave
         # any of them behind: the comparison itself lands in the Tags section
-        # in-band, while the note and the panel's Checked date land out-of-band.
+        # in-band, while the update section and the panel's Checked date land
+        # out-of-band.
         page.wait_for_selector(f"#compare-{ALBUM} .tag-fields", timeout=10_000)
-        assert page.locator(f"#album-mb-note-{ALBUM} .mb-note__legend").is_visible()
+        assert page.locator(f"#album-update-{ALBUM} .album-update__legend").is_visible()
         # `dd[title]` is the VALUE. Since #358 the row holds a second <dd> for
         # the re-read control, in the grid's third column, and a bare `dd` here
         # matches both.

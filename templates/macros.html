@@ -39,6 +39,52 @@
 {% if page %}page={{ page }}&{% endif %}limit={{ limit }}{% if filter %}&filter={{ filter }}{% endif %}{% if q %}&q={{ q | urlencode }}{% endif %}
 {%- endmacro %}
 
+{# How far an update reaches, as one chip (#366).
+
+   `owned.Significance` ranks four levels by how much of the album they call into
+   question — cosmetic, enrichment, structure, identity — with artwork a fifth on
+   its own axis rather than a rank among them.
+
+   TWO CHANNELS, and neither does the other's job. The glyph says what KIND of
+   change it is; the fill weight says HOW FAR it reaches, so the ordering is
+   visible without reading. The word is always there as well, which is what keeps
+   colour from being the only carrier — and what makes a compact form (glyph and
+   fill, no word) safe to add later where there is no room for one.
+
+   All of it inside the MusicBrainz purple an update already owns. Amber means
+   "this needs attention" and red means something failed; #293 declined amber for
+   the Library tile's Update badge for exactly that reason, and a severity ramp
+   built from those two would put every enrichment into the vocabulary of a
+   defect. Artwork is marked out by a dashed edge instead of a place in the ramp,
+   because it has no rank on this scale.
+
+   A macro rather than markup in the one place that needs it today, because it
+   has three call sites and only one of them exists: this, #273's routing table
+   where each level routes to ignore / review / auto-apply, and whatever
+   eventually lists updates outside the Library filter. #}
+{% macro severity_chip(significance) -%}
+{% set _s = significance | string %}
+{% set _spec = {
+    'cosmetic':   ('Cosmetic',   'sev--cosmetic',   'aa'),
+    'enrichment': ('Enrichment', 'sev--enrichment', 'plus'),
+    'structure':  ('Structure',  'sev--structure',  'order'),
+    'identity':   ('Identity',   'sev--identity',   'tag'),
+    'artwork':    ('Artwork',    'sev--artwork',    'art'),
+} %}
+{% if _s in _spec %}
+{% set label, cls, glyph = _spec[_s] %}
+<span class="sev {{ cls }}" title="How far this update reaches: {{ label|lower }}. Harmonist ranks a change by how much of the album it calls into question.">
+    {% if glyph == 'aa' %}<span class="sev__aa" aria-hidden="true">Aa</span>
+    {% elif glyph == 'plus' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    {% elif glyph == 'order' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 20V4M7 4L3.5 7.5M7 4l3.5 3.5M17 4v16M17 20l-3.5-3.5M17 20l3.5-3.5"/></svg>
+    {% elif glyph == 'tag' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12.5V5a2 2 0 012-2h7.5L21 11.5 12.5 20z"/><circle cx="7.6" cy="7.6" r="1.5" fill="currentColor" stroke="none"/></svg>
+    {% else %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M3 15.5l4.5-4.5 3.5 3.5 3-3 7 7"/></svg>
+    {% endif %}
+    {{ label }}
+</span>
+{% endif %}
+{%- endmacro %}
+
 {# What an inbox action swaps when it is rendered on the ALBUM page (#150).
 
    The same action blocks serve two hosts. In the inbox a card mutates an album

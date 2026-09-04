@@ -1,63 +1,59 @@
-{# What to do about an update, other than take it (#271).
+{# What to do about an update other than take it (#271), inside the update
+   section it belongs to (#366).
 
-   Sits directly under the MusicBrainz note, which is the sentence it answers:
-   the note says the files and the release differ, **Re-tag from MB** in the
-   panel's actions row takes the change, and this offers the other two things a
-   person might reasonably want instead.
+   A CHECKBOX, not two buttons. It was `Ignore for now` becoming `Stop ignoring`
+   — which shows the ACTION and leaves the state to be inferred backwards from
+   it. That is the argument #227 already made when the incomplete-album
+   acceptance stopped being a button and became a checkbox beside the badge it
+   governs, and it applies here word for word.
 
-   THE FIRST IS THE POINT, and it is a link rather than a button. MusicBrainz is
-   canonical here (docs/design.md §1) — Harmonist applies what it says and does
-   not keep local exceptions to it — so "this update is wrong" is not a fact
-   about the album, it is MusicBrainz being wrong, and the fix is upstream where
-   it benefits everyone and comes back on the next check for free.
+   A checkbox is simply the native control for a persisted boolean (web-ui rule
+   1), and `change` is its default trigger, so there is no `hx-trigger` to get
+   wrong (rule 2b). `name`/`value` are the platform's own contract too: a ticked
+   box posts ignore=true, an unticked one posts nothing, and the endpoint's
+   default reads that as taking the ignore back — the same shape as
+   `/tracks-unavailable`, and the reason the two endpoints this used to need
+   collapsed into one.
 
-   THE SECOND IS IGNORE, and it is deliberately a bookmark rather than a
-   refusal. It mutes this album until MusicBrainz moves, which is what makes it
-   safe to offer at all: the edit the user goes off to make is exactly what
-   brings the album back, and nothing here has to remember a decision about a
-   diff that will not exist next week. See the 7->8 migration in
-   `activity_store` for why the refusal version could not be built.
+   THE LABEL CARRIES THE PROMISE, not just the state. "Ignored" alone reads as
+   *silenced*, and someone who believed that would have no reason ever to tick
+   it: what makes this safe to offer is that the album comes back by itself when
+   MusicBrainz next moves the release, so the edit you go off to make is exactly
+   what returns it. Hence "until MusicBrainz changes" in the label, spelled out
+   in the title. See the 7->8 migration in `activity_store` for why the refusal
+   version could not be built.
 
-   Out of band, and empty at page build, for the same reason as the note above
-   it: whether there is an update at all comes from the /compare fetch that
-   lands after the page. An empty wrapper is also how a block that no longer
-   applies gets cleared — after a re-tag, or after MusicBrainz moved and the
-   difference went away. #}
-<div id="album-update-ignore-{{ album.id }}" hx-swap-oob="true">
+   The upstream link is the other answer, and the one that actually fixes
+   anything. MusicBrainz is canonical (docs/design.md §1) — Harmonist applies
+   what it says and keeps no local exceptions — so "this update is wrong" is not
+   a fact about the album, it is MusicBrainz being wrong, and the fix belongs
+   there, where it benefits everyone and comes back on the next check for free.
+
+   `oob` is set by the endpoint that toggles this and unset when the section
+   includes it: the section is itself an out-of-band swap, and nesting one inside
+   another would have htmx process the same block twice. #}
+<div id="album-update-ignore-{{ album.id }}"{% if oob %} hx-swap-oob="true"{% endif %}
+     class="album-update__answers">
     {% if album.update_available and album.sidecar and album.sidecar.mb_release_id %}
-    <div class="mt-2 text-2xs text-muted">
-        {% if update_ignored %}
-        {# Stated as the promise rather than as the state, because the promise is
-           the part that is hard to guess: "ignored" alone reads as "silenced",
-           and someone who believed that would have no reason ever to press it. #}
-        <span>
-            Ignored — this won't be listed as an update again until MusicBrainz
-            changes the release.
-        </span>
-        <button hx-post="/library/{{ album.id }}/unignore-update"
-                hx-swap="none" hx-disabled-elt="this"
-                class="ml-1 underline hover:text-ink transition"
-                title="List this album's update again, whether or not MusicBrainz has changed since"
-                aria-label="Stop ignoring this update">Stop ignoring</button>
-        {% else %}
-        <span>
-            Not what MusicBrainz should say?
-            <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit"
-               target="_blank" rel="noopener"
-               class="text-mb-purple hover:underline"
-               title="Edit this release on MusicBrainz. Harmonist takes what MusicBrainz says, so a correction made there is what reaches your files.">Edit the release</a>,
-            and the next check will pick your edit up.
-        </span>
-        {# Subtle, per web-ui rule 4: this is the rarer of the two answers, and
-           the common one — Re-tag from MB — is already the panel's primary
-           action. No hx-confirm: nothing is written, and Stop ignoring puts it
-           back. #}
-        <button hx-post="/library/{{ album.id }}/ignore-update"
-                hx-swap="none" hx-disabled-elt="this"
-                class="ml-1 underline hover:text-ink transition"
-                title="Stop listing this album as having an update. It comes back by itself when MusicBrainz next changes the release — so this is how you wait for an edit to land, not how you refuse one."
-                aria-label="Ignore this update until MusicBrainz changes the release">Ignore for now</button>
-        {% endif %}
-    </div>
+    <label class="album-update__ignore"
+           title="{% if update_ignored %}Untick to have the Library list this album's update again, whether or not MusicBrainz has changed since.{% else %}Stop listing this album as having an update. It comes back by itself when MusicBrainz next changes the release — so this is how you wait for an edit to land, not how you refuse one.{% endif %}">
+        <input type="checkbox" name="ignore" value="true" class="cursor-pointer"
+               {% if update_ignored %}checked{% endif %}
+               hx-post="/library/{{ album.id }}/ignore-update"
+               hx-swap="none" hx-disabled-elt="this"
+               {# The response swaps this block out of band, so the tick is only
+                  ever what the store now says. A FAILED write swaps nothing,
+                  which would leave the box showing a setting that was never
+                  persisted — so put it back. #}
+               hx-on::after-request="if (!event.detail.successful) this.checked = !this.checked">
+        Ignore until MusicBrainz changes
+    </label>
+    <span class="album-update__upstream">
+        Not what MusicBrainz should say?
+        <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit"
+           target="_blank" rel="noopener"
+           title="Edit this release on MusicBrainz. Harmonist takes what MusicBrainz says, so a correction made there is what reaches your files.">Edit the release</a>,
+        and the next check will pick your edit up.
+    </span>
     {% endif %}
 </div>

@@ -67,8 +67,9 @@ def test_a_card_links_to_its_album_page_and_the_decision_can_be_taken_there(
         # `reload_unless_retargeted` fires actually happened. Without the reload
         # the page would sit on the untagged render with no section at all.
         page.wait_for_selector("#album-tags", timeout=15_000)
-        # The dead control #150 removed stays gone until there is something to
-        # re-tag FROM — and now there is, so it is offered.
-        page.get_by_role("button", name="Re-tag from MB").wait_for(timeout=10_000)
+        # ...and the album has left the inbox: the actions section that offered
+        # Recheck is gone, because there is no longer a release to find. Its
+        # presence a moment ago is what makes this absence worth asserting.
+        assert page.locator("#album-inbox-actions").count() == 0
 
         browser.close()

@@ -1195,7 +1195,10 @@ def _update_ignore_oob(request: Request, album: Album, *, ignored: bool) -> str:
     block after a re-tag has taken one.
     """
     template = _templates(request).env.get_template("partials/_update_ignore.html")
-    return template.render(_ctx(request, album=album, update_ignored=ignored))
+    # `oob` here and NOT when the update section includes this block: the section
+    # is itself an out-of-band swap, and an OOB element nested inside one would
+    # be processed twice (#366).
+    return template.render(_ctx(request, album=album, update_ignored=ignored, oob=True))
 
 
 def _update_check_oob(request: Request, outcome: str, *, ok: bool) -> str:
@@ -4988,8 +4991,17 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/library/{album_id}/ignore-update", response_class=HTMLResponse)
-    def ignore_update(request: Request, album_id: str) -> Response:
-        """Stop listing this album's update until MusicBrainz changes the release.
+    def ignore_update(request: Request, album_id: str, ignore: bool = Form(False)) -> Response:
+        """Start or stop ignoring this album's update, from one checkbox (#366).
+
+        ONE endpoint for both directions, and `ignore` defaulting to False is the
+        whole of the mechanism: a ticked box posts `ignore=true`, an unticked one
+        posts nothing at all, and the default reads that absence as taking the
+        ignore back. That is the platform's own contract for a checkbox, and the
+        same shape `/tracks-unavailable` already uses — which is why the two
+        endpoints this used to need became one when the two buttons became a box.
+
+        Stop listing this album's update until MusicBrainz changes the release.
 
         A bookmark, not a refusal, and the wording of every surface says so
         (#271). MusicBrainz is canonical — Harmonist keeps no local exception to
@@ -5009,6 +5021,29 @@ def _register_routes(app: FastAPI) -> None:
         filter and this block change.
         """
         album = _find_album(request, album_id)
+        if not ignore:
+            # Unconditional, unlike its opposite. Ignoring needs an update on
+            # offer to bookmark; un-ignoring is undoing a bookmark, and refusing
+            # it on an album whose flag happens to read False right now would
+            # leave the row in place with no control anywhere that could remove
+            # it.
+            if not activity_store.unignore_update(album.id):
+                return _flash_response(
+                    "Not ignored",
+                    "this album's updates were already being listed",
+                    level=Level.WARNING,
+                    album=album,
+                    tasks_changed=False,
+                )
+            runner = request.app.state.scan_runner
+            if runner.is_engaged():
+                runner.refresh_now()
+            request.state.skip_rescan = True
+            return _flash_response(
+                "Listing updates again",
+                album=album,
+                oob=_update_ignore_oob(request, album, ignored=False),
+            )
         if not album.update_available or album.mb_version is None:
             return _flash_response(
                 "Nothing to ignore",
@@ -5031,35 +5066,6 @@ def _register_routes(app: FastAPI) -> None:
             "listed again when MusicBrainz next changes the release",
             album=album,
             oob=_update_ignore_oob(request, album, ignored=True),
-        )
-
-    @app.post("/library/{album_id}/unignore-update", response_class=HTMLResponse)
-    def unignore_update(request: Request, album_id: str) -> Response:
-        """Take back an Ignore — the escape hatch out of the one state this
-        feature can put an album in (#271).
-
-        Unconditional, unlike its opposite. Ignoring needs an update on offer to
-        bookmark; un-ignoring is undoing a bookmark, and refusing it on an album
-        whose flag happens to read False right now would leave the row in place
-        with no control anywhere that could remove it.
-        """
-        album = _find_album(request, album_id)
-        if not activity_store.unignore_update(album.id):
-            return _flash_response(
-                "Not ignored",
-                "this album's updates were already being listed",
-                level=Level.WARNING,
-                album=album,
-                tasks_changed=False,
-            )
-        runner = request.app.state.scan_runner
-        if runner.is_engaged():
-            runner.refresh_now()
-        request.state.skip_rescan = True
-        return _flash_response(
-            "Listing updates again",
-            album=album,
-            oob=_update_ignore_oob(request, album, ignored=False),
         )
 
     @app.post("/surrender/{album_id}/keep", response_class=HTMLResponse)

@@ -3143,7 +3143,7 @@ def test_the_album_page_offers_the_inbox_decisions_for_an_untagged_album(client,
     assert f'hx-post="/manual/{aid}/assign"' in html
 
 
-def test_a_page_that_cannot_re_tag_does_not_offer_to(client, cfg):
+def test_a_page_that_cannot_re_tag_does_not_offer_to(client, cfg, monkeypatch):
     """The dead control #150 found. Re-tag posts to a route that needs a
     MusicBrainz release id, and an album in Needs MBID has none by definition —
     but the panel offered it anyway, styled as the primary action, on a page
@@ -3157,9 +3157,15 @@ def test_a_page_that_cannot_re_tag_does_not_offer_to(client, cfg):
     untagged_id = _id_for(cfg, untagged)
     tagged = _make_tagged_album(cfg, "HasRelease", mbid="rel-ok", tagged_at=datetime.now(UTC))
     tagged_id = _id_for(cfg, tagged)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
 
+    # Against /compare, because #366 moved the button into the update section
+    # that fetch fills. The untagged album is asserted through the same route,
+    # so the absence is measured where the presence would be.
     assert f'hx-post="/retag/{untagged_id}"' not in client.get(f"/album/{untagged_id}").text
-    assert f'hx-post="/retag/{tagged_id}"' in client.get(f"/album/{tagged_id}").text
+    assert f'hx-post="/retag/{tagged_id}"' in client.get(f"/library/{tagged_id}/compare").text
 
 
 def test_an_inbox_card_links_to_the_album_it_is_about(client, cfg):
@@ -4491,7 +4497,7 @@ def test_retag_failure_does_not_emit_refresh_trigger(client, cfg, monkeypatch):
     assert "album-retagged" not in r.headers.get("HX-Trigger", "")
 
 
-def test_album_page_wires_retag_progress_and_refresh(client, cfg):
+def test_album_page_wires_retag_progress_and_refresh(client, cfg, monkeypatch):
     """The re-tag button shows a tagging indicator, disables the whole action
     group while it runs, and refreshes the page when it lands.
 
@@ -4500,10 +4506,16 @@ def test_album_page_wires_retag_progress_and_refresh(client, cfg):
     re-tagging from the page popped up the dialog the page replaced."""
     d = _make_tagged_album(cfg, "DetailWiring", mbid="rel-1", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
     r = client.get(f"/album/{aid}")
     assert r.status_code == 200
-    assert f'hx-indicator="#tagging-{aid}"' in r.text  # progress spinner target
-    assert f'id="tagging-{aid}"' in r.text  # the overlay itself
+    assert f'id="tagging-{aid}"' in r.text  # the overlay itself, in the panel
+    # The button that points at it lives in the update section since #366, so
+    # it arrives with the comparison rather than with the page.
+    compare = client.get(f"/library/{aid}/compare").text
+    assert f'hx-indicator="#tagging-{aid}"' in compare  # progress spinner target
     # `this`, not a group selector: htmx disables matching elements before it
     # issues the request, so a selector covering the trigger stops the request
     # firing at all. The overlay is what blocks the other buttons.
@@ -6193,10 +6205,11 @@ def test_a_disc_subtitle_change_is_drawn_on_the_disc_heading(client, cfg, monkey
     assert body.count('<span class="disc-head__cell disc-head__mb disc-head__meta"></span>') == 2
 
 
-def test_one_musicbrainz_note_lands_in_the_album_panel(client, cfg, monkeypatch):
-    """#328. The hexagon band was drawn twice — over Tags and over the tracklist
-    — saying the same thing about the same fetch. One note now, in the panel
-    beside Re-tag from MB, carrying both summaries.
+def test_one_musicbrainz_finding_lands_in_the_update_section(client, cfg, monkeypatch):
+    """#328, now in the section #366 moved it to. The hexagon band was drawn
+    twice — over Tags and over the tracklist — saying the same thing about the
+    same fetch. One sentence now, heading the update section under the panel,
+    carrying both summaries.
 
     Two halves worth asserting together, because either alone is satisfied by a
     broken page: the panel has to render an empty slot at page load, and the
@@ -6221,22 +6234,18 @@ def test_one_musicbrainz_note_lands_in_the_album_panel(client, cfg, monkeypatch)
     album_id = _id_for(cfg, d)
 
     page = client.get(f"/album/{album_id}").text
-    assert f'<div id="album-mb-note-{album_id}"></div>' in page, "the panel's empty slot"
+    assert f'<div id="album-update-{album_id}"></div>' in page, "the page's empty slot"
 
     body = client.get(f"/library/{album_id}/compare").text
-    assert f'<div id="album-mb-note-{album_id}" hx-swap-oob="true">' in body
+    assert f'<div id="album-update-{album_id}" hx-swap-oob="true">' in body
 
-    # Both summaries, in one legend, said once each. The count of the legend's
-    # own wrapper rather than of any phrase inside it: "tags" and "tracks" occur
+    # Both summaries, in one heading, said once each. The count of the heading's
+    # own class rather than of any phrase inside it: "tags" and "tracks" occur
     # all over this response, and the thing being asserted is that there is ONE
-    # note, which only the wrapper can say.
-    assert body.count('class="mb-note mb-note--panel"') == 1
-    assert body.count('<span class="mb-note__legend">') == 1
-    legend = re.search(r'class="mb-note__legend">(.*?)</span>', body, re.DOTALL)
+    # sentence, which only the wrapper can say.
+    assert body.count('class="album-update__legend"') == 1
+    legend = re.search(r'class="album-update__legend">(.*?)</h2>', body, re.DOTALL)
     assert legend and " · " in legend.group(1), "both summaries, joined into one line"
-    # This album has findings ("2 of 18 tags differ"), so the note keeps its
-    # colour — the class above is the whole of it, with no `--quiet` (#352).
-    assert "mb-note--quiet" not in body
 
 
 def test_an_album_with_nothing_to_act_on_gets_no_note_at_all(client, cfg, monkeypatch):
@@ -6265,8 +6274,8 @@ def test_an_album_with_nothing_to_act_on_gets_no_note_at_all(client, cfg, monkey
 
     body = client.get(f"/library/{album_id}/compare").text
 
-    assert f'<div id="album-mb-note-{album_id}" hx-swap-oob="true">' in body
-    assert "mb-note__legend" not in body
+    assert f'<div id="album-update-{album_id}" hx-swap-oob="true">' in body
+    assert "album-update__legend" not in body
 
 
 def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):
@@ -6276,8 +6285,17 @@ def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):
     button away from Re-tag — the thing you came to press. Asserted as the ORDER
     of the row, not just the class, because `ml-auto` on a button that is not
     last pushes the ones after it right along with it.
+
+    Re-tag itself left this row in #366, for the same reason Forget was pushed
+    away from it: the row is album management, and an answer to MusicBrainz is
+    not one. What the rule protects is unchanged — Forget is last, whatever
+    stands before it.
     """
-    d = _make_tagged_album(cfg, "Ordered", mbid="rel-ordered", tagged_at=datetime.now(UTC))
+    # `item_id` so Re-download is drawn: since #366 the row is that plus
+    # Forget, and a row holding Forget alone could not test an order at all.
+    d = _make_tagged_album(
+        cfg, "Ordered", mbid="rel-ordered", tagged_at=datetime.now(UTC), item_id=7
+    )
     page = client.get(f"/album/{_id_for(cfg, d)}").text
 
     # The row holds buttons and no nested div, so the first `</div>` after it
@@ -6286,7 +6304,7 @@ def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):
     row = re.search(r'<div id="album-actions-[^"]+".*?</div>', page, re.DOTALL)
     assert row, "the actions row"
     labels = [t.strip() for t in re.findall(r">\s*([A-Z][A-Za-z- ]+)\s*</button>", row.group(0))]
-    assert labels[0] == "Re-tag from MB"
+    assert len(labels) > 1, "a row with only Forget in it could not test an order"
     assert labels[-1] == "Forget", "last in the DOM, so it is last in the tab order too"
     assert re.search(r'class="ml-auto [^"]*"[^>]*>\s*Forget', row.group(0), re.DOTALL) or re.search(
         r'class="ml-auto[^"]*"', row.group(0)
@@ -7718,16 +7736,25 @@ def test_a_deleted_release_raises_a_banner_with_a_way_out(client, cfg, monkeypat
 
 
 def test_a_deleted_release_disables_retag(client, cfg, monkeypatch):
-    """Nothing behind Re-tag can succeed, so it must not look available."""
+    """Nothing behind Re-tag can succeed, so it must not be offered at all.
+
+    A disabled copy used to be swapped in over the live button, which sat in the
+    album panel and was therefore on the page whatever this response said. #366
+    moved the button into the update section, which this response renders — and
+    that section draws it only when MusicBrainz actually has the release. So the
+    stronger claim holds now: no control, rather than a dead one.
+    """
     d = _make_tagged_album(cfg, "Gone", mbid="rel-gone", tagged_at=datetime.now(UTC))
     monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _gone)
     aid = _id_for(cfg, d)
 
     r = client.get(f"/library/{aid}/compare")
 
-    swapped = r.text.split(f'id="retag-btn-{aid}"')[1].split(">")[0]
-    assert "hx-swap-oob" in swapped and "disabled" in swapped
-    assert "hx-post" not in swapped, "cannot fire at all, rather than firing and failing"
+    assert f'hx-post="/retag/{aid}"' not in r.text
+    assert "retag-btn-" not in r.text, "no control at all, not a disabled one"
+    # The section still renders, saying what could not be compared — the
+    # sentence is the point, and only the action is withheld.
+    assert "No comparison" in r.text
 
 
 def _gone_album_with_tags(cfg, name="Gone", *, mbid="rel-gone"):
@@ -7815,7 +7842,7 @@ def test_a_healthy_album_gets_no_banner_and_a_live_retag(client, cfg, monkeypatc
 
     assert "album-alert-" not in r.text
     assert "gone from MusicBrainz" not in r.text
-    assert 'hx-post="/retag/' in client.get(f"/album/{aid}").text, "still live on the page"
+    assert 'hx-post="/retag/' in r.text, "still live in the update section (#366)"
 
 
 def test_album_page_still_says_try_again_for_a_transient_failure(client, cfg, monkeypatch):

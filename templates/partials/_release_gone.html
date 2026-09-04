@@ -29,7 +29,7 @@
    given the answer (#228). The panel's note goes the same way, and says the
    comparison did not happen rather than being left blank. #}
 {% include 'partials/_tracks_section.html' %}
-{% include 'partials/_mb_note.html' %}
+{% include 'partials/_album_update.html' %}
 
 <div id="album-alert-{{ album.id }}" hx-swap-oob="true">
     <div class="border border-amber-300 bg-amber-50 rounded-lg p-3 mb-3 flex items-start gap-3">
@@ -65,11 +65,11 @@
     </div>
 </div>
 
-{# Same markup as the live button minus every hx-* attribute, so it cannot fire
-   at all rather than firing and failing politely. The endpoint still refuses on
-   its own (#194) — this is the UI half, not the guard. #}
-<button id="retag-btn-{{ album.id }}" hx-swap-oob="true" disabled
-        class="px-3 py-1.5 bg-surface text-muted border border-line rounded text-xs font-bold uppercase tracking-widest opacity-50 cursor-not-allowed"
-        title="There is no MusicBrainz release to re-tag from — it has been deleted.">
-    Re-tag from MB
-</button>
+{# A disabled Re-tag used to be swapped in here, because the live one sat in the
+   album panel and was therefore on the page whatever this response said. #366
+   moved it into the update section, which this response never fills — so on a
+   deleted release there is no button to disable, and swapping one in would have
+   put a dead control on a page whose banner already says why it is dead.
+
+   The endpoint still refuses on its own (#194); that guard was always the real
+   one, and this was only ever the UI half of it. #}

@@ -30,6 +30,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **An album's update now has a section of its own, under the panel.** The
+  sentence saying what differs, the button that takes it, and the answers to it
+  were in three places inside the album panel; they are one block now, with a
+  chip saying how far the change reaches — *Enrichment* for a catalogue number
+  filled in, *Identity* for a release MusicBrainz has merged. Ignoring an update
+  is a checkbox rather than a pair of buttons, so the state is what you read
+  rather than the action (#366).
+
 - **A tag that differs from MusicBrainz on every track is now shown with the
   tracks.** It used to appear in a list under the album's Tags comparison,
   headed *"Other tags a re-tag would change"* — a per-track fact stated away

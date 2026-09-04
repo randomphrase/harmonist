@@ -253,9 +253,9 @@ everyone benefits from it, and Harmonist picks it up on the next check without
 you having to come back and tell it.
 
 Editing MusicBrainz is not instant, though, and in the meantime the album sits in
-the **Update available** list looking like work. **Ignore for now**, beside that
-link, takes it out of the list. It is not a refusal and it does not silence the
-album for good:
+the **Update available** list looking like work. **Ignore until MusicBrainz
+changes**, the checkbox beside that link, takes it out of the list. It is not a
+refusal and it does not silence the album for good:
 
 - The album comes back the moment MusicBrainz next changes the release — which is
   exactly what happens when your edit is accepted. That is the point of it.
@@ -265,8 +265,8 @@ album for good:
   and the tile keeps its purple **Update** badge — the difference is still real,
   it just stops presenting itself as something to do. (The **Incomplete** filter
   behaves the same way for an album you've accepted as finished.)
-- The album's page says it is being ignored, and offers **Stop ignoring** to put
-  it back in the list straight away.
+- The tick is the state, so unticking it puts the album back in the list
+  straight away.
 - Re-tagging clears it too: once the files carry what MusicBrainz says, there is
   nothing left to be waiting for.
 
@@ -329,12 +329,16 @@ Harmonist reads their tags but never writes them, so they aren't compared agains
 MusicBrainz. **Show identifiers**, top right of the heading, reveals the
 MusicBrainz ids and ISRCs, which start hidden.
 
-When there is something to report, the whole comparison is summed up once on the
-album panel above: a hexagon note between the Format line and the buttons,
-saying how much of the tags and the tracklist differ. It sits beside **Re-tag
-from MB** because that is the action a difference leads to. An album where
-everything matches gets no note — the **Checked** date says when that was
-established, and there is nothing else to say.
+When there is something to report, the whole comparison is summed up once, in a
+section of its own directly under the album panel: a hexagon, a line saying how
+much of the tags and the tracklist differ, and a chip saying how far the change
+reaches — *Enrichment* for a catalogue number MusicBrainz has filled in,
+*Identity* for a release that has been merged into another. The actions are
+there with it, because they are the answers to that sentence: **Re-tag from MB**
+takes the change, the checkbox waits for an edit to land, and the link goes to
+MusicBrainz to make one. An album where everything matches gets no section — the
+**Checked** date says when that was established, and there is nothing else to
+say.
 
 A track MusicBrainz lists that you don't have says *"Not in your files"*, with a
 dashed ring beside its number — so a half-ripped disc reads as a column of them
@@ -386,9 +390,10 @@ does with one here.
 records written before it was last re-identified, so history doesn't rot when a
 release is re-matched or renamed.
 
-The actions live on the page too: **Re-tag from MB** (also the remedy for a
-partially-tagged album — it writes the id to the files missing it), the
-wrong-match pencil beside the release badge (which sends the album back to Needs
+The actions live on the page too: **Re-tag from MB** in the update section
+above (a partially-tagged album gets its own copy of it, beside the badge
+counting the files missing the id), the wrong-match pencil beside the release
+badge (which sends the album back to Needs
 MBID to re-pick, leaving your files' current tags alone until you re-tag), and
 **Forget**, which deletes the sidecar and returns the album to New without
 touching a single audio file.

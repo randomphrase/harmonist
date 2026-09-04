@@ -1642,7 +1642,8 @@ def test_the_album_page_offers_ignore_and_the_way_to_fix_it_upstream(engaged, mo
     body = client.get(f"/library/{_flagged(runner).id}/compare").text
 
     assert "musicbrainz.org/release/rel-aaa/edit" in body
-    assert "Ignore for now" in body
+    assert "Ignore until MusicBrainz changes" in body
+    assert 'name="ignore"' in body, "a checkbox, not a button (#366)"
 
 
 def test_an_album_with_nothing_outstanding_is_offered_neither(engaged, monkeypatch):
@@ -1656,7 +1657,7 @@ def test_an_album_with_nothing_outstanding_is_offered_neither(engaged, monkeypat
 
     body = client.get(f"/library/{_flagged(runner).id}/compare").text
 
-    assert "Ignore for now" not in body
+    assert "Ignore until MusicBrainz changes" not in body
 
 
 def test_ignoring_takes_the_album_out_of_the_update_filter(engaged, monkeypatch):
@@ -1671,7 +1672,7 @@ def test_ignoring_takes_the_album_out_of_the_update_filter(engaged, monkeypatch)
     client.get(f"/library/{album_id}/compare")  # the look that raises the flag
     assert "Test Album" in client.get("/library?filter=update-available").text
 
-    r = client.post(f"/library/{album_id}/ignore-update")
+    r = client.post(f"/library/{album_id}/ignore-update", data={"ignore": "true"})
 
     assert r.status_code == 200
     assert "Test Album" not in client.get("/library?filter=update-available").text
@@ -1692,7 +1693,7 @@ def test_ignoring_leaves_the_flag_and_the_files_alone(engaged, monkeypatch):
     client.get(f"/library/{album_id}/compare")
     before = {p: p.read_bytes() for p in sorted(album_dir.iterdir())}
 
-    client.post(f"/library/{album_id}/ignore-update")
+    client.post(f"/library/{album_id}/ignore-update", data={"ignore": "true"})
 
     assert _flagged(runner).update_available is True
     assert {p: p.read_bytes() for p in sorted(album_dir.iterdir())} == before
@@ -1709,14 +1710,16 @@ def test_an_ignored_album_says_so_and_offers_the_way_back(engaged, monkeypatch):
     client, runner = engage()
     album_id = _flagged(runner).id
     client.get(f"/library/{album_id}/compare")
-    client.post(f"/library/{album_id}/ignore-update")
+    client.post(f"/library/{album_id}/ignore-update", data={"ignore": "true"})
 
     body = client.get(f"/library/{album_id}/compare").text
 
-    assert "Stop ignoring" in body
+    # The tick IS the state since #366 — no second label to read it off.
+    assert "checked" in body
     # The promise, not just the state: "ignored" alone reads as "silenced", and
-    # someone who believed that would never press it.
-    assert "listed as an update again" in body
+    # someone who believed that would never tick it. It moved to the title,
+    # which is where a checkbox has room to explain itself.
+    assert "list this album's update again" in body
 
 
 def test_stopping_ignoring_lists_the_album_again(engaged, monkeypatch):
@@ -1729,9 +1732,9 @@ def test_stopping_ignoring_lists_the_album_again(engaged, monkeypatch):
     client, runner = engage()
     album_id = _flagged(runner).id
     client.get(f"/library/{album_id}/compare")
-    client.post(f"/library/{album_id}/ignore-update")
+    client.post(f"/library/{album_id}/ignore-update", data={"ignore": "true"})
 
-    client.post(f"/library/{album_id}/unignore-update")
+    client.post(f"/library/{album_id}/ignore-update")  # unticked: no field posted
 
     assert "Test Album" in client.get("/library?filter=update-available").text
 
@@ -1745,7 +1748,7 @@ def test_ignoring_an_album_nothing_has_compared_is_refused(engaged):
     album = _flagged(runner)
     assert album.mb_version is None
 
-    r = client.post(f"/library/{album.id}/ignore-update")
+    r = client.post(f"/library/{album.id}/ignore-update", data={"ignore": "true"})
 
     assert r.status_code == 200
     assert "Nothing to ignore" in r.text
@@ -1767,7 +1770,7 @@ def test_taking_the_update_clears_the_ignore(engaged, monkeypatch):
     client, runner = engage()
     album_id = _flagged(runner).id
     client.get(f"/library/{album_id}/compare")
-    client.post(f"/library/{album_id}/ignore-update")
+    client.post(f"/library/{album_id}/ignore-update", data={"ignore": "true"})
     assert album_id in activity_store.ignored_updates()
 
     assert client.post(f"/retag/{album_id}").status_code == 200

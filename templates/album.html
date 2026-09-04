@@ -40,6 +40,14 @@
 
     {% include 'partials/library_detail.html' %}
 
+    {# What MusicBrainz has that these files don't, and the answers to it (#366).
+       Empty until the /compare fetch fills it out of band, for the reason the
+       note it replaces was: everything in it comes from that fetch. Deliberately
+       nothing rather than a placeholder — an empty space says "not yet", where a
+       "Checking…" line between the panel and the Tags section would read as the
+       album's state. #}
+    <div id="album-update-{{ album.id }}"></div>
+
     {# The decisions the inbox would offer about this album, offered here (#150).
 
        The inbox is where the decisions are and the album page is where the
