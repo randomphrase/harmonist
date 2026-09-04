@@ -6,6 +6,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A multi-disc rip whose discs are named no longer lands in the Inbox as
+  Inconsistent.** XLD writes MusicBrainz's disc title into the album tag, so
+  disc 2 of *U.F.Orb* reads `U.F.Orb - bonus disc` and the folder looked like
+  two albums; one MusicBrainz release id on every file now settles it, whatever
+  the titles say (#381).
+
 ## [1.14.0] - 2026-09-04
 
 ### Added

@@ -1728,9 +1728,16 @@ or MB Album Id. Common cause: messy filesystem; user dumped multiple
 albums into one folder.
 
 **Detection:** scanner reads album title + MB Album Id from every file in
-each album dir. If either varies across files, derive state `INCONSISTENT`.
-Compilations (same album title + MBID, varying track artists) are NOT
-flagged — that's legitimate.
+each album dir. Varying MB Album Ids are always `INCONSISTENT`. A varying
+album title is `INCONSISTENT` only when some file lacks an MB Album Id —
+**a release id every file agrees on settles it, and the titles are not
+consulted at all.** The MBID is the release identity; the album title is a
+display string each ripper derives its own way, and XLD folds a named medium
+into it (disc 2 of *U.F.Orb* reads `U.F.Orb - bonus disc`), which the old
+title-or-MBID rule accused of being two albums (#381). One file without an
+MBID puts the titles back in charge: nothing vouches for a stray dropped into
+the dir, so its own title has to. Compilations (same album title + MBID,
+varying track artists) are NOT flagged — that's legitimate.
 
 **State:** new `INCONSISTENT`. **Purely derived from on-disk file tags;
 no sidecar field involved.** Auto-reconcile skips these (they're not

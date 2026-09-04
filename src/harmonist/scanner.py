@@ -847,6 +847,14 @@ def _check_consistency(
     Files missing either field don't vote — partial tagging is handled
     separately (§15.1). Returns one row per file when inconsistent,
     empty list when consistent.
+
+    A release id every file agrees on settles the question on its own, and the
+    titles are not consulted at all (§13.2): the MBID *is* the release identity,
+    while the album title is a display string each ripper derives its own way —
+    XLD folds a named medium into it, so disc 2 of U.F.Orb says "U.F.Orb - bonus
+    disc" and the dir was accused of holding two albums (#381). One file without
+    an MBID is enough to put the titles back in charge: nothing vouches for a
+    stray dropped into the dir, so its own title has to.
     """
     if len(audio_files) < 2:
         return []  # single-file album can't be inconsistent
@@ -856,9 +864,14 @@ def _check_consistency(
         for f, sf in zip(audio_files, fields, strict=True)
     ]
 
-    titles = {r.album_title for r in rows if r.album_title is not None}
     mbids = {r.mb_album_id for r in rows if r.mb_album_id is not None}
-    if len(titles) > 1 or len(mbids) > 1:
+    if len(mbids) > 1:
+        return rows
+    if len(mbids) == 1 and all(r.mb_album_id is not None for r in rows):
+        return []  # one release id, on every file: whatever the titles say
+
+    titles = {r.album_title for r in rows if r.album_title is not None}
+    if len(titles) > 1:
         return rows
     return []
 

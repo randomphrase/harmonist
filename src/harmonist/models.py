@@ -63,8 +63,9 @@ MatchConfidence = Literal["exact", "approximate", "no_match"]
 class InconsistentTrack:
     """One row in the INCONSISTENT card's per-file summary table.
 
-    Surfaced when files in a single album dir disagree on album title
-    (`©alb`) or MB Album Id (`----:com.apple.iTunes:MusicBrainz Album Id`).
+    Surfaced when files in a single album dir disagree on MB Album Id
+    (`----:com.apple.iTunes:MusicBrainz Album Id`), or on album title
+    (`©alb`) without one release id on every file to settle it (§13.2).
     Compilations (varying artist, consistent album+MBID) don't appear here
     — they're legitimate, not inconsistent.
     """

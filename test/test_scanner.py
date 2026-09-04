@@ -841,3 +841,60 @@ def test_a_new_video_file_invalidates_the_scan_cache(tmp_path):
     _video_disc(album_dir, disc=2, disc_total=2, n=9, track_total=9)
 
     assert scan(tmp_path, album_cache=cache)[0].state == AlbumState.COMPLETE
+
+
+def _write_disc(album_dir: Path, *, disc: int, n: int, album: str, mbid: str | None) -> None:
+    """Write one disc's files into a flat album dir, XLD-style: `2-01 …` names,
+    the disc's own album title, and the MB Album Id when there is one."""
+    from mutagen.mp4 import MP4
+
+    for i in range(1, n + 1):
+        f = album_dir / f"{disc}-{i:02d} Track {i}.m4a"
+        shutil.copy(SINE_M4A, f)
+        audio = MP4(f)
+        audio[ATOM_ALBUM] = [album]
+        audio["trkn"] = [(i, n)]
+        audio["disk"] = [(disc, 2)]
+        if mbid is not None:
+            audio[ATOM_MB_ALBUM_ID] = [mbid.encode()]
+        audio.save()
+
+
+def test_a_disc_title_folded_into_the_album_tag_is_not_inconsistent(tmp_path):
+    """XLD folds MusicBrainz's medium title into `©alb`, so disc 2 of U.F.Orb
+    says "U.F.Orb - bonus disc" (#381). Every file still names one release id,
+    which is what says whose tracks these are — the title is a display string
+    each ripper derives its own way, and it cannot outvote the MBID."""
+    album_dir = _make_album_dir(tmp_path, "The Orb", "U.F.Orb", n_tracks=0)
+    _write_disc(album_dir, disc=1, n=2, album="U.F.Orb", mbid="rel-ufo")
+    _write_disc(album_dir, disc=2, n=2, album="U.F.Orb - bonus disc", mbid="rel-ufo")
+    _tagged_sidecar(album_dir, mbid="rel-ufo")
+
+    album = scan(tmp_path)[0]
+    assert album.inconsistent_tracks == []
+    assert album.state == AlbumState.COMPLETE
+
+
+def test_two_releases_in_one_dir_are_still_inconsistent(tmp_path):
+    """The other half of the same rule: agreeing titles don't excuse
+    disagreeing release ids, which is two albums in one folder."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=0)
+    _write_disc(album_dir, disc=1, n=2, album="Album", mbid="rel-aaa")
+    _write_disc(album_dir, disc=2, n=2, album="Album", mbid="rel-bbb")
+
+    album = scan(tmp_path)[0]
+    assert album.state == AlbumState.INCONSISTENT
+    assert len(album.inconsistent_tracks) == 4
+
+
+def test_a_stray_untagged_track_with_its_own_title_is_still_inconsistent(tmp_path):
+    """A file dropped into an album dir carrying a different album title and no
+    release id at all. Nothing vouches for it, so the title still votes and the
+    dir is flagged — the narrowing in #381 must not swallow this."""
+    album_dir = _make_album_dir(tmp_path, "Artist", "Album", n_tracks=0)
+    _write_disc(album_dir, disc=1, n=2, album="Album", mbid="rel-aaa")
+    _write_disc(album_dir, disc=2, n=1, album="Somebody Else's Album", mbid=None)
+
+    album = scan(tmp_path)[0]
+    assert album.state == AlbumState.INCONSISTENT
+    assert len(album.inconsistent_tracks) == 3
