@@ -537,9 +537,10 @@ def _rows(fields: Sequence[Owned]) -> tuple[tuple[str, str, str | None, Kind], .
 #:
 #: The case it can differ in is a MusicBrainz merge: the fetch redirects and
 #: returns a different `id` than the one asked for. That is real, and it is not
-#: dropped — `mb_album_id` leaves `SHOWN_FIELDS` with this row, so the re-tag box
-#: below picks it up and states it as a change, which is what it is. #268 owns
-#: the merge itself.
+#: dropped — it is said beside the badge, as an album-level note about the
+#: identity rather than a row among the tags (#361, `_mb_merged.html`), which is
+#: also why `PANEL_FIELDS` names this field even though no row derives it. #268
+#: owns the merge itself.
 #:
 #: An exception to "derived, not listed" below, and the only one. It is written
 #: as a set to subtract rather than by hand-listing the survivors, so a field
@@ -1394,11 +1395,12 @@ def advisory(album: AlbumComparison, tracks: TracklistComparison) -> bool:
     return not any(f.differs for f in fields) and tracks.clean
 
 
-#: The owned fields the album PANEL shows — every compared row of it.
+#: The owned fields the album PANEL accounts for — every compared row of it, plus
+#: the release id, which it states as a note instead of a row (#361).
 #:
 #: Half of what the re-tag plan's box (#291) is scoped against (#297): the box
 #: states what a re-tag would change in the fields nothing else on this page
-#: shows, and a field the panel already compares would otherwise be restated
+#: shows, and a field the panel already accounts for would otherwise be restated
 #: directly underneath itself. The other half is per-album and lives on the
 #: tracklist — see `TracklistComparison.shown_fields`.
 #:
@@ -1410,9 +1412,18 @@ def advisory(album: AlbumComparison, tracks: TracklistComparison) -> bool:
 #: falls back to the box by itself. The `mb_attr` guard is what keeps Genre and
 #: Comment out — they are displayed, but they are not owned fields and a plan
 #: can never carry them.
+#:
+#: `MB_ALBUM_ID` is named by hand, and is the one member that has to be: it has
+#: no row in `_ALBUM_FIELDS` to be derived from (`_NOT_COMPARED` took it out in
+#: #298), and the surface that replaced the row is prose rather than a table —
+#: `_mb_merged.html`, beside the badge whose meaning the merge changed. The
+#: name is here rather than the whole of `_NOT_COMPARED` because membership of
+#: that set is only a statement that the panel does not COMPARE a field; a
+#: second field joining it would need a surface of its own before it belonged
+#: here, and inheriting the exemption silently is how a finding goes missing.
 PANEL_FIELDS: frozenset[str] = frozenset(
     disk_attr for _, disk_attr, mb_attr, _ in _ALBUM_FIELDS if mb_attr
-)
+) | {Owned.MB_ALBUM_ID.value}
 
 
 # ---------------------------------------------------------------------------

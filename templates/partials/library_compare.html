@@ -9,7 +9,8 @@
 {% include 'partials/_tag_comparison.html' %}
 
 {# Out-of-band: htmx swaps these into the page's Tracks section, the album
-   panel's note, and the panel's "Checked" date. One request, four destinations.
+   panel's note, the panel's "Checked" date and its merge note. One request,
+   five destinations.
 
    The Checked line is rendered at page build too, from the same cache row, so
    this is not what puts it on the page — it is what keeps it true when the
@@ -18,6 +19,10 @@
 {% include 'partials/_tracks_section.html' %}
 {% include 'partials/_album_update.html' %}
 {% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
+{# …and the panel's merge note (#361), which this fetch is the only thing that
+   can discover: a merged MBID redirects, so the difference between the id asked
+   for and the id that came back is the whole of the evidence. #}
+{% with oob = true %}{% include 'partials/_mb_merged.html' %}{% endwith %}
 
 {# The part of a waiting re-tag that has nowhere else on this page to appear
    (#291, scoped by #297, narrowed again by #309).
@@ -42,13 +47,18 @@
    not carry it. The band carries it now, so this box no longer sees the
    commonest thing it was showing.
 
-   What is left is two cases, and the heading names them rather than calling
-   them "other":
+   #361 took the release id, which was the other of the two cases left and the
+   only one that made this box load-bearing. Its comparison row went in #298
+   because the fetch is made BY that id and the panel already links it, so a
+   merge that moved the id fell through to here — an identity change filed among
+   leftover tags. It is stated beside the badge now (`_mb_merged.html`).
 
-     * the release id, whose comparison row went in #298 because the fetch is
-       made by that id and the header already links it — so a merge that moved it
-       lands here, and #361 is about giving it somewhere better;
-     * a field that earned a column and lost to MAX_EARNED_COLUMNS.
+   What is left is ONE case, and the heading names it rather than calling it
+   "other": a per-track field that earned a column and lost to
+   MAX_EARNED_COLUMNS. Rare by construction — it takes an album differing from
+   MusicBrainz, on some tracks but not others, in more per-track fields than the
+   table has room for — and this box is the whole of what stops the change being
+   invisible when it happens.
 
    The filtering is `compare.PANEL_FIELDS | tracklist.shown_fields`, applied in
    the view, so this partial renders whatever survives rather than knowing the
@@ -63,11 +73,9 @@
 <div class="mt-4 pt-3 border-t border-line">
     <h3 class="text-2xs font-bold text-ink uppercase tracking-widest">Not shown anywhere else on this page</h3>
     <p class="text-2xs text-muted mt-1 mb-2">
-        Two things reach here and nothing else does: the MusicBrainz release id,
-        when a merge has moved it and your files still name the release it was
-        merged from; and a per-track tag that differs on some tracks but not
-        others, where the tracklist was already showing as many such tags as it
-        can. Nothing is changed until you re-tag.
+        One thing reaches here: a per-track tag that differs on some tracks but
+        not others, where the tracklist below was already showing as many such
+        tags as it has columns for. Nothing is changed until you re-tag.
     </p>
     {% with changes = update_changes %}
     {% include 'partials/_tag_changes.html' %}

@@ -1084,19 +1084,19 @@ def test_a_field_outside_the_old_nine_is_compared(tmp_path):
     assert (row.disk, row.mb) == ("2019-03-15", "1994-03-07")
 
 
-def test_panel_fields_names_exactly_the_album_tags_the_panel_compares():
+def test_panel_fields_names_exactly_the_album_tags_the_panel_accounts_for():
     """The album half of what scopes the re-tag box (#297).
 
     As a whole set, not a sample: `PANEL_FIELDS` is derived, so a field added to
     `Owned` lands OUTSIDE it by default and starts appearing in the box. That is
     the right default, and it should still be a decision someone made rather than
     one that happened to them.
+
+    `mb_album_id` is the one member named by hand rather than derived, because
+    the panel states it as prose rather than as a row (#361) — so what is left
+    over here is every per-track tag and nothing else.
     """
     assert {f.value for f in Owned} - PANEL_FIELDS == {
-        # Not a per-track tag: the panel dropped this row because the fetch is
-        # made BY this id and the header already links it, so the box is where a
-        # merge that moved it now surfaces (#298).
-        "mb_album_id",
         # Every per-track tag. These are the tracklist's to place, and where it
         # places them depends on the album — see the columns tests below.
         "title",
@@ -1460,7 +1460,7 @@ def test_no_per_track_tag_is_in_two_places_or_in_none():
         [_mb_track(1, "Nightcall"), _mb_track(2, "Odd Look")],
     )
 
-    per_track = {f.value for f in Owned} - PANEL_FIELDS - {"mb_album_id"}
+    per_track = {f.value for f in Owned} - PANEL_FIELDS
     collapsed = {c.label for c in tl.collapsed}
     columns = {c.label for c in tl.columns}
     assert not collapsed & columns

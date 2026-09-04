@@ -102,6 +102,15 @@
             </div>
             {% endif %}
 
+            {# Whether MusicBrainz has merged the release those badges name into
+               another one (#361). Directly under them because the MusicBrainz
+               badge is the thing whose meaning a merge changes.
+
+               Empty here and filled by the /compare fetch out of band: the
+               redirect that reveals a merge costs an MB call, so the page cannot
+               know at render time. #}
+            {% include 'partials/_mb_merged.html' %}
+
             {# How much of the release is on disk, and the control that accepts
                what's missing as final (#227). Directly under the identity badges
                and above what the files are, for the same reason the

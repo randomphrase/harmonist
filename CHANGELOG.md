@@ -8,6 +8,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- **An album whose release MusicBrainz has merged away says so on its page.**
+  The note sits beside the MusicBrainz badge, links the release MusicBrainz now
+  serves in its place, and points at the re-tag that follows the merge — where
+  it used to be a row in a box headed "other tags a re-tag would change" (#361).
+
 - **An update you don't want can be ignored until MusicBrainz changes again.**
   The album page now says what to do about an update other than take it: a link
   to edit the release on MusicBrainz — where a correction belongs, and which

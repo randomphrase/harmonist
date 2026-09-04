@@ -4169,6 +4169,21 @@ def _register_routes(app: FastAPI) -> None:
             # `mb_names` and `mb_credits` and for the same reason: `compare` is
             # pure functions over values and never sees a release payload.
             mb_release_events=tagger_mod.release_events(release),
+            # The release MusicBrainz now serves under the id this album names,
+            # when that is a DIFFERENT release — i.e. it has been merged away
+            # (#361). None on every album whose release has not moved, which is
+            # all but a handful.
+            #
+            # The redirect is the whole of the evidence, and this is the only
+            # place with both halves of it in hand: `mbid` is what was asked for
+            # and `release["id"]` is what came back. #268 detects it identically
+            # one function over, at re-tag time, and that is where the merge is
+            # RECORDED — an album page is a look, and looking is not an event.
+            #
+            # The old id is not passed alongside: the sidecar carries it, the
+            # badge already links it, and a second copy in the context is a
+            # second thing to keep true.
+            merged_to=release["id"] if release["id"] != mbid else None,
             # What a re-tag would change in the fields nothing else on this page
             # shows (#291, narrowed by #297, narrowed again by #309). Free:
             # `refresh_flag` just built this plan to set the flag, so rendering

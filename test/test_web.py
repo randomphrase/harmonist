@@ -6011,9 +6011,11 @@ def test_the_release_row_is_gone_from_the_comparison(client, cfg, monkeypatch):
     matched on every album in the library bar one case.
 
     That case is a MusicBrainz merge, where the fetch redirects and returns a
-    different id than the one asked for — and it is not lost, because dropping
-    the row takes `mb_album_id` out of `compare.SHOWN_FIELDS` and the re-tag box
-    below picks it up as the change it is.
+    different id than the one asked for. It is not lost, and since #361 it is
+    not a row anywhere either: the panel says it in prose, beside the badge
+    whose meaning it changes. The box is scoped by `compare.PANEL_FIELDS`, which
+    names `mb_album_id` for that reason — take it out and this row comes back,
+    which is what the second half here would see.
     """
     d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
     monkeypatch.setattr(
@@ -6023,10 +6025,10 @@ def test_the_release_row_is_gone_from_the_comparison(client, cfg, monkeypatch):
     body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
     assert "<dt>MusicBrainz release</dt>" not in body
 
-    # The same label, from the live path that still emits it: a second album
-    # whose release comes back under a different id than its sidecar asked for.
-    # Its own album, not a re-fetch of the one above — that one's release is in
-    # the cache now, and the second read would be served from it (#127).
+    # A second album whose release comes back under a different id than its
+    # sidecar asked for. Its own album, not a re-fetch of the one above — that
+    # one's release is in the cache now, and the second read would be served
+    # from it (#127).
     merged = _make_tagged_album(cfg, "Merged", mbid="rel-old", tagged_at=datetime.now(UTC))
     monkeypatch.setattr(
         "harmonist.web.main.mb_lookup.fetch_release",
@@ -6034,10 +6036,11 @@ def test_the_release_row_is_gone_from_the_comparison(client, cfg, monkeypatch):
     )
 
     body = client.get(f"/library/{_id_for(cfg, merged)}/compare").text
-    assert "<dt>MusicBrainz release</dt>" in body
-    # The in-value emphasis splits the id across <em> runs, so the string is
-    # matched against the text rather than the markup.
-    assert "rel-old" in body and "rel-survivor" in re.sub(r"</?em[^>]*>", "", body)
+    assert "<dt>MusicBrainz release</dt>" not in body
+    # Said once, where it belongs: the note names the merge and links the release
+    # MusicBrainz now serves. `test_mb_merge.py` owns the rest of what it says.
+    assert "merged this release" in body
+    assert "https://musicbrainz.org/release/rel-survivor" in body
 
 
 def test_a_small_difference_is_marked_inside_the_value(client, cfg, monkeypatch):

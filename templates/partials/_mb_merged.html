@@ -1,0 +1,90 @@
+{# MusicBrainz has merged the release this album names into another one (#361).
+
+   Discovered by the /compare fetch and nowhere else: MusicBrainz *redirects* a
+   merged MBID, so the only evidence is that the release which came back carries
+   a different id from the one asked for. The page cannot know that at render
+   time without an MB call, so this is rendered empty at page build and swapped
+   in out of band afterwards — the same route the Checked line takes.
+
+   It sits with the badges because the MusicBrainz badge is the thing whose
+   meaning has changed: it links the release the files name, and following it
+   now lands on a different one. Until this, the only thing on the page that
+   said so was a row in the re-tag box, under a heading calling it one of the
+   "other tags a re-tag would change" — an identity change filed among
+   leftovers. §5 of the design says a merge must never be silent, and a row
+   there is not far off silent.
+
+   The badge is deliberately left pointing at `sc.mb_release_id`. That is the
+   release the FILES name, which is what the badge is for; MusicBrainz's own
+   redirect is what takes a follower to the survivor, and this note beside it is
+   what stops that redirect being a surprise. Re-pointing the badge would leave
+   the page with no link at all to the id the files actually carry, which is the
+   one the user needs when reading their tags against MusicBrainz.
+
+   A note rather than a banner, and no confirmation to ask for. #268 settled
+   that a merge always applies — the merge has already happened upstream, there
+   is nothing to authorise, and a re-tag is how the files catch up. Under #32's
+   nightly pass these arrive continuously, so a page-top banner per merged album
+   would be a lot of alarm about the most ordinary thing MusicBrainz does.
+
+   It carries its own remedy only when nothing else on the page does, which is
+   what `advisory` decides — the same call `_album_update.html` renders on, so
+   the two are complementary by construction and the page has exactly one re-tag
+   control either way.
+
+   Both halves of that matter. A merge can be the ONLY thing outstanding: every
+   compared tag matches, the tracklist is clean, the update section is not drawn
+   and **Re-tag from MB** leaves with it, so without a button here the page would
+   state an identity change and offer nothing to do about it — #291's dead end,
+   reopened for merges specifically. And a merge usually arrives WITH a tag
+   update (#268), where that section is drawn a few pixels below; a second button
+   saying the same thing in different words would be the duplication #360 and
+   #366 spent themselves removing. The sentence names the remedy in both cases,
+   so the note is never a problem stated without one.
+
+   `oob` is set by `library_compare.html`; unset at page build. #}
+<div id="album-merged-{{ album.id }}"{% if oob %} hx-swap-oob="true"{% endif %}>
+    {% if merged_to %}
+    <div class="mt-2 flex flex-wrap items-start gap-2">
+        <p class="inline-flex items-start gap-1.5 px-2.5 py-1 rounded-md text-2xs
+                  bg-amber-50 text-amber-800 border border-amber-300">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 stroke-width="2" aria-hidden="true" class="flex-shrink-0 mt-px">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            </svg>
+            <span>
+                {# The finding first, in the album's own terms. The two MBIDs are
+                   forensics and stay out of the prose — the badge's tooltip
+                   carries the old one and this link's carries the new, which is
+                   where #298 put nineteen hex characters the last time a panel
+                   tried to read them aloud. #}
+                <span class="font-bold">MusicBrainz merged this release into another one.</span>
+                Your files still name the release the badge above links;
+                MusicBrainz now serves
+                <a href="https://musicbrainz.org/release/{{ merged_to }}"
+                   target="_blank" rel="noopener"
+                   title="View the surviving release on MusicBrainz · {{ merged_to }}"
+                   class="font-bold underline hover:text-amber-900">the one it was merged into</a>.
+                {# The remedy in words, whether or not a button follows. Where the
+                   update section is drawn its Re-tag is a few pixels below, and
+                   this is what connects the two — the section's own heading is
+                   about tags and says nothing about identity. #}
+                Re-tagging follows the merge.
+            </span>
+        </p>
+        {# Same route as Re-tag from MB, and deliberately not the same words:
+           there the mechanism is the point, here it is what happens to the files
+           this note is about. Drawn only where that button is not — see above. #}
+        {% if advisory(comparison, tracklist) %}
+        <button hx-post="/retag/{{ album.id }}"
+                hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                class="px-2 py-1 rounded-md text-2xs font-bold uppercase tracking-widest
+                       bg-white hover:bg-surface text-ink border border-line transition"
+                title="Re-tag from MusicBrainz, which writes the surviving release's id — and everything else it says — to this album's files. Per-track embedded artwork is preserved.">
+            Point these files at it
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

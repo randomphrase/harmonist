@@ -221,3 +221,121 @@ def test_an_ordinary_retag_says_nothing_about_a_merge(client, cfg, monkeypatch):
 
     assert not [m for m in _messages() if "merged" in m.lower()], _messages()
     assert activity_store.resolve_alias(OLD_MBID) is None
+
+
+# ---------- what the album's page says while the re-tag is still outstanding (#361) ----------
+#
+# Everything above drives the merge through POST /retag, and that is where #268's
+# guarantee is written. The window BEFORE that re-tag was covered by nothing: the
+# fetch redirects, `plan_album` reports `mb_album_id: old -> new`, the album is
+# flagged Update available on the strength of it, and the only thing on the page
+# that said why was a row in the re-tag box — filed under a heading calling it one
+# of the "other tags a re-tag would change".
+#
+# The web-route rung is the one that can see this: the note is discovered by the
+# /compare fetch and rendered into the response, so the rung below (a template
+# render) would only assert the markup it was handed, and the rung above (a
+# browser) buys nothing — the button is an ordinary hx-post, and the panel gains
+# no interaction the page did not already have.
+
+
+def _compare(client, cfg, album_dir: Path, *, reread: bool = False) -> str:
+    """The /compare response for `album_dir` — where a merge is found out about.
+
+    `reread` is the page's "read again" control (#127), and a test needs it
+    wherever the album has been tagged first: that tagging stored a release row
+    under the id it asked for, and a merge is only ever visible on a LIVE fetch,
+    since a redirect is something MusicBrainz does rather than something the
+    cached payload records.
+    """
+    r = client.get(f"/library/{_scanned(cfg, album_dir).id}/compare{'?reread=1' if reread else ''}")
+    assert r.status_code == 200, r.text
+    return r.text
+
+
+def test_a_merge_is_stated_on_the_album_panel_naming_the_surviving_release(
+    client, cfg, monkeypatch
+):
+    """The album's identity has moved, and the panel's MusicBrainz badge is the
+    thing whose meaning changed — so that is where it is said, in the album's own
+    terms and with the release MusicBrainz now serves linked by name."""
+    d = _album(cfg)
+    _redirects_to(monkeypatch, NEW_MBID)
+
+    html = _compare(client, cfg, d)
+
+    assert "merged this release" in html, html
+    assert f"https://musicbrainz.org/release/{NEW_MBID}" in html, html
+
+
+def test_a_merge_is_not_also_listed_as_a_pending_tag_change(client, cfg, monkeypatch):
+    """One statement, in one place. The re-tag box states what a re-tag would
+    change in the fields nothing else on the page shows, and the release id is no
+    longer one of them — restating it there would put the identity change under a
+    heading about leftover tags, directly beneath the note that already says it."""
+    d = _album(cfg)
+    _redirects_to(monkeypatch, NEW_MBID)
+
+    html = _compare(client, cfg, d)
+
+    # `MusicBrainz release` is `mb_album_id`'s label, and the box — which renders
+    # through the same partial a History entry does — is the only thing in this
+    # response that can emit it as a change row. Matched with its tag, because
+    # the phrase alone also occurs inside the Checked line's tooltip.
+    assert "<dt>MusicBrainz release</dt>" not in html, html
+
+
+def test_an_album_whose_release_has_not_moved_says_nothing_about_a_merge(client, cfg, monkeypatch):
+    """The control, and the same one the re-tag path keeps: don't narrate a
+    no-op. Every album in the library reaches this code, and all but a handful
+    got the release they asked for."""
+    d = _album(cfg)
+    _redirects_to(monkeypatch, OLD_MBID)
+
+    # The sentence, not the word: the note's wrapper is on the page either way,
+    # empty, so that its id is there for the out-of-band swap to find.
+    assert "merged this release" not in _compare(client, cfg, d)
+
+
+def test_a_merge_alone_still_offers_the_re_tag_that_resolves_it(client, cfg, monkeypatch):
+    """The dead end this closes (#291): an album flagged Update available whose
+    page offers nothing to do about it.
+
+    A merge can be the ONLY thing outstanding — the release payload is otherwise
+    the one the files were tagged from — and such an album is `advisory`, so the
+    update section beneath the panel is not drawn and takes the Re-tag button
+    with it. The note carries its own remedy for exactly the reason the
+    partial-tag badge does.
+    """
+    d = _album(cfg)
+    # Tag the files from the release as it stands, so nothing but the id is left
+    # to differ once MusicBrainz moves it.
+    _redirects_to(monkeypatch, OLD_MBID)
+    client.post(f"/retag/{_scanned(cfg, d).id}")
+    _redirects_to(monkeypatch, NEW_MBID)
+
+    html = _compare(client, cfg, d, reread=True)
+
+    assert "merged this release" in html, html
+    assert html.count(f'hx-post="/retag/{_scanned(cfg, d).id}"') == 1, html
+
+
+def test_a_merge_arriving_with_a_tag_update_is_answered_by_one_button(client, cfg, monkeypatch):
+    """The other half of the same rule, and the commoner case: a merge usually
+    arrives WITH a tag update (#268), so the update section beneath the panel is
+    drawn and already carries **Re-tag from MB**.
+
+    The note then states the identity change and names the remedy in words,
+    without adding a second control that does the same POST in different words —
+    the duplication #360 and #366 were both about. Counted rather than located:
+    which of the two surfaces holds the button is the decision under test, and a
+    page carrying both would pass any assertion naming just one of them.
+    """
+    d = _album(cfg)  # tagged with four atoms, so most of the release differs
+    _redirects_to(monkeypatch, NEW_MBID)
+
+    html = _compare(client, cfg, d)
+
+    assert "merged this release" in html, html
+    assert "Re-tag from MB" in html, html
+    assert html.count(f'hx-post="/retag/{_scanned(cfg, d).id}"') == 1, html

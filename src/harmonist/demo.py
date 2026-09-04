@@ -310,6 +310,30 @@ LIBRARY: list[dict[str, Any]] = [
         },
     },
     {
+        # State: COMPLETE, but its release has been MERGED AWAY on MusicBrainz —
+        # the sibling of the album above, and much the commoner of the two
+        # (#268). An editor folded a duplicate release into another one, so the
+        # id these files name now redirects; the album is flagged Update
+        # available on the strength of it, and its page says so beside the
+        # MusicBrainz badge, which is the thing whose meaning changed (#361).
+        # Re-tagging follows the merge and settles it.
+        #
+        # `demo-rel-folksmen-dupe` is absent from MB_RELEASES and present in
+        # MERGED_INTO — that pair IS the merge, exactly as the absence above is
+        # the deletion.
+        "artist": "The Folksmen",
+        "album": "Old Joe's Place",
+        "tracks": ["Old Joe's Place", "Never Did No Wanderin'"],
+        "cover": "cover-1.jpg",
+        "file_mbid": "demo-rel-folksmen-dupe",
+        "sidecar": {
+            "store_url": "https://thefolksmen.bandcamp.com/album/old-joes-place",
+            "bandcamp_item_id": 1010,
+            "mb_release_id": "demo-rel-folksmen-dupe",
+            "tagged": True,
+        },
+    },
+    {
         # State: NEEDS_SYNC, tagged as the STANDARD "Fever Dog" — but the user owns
         # the "Live at the Riot House" edition (sibling in the same release group).
         # The FIRST sync can't link the std URL (no purchase for it), so post-sync
@@ -702,6 +726,14 @@ MB_RELEASES: dict[str, Release] = {
         "Shout",
         ["Shout", "Shama Lama Ding Dong"],
     ),
+    # The surviving side of a merge. Nothing else names it: the album that does
+    # names the id it was merged FROM, and only follows this one once re-tagged.
+    "demo-rel-folksmen": _release(
+        "demo-rel-folksmen",
+        "The Folksmen",
+        "Old Joe's Place",
+        ["Old Joe's Place", "Never Did No Wanderin'"],
+    ),
     "demo-rel-wonders": _release(
         "demo-rel-wonders",
         "The Wonders",
@@ -717,6 +749,18 @@ MB_RELEASES: dict[str, Release] = {
             "Little Wild One",
         ],
     ),
+}
+
+
+# Merged-away MBID → the release MusicBrainz serves in its place (#268, #361).
+#
+# MusicBrainz *redirects* a merged id rather than 404ing it, and that redirect is
+# the only notice Harmonist ever gets — so this map is what makes a merge
+# reachable in demo mode, the way an id missing from MB_RELEASES makes a deletion
+# reachable. A key here must NOT also be a key of MB_RELEASES: a release cannot
+# both survive and have been merged away, and `fetch_release` resolves this first.
+MERGED_INTO: dict[str, str] = {
+    "demo-rel-folksmen-dupe": "demo-rel-folksmen",
 }
 
 
@@ -770,7 +814,7 @@ def data_version() -> str:
     demo data after a code update that changed LIBRARY/MB_RELEASES/etc.
     """
     payload = json.dumps(
-        [LIBRARY, PENDING_PURCHASES, list(MB_RELEASES.keys()), URL_RELS],
+        [LIBRARY, PENDING_PURCHASES, list(MB_RELEASES.keys()), URL_RELS, MERGED_INTO],
         sort_keys=True,
         default=str,
     )
@@ -1100,6 +1144,11 @@ def _fill_in_existing_item_ids(
 
 
 def fetch_release(mbid: str) -> Release:
+    # The redirect a merged id gets on the real service (#268). Rebound rather
+    # than looked up separately so everything below — including the release's own
+    # `id`, which is what tells the caller a merge happened — comes from the
+    # surviving release, exactly as it does over the wire.
+    mbid = MERGED_INTO.get(mbid, mbid)
     if mbid not in MB_RELEASES:
         # `ReleaseGoneError`, not a bare MBError: in demo the catalogue is the
         # whole world, so an id that is not in it genuinely does not exist —
