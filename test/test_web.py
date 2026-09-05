@@ -8541,3 +8541,44 @@ def test_the_album_page_does_not_report_a_disambiguated_title_as_a_difference(cf
 
     assert [f.label for f in comparison.differing] == []
     assert {f.label: f.disk for f in comparison.fields}["Album"] == "Obreel (expanded edition)"
+
+
+def test_a_stray_compilation_tag_reads_as_a_pending_no(client, cfg, monkeypatch):
+    """#383. XLD wrote `cpil` on a bonus disc; MusicBrainz credits the release
+    to one artist, so the tag should go. The row used to draw the bare word
+    "True" in the styling of a match, while the headline counted it among the
+    differences — and said nothing about what removing a tag records."""
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio["cpil"] = True
+    audio.save()
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    cell = re.search(r"<dt>Compilation</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert cell, "no Compilation row"
+    assert "tag-fields__arrow" in cell.group(1), "a pending removal drawn as agreement"
+    assert ">Yes<" in cell.group(1) and ">No<" in cell.group(1)
+    assert "“No” means removing the tag" in cell.group(1)
+    assert ">True<" not in cell.group(1)
+
+
+def test_an_album_that_is_no_compilation_says_so_without_explaining_itself(
+    client, cfg, monkeypatch
+):
+    """The note earns its line only where a removal is pending. Every album in
+    the library carries this row, and one that already agrees with MusicBrainz
+    has nothing to explain — the hint would be permanent furniture."""
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    cell = re.search(r"<dt>Compilation</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert cell and ">No<" in cell.group(1)
+    assert "means removing the tag" not in cell.group(1)

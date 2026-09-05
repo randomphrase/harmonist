@@ -178,6 +178,16 @@
             {% endif %}
         </div>
         {% endif %}
+
+        {# A flag's "No" is written by deleting the tag (#383), which is the one
+           thing about this row a reader cannot get from the two values: watching
+           a re-tag remove a tag looks like losing something, when it is how the
+           answer is recorded. Said only where the row differs — that is where a
+           removal is actually pending — and in the panel itself rather than the
+           hexagon's `why`, which is a `title=` and so never opens on a tablet. #}
+        {% if f.flag and f.agreement == 'differs' %}
+        <p class="tag-fields__note">“No” means removing the tag</p>
+        {% endif %}
     </dd>
     {% endfor %}
 </dl>

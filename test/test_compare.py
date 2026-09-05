@@ -1907,3 +1907,98 @@ def test_display_order_cannot_drop_a_field():
     placed = _in_display_order(list(ALBUM_FIELDS))
     assert set(placed) == set(ALBUM_FIELDS)  # nothing lost
     assert placed[-1] is Owned.MB_ALBUM_ID  # and the unplaced one is last
+
+
+# ---------- a flag's absence is a value, not silence (#383) ----------
+
+
+def _flag_tracks(carrying: int, total: int) -> list[tuple[str, TrackTags]]:
+    """`total` files, the FIRST `carrying` of which have the compilation tag.
+
+    Shaped like the rip that found this: XLD wrote `cpil` on the bonus disc it
+    ripped in a second session and on nothing else.
+    """
+    return [
+        (f"{i}.m4a", TrackTags(owned={Owned.COMPILATION: True if i <= carrying else None}))
+        for i in range(1, total + 1)
+    ]
+
+
+def _compilation_row(tracks, mb):
+    return next(f for f in album_fields(tracks, mb) if f.label == LABELS[Owned.COMPILATION])
+
+
+def test_a_flag_musicbrainz_leaves_unset_reads_as_no_not_as_no_opinion():
+    """MusicBrainz is not silent about U.F.Orb being a compilation: it says the
+    release is credited to The Orb, and spells "not a compilation" by leaving
+    the tag off. Read as an absence, that became "MusicBrainz has no
+    counterpart" — ONLY_DISK, which the panel draws exactly like a match while
+    the headline counts it among the differences."""
+    row = _compilation_row(_flag_tracks(carrying=4, total=11), _tagset(compilation=None))
+
+    assert row.agreement is Agreement.DIFFERS
+    assert (row.disk, row.mb) == ("Yes", "No")
+    assert row.flag and row.differs
+
+
+def test_one_track_carrying_a_flag_speaks_for_the_whole_album():
+    """Presence anywhere wins, where every other field takes the majority. A
+    flag is a claim about the album and players read it off each file, so one
+    file claiming it is an album claiming it — and the majority rule would
+    answer "No" here, agree with MusicBrainz, and leave the panel silent about
+    a tag the re-tag deletes."""
+    row = _compilation_row(_flag_tracks(carrying=1, total=11), _tagset(compilation=None))
+
+    assert row.disk == "Yes"
+    assert row.differs, "ten quiet files must not outvote the one carrying it"
+
+
+def test_a_flag_counts_the_tracks_carrying_it_rather_than_calling_them_missing():
+    """ "missing on 7 tracks" reads as seven tracks lacking a tag they should
+    have — the opposite of the truth, which is four carrying one none should."""
+    row = _compilation_row(_flag_tracks(carrying=4, total=11), _tagset(compilation=None))
+
+    assert row.consensus.missing_count == 0
+    assert row.consensus.odd_summary == "on 4 of 11 tracks"
+
+
+def test_an_album_that_is_not_a_compilation_and_never_claimed_to_be_matches():
+    """The ordinary case, and the one that must stay quiet: no file carries the
+    tag, MusicBrainz doesn't set it, and both sides say No. A flag row that read
+    as a finding here would put every album in the library into the Inbox."""
+    row = _compilation_row(_flag_tracks(carrying=0, total=8), _tagset(compilation=None))
+
+    assert row.agreement is Agreement.MATCHES
+    assert (row.disk, row.mb) == ("No", "No")
+    assert not row.differs
+    assert row.consensus.is_unanimous
+
+
+def test_a_real_various_artists_compilation_matches_on_every_track():
+    row = _compilation_row(_flag_tracks(carrying=8, total=8), _tagset(compilation=True))
+
+    assert row.agreement is Agreement.MATCHES
+    assert (row.disk, row.mb) == ("Yes", "Yes")
+    assert not row.differs
+
+
+def test_a_flag_musicbrainz_sets_and_the_files_lack_is_still_a_difference():
+    """The other direction: a compilation Harmonist has yet to tag. It is the
+    files' No against MusicBrainz's Yes — a difference, not "only MusicBrainz
+    has this", because the files gave an answer."""
+    row = _compilation_row(_flag_tracks(carrying=0, total=8), _tagset(compilation=True))
+
+    assert row.agreement is Agreement.DIFFERS
+    assert (row.disk, row.mb) == ("No", "Yes")
+    assert row.differs
+
+
+def test_with_no_musicbrainz_release_a_flag_is_left_as_the_files_carry_it():
+    """The disk-only view (#228) reads tags without comparing them. There is no
+    MusicBrainz answer to hold a flag against, so translating absence into "No"
+    would invent an opinion out of a fetch that never happened."""
+    row = _compilation_row(_flag_tracks(carrying=4, total=11), None)
+
+    assert not row.flag
+    assert row.agreement is Agreement.ONLY_DISK
+    assert row.disk == "True"

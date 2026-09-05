@@ -8,6 +8,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A stray Compilation tag now reads as a pending "No" instead of the album's
+  answer.** A tag Harmonist writes only when true — "no" is the tag's absence —
+  was compared as though MusicBrainz had no opinion, so a `cpil` your ripper left
+  on one disc was drawn like a matching field while the headline counted it among
+  the differences. The row now says `Yes → No`, counts the tracks carrying it,
+  and notes that "No" is written by removing the tag (#383).
+
 - **A multi-disc rip whose discs are named no longer lands in the Inbox as
   Inconsistent.** XLD writes MusicBrainz's disc title into the album tag, so
   disc 2 of *U.F.Orb* reads `U.F.Orb - bonus disc` and the folder looked like

@@ -128,6 +128,10 @@ class Consensus:
     #: Both leave `value` None, and treating them the same would report an
     #: untagged album as inconsistent.
     distinct: int = 0
+    #: Whether this field is a flag, whose absence is the value "No" rather than
+    #: a gap (#383). Load-bearing for `odd_summary` alone: every track carries
+    #: one of the two spellings, so none of them is missing anything.
+    flag: bool = False
 
     @property
     def is_unanimous(self) -> bool:
@@ -155,7 +159,14 @@ class Consensus:
         Absence and disagreement get different words because they need
         different fixes: a missing tag is filled in, a differing one is
         reconciled.
+
+        A flag has neither problem, so it gets neither word. Its outliers are
+        not missing a tag — they carry the other spelling of it — and counting
+        them says nothing a reader wants: what they want is how far the tag
+        actually spread, which is the count of tracks carrying it (#383).
         """
+        if self.flag:
+            return f"on {self.agreeing} of {self.total} tracks"
         odd = len(self.outliers)
         one = odd == 1
         tracks = "track" if one else "tracks"
@@ -209,6 +220,14 @@ class FieldComparison:
     #: of the FIELD, like `entity`: the two strings being compared cannot say
     #: whether they are a credit or an album title that reads like one.
     credit: bool = False
+    #: Whether this row is a FLAG, whose two values are the tag's presence and
+    #: its absence (#383) — see `_FLAGS`. A property of the field, like the two
+    #: above: "Yes" and "No" are ordinary strings by the time they get here, and
+    #: nothing about them says one of them is written by deleting the tag. The
+    #: page says so, on a differing row, because a user watching a re-tag remove
+    #: a tag deserves to know it is recording *false* rather than discarding
+    #: what they had.
+    flag: bool = False
     #: Which field this row IS — the `Owned` value, or `"genre"` / `"comment"`
     #: for the two display-only rows. `label` is prose and free to be reworded;
     #: this is the identity, and it is what lets the page hang a per-field
@@ -705,6 +724,65 @@ _ENTITY: dict[str, str] = {
 _CREDITED: frozenset[str] = frozenset({Owned.ALBUM_ARTIST, Owned.ARTIST})
 
 
+#: The fields whose ABSENCE is a value rather than a gap (#383).
+#:
+#: `compilation` is written only when true — "not a compilation" IS the missing
+#: tag, and `owned.as_flag` deliberately never returns False (#323). Everywhere
+#: else in this module an absent value means "nobody said", so the generic
+#: reading makes the panel state something false: that MusicBrainz has no
+#: opinion, when it has a definite one — this release is not credited to Various
+#: Artists — that it happens to spell by omission. The row then lands in
+#: ONLY_DISK and renders like a match, while the headline counts it among the
+#: differences, and a stray `cpil` XLD wrote on a bonus disc goes unexplained.
+#:
+#: Named as a table, beside `_ENTITY` and `_CREDITED`, for the reason they are:
+#: which fields are flags is a property of the FIELDS, and by the time a value
+#: reaches `compare_field` it is a string like any other. `compilation` is the
+#: only member today and the only owned field read through `as_flag`; a second
+#: one joins by being added here, not by teaching the comparison a new rule.
+_FLAGS: frozenset[str] = frozenset({Owned.COMPILATION})
+
+#: How a flag's two states are spelled ON THE PAGE. Prose rather than `True` /
+#: `False`, because both halves of the row are read as English by someone
+#: deciding whether to press Re-tag — and never as the empty string, which is
+#: what would put the row back in ONLY_DISK.
+#:
+#: `_tag_comparison.html` names the "No" spelling in the note under a differing
+#: flag row, so these two are prose the page depends on rather than internal
+#: tokens: reword one and the sentence there has to follow.
+FLAG_YES = "Yes"
+FLAG_NO = "No"
+
+
+def flag_consensus(values: Sequence[tuple[str, str | None]]) -> Consensus:
+    """What the album says about one flag, from raw `(file_name, value)` pairs.
+
+    **Presence anywhere wins**, where `consensus` takes the majority. A flag is
+    a claim about the album, and players read it off each file: four files out
+    of eleven carrying `cpil` is an album claiming to be a compilation on four
+    of its tracks, not an album that isn't one. The majority rule would answer
+    "No" here, agree with MusicBrainz, and drop the row out of the findings
+    entirely — leaving the panel silent about four tags a re-tag deletes, which
+    is exactly the hole #340 closed for the fields MusicBrainz has no value for.
+
+    Outliers carry the OTHER spelling rather than None, so `missing_count` is 0
+    and nothing about this field is ever reported as missing.
+    """
+    total = len(values)
+    if total == 0:
+        return Consensus(value=None, agreeing=0, total=0, flag=True)
+    spelt = [(name, FLAG_YES if value is not None else FLAG_NO) for name, value in values]
+    winner = FLAG_YES if any(v == FLAG_YES for _, v in spelt) else FLAG_NO
+    return Consensus(
+        value=winner,
+        agreeing=sum(1 for _, v in spelt if v == winner),
+        total=total,
+        outliers=tuple((name, v) for name, v in spelt if v != winner),
+        distinct=len({v for _, v in spelt}),
+        flag=True,
+    )
+
+
 def album_fields(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: TagSet | None,
@@ -745,11 +823,17 @@ def album_fields(
         # is that Harmonist couldn't look (#112).
         values = [(name, _disk_value(t, disk_attr)) for name, t in tracks if not t.unreadable]
         mb_value = _as_display(getattr(mb, mb_attr)) if (mb is not None and mb_attr) else None
+        # A flag's absence is a value, but only where there is a MusicBrainz
+        # answer to hold it against (#383). The disk-only view (#228) makes no
+        # claim about what a missing tag means — there is nothing to compare, so
+        # nothing to translate — and reading "No" into every album MusicBrainz
+        # has deleted would invent an opinion out of a fetch that never happened.
+        flag = disk_attr in _FLAGS and mb is not None
         row = compare_field(
             label,
             kind=kind,
-            disk=consensus(values),
-            mb=mb_value,
+            disk=flag_consensus(values) if flag else consensus(values),
+            mb=(FLAG_YES if mb_value is not None else FLAG_NO) if flag else mb_value,
             unreadable=unreadable,
             also_matches=_accepted(disk_attr, album_title_alias, accepted_countries),
         )
@@ -765,6 +849,7 @@ def album_fields(
                 comparable=bool(mb_attr),
                 entity=_ENTITY.get(disk_attr),
                 credit=disk_attr in _CREDITED,
+                flag=flag,
                 key=disk_attr,
             ),
         )
