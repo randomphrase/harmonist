@@ -1577,6 +1577,54 @@ def test_an_enrichment_on_its_own_is_recorded_as_one(tmp_path):
     assert album.update_significance == "enrichment"
 
 
+def test_a_credit_list_arriving_is_an_enrichment_verdict(tmp_path):
+    """#389: the flag and the verdict answer different questions here.
+
+    A collaboration with no `albumartists` IS a finding — the joined phrase
+    cannot be split safely, so the list is the only record of where one artist
+    ends and the next begins (#337, and the flag test above). But MusicBrainz
+    filling in a tag no library predating Picard `3.0.0rc1` carries is not the
+    album turning out to be a different album, and ranking it Identity put it in
+    the Inbox above a genuine retitle.
+    """
+    from mutagen.mp4 import MP4
+
+    from harmonist.tagger import ATOM_ALBUM_ARTISTS
+
+    release = _release()
+    release["artist-credit"] = [
+        {"artist": {"id": "art-aaa", "name": "Jane", "sort-name": "Jane"}, "name": "Jane"},
+        " & ",
+        {"artist": {"id": "art-bbb", "name": "John", "sort-name": "John"}, "name": "John"},
+    ]
+    album = _tagged(tmp_path, release)
+    f = MP4(album.path / "01 Track 1.m4a")
+    del f[ATOM_ALBUM_ARTISTS]
+    f.save()
+
+    assert _flag(album, release) is True
+    assert album.update_significance == "enrichment"
+
+
+def test_a_credit_list_that_names_somebody_else_is_still_identity(tmp_path):
+    """The other half: the lowering is for an ABSENCE being filled, never for a
+    list that disagrees. A wrong album artist is what the album IS, whatever the
+    tag's age — and a rule that lowered on the field rather than on the change
+    would hide it under the level #273 lets a user trust."""
+    from mutagen.mp4 import MP4
+
+    from harmonist.tagger import ATOM_ALBUM_ARTISTS
+
+    release = _release()
+    album = _tagged(tmp_path, release)
+    f = MP4(album.path / "01 Track 1.m4a")
+    f[ATOM_ALBUM_ARTISTS] = [b"Somebody Else"]
+    f.save()
+
+    assert _flag(album, release) is True
+    assert album.update_significance == "identity"
+
+
 def test_a_tracklist_that_no_longer_fits_is_a_structural_verdict(tmp_path):
     """No plan can be built for this one, so the verdict cannot come from a
     diff — but "MusicBrainz has changed how many tracks this release has" is

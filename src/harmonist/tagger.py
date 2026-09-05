@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, NamedTuple, Protocol, runtime_checkable
@@ -360,8 +360,11 @@ def significance_of(field: str, before: Any, after: Any) -> owned.Significance:
 
     `field` is a key from an `AlbumPlan`'s changes — an `owned.Owned` value or
     `owned.ARTWORK` — and `before`/`after` are that entry's two values. The
-    field-level classification comes from `owned.SIGNIFICANCE`; this adds the one
-    rule that cannot be given at field level.
+    field-level classification comes from `owned.SIGNIFICANCE`; the rules that
+    cannot be given at field level are `owned.BY_VALUE` — how far such a field
+    may drop — paired with `LOWERED_WHEN` below, which decides whether this
+    particular change is one of the small ones. Only ever downwards: see
+    `owned.BY_VALUE` for why that direction is not symmetric.
 
     It says what the change IS, not what to do about it. Whether it needs a
     person is `owned.needs_review`, which is policy over this answer rather than
@@ -386,8 +389,9 @@ def significance_of(field: str, before: Any, after: Any) -> owned.Significance:
     itself.
     """
     declared = owned.SIGNIFICANCE[field]
-    if field in owned.BY_VALUE and _only_cosmetically_different(before, after):
-        return owned.Significance.COSMETIC
+    lowered = owned.BY_VALUE.get(field)
+    if lowered is not None and LOWERED_WHEN[field](before, after):
+        return lowered
     return declared
 
 
@@ -406,6 +410,23 @@ def _only_cosmetically_different(before: Any, after: Any) -> bool:
     if not isinstance(before, str) or not isinstance(after, str):
         return False
     return norm_title(before) == norm_title(after)
+
+
+#: When each `owned.BY_VALUE` field drops to the level declared there — the
+#: comparison half of the pair, keyed alike (#389).
+#:
+#: Here rather than in `owned` because one of these needs `models.norm_title`,
+#: and `formats.owned` is a leaf that does not reach up into the model layer for
+#: it. Each rule answers only "is this change smaller than the field says": what
+#: smaller MEANS is `owned.BY_VALUE`'s to say, so a rule cannot quietly invent a
+#: level, and `significance_of` indexes this table rather than `.get`-ing it, so
+#: a field declared there with no rule fails loudly instead of classifying
+#: itself at its declared level.
+LOWERED_WHEN: dict[str, Callable[[Any, Any], bool]] = {
+    owned.Owned.TITLE: _only_cosmetically_different,
+    owned.Owned.ALBUM_ARTISTS: owned.fills_in_an_absent_list,
+    owned.Owned.ARTISTS: owned.fills_in_an_absent_list,
+}
 
 
 @dataclass(frozen=True)

@@ -1582,6 +1582,60 @@ def test_a_title_arriving_or_leaving_is_not_cosmetic():
     assert tagger.significance_of("title", "Dawn Chorus", None) is owned.Significance.IDENTITY
 
 
+def test_a_credit_list_arriving_is_enrichment_but_a_changed_one_is_identity():
+    """#389: the second kind of by-value rule, and the reason the field-level
+    table cannot answer for these two.
+
+    `albumartists` and `artists` are new in Picard `3.0.0rc1` as well as here, so
+    no library predating it carries either — and one IDENTITY entry ranked every
+    collaboration in a real library above a genuine retitle. A list *arriving* is
+    MusicBrainz filling in a detail; a list whose names have *moved* is what the
+    album, or the track, IS.
+    """
+    for field in ("album_artists", "artists"):
+        assert (
+            tagger.significance_of(field, None, ["Hauschka", "Hildur Guðnadóttir"])
+            is owned.Significance.ENRICHMENT
+        ), field
+        assert (
+            tagger.significance_of(field, [], ["Hauschka", "Hildur Guðnadóttir"])
+            is owned.Significance.ENRICHMENT
+        ), field
+        assert (
+            tagger.significance_of(field, ["Hauschka"], ["Hauschka", "Hildur Guðnadóttir"])
+            is owned.Significance.IDENTITY
+        ), field
+        assert (
+            tagger.significance_of(field, ["Somebody Else"], ["Hauschka"])
+            is owned.Significance.IDENTITY
+        ), field
+
+
+def test_a_credit_list_being_emptied_is_not_an_enrichment():
+    """The mirror of the title case: a field vanishing is a real change however
+    small the values look, so it falls through to the level the map gave. Losing
+    the only record of where one artist ends and the next begins is not
+    MusicBrainz filling in a detail."""
+    assert (
+        tagger.significance_of("album_artists", ["Hauschka", "Hildur Guðnadóttir"], [])
+        is owned.Significance.IDENTITY
+    )
+
+
+def test_every_by_value_field_has_a_rule_deciding_when_it_lowers():
+    """The two halves of a by-value field live in different modules — `owned`
+    declares how far it may drop, this one holds the comparison that decides,
+    because only this side can reach `models.norm_title` — so nothing but this
+    keeps them in step. A rule keyed to no declaration is dead code, and a
+    declaration with no rule raises at classification time, which is a `KeyError`
+    out of the gardener's pass rather than a field quietly staying at IDENTITY.
+
+    The direction those two tables must run in is asserted where both of them
+    can be read at once: `test_a_value_sensitive_field_is_declared_at_its_higher_significance`.
+    """
+    assert set(owned.BY_VALUE) == set(tagger.LOWERED_WHEN)
+
+
 def test_artwork_is_its_own_level():
     """Artwork arrives in a plan's changes under a key that is deliberately not
     an owned field, and it still has to be classified — `owned.ARTWORK` is in the

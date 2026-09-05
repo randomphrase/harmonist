@@ -8,6 +8,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A collaboration missing its album-artists tag now reads as Enrichment
+  rather than Identity.** The list arriving where there was none is MusicBrainz
+  filling in a detail — no library predating last week's Picard carries the tag
+  — and it was outranking genuine retitles in the Inbox. A list whose names
+  actually change is still Identity (#389).
+
 - **A pending change under the tracklist is drawn like every other one on the
   page** — stacked, with what changed marked inside the value, and no longer
   struck through as though your tag were a mistake. `Artist sort` and `Album

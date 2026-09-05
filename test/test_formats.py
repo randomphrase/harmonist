@@ -764,7 +764,7 @@ def test_every_owned_field_has_a_significance():
     from harmonist.formats.owned import ARTWORK, BY_VALUE, SIGNIFICANCE, Owned
 
     assert set(SIGNIFICANCE) == {f.value for f in Owned} | {ARTWORK}
-    assert BY_VALUE <= set(Owned)
+    assert BY_VALUE.keys() <= {f.value for f in Owned}
 
 
 def test_every_owned_field_has_a_label():
@@ -788,17 +788,39 @@ def test_every_owned_field_has_a_label():
 def test_a_value_sensitive_field_is_declared_at_its_higher_significance():
     """The runtime adjustment only ever lowers.
 
-    A `BY_VALUE` field is declared IDENTITY and *lowered* to COSMETIC when the
-    values turn out to differ trivially. Declared the other way round, the rule
-    failing to fire would understate a real retitle as a spacing fix — and once
-    #273 lets a level be trusted, understating is what writes something nobody
-    agreed to. Overstating only ever costs a glance.
+    A `BY_VALUE` field is declared high in `SIGNIFICANCE` and *lowered* to the
+    level it maps to here when the change turns out to be one of the small ones
+    — a title that differs only in spacing, a credit list arriving where there
+    was none (#389). Declared the other way round, the rule failing to fire
+    would understate a real retitle as a spacing fix — and once #273 lets a
+    level be trusted, understating is what writes something nobody agreed to.
+    Overstating only ever costs a glance.
+
+    Asserted over the two levels rather than against a literal IDENTITY, so it
+    stays the direction rule it is meant to be as more fields join.
     """
-    from harmonist.formats.owned import BY_VALUE, SIGNIFICANCE, Significance
+    from harmonist.formats.owned import BY_VALUE, SIGNIFICANCE, ranked
 
     assert BY_VALUE
-    for field in BY_VALUE:
-        assert SIGNIFICANCE[field] is Significance.IDENTITY
+    for field, lowered in BY_VALUE.items():
+        assert ranked(lowered) < ranked(SIGNIFICANCE[field]), field
+
+
+def test_a_fill_is_an_absence_on_the_left_and_a_value_on_the_right():
+    """The contract `tagger.LOWERED_WHEN` reads this helper through (#389).
+
+    Pinned here rather than only through `significance_of`, because the last of
+    the four cases is one no diff can hand it — `values_differ` collapses
+    absent-to-absent before a plan is built — and the guard against it is still
+    what stops "the tag is still missing" being classified as MusicBrainz
+    filling it in, should anything else ever ask.
+    """
+    from harmonist.formats.owned import fills_in_an_absent_list as fills
+
+    assert fills(None, ["Hauschka", "Hildur Guðnadóttir"]) is True
+    assert fills(["Hauschka"], ["Hauschka", "Hildur Guðnadóttir"]) is False
+    assert fills(["Hauschka", "Hildur Guðnadóttir"], []) is False
+    assert fills(None, []) is False
 
 
 def test_cosmetic_is_never_declared_only_derived():

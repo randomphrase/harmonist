@@ -331,20 +331,40 @@ def needs_review(significance: Significance) -> bool:
 
 
 #: Fields whose significance cannot be given at field level, because it depends
-#: on how far the value actually moved. Only `title` so far: MusicBrainz tidying
-#: the spacing or casing of a track title is COSMETIC, and renaming the track is
-#: IDENTITY, and one entry in the table cannot say both.
+#: on how far the value actually moved — mapped to the level each DROPS TO when
+#: it turns out the change is smaller than the field itself can say.
 #:
-#: These are declared at their HIGHER significance and lowered when the values
-#: turn out to differ trivially — never raised. That direction is deliberate: a
-#: rule that fails to fire overstates a change, which costs a glance, while one
-#: that fires wrongly understates a retitle as a spacing fix, and under a trust
+#: Two kinds of smallness, and they are different rules rather than degrees of
+#: one. MusicBrainz tidying the spacing or casing of a track title is the same
+#: title spelt differently, so `title` drops to COSMETIC; a credit list arriving
+#: where there was none is MusicBrainz filling in a detail, so `album_artists`
+#: and `artists` drop to ENRICHMENT (#389). One entry in `SIGNIFICANCE` cannot say
+#: both halves of either pair: renaming the track, and a credit list whose names
+#: have moved, are still IDENTITY.
+#:
+#: These are declared at their HIGHER significance in `SIGNIFICANCE` and lowered
+#: to what is written here — never raised. That direction is deliberate: a rule
+#: that fails to fire overstates a change, which costs a glance, while one that
+#: fires wrongly understates a retitle as a spacing fix, and under a trust
 #: setting that is a write nobody agreed to.
 #:
-#: The comparison itself lives with the caller (`tagger.significance_of`), which
-#: is where `models.norm_title` — the definition of "cosmetic" the album page
-#: already uses — can be imported without this module reaching upwards for it.
-BY_VALUE: frozenset[Owned] = frozenset({Owned.TITLE})
+#: The comparisons themselves live with the caller, in `tagger.LOWERED_WHEN`,
+#: which is where `models.norm_title` — the definition of "cosmetic" the album
+#: page already uses — can be imported without this module reaching upwards for
+#: it. The two tables are keyed alike and must stay so:
+#: `test_every_by_value_field_has_a_rule_deciding_when_it_lowers` is what holds
+#: them together, and a field declared here with no rule raises at
+#: classification time rather than classifying itself.
+#:
+#: Keyed by string like `SIGNIFICANCE`, and for the same practical reason: the
+#: lookup is made with a key taken from a plan's changes, which is a `str`. The
+#: entries are still written as `Owned` members, so a rename cannot leave a
+#: stale spelling behind.
+BY_VALUE: dict[str, Significance] = {
+    Owned.TITLE: Significance.COSMETIC,
+    Owned.ALBUM_ARTISTS: Significance.ENRICHMENT,
+    Owned.ARTISTS: Significance.ENRICHMENT,
+}
 
 
 #: Multi-value credit lists whose ABSENCE is not a defect while they would hold
@@ -394,6 +414,29 @@ def is_opportunistic(field: str, before: object, after: object) -> bool:
     if twin is None or not _absent(before):
         return False
     return isinstance(after, list) and len(after) <= 1
+
+
+def fills_in_an_absent_list(before: object, after: object) -> bool:
+    """Whether this change is a list ARRIVING rather than its contents moving.
+
+    The `BY_VALUE` test for the two credit lists (#389), and the reason it is a
+    rule rather than a field-level entry: a credit list is only as significant as
+    what happened to it. Filling one in is MusicBrainz supplying a tag the file
+    never had — nothing about who made the album moves, and the names it arrives
+    with are the ones the scalar twin beside it has been carrying all along.
+    Changing one says the album is credited to somebody else, which is IDENTITY
+    however few names are involved.
+
+    A list going away is not a fill either: the split it recorded is lost, and
+    that is a real change whatever the values would have compared as. So this is
+    an absence on the LEFT and a value on the right, both required.
+
+    Deliberately narrower than `is_opportunistic` above and not derived from it:
+    that one answers "is this worth re-tagging for", and its single-name cutoff
+    is about redundancy. This answers "how far does this reach", and a fill of
+    two names reaches exactly as far as a fill of one.
+    """
+    return _absent(before) and isinstance(after, list) and not _absent(after)
 
 
 def _absent(value: object) -> bool:
