@@ -8582,3 +8582,44 @@ def test_an_album_that_is_no_compilation_says_so_without_explaining_itself(
     cell = re.search(r"<dt>Compilation</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
     assert cell and ">No<" in cell.group(1)
     assert "means removing the tag" not in cell.group(1)
+
+
+def _genre_popover(client, cfg, monkeypatch, name: str, genres: tuple[str, ...]) -> str:
+    """An album of `len(genres)` tracks, one genre each, rendered to its panel.
+
+    Genre is the field to disagree on: it is display-only, so the popover under
+    test is the whole finding rather than a side effect of a differing tag.
+    """
+    d = _make_tagged_album(cfg, name, mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    for i in range(2, len(genres) + 1):
+        shutil.copy(d / "01 Track.m4a", d / f"0{i} Track.m4a")
+    for track, genre in zip(sorted(d.glob("*.m4a")), genres, strict=True):
+        audio = MP4(track)
+        audio["\xa9gen"] = [genre]
+        audio.save()
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+    return client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+
+def test_the_outlier_popover_agrees_with_its_own_count(client, cfg, monkeypatch):
+    """#384. The sentences under it already inflect — "The other has" against
+    "The others have" — and `Consensus.odd_summary` states the rule outright in
+    Python. These two verbs were written plural and left there, so a field one
+    track carries read "1 carry"."""
+    # Three genres, no majority: the tie goes to track 1, so the value the album
+    # shows is carried by exactly one file.
+    body = _genre_popover(client, cfg, monkeypatch, "Odd", ("Ambient", "Drone", "Techno"))
+
+    assert "1 of your 3 tracks agrees" in body
+    assert "1 carries “Ambient”" in body
+
+
+def test_the_outlier_popover_still_reads_as_a_plural_when_it_is_one(client, cfg, monkeypatch):
+    """The other half of the same rule, and what stops the fix being a swap of
+    one hard-coded verb for the other."""
+    body = _genre_popover(client, cfg, monkeypatch, "Even", ("Ambient", "Ambient", "Techno"))
+
+    assert "2 of your 3 tracks agree" in body
+    assert "2 carry “Ambient”" in body

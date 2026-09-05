@@ -15,6 +15,9 @@ versions follow [semantic versioning](https://semver.org).
   the differences. The row now says `Yes → No`, counts the tracks carrying it,
   and notes that "No" is written by removing the tag (#383).
 
+- The popover naming which tracks disagree about a tag now reads "1 carries"
+  rather than "1 carry" when a single track holds the value (#384).
+
 - **A multi-disc rip whose discs are named no longer lands in the Inbox as
   Inconsistent.** XLD writes MusicBrainz's disc title into the album tag, so
   disc 2 of *U.F.Orb* reads `U.F.Orb - bonus disc` and the folder looked like

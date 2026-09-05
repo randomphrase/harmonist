@@ -153,9 +153,12 @@
         </button>
         <div id="{{ pop_id }}" popover class="odd-pop"
              style="position-anchor: --{{ pop_id }}">
-            <p class="odd-pop__title">{{ f.label }} — {{ c.agreeing }} of your {{ c.total }} tracks agree</p>
+            {# Both verbs agree with the count, as the two sentences below already
+               do and as `Consensus.odd_summary` does in Python: one track carries
+               a value, it doesn't carry it (#384). #}
+            <p class="odd-pop__title">{{ f.label }} — {{ c.agreeing }} of your {{ c.total }} tracks {{ 'agrees' if c.agreeing == 1 else 'agree' }}</p>
             <p class="odd-pop__sub">
-                {{ c.agreeing }} carry “{{ c.value }}”.
+                {{ c.agreeing }} {{ 'carries' if c.agreeing == 1 else 'carry' }} “{{ c.value }}”.
                 {% if c.missing_count == c.outliers|length %}
                 {{ 'The other has' if c.outliers|length == 1 else 'The others have' }} none at all.
                 {% else %}
