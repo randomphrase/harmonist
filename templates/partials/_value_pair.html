@@ -1,0 +1,42 @@
+{# A difference: what your files carry, and what MusicBrainz reads.
+
+   The ONE renderer for that, shared by the album's Tags panel and the band under
+   the tracklist (#386). They drew the same fact two ways — the panel stacked the
+   pair and marked what changed inside the values, the band put them inline and
+   struck the disk's reading through — so `Artist sort` and `Album artist sort`
+   showed the identical pair of values in two different layouts, one of them
+   calling a join phrase a mistake. Making the second copy match would only have
+   given them a fresh chance to drift; this is the same markup or it is neither.
+
+   Nothing is struck through. Most differences here are formatting — a Bandcamp
+   "A | B" credit against MusicBrainz's join phrases, a sort name that gained an
+   ampersand — and a strikethrough reads as "you got this wrong" about a value
+   that is merely spelt another way. What changed inside the value is marked
+   instead, by `_field_value`'s runs, which is a statement about the text rather
+   than about the person who wrote it.
+
+   Expects `value`, `mb`, `runs`, `mb_runs`, `kind`, `entity` and `credit` from an
+   enclosing {% with %}, plus `why` for the hexagon. #}
+{% if kind == 'scalar' %}
+{# Short values sit inline — an arrow reads correctly when MusicBrainz is simply
+   more precise (a bare year against a full date). #}
+<span>{% with runs = runs, value = value, entity = entity, credit = credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
+<span class="tag-fields__arrow">→</span>
+{% with value = mb, runs = mb_runs, entity = entity, credit = credit, why = why %}
+{% include 'partials/_mb_value.html' %}
+{% endwith %}
+{% else %}
+{# Long text stacks, both flush left, so a change is a vertical scan. No prefix
+   on either line: that shared left edge is what makes the difference a glance
+   rather than a comparison. The hexagon goes after the value instead.
+
+   An id row lands here too, and this is the layout it wants (#298): the old name
+   over the new one, or a raw MBID over a name when MusicBrainz has moved the
+   entity out from under it. #}
+<span class="tag-pair">
+    <span>{% with runs = runs, value = value, entity = entity, credit = credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
+    {% with value = mb, runs = mb_runs, entity = entity, credit = credit, why = why %}
+    {% include 'partials/_mb_value.html' %}
+    {% endwith %}
+</span>
+{% endif %}

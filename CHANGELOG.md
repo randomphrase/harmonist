@@ -8,6 +8,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A pending change under the tracklist is drawn like every other one on the
+  page** — stacked, with what changed marked inside the value, and no longer
+  struck through as though your tag were a mistake. `Artist sort` and `Album
+  artist sort` showed the same two values in two different shapes (#386).
+
 - **A stray Compilation tag now reads as a pending "No" instead of the album's
   answer.** A tag Harmonist writes only when true — "no" is the tag's absence —
   was compared as though MusicBrainz had no opinion, so a `cpil` your ripper left

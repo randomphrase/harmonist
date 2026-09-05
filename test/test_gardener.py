@@ -622,8 +622,13 @@ def test_a_uniform_per_track_change_shows_both_sides_under_the_tracklist(engaged
 
     band = body[body.index("track-foot") :]
     assert "<dt>Artist sort</dt>" in band
-    assert "Artist, Test" in band, "what the files carry, on its way out"
-    assert "Test Artist" in band, "and what a re-tag would write"
+    # Read as text, because since #386 the band marks what changed INSIDE a
+    # value the way the album panel does — "Artist, Test" reaches the page as
+    # `Artist<em class="diff-run">, Test</em>`, and a substring match on the raw
+    # HTML would now fail for a row that is drawn correctly.
+    said = re.sub(r"<[^>]+>", "", band)
+    assert "Artist, Test" in said, "what the files carry, on its way out"
+    assert "Test Artist" in said, "and what a re-tag would write"
     assert "Not shown anywhere else on this page" not in body, "not the box's job any more"
 
 
@@ -1828,3 +1833,42 @@ def test_taking_the_update_clears_the_ignore(engaged, monkeypatch):
 
     assert client.post(f"/retag/{album_id}").status_code == 200
     assert activity_store.ignored_updates() == {}
+
+
+def _cell(body: str, label: str) -> str:
+    """The `<dd>` for one labelled row, wherever on the page it sits."""
+    found = re.search(rf"<dt>{re.escape(label)}</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert found, f"no {label} row"
+    return found.group(1)
+
+
+def test_the_band_draws_a_difference_exactly_as_the_album_panel_does(engaged, monkeypatch):
+    """#386. A corrected sort name reaches this page twice — `Album artist sort`
+    in the Tags panel, `Artist sort` in the band under the tracklist — and the
+    two were drawn by different markup: the panel stacked the readings and marked
+    what changed inside them, the band put them inline and struck the files'
+    reading through, which is the one thing the panel says outright it never does.
+
+    Asserted as the two cells carrying the same structure rather than as one
+    cell's expected markup, because the finding was never about either cell
+    alone: it is that a reader met the same fact in two shapes on one screen.
+    """
+    cfg, engage = engaged
+    _tagged(cfg.paths.music_dir, _release(tracks=2), tracks=2)
+    corrected = copy.deepcopy(_release(tracks=2))
+    corrected["artist-credit"][0]["artist"]["sort-name"] = "Test Artist"
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: corrected)
+    client, runner = engage()
+
+    body = client.get(f"/library/{runner.albums()[0].id}/compare").text
+
+    panel = _cell(body, "Album artist sort")
+    band = _cell(body[body.index("track-foot") :], "Artist sort")
+    classes = lambda cell: sorted(re.findall(r'class="([^"]+)"', cell))
+    assert classes(band) == classes(panel)
+    # And what that structure is, so the pair can't agree by both going wrong:
+    # stacked, with the change marked inside the value and MusicBrainz's reading
+    # carrying its hexagon.
+    assert "tag-pair" in classes(band)
+    assert "diff-run" in classes(band)
+    assert "mb-mark" in classes(band)

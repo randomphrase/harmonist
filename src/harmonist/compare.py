@@ -1762,6 +1762,14 @@ class CollapsedField:
     #: tracks are still in scope: a band row must never claim a difference in the
     #: disk-only view (#228), where MusicBrainz offered no opinion to differ from.
     differs: bool = False
+    #: How the field wants to be drawn, and what marks the change inside it —
+    #: the same three the album panel's rows carry, because since #386 the same
+    #: partial draws both. Without them the band could not render a difference
+    #: the panel's way and had its own markup for it, so one sort name stacked
+    #: in the panel and sat inline under the tracklist, struck through.
+    kind: Kind = Kind.TEXT
+    runs: tuple[Run, ...] = ()
+    mb_runs: tuple[Run, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2082,14 +2090,24 @@ def _collapsed(candidate: _Candidate, present: Sequence[_Present]) -> CollapsedF
     # Digital Media" for a tag no file carried at all, turning an addition into a
     # change from itself.
     values = [*disk, *(v for _, v in comparable)]
+    value = disk[0] if differs and disk else next((v for v in values if v is not None), None)
+    mb = comparable[0][1] if comparable and uniform else None
+    # Marked here for the same reason the panel's rows are: a difference between
+    # two spellings of one name is mostly the punctuation between them, and the
+    # reader should not have to find it. Empty unless there are two values to
+    # mark — an addition or a removal has nothing to compare within (#386).
+    runs, mb_runs = diff_runs(value, mb) if differs and value and mb else ((), ())
     return CollapsedField(
         candidate.label,
-        disk[0] if differs and disk else next((v for v in values if v is not None), None),
+        value,
         candidate.entity,
         candidate.credit,
         field=key,
-        mb=comparable[0][1] if comparable and uniform else None,
+        mb=mb,
         differs=differs,
+        kind=candidate.kind,
+        runs=runs,
+        mb_runs=mb_runs,
     )
 
 

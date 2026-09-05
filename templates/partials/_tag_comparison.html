@@ -37,30 +37,15 @@
         {% include 'partials/_mb_value.html' %}
         {% endwith %}
 
-        {% elif f.agreement == 'differs' and f.kind == 'scalar' %}
-        {# Short values sit inline — an arrow reads correctly when MB is simply
-           more precise (a bare year against a full date). #}
-        <span>{% with runs = f.disk_runs, value = f.disk, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
-        <span class="tag-fields__arrow">→</span>
-        {% with value = f.mb, runs = f.mb_runs, entity = f.entity, credit = f.credit, why = "MusicBrainz's value" %}
-        {% include 'partials/_mb_value.html' %}
-        {% endwith %}
-
         {% elif f.agreement == 'differs' %}
-        {# Long text stacks, both flush left, so a change is a vertical scan. No
-           prefix on either line: that shared left edge is what makes the
-           difference a glance rather than a comparison. The hexagon goes after
-           the value instead.
-
-           An id row lands here too, and this is the layout it wants (#298): the
-           old name over the new one, or a raw MBID over a name when MusicBrainz
-           has moved the entity out from under it. #}
-        <span class="tag-pair">
-            <span>{% with runs = f.disk_runs, value = f.disk, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
-            {% with value = f.mb, runs = f.mb_runs, entity = f.entity, credit = f.credit, why = "MusicBrainz's value" %}
-            {% include 'partials/_mb_value.html' %}
-            {% endwith %}
-        </span>
+        {# Inline or stacked by kind, in `_value_pair` — the same renderer the
+           band under the tracklist uses, so one field cannot be drawn two ways
+           on one page (#386). #}
+        {% with value = f.disk, mb = f.mb, runs = f.disk_runs, mb_runs = f.mb_runs,
+                kind = f.kind, entity = f.entity, credit = f.credit,
+                why = "MusicBrainz's value" %}
+        {% include 'partials/_value_pair.html' %}
+        {% endwith %}
 
         {% elif f.disk %}
         {# Matching, or on disk with nothing to compare against. `runs` is empty

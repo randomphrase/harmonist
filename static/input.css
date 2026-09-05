@@ -661,17 +661,11 @@ button[disabled],
 }
 .track-foot .tag-fields { margin-top: .55rem; }
 .track-foot__absent { font-style: italic; color: var(--color-muted); }
-/* A band row whose one reading differs from MusicBrainz (#360). Drawn in the
-   page's existing change language — the disk's reading struck through, then
-   MusicBrainz's in purple — rather than a voice of its own, because this is the
-   same kind of statement a differing cell in the table above makes, and the
-   reader should not have to learn it twice. */
-.track-foot__was {
-  color: var(--color-muted);
-  text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--color-muted) 55%, transparent);
-}
-.track-foot__arrow { color: var(--color-muted); font-size: .7rem; padding: 0 .15rem; }
+/* A band row whose one reading differs from MusicBrainz (#360) is drawn by
+   `_value_pair`, the album panel's own renderer, so it needs no rules of its own
+   here (#386). `__was` and `__arrow` used to live at this spot and were the
+   whole divergence: a strikethrough the panel deliberately never uses, and an
+   arrow between values the panel would have stacked. */
 /* MusicBrainz's reading, drawn by `_mb_value` since #373 so it carries the
    hexagon as well as the colour — `.tag-fields__mb` brings the purple, and this
    is the weight the band's own `__now` used to add. A class of its own here
