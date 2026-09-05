@@ -666,12 +666,18 @@ button[disabled],
    here (#386). `__was` and `__arrow` used to live at this spot and were the
    whole divergence: a strikethrough the panel deliberately never uses, and an
    arrow between values the panel would have stacked. */
-/* MusicBrainz's reading, drawn by `_mb_value` since #373 so it carries the
-   hexagon as well as the colour — `.tag-fields__mb` brings the purple, and this
-   is the weight the band's own `__now` used to add. A class of its own here
-   would have been a second way to say "MusicBrainz", which is exactly how one
-   of them ended up without a mark. */
-.track-foot .tag-fields__mb { font-weight: 600; }
+/* MusicBrainz's reading is `.tag-fields__mb` here exactly as it is in the panel,
+   with no weight of its own (#386). The band used to carry `font-weight: 600` at
+   this spot — the last of the bespoke `__now` class #373 removed, kept because
+   it had always been there rather than for anything the band needs: these rows
+   are the panel's size on the panel's grid, so the extra weight was compensating
+   for nothing and made the same value read as two on one page.
+
+   Left as a comment because a descendant rule is how the divergence survived the
+   markup being unified: the two cells carry identical classes, so nothing in the
+   templates — or in a test that compares them — can see a rule scoped to this
+   ancestor. If the band ever needs its own voice, that is a decision to make in
+   the open, not to inherit. */
 /* "A re-tag drops this" — a CHANGE, and it must not wear `__absent`'s muted
    italic, which on this same <dl> means "nobody has one, and that is agreement"
    (#373). The page's own ink rather than purple: purple means a MusicBrainz
