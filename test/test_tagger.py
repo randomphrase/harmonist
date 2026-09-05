@@ -811,6 +811,52 @@ def test_preserved_per_track_artwork_reaches_the_album_history(album_with_tracks
     assert entry.album_label == "Test Artist — Test Album"
 
 
+def test_the_preserved_artwork_notice_is_not_repeated_by_a_no_op_re_tag(
+    album_with_tracks, tmp_path
+):
+    """#272: the notice reports a decision that recurs identically, not a change,
+    so a re-tag that finds the files already correct used to say it again — and
+    under #32's nightly pass that is one warning per night forever on every
+    compilation, which is a History nobody can read.
+
+    It rides on the write instead: `_record_changes` already takes the position
+    that "a re-tag that finds MusicBrainz unchanged is a no-op the user should
+    not have to scroll past", and this line joins it.
+    """
+    from datetime import UTC, datetime
+
+    from harmonist import activity, activity_store
+    from harmonist import sidecar as sidecar_mod
+    from harmonist.models import Sidecar
+
+    activity_store.init(tmp_path / "activity.db")
+    activity.install_log_handler()
+    album_dir = album_with_tracks(2)
+    sidecar_mod.write(
+        album_dir, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime(2026, 1, 1, tzinfo=UTC))
+    )
+    _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())
+    _embed_cover(album_dir / "02 Track 2.m4a", _minimal_jpeg() + b"_different")
+    new_cover = tmp_path / "cover.jpg"
+    new_cover.write_bytes(b"\xff\xd8\xff\xe0NEW_ALBUM_COVER\xff\xd9")
+
+    def notices() -> int:
+        return sum(
+            "per-track embedded artwork" in e.message
+            for e in activity_store.album_history("rel-aaa")
+        )
+
+    # The first pass writes the tags, so it reports the decision it made on the
+    # way — that is #260, and it stays.
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=new_cover)
+    assert notices() == 1
+
+    # The second finds every file already carrying what MusicBrainz says and
+    # writes nothing at all. Silence is the feature.
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=new_cover)
+    assert notices() == 1
+
+
 def test_tag_album_overwrite_art_forces_replacement(album_with_tracks, tmp_path):
     """overwrite_art=True is the explicit override: embed the album cover even over
     differing per-track art."""

@@ -8,6 +8,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A re-tag that changes nothing no longer repeats the note about keeping
+  per-track artwork.** The note now rides on an actual write, so a compilation's
+  History doesn't collect the same sentence once per re-tag (#272).
+
 - **A collaboration missing its album-artists tag now reads as Enrichment
   rather than Identity.** The list arriving where there was none is MusicBrainz
   filling in a detail — no library predating last week's Picard carries the tag

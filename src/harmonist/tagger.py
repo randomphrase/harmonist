@@ -191,27 +191,13 @@ def tag_album(
         overwrite_art=overwrite_art,
         files=files,
     )
-    # Read before the artwork guard as well as before the loop: the guard's
-    # warning names the album it is about, and this is where that name comes
-    # from. Tagging can still move the id afterwards (temp_uid -> MBID), which is
-    # why `album_history` unions an album's alias chain — the same reason the
-    # `tag.album` line below gets away with the pre-write id.
+    # Read before the loop, and before anything can move it: tagging drops a
+    # sidecar's `temp_uid` for the MBID afterwards, which is why `album_history`
+    # unions an album's alias chain — the same reason the `tag.album` line below
+    # gets away with the pre-write id. The artwork notice at the end of this
+    # function reuses it rather than re-reading, so both records name the album
+    # the same way even if the id moves in between.
     album_id = sidecar_mod.album_id_for(album_dir)
-    if prep.preserves_per_track_art:
-        # Attributed to the album (#260). This is a decision Harmonist made on
-        # the user's behalf about their files, so it has to reach that album's
-        # own History — and the feed's log mirror drops any record that doesn't
-        # say which album it means. The `art=preserved` token on the `tag.album`
-        # line below is not a substitute: it shows only under "Show details".
-        #
-        # The album's name is NOT repeated into the message; it rides in its own
-        # column, which is where the feed and the History both render it.
-        log.warning(
-            "tracks have per-track embedded artwork — keeping it, NOT embedding "
-            "the album cover (folder cover.* is still written). Re-tag with "
-            "'replace artwork' to override.",
-            extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
-        )
 
     # Tag writing replaces information in every audio file, so it belongs in the
     # audit log — it was the one core mutation with no record at all. The album
@@ -231,6 +217,7 @@ def tag_album(
     if prep.art_after is not None:
         _keep_doomed_art(prep.art_before, prep.art_after)
 
+    wrote_something = False
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
         tagset = _build_tagset(release, medium, track_pos_in_medium, track, prep.media_total)
         before = formats.read_owned(file_path)
@@ -253,6 +240,7 @@ def tag_album(
             # rather than one that merely records nothing.
             continue
         formats.write_tags(file_path, tagset, prep.cover)
+        wrote_something = True
         # The `tag.track` line comes AFTER the write, and the detail hangs off
         # it: a record claiming a change that never landed would make a future
         # revert restore a value that was never overwritten.
@@ -269,6 +257,35 @@ def tag_album(
         )
         if event_id is not None:
             _record_changes(event_id, album_dir, file_path, tagset, changes)
+
+    if prep.preserves_per_track_art and wrote_something:
+        # Attributed to the album (#260). This is a decision Harmonist made on
+        # the user's behalf about their files, so it has to reach that album's
+        # own History — and the feed's log mirror drops any record that doesn't
+        # say which album it means. The `art=preserved` token on the `tag.album`
+        # line above is not a substitute: it shows only under "Show details".
+        #
+        # AFTER the loop, and only if it wrote (#272). The decision recurs
+        # identically on every re-tag — preserving the user's artwork is the
+        # outcome every time — so announcing it unconditionally reports a
+        # decision rather than a change, and under #32's nightly pass that is one
+        # warning per night forever on every compilation. `_record_changes`
+        # already takes this position for the per-field detail; this line joins
+        # it rather than being demoted back to an audit-only token, which is the
+        # state #260 was filed against.
+        #
+        # A crash part-way through the loop therefore loses it — acceptable,
+        # because the `tag.album` line records `art=preserved` before the first
+        # write, so the forensic record of the decision is already down.
+        #
+        # The album's name is NOT repeated into the message; it rides in its own
+        # column, which is where the feed and the History both render it.
+        log.warning(
+            "tracks have per-track embedded artwork — keeping it, NOT embedding "
+            "the album cover (folder cover.* is still written). Re-tag with "
+            "'replace artwork' to override.",
+            extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
+        )
 
     return len(prep.files)
 
