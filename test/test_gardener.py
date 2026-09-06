@@ -945,6 +945,99 @@ def test_a_pass_finds_an_update_nobody_went_looking_for(tmp_path, monkeypatch):
     assert (result.examined, result.flagged) == (1, 1)
 
 
+def _digest() -> list[str]:
+    """The pass's own entries in the Activity feed (#274), newest first."""
+    return [
+        e.message
+        for e in activity_store.recent(source=activity_store.Source.ACTIVITY)
+        if e.message.startswith("Update check:")
+    ]
+
+
+def test_a_pass_leaves_one_digest_for_everything_it_found(tmp_path, monkeypatch):
+    """#274: one entry per pass, not one per album. Two albums, one row — and the
+    row counts them, so the feed says how much is waiting without becoming the
+    thing that buries everything else in it."""
+    activity_store.init(tmp_path / "activity.db")
+    other = _release("Other Album", mbid="rel-bbb")
+    albums = [
+        _tagged(tmp_path, _release()),
+        _tagged(tmp_path, other, name="Other Album"),
+    ]
+    _store(_release(), age=_stale())
+    _store(other, age=_stale())
+    _serving(
+        monkeypatch,
+        _release("Test Album (remastered)"),
+        _release("Other Album (remastered)", mbid="rel-bbb"),
+    )
+
+    # `limit`, because the paced slice is 1/144th of what's due (#349) and would
+    # take one album a tick — the digest's shape is what's under test here, not
+    # the rate.
+    gardener.sweep(albums, limit=2)
+
+    expected = (
+        "Update check: 2 albums now have an update available — "
+        "see the Library's Update available filter"
+    )
+    assert _digest() == [expected]
+
+
+def test_the_digest_reads_in_the_singular_for_one_album(tmp_path, monkeypatch):
+    """The count is the whole content of the line, so "1 albums now have" is the
+    one way it can read wrong (#384 for the same trap in the outlier popover)."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release(), age=_stale())
+    _serving(monkeypatch, _release("Test Album (remastered)"))
+
+    gardener.sweep([album])
+
+    expected = (
+        "Update check: 1 album now has an update available — "
+        "see the Library's Update available filter"
+    )
+    assert _digest() == [expected]
+
+
+def test_a_pass_that_finds_nothing_writes_nothing_to_the_feed(tmp_path, monkeypatch):
+    """Silence is a valid digest, and the common one. A tick fires every ten
+    minutes; one that announced itself either way would be 144 rows a day saying
+    nothing happened, which is how a feed stops being read."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release(), age=_stale())
+    _serving(monkeypatch, _release())
+
+    gardener.sweep([album])
+
+    assert album.update_available is False
+    assert _digest() == []
+
+
+def test_an_album_already_flagged_is_not_announced_a_second_time(tmp_path, monkeypatch):
+    """The digest counts the transition, not the standing state. An album whose
+    update the user has yet to take is outstanding on every pass, so counting
+    `flagged` would re-announce it every time MusicBrainz touched the release —
+    an edit that changed nothing for them. Same discipline as #272."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    moved = _release("Test Album (remastered)")
+    _store(moved, age=_stale())
+    gardener.refresh_flag(album, moved)
+    assert album.update_available is True
+
+    # MusicBrainz edits the release AGAIN, so the payload really has moved and
+    # the early exit does not get a turn: the pass reads the files and finds the
+    # update still outstanding, which is not news.
+    _serving(monkeypatch, _release("Test Album (remastered, again)"))
+    result = gardener.sweep([album])
+
+    assert (result.examined, result.flagged, result.newly_flagged) == (1, 1, 0)
+    assert _digest() == []
+
+
 def test_an_unchanged_release_never_reaches_the_files(tmp_path, monkeypatch):
     """The early exit, which is what makes a nightly pass over an unchanged
     library cost its requests and nothing else. Asserted as *no plan was built*
@@ -1348,7 +1441,9 @@ def _sweep_signal(monkeypatch) -> threading.Event:
 
     def _sweep(albums, **kwargs):
         done.set()
-        return gardener.PassResult(asked=0, examined=0, flagged=0, gone=0, failed=0)
+        return gardener.PassResult(
+            asked=0, examined=0, flagged=0, newly_flagged=0, gone=0, failed=0
+        )
 
     monkeypatch.setattr(gardener, "sweep", _sweep)
     return done

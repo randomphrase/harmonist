@@ -66,7 +66,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import activity_store, album_files, formats, mb_cache, mb_lookup, tagger
+from . import activity, activity_store, album_files, formats, mb_cache, mb_lookup, tagger
 from .formats import owned
 from .models import Album, AlbumState, Release
 
@@ -468,6 +468,13 @@ class PassResult:
     examined: int
     #: Of those, the ones that turned out to have an update outstanding.
     flagged: int
+    #: Of those, the ones that did NOT have one before this pass looked. The
+    #: digest counts these and not `flagged`, and the difference is the whole of
+    #: #274's discipline: an album the user has been sitting on for a fortnight
+    #: is still outstanding every time MusicBrainz touches the release, so
+    #: `flagged` would announce it again on an edit that changed nothing for
+    #: them. A transition is news; a standing state is not (#272).
+    newly_flagged: int
     #: Releases MusicBrainz no longer has (#194/#210).
     gone: int
     #: Fetches that failed — a network error, a 503. Not an answer either way.
@@ -561,7 +568,7 @@ def sweep(
     log.debug(
         "update check: %d album(s) due, asking MusicBrainz about up to %d", len(due), slice_size
     )
-    asked = examined = flagged = gone = failed = 0
+    asked = examined = flagged = newly_flagged = gone = failed = 0
     gave_up = False
     reported = time.monotonic()
     for mbid, group in due[:slice_size]:
@@ -631,21 +638,43 @@ def sweep(
             continue  # MusicBrainz has said nothing new; read no files
         examined += len(group)
         for album in group:
+            # Read BEFORE the refresh, because the refresh is what overwrites
+            # it. This is the only moment the two are both knowable, and the
+            # digest is a statement about the difference between them.
+            #
+            # The flag is in-memory and rebuilt by `warm_from_cache` after a
+            # restart, so a pass that overtakes the warm-up can read False for
+            # an album that was already flagged and announce it a second time.
+            # Bounded — it needs an album that is due, whose payload has moved,
+            # that was flagged before the restart and that the warm-up has not
+            # reached yet — and the only cure would be persisting the flag,
+            # which is exactly the stored state this module refuses to keep
+            # (see the header). A repeated line is the cheaper failure.
+            was_flagged = album.update_available
             refresh_flag(album, release)
             if album.update_available:
                 flagged += 1
+                if not was_flagged:
+                    newly_flagged += 1
         if time.monotonic() - reported >= _PROGRESS_EVERY.total_seconds():
             reported = time.monotonic()
             log.info("update check: %d asked, %d with something new", asked, examined)
     result = PassResult(
-        asked=asked, examined=examined, flagged=flagged, gone=gone, failed=failed, gave_up=gave_up
+        asked=asked,
+        examined=examined,
+        flagged=flagged,
+        newly_flagged=newly_flagged,
+        gone=gone,
+        failed=failed,
+        gave_up=gave_up,
     )
+    _record_digest(result)
     # INFO only when the tick has something to report (#349). At an hourly tick
     # asking about a hundred albums this line was always worth reading; at one
     # every ten minutes asking about two it is 144 lines a day saying nothing
     # happened, which is how a log stops being read. A tick that found something
     # — a payload that moved, a release gone, a fetch that failed — still says
-    # so; #274's digest is what turns the rest into something a user sees.
+    # so; the digest above is what turns the rest into something a user sees.
     notable = bool(result.examined or result.gone or result.failed or result.gave_up)
     log.log(
         logging.INFO if notable else logging.DEBUG,
@@ -659,6 +688,45 @@ def sweep(
         result.failed,
     )
     return result
+
+
+def _record_digest(result: PassResult) -> None:
+    """Leave one Activity entry for what the pass found, or none at all (#274).
+
+    One row per pass, never one per album: a tick that wrote a line for each
+    album it looked at would bury the feed under its own bookkeeping, which is
+    the failure mode that makes people stop reading it. The per-album account
+    lives on the album — its History, its tile badge, the Update available
+    filter — and this is the global feed's summary of it.
+
+    **Only the transition.** `newly_flagged`, not `flagged`: an album whose
+    update the user has yet to take is outstanding on every pass, so counting
+    the standing state would re-announce it whenever MusicBrainz touched the
+    release at all — the same "narrating a state rather than a change" #272 took
+    out of the tagger.
+
+    **Silence is a valid digest**, and the common one. Nothing else the pass can
+    report belongs to the user:
+
+    * a release MusicBrainz no longer has is a standing fact, not tonight's news
+      — it is still gone next week, and the album's own page has said so since
+      #194/#210;
+    * a failed fetch is a MusicBrainz wobble the next pass retries, kept out of
+      the feed on purpose (`_diagnostic`);
+    * a pass that gave up already posts its own warning, once per episode.
+
+    So the digest speaks exactly when a person has something new to look at. No
+    action scope: it is a summary of many albums, nothing hangs off it, and
+    there is nothing to correlate or revert — the same shape as reconcile's
+    closing line.
+    """
+    if not result.newly_flagged:
+        return
+    n = result.newly_flagged
+    activity.record(
+        f"Update check: {n} album{'' if n == 1 else 's'} now {'has' if n == 1 else 'have'} "
+        "an update available — see the Library's Update available filter"
+    )
 
 
 def _due(

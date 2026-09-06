@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **A background update check that finds something now says so in Activity** —
+  one line per pass ("Update check: 3 albums now have an update available"),
+  never one per album, and nothing at all from a pass that found nothing (#274).
+
 ### Fixed
 
 - **A re-tag that changes nothing no longer repeats the note about keeping

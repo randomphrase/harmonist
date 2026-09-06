@@ -231,16 +231,23 @@ you tagged it — each with its count:
   You can have Harmonist go and look instead of waiting to be asked. Set
   **Background update checks** to *Look and report* on the **Settings** page and
   a small background pass works through the library, checking the albums it has
-  looked at least recently against MusicBrainz — roughly a hundred an hour while
-  nothing else is happening, so every album comes round about weekly. It only
-  ever *looks*: taking an update is still a button you press. It waits for any
-  sync, reconcile or scan to finish rather than competing with them, and it is
-  off until you turn it on.
+  looked at least recently against MusicBrainz — a few of them every ten minutes
+  while nothing else is happening, so whatever is due gets through in about a day
+  and every album comes round about weekly. It only ever *looks*: taking an
+  update is still a button you press. It waits for any sync, reconcile or scan to
+  finish rather than competing with them, and it is off until you turn it on.
+
+  When a pass turns something up it leaves one line in **Activity** —
+  *"Update check: 3 albums now have an update available"* — one line per pass
+  rather than one per album, and nothing at all from a pass that found nothing.
+  Only albums that didn't already have an update waiting are counted, so an
+  update you haven't got round to yet isn't announced again every time
+  MusicBrainz touches the release.
 
   The setting applies straight away — no restart — but the first pass is
-  otherwise up to an hour off, which looks like nothing happened. **Check now**,
-  beside the setting, runs one immediately; what it finds turns up here and as
-  the purple **Update** badge on the tiles. (`level` under `[gardener]` in
+  otherwise up to ten minutes off, which looks like nothing happened. **Check
+  now**, beside the setting, runs one immediately; what it finds turns up here
+  and as the purple **Update** badge on the tiles. (`level` under `[gardener]` in
   `harmonist.toml` is the same setting, for a config-managed install.)
 
 ### When you don't want the update
