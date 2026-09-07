@@ -14,6 +14,7 @@ from typing import Any, NamedTuple
 
 from mutagen import MutagenError
 
+from ..images import Size, digest, dimensions
 from .quality import AudioQuality
 
 
@@ -184,6 +185,37 @@ class TagSet:
 
 
 @dataclass(frozen=True)
+class EmbeddedArt:
+    """One file's embedded cover image, described rather than carried (#155).
+
+    **Never the bytes.** A 47-track album whose tracks each carry 5 MB of art is
+    235 MB, and the album page holds every track's tags at once — on a NAS that
+    is the difference between a page view and an OOM. Everything the Artwork
+    section shows is derivable from the header, so the bytes are read (they were
+    read anyway — mutagen parses the whole tag block), measured, and dropped.
+
+    `digest` is what makes two tracks' images comparable, and it is the same
+    function `tagger` records and `artwork_store` keys its files by, so the
+    section's verdict and the tagger's cannot drift apart.
+
+    `size` is None for an image whose header this can't read; the section then
+    shows format and bytes without dimensions rather than guessing.
+    """
+
+    digest: str
+    mime: str
+    #: Length of the image in bytes — what the file actually spends on artwork.
+    length: int
+    size: Size | None = None
+
+    @classmethod
+    def of(cls, data: bytes, mime: str) -> EmbeddedArt:
+        """Measure one image. The single place art is turned into facts, so all
+        three tag systems describe the same JPEG identically."""
+        return cls(digest=digest(data), mime=mime, length=len(data), size=dimensions(data))
+
+
+@dataclass(frozen=True)
 class TrackTags:
     """What one file actually carries, for comparison against MusicBrainz (#106).
 
@@ -204,6 +236,18 @@ class TrackTags:
     #: The file could not be opened at all. Every other field is then None, and
     #: that is NOT the same as an untagged file — see ScanFields.unreadable.
     unreadable: bool = False
+
+    #: The embedded cover image, described (#155). None when the file carries
+    #: none — which is a finding in its own right, not a gap: an album where
+    #: some tracks have art and some don't is one this reading exists to catch.
+    #:
+    #: Free, and that is the point. Mutagen parses the whole tag block on any
+    #: open and the image is inside it, so `read_tags` has these bytes in memory
+    #: whether or not anyone asks: on a real album the art is ~99% of what the
+    #: read already pulled off disk. All this adds is a sha256 over data already
+    #: in RAM — 3 ms across a 13-track album — where `formats.read_cover` would
+    #: open every file a second time to learn the same thing.
+    art: EmbeddedArt | None = None
 
     #: Every owned field as this file currently carries it — the `read_owned`
     #: snapshot, keyed by `Owned` value, taken from the handle `read_tags`

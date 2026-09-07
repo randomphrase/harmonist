@@ -22,7 +22,7 @@ from mutagen.flac import Picture
 
 from . import quality
 from .owned import FLAG_TRUE, Owned, as_flag
-from .types import ScanFields, TagSet, TrackTags
+from .types import EmbeddedArt, ScanFields, TagSet, TrackTags
 
 # Vorbis comment keys (uppercase by convention; lookups are case-insensitive).
 KEY_ALBUM_ID = "MUSICBRAINZ_ALBUMID"
@@ -294,11 +294,15 @@ class VorbisTagger:
         if audio is None:
             return TrackTags(unreadable=True)
         duration = round(audio.info.length * 1000) if audio.info.length else None
+        # Before the untagged early-return below, and deliberately: a FLAC keeps
+        # its picture in a metadata block of its own, so a file with no comment
+        # block can still carry artwork, and returning early used to drop it.
+        art = EmbeddedArt.of(*cover) if (cover := self._cover_of(audio)) else None
         tags = audio.tags
         if tags is None:
             # Opened fine, carries no tag block: genuinely untagged, not
             # unreadable. The duration is still real.
-            return TrackTags(duration_ms=duration)
+            return TrackTags(duration_ms=duration, art=art)
 
         def first(key: str) -> str | None:
             values = tags.get(key)
@@ -331,14 +335,18 @@ class VorbisTagger:
             # m4a note and #295. Covers FLAC, Ogg and Opus in one place, since
             # all three delegate here.
             owned=self._read_owned(tags),
+            art=art,
         )
 
     def read_cover(self, path: Path) -> tuple[bytes, str] | None:
         """Extract embedded cover art as (image_bytes, mime). Handles both the
         FLAC native picture block and the Ogg/Opus base64 METADATA_BLOCK_PICTURE."""
         audio = self._open(path)
-        if audio is None:
-            return None
+        return self._cover_of(audio) if audio is not None else None
+
+    def _cover_of(self, audio: Any) -> tuple[bytes, str] | None:
+        """The same extraction on an ALREADY-OPEN handle, so `read_tags` can
+        describe the art without opening the file a second time (#155)."""
         pictures = getattr(audio, "pictures", None)  # FLAC
         if pictures:
             pic = pictures[0]

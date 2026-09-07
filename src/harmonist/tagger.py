@@ -10,7 +10,6 @@ constants are re-exported here.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
@@ -24,6 +23,7 @@ from . import (
     audit,
     compare,
     formats,
+    images,
     mb_lookup,
     tag_history,
 )
@@ -555,7 +555,7 @@ def _prepare(
         art_before=art_before,
         # Only now is it settled that the embed is really happening — the
         # per-track-art guard above may have cancelled it.
-        art_after=_digest(cover) if cover is not None else None,
+        art_after=images.digest(cover) if cover is not None else None,
         preserves_per_track_art=preserves_per_track_art,
         media_total=len(release.get("medium-list", [])) or 1,
         accepted_album_title=title_with_disambiguation(
@@ -671,7 +671,7 @@ def _art_digests(files: list[Path]) -> dict[Path, str | None]:
     sha256 rather than the sha1 this used before #86: the digest is recorded, and
     #131 stores the images content-addressed under it, so the two must agree.
     """
-    return {f: _digest(art[0]) if (art := formats.read_cover(f)) else None for f in files}
+    return {f: images.digest(art[0]) if (art := formats.read_cover(f)) else None for f in files}
 
 
 def _keep_doomed_art(digests: dict[Path, str | None], incoming: str) -> None:
@@ -699,10 +699,6 @@ def _keep_doomed_art(digests: dict[Path, str | None], incoming: str) -> None:
         # Best-effort: a copy that can't be written is a reason to warn, not to
         # abandon the re-tag the user asked for. `keep` logs and returns None.
         artwork_store.keep(art[0], mime=art[1])
-
-
-def _digest(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _has_per_track_art(digests: dict[Path, str | None]) -> bool:
@@ -987,7 +983,7 @@ def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
     restored = 0
     for path, data in resolved.items():
         current = formats.read_cover(path)
-        if current is not None and _digest(current[0]) == _digest(data):
+        if current is not None and images.digest(current[0]) == images.digest(data):
             continue  # already correct — restoring twice is a no-op
         # Keep what we are about to overwrite, exactly as a tagging would: an
         # undo is itself a destructive write, and must be as undoable as the
@@ -999,7 +995,7 @@ def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
             "artwork.restore",
             album=album_dir,
             file=album_files.rel_name(album_dir, path),
-            digest=_digest(data),
+            digest=images.digest(data),
         )
         restored += 1
     return restored

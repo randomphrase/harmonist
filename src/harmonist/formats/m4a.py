@@ -15,7 +15,7 @@ from mutagen.mp4 import MP4, MP4Cover
 
 from . import quality
 from .owned import Owned, as_flag
-from .types import ScanFields, TagSet, TrackTags
+from .types import EmbeddedArt, ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".m4a", ".mp4")
 
@@ -326,6 +326,10 @@ def read_tags(path: Path) -> TrackTags:
         duration_ms=round(audio.info.length * 1000) if audio.info else None,
         comment=_text_atom(audio, ATOM_COMMENT),
         release_track_id=_binary_atom_str(audio, ATOM_MB_RELEASE_TRACK_ID),
+        # Off the same handle, for the same reason `owned` is: the image is
+        # already parsed, and describing it here is what saves the Artwork
+        # section a second open of every file in the album (#155).
+        art=EmbeddedArt.of(*cover) if (cover := _cover_of(audio)) else None,
         # Every owned field too, off the handle already open — so the album
         # comparison can cover all thirty tags Harmonist writes without a second
         # pass over the file (#295). Free here; a separate `read_owned` call on
@@ -334,17 +338,25 @@ def read_tags(path: Path) -> TrackTags:
     )
 
 
-def read_cover(path: Path) -> tuple[bytes, str] | None:
-    """Extract the embedded cover art as (image_bytes, mime), or None."""
-    audio = _open(path)
-    if audio is None:
-        return None
+def _cover_of(audio: MP4) -> tuple[bytes, str] | None:
+    """The embedded cover on an ALREADY-OPEN handle, as (image_bytes, mime).
+
+    Split out of `read_cover` so `read_tags` can describe the art without
+    opening the file a second time (#155) — mutagen has already parsed the
+    `covr` atom by the time either of them is called.
+    """
     covers = audio.get(ATOM_COVER)
     if not covers:
         return None
     cover = covers[0]
     is_png = getattr(cover, "imageformat", None) == MP4Cover.FORMAT_PNG
     return bytes(cover), ("image/png" if is_png else "image/jpeg")
+
+
+def read_cover(path: Path) -> tuple[bytes, str] | None:
+    """Extract the embedded cover art as (image_bytes, mime), or None."""
+    audio = _open(path)
+    return _cover_of(audio) if audio is not None else None
 
 
 # ---------------------------------------------------------------------------

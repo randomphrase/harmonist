@@ -46,7 +46,7 @@ from mutagen.mp3 import MP3
 
 from . import quality
 from .owned import FLAG_TRUE, Owned, as_flag
-from .types import ScanFields, TagSet, TrackTags
+from .types import EmbeddedArt, ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".mp3",)
 
@@ -265,6 +265,10 @@ def read_tags(path: Path) -> TrackTags:
         # and #295. The album comparison covers all thirty tags Harmonist
         # writes; doing it with a second read would double the page's opens.
         owned=_read_owned(tags),
+        # And the APIC image, described rather than carried (#155). Already
+        # parsed: an ID3 read pulls the picture frame off disk whether or not
+        # anything asks for it.
+        art=EmbeddedArt.of(*cover) if (cover := _cover_of(tags)) else None,
     )
 
 
@@ -299,16 +303,25 @@ def _comment_text(tags: Any) -> str | None:
     return None
 
 
-def read_cover(path: Path) -> tuple[bytes, str] | None:
-    """Extract the embedded APIC cover art as (image_bytes, mime), or None."""
-    audio = _open(path)
-    if audio is None or audio.tags is None:
+def _cover_of(tags: Any) -> tuple[bytes, str] | None:
+    """The APIC image on ALREADY-READ tags, as (image_bytes, mime).
+
+    Split out of `read_cover` so `read_tags` can describe the art without a
+    second open (#155) — the frame is already in memory either way.
+    """
+    if tags is None:
         return None
-    apics = audio.tags.getall("APIC")
+    apics = tags.getall("APIC")
     if not apics:
         return None
     pic = apics[0]
     return bytes(pic.data), (pic.mime or "image/jpeg")
+
+
+def read_cover(path: Path) -> tuple[bytes, str] | None:
+    """Extract the embedded APIC cover art as (image_bytes, mime), or None."""
+    audio = _open(path)
+    return _cover_of(audio.tags) if audio is not None else None
 
 
 # ---------------------------------------------------------------------------
