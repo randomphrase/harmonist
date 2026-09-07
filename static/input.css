@@ -847,3 +847,164 @@ button[disabled],
 dialog::backdrop {
   background: rgb(0 0 0 / 0.4);
 }
+
+/* ---------------------------------------------------------------------------
+   Artwork (#155) — one row per distinct image: what the tracks carry on the
+   left, what a re-tag would write on the right, facts beside each.
+
+   Nothing is drawn between the halves. The gutter is wider than the gap inside
+   either half, which is what makes the pairing visible before a word is read,
+   and the column headings say which way it points — an arrow glyph would have
+   to be hidden again on every row that writes nothing.
+   --------------------------------------------------------------------------- */
+.art-rows { display: flex; flex-direction: column; }
+
+.art-rows__head,
+.art-row {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr) 6.5rem minmax(0, 1fr);
+  column-gap: .85rem;
+}
+/* The two halves, each spanning its own image + facts pair. */
+.art-rows__head span:nth-child(1) { grid-column: 1 / span 2; }
+.art-rows__head span:nth-child(2) { grid-column: 3 / span 2; }
+.art-rows__head {
+  padding-bottom: .4rem;
+  border-bottom: 1px solid var(--color-line);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+
+.art-row { padding: .85rem 0; border-bottom: 1px solid var(--color-line); align-items: start; }
+.art-row:last-child { border-bottom: 0; padding-bottom: .2rem; }
+
+/* `display: contents` so the image and its facts sit in the row's own grid
+   tracks rather than in a nested box — which is what keeps every row's images
+   on one vertical edge however long the text beside them runs. */
+.art-row__side { display: contents; }
+.art-row__side--after > * { margin-left: 1.6rem; }
+
+.art-row__art {
+  display: block;
+  width: 6.5rem;
+  height: 6.5rem;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-surface);
+  cursor: zoom-in;
+}
+.art-row__art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.art-row__art:hover { border-color: var(--color-accent); }
+.art-row__art--mb { border-color: color-mix(in srgb, var(--color-mb-purple) 35%, var(--color-line)); }
+
+/* What is MISSING, drawn as deliberately as what is there: on an album whose
+   tracks have lost their artwork this frame is the finding, and omitting it
+   would leave that album looking exactly like a healthy one. */
+.art-row__art--none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--color-line);
+  background: repeating-linear-gradient(45deg,
+    transparent, transparent 6px, var(--color-surface) 6px, var(--color-surface) 12px);
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 700;
+  cursor: default;
+}
+/* The right half of a row that writes nothing. Holds the column open so the
+   rows stay aligned, and shows no second picture — one there would say
+   Harmonist is about to overwrite artwork it is in fact preserving. */
+.art-row__art--nil { display: block; width: 6.5rem; height: 6.5rem; }
+
+.art-row__facts { display: flex; flex-direction: column; gap: .18rem; min-width: 0; }
+.art-row__who { font-size: .85rem; font-weight: 600; }
+.art-row__meta {
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.art-row__meta-plain { font-size: .72rem; color: var(--color-muted); }
+.art-row__files {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--color-muted);
+  line-height: 1.45;
+  word-break: break-word;
+}
+.art-row__outcome {
+  font-size: .72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--color-accent-dark);
+}
+.art-row__outcome--quiet { color: var(--color-muted); }
+
+/* The incoming side takes the Tags panel's purple: it is the same kind of value
+   — what would be written over what you have. Not the hexagon, though: that mark
+   means MusicBrainz, and a folder cover may have come from a Bandcamp download.
+   It arrives with the Cover Art Archive column (#269). */
+.art-row__facts--mb .art-row__who { color: var(--color-mb-purple); }
+.art-row__facts--mb .art-row__meta,
+.art-row__facts--mb .art-row__outcome {
+  color: color-mix(in srgb, var(--color-mb-purple) 78%, var(--color-muted));
+}
+.art-row__facts--nil .art-row__who { font-weight: 400; color: var(--color-muted); }
+
+.art-rows__disc {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 700;
+  color: var(--color-muted);
+  padding: .9rem 0 .35rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.art-rows__disc span { font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* Full size, in the top layer. Centred rather than anchored: this one is about
+   the image, so it wants the middle of the window and not the corner of a
+   thumbnail. */
+.art-full {
+  inset: 0;
+  margin: auto;
+  max-width: min(46rem, 92vw);
+  max-height: 92vh;
+  height: fit-content;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 6px 24px rgb(0 0 0 / .14);
+  overflow: auto;
+}
+.art-full::backdrop { background: rgb(0 0 0 / .55); }
+.art-full img { display: block; width: 100%; height: auto; max-height: 74vh; object-fit: contain; }
+.art-full__meta {
+  margin: 0;
+  padding: .6rem .85rem;
+  border-top: 1px solid var(--color-line);
+  font-size: .75rem;
+  color: var(--color-muted);
+}
+
+/* Narrow: the pair stacks and the relationship reads top to bottom. The
+   headings would then sit over the wrong halves, so they go. */
+@media (max-width: 56rem) {
+  .art-rows__head { display: none; }
+  .art-row { grid-template-columns: 6.5rem minmax(0, 1fr); row-gap: .7rem; }
+  .art-row__side--after > * { margin-left: 0; }
+  .art-row__side--after > .art-row__art,
+  .art-row__side--after > .art-row__art--none,
+  .art-row__side--after > .art-row__art--nil { margin-left: 1.5rem; }
+}

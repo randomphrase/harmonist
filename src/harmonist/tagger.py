@@ -19,6 +19,7 @@ from typing import Any, NamedTuple, Protocol, runtime_checkable
 from . import (
     activity_store,
     album_files,
+    artwork,
     artwork_store,
     audit,
     compare,
@@ -543,7 +544,7 @@ def _prepare(
     # the same verdict without logging anything, so the warning belongs to
     # `tag_album`, which is the one that acts on it.
     preserves_per_track_art = (
-        cover is not None and not overwrite_art and _has_per_track_art(art_before)
+        cover is not None and not overwrite_art and artwork.has_per_track_art(art_before.values())
     )
     if preserves_per_track_art:
         cover = None
@@ -679,7 +680,8 @@ def _keep_doomed_art(digests: dict[Path, str | None], incoming: str) -> None:
     store, so replacing it can be undone (#131).
 
     Runs AFTER the per-track-art decision, not during the digest pass, and that
-    ordering is the point: `_has_per_track_art` can still cancel the embed, and
+    ordering is the point: `artwork.has_per_track_art` can still cancel the embed,
+    and
     an image that survives is not being destroyed and has no business being
     backed up. So this re-reads the doomed files — but only the doomed ones, and
     only when something really is about to be lost. An album whose art already
@@ -699,13 +701,6 @@ def _keep_doomed_art(digests: dict[Path, str | None], incoming: str) -> None:
         # Best-effort: a copy that can't be written is a reason to warn, not to
         # abandon the re-tag the user asked for. `keep` logs and returns None.
         artwork_store.keep(art[0], mime=art[1])
-
-
-def _has_per_track_art(digests: dict[Path, str | None]) -> bool:
-    """True when the album's tracks carry DIFFERENT embedded cover images — i.e.
-    per-track artwork worth preserving. A compilation's per-track images are user
-    data a re-tag must not destroy."""
-    return len({d for d in digests.values() if d is not None}) > 1
 
 
 class RevertUnavailableError(Exception):

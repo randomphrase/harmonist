@@ -8627,3 +8627,96 @@ def test_the_outlier_popover_still_reads_as_a_plural_when_it_is_one(client, cfg,
 
     assert "2 of your 3 tracks agree" in body
     assert "2 carry “Ambient”" in body
+
+
+# ---------- Artwork section (#155) ----------
+
+
+def _album_with_art(cfg, name: str, *, covers: list[bytes | None], folder: bytes | None = None):
+    """An album whose tracks carry the given images (None = no embedded art)."""
+    from harmonist import formats
+
+    d = cfg.paths.music_dir / "Artist" / name
+    d.mkdir(parents=True)
+    for i, cover in enumerate(covers, start=1):
+        f = d / f"{i:02d} Track.m4a"
+        shutil.copy(SINE_M4A, f)
+        if cover is not None:
+            formats.write_cover(f, cover)
+    if folder is not None:
+        (d / "cover.jpg").write_bytes(folder)
+    return d
+
+
+def _png(seed: int) -> bytes:
+    """A distinct, real PNG. Imported from the artwork tests so both suites
+    describe the same bytes the same way."""
+    from test.test_artwork import png_bytes
+
+    return png_bytes(64, 64) + bytes([seed])
+
+
+def test_artwork_section_renders_without_a_musicbrainz_release(client, cfg):
+    """The one section that answers on an unidentified album — which is the
+    state an adopted library arrives in, and where artwork is most often a mess."""
+    art = _png(1)
+    d = _album_with_art(cfg, "Adopted", covers=[art, art])
+    album_id = _id_for(cfg, d)
+
+    r = client.get(f"/album/{album_id}/artwork")
+
+    assert r.status_code == 200
+    assert "One image, on every track." in r.text
+
+
+def test_artwork_section_names_the_tracks_missing_art(client, cfg):
+    """The remedy is per file, so the gap row names files rather than counting."""
+    art = _png(1)
+    d = _album_with_art(cfg, "Gappy", covers=[art, None, art], folder=_png(2))
+    album_id = _id_for(cfg, d)
+
+    r = client.get(f"/album/{album_id}/artwork")
+
+    assert "2 of 3 tracks carry artwork. 1 has none." in r.text
+    assert "02 Track.m4a" in r.text
+    # …and says plainly that filling the gap rewrites the two that were right.
+    assert "Replaced" in r.text
+    assert "Filled in" in r.text
+
+
+def test_artwork_section_promises_no_overwrite_where_art_is_preserved(client, cfg):
+    """A compilation's covers are kept, so no row may offer a replacement."""
+    d = _album_with_art(cfg, "Compilation", covers=[_png(1), _png(2)], folder=_png(3))
+    album_id = _id_for(cfg, d)
+
+    r = client.get(f"/album/{album_id}/artwork")
+
+    assert "2 tracks, 2 different images." in r.text
+    assert "Left as is" in r.text
+    assert "Replaced" not in r.text
+    # No column headings either: there is no second column to name.
+    assert "After a re-tag" not in r.text
+
+
+def test_artwork_images_are_served_by_digest(client, cfg):
+    from harmonist import images
+
+    art = _png(1)
+    d = _album_with_art(cfg, "Served", covers=[art])
+    album_id = _id_for(cfg, d)
+
+    r = client.get(f"/artwork/image/{album_id}/{images.digest(art)}")
+
+    assert r.status_code == 200
+    assert r.content == art
+
+
+def test_artwork_image_404s_for_an_image_this_album_does_not_carry(client, cfg):
+    from harmonist import images
+
+    d = _album_with_art(cfg, "Served2", covers=[_png(1)])
+    album_id = _id_for(cfg, d)
+
+    assert client.get(f"/artwork/image/{album_id}/{images.digest(_png(9))}").status_code == 404
+    # And a digest-shaped path is the only thing that reaches a file read.
+    assert client.get(f"/artwork/image/{album_id}/..%2F..%2Fetc%2Fpasswd").status_code == 404

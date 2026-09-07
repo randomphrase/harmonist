@@ -6,6 +6,17 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **An Artwork section on the album page** — what artwork your files actually
+  carry, one row per image, with its dimensions, format and size, and the tracks
+  carrying it. Beside each row: what a re-tag would put there, so a folder cover
+  about to replace a larger image, or a track quietly missing its art, is
+  visible before you press anything. Per-track artwork on a compilation is shown
+  as the normal thing it is, and marked as preserved. Every image opens full
+  size. It needs no MusicBrainz release, so it works on albums Harmonist hasn't
+  identified yet (#155).
+
 ## [1.15.0] - 2026-09-07
 
 ### Added

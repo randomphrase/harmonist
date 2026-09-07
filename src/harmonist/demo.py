@@ -32,7 +32,7 @@ from typing import Any
 
 from mutagen.mp4 import MP4
 
-from . import activity, activity_store, audit, id_registry, pending_downloads, redownloads
+from . import activity, activity_store, audit, formats, id_registry, pending_downloads, redownloads
 from . import sidecar as sidecar_mod
 from .formats.m4a import (
     ATOM_ALBUM,
@@ -87,6 +87,11 @@ STEP_DELAY_SECONDS = 0.6
 #     each other and the "2 of 3" consensus pill has a case
 #   file_track_tags: optional {track_number: {atom: value}} — per-track drift, so
 #     the tracklist comparison has real per-track differences to show (#135)
+#   art: what the FILES carry, as opposed to the folder cover (#155) — absent
+#     means every track carries the folder cover (the norm); "none" embeds
+#     nothing; "stale" embeds a different image, so a re-tag would replace it;
+#     "gaps" leaves track 2 without art; "mixed" gives every track its own, as a
+#     compilation legitimately has. See `_embed_art`.
 #   sidecar: optional sidecar spec (None → NEW state, {} → empty sidecar)
 #
 # Sidecar spec keys mirror the Sidecar dataclass; `mb_match_candidate` if
@@ -115,6 +120,10 @@ LIBRARY: list[dict[str, Any]] = [
         "album": "We Are Here To Make You Sad",
         "tracks": ["Garbage Truck", "Threshold", "Summertime"],
         "cover": "cover-2.jpg",
+        # The files carry a different image from cover.jpg, so the Artwork
+        # section has the case worth catching: a re-tag would replace what the
+        # tracks have (#155).
+        "art": "stale",
         "sidecar": {
             "store_url": "https://sexbobomb.bandcamp.com/album/we-are-here-to-make-you-sad",
             "bandcamp_item_id": 1001,
@@ -152,6 +161,9 @@ LIBRARY: list[dict[str, Any]] = [
         "album": "Gimme Some Money",
         "tracks": ["Gimme Some Money", "(Listen to the) Flower People", "Cups and Cakes"],
         "cover": "cover-3.jpg",
+        # Per-track artwork, which the tagger preserves — the Artwork section
+        # must offer no replacement here (#155).
+        "art": "mixed",
         "sidecar": {
             "store_url": "https://thamesmen.bandcamp.com/album/gimme-some-money",
             "bandcamp_item_id": 1002,
@@ -169,6 +181,9 @@ LIBRARY: list[dict[str, Any]] = [
         "album": "Little Bit o' Hoot, Whole Lotta Nanny",
         "tracks": ["Pavlov's Bell", "Hellmouth Lullaby", "Cordelia's Theme"],
         "cover": "cover-4.jpg",
+        # One track with no embedded art: #397 on screen, where filling the one
+        # gap rewrites the two that were already right.
+        "art": "gaps",
         "file_mbid": "demo-rel-dingoes",
         "file_comment": "Visit https://dingoes.bandcamp.com",
         "sidecar": {
@@ -1325,10 +1340,69 @@ def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
         if cover_asset.exists():
             shutil.copy(cover_asset, album_dir / "cover.jpg")
 
+    _embed_art(album_dir, spec, cover_name)
+
     # Distinguish "no sidecar" (sentinel None) from "empty sidecar" ({}).
     sc_spec = spec.get("sidecar")
     if sc_spec is not None:
         sidecar_mod.write(album_dir, _build_sidecar(sc_spec, spec))
+
+
+def _embed_art(album_dir: Path, spec: dict[str, Any], cover_name: str | None) -> None:
+    """Put embedded artwork into the album's files, per the spec's `art` key.
+
+    Demo albums used to carry a folder `cover.jpg` and nothing inside the files,
+    so every one of them read as "cover.jpg only, no track carries an embedded
+    image" — one of the Artwork section's seven states, and the least
+    interesting (#155). The section is judged by looking at it, so demo has to
+    be able to show the other six.
+
+    `art` values, chosen to name the SHAPE rather than the mechanics:
+
+    - absent  — every track carries the folder cover. The norm, and what an
+                album Harmonist has tagged actually looks like.
+    - "none"  — nothing embedded at all.
+    - "stale" — every track carries a DIFFERENT image from the folder cover, so
+                a re-tag would replace it. The case worth catching: it is how an
+                album ends up downgraded to a smaller cover.
+    - "gaps"  — every track but the second, which has none. The art is a
+                different image from the folder cover, deliberately: that is
+                #397 on screen, where filling the one gap rewrites the two that
+                were already right. With the folder cover embedded instead, the
+                rewrite is a no-op and the case looks harmless.
+    - "mixed" — a different image per track, as a compilation legitimately has.
+                Preserved by the tagger, so nothing is offered to overwrite it.
+    """
+    shape = spec.get("art")
+    if shape == "none":
+        return
+    # An album seeded with NO folder cover is the Library's No-artwork fixture
+    # (#174), and `has_cover` is true of embedded art as well — so embedding a
+    # default here would quietly empty that filter. Only an explicit shape puts
+    # art into a coverless album.
+    if cover_name is None and shape is None:
+        return
+    default = ASSETS_DIR / (cover_name or "cover-7.jpg")
+    if not default.exists():
+        return
+    files = sorted(p for p in album_dir.iterdir() if p.suffix == ".m4a")
+    # The assets are all small JPEGs, so a "different image" only has to be a
+    # different one of them — no image generation, and what the section shows is
+    # a real cover rather than a coloured square.
+    others = [ASSETS_DIR / f"cover-{n}.jpg" for n in (3, 5, 1, 8, 2, 4, 6)]
+    others = [p for p in others if p.exists() and p.name != default.name]
+    if not others:
+        return
+
+    for i, path in enumerate(files):
+        if shape == "gaps" and i == 1:
+            continue
+        source = default
+        if shape in ("stale", "gaps"):
+            source = others[0]
+        elif shape == "mixed":
+            source = others[i % len(others)]
+        formats.write_cover(path, source.read_bytes())
 
 
 def _build_sidecar(sc_spec: dict[str, Any], album_spec: dict[str, Any]) -> Sidecar:

@@ -113,6 +113,22 @@
     </section>
     {% endif %}
 
+    {# What artwork the files carry, and what a re-tag would do to it (#155).
+
+       Its own fetch rather than a ride on /compare, and NOT inside the
+       `mb_release_id` guard above: artwork facts are disk facts and owe
+       MusicBrainz nothing, so this is the one section that answers on an album
+       Harmonist hasn't identified yet — which is the state an adopted library
+       arrives in, and where uneven artwork mostly lives.
+
+       Lazy for the reason Tags and Tracks are: it opens every file in the album,
+       and the page should not wait on that to paint. #}
+    <section id="album-artwork" class="border border-line rounded-lg p-4 space-y-3"
+             hx-get="/album/{{ album.id }}/artwork" hx-trigger="load" hx-swap="innerHTML">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Artwork</h2>
+        <p class="text-2xs text-muted italic">Reading the album's artwork…</p>
+    </section>
+
     {# Everything Harmonist has recorded about THIS album — activity and audit
        together, newest first. Unioned across the album's alias chain, so records
        written before it was tagged (under its old id) are here too; without that

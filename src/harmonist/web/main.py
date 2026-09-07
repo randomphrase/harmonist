@@ -34,6 +34,7 @@ from harmonist import (
     activity_store,
     album_files,
     archive,
+    artwork,
     artwork_store,
     audit,
     compare,
@@ -41,6 +42,7 @@ from harmonist import (
     formats,
     gardener,
     id_registry,
+    images,
     library_index,
     live_counts,
     match,
@@ -667,6 +669,11 @@ def create_app(
     # with the legend it is drawn behind.
     templates.env.globals["advisory"] = compare.advisory
     templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
+    # "1400×1400 · JPEG · 718 KB" (#155). A global rather than a filter for the
+    # reason `headline` is one: the Artwork section states the same facts about
+    # an image in three places — the row, the incoming side, the full-size view —
+    # and they must not be three spellings of it.
+    templates.env.globals["describe_image"] = artwork.describe
     # No `track_columns` global any more (#309). The tracklist's headings used
     # to be a module constant, which only worked while the answer was the same
     # for every album; they are now a property of the comparison, which is what
@@ -2207,6 +2214,50 @@ def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
     if not files:
         return None
     return formats.read_cover(files[0])
+
+
+#: A sha256, as the artwork image route requires it to be spelled. Anything else
+#: never reaches a file read.
+_DIGEST = re.compile(r"[0-9a-f]{64}")
+
+#: Content-addressed URLs never serve different bytes, so the browser may keep
+#: them for as long as it likes — which is what makes a box set's dozen covers
+#: one request each rather than one per view.
+_IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
+
+
+def _artwork_view(album: Album) -> artwork.ArtworkView:
+    """What the album page's Artwork section shows (#155).
+
+    One pass over the files, and no MusicBrainz release: artwork facts are disk
+    facts, which is why this has its own endpoint rather than riding on
+    `/compare`. It is the only part of the album page that answers on an album
+    Harmonist has not identified yet — the state adopted libraries arrive in, and
+    the one where artwork is most often a mess.
+
+    Costs no I/O the tag read wasn't already doing: mutagen parses the whole tag
+    block on any open and the image is inside it, so `read_tags` has already
+    pulled these bytes off disk and `TrackTags.art` is what it noticed about them.
+    The one genuinely new read is the folder cover, once.
+    """
+    audio, _ = _album_tracks(album.path, album.folders)
+    if album.cover_path is None or not album.cover_path.exists():
+        return artwork.summarise(audio, None)
+    try:
+        data = album.cover_path.read_bytes()
+    except OSError:
+        # Loud, per the unattended rule — and NOT reported as "this album has no
+        # folder cover". There is one; Harmonist couldn't read it, and the two
+        # lead to opposite conclusions about what a re-tag would do (#112). The
+        # view says so and shows no outcomes at all rather than guessing.
+        log.exception("could not read the folder cover for %s", album.path)
+        return replace(artwork.summarise(audio, None), cover_unreadable=True)
+    mime = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
+    cover = artwork.FolderCover(
+        name=album.cover_path.name,
+        image=formats.EmbeddedArt.of(data, mime),
+    )
+    return artwork.summarise(audio, cover)
 
 
 def _albums(request: Request) -> list[Album]:
@@ -4740,6 +4791,49 @@ def _register_routes(app: FastAPI) -> None:
                 "set HARMONIST_TRACEMALLOC=1 and restart for top allocations"
             )
         return JSONResponse(payload)
+
+    @app.get("/album/{album_id}/artwork", response_class=HTMLResponse)
+    def album_artwork(request: Request, album_id: str) -> Response:
+        """The Artwork section (#155), fetched after the page paints.
+
+        Lazy for the reason Tags and Tracks are — it opens every file in the
+        album — but unlike them it is not gated on a MusicBrainz release, and
+        renders for an album in any state.
+        """
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/_artwork.html",
+            _ctx(request, album=album, artwork=_artwork_view(album)),
+        )
+
+    @app.get("/artwork/image/{album_id}/{digest}")
+    def artwork_image(request: Request, album_id: str, digest: str) -> Response:
+        """One of the album's images, by content digest.
+
+        Addressed by digest rather than by file because that is what the section
+        is *about*: a row is one image however many tracks carry it, and a URL
+        naming a track would make two rows sharing a cover look like two
+        different pictures to the browser cache. It also keeps a user-supplied
+        path out of a file read — the digest is checked against the hex it has to
+        be, and only ever compared to images already found in this album.
+
+        The folder cover is tried first: it is the one the incoming side of every
+        row asks for, and it is a single read.
+        """
+        if not _DIGEST.fullmatch(digest):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
+        album = _find_album(request, album_id)
+        if album.cover_path is not None and album.cover_path.exists():
+            data = album.cover_path.read_bytes()
+            if images.digest(data) == digest:
+                media = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
+                return Response(content=data, media_type=media, headers=_IMMUTABLE)
+        for path in album_files.for_paths(album.folders):
+            art = formats.read_cover(path)
+            if art is not None and images.digest(art[0]) == digest:
+                return Response(content=art[0], media_type=art[1], headers=_IMMUTABLE)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
 
     @app.get("/cover/{album_id}")
     def cover(request: Request, album_id: str) -> Response:

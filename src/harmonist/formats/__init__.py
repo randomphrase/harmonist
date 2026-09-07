@@ -21,7 +21,7 @@ from . import flac, m4a, mp3, ogg, opus
 # package is where mutagen stops, so `formats.READ_ERRORS` is how the rest of
 # the codebase names an unreadable file without importing mutagen to do it.
 from .types import READ_ERRORS as READ_ERRORS
-from .types import ScanFields, TagSet, TrackTags, UnsupportedFormatError
+from .types import EmbeddedArt, ScanFields, TagSet, TrackTags, UnsupportedFormatError
 
 _MODULES: tuple[ModuleType, ...] = (m4a, mp3, flac, ogg, opus)
 
@@ -265,6 +265,7 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
 
 
 __all__ = [
+    "EmbeddedArt",
     "ScanFields",
     "TagSet",
     "TrackTags",

@@ -20,7 +20,9 @@ from pathlib import Path
 
 import pytest
 
-from harmonist import formats, images
+from harmonist import artwork, formats, images
+from harmonist.formats import TrackTags
+from harmonist.formats.types import EmbeddedArt
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -143,3 +145,189 @@ class TestEmbeddedArtOnRead:
         formats.write_cover(other, png_bytes(301, 301))
 
         assert formats.read_tags(track).art.digest != formats.read_tags(other).art.digest
+
+
+# ---------------------------------------------------------------------------
+# What the section says about an album — `harmonist.artwork` (#155)
+# ---------------------------------------------------------------------------
+
+
+def art_of(seed: int, *, width: int = 1400, height: int = 1400) -> EmbeddedArt:
+    """A distinct image, described. `seed` is what makes two of them differ."""
+    data = png_bytes(width, height) + bytes([seed])
+    return EmbeddedArt.of(data, "image/png")
+
+
+def cover_of(image: EmbeddedArt, name: str = "cover.jpg") -> artwork.FolderCover:
+    return artwork.FolderCover(name=name, image=image)
+
+
+def album(*art: EmbeddedArt | None, disc: int | None = None) -> list[tuple[str, TrackTags]]:
+    """An album of `(file_name, tags)`, one entry per track, numbered from 1."""
+    return [
+        (f"{i:02d} Track.m4a", TrackTags(art=a, track_num=i, disc_num=disc))
+        for i, a in enumerate(art, start=1)
+    ]
+
+
+class TestOutcomes:
+    """The right-hand column: what a re-tag would do, per row."""
+
+    def test_uniform_art_matching_the_cover_writes_nothing_new(self) -> None:
+        one = art_of(1)
+        view = artwork.summarise(album(one, one, one), cover_of(one))
+
+        assert [r.outcome for r in view.rows] == [artwork.Outcome.SAME]
+        assert view.writes is False
+
+    def test_uniform_art_differing_from_the_cover_is_replaced(self) -> None:
+        view = artwork.summarise(album(art_of(1), art_of(1)), cover_of(art_of(2)))
+
+        assert [r.outcome for r in view.rows] == [artwork.Outcome.REPLACED]
+        assert view.writes is True
+
+    def test_per_track_art_is_kept(self) -> None:
+        """The invariant this whole section rests on: a compilation's covers are
+        preserved, so no row may promise a replacement."""
+        view = artwork.summarise(album(art_of(1), art_of(2), art_of(3)), cover_of(art_of(9)))
+
+        assert {r.outcome for r in view.rows} == {artwork.Outcome.KEPT}
+        assert view.writes is False
+
+    def test_gaps_are_filled_and_the_good_images_replaced(self) -> None:
+        """#397 stated on screen: one distinct image plus two holes is not
+        per-track art, so the two are filled by rewriting the two that were
+        already right. The section must not soften this — it is what happens."""
+        one = art_of(1)
+        view = artwork.summarise(album(one, None, one, None), cover_of(art_of(2)))
+
+        outcomes = {r.is_gap: r.outcome for r in view.rows}
+        assert outcomes == {False: artwork.Outcome.REPLACED, True: artwork.Outcome.FILLED}
+
+    def test_no_folder_cover_means_nothing_is_written(self) -> None:
+        view = artwork.summarise(album(art_of(1), None), None)
+
+        assert {r.outcome for r in view.rows} == {artwork.Outcome.KEPT}
+        assert view.writes is False
+
+    def test_outcomes_follow_the_taggers_own_verdict(self) -> None:
+        """`preserves_per_track_art` in `tagger._prepare` and the KEPT rows here
+        are the same decision. If they ever part company the page promises one
+        thing and the button does another — so they ask one predicate."""
+        digests = [art_of(1).digest, art_of(2).digest]
+        assert artwork.has_per_track_art(digests) is True
+        assert artwork.has_per_track_art([digests[0], digests[0], None]) is False
+
+
+class TestVerdict:
+    """The section's one line. Six shapes, none of them an alarm."""
+
+    def test_settled(self) -> None:
+        one = art_of(1)
+        view = artwork.summarise(album(one, one), cover_of(one))
+        assert view.verdict == "One image, on every track and in cover.jpg."
+
+    def test_cover_disagrees(self) -> None:
+        view = artwork.summarise(album(art_of(1), art_of(1)), cover_of(art_of(2)))
+        assert view.verdict == "Your tracks carry a different image from the folder cover."
+
+    def test_gaps_are_counted_not_alarmed_about(self) -> None:
+        one = art_of(1)
+        view = artwork.summarise(album(one, one, None), cover_of(one))
+        assert view.verdict == "2 of 3 tracks carry artwork. 1 has none."
+
+    def test_per_track_art_is_stated_as_a_fact(self) -> None:
+        view = artwork.summarise(album(art_of(1), art_of(2)), cover_of(art_of(1)))
+        assert view.verdict == "2 tracks, 2 different images."
+
+    def test_folder_cover_only(self) -> None:
+        view = artwork.summarise(album(None, None), cover_of(art_of(1)))
+        assert view.verdict == "cover.jpg only. No track carries an embedded image."
+
+    def test_nothing_at_all(self) -> None:
+        view = artwork.summarise(album(None, None), None)
+        assert view.verdict == (
+            "No artwork. There is no cover file, and no track carries an embedded image."
+        )
+
+
+class TestRows:
+    def test_one_row_per_distinct_image_naming_its_tracks(self) -> None:
+        one, two = art_of(1), art_of(2)
+        view = artwork.summarise(album(one, two, one), cover_of(one))
+
+        assert len(view.images) == 2
+        first, second = view.rows
+        assert [t.name for t in first.tracks] == ["01 Track.m4a", "03 Track.m4a"]
+        assert first.label(3) == "Tracks 1, 3"
+        assert second.label(3) == "Track 2"
+
+    def test_every_track_reads_as_all_of_them(self) -> None:
+        one = art_of(1)
+        assert artwork.summarise(album(one, one, one), cover_of(one)).rows[0].label(3) == (
+            "All 3 tracks"
+        )
+
+    def test_consecutive_tracks_collapse_to_a_range(self) -> None:
+        one, two = art_of(1), art_of(2)
+        row = artwork.summarise(album(one, one, one, two), cover_of(one)).rows[0]
+        assert row.label(4) == "Tracks 1–3"
+
+    def test_the_gap_row_names_the_files(self) -> None:
+        """The remedy is per file, so a count would not be enough to act on."""
+        one = art_of(1)
+        view = artwork.summarise(album(one, None), cover_of(one))
+        gap = next(r for r in view.rows if r.is_gap)
+        assert [t.name for t in gap.tracks] == ["02 Track.m4a"]
+
+    def test_unreadable_files_vote_for_nothing(self) -> None:
+        """A file Harmonist cannot open is not a file without artwork (#112)."""
+        one = art_of(1)
+        tracks = album(one, one)
+        tracks.append(("03 Track.m4a", TrackTags(unreadable=True)))
+
+        view = artwork.summarise(tracks, cover_of(one))
+
+        assert view.unreadable == 1
+        assert not any(r.is_gap for r in view.rows)
+        # Not "All 3 tracks": the third was never read, so the row cannot claim it.
+        assert view.rows[0].label(view.total_tracks) == "Tracks 1–2"
+
+
+class TestDiscGrouping:
+    def test_a_box_set_groups_by_disc(self) -> None:
+        one, two = art_of(1), art_of(2)
+        tracks = album(one, one, disc=1) + album(two, disc=2)
+
+        discs = artwork.summarise(tracks, None).discs
+
+        assert [d.number for d in discs] == [1, 2]
+        assert [d.tracks for d in discs] == [2, 1]
+
+    def test_a_single_disc_album_is_not_grouped(self) -> None:
+        one = art_of(1)
+        assert artwork.summarise(album(one, one, disc=1), None).discs == ()
+
+    def test_an_image_spanning_two_discs_is_not_split_across_them(self) -> None:
+        """Grouping is only drawn where it is true. One cover shared by two discs
+        under two headings would report one image as two."""
+        one = art_of(1)
+        tracks = album(one, disc=1) + album(one, disc=2)
+
+        assert artwork.summarise(tracks, None).discs == ()
+
+
+class TestHeadingCount:
+    def test_counts_the_images_the_tracks_carry(self) -> None:
+        view = artwork.summarise(album(art_of(1), art_of(2)), cover_of(art_of(3)))
+        assert view.count == "2 images"
+
+    def test_counts_gaps_alongside(self) -> None:
+        """ "1 image" over an album a third of whose tracks have none is true and
+        misses the point."""
+        one = art_of(1)
+        view = artwork.summarise(album(one, None, one), cover_of(one))
+        assert view.count == "1 image · 1 gap"
+
+    def test_no_count_when_no_track_carries_an_image(self) -> None:
+        assert artwork.summarise(album(None, None), cover_of(art_of(1))).count is None
