@@ -5,9 +5,11 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from mutagen.mp4 import MP4
+
 from harmonist.match import _mb_track_length_ms, assess_match, best_match
 from harmonist.models import MatchCandidate, TrackComparison
-from harmonist.tagger import ATOM_TITLE
+from harmonist.tagger import ATOM_MB_RELEASE_TRACK_ID, ATOM_TITLE, ATOM_TRACK_NUM
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -381,3 +383,92 @@ def test_title_differs_still_sees_punctuation_that_says_something():
         ("Dawn Chorus", "Dawn Chorus (Alt. Take)"),
     ]:
         assert _tc(on_disk, from_mb).title_differs is True, on_disk
+
+
+# -- which file is which track: the matcher climbs the same ladder (#395) --
+
+
+def _bandcamp_named_album(tmp_path: Path, credits: list[str]) -> Path:
+    """An album whose filename order is not its track order.
+
+    Bandcamp names a downloaded file `<track artist> - <album> - NN <title>`,
+    so on a release whose tracks credit different artists the prefix decides
+    the sort and the number in the middle of the name never gets a vote:
+
+        cv313 …01, cv313 …03, deepchord …02
+
+    Every file still carries its real track number as a tag, so nothing here is
+    ambiguous — the order on disk simply isn't the order of the release. This
+    is *cv313 — live [w/japan exclusive album]* in miniature: ten files across
+    three credits, every duration matching MusicBrainz to the millisecond, and
+    nine of the ten rows reported as differences.
+    """
+    d = tmp_path / "Artist" / "Album"
+    d.mkdir(parents=True)
+    for i, credit in enumerate(credits, start=1):
+        path = d / f"{credit} - Album - {i:02d} Track {i}.m4a"
+        shutil.copy(SINE_M4A, path)
+        audio = MP4(path)
+        audio[ATOM_TITLE] = [f"Track {i}"]
+        audio[ATOM_TRACK_NUM] = [(i, len(credits))]
+        audio.save()
+    return d
+
+
+def test_matcher_pairs_by_track_number_not_by_filename_order(tmp_path):
+    """The rows the suggestion panel is built from, and the verdict with them:
+    a mis-pairing invents per-track deltas that are nobody's real difference,
+    drops the confidence from exact to approximate, and parks an album that
+    needed no decision at all.
+
+    (The fixtures all share one duration, so what this pins is the pairing —
+    the arithmetic from deltas to confidence is covered above.)
+    """
+    album_dir = _bandcamp_named_album(tmp_path, ["cv313", "deepchord", "cv313"])
+
+    result = assess_match(album_dir, _release([FIXTURE_DURATION_MS] * 3))
+
+    # Rows run down the release's tracklist, so the panel numbers them the way
+    # MusicBrainz does — and each carries the file that is actually that track.
+    assert [tc.mb_track_title for tc in result.track_comparisons] == [
+        "Track 1",
+        "Track 2",
+        "Track 3",
+    ]
+    assert [tc.file_name for tc in result.track_comparisons] == [
+        "cv313 - Album - 01 Track 1.m4a",
+        "deepchord - Album - 02 Track 2.m4a",
+        "cv313 - Album - 03 Track 3.m4a",
+    ]
+
+
+def test_matcher_prefers_the_release_track_id_to_a_stale_number(tmp_path):
+    """The top rung, and the one that is not a guess (#232).
+
+    The TISM shape: MusicBrainz renumbered the release after these files were
+    tagged, so their numbers point at the wrong slots while their ids still
+    name the right ones. Both the number rung and plain file order get this
+    album exactly backwards, so only reading the id can produce the pairing
+    asserted here.
+    """
+    d = tmp_path / "Artist" / "Album"
+    d.mkdir(parents=True)
+    # The file MusicBrainz now calls track 1 still says it is track 3, and
+    # vice versa. Every id is current; only the numbers went stale.
+    for stale, real in ((3, 1), (1, 3), (2, 2)):
+        path = d / f"{stale:02d} Renumbered.m4a"
+        shutil.copy(SINE_M4A, path)
+        audio = MP4(path)
+        audio[ATOM_TITLE] = [f"Track {real}"]
+        audio[ATOM_TRACK_NUM] = [(stale, 3)]
+        audio[ATOM_MB_RELEASE_TRACK_ID] = [f"rt-{real}".encode()]
+        audio.save()
+
+    result = assess_match(d, _release([FIXTURE_DURATION_MS] * 3))
+
+    assert [tc.file_title for tc in result.track_comparisons] == [
+        "Track 1",
+        "Track 2",
+        "Track 3",
+    ]
+    assert result.title_mismatch_count == 0

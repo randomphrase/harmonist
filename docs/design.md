@@ -710,6 +710,8 @@ A URL → MBID match from [MusicBrainz](https:://musicbrainz.org) is exact, but 
 
 Track lengths compared are the per-release **track** lengths, not the recording lengths (which can differ by seconds across releases).
 
+Which file is compared against which track is **not** positional — it goes through `compare.assign` like everywhere else (see *Which file is which track* below). The durations above are what the confidence is derived from and what `best_match` ranks competing releases on, so pairing the two lists by position alone did not merely describe an album badly: an album whose files don't sort into track order was measured against its own tracks in the wrong order, downgraded from exact to approximate, and parked awaiting a decision it never needed (#395).
+
 Confirm → promote candidate to `mb_release_id`, clear candidate, run tagger.
 Dismiss suggestion → clear candidate; the album stays in Needs MBID so a different release can be assigned.
 
@@ -893,9 +895,9 @@ The current code's `MUSICBRAINZ_RELEASEID` atom is **non-Picard** and gets remov
 ### Which file is which track
 
 One ladder, `compare.assign`, answers this for everything — the album page's
-tracklist and the tagger both — and it is tried in order: the file's
-**MusicBrainz Release Track Id**, then its **disc-and-track number**, then
-**file order** (#232).
+tracklist, the tagger, and the match assessment above — and it is tried in
+order: the file's **MusicBrainz Release Track Id**, then its
+**disc-and-track number**, then **file order** (#232, #395).
 
 Only the first rung is an identity. Harmonist writes that id on everything it
 tags and Picard writes the same one, so for any album either tool has touched

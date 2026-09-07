@@ -319,7 +319,11 @@ def read_tags(path: Path) -> TrackTags:
         artist=_text_atom(audio, ATOM_ARTIST),
         track_num=trkn[0][0] if trkn and trkn[0] else None,
         disc_num=disk[0][0] if disk and disk[0] else None,
-        duration_ms=int(audio.info.length * 1000) if audio.info else None,
+        # Rounded, like `read_duration_ms` above and like every other format
+        # module: truncating made this reader disagree with that one by a
+        # millisecond on the same file, which the matcher then showed as a
+        # per-track delta on an album that matches exactly (#395).
+        duration_ms=round(audio.info.length * 1000) if audio.info else None,
         comment=_text_atom(audio, ATOM_COMMENT),
         release_track_id=_binary_atom_str(audio, ATOM_MB_RELEASE_TRACK_ID),
         # Every owned field too, off the handle already open — so the album

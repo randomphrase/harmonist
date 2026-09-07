@@ -14,6 +14,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A suggested release is now lined up against your files the same way the
+  album page and the tagger line them up.** The matcher paired the two lists by
+  position alone, so an album whose files don't sort into track order — a
+  Bandcamp download whose tracks credit different artists sorts by the credit,
+  not the number — was compared against its own tracks in the wrong order:
+  rows of differences that were nobody's, a match downgraded from exact to
+  approximate, and an album parked awaiting a decision it never needed. Existing
+  suggestions are re-paired by Refresh from MB or the next recheck (#395).
+
 - **A re-tag that changes nothing no longer repeats the note about keeping
   per-track artwork.** The note now rides on an actual write, so a compilation's
   History doesn't collect the same sentence once per re-tag (#272).

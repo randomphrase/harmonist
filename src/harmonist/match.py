@@ -10,13 +10,12 @@ the suggestion inline until the user Confirms or Dismisses it.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from itertools import zip_longest
 from pathlib import Path
 
-from . import album_files, formats
+from . import album_files, compare, formats
 from .compare import LENGTH_TOLERANCE_MS
 from .models import MatchCandidate, MatchConfidence, Release, Track, TrackComparison
-from .tagger import _flatten_tracks, _track_title
+from .tagger import _flatten_tracks, _identity_of, _track_title
 
 __all__ = ["LENGTH_TOLERANCE_MS", "assess_match", "best_match", "mb_track_lengths"]
 
@@ -31,6 +30,25 @@ def assess_match(album_dir: Path, release: Release) -> MatchCandidate:
       - "approximate": file count matches but at least one track is unknown
         or out of tolerance.
       - "no_match": file count differs from MB track count.
+
+    Which file is which track is decided by `compare.assign` (#395) — the same
+    ladder the album page and the tagger use, so the three cannot answer it
+    differently (#232). This used to pair the two lists **positionally**, which
+    is only the ladder's bottom rung and reaches it without asking the files
+    anything.
+
+    *cv313 — live [w/japan exclusive album]* is what that cost. Bandcamp names
+    a file `<track artist> - <album> - NN <title>`, and the credits vary across
+    that release — `cv313`, `deepchord`, `echospace` — so the prefix decided
+    the sort and the number in the middle of the name never got a vote. Ten
+    correctly-numbered files whose durations matched MusicBrainz to the
+    millisecond were compared against each other's tracks: nine rows of
+    differences, a verdict of "approximate" instead of "exact", and an album
+    parked in NEEDS_MBID waiting on a decision it never needed.
+
+    So the deltas here are not merely displayed. They are what the confidence
+    is derived from, and `best_match` ranks releases on their total — a
+    mis-pairing can pick the wrong release, not just describe one badly.
     """
     files = album_files.audio_files(album_dir)
     tracks = list(_flatten_tracks(release))
@@ -39,17 +57,37 @@ def assess_match(album_dir: Path, release: Release) -> MatchCandidate:
     track_count = len(tracks)
     notes: list[str] = []
 
+    # One open per file, where the durations and titles alone took two. The
+    # ladder needs the numbers and the release track id from the same read.
+    tags = [formats.read_tags(f) for f in files]
+    slots = compare.assign(
+        [compare.identity_of(t) for t in tags],
+        [_identity_of(t) for t in tracks],
+    )
+    file_of = {slot: i for i, slot in enumerate(slots) if slot is not None}
+
+    # Rows run down the RELEASE's tracklist — so the panel numbers them the way
+    # MusicBrainz does — and then whatever files found no slot in it. Both
+    # halves are padded, because a row with nothing on one side is a finding
+    # worth showing: a track that isn't on disk, a file the release has no
+    # place for.
+    rows: list[tuple[int | None, int | None]] = [(file_of.get(t), t) for t in range(track_count)]
+    rows += [(f, None) for f, slot in enumerate(slots) if slot is None]
+
     comparisons: list[TrackComparison] = []
     any_significant_delta = False
     any_unknown_length = False
 
-    for f, mb_entry in zip_longest(files, tracks, fillvalue=None):
-        track = mb_entry[2] if mb_entry is not None else None
+    for file_i, track_i in rows:
+        track = tracks[track_i][2] if track_i is not None else None
 
-        if f is not None:
-            file_name = f.name
-            file_dur_ms = _file_duration_ms(f)
-            file_title = _file_title(f) or f.stem
+        if file_i is not None:
+            file_name = files[file_i].name
+            # `or 0` as reading the duration on its own did: a file Harmonist
+            # cannot open has no length, and calling that a match would be a
+            # claim it never made.
+            file_dur_ms = tags[file_i].duration_ms or 0
+            file_title = tags[file_i].title or files[file_i].stem
         else:
             file_name = None
             file_dur_ms = None
@@ -141,15 +179,6 @@ def _rank_key(c: MatchCandidate) -> tuple[int, int, int]:
     count_gap = abs(c.file_count - c.track_count)
     total_delta = sum(abs(tc.delta_ms) for tc in c.track_comparisons if tc.delta_ms is not None)
     return (confidence, -count_gap, -total_delta)
-
-
-def _file_duration_ms(file_path: Path) -> int:
-    return formats.read_duration_ms(file_path) or 0
-
-
-def _file_title(file_path: Path) -> str | None:
-    """Read the track title tag from the file, if present."""
-    return formats.read_track_title(file_path)
 
 
 def mb_track_lengths(release: Release) -> list[int | None]:
