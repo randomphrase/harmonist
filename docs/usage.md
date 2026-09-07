@@ -113,9 +113,11 @@ and still carry its tags, but Harmonist can't compare them against anything or
 re-tag them until the album points at a release that exists." A Find a new
 release button sits to its right.](images/release-gone.png)
 
-**Inconsistent** — the files in one folder disagree about album title or MBID,
-which normally means several albums share a directory. Harmonist won't guess:
-split them in Picard and refresh.
+**Inconsistent** — the files in one folder disagree about which album they are,
+which normally means several albums share a directory. One MusicBrainz release
+id on every file settles it whatever the titles say; where a file carries no
+release id, the titles have to agree. Harmonist won't guess: split them in
+Picard and refresh.
 
 **Tagging** — transient, shown while a tagging runs.
 

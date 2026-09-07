@@ -6,52 +6,40 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-09-07
+
 ### Added
 
 - **A background update check that finds something now says so in Activity** —
-  one line per pass ("Update check: 3 albums now have an update available"),
-  never one per album, and nothing at all from a pass that found nothing (#274).
+  one line per pass ("Update check: 3 albums now have an update available"), and
+  nothing at all from a pass that found nothing (#274).
 
 ### Fixed
 
 - **A suggested release is now lined up against your files the same way the
-  album page and the tagger line them up.** The matcher paired the two lists by
-  position alone, so an album whose files don't sort into track order — a
-  Bandcamp download whose tracks credit different artists sorts by the credit,
-  not the number — was compared against its own tracks in the wrong order:
-  rows of differences that were nobody's, a match downgraded from exact to
-  approximate, and an album parked awaiting a decision it never needed. Existing
-  suggestions are re-paired by Refresh from MB or the next recheck (#395).
+  album page and the tagger line them up.** Existing suggestions are re-paired
+  by Refresh from MB or the next recheck (#395).
 
 - **A re-tag that changes nothing no longer repeats the note about keeping
-  per-track artwork.** The note now rides on an actual write, so a compilation's
-  History doesn't collect the same sentence once per re-tag (#272).
+  per-track artwork** in the album's History (#272).
 
 - **A collaboration missing its album-artists tag now reads as Enrichment
-  rather than Identity.** The list arriving where there was none is MusicBrainz
-  filling in a detail — no library predating last week's Picard carries the tag
-  — and it was outranking genuine retitles in the Inbox. A list whose names
-  actually change is still Identity (#389).
+  rather than Identity**, so it no longer outranks genuine retitles in the
+  Inbox (#389).
 
 - **A pending change under the tracklist is drawn like every other one on the
   page** — stacked, with what changed marked inside the value, and no longer
-  struck through as though your tag were a mistake. `Artist sort` and `Album
-  artist sort` showed the same two values in two different shapes (#386).
+  struck through (#386).
 
-- **A stray Compilation tag now reads as a pending "No" instead of the album's
-  answer.** A tag Harmonist writes only when true — "no" is the tag's absence —
-  was compared as though MusicBrainz had no opinion, so a `cpil` your ripper left
-  on one disc was drawn like a matching field while the headline counted it among
-  the differences. The row now says `Yes → No`, counts the tracks carrying it,
-  and notes that "No" is written by removing the tag (#383).
+- **A stray Compilation tag now reads as a pending `Yes → No`** rather than as
+  a matching field, counting the tracks carrying it and noting that "No" is
+  written by removing the tag (#383).
 
 - The popover naming which tracks disagree about a tag now reads "1 carries"
   rather than "1 carry" when a single track holds the value (#384).
 
 - **A multi-disc rip whose discs are named no longer lands in the Inbox as
-  Inconsistent.** XLD writes MusicBrainz's disc title into the album tag, so
-  disc 2 of *U.F.Orb* reads `U.F.Orb - bonus disc` and the folder looked like
-  two albums; one MusicBrainz release id on every file now settles it, whatever
+  Inconsistent** — one MusicBrainz release id on every file settles it, whatever
   the titles say (#381).
 
 ## [1.14.0] - 2026-09-04
