@@ -412,6 +412,83 @@ counting it. They are still links, and an id with no name is shortened to its fi
 the whole of it on hover — enough to see that two ids differ, which is all anyone
 does with one here.
 
+### Artwork
+
+**Artwork** is the account of what your files actually carry, which is not
+something a music player will ever tell you. Album art lives in two places at
+once — embedded in every track, and as a `cover.jpg` beside them — and players
+disagree about which they read. An album can look perfect in one and blank in
+another, and until you can see both there is no way to tell why.
+
+One row per distinct image, labelled by everything carrying it: *All 12 tracks
+and cover.jpg* when they agree, *Tracks 1–4* and *Tracks 5–7* when they don't.
+Each row gives the image's dimensions, format and size, and clicking it opens the
+picture full size. On a multi-disc release the rows name the disc — *Disc 1,
+track 5 · Disc 7, track 7* — because a bare track number means two different
+things on a box set.
+
+Some things it shows that are worth recognising:
+
+- **A track with no artwork at all** gets an empty frame and the name of the
+  file, because the fix is per file.
+- **Different images on different tracks** is what a compilation correctly looks
+  like. Harmonist never overwrites those, and the section says so rather than
+  flagging it.
+- **`cover.jpg` differing from what the tracks carry** is the case worth
+  catching, and the reason both are drawn: you can see at a glance which is the
+  better picture.
+
+### What would change, and the button that changes it
+
+Where a re-tag or an artwork update would alter a row, the section shows what it
+would become on the right, under **After a re-tag** — the picture itself, not a
+description of it.
+
+**The largest image wins.** Between what your tracks carry, what `cover.jpg`
+holds, and what the Cover Art Archive has, the one with the most pixels is the
+one Harmonist writes. A same-sized different picture is not an improvement and
+is left alone.
+
+Two separate actions, deliberately:
+
+- **A re-tag fills gaps and never replaces an image you already have.** A track
+  carrying nothing gets the album's cover; a track that has one keeps it.
+- **Update artwork**, in this section, is what replaces. It writes the winning
+  image to every track and to the folder cover, and touches no tags at all.
+
+They are separate because replacing artwork is the change you are most likely to
+want to undo on its own — and it has always had its own Undo in History.
+
+### Asking the Cover Art Archive
+
+The album panel carries a **CAA checked** date beside the MusicBrainz one, with
+a control to ask. Nothing is fetched until you press it: the archive is served
+by the Internet Archive and a single check can take many seconds, so it is never
+something a page does on its own.
+
+If the release has no cover of its own, Harmonist asks its **release group**,
+which is where the archive very often keeps an album's artwork. A cover found
+that way is labelled as the group's rather than this edition's.
+
+What comes back is a row like any other, greyed, because nothing is going to
+come of it unless it wins:
+
+- **not loaded** — the archive has a cover, and it is no better than yours, so
+  it was measured and not downloaded.
+- **none** — the archive has nothing for this release or its group.
+
+When the archive's cover *is* larger, it is fetched, shown beside your own with
+the MusicBrainz hexagon, and **Update artwork** will write it.
+
+### Getting artwork back
+
+Any image Harmonist overwrites is kept first, and the album's History offers an
+**Undo** for it separately from undoing the tagging. **The last five artwork
+changes to any album can always be reversed**, however much else you have been
+tagging — see [Settings](#settings) for what that is costing in disk.
+
+<!-- screenshot: docs/screenshots/album-artwork.png -->
+
 **History** gathers everything Harmonist has recorded about the album, including
 records written before it was last re-identified, so history doesn't rot when a
 release is re-matched or renamed.
@@ -505,12 +582,15 @@ point:
 
 The undo is itself recorded, so it can be undone in turn.
 
-**Cover art has its own Undo.** Artwork that a re-tag overwrites is kept, and can
-be put back from the Artwork row in History. **The last five artwork changes to
-any album are kept**, however many albums you tag — so a busy library can't cost
-you the undo on the one album you were working on. A 500 MB ceiling sits under
-that as a backstop; both numbers are `harmonist.toml` settings, and Settings
-shows what's held under **Kept artwork**.
+**Cover art has its own Undo.** Any image Harmonist overwrites — by **Update
+artwork**, or by filling a track that had none — is kept first, and can be put
+back from the Artwork row in History, separately from undoing the tagging.
+**The last five artwork changes to any album are kept**, however many albums you
+tag, so a busy library can't cost you the undo on the one album you were working
+on. A 500 MB ceiling sits under that as a backstop; both numbers are
+`harmonist.toml` settings, and Settings shows what's held under **Kept
+artwork**. See [Artwork](#artwork) for what changes an album's images in the
+first place.
 
 ## Activity
 
