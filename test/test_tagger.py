@@ -252,10 +252,12 @@ def test_tagging_records_artwork_replacement_by_digest(album_with_tracks, tmp_pa
     assert first[0] is None  # no embedded art before
     assert len(first[1]) == 64  # sha256 hex
 
+    # Replacing it is the ARTWORK ACTION's job now, not a re-tag's (#418) — but
+    # the record it leaves is the same shape, which is what keeps one Undo.
     newer = tmp_path / "cover2.jpg"
     newer.write_bytes(b"\xff\xd8\xff" + b"second" * 40)
     before = len(_detail())
-    tagger.tag_album(album_dir, _release_2_tracks(), newer)
+    tagger.update_artwork(album_dir, _release_2_tracks(), newer)
 
     replaced = _detail()[before:][0].changes[owned.ARTWORK]
     assert replaced[0] == first[1]  # what was there is what we recorded before
@@ -873,19 +875,76 @@ def test_tag_album_overwrite_art_forces_replacement(album_with_tracks, tmp_path)
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == new
 
 
-def test_tag_album_embeds_when_art_missing_on_some_tracks(album_with_tracks, tmp_path):
-    """'Missing on some tracks' is NOT per-track art — only ACTUAL differences are.
-    One track with a cover + one without → the album cover embeds normally."""
+def test_tagging_fills_the_gap_and_leaves_the_rest(album_with_tracks, tmp_path):
+    """A tagging fills tracks carrying nothing and replaces nothing (#418).
+
+    'Missing on some tracks' is not per-track art, so there IS a cover to write —
+    but only where there is a hole. The track that already had an image keeps
+    it; improving that one is the artwork action's job."""
     album_dir = album_with_tracks(2)
-    _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())  # track 2 has none
+    had = _minimal_jpeg()
+    _embed_cover(album_dir / "01 Track 1.m4a", had)  # track 2 has none
     new = b"\xff\xd8\xff\xe0UNIFORM\xff\xd9"
     new_cover = tmp_path / "cover.jpg"
     new_cover.write_bytes(new)
 
     tagger.tag_album(album_dir, _release_2_tracks(), cover_path=new_cover)
 
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == had  # untouched
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == new  # filled
+
+
+def test_the_artwork_action_replaces_what_a_tagging_would_not(album_with_tracks, tmp_path):
+    """The other half of the same album: the action does replace."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())
+    new = b"\xff\xd8\xff\xe0UNIFORM\xff\xd9"
+    new_cover = tmp_path / "cover.jpg"
+    new_cover.write_bytes(new)
+
+    changed = tagger.update_artwork(album_dir, _release_2_tracks(), new_cover)
+
+    assert changed == 2
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == new
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == new
+
+
+def test_the_artwork_action_touches_no_tags(album_with_tracks, tmp_path):
+    """Pressing a button about images must not quietly re-tag an album — which
+    is the whole point of separating them (#418)."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(1)
+    track = album_dir / "01 Track 1.m4a"
+    audio = MP4(track)
+    audio[ATOM_TITLE] = ["A title MusicBrainz disagrees with"]
+    audio.save()
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(b"\xff\xd8\xff\xe0NEW\xff\xd9")
+
+    tagger.update_artwork(album_dir, _single_track_release(), cover)
+
+    assert MP4(track)[ATOM_TITLE] == ["A title MusicBrainz disagrees with"]
+
+
+def test_the_artwork_action_is_idempotent(album_with_tracks, tmp_path):
+    """A second press finds the winner already everywhere and writes nothing."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(b"\xff\xd8\xff\xe0ONLY\xff\xd9")
+
+    first = tagger.update_artwork(album_dir, _release_2_tracks(), cover)
+    second = tagger.update_artwork(album_dir, _release_2_tracks(), cover)
+
+    assert first == 2
+    assert second == 0
 
 
 def test_tag_album_returns_count(album_with_tracks):
@@ -2164,7 +2223,7 @@ def test_a_larger_embedded_image_is_promoted_to_the_folder_cover(album_with_trac
     cover = tmp_path / "cover.jpg"
     cover.write_bytes(_sized_jpeg(400, 400))
 
-    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=cover)
+    tagger.update_artwork(album_dir, _release_2_tracks(), cover)
 
     # The tracks keep the better image…
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
@@ -2185,7 +2244,7 @@ def test_the_replaced_folder_cover_can_be_undone(album_with_tracks, tmp_path):
     small = _sized_jpeg(400, 400)
     cover.write_bytes(small)
 
-    tagger.tag_album(album_dir, _single_track_release(), cover_path=cover)
+    tagger.update_artwork(album_dir, _single_track_release(), cover)
 
     kept = artwork_store.path_for(artwork_store.digest(small))
     assert kept is not None, "the overwritten folder cover was not kept"
@@ -2204,7 +2263,7 @@ def test_a_larger_folder_cover_is_still_embedded(album_with_tracks, tmp_path):
     big = _sized_jpeg(1000, 1000)
     cover.write_bytes(big)
 
-    tagger.tag_album(album_dir, _single_track_release(), cover_path=cover)
+    tagger.update_artwork(album_dir, _single_track_release(), cover)
 
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
     assert cover.read_bytes() == big
@@ -2223,7 +2282,7 @@ def test_per_track_artwork_never_promotes_one_track_to_the_album_cover(album_wit
     small = _sized_jpeg(400, 400)
     cover.write_bytes(small)
 
-    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=cover)
+    tagger.update_artwork(album_dir, _release_2_tracks(), cover)
 
     assert cover.read_bytes() == small
 
@@ -2241,7 +2300,7 @@ def test_a_promoted_cover_can_be_put_back(album_with_tracks, tmp_path):
     small = _sized_jpeg(400, 400)
     cover.write_bytes(small)
 
-    tagger.tag_album(album_dir, _single_track_release(), cover_path=cover)
+    tagger.update_artwork(album_dir, _single_track_release(), cover)
     assert cover.read_bytes() == big  # promoted
 
     restored = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
@@ -2329,7 +2388,7 @@ def test_a_larger_archive_image_wins_and_is_written(album_with_tracks, tmp_path)
     release = _single_track_release()
     cover_art.cache_image(release["id"], theirs, "image/jpeg")
 
-    tagger.tag_album(album_dir, release, cover_path=cover)
+    tagger.update_artwork(album_dir, release, cover)
 
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == theirs
     assert cover.read_bytes() == theirs
@@ -2352,7 +2411,7 @@ def test_a_smaller_archive_image_is_ignored(album_with_tracks, tmp_path):
     release = _single_track_release()
     cover_art.cache_image(release["id"], _sized_jpeg(400, 400), "image/jpeg")
 
-    tagger.tag_album(album_dir, release, cover_path=cover)
+    tagger.update_artwork(album_dir, release, cover)
 
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
     assert cover.read_bytes() == big  # the album's own image still won

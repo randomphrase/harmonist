@@ -4907,6 +4907,55 @@ def _register_routes(app: FastAPI) -> None:
             return
         activity_store.store_cover_art(mbid, answer)
 
+    @app.post("/album/{album_id}/artwork/update", response_class=HTMLResponse)
+    def album_artwork_update(request: Request, album_id: str) -> Response:
+        """Put the winning image on every track and on the folder cover (#418).
+
+        Artwork only — no tags are written, not even stale ones. A button about
+        images that quietly re-tagged an album would defeat the separation this
+        exists for: replacing artwork is the change a user is most likely to
+        want to undo on its own, and History has offered a separate Undo for it
+        since #131.
+
+        Re-renders the section, so what the page shows afterwards is what is now
+        on disk rather than what was proposed a moment ago.
+        """
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        mbid = album.sidecar.mb_release_id if album.sidecar else None
+        if mbid is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "album has no MusicBrainz release")
+        try:
+            release = mb_cache.fetch_release(mbid)
+        except mb_lookup.MBError as e:
+            return _flash_response(
+                "Couldn't update artwork", str(e), level=Level.ERROR, tasks_changed=False
+            )
+        changed = tagger_mod.update_artwork(
+            album.path,
+            release,
+            album.cover_path,
+            files=album_files.for_paths(album.folders) if album.folders else None,
+        )
+        activity.info(
+            f"Updated artwork on {changed} file{'s' if changed != 1 else ''}"
+            if changed
+            else "Artwork was already up to date",
+            album_id=album.id,
+        )
+        # Re-read from disk: the files just changed, and the section describes
+        # what they carry.
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        caa = activity_store.cached_cover_art(mbid)
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/_artwork.html",
+            _ctx(
+                request,
+                album=album,
+                artwork=_artwork_view(album, caa, _archive_image(mbid)),
+            ),
+        )
+
     @app.get("/artwork/image/{album_id}/{digest}")
     def artwork_image(request: Request, album_id: str, digest: str) -> Response:
         """One of the album's images, by content digest.

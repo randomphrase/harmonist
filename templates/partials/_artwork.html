@@ -133,6 +133,29 @@
 </div>
 {% endif %}
 
+{# The action, when there is something for it to do (#418). Beside the images
+   rather than up with Re-tag, so what is being accepted is on screen — and
+   separate from Re-tag because replacing artwork is the change most likely to
+   be undone on its own, which History has always treated as its own thing.
+
+   No button when nothing would change, the same way the rows say nothing then.
+
+   `hx-confirm` because this overwrites images the user has; the folder cover is
+   kept first, so it can be put back from History (#408). #}
+{% if artwork.writes %}
+<form hx-post="/album/{{ album.id }}/artwork/update"
+      hx-target="#album-artwork" hx-swap="innerHTML"
+      hx-disabled-elt="find button"
+      hx-confirm="Update this album's artwork? What is replaced is kept, so this can be undone from History."
+      class="pt-1">
+    <button type="submit"
+            class="text-2xs uppercase tracking-widest font-bold px-3 py-1.5 rounded
+                   border border-mb-purple/40 text-mb-purple hover:bg-mb-purple/10 transition"
+            title="Write the winning image to every track and to the folder cover"
+            aria-label="Update this album's artwork">Update artwork</button>
+</form>
+{% endif %}
+
 {# The full-size views, one per distinct image. A popover rather than a
    hand-rolled overlay: it brings its own dismiss, Escape handling and top-layer
    placement (web-ui rule 1), and it is the same element the odd-tracks pill

@@ -6,6 +6,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+
+- **Updating artwork is now its own action, separate from a re-tag.** A re-tag
+  fills tracks that have no artwork and never replaces one you already have;
+  improving an album's images is an **Update artwork** button in the Artwork
+  section, beside the pictures it changes. Replacing artwork is the change most
+  likely to be worth undoing on its own, and it has always had its own Undo in
+  History — now it has its own way to be done, too (#418).
+
 ### Added
 
 - **Harmonist can take better artwork from the Cover Art Archive.** The album

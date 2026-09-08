@@ -8754,3 +8754,36 @@ def test_the_cover_art_check_is_reachable_before_it_has_ever_run(client, cfg):
     rendered = " ".join(r.text.split())
     assert "CAA checked" in rendered
     assert f"/album/{album_id}/artwork?check=1" in rendered
+
+
+def test_the_artwork_action_is_offered_only_when_something_would_change(client, cfg):
+    """No button when nothing would change, the same way the rows say nothing."""
+    same = _png(1)
+    settled = _album_with_art(cfg, "Settled", covers=[same, same], folder=same)
+    improvable = _album_with_art(cfg, "Improvable", covers=[_png(1), None], folder=_png(2))
+
+    quiet = client.get(f"/album/{_id_for(cfg, settled)}/artwork")
+    offered = client.get(f"/album/{_id_for(cfg, improvable)}/artwork")
+
+    assert "Update artwork" not in quiet.text
+    assert "Update artwork" in offered.text
+
+
+def test_the_artwork_action_writes_artwork_and_not_tags(client, cfg):
+    """The separation, end to end: images change, the title does not (#418)."""
+    from mutagen.mp4 import MP4
+
+    from harmonist import formats
+
+    d = _make_tagged_album(cfg, "ArtOnly", mbid="rel-art", tagged_at=datetime.now(UTC))
+    track = next(d.glob("*.m4a"))
+    formats.write_cover(track, _png(1))
+    (d / "cover.jpg").write_bytes(_png(2))
+    audio = MP4(track)
+    audio[ATOM_TITLE] = ["Left alone"]
+    audio.save()
+
+    r = client.post(f"/album/{_id_for(cfg, d)}/artwork/update")
+
+    assert r.status_code == 200
+    assert MP4(track)[ATOM_TITLE] == ["Left alone"]
