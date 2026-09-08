@@ -2002,6 +2002,95 @@ def _make_tagged_album(cfg, name: str, *, mbid: str, tagged_at, item_id: int | N
     return d
 
 
+def _two_copies_of_one_release(cfg, mbid: str = "rel-two-copies") -> list[Path]:
+    """The same release on disk twice — two copies in different trees, the shape
+    the scanner deliberately keeps separate (#424)."""
+    import shutil
+
+    dirs: list[Path] = []
+    for kind in ("Main Library", "Second Rip"):
+        d = cfg.paths.music_dir / kind / "Doubled"
+        d.mkdir(parents=True)
+        f = d / "01 Track.m4a"
+        shutil.copy(SINE_M4A, f)
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [mbid.encode()]
+        # The SAME release-track id in both, which is what makes them copies of
+        # one album rather than two parts of it.
+        audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [b"rt-1"]
+        audio.save()
+        sc.write(
+            d,
+            Sidecar(
+                mb_release_id=mbid,
+                store_url="https://x.bandcamp.com/album/doubled",
+                bandcamp=BandcampInfo(item_id=7100 + len(dirs)),
+                tagged_at=datetime.now(UTC),
+            ),
+        )
+        dirs.append(d)
+    return dirs
+
+
+def test_each_copy_of_a_release_has_its_own_tile_and_page(client, cfg):
+    """#424. Both copies were addressed by the release's MBID, so both tiles
+    opened the same album — the second copy could not be selected at all."""
+    alac, flac = _two_copies_of_one_release(cfg)
+
+    body = client.get("/library").text
+    ids = set(re.findall(r'href="/album/([^"]+)"', body))
+
+    assert len(ids) == 2
+    pages = [client.get(f"/album/{i}").text for i in ids]
+    # Each page names the folders of the copy it is, and only that one.
+    assert sum(str(alac) in p for p in pages) == 1
+    assert sum(str(flac) in p for p in pages) == 1
+
+
+def test_an_action_reaches_the_copy_it_was_taken_from(client, cfg):
+    """The point of the addresses: a mutation from one copy's page changes that
+    copy's sidecar and leaves the other alone."""
+    from harmonist import scanner
+
+    alac, flac = _two_copies_of_one_release(cfg)
+    albums = {a.path: a.id for a in scanner.scan(cfg.paths.music_dir)}
+
+    r = client.post(f"/unconfirmed/{albums[flac]}/manual")
+
+    assert r.status_code == 200
+    assert sc.read(flac).store_url is None
+    assert sc.read(alac).store_url == "https://x.bandcamp.com/album/doubled"
+
+
+def test_both_copies_show_the_history_recorded_under_the_release(client, cfg):
+    """Everything that WRITES an event takes its id from a sidecar, and a sidecar
+    knows only the release — so a copy's records land under the release id.
+    Showing the release's history on both copies (each record naming the folder
+    it touched) is the honest reading of that; showing one copy none of it is
+    not."""
+    from harmonist import scanner
+
+    alac, _flac = _two_copies_of_one_release(cfg)
+    album_id = next(a.id for a in scanner.scan(cfg.paths.music_dir) if a.path == alac)
+
+    r = client.get(f"/album/{album_id}")
+
+    assert r.status_code == 200
+    assert "Main Library/Doubled" in r.text
+    assert "Second Rip/Doubled" in r.text
+
+
+def test_a_link_holding_the_bare_release_id_says_which_copies_it_could_mean(client, cfg):
+    """A link written before the second copy appeared. Opening whichever copy
+    came back first is the bug; saying there are two is the answer."""
+    _two_copies_of_one_release(cfg)
+
+    r = client.get("/album/rel-two-copies")
+
+    assert r.status_code == 409
+    assert "in your library 2 times" in r.text
+
+
 def test_library_renders_only_done_albums(client, cfg):
     from datetime import datetime
 

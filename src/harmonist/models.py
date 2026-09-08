@@ -350,6 +350,11 @@ class Album:
     albums with no sidecar it comes from `id_registry`, which derives it
     from the path relative to the library root — so it survives a restart
     and records written against such an album stay attached to it (#114).
+
+    The exception is a release that is on disk more than once: an id that names
+    the release cannot address one of its copies, so each copy's id is qualified
+    by where it lives (`scanner._copy_id`, #424). `sidecar.mb_release_id` still
+    says what it is.
     """
 
     id: str
@@ -463,6 +468,20 @@ class Album:
     # muted is a string compare rather than a database read and a hash, which at
     # Library scale is the difference between free and unusable.
     mb_version: str | None = None
+
+    @property
+    def shared_history_ids(self) -> tuple[str, ...]:
+        """Other ids this album's records may have been written under.
+
+        Empty for almost every album. A release on disk more than once gives
+        each copy an id of its own (#424) — but everything that WRITES an event
+        derives its id from a sidecar, and a sidecar knows only the release. So
+        a copy's records land under the bare release id, and both copies show
+        the release's history rather than one of them showing none of it. Each
+        record names the folder it touched, which is what keeps that honest.
+        """
+        mbid = self.sidecar.mb_release_id if self.sidecar else None
+        return (mbid,) if mbid and mbid != self.id else ()
 
     @property
     def folders(self) -> tuple[Path, ...]:

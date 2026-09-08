@@ -1896,6 +1896,27 @@ tracks:
 
 No evidence either way means no merge.
 
+**Two copies get two addresses** (#424). Keeping them apart on disk is only half
+the job: an id that names the *release* cannot name one of its copies, so both
+Library tiles opened the same album and a re-tag or a re-download taken from
+either reached whichever copy the scan met first. So while a release is on disk
+more than once, each copy's id is the release qualified by where that copy lives
+(`scanner._copy_id`) — derived, not allocated, so it is the same on every scan
+and cannot move between copies as folders come and go. A release on disk once
+keeps the bare MBID as its id, which is every album in an ordinary library.
+
+Two consequences, both deliberate:
+
+- **A link holding the bare release id** — written before the second copy
+  appeared — resolves to that copy while it is the only one, and otherwise says
+  the release is in the library N times and names them, rather than opening one
+  of them. Which copy an action changes is not a coin to toss.
+- **The copies share one history.** Everything that writes an event takes its
+  album id from a sidecar, and a sidecar knows only the release, so a copy's
+  records land under the bare release id. Both copies therefore show the
+  release's history (`Album.shared_history_ids`), and every record names the
+  folder it touched — which is what keeps that honest.
+
 **Nothing on disk changes.** Grouping is a reading of what is already there —
 no file moves, no sidecar written, no migration. Every part keeps its own
 complete sidecar: none is primary, none is a shard, and a folder moved out of the

@@ -1036,7 +1036,9 @@ def resolve_alias(album_id: str, *, max_hops: int = 20) -> str | None:
     return None if current == album_id else current
 
 
-def album_history(album_id: str, limit: int = 200, *, offset: int = 0) -> list[StoredEvent]:
+def album_history(
+    album_id: str, limit: int = 200, *, offset: int = 0, also: Sequence[str] = ()
+) -> list[StoredEvent]:
     """Everything recorded about one album — activity AND audit — newest first.
 
     Unions over the album's ALIAS CHAIN, which is the whole point: an album's
@@ -1046,8 +1048,17 @@ def album_history(album_id: str, limit: int = 200, *, offset: int = 0) -> list[S
     how it got into its current state.
 
     This is the consumer the alias capture (#73) was built for.
+
+    `also` names further ids the album's records may sit under, with their own
+    chains: the copies of a release that is on disk twice have ids of their own,
+    while every writer still derives its id from the sidecar and so records
+    under the release (`Album.shared_history_ids`, #424).
     """
-    ids = [album_id, *_alias_ancestors(album_id)]
+    ids: list[str] = []
+    for known in dict.fromkeys([album_id, *also]):
+        for i in [known, *_alias_ancestors(known)]:
+            if i not in ids:
+                ids.append(i)
     placeholders = ",".join("?" * len(ids))
     q = (
         f"SELECT {_EVENT_COLUMNS} "

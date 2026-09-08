@@ -37,6 +37,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A release you have two copies of now has two tiles that open two albums.**
+  Both copies were addressed by the release's MusicBrainz id, so either tile
+  opened the same one and a re-tag or a re-download taken from the second copy
+  acted on the first. Each copy now has its own address; a link written before
+  the second copy appeared says which copies it could mean rather than picking
+  one, and both show the release's history, each entry naming the folder it
+  touched (#424).
+
 - **Undo now puts each disc's tags back on its own disc.** An album whose files
   span several folders had every change recorded under a bare filename, so
   undoing a tagging of a two-disc album whose discs both contain an `01.m4a`

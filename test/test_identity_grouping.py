@@ -245,6 +245,46 @@ def test_three_copies_of_two_discs_pair_off(tmp_path):
     assert all(a.track_count == 4 for a in albums)
 
 
+def test_two_copies_of_one_release_get_addresses_of_their_own(tmp_path):
+    """#424. The scan keeps separate copies separate, and then gave both the
+    release's MBID as their id — so both Library tiles opened the same album and
+    an action taken from either reached whichever copy came back first."""
+    alac = _part(tmp_path / "ALAC" / "Wide Angle", track_ids=DISC1)
+    flac = _part(tmp_path / "FLAC" / "Wide Angle", track_ids=DISC1)
+
+    albums = {a.path: a for a in scan(tmp_path)}
+
+    assert set(albums) == {alac, flac}
+    assert albums[alac].id != albums[flac].id
+    # The release is still what each of them IS — kept as metadata, where a
+    # lookup or a re-tag reads it.
+    assert all(a.sidecar.mb_release_id == REL_A for a in albums.values())
+    # And the id is the copy's, not a number handed out in scan order: it is the
+    # same on the next scan, and the same whichever order the two arrive in.
+    again = {a.path: a.id for a in scan(tmp_path)}
+    assert again == {p: a.id for p, a in albums.items()}
+
+
+def test_the_only_copy_of_a_release_keeps_the_release_as_its_id(tmp_path):
+    """The ordinary case is untouched — every album on disk, every link already
+    written and every history row still say the same thing."""
+    _part(tmp_path / "Wide Angle", track_ids=DISC1)
+
+    assert scan(tmp_path)[0].id == REL_A
+
+
+def test_the_discs_of_one_copy_are_still_one_album(tmp_path):
+    """The copies are told apart by what they hold, not by how many folders
+    there are: two discs of one release remain a single album with one id."""
+    _part(tmp_path / "CD1", track_ids=DISC1, disc=1, disc_total=2)
+    _part(tmp_path / "CD2", track_ids=DISC2, disc=2, disc_total=2)
+
+    albums = scan(tmp_path)
+
+    assert len(albums) == 1
+    assert albums[0].id == REL_A
+
+
 # ---------------------------------------------------------------------------
 # What the merged album looks like
 # ---------------------------------------------------------------------------

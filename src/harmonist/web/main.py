@@ -1946,7 +1946,7 @@ def _artwork_plan(album: Album, event_id: int) -> dict[str, str]:
     looking at, so Undo cannot act on a different set of files from the one it
     described.
     """
-    history = activity_store.album_history(album.id)
+    history = activity_store.album_history(album.id, also=album.shared_history_ids)
     detail = activity_store.tag_changes_for([e.id for e in history])
     records = tag_history.group_records(history, detail).get(event_id)
     return tag_history.artwork_replaced(records) if records else {}
@@ -1979,7 +1979,7 @@ def _revert_plan(album: Album, event_id: int) -> tuple[tag_history.FileRevert, .
     looking at, so Undo cannot act on a different set of files from the one it
     described. Same contract as `_artwork_plan`.
     """
-    history = activity_store.album_history(album.id)
+    history = activity_store.album_history(album.id, also=album.shared_history_ids)
     detail = activity_store.tag_changes_for([e.id for e in history])
     records = tag_history.group_records(history, detail).get(event_id)
     return tag_history.revert_plan(records) if records else ()
@@ -2501,6 +2501,20 @@ def _find_album(request: Request, album_id: str) -> Album:
     for a in albums:
         if a.id == album_id:
             return a
+    # A link written when this release was on disk once, and holding its bare
+    # MBID (#424). One copy left → it is unambiguously what the link meant.
+    # Several → say so, rather than opening whichever comes first: which copy
+    # a re-tag or a re-download acts on is not a coin to toss.
+    copies = [a for a in albums if a.sidecar and a.sidecar.mb_release_id == album_id]
+    if len(copies) == 1:
+        return copies[0]
+    if copies:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"this release is in your library {len(copies)} times "
+            f"({', '.join(sorted(a.path.name for a in copies))}) — open the copy you "
+            "mean from the Library, where each has its own tile",
+        )
     # Race fallback: the rendered page may hold the pre-sidecar id of an album
     # whose canonical id has since changed (auto-reconcile beat the user). That
     # id derives from the album's path, so re-derive it for each album on disk
@@ -4062,7 +4076,7 @@ def _register_routes(app: FastAPI) -> None:
             # Keyed on the album's CURRENT id — album_history unions backwards
             # over the chain from there, so passing the (possibly stale) URL id
             # would find only the tail of its own history.
-            history = activity_store.album_history(album.id)
+            history = activity_store.album_history(album.id, also=album.shared_history_ids)
             # What each tagging actually changed, field by field (#86). ONE
             # query for the whole page rather than one per row: an album
             # re-tagged a few times has a `tag.track` row per file per tagging,

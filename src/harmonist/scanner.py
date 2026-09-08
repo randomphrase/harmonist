@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Iterable, Iterator, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from stat import S_ISREG
@@ -312,18 +313,34 @@ def merge_by_identity(scanned: list[ScannedDir]) -> list[Album]:
 
     merged: list[Album] = []
     for mbid, parts in by_release.items():
-        if len(parts) == 1:
-            merged.append(parts[0].album)
-            continue
-        groups = _disjoint_groups(parts)
-        if len(groups) == len(parts):
-            # Nothing could be merged — every part overlaps every other, i.e.
-            # they are duplicates of each other, not pieces of one album.
-            merged.extend(p.album for p in parts)
-            continue
-        for group in groups:
-            merged.append(group[0].album if len(group) == 1 else _combine(mbid, group))
+        copies = [
+            group[0].album if len(group) == 1 else _combine(mbid, group)
+            for group in _disjoint_groups(parts)
+        ]
+        # A release on disk more than once: each copy needs an address of its
+        # own, or both tiles open the same album and an action taken from either
+        # reaches whichever copy was scanned first (#424). The release id stays
+        # on the sidecar, where a lookup or a re-tag reads it — it is what these
+        # albums ARE, and it is exactly what cannot address one of them.
+        if len(copies) > 1:
+            copies = [replace(a, id=_copy_id(mbid, a.path)) for a in copies]
+        merged.extend(copies)
     return singles + merged
+
+
+def _copy_id(mbid: str, album_dir: Path) -> str:
+    """One copy's id: the release, qualified by where this copy lives.
+
+    Derived rather than allocated, so it is the same on every scan and does not
+    depend on the order the copies were found in — a number handed out in scan
+    order would move between copies as folders come and go, and take their links
+    and their history with it.
+
+    The release stays visible in the id because that is what the album is, and
+    because a link written before the second copy appeared holds the bare id:
+    `_find_album` can still say which release was meant, and offer the copies.
+    """
+    return f"{mbid}~{id_registry.get_or_mint(album_dir)[:8]}"
 
 
 def _disjoint_groups(parts: list[ScannedDir]) -> list[list[ScannedDir]]:
