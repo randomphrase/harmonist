@@ -9,6 +9,7 @@ the suggestion inline until the user Confirms or Dismisses it.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from .compare import LENGTH_TOLERANCE_MS
 from .models import MatchCandidate, MatchConfidence, Release, Track, TrackComparison
 from .tagger import _flatten_tracks, _identity_of, _track_title
 
-__all__ = ["LENGTH_TOLERANCE_MS", "assess_match", "best_match", "mb_track_lengths"]
+__all__ = ["LENGTH_TOLERANCE_MS", "Ranking", "assess_match", "match_releases", "mb_track_lengths"]
 
 
 def assess_match(album_dir: Path, release: Release) -> MatchCandidate:
@@ -47,7 +48,7 @@ def assess_match(album_dir: Path, release: Release) -> MatchCandidate:
     parked in NEEDS_MBID waiting on a decision it never needed.
 
     So the deltas here are not merely displayed. They are what the confidence
-    is derived from, and `best_match` ranks releases on their total — a
+    is derived from, and `match_releases` ranks releases on their total — a
     mis-pairing can pick the wrong release, not just describe one badly.
     """
     files = album_files.audio_files(album_dir)
@@ -146,13 +147,52 @@ def assess_match(album_dir: Path, release: Release) -> MatchCandidate:
     )
 
 
-def best_match(album_dir: Path, releases: list[Release]) -> MatchCandidate | None:
-    """Pick the MB release whose tracklist best fits the files on disk.
+@dataclass(frozen=True)
+class Ranking:
+    """How a set of candidate releases came out — and whether the ranking could
+    actually tell them apart (#426).
+
+    The second half is the point. Ranking picks a winner from any list, and
+    `max()` picks the first of equals, so a set of releases the evidence cannot
+    separate still produced a confident-looking answer whose identity was
+    decided by MusicBrainz's response order. Two editions of one release, same
+    tracklist, same durations, one Bandcamp URL: whichever came back first got
+    written into the user's files.
+
+    So the winner and the fact that it *is* one travel together, and a caller
+    about to write tags has to read both. Not stored anywhere — this is the
+    shape of an answer, not of a record.
+    """
+
+    #: Every candidate assessed, best first.
+    candidates: tuple[MatchCandidate, ...]
+
+    @property
+    def best(self) -> MatchCandidate:
+        return self.candidates[0]
+
+    @property
+    def equal_best(self) -> tuple[MatchCandidate, ...]:
+        """`best` and every candidate level with it. One entry when the evidence
+        names a single release; more when it merely fits several equally, which
+        is a question for the user rather than an answer."""
+        top = _rank_key(self.candidates[0])
+        return tuple(c for c in self.candidates if _rank_key(c) == top)
+
+    @property
+    def unique(self) -> bool:
+        """Whether `best` outranks everything else — the precondition for acting
+        on it without asking. Matching is exact, scoped and *unique*, and this
+        is the third of those."""
+        return len(self.equal_best) == 1
+
+
+def match_releases(album_dir: Path, releases: list[Release]) -> Ranking | None:
+    """Rank the MB releases by how well their tracklists fit the files on disk.
 
     A single Bandcamp URL can map to several MB releases (see
-    ``mb_lookup.lookup_by_bandcamp_url``). Assess the album against each
-    candidate and return the strongest match, or None when ``releases``
-    is empty.
+    ``mb_lookup.lookup_by_bandcamp_url``). Assess the album against each and
+    return them ordered, or None when ``releases`` is empty.
 
     Ranking, best first:
       1. confidence — exact > approximate > no_match;
@@ -163,18 +203,27 @@ def best_match(album_dir: Path, releases: list[Release]) -> MatchCandidate | Non
     6-track release scores "exact" and the 1-track one "no_match", so the
     right release wins outright. The count/length tie-breakers only decide
     genuinely close calls.
+
+    Returns a `Ranking` rather than the winner alone because those three
+    criteria can run out — two editions of the same release fit identically —
+    and the winner alone cannot say so (#426). Callers that act on the result
+    check `unique` first.
     """
     if not releases:
         return None
     candidates = [assess_match(album_dir, r) for r in releases]
-    return max(candidates, key=_rank_key)
+    # `sorted` is stable, so equals keep their input order — which is exactly
+    # the order that must not be allowed to decide anything, and `unique` is
+    # what stops it.
+    return Ranking(tuple(sorted(candidates, key=_rank_key, reverse=True)))
 
 
 _CONFIDENCE_RANK = {"exact": 2, "approximate": 1, "no_match": 0}
 
 
 def _rank_key(c: MatchCandidate) -> tuple[int, int, int]:
-    """Sort key for ``best_match`` — higher is better (used with max())."""
+    """Sort key for ``match_releases`` — higher is better, so the ranking sorts
+    on it in reverse."""
     confidence = _CONFIDENCE_RANK[c.confidence]
     count_gap = abs(c.file_count - c.track_count)
     total_delta = sum(abs(tc.delta_ms) for tc in c.track_comparisons if tc.delta_ms is not None)

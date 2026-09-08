@@ -91,7 +91,7 @@ def lookup_by_bandcamp_url(bandcamp_url: str) -> list[str]:
     A single Bandcamp store URL can be attached to *more than one* MB
     release — e.g. a long-form digital edition and a shorter CD mix sold
     from the same Bandcamp page. We return every linked release MBID and
-    leave it to the caller (``match.best_match``) to pick the one whose
+    leave it to the caller (``match.match_releases``) to pick the one whose
     tracklist matches the files on disk.
 
     Hits MB's URL relationship endpoint — if the URL isn't known to MB,

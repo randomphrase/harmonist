@@ -7,7 +7,7 @@ from pathlib import Path
 
 from mutagen.mp4 import MP4
 
-from harmonist.match import _mb_track_length_ms, assess_match, best_match
+from harmonist.match import _mb_track_length_ms, assess_match, match_releases
 from harmonist.models import MatchCandidate, TrackComparison
 from harmonist.tagger import ATOM_MB_RELEASE_TRACK_ID, ATOM_TITLE, ATOM_TRACK_NUM
 
@@ -237,7 +237,7 @@ def _release_with_id(rel_id: str, track_lengths_ms: list[int | None]) -> dict:
 
 
 def test_best_match_none_when_no_releases(tmp_path):
-    assert best_match(_album_with(tmp_path, 1), []) is None
+    assert match_releases(_album_with(tmp_path, 1), []) is None
 
 
 def test_best_match_picks_tracklist_that_fits_the_files(tmp_path):
@@ -248,10 +248,11 @@ def test_best_match_picks_tracklist_that_fits_the_files(tmp_path):
     cd_mix = _release_with_id("rel-cd", [FIXTURE_DURATION_MS])
     digital = _release_with_id("rel-digital", [FIXTURE_DURATION_MS] * 6)
 
-    result = best_match(album_dir, [cd_mix, digital])
+    result = match_releases(album_dir, [cd_mix, digital])
     assert result is not None
-    assert result.mb_release_id == "rel-digital"
-    assert result.confidence == "exact"
+    assert result.unique
+    assert result.best.mb_release_id == "rel-digital"
+    assert result.best.confidence == "exact"
 
 
 def test_best_match_picks_single_track_release_for_single_file(tmp_path):
@@ -261,10 +262,11 @@ def test_best_match_picks_single_track_release_for_single_file(tmp_path):
     cd_mix = _release_with_id("rel-cd", [FIXTURE_DURATION_MS])
     digital = _release_with_id("rel-digital", [FIXTURE_DURATION_MS] * 6)
 
-    result = best_match(album_dir, [digital, cd_mix])
+    result = match_releases(album_dir, [digital, cd_mix])
     assert result is not None
-    assert result.mb_release_id == "rel-cd"
-    assert result.confidence == "exact"
+    assert result.unique
+    assert result.best.mb_release_id == "rel-cd"
+    assert result.best.confidence == "exact"
 
 
 def test_best_match_breaks_count_ties_on_closest_lengths(tmp_path):
@@ -275,9 +277,44 @@ def test_best_match_breaks_count_ties_on_closest_lengths(tmp_path):
     close = _release_with_id("rel-close", [FIXTURE_DURATION_MS + 10_000])  # +10s
     far = _release_with_id("rel-far", [FIXTURE_DURATION_MS + 60_000])  # +60s
 
-    result = best_match(album_dir, [far, close])
+    result = match_releases(album_dir, [far, close])
     assert result is not None
-    assert result.mb_release_id == "rel-close"
+    assert result.unique
+    assert result.best.mb_release_id == "rel-close"
+
+
+def test_equally_exact_releases_are_reported_as_indistinguishable(tmp_path):
+    """#426. Two editions of the same release share a Bandcamp URL and have the
+    same tracklist — MusicBrainz's response order was deciding which one got
+    written to the files. The ranking says it cannot separate them, and says so
+    whichever order it is handed them in."""
+    album_dir = _album_with(tmp_path, 1)
+    a = _release_with_id("rel-a", [FIXTURE_DURATION_MS])
+    b = _release_with_id("rel-b", [FIXTURE_DURATION_MS])
+
+    forwards = match_releases(album_dir, [a, b])
+    backwards = match_releases(album_dir, [b, a])
+
+    assert forwards is not None and backwards is not None
+    assert not forwards.unique and not backwards.unique
+    # Both editions stay visible, so whatever asks the user can offer either.
+    assert {c.mb_release_id for c in forwards.equal_best} == {"rel-a", "rel-b"}
+    assert {c.mb_release_id for c in forwards.equal_best} == {
+        c.mb_release_id for c in backwards.equal_best
+    }
+
+
+def test_a_release_that_fits_better_than_its_rival_is_still_a_unique_winner(tmp_path):
+    """The tie is the ambiguous case, not merely having competition: a winner
+    the ranking can separate from the rest is still automatic."""
+    album_dir = _album_with(tmp_path, 1)
+    fits = _release_with_id("rel-fits", [FIXTURE_DURATION_MS])
+    does_not = _release_with_id("rel-not", [FIXTURE_DURATION_MS] * 6)
+
+    ranking = match_releases(album_dir, [fits, does_not])
+
+    assert ranking is not None and ranking.unique
+    assert ranking.best.mb_release_id == "rel-fits"
 
 
 # -- title-discrepancy signal (issue #29) --

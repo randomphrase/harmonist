@@ -4366,6 +4366,40 @@ def test_post_sync_auto_tag_entry_links_to_the_album(cfg, monkeypatch):
     assert "AutoTagged" not in entry.message
 
 
+def test_a_download_matching_two_editions_equally_is_not_tagged_as_either(cfg, monkeypatch):
+    """#426. A store URL that resolves to two releases with the same tracklist
+    used to be tagged as whichever MusicBrainz listed first — an ordering
+    silently treated as an identification. The post-download flow stops and asks
+    instead, and does the same thing whichever order they arrive in."""
+    from harmonist import activity
+    from harmonist.tagger import PicardCompatibleTagger
+    from harmonist.web.main import _resolve_by_store_url
+
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+
+    tagged_as = []
+    for order in (["rel-ed-a", "rel-ed-b"], ["rel-ed-b", "rel-ed-a"]):
+        d = _make_album(cfg, f"Editions {order[0]}")
+        sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/editions"))
+        monkeypatch.setattr("harmonist.mb_lookup.lookup_by_bandcamp_url", lambda _u, o=order: o)
+        activity.clear()
+
+        assert _resolve_by_store_url(d, cfg, PicardCompatibleTagger()) == "ambiguous"
+
+        loaded = sc.read(d)
+        tagged_as.append(loaded.mb_release_id)
+        # Nothing was written, and nothing was stashed to be confirmed either —
+        # a suggestion carries one release's id, which is the same coin toss.
+        assert loaded.mb_match_candidate is None
+        assert MP4(d / "01 Track.m4a").get(ATOM_MB_ALBUM_ID) is None
+        assert any("2 MusicBrainz releases fit" in e.message for e in activity.recent(10))
+
+    assert tagged_as == [None, None]
+
+
 def test_reconcile_with_nothing_to_do_is_silent_in_the_feed(cfg, caplog):
     """#101: reconcile runs on startup and after every sync, and used to report a
     no-op with three entries — making "nothing happened" the feed's most frequent

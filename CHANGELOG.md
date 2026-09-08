@@ -37,6 +37,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A download that fits two MusicBrainz editions equally is no longer tagged as
+  whichever one came back first.** Where a store URL resolves to several
+  releases with the same tracklist, nothing is written: Activity says several
+  editions fit, and *Look up releases at this URL* on the album's card lets you
+  pick the right one — the choice Recheck already offered (#426).
+
 - **The artwork change you just made is the one that can be undone.** A backup
   taken as an image was replaced could be evicted by the store's size cap in the
   same breath — leaving the newest change the only unreversible one, and, for a

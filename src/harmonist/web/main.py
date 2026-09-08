@@ -62,7 +62,7 @@ from harmonist import tagger as tagger_mod
 from harmonist.activity_store import Level
 from harmonist.bandcamp_hook import HarmonistSyncer, album_slug
 from harmonist.formats import owned
-from harmonist.match import best_match
+from harmonist.match import match_releases
 from harmonist.models import (
     Album,
     AlbumState,
@@ -1817,8 +1817,10 @@ def _detect_mistags_after_sync(
             rel = fetch_release(owned_mbid)
         except mb_lookup.MBError:
             continue
-        candidate = best_match(album.path, [rel])
-        if candidate is not None:
+        # One release in, so the ranking has nothing to be ambiguous between.
+        ranking = match_releases(album.path, [rel])
+        if ranking is not None:
+            candidate = ranking.best
             # Mis-tag provenance as STRUCTURED fields, not a free-text note — so
             # the UI can name both releases (each linked to MB, disambiguation
             # rendered distinctly) and the purchase URL, separate from the
@@ -2998,17 +3000,31 @@ def _apply_best_match(
     """Fetch every candidate MB release, pick the best fit, then tag or stash.
 
     A Bandcamp URL can resolve to several MB releases; we assess the album
-    against each and act on the strongest match (``match.best_match``).
+    against each and act on the strongest match (``match.match_releases``).
 
     Returns (status, message) where status is
-    'tagged' | 'needs_confirmation' | 'no_match'.
+    'tagged' | 'needs_confirmation' | 'ambiguous' | 'no_match'.
     """
     # Cached: this is assessment, not action. `_tag_with_release` below re-reads
     # the chosen release fresh before it writes anything (#127).
     releases = [mb_cache.fetch_release(m) for m in mbids]
-    candidate = best_match(album_path, releases)
-    if candidate is None:
+    ranking = match_releases(album_path, releases)
+    if ranking is None:
         return "no_match", "No MusicBrainz release linked."
+    candidate = ranking.best
+
+    if not ranking.unique:
+        # Several editions fit these files identically, so which one "won" was
+        # decided by the order MusicBrainz listed them in (#426). Nothing is
+        # written and nothing is stashed: a suggestion carries one release's id,
+        # and picking which one to suggest is the same coin-toss as picking
+        # which one to tag. The album stays as it is, with its store URL, so
+        # "Choose a release" lists every edition and the user picks one.
+        message = (
+            f"{len(ranking.equal_best)} MusicBrainz releases fit these files "
+            "equally — choose the right one."
+        )
+        return "ambiguous", message
 
     if candidate.confidence == "exact":
         _tag_with_release(album_path, candidate.mb_release_id, cfg, tagger)
@@ -3307,12 +3323,19 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
                 album_label=label,
             )
             return "no_match"
-        status_str, _ = _apply_best_match(album_path, mbids, cfg, tagger)
+        status_str, msg = _apply_best_match(album_path, mbids, cfg, tagger)
         album_id = sidecar_mod.album_id_for(album_path)
         if status_str == "tagged":
             activity.info(
                 "Auto-tagged from MusicBrainz after sync", album_id=album_id, album_label=label
             )
+        elif status_str == "ambiguous":
+            # The download landed and nothing is wrong with it — but the edition
+            # is a question only the user can settle (#426), and an album
+            # waiting on one has to say so rather than sit in the inbox looking
+            # like every other unmatched download. The message names the count,
+            # since "several" is the whole reason it stopped.
+            activity.warning(f"Synced — {msg}", album_id=album_id, album_label=label)
         else:
             activity.info(
                 "Synced — MusicBrainz suggestion to review",
@@ -5105,8 +5128,11 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "MB fetch failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
-        candidate = best_match(album.path, releases)
-        assert candidate is not None  # releases is non-empty (mbids guarded)
+        # A single mbid by here — several send the user to the picker above —
+        # so this ranking is over one candidate and cannot be ambiguous.
+        ranking = match_releases(album.path, releases)
+        assert ranking is not None  # releases is non-empty (mbids guarded)
+        candidate = ranking.best
         mbid = candidate.mb_release_id
 
         # `replace`, not a fresh `Sidecar(...)` (#263).
