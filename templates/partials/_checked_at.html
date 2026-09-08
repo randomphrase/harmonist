@@ -91,14 +91,24 @@
        vocabulary: elapsed time, the exact moment on hover, and the way to ask
        again beside it.
 
-       Absent until the archive has been asked once — a row saying "never" would
-       be a line on every album forever, for a check most albums never need. #}
-    {% if caa_checked_at %}
+       Shown for any album with a MusicBrainz release, asked or not, because
+       this row IS the way to ask (#419). It was hidden until the first check,
+       which put the only control that starts one inside the block that only
+       exists after one — so no album could ever be checked. The reasoning for
+       hiding it was sound in isolation (a row reading "never" on every album is
+       noise) and self-defeating once the button lived in it. #}
+    {% if album.sidecar and album.sidecar.mb_release_id %}
     <dt class="col-start-1 text-2xs text-muted uppercase tracking-widest self-baseline">CAA checked</dt>
+    {% if caa_checked_at %}
     <dd class="text-ink tabular-nums self-baseline whitespace-nowrap"
         title="Cover Art Archive last asked {{ caa_checked_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
         {{ ago(caa_checked_at) }}
     </dd>
+    {% else %}
+    {# Not a date, so not in the dates' typeface: this says the question has not
+       been put yet, and the control beside it is how you put it. #}
+    <dd class="text-muted italic self-baseline whitespace-nowrap">not yet</dd>
+    {% endif %}
     <dd class="col-start-3 flex items-center">
         {# Re-asks, and re-renders the Artwork section that reports the answer —
            the same shape as the MusicBrainz control above, which re-fetches into

@@ -17,7 +17,9 @@ versions follow [semantic versioning](https://semver.org).
   cover that is no better than yours is ignored. The Artwork section shows the
   archive's image beside your own, marked as MusicBrainz's, and serves it from
   Harmonist — so opening an album never tells the Internet Archive which records
-  you own (#276).
+  you own (#276). The **CAA checked** row shows on any album with a MusicBrainz
+  release, reading *not yet* until you ask — it carries the control that asks,
+  so hiding it until the first check left nothing to press (#419).
 
 ### Fixed
 

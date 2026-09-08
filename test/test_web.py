@@ -8740,3 +8740,17 @@ def test_artwork_image_404s_for_an_image_this_album_does_not_carry(client, cfg):
     assert client.get(f"/artwork/image/{album_id}/{images.digest(_png(9))}").status_code == 404
     # And a digest-shaped path is the only thing that reaches a file read.
     assert client.get(f"/artwork/image/{album_id}/..%2F..%2Fetc%2Fpasswd").status_code == 404
+
+
+def test_the_cover_art_check_is_reachable_before_it_has_ever_run(client, cfg):
+    """The control that asks the archive used to live inside the row that only
+    exists once it has been asked, so no album could ever start (#419)."""
+    d = _make_tagged_album(cfg, "Checkable", mbid="rel-caa", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+
+    r = client.get(f"/album/{album_id}")
+
+    assert r.status_code == 200
+    rendered = " ".join(r.text.split())
+    assert "CAA checked" in rendered
+    assert f"/album/{album_id}/artwork?check=1" in rendered
