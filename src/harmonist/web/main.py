@@ -2230,7 +2230,9 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 _IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
 
 
-def _artwork_view(album: Album) -> artwork.ArtworkView:
+def _artwork_view(
+    album: Album, caa: activity_store.CachedCoverArt | None = None
+) -> artwork.ArtworkView:
     """What the album page's Artwork section shows (#155).
 
     One pass over the files, and no MusicBrainz release: artwork facts are disk
@@ -2246,7 +2248,7 @@ def _artwork_view(album: Album) -> artwork.ArtworkView:
     """
     audio, _ = _album_tracks(album.path, album.folders)
     if album.cover_path is None or not album.cover_path.exists():
-        return artwork.summarise(audio, None)
+        return artwork.summarise(audio, None, caa)
     try:
         data = album.cover_path.read_bytes()
     except OSError:
@@ -2255,13 +2257,13 @@ def _artwork_view(album: Album) -> artwork.ArtworkView:
         # lead to opposite conclusions about what a re-tag would do (#112). The
         # view says so and shows no outcomes at all rather than guessing.
         log.exception("could not read the folder cover for %s", album.path)
-        return replace(artwork.summarise(audio, None), cover_unreadable=True)
+        return replace(artwork.summarise(audio, None, caa), cover_unreadable=True)
     mime = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
     cover = artwork.FolderCover(
         name=album.cover_path.name,
         image=formats.EmbeddedArt.of(data, mime),
     )
-    return artwork.summarise(audio, cover)
+    return artwork.summarise(audio, cover, caa)
 
 
 def _albums(request: Request) -> list[Album]:
@@ -4046,6 +4048,15 @@ def _register_routes(app: FastAPI) -> None:
                 if album.sidecar and album.sidecar.mb_release_id
                 else None
             ),
+            # …and when the Cover Art Archive was last asked (#276). Another
+            # local read; the row is simply absent until it has been asked once.
+            caa_checked_at=(
+                answer.fetched_at
+                if album.sidecar
+                and album.sidecar.mb_release_id
+                and (answer := activity_store.cached_cover_art(album.sidecar.mb_release_id))
+                else None
+            ),
             # The inbox's "you may already own this" pairing, for the action
             # blocks this page now renders (#150). Without it a surrendered
             # album's page would show the no-purchase panel while its inbox card
@@ -4800,19 +4811,59 @@ def _register_routes(app: FastAPI) -> None:
         return JSONResponse(payload)
 
     @app.get("/album/{album_id}/artwork", response_class=HTMLResponse)
-    def album_artwork(request: Request, album_id: str) -> Response:
+    def album_artwork(request: Request, album_id: str, check: bool = False) -> Response:
         """The Artwork section (#155), fetched after the page paints.
 
         Lazy for the reason Tags and Tracks are — it opens every file in the
         album — but unlike them it is not gated on a MusicBrainz release, and
         renders for an album in any state.
+
+        `?check=1` also asks the Cover Art Archive about this album's release
+        (#276), which is the only thing here that leaves the machine. Never on
+        an ordinary render: the archive is served from the Internet Archive and
+        a measurement took sixteen seconds over a remote link, so a page that
+        asked on every view would be a page that hangs. It is one deliberate
+        press, on one album, and the answer is stored with the time it was
+        established so the panel can say how old it is.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
-        return _templates(request).TemplateResponse(
+        mbid = album.sidecar.mb_release_id if album.sidecar else None
+        if check and mbid:
+            _check_cover_art(mbid)
+        caa = activity_store.cached_cover_art(mbid) if mbid else None
+        ctx = _ctx(
             request,
-            "partials/_artwork.html",
-            _ctx(request, album=album, artwork=_artwork_view(album)),
+            album=album,
+            artwork=_artwork_view(album, caa),
+            # The panel's dates ride back out of band, so the timestamp and the
+            # answer it describes update together — the same pairing the
+            # MusicBrainz control has with the Tags section.
+            caa_checked_at=caa.fetched_at if caa else None,
+            # BOTH dates, because the swap replaces the whole block: sending
+            # only the one that changed would blank the MusicBrainz row beside
+            # it. A local SQLite read, no request in it.
+            mb_read_at=mb_cache.fetched_at(mbid) if mbid else None,
+            oob=True,
         )
+        return _templates(request).TemplateResponse(request, "partials/_artwork.html", ctx)
+
+    def _check_cover_art(mbid: str) -> None:
+        """Ask the archive, and remember the answer — including "nothing".
+
+        Failure is swallowed here on purpose, and it is the one place in this
+        feature where that is right: the user pressed a button to learn
+        something optional about their artwork, the album page around it is
+        unaffected, and the stored answer keeps whatever it said before rather
+        than being overwritten with a failure. Loud in the log, per the
+        unattended rule, and the panel's timestamp simply does not move — which
+        is the honest signal that the check did not happen.
+        """
+        try:
+            answer = cover_art.check_front(mbid, known=activity_store.cached_cover_art(mbid))
+        except cover_art.CoverArtError:
+            log.exception("could not ask the Cover Art Archive about release %s", mbid)
+            return
+        activity_store.store_cover_art(mbid, answer)
 
     @app.get("/artwork/image/{album_id}/{digest}")
     def artwork_image(request: Request, album_id: str, digest: str) -> Response:

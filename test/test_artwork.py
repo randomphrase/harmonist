@@ -406,3 +406,45 @@ class TestLargerLocalImageWins:
         )
 
         assert not any(r.writes for r in view.rows)
+
+
+class TestCoverArtArchiveNote:
+    """What the section says once the archive has been asked (#276)."""
+
+    class _Answer:
+        def __init__(self, width=None, height=None, art=True):
+            self.width, self.height, self._art = width, height, art
+
+        @property
+        def has_art(self) -> bool:
+            return self._art
+
+    def test_nothing_said_until_it_has_been_asked(self) -> None:
+        assert artwork.summarise(album(art_of(1)), None).caa_note is None
+
+    def test_a_larger_archive_cover_is_worth_saying(self) -> None:
+        view = artwork.summarise(
+            album(art_of(1, width=600, height=600)), None, self._Answer(1400, 1400)
+        )
+        assert view.caa_note == "The Cover Art Archive has a larger front cover: 1400×1400."
+
+    def test_measured_against_the_best_image_the_album_has(self) -> None:
+        """Not against the folder cover alone: an album whose tracks carry
+        3000px is not improved by a 2000px archive cover just because its
+        cover.jpg is smaller still."""
+        big = art_of(1, width=3000, height=3000)
+        small = art_of(2, width=500, height=500)
+
+        view = artwork.summarise(album(big), cover_of(small), self._Answer(2000, 2000))
+
+        assert view.caa_note is not None
+        assert "no better than what this album already has" in view.caa_note
+
+    def test_the_archive_having_nothing_is_reported(self) -> None:
+        view = artwork.summarise(album(art_of(1)), None, self._Answer(art=False))
+        assert view.caa_note == "The Cover Art Archive has no front cover for this release."
+
+    def test_an_unmeasurable_archive_cover_says_so(self) -> None:
+        view = artwork.summarise(album(art_of(1)), None, self._Answer())
+        assert view.caa_note is not None
+        assert "size could not be read" in view.caa_note

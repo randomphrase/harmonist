@@ -28,7 +28,7 @@
    `oob` is set by `library_compare.html`; unset at page build. #}
 <div id="album-checked-{{ album.id }}" class="contents"{% if oob %} hx-swap-oob="true"{% endif %}>
     {% if mb_read_at %}
-    <dt class="col-start-1 text-2xs text-muted uppercase tracking-widest self-baseline">Checked</dt>
+    <dt class="col-start-1 text-2xs text-muted uppercase tracking-widest self-baseline">MB checked</dt>
     <dd class="text-ink tabular-nums self-baseline whitespace-nowrap"
         {# The other three dates are facts about the album, from its sidecar.
            This one is cache freshness, keyed by release id in activity.db, and
@@ -74,6 +74,42 @@
                 hx-disabled-elt="this"
                 title="Read this release from MusicBrainz again"
                 aria-label="Read this release from MusicBrainz again"
+                class="inline-flex items-center justify-center w-4 h-4 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                 stroke-width="2.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 11-2.34-5.66"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20 3.5V9h-5.5"/>
+            </svg>
+        </button>
+    </dd>
+    {% endif %}
+
+    {# …and when the Cover Art Archive was last asked about this release (#276).
+       Its own row rather than a clause of the one above, because they are two
+       different services answering two different questions, and either can be
+       stale while the other is fresh. Same shape, so the panel gains no new
+       vocabulary: elapsed time, the exact moment on hover, and the way to ask
+       again beside it.
+
+       Absent until the archive has been asked once — a row saying "never" would
+       be a line on every album forever, for a check most albums never need. #}
+    {% if caa_checked_at %}
+    <dt class="col-start-1 text-2xs text-muted uppercase tracking-widest self-baseline">CAA checked</dt>
+    <dd class="text-ink tabular-nums self-baseline whitespace-nowrap"
+        title="Cover Art Archive last asked {{ caa_checked_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
+        {{ ago(caa_checked_at) }}
+    </dd>
+    <dd class="col-start-3 flex items-center">
+        {# Re-asks, and re-renders the Artwork section that reports the answer —
+           the same shape as the MusicBrainz control above, which re-fetches into
+           Tags. `hx-disabled-elt` because this is a real request to an external
+           service and a double-press would spend two. #}
+        <button type="button"
+                hx-get="/album/{{ album.id }}/artwork?check=1"
+                hx-target="#album-artwork" hx-swap="innerHTML"
+                hx-disabled-elt="this"
+                title="Ask the Cover Art Archive about this release again"
+                aria-label="Ask the Cover Art Archive about this release again"
                 class="inline-flex items-center justify-center w-4 h-4 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
                  stroke-width="2.5" aria-hidden="true">

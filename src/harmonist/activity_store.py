@@ -281,6 +281,42 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
             ignored_at      TEXT NOT NULL
         )""",
     ),
+    # 8 -> 9: what the Cover Art Archive holds for a release, and when we asked
+    # (#276).
+    #
+    # A cache of an ANSWER, not of an image. The listing carries no dimensions,
+    # so "is theirs bigger than mine" costs a ranged read of the image itself —
+    # a question worth asking once and remembering, rather than on every album
+    # page view. What is kept is the measurement: how large their front cover
+    # is, and how to fetch it when a re-tag decides it wins.
+    #
+    # `fetched_at` is load-bearing beyond caching: it is the "CAA checked N ago"
+    # the album panel shows beside the MusicBrainz one, which is what makes a
+    # stale answer visible and gives the user something to press. Same reasoning
+    # as `mb_release_cache.fetched_at` (#127) — an answer served from a store
+    # has to say how old it is.
+    #
+    # `etag` is what makes re-asking nearly free: coverartarchive.org serves one
+    # on the listing and honours `If-None-Match` with a 304 and no body.
+    #
+    # NULLABLE image columns are the "CAA has nothing for this release" answer,
+    # which is a real answer and the commonest one for a private Bandcamp
+    # release. Storing it is what stops the next check asking again — the
+    # timestamp says when we established it.
+    #
+    # No index: one row per release, looked up by primary key.
+    (
+        """CREATE TABLE caa_cache (
+            mbid       TEXT PRIMARY KEY,
+            fetched_at TEXT NOT NULL,
+            etag       TEXT,
+            image_url  TEXT,
+            width      INTEGER,
+            height     INTEGER,
+            length     INTEGER,
+            mime       TEXT
+        )""",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -756,6 +792,86 @@ def artwork_backups() -> list[ArtworkBackup]:
         ArtworkBackup(album_id=by_event[e][0], event_id=e, digests=frozenset(by_event[e][1]))
         for e in order
     ]
+
+
+@dataclass(frozen=True)
+class CachedCoverArt:
+    """What the Cover Art Archive said about one release, and when (#276).
+
+    `image_url` is None when the archive has nothing for the release — a real
+    answer, and the commonest one for a private Bandcamp release. The timestamp
+    is what makes it usable: it says when that was established, so the check is
+    not repeated on every album page view and the user can see how old it is.
+    """
+
+    fetched_at: datetime
+    etag: str | None = None
+    image_url: str | None = None
+    width: int | None = None
+    height: int | None = None
+    length: int | None = None
+    mime: str | None = None
+
+    @property
+    def has_art(self) -> bool:
+        return self.image_url is not None
+
+
+def cached_cover_art(mbid: str) -> CachedCoverArt | None:
+    """The stored Cover Art Archive answer for `mbid`, or None if never asked.
+
+    Swallows a store failure and returns None, like `cached_release` and for the
+    same reason: a miss has a perfect fallback, which is to go and ask. Raising
+    would turn a degraded cache into a broken album page.
+    """
+    try:
+        conn = _ensure()
+        with _LOCK:
+            row = conn.execute(
+                "SELECT fetched_at, etag, image_url, width, height, length, mime "
+                "FROM caa_cache WHERE mbid = ?",
+                (mbid,),
+            ).fetchone()
+    except sqlite3.Error:
+        log.exception("activity_store cached_cover_art failed", extra=_QUIET_MIRROR)
+        return None
+    if row is None:
+        return None
+    fetched_at, etag, image_url, width, height, length, mime = row
+    return CachedCoverArt(
+        fetched_at=datetime.fromisoformat(fetched_at),
+        etag=etag,
+        image_url=image_url,
+        width=width,
+        height=height,
+        length=length,
+        mime=mime,
+    )
+
+
+def store_cover_art(mbid: str, answer: CachedCoverArt) -> None:
+    """Remember what the archive said. REPLACEs, so re-asking overwrites."""
+    try:
+        conn = _ensure()
+        with _LOCK:
+            conn.execute(
+                "INSERT OR REPLACE INTO caa_cache "
+                "(mbid, fetched_at, etag, image_url, width, height, length, mime) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    mbid,
+                    answer.fetched_at.isoformat(),
+                    answer.etag,
+                    answer.image_url,
+                    answer.width,
+                    answer.height,
+                    answer.length,
+                    answer.mime,
+                ),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        log.exception("activity_store store_cover_art failed", extra=_QUIET_MIRROR)
 
 
 def already_discovered(album_ids: list[str]) -> set[str]:

@@ -34,6 +34,14 @@
     {% endif %}
 </h2>
 
+{# What the Cover Art Archive holds, once it has been asked (#276). A line, not
+   a row: nothing is written from it yet, so it states a finding rather than
+   proposing a change. The control that asks lives with the panel's other
+   "checked" dates, where the MusicBrainz one already is. #}
+{% if artwork.caa_note %}
+<p class="text-sm text-mb-purple">{{ artwork.caa_note }}</p>
+{% endif %}
+
 {% if artwork.cover_unreadable %}
 {# "Couldn't read it" and "there isn't one" lead to opposite conclusions about
    what a re-tag would write, so the section says which (#112). #}
@@ -130,4 +138,12 @@
     {{ artwork.unreadable }} file{{ 's' if artwork.unreadable != 1 }} couldn't be read, so
     {{ 'it says' if artwork.unreadable == 1 else 'they say' }} nothing about this album's artwork.
 </p>
+{% endif %}
+
+{# The panel's dates, refreshed alongside — this response may have just asked
+   the archive, and the "CAA checked" row it updates lives up in the panel.
+   Rendered only when this response carries them, so the ordinary lazy load of
+   this section leaves the panel alone. #}
+{% if caa_checked_at is defined and oob is defined %}
+{% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
 {% endif %}

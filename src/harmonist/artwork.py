@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Protocol
 
 from .formats import TrackTags
 from .formats.types import EmbeddedArt
@@ -46,6 +47,28 @@ def has_per_track_art(digests: Iterable[str | None]) -> bool:
     wrong answer, not about this being the wrong reading of it.
     """
     return len({d for d in digests if d is not None}) > 1
+
+
+class CoverArtAnswer(Protocol):
+    """What this module needs of a Cover Art Archive answer (#276).
+
+    A protocol rather than the stored type, so `artwork` stays what it is: pure
+    functions over values, with no reach into the event store. The concrete
+    `activity_store.CachedCoverArt` satisfies it by having these members.
+
+    Read-only properties throughout, deliberately: the concrete type is a
+    FROZEN dataclass, and a protocol declaring plain attributes demands settable
+    ones that a frozen instance cannot satisfy.
+    """
+
+    @property
+    def has_art(self) -> bool: ...
+
+    @property
+    def width(self) -> int | None: ...
+
+    @property
+    def height(self) -> int | None: ...
 
 
 def beats(mine: Size | None, theirs: Size | None) -> bool:
@@ -236,6 +259,11 @@ class ArtworkView:
     #: as artless would report a mount that blinked as an album that lost its
     #: covers (#112).
     unreadable: int = 0
+    #: What the Cover Art Archive holds for this release, when it has been asked
+    #: (#276). Reported rather than acted on for now: a re-tag still writes only
+    #: what is already on disk, and the archive's answer is here to say whether
+    #: it is worth taking.
+    caa: CoverArtAnswer | None = None
     #: A folder cover exists but could not be read. NOT the same as having none,
     #: and the difference is the whole right-hand column: with the cover unread
     #: there is no saying what a re-tag would write, so the section states that
@@ -276,6 +304,37 @@ class ArtworkView:
         return tuple(out.values())
 
     @property
+    def caa_note(self) -> str | None:
+        """What the archive has, said in one line — or None when it has not been
+        asked, which is most albums.
+
+        Compared against the LARGEST image the album already has, not against
+        the folder cover alone: the question a reader is asking is whether the
+        archive is worth taking, and an album whose tracks carry 3000px is not
+        improved by a 2000px archive cover just because its `cover.jpg` is
+        smaller still.
+        """
+        answer = self.caa
+        if answer is None:
+            return None
+        if not answer.has_art:
+            return "The Cover Art Archive has no front cover for this release."
+        theirs = Size(answer.width, answer.height) if answer.width and answer.height else None
+        if theirs is None:
+            return "The Cover Art Archive has a front cover, but its size could not be read."
+        best = max(
+            (r.image.size for r in self.images if r.image and r.image.size),
+            key=lambda s: s.width,
+            default=None,
+        )
+        if best is not None and not beats(theirs, best):
+            return (
+                f"The Cover Art Archive's front cover is {theirs.width}×{theirs.height} — "
+                "no better than what this album already has."
+            )
+        return f"The Cover Art Archive has a larger front cover: {theirs.width}×{theirs.height}."
+
+    @property
     def count(self) -> str | None:
         """The count beside the section heading — "3 images · 2 gaps", or None
         when there is nothing to count. Mirrors History's `· N`.
@@ -312,6 +371,7 @@ def describe(image: EmbeddedArt) -> str:
 def summarise(
     tracks: Sequence[tuple[str, TrackTags]],
     cover: FolderCover | None,
+    caa: CoverArtAnswer | None = None,
 ) -> ArtworkView:
     """Everything the section shows, from tags already read and a folder cover.
 
@@ -453,4 +513,5 @@ def summarise(
         cover=cover,
         total_tracks=len(tracks),
         unreadable=len(tracks) - len(readable),
+        caa=caa,
     )

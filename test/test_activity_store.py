@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from datetime import UTC, datetime
 
 import pytest
 
@@ -1086,3 +1087,91 @@ def test_migrates_a_v7_database_in_place_keeping_its_rows(tmp_path):
     assert [e.message for e in events] == ["written by v7"]  # pre-existing data intact
     assert activity_store.cached_release("rel-old", "media") is not None
     assert activity_store.ignored_updates() == {}
+
+
+# ---------- the Cover Art Archive cache (#276) ----------
+
+
+def test_migrates_a_v8_database_in_place_keeping_its_rows(tmp_path):
+    """The 8 -> 9 upgrade, run the way a user's database meets it: an
+    activity.db written by the previous build, opened by this one."""
+    db = tmp_path / "v8.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    # Every migration up to 8, applied as that build would have left them.
+    for statements in activity_store._MIGRATIONS[:8]:
+        for sql in statements:
+            conn.execute(sql)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message) VALUES (?, ?, ?, ?)",
+        ("2026-07-01T00:00:00+00:00", "info", "activity", "written by v8"),
+    )
+    conn.execute("PRAGMA user_version = 8")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    assert [e.message for e in activity_store.recent()] == ["written by v8"]
+    # …and the new table is usable, having not existed a moment ago.
+    assert activity_store.cached_cover_art("rel-1") is None
+
+
+def test_an_unasked_release_has_no_stored_answer(tmp_path):
+    activity_store.init(tmp_path / "a.db")
+    assert activity_store.cached_cover_art("never-asked") is None
+
+
+def test_storing_and_reading_back_an_answer(tmp_path):
+    activity_store.init(tmp_path / "a.db")
+    now = datetime.now(UTC)
+
+    activity_store.store_cover_art(
+        "rel-1",
+        activity_store.CachedCoverArt(
+            fetched_at=now,
+            etag='"abc"',
+            image_url="https://coverartarchive.org/release/rel-1/1.jpg",
+            width=1400,
+            height=1400,
+            length=718000,
+            mime="image/jpeg",
+        ),
+    )
+
+    got = activity_store.cached_cover_art("rel-1")
+    assert got is not None
+    assert (got.width, got.height, got.length) == (1400, 1400, 718000)
+    assert got.etag == '"abc"'
+    assert got.has_art is True
+    assert got.fetched_at == now
+
+
+def test_the_archive_having_nothing_is_a_stored_answer(tmp_path):
+    """ "Asked, and there is none" must be remembered, or every check asks
+    again — and it is the commonest answer for a private Bandcamp release."""
+    activity_store.init(tmp_path / "a.db")
+
+    activity_store.store_cover_art(
+        "rel-2", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    )
+
+    got = activity_store.cached_cover_art("rel-2")
+    assert got is not None
+    assert got.has_art is False
+
+
+def test_re_asking_replaces_the_stored_answer(tmp_path):
+    activity_store.init(tmp_path / "a.db")
+    first = datetime(2026, 1, 1, tzinfo=UTC)
+    second = datetime(2026, 6, 1, tzinfo=UTC)
+    activity_store.store_cover_art(
+        "rel-3", activity_store.CachedCoverArt(fetched_at=first, width=500, height=500)
+    )
+
+    activity_store.store_cover_art(
+        "rel-3", activity_store.CachedCoverArt(fetched_at=second, width=1400, height=1400)
+    )
+
+    got = activity_store.cached_cover_art("rel-3")
+    assert got is not None
+    assert (got.fetched_at, got.width) == (second, 1400)
