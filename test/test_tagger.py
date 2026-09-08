@@ -2309,3 +2309,71 @@ def test_a_gap_is_filled_from_the_album_without_rewriting_the_rest(album_with_tr
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine  # not destroyed
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine  # gap filled
     assert cover.read_bytes() == theirs  # no promotion: ours is not better, only equal
+
+
+def test_a_larger_archive_image_wins_and_is_written(album_with_tracks, tmp_path):
+    """#276: the Cover Art Archive is the third candidate. Cached by an earlier
+    check — a tagging never reaches the network — and it wins on size like any
+    other, so it is embedded and the folder cover catches up."""
+    from harmonist import artwork_store, cover_art
+
+    artwork_store.configure(tmp_path / "artwork")
+    cover_art.configure_cache(tmp_path / "caa")
+    album_dir = album_with_tracks(1)
+    mine = _sized_jpeg(500, 500)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+    cover = album_dir / "cover.jpg"
+    folder = _sized_jpeg(800, 800)
+    cover.write_bytes(folder)
+    theirs = _sized_jpeg(1400, 1400)
+    release = _single_track_release()
+    cover_art.cache_image(release["id"], theirs, "image/jpeg")
+
+    tagger.tag_album(album_dir, release, cover_path=cover)
+
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == theirs
+    assert cover.read_bytes() == theirs
+    # …and what it replaced is recoverable, since this overwrote a folder cover.
+    assert artwork_store.path_for(artwork_store.digest(folder)) is not None
+
+
+def test_a_smaller_archive_image_is_ignored(album_with_tracks, tmp_path):
+    """Cached does not mean better. The archive loses like any other candidate
+    that does not beat what is already there."""
+    from harmonist import artwork_store, cover_art
+
+    artwork_store.configure(tmp_path / "artwork")
+    cover_art.configure_cache(tmp_path / "caa")
+    album_dir = album_with_tracks(1)
+    big = _sized_jpeg(2000, 2000)
+    _embed_cover(album_dir / "01 Track 1.m4a", big)
+    cover = album_dir / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(1000, 1000))
+    release = _single_track_release()
+    cover_art.cache_image(release["id"], _sized_jpeg(400, 400), "image/jpeg")
+
+    tagger.tag_album(album_dir, release, cover_path=cover)
+
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
+    assert cover.read_bytes() == big  # the album's own image still won
+
+
+def test_tagging_never_asks_the_archive(album_with_tracks, tmp_path, monkeypatch):
+    """A tagging reads the cache and nothing else. `plan_album` runs this same
+    code on the gardener's path, where a request per album is exactly what must
+    not happen."""
+    from harmonist import artwork_store, cover_art
+
+    artwork_store.configure(tmp_path / "artwork")
+    cover_art.configure_cache(tmp_path / "caa")
+
+    def _boom(*a, **k):
+        raise AssertionError("a tagging asked the Cover Art Archive")
+
+    monkeypatch.setattr(cover_art, "check_front", _boom)
+    album_dir = album_with_tracks(1)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(500, 500))
+    cover = album_dir / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(800, 800))
+
+    tagger.tag_album(album_dir, _single_track_release(), cover_path=cover)

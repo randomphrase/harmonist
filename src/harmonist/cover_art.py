@@ -10,6 +10,8 @@ tools (notably Plex) that read art from disk.
 from __future__ import annotations
 
 import logging
+import os
+import re
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -147,6 +149,7 @@ def check_front(
     release_mbid: str,
     *,
     known: activity_store.CachedCoverArt | None = None,
+    keep_if_wider_than: int | None = None,
     client: httpx.Client | None = None,
 ) -> activity_store.CachedCoverArt:
     """Ask the archive what front cover it has for `release_mbid`, and measure it.
@@ -171,6 +174,12 @@ def check_front(
     The thumbnails are no use for this. `front-1200` returns 200 for a release
     whose original is 350×350 — the archive caps a thumbnail at the original
     rather than upscaling — so their presence says nothing about the size.
+
+    `keep_if_wider_than` is the album's current best width. When the archive's
+    image beats it, the whole image is fetched and cached, so the page can show
+    it and a re-tag can write it — the one case where the full 200 KB–5 MB is
+    worth spending, and only during a check the user asked for. An image that
+    loses is measured and forgotten.
 
     Never raises for an ordinary "no": a 404 is an answer. A transport failure
     does propagate as `CoverArtError`, because "I could not ask" and "there is
@@ -209,6 +218,13 @@ def check_front(
         if not head.is_success:
             raise CoverArtError(f"CAA returned {head.status_code} for {url}")
         size = images.dimensions(head.content)
+        if (
+            size is not None
+            and keep_if_wider_than is not None
+            and size.width > keep_if_wider_than
+            and cached_image(release_mbid) is None
+        ):
+            _fetch_and_cache(http, release_mbid, url, head.headers.get("content-type"))
         return activity_store.CachedCoverArt(
             fetched_at=now,
             etag=etag,
@@ -224,6 +240,20 @@ def check_front(
     finally:
         if owns_client:
             http.close()
+
+
+def _fetch_and_cache(http: httpx.Client, release_mbid: str, url: str, mime: str | None) -> None:
+    """Pull the whole image and keep it. Best-effort: a failure here loses the
+    picture, not the measurement that was the point of the check."""
+    try:
+        full = http.get(url)
+    except httpx.HTTPError:
+        log.warning("could not fetch the archive image for %s", release_mbid, exc_info=True)
+        return
+    if not full.is_success:
+        log.warning("archive image for %s returned %s", release_mbid, full.status_code)
+        return
+    cache_image(release_mbid, full.content, mime or full.headers.get("content-type"))
 
 
 def _front_url(listing: httpx.Response) -> str | None:
@@ -252,6 +282,87 @@ def _total_length(resp: httpx.Response) -> int | None:
             return int(total)
     length = resp.headers.get("content-length")
     return int(length) if length and length.isdigit() and resp.status_code == 200 else None
+
+
+# ---------------------------------------------------------------------------
+# The candidate cache (#276)
+# ---------------------------------------------------------------------------
+#
+# The archive's image, kept so it can be SHOWN beside the album's own and
+# written if it wins. One file per release, named for the release — not
+# content-addressed like `artwork_store`, because there is nothing to
+# deduplicate: two releases sharing a cover is not a thing that happens, and a
+# release has exactly one current front cover.
+#
+# The deeper difference from `artwork_store` is what eviction costs. That store
+# holds the ONLY copy of something the user had, so dropping a file breaks a
+# promise (#408). These are copies of something the archive still has, so
+# dropping one costs a re-fetch and nothing else — which is why this needs no
+# per-album retention, no protected set, and no undo semantics. Deleting the
+# whole directory is safe at any moment.
+
+_caa_root: Path | None = None
+
+
+def configure_cache(root: Path | None) -> None:
+    """Point the candidate cache at `root` (created on demand). None disables
+    it — every call becomes a no-op, and the archive's image simply is not
+    shown."""
+    global _caa_root
+    _caa_root = root
+
+
+def cache_image(release_mbid: str, data: bytes, mime: str | None) -> Path | None:
+    """Keep the archive's image for this release. Returns where, or None.
+
+    Best-effort by design, like `artwork_store.keep`: a cache that cannot be
+    written must not fail the check the user asked for. They lose a thumbnail,
+    not an answer.
+    """
+    root = _caa_root
+    if root is None or not _is_mbid(release_mbid):
+        return None
+    path = root / f"{release_mbid}{'.png' if mime and 'png' in mime.lower() else '.jpg'}"
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        # Temp file then rename, so a crash cannot leave a half-image behind a
+        # name that claims to be complete — as everywhere else Harmonist writes.
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    except OSError:
+        log.exception("could not cache the Cover Art Archive image for %s", release_mbid)
+        return None
+    return path
+
+
+def cached_image(release_mbid: str) -> Path | None:
+    """Where this release's archive image is held locally, or None."""
+    root = _caa_root
+    if root is None or not _is_mbid(release_mbid):
+        return None
+    for suffix in (".jpg", ".png"):
+        path = root / f"{release_mbid}{suffix}"
+        if path.exists():
+            return path
+    return None
+
+
+def _is_mbid(value: str) -> bool:
+    """Guard the path join: the id reaches here from a sidecar, and a value
+    carrying a separator must never become a filename.
+
+    A CHARACTER guard, not a format one. Real release ids are UUIDs, but
+    Harmonist's own fixtures and demo library use short readable ids, and a
+    regex demanding 36 hex characters would silently disable the cache for every
+    one of them — a check that appears to work and quietly stores nothing. What
+    matters here is only that the value cannot escape the directory.
+    """
+    return bool(_SAFE_ID.fullmatch(value))
+
+
+#: An id safe to use as a filename: no separators, no traversal, bounded.
+_SAFE_ID = re.compile(r"(?!\.)[A-Za-z0-9._-]{1,64}")
 
 
 def _filename_for(resp: httpx.Response) -> str:

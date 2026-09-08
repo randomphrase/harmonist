@@ -222,3 +222,48 @@ def test_ensure_cover_raises_on_network_error(tmp_path):
 
     with pytest.raises(CoverArtError):
         ensure_cover(tmp_path, "rel-123", client=_client(handler))
+
+
+# ---------- the candidate cache (#276) ----------
+
+
+def test_a_traversing_id_never_becomes_a_path(tmp_path):
+    """The id comes from a sidecar, so it is untrusted input joined to a path."""
+    from harmonist import cover_art
+
+    cover_art.configure_cache(tmp_path / "caa")
+    for bad in ("../escape", "a/b", "..", ".hidden/../x", "x" * 100):
+        assert cover_art.cache_image(bad, b"data", "image/jpeg") is None
+        assert cover_art.cached_image(bad) is None
+    assert not list((tmp_path / "caa").glob("**/*")) or all(
+        p.parent == tmp_path / "caa" for p in (tmp_path / "caa").glob("**/*")
+    )
+
+
+def test_an_ordinary_id_round_trips(tmp_path):
+    from harmonist import cover_art
+
+    cover_art.configure_cache(tmp_path / "caa")
+    assert cover_art.cache_image("demo-rel-1", b"\xff\xd8\xffdata", "image/jpeg") is not None
+
+    path = cover_art.cached_image("demo-rel-1")
+    assert path is not None
+    assert path.read_bytes() == b"\xff\xd8\xffdata"
+    assert path.suffix == ".jpg"
+
+
+def test_a_png_keeps_its_extension(tmp_path):
+    from harmonist import cover_art
+
+    cover_art.configure_cache(tmp_path / "caa")
+    cover_art.cache_image("demo-rel-2", b"\x89PNG", "image/png")
+    path = cover_art.cached_image("demo-rel-2")
+    assert path is not None and path.suffix == ".png"
+
+
+def test_no_cache_configured_is_a_no_op(tmp_path):
+    from harmonist import cover_art
+
+    cover_art.configure_cache(None)
+    assert cover_art.cache_image("demo-rel-3", b"data", "image/jpeg") is None
+    assert cover_art.cached_image("demo-rel-3") is None

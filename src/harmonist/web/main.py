@@ -436,6 +436,11 @@ def create_app(
         max_bytes=cfg.artwork_store.max_bytes,
         keep_per_album=cfg.artwork_store.keep_per_album,
     )
+    # Where the Cover Art Archive's own images are kept once fetched (#276).
+    # Beside the artwork store rather than inside it: these are copies of
+    # something the archive still has, so losing one costs a re-fetch, and they
+    # must not compete for the space that store promises to an album's undo.
+    cover_art.configure_cache(cfg.artwork_dir / "caa")
     # Audit paths are recorded relative to the library (#98). Demo mode already
     # has its sandbox substituted into cfg, so this follows it automatically.
     audit.set_library_root(cfg.paths.music_dir)
@@ -4829,7 +4834,7 @@ def _register_routes(app: FastAPI) -> None:
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
         if check and mbid:
-            _check_cover_art(mbid)
+            _check_cover_art(mbid, _artwork_view(album))
         caa = activity_store.cached_cover_art(mbid) if mbid else None
         ctx = _ctx(
             request,
@@ -4847,7 +4852,7 @@ def _register_routes(app: FastAPI) -> None:
         )
         return _templates(request).TemplateResponse(request, "partials/_artwork.html", ctx)
 
-    def _check_cover_art(mbid: str) -> None:
+    def _check_cover_art(mbid: str, current: artwork.ArtworkView) -> None:
         """Ask the archive, and remember the answer — including "nothing".
 
         Failure is swallowed here on purpose, and it is the one place in this
@@ -4858,8 +4863,20 @@ def _register_routes(app: FastAPI) -> None:
         unattended rule, and the panel's timestamp simply does not move — which
         is the honest signal that the check did not happen.
         """
+        # What the archive has to beat to be worth downloading: the widest image
+        # the album already has. A candidate that loses is measured and
+        # forgotten; only a winner costs the full 200 KB–5 MB, and only during a
+        # check the user asked for.
+        best = max(
+            (r.image.size.width for r in current.images if r.image and r.image.size),
+            default=None,
+        )
         try:
-            answer = cover_art.check_front(mbid, known=activity_store.cached_cover_art(mbid))
+            answer = cover_art.check_front(
+                mbid,
+                known=activity_store.cached_cover_art(mbid),
+                keep_if_wider_than=best,
+            )
         except cover_art.CoverArtError:
             log.exception("could not ask the Cover Art Archive about release %s", mbid)
             return

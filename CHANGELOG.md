@@ -8,12 +8,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
-- **Harmonist can ask the Cover Art Archive what it has for an album**, and say
-  whether it is better than the artwork you already have. The album panel gains
-  a **CAA checked** date beside the MusicBrainz one, with a control to ask
-  again; the answer, and the time it was established, are remembered. Nothing is
-  fetched unless you press it, and nothing is written yet — this reports, it
-  does not act (#276).
+- **Harmonist can take better artwork from the Cover Art Archive.** The album
+  panel gains a **CAA checked** date beside the MusicBrainz one, with a control
+  to ask; if the archive's front cover is larger than anything the album has,
+  it is kept locally and a re-tag writes it — to the tracks and to the folder
+  cover, whose previous image is kept so the change can be undone. Nothing is
+  fetched unless you press, a tagging never reaches the network, and an archive
+  cover that is no better than yours is ignored (#276).
 
 ### Fixed
 

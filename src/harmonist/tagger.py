@@ -24,6 +24,7 @@ from . import (
     artwork_store,
     audit,
     compare,
+    cover_art,
     formats,
     images,
     mb_lookup,
@@ -224,8 +225,8 @@ def tag_album(
     # change to `cover.jpg` in the same shape a tagged file's artwork change
     # takes, which is what puts an Undo on it: `tag_history.artwork_replaced`
     # reads that pair, and `restore_artwork` writes it back.
-    if prep.promote_cover_from is not None and cover_path is not None:
-        promoted = _promote_album_image(album_dir, cover_path, prep.promote_cover_from, album_id)
+    if prep.promote_cover is not None and cover_path is not None:
+        promoted = _promote_album_image(album_dir, cover_path, prep.promote_cover, album_id)
         if promoted is not None:
             was, now = promoted
             event_id = audit.record(
@@ -496,11 +497,12 @@ class _Prepared:
     #: not MusicBrainz's scalar `country` and is not stale either. Album-constant
     #: for the reason above.
     accepted_countries: frozenset[str]
-    #: The album's own embedded image, when it is BETTER than the folder cover
-    #: and should be promoted to it instead of being overwritten by it (#410).
-    #: The file to read it from, so `_prepare` stays free of image bytes and of
-    #: side effects — `plan_album` runs this same code and must write nothing.
-    promote_cover_from: Path | None = None
+    #: The image the folder cover should become, when something beats it — the
+    #: album's own artwork (#410) or the Cover Art Archive's (#276). None when
+    #: the folder file already holds the winner, which is the common case.
+    #: Bytes rather than a source, because the winner may come from the archive
+    #: cache rather than from a track.
+    promote_cover: bytes | None = None
 
 
 def _prepare(
@@ -557,6 +559,7 @@ def _prepare(
     # path where scanning is already the slow part (#44, #74). Guarding here
     # rather than relying on the `and` below, which used to short-circuit this
     # read and stopped doing so when the digests were hoisted out.
+    cover_bytes = cover
     art_before = _art_digests(files) if cover is not None else {}
     # DATA SAFETY: if the tracks carry DIFFERENT embedded art (a per-track-art
     # album, e.g. a compilation), embedding one album cover would destroy those
@@ -572,42 +575,55 @@ def _prepare(
     if preserves_per_track_art:
         cover = None
 
-    # The folder cover is not automatically the better image (#410), and a track
-    # with no art is not a reason to rewrite the tracks that have it (#397). A
-    # re-tag used to do both: on a real library it shrank one album in twelve —
-    # 3000px replaced by 2000px, in one case 5700px by 2000px — and it replaced
-    # every correct image on an album to fill the one track that had none.
+    # THE LARGEST IMAGE WINS, among the three the album can offer: what its
+    # tracks carry, what its folder holds, and what the Cover Art Archive has if
+    # anyone has asked (#276, #410). A re-tag used to embed the folder cover
+    # regardless, which on a real library shrank one album in twelve — 3000px
+    # replaced by 2000px, in one case 5700px by 2000px.
     #
-    # `overwrite_art` still means what it says: a user asking for the folder
-    # cover to be embedded is not asking for it to be judged.
-    promote_cover_from = None
-    own = _album_image(art_before) if cover is not None and not overwrite_art else None
-    if own is not None and cover is not None:
-        source, mine = own
-        ours, theirs = images.dimensions(mine), images.dimensions(cover)
-        # Two decisions, related and not the same.
-        #
-        # 1. WHAT GOES ON THE TRACKS. The folder cover has to be genuinely
-        #    better to be written over an image the album already carries: a
-        #    same-sized different picture is not an improvement, and replacing
-        #    ten correct images to fill two gaps is what #397 was filed for. So
-        #    unless the cover beats ours, OURS is what gets embedded — which
-        #    fills the empty tracks and is a no-op on the rest, whose art
-        #    already is this image, so `_changes_for` records an artwork change
-        #    for the gaps alone and `_keep_doomed_art` finds nothing to back up.
-        #
-        #    Both sizes have to be readable for any of it to apply. An
-        #    unmeasurable header is not evidence that the album's image is worth
-        #    keeping — it is no evidence at all — so the fallback is what a
-        #    re-tag has always done: embed the folder cover, gaps included.
-        if ours is not None and theirs is not None and not artwork.beats(theirs, ours):
-            cover = mine
-            # 2. WHETHER THE FOLDER FILE CATCHES UP. Only when ours is strictly
-            #    better (#410). Equal is not a reason to overwrite a user's
-            #    cover, and this is the one write here that could not be undone
-            #    from the tracks themselves.
-            if artwork.beats(ours, theirs):
-                promote_cover_from = source
+    # `overwrite_art` opts out of the whole comparison: a user asking for the
+    # folder cover to be embedded is not asking for it to be judged.
+    promote_cover = None
+    if cover is not None and not overwrite_art:
+        folder_size = images.dimensions(cover)
+        own = _album_image(art_before)
+        # The archive's image, from the LOCAL CACHE only. A tagging never
+        # reaches the network: `plan_album` runs this same code on the
+        # gardener's path, where a request per album is exactly what must not
+        # happen. An album nobody has checked has no third candidate.
+        archive = _archive_candidate(release)
+
+        # Ordered worst-first so that each candidate has to genuinely beat the
+        # one before it to displace it — ties go to what is already there,
+        # because a same-sized different picture is not an improvement and is
+        # not worth overwriting a user's file for.
+        winner, winner_size = cover, folder_size
+        if own is not None:
+            _, mine = own
+            ours = images.dimensions(mine)
+            # Unless the folder cover BEATS the album's own image, the album's
+            # own is what gets embedded — which fills the tracks that carry
+            # nothing and is a no-op on the rest (#397). Both sizes must be
+            # readable: an unmeasurable header is no evidence, so the fallback
+            # is what a re-tag has always done.
+            if (
+                ours is not None
+                and folder_size is not None
+                and not artwork.beats(folder_size, ours)
+            ):
+                winner, winner_size = mine, ours
+        if archive is not None:
+            theirs = images.dimensions(archive)
+            if artwork.beats(theirs, winner_size):
+                winner, winner_size = archive, theirs
+
+        cover = winner
+        # The folder file catches up when the winner is not already what it
+        # holds. That write is the one here that could not be undone from the
+        # tracks themselves, so it happens only on a strict improvement — and
+        # `tag_album` keeps the old cover before replacing it (#408).
+        if winner is not cover_bytes and artwork.beats(winner_size, folder_size):
+            promote_cover = winner
 
     return _Prepared(
         files=files,
@@ -618,7 +634,7 @@ def _prepare(
         # per-track-art guard above may have cancelled it.
         art_after=images.digest(cover) if cover is not None else None,
         preserves_per_track_art=preserves_per_track_art,
-        promote_cover_from=promote_cover_from,
+        promote_cover=promote_cover,
         media_total=len(release.get("medium-list", [])) or 1,
         accepted_album_title=title_with_disambiguation(
             release.get("title"), release.get("disambiguation")
@@ -742,6 +758,28 @@ def _mime_for(path: Path) -> str:
     return "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
 
 
+def _archive_candidate(release: Release) -> bytes | None:
+    """The archive's image for this release, when it is cached AND larger than
+    the folder cover — or None.
+
+    Cache-only, deliberately. The fetch happens when the user asks for a check
+    (#276); by the time a tagging runs, the answer either is on disk or is not,
+    and a tagging that reached the network would put a request behind every
+    album the gardener touches.
+    """
+    mbid = release.get("id")
+    if not isinstance(mbid, str):
+        return None
+    path = cover_art.cached_image(mbid)
+    if path is None:
+        return None
+    try:
+        return path.read_bytes()
+    except OSError:
+        log.exception("could not read the cached archive image for %s", mbid)
+        return None
+
+
 def _album_image(digests: dict[Path, str | None]) -> tuple[Path, bytes] | None:
     """The album's own artwork and the file to read it from, when it has exactly
     one — or None.
@@ -765,7 +803,7 @@ def _album_image(digests: dict[Path, str | None]) -> tuple[Path, bytes] | None:
 
 
 def _promote_album_image(
-    album_dir: Path, cover_path: Path, source: Path, album_id: str | None
+    album_dir: Path, cover_path: Path, incoming: bytes, album_id: str | None
 ) -> tuple[str, str] | None:
     """Write the album's own image over the folder cover, keeping what was there.
 
@@ -776,9 +814,6 @@ def _promote_album_image(
     Best-effort, like every other artwork operation: a promotion that cannot be
     written is a reason to warn, not to abandon the re-tag the user asked for.
     """
-    art = formats.read_cover(source)
-    if art is None:  # vanished between the two passes
-        return None
     try:
         was = cover_path.read_bytes()
     except OSError:
@@ -796,7 +831,7 @@ def _promote_album_image(
         return None
     try:
         tmp = cover_path.with_suffix(cover_path.suffix + ".tmp")
-        tmp.write_bytes(art[0])
+        tmp.write_bytes(incoming)
         os.replace(tmp, cover_path)
     except OSError:
         log.exception("could not write the album's larger image to %s", cover_path)
@@ -807,12 +842,12 @@ def _promote_album_image(
         album=album_dir,
         file=cover_path.name,
         source="album",
-        bytes=len(art[0]),
+        bytes=len(incoming),
         overwrote=True,
         was=images.digest(was),
-        digest=images.digest(art[0]),
+        digest=images.digest(incoming),
     )
-    return images.digest(was), images.digest(art[0])
+    return images.digest(was), images.digest(incoming)
 
 
 def _keep_doomed_art(digests: dict[Path, str | None], incoming: str) -> None:
