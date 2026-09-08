@@ -4,22 +4,23 @@
    the folder cover alike, so an album where they agree is a single row reading
    "All 12 tracks and cover.jpg" rather than one picture drawn twice (#400).
 
-   A row where nothing would be written says NOTHING on the right: no frame, no
-   words. Agreement is silence everywhere else on this page — the Tags panel
-   draws a matching field as one plain line — and a column of "left as is" down
-   a 37-image box set is noise with a scrollbar. The column headings appear only
-   when something really would be written, for the same reason.
+   A row that would be written to says so in a line of its own. There is no
+   second column: its only possible occupant was the folder cover, which by then
+   already has a row here — it gets one whenever no track carries it, which is
+   exactly when something is replaced or filled — so the column could never show
+   anything the reader could not already see (#406). Agreement is silence, as it
+   is everywhere else on this page.
 
    Register: this states facts. An album assembled over decades having uneven
    artwork is normal and a compilation having four covers is correct, so nothing
    here is coloured as a fault. The one exception is having no artwork at all,
    which is a gap to fill rather than damage — and still not red.
 
-   The incoming side takes the Tags panel's purple, because it is the same kind
-   of value: what Harmonist would write over what you have. It does NOT take the
-   hexagon — that mark means MusicBrainz specifically, and a folder cover may
-   have come from a Bandcamp download. It arrives with #401, where the winning
-   image really can be the Cover Art Archive's. #}
+   What a re-tag would write takes the Tags panel's purple, because it is the
+   same kind of value: what Harmonist would put over what you have. It does NOT
+   take the hexagon — that mark means MusicBrainz specifically, and a folder
+   cover may have come from a Bandcamp download. It arrives with #276, where the
+   winning image really can be the Cover Art Archive's. #}
 <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
     Artwork
     {% if artwork.count %}
@@ -36,7 +37,7 @@
 </p>
 {% endif %}
 
-{% macro image_cell(image, album_id, who, purple=false) %}
+{% macro image_cell(image, album_id, who) %}
     {# The image itself, or a frame where one is missing. The empty frame is the
        finding on an album whose tracks have lost their art, so it is drawn as
        deliberately as the pictures are.
@@ -47,7 +48,7 @@
        only once on a page. #}
     {% if image %}
     <button type="button"
-            class="art-row__art{% if purple %} art-row__art--mb{% endif %}"
+            class="art-row__art"
             popovertarget="art-{{ image.digest[:12] }}"
             aria-label="View {{ who }} full size">
         <img src="/artwork/image/{{ album_id }}/{{ image.digest }}" alt="" loading="lazy">
@@ -59,47 +60,31 @@
 
 {% if artwork.rows %}
 <div class="art-rows">
-    {% if artwork.writes %}
-    <div class="art-rows__head">
-        <span>On your tracks</span>
-        <span>After a re-tag</span>
-    </div>
-    {% endif %}
-
     {% for r in artwork.rows %}
     <div class="art-row">
-        <div class="art-row__side">
-            {{ image_cell(r.image, album.id, r.label) }}
-            <div class="art-row__facts">
-                <span class="art-row__who">{{ r.label }}</span>
-                {# The track's own name, where the row is one track: a number is
-                   a poor thing to recognise an image by, and on a box set of
-                   episodes the title is how you know which one this is. #}
-                {% if r.title %}<span class="art-row__title">{{ r.title }}</span>{% endif %}
-                {% if r.image %}
-                <span class="art-row__meta">{{ describe_image(r.image) }}</span>
-                {% else %}
-                {# Named, not counted: the remedy is per file, so the user needs
-                   to know which files to look at. #}
-                <span class="art-row__files">
-                    {% for t in r.tracks %}{{ t.name }}{% if not loop.last %}<br>{% endif %}{% endfor %}
-                </span>
-                {% endif %}
-            </div>
+        {{ image_cell(r.image, album.id, r.label) }}
+        <div class="art-row__facts">
+            <span class="art-row__who">{{ r.label }}</span>
+            {# The track's own name, where the row is one track: a number is a
+               poor thing to recognise an image by, and on a box set of episodes
+               the title is how you know which one this is. #}
+            {% if r.title %}<span class="art-row__title">{{ r.title }}</span>{% endif %}
+            {% if r.image %}
+            <span class="art-row__meta">{{ describe_image(r.image) }}</span>
+            {% else %}
+            {# Named, not counted: the remedy is per file, so the user needs to
+               know which files to look at. #}
+            <span class="art-row__files">
+                {% for t in r.tracks %}{{ t.name }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+            </span>
+            {% endif %}
+            {% if r.writes %}
+            <span class="art-row__outcome">
+                {{ 'Replaced by' if r.outcome == 'replaced' else 'Filled from' }}
+                {{ artwork.cover.name }}
+            </span>
+            {% endif %}
         </div>
-
-        {% if r.writes %}
-        <div class="art-row__side art-row__side--after">
-            {{ image_cell(artwork.cover.image, album.id, artwork.cover.name, purple=true) }}
-            <div class="art-row__facts art-row__facts--mb">
-                <span class="art-row__who">{{ artwork.cover.name }}</span>
-                <span class="art-row__meta">{{ describe_image(artwork.cover.image) }}</span>
-                <span class="art-row__outcome">
-                    {{ 'Replaced' if r.outcome == 'replaced' else 'Filled in' }}
-                </span>
-            </div>
-        </div>
-        {% endif %}
     </div>
     {% endfor %}
 </div>

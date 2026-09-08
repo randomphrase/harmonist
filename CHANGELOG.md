@@ -18,7 +18,8 @@ versions follow [semantic versioning](https://semver.org).
   identified yet (#155). A row where nothing would change says nothing, the
   folder cover appears as the file you already have rather than only as an
   incoming value, and each image names the disc and track title carrying it
-  (#400).
+  (#400). A row a re-tag would write to says so in a line, rather than drawing
+  the folder cover a second time beside it (#406).
 
 ## [1.15.0] - 2026-09-07
 

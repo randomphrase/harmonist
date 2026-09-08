@@ -8689,9 +8689,10 @@ def test_artwork_section_names_the_tracks_missing_art(client, cfg):
     assert "Tracks 1, 3" in r.text
     assert "02 Track.m4a" in r.text
     assert "cover.jpg" in r.text
-    # …and says plainly that filling the gap rewrites the two that were right.
-    assert "Replaced" in r.text
-    assert "Filled in" in r.text
+    # …and says plainly that filling the gap rewrites the two that were right,
+    # naming what would be written rather than drawing it twice (#406).
+    assert "Replaced by" in r.text
+    assert "Filled from" in r.text
 
 
 def test_artwork_section_promises_no_overwrite_where_art_is_preserved(client, cfg):

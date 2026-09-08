@@ -65,12 +65,13 @@ def test_a_thumbnail_opens_the_image_full_size(demo_server: str) -> None:
 
 
 def test_every_row_reaches_its_own_image(demo_server: str) -> None:
-    """Each button opens a popover that exists, and the ids are unique.
+    """Each button opens a popover that exists, and exactly one of them.
 
-    The failure this rules out is specific: the folder cover is shown by every
-    row a re-tag would write to, and emitting its popover once per row would put
-    duplicate ids on the page — legal-looking markup where every button opens
-    whichever copy came last.
+    Two lists are built from the album's images — the rows, and the full-size
+    views `ArtworkView.distinct` emits — and this is the seam between them. A row
+    drawn from an image the popover list left out is a button that opens nothing,
+    which looks identical to a working one until it is pressed; two elements
+    under one id is the same failure from the other direction.
     """
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -83,7 +84,9 @@ def test_every_row_reaches_its_own_image(demo_server: str) -> None:
             b.get_attribute("popovertarget")
             for b in page.locator("#album-artwork button.art-row__art").all()
         ]
-        assert len(targets) >= 3, "expected both rows' images plus the incoming cover"
+        # The tracks' image and the folder cover — one button each. The folder
+        # cover is no longer drawn a second time per row it would replace (#406).
+        assert len(targets) == 2, "expected the tracks' image and the folder cover"
 
         for target in targets:
             assert page.locator(f"#{target}").count() == 1, f"{target} is not a single element"

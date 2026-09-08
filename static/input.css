@@ -859,33 +859,18 @@ dialog::backdrop {
    --------------------------------------------------------------------------- */
 .art-rows { display: flex; flex-direction: column; }
 
-.art-rows__head,
+/* One image, and what is known about it. There is no second column: its only
+   occupant was the folder cover, which by then already has a row of its own
+   (#406). */
 .art-row {
   display: grid;
-  grid-template-columns: 6.5rem minmax(0, 1fr) 6.5rem minmax(0, 1fr);
+  grid-template-columns: 6.5rem minmax(0, 1fr);
   column-gap: .85rem;
-}
-/* The two halves, each spanning its own image + facts pair. */
-.art-rows__head span:nth-child(1) { grid-column: 1 / span 2; }
-.art-rows__head span:nth-child(2) { grid-column: 3 / span 2; }
-.art-rows__head {
-  padding-bottom: .4rem;
+  padding: .85rem 0;
   border-bottom: 1px solid var(--color-line);
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  font-weight: 700;
-  color: var(--color-muted);
+  align-items: start;
 }
-
-.art-row { padding: .85rem 0; border-bottom: 1px solid var(--color-line); align-items: start; }
 .art-row:last-child { border-bottom: 0; padding-bottom: .2rem; }
-
-/* `display: contents` so the image and its facts sit in the row's own grid
-   tracks rather than in a nested box — which is what keeps every row's images
-   on one vertical edge however long the text beside them runs. */
-.art-row__side { display: contents; }
-.art-row__side--after > * { margin-left: 1.6rem; }
 
 .art-row__art {
   display: block;
@@ -900,7 +885,6 @@ dialog::backdrop {
 }
 .art-row__art img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .art-row__art:hover { border-color: var(--color-accent); }
-.art-row__art--mb { border-color: color-mix(in srgb, var(--color-mb-purple) 35%, var(--color-line)); }
 
 /* What is MISSING, drawn as deliberately as what is there: on an album whose
    tracks have lost their artwork this frame is the finding, and omitting it
@@ -935,24 +919,19 @@ dialog::backdrop {
   line-height: 1.45;
   word-break: break-word;
 }
+/* What a re-tag would write here. The Tags panel's purple, because it is the
+   same kind of value — what Harmonist would put over what you have. Not the
+   hexagon: that mark means MusicBrainz, and a folder cover may have come from a
+   Bandcamp download. It arrives with #276. */
 .art-row__outcome {
+  margin-top: .15rem;
   font-size: .72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .1em;
-  color: var(--color-accent-dark);
+  color: var(--color-mb-purple);
 }
-.art-row__outcome--quiet { color: var(--color-muted); }
 
-/* The incoming side takes the Tags panel's purple: it is the same kind of value
-   — what would be written over what you have. Not the hexagon, though: that mark
-   means MusicBrainz, and a folder cover may have come from a Bandcamp download.
-   It arrives with the Cover Art Archive column (#269). */
-.art-row__facts--mb .art-row__who { color: var(--color-mb-purple); }
-.art-row__facts--mb .art-row__meta,
-.art-row__facts--mb .art-row__outcome {
-  color: color-mix(in srgb, var(--color-mb-purple) 78%, var(--color-muted));
-}
 
 .art-rows__disc {
   font-size: var(--text-2xs);
@@ -992,12 +971,3 @@ dialog::backdrop {
   color: var(--color-muted);
 }
 
-/* Narrow: the pair stacks and the relationship reads top to bottom. The
-   headings would then sit over the wrong halves, so they go. */
-@media (max-width: 56rem) {
-  .art-rows__head { display: none; }
-  .art-row { grid-template-columns: 6.5rem minmax(0, 1fr); row-gap: .7rem; }
-  .art-row__side--after > * { margin-left: 0; }
-  .art-row__side--after > .art-row__art,
-  .art-row__side--after > .art-row__art--none { margin-left: 1.5rem; }
-}
