@@ -66,6 +66,17 @@ class AuthConfig(BaseModel):
 
 class CoverArtConfig(BaseModel):
     size: CoverArtSize = "original"
+    # How long a stored Cover Art Archive answer may be re-served before an album
+    # page asks again (#436). The same knob `musicbrainz.cache_ttl_seconds` is,
+    # for the other service Harmonist asks about a release.
+    #
+    # A WEEK, where MusicBrainz gets an hour. An album's cover art changes far
+    # less often than its tags, and the archive is the slowest thing Harmonist
+    # talks to — a check is up to three requests through a redirect to the
+    # Internet Archive, and one measured sixteen seconds over a remote link. 0
+    # disables serving from the store, so every album page open asks; the check
+    # lands out of band either way, so the page still paints.
+    cache_ttl_seconds: int = Field(default=7 * 24 * 3600, ge=0)
 
 
 class ArtworkStoreConfig(BaseModel):

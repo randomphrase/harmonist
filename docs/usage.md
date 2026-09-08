@@ -462,9 +462,19 @@ want to undo on its own — and it has always had its own Undo in History.
 ### Asking the Cover Art Archive
 
 The album panel carries a **CAA checked** date beside the MusicBrainz one, with
-a control to ask. Nothing is fetched until you press it: the archive is served
-by the Internet Archive and a single check can take many seconds, so it is never
-something a page does on its own.
+a control to ask again — the same pair the MusicBrainz row has, doing the same
+job.
+
+Opening an album's page asks the archive when the stored answer is missing or
+more than a week old, and serves what it already knows otherwise, so browsing
+your library costs nothing after the first look at each album. The archive is
+served by the Internet Archive and a single check can take many seconds, so the
+asking happens **after the page is up**: the Artwork section draws what is known
+first, and the row fills in when the answer arrives. A check that fails leaves
+the previous answer and its date alone — the date not moving is how you know.
+
+Press the control to ask regardless of any of that, for a release whose art you
+have just changed on the archive.
 
 If the release has no cover of its own, Harmonist asks its **release group**,
 which is where the archive very often keeps an album's artwork. A cover found

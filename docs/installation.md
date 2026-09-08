@@ -85,6 +85,10 @@ max_downloads_per_sync = 25       # safety cap
 user_agent = "Harmonist/1.0 ( you@example.com )"
 cache_ttl_seconds = 3600          # re-serve a fetched release for this long
 
+[cover_art]
+size = "original"                 # what to fetch from the Cover Art Archive
+cache_ttl_seconds = 604800        # re-serve a stored archive answer for a week
+
 [library]
 watch_settle_seconds = 5          # quiet time before a watched change rescans
 
@@ -112,6 +116,13 @@ album's page shows when its release was last read, as the **Checked** date in th
 album panel with a refresh button beside it, so you can always force a fresh look
 after editing MusicBrainz — and
 re-tagging and **Recheck** never use the cache. Set it to `0` to always fetch.
+
+The Cover Art Archive is asked the same way, with its own
+`[cover_art] cache_ttl_seconds` — **a week** rather than an hour, because cover
+art changes far less often than tags and the archive is the slowest thing
+Harmonist talks to. An album's page asks it when the stored answer is older than
+that, in the background once the page is up, and reports it as the **CAA
+checked** date with its own refresh button beside it.
 
 `[gardener] level` decides whether Harmonist checks your library against
 MusicBrainz on its own. It ships **`off`**, and the only other setting today is

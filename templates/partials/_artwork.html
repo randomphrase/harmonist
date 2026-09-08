@@ -198,6 +198,31 @@
 </p>
 {% endif %}
 
+{# Go and ask the archive, now that the section is on screen (#436).
+
+   The album page asks MusicBrainz about a release when it opens and is free to,
+   because `mb_cache` serves a stored answer until a TTL expires. `caa_cache`
+   gives the archive the same treatment, and this is where the asking happens —
+   a second request, after this one has rendered from what is already stored.
+
+   Out of band because of what a check costs: it is up to three requests through
+   a redirect to the Internet Archive, and one measured sixteen seconds. Holding
+   this section's render behind that would hold the file pass behind it too, and
+   the panel would sit empty for the length of somebody else's outage.
+
+   Sent only when the stored answer is missing or past its TTL, and NEVER on the
+   response to this request — `caa_check_due` is false there whatever the answer
+   turned out to be, so a failed check leaves a stale row and no retry rather
+   than a section asking forever.
+
+   The swap replaces this element along with the rest of the section, which is
+   what retires the trigger. Nothing visible: the section is complete as it
+   stands, and the "CAA checked" row swaps in when the answer arrives. #}
+{% if caa_check_due %}
+<div hx-get="/album/{{ album.id }}/artwork?check=1" hx-trigger="load"
+     hx-target="#album-artwork" hx-swap="innerHTML"></div>
+{% endif %}
+
 {# The panel's dates, refreshed alongside — this response may have just asked
    the archive, and the "CAA checked" row it updates lives up in the panel.
    Rendered only when this response carries them, so the ordinary lazy load of

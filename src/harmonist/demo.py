@@ -1260,6 +1260,30 @@ def ensure_cover(
     return None
 
 
+def check_front(
+    release_mbid: str,
+    *,
+    release_group_mbid: str | None = None,
+    known: activity_store.CachedCoverArt | None = None,
+    keep_if_wider_than: int | None = None,
+    client: Any = None,
+) -> activity_store.CachedCoverArt:
+    """Demo answer from the Cover Art Archive: it holds nothing for this release.
+
+    A real answer, and the commonest one for a private Bandcamp release — the
+    Artwork section draws it as a muted row reading "no front cover for this
+    release", so the demo shows the shape of the feature without inventing a
+    picture that does not exist.
+
+    It exists at all because the check is no longer something a user presses:
+    since #436 an album page asks the archive by itself when the stored answer
+    is stale, so an unpatched `check_front` would have demo mode making live
+    requests to coverartarchive.org just for opening an album — the one thing
+    demo mode promises it will never do.
+    """
+    return activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+
+
 def install() -> None:
     """Monkey-patch demo implementations into the modules the web routes use.
 
@@ -1274,6 +1298,7 @@ def install() -> None:
     mb_lookup.browse_release_group_releases = browse_release_group_releases
     mb_search.search_releases = search_releases
     cover_art.ensure_cover = ensure_cover
+    cover_art.check_front = check_front
     log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art")
 
 

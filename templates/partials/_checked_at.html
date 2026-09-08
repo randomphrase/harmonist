@@ -106,16 +106,25 @@
     </dd>
     {% else %}
     {# Not a date, so not in the dates' typeface: this says the question has not
-       been put yet, and the control beside it is how you put it. #}
+       been put yet. The Artwork section puts it by itself once it has rendered
+       (#436), so this is what the row reads while that is on its way — and on
+       an album whose check has failed, which is the state this wording was
+       always for. #}
     <dd class="text-muted italic self-baseline whitespace-nowrap">not yet</dd>
     {% endif %}
     <dd class="col-start-3 flex items-center">
         {# Re-asks, and re-renders the Artwork section that reports the answer —
            the same shape as the MusicBrainz control above, which re-fetches into
            Tags. `hx-disabled-elt` because this is a real request to an external
-           service and a double-press would spend two. #}
+           service and a double-press would spend two.
+
+           `reread`, not `check`: the two are different questions now that the
+           section asks on its own. `?check=1` means "ask if the stored answer is
+           stale" and `?reread=1` means "ask regardless" — the same word, meaning
+           the same thing, as the MusicBrainz control above. A control whose
+           whole meaning is "look again" must never be served a stored answer. #}
         <button type="button"
-                hx-get="/album/{{ album.id }}/artwork?check=1"
+                hx-get="/album/{{ album.id }}/artwork?reread=1"
                 hx-target="#album-artwork" hx-swap="innerHTML"
                 hx-disabled-elt="this"
                 title="Ask the Cover Art Archive about this release again"

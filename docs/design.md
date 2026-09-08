@@ -853,6 +853,18 @@ MusicBrainz rate-limits at **one request per second, per request rather than per
 
 **`fetched_at` is why this needs no sidecar field.** It answers "how current is what I'm looking at?" on the album page — rendered as the panel's **Checked** date, with a re-read control beside it, which is the escape hatch that keeps a cached comparison from being a dead end. It is also the clock the gardener's incremental scheduling reads to decide which albums are due. That last reader is what dissolves the derived-state tension #32 carried: "when was this last checked" lives here, keyed by MBID, and needs nothing on disk beside the album.
 
+### Caching the Cover Art Archive
+
+`caa_cache` is the same layer over `cover_art.check_front` (#436), and deliberately so: an album page asks the two services the same way, reports both as dates in the same panel, and offers the same control beside each. Before it, the archive was asked *only* when someone pressed that control — nothing consulted the stored answer's age, so the choice was between asking on every view and asking never.
+
+**Where the two services differ, the layer differs with them.** MusicBrainz's limit is per *request*, so a conditional GET buys nothing and not asking is the only economy. The archive's cost is *bytes and seconds*: a check is up to three requests, served through a redirect to the Internet Archive, and one measured **sixteen seconds** over a remote link — while `If-None-Match` genuinely works, because unlike MusicBrainz's, its ETag is a real content validator. So:
+
+- **the TTL is a week, not an hour** (`[cover_art] cache_ttl_seconds`). Cover art changes far less often than tags;
+- **a stale row is still sent back with the question**, carrying its etag, so a re-check of unchanged art costs one request and no transfer;
+- **the check never sits on a render.** The Artwork section renders from the stored answer and then triggers a second request that does the asking, so nothing paints behind the archive. A response to that second request never asks for another — a failed check leaves a stale row, and re-triggering on staleness alone would be a page that asks forever.
+
+**A stored negative is safe here only because of the TTL.** "No front cover for this release" is the commonest answer for a private Bandcamp release and is stored so the next check does not ask again (#276) — a thing §"Never store a negative" otherwise forbids. What makes it survivable is that the answer now expires: art uploaded to the archive today is found within a TTL by itself, and the control is for not waiting.
+
 ---
 
 ## 5. Tagging contract (Picard-compatible)
@@ -1160,6 +1172,7 @@ src/harmonist/
   compare.py            Field-by-field tag-vs-MB comparison primitives (Tags section + tracklist)
   tagger.py             Picard-compatible tag writer (+ embedded cover), and the undo of one (#157)
   cover_art.py          Cover Art Archive fetch + cover.* writing
+  caa_cache.py          TTL cache over cover_art's front-cover check, in activity.db (#436)
   formats/              Per-format tag I/O (m4a, mp3, flac, ogg, opus; _vorbis shared; types)
                         owned.py names the tags Harmonist writes, per-album vs per-track
                         write_owned sets/removes a whole owned snapshot — what a revert needs

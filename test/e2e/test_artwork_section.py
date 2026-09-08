@@ -92,3 +92,41 @@ def test_every_row_reaches_its_own_image(demo_server: str) -> None:
             assert page.locator(f"#{target}").count() == 1, f"{target} is not a single element"
 
         browser.close()
+
+
+def test_the_archive_is_asked_without_anyone_pressing_anything(demo_server: str) -> None:
+    """The Artwork section triggers its own Cover Art Archive check (#436).
+
+    Only a browser can see this. `test_web.py` can say the response carries an
+    element with `hx-get` and `hx-trigger="load"` — it said exactly that about
+    the #40 button, which had stopped sending anything — and cannot say whether
+    HTMX processed content that arrived inside another swap and fired the
+    trigger, which is the whole question.
+
+    The "CAA checked" row is rendered as "not yet" — the demo store is empty at
+    startup — and becomes a time with nothing clicked.
+
+    Asserted on the row's own `title`, not on the elapsed text: "just now" is
+    also what the MusicBrainz row beside it says, and the transition out of "not
+    yet" is too quick against a local demo server to be caught on the way past.
+
+    Its OWN album, not the one the tests above share. The demo server is
+    module-scoped, and this is the one question here whose answer depends on
+    whether this album has been looked at before — an album a neighbour has
+    already opened has already been asked about.
+    """
+    album_id = "demo-rel-barryjive"
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+
+        page.goto(f"{demo_server}/album/{album_id}")
+        page.wait_for_selector("#album-artwork .art-row")
+
+        dates = page.locator(f"#album-checked-{album_id}")
+        # This element exists only where an answer does: the row renders "not
+        # yet" in its place until the archive has been asked (#419).
+        dates.locator('dd[title^="Cover Art Archive last asked"]').wait_for(state="visible")
+        assert "not yet" not in dates.inner_text()
+
+        browser.close()

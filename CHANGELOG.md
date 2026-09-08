@@ -12,14 +12,20 @@ versions follow [semantic versioning](https://semver.org).
   panel gains a **CAA checked** date beside the MusicBrainz one, with a control
   to ask; if the archive's front cover is larger than anything the album has,
   it is kept locally and a re-tag writes it — to the tracks and to the folder
-  cover, whose previous image is kept so the change can be undone. Nothing is
-  fetched unless you press, a tagging never reaches the network, and an archive
-  cover that is no better than yours is ignored. The Artwork section shows the
+  cover, whose previous image is kept so the change can be undone. A tagging
+  never reaches the network, and an archive cover that is no better than yours
+  is ignored. The Artwork section shows the
   archive's image beside your own, marked as MusicBrainz's, and serves it from
   Harmonist — so opening an album never tells the Internet Archive which records
   you own (#276). The **CAA checked** row shows on any album with a MusicBrainz
   release, reading *not yet* until you ask — it carries the control that asks,
-  so hiding it until the first check left nothing to press (#419).
+  so hiding it until the first check left nothing to press (#419). Opening an
+  album's page now asks the archive by itself when the stored answer is missing
+  or more than a week old, exactly as it asks MusicBrainz — after the page is
+  up, so nothing waits on it, and never twice inside the window. The control
+  beside the date still asks regardless, and a check that fails leaves the
+  previous answer and its date untouched. Tune it with `[cover_art]
+  cache_ttl_seconds` (#436).
 
 
 - **An Artwork section on the album page** — what artwork your files actually

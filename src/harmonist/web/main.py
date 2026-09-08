@@ -37,6 +37,7 @@ from harmonist import (
     artwork,
     artwork_store,
     audit,
+    caa_cache,
     compare,
     cover_art,
     formats,
@@ -428,6 +429,9 @@ def create_app(
     # How long a fetched MusicBrainz release may be re-served (#127). After the
     # store is initialised, since that is where the rows live.
     mb_cache.configure(timedelta(seconds=cfg.musicbrainz.cache_ttl_seconds))
+    # …and how long the Cover Art Archive's answer may be (#436). The same knob
+    # for the other service, set from the same place, a week rather than an hour.
+    caa_cache.configure(timedelta(seconds=cfg.cover_art.cache_ttl_seconds))
     # Copies of artwork a re-tag overwrote, so replacing it can be undone (#131).
     # `artwork_dir` sandboxes itself in demo mode rather than switching off, so
     # the demo exercises the real path.
@@ -4121,7 +4125,7 @@ def _register_routes(app: FastAPI) -> None:
                 answer.fetched_at
                 if album.sidecar
                 and album.sidecar.mb_release_id
-                and (answer := activity_store.cached_cover_art(album.sidecar.mb_release_id))
+                and (answer := caa_cache.stored(album.sidecar.mb_release_id))
                 else None
             ),
             # The inbox's "you may already own this" pairing, for the action
@@ -4878,30 +4882,48 @@ def _register_routes(app: FastAPI) -> None:
         return JSONResponse(payload)
 
     @app.get("/album/{album_id}/artwork", response_class=HTMLResponse)
-    def album_artwork(request: Request, album_id: str, check: bool = False) -> Response:
+    def album_artwork(
+        request: Request, album_id: str, check: bool = False, reread: bool = False
+    ) -> Response:
         """The Artwork section (#155), fetched after the page paints.
 
         Lazy for the reason Tags and Tracks are — it opens every file in the
         album — but unlike them it is not gated on a MusicBrainz release, and
         renders for an album in any state.
 
-        `?check=1` also asks the Cover Art Archive about this album's release
-        (#276), which is the only thing here that leaves the machine. Never on
-        an ordinary render: the archive is served from the Internet Archive and
-        a measurement took sixteen seconds over a remote link, so a page that
-        asked on every view would be a page that hangs. It is one deliberate
-        press, on one album, and the answer is stored with the time it was
-        established so the panel can say how old it is.
+        Three ways in, and only two of them can leave the machine:
+
+        * **no parameter** — render from what is stored, network untouched.
+          Whatever the archive last said is shown with its age, however old.
+        * **`?check=1`** — ask the archive *if the stored answer is stale*, the
+          way the MusicBrainz comparison asks (#436). This is what the section
+          itself triggers, out of band, once it has rendered: a check took
+          sixteen seconds over a remote link, so it must never be on the path
+          that paints the panel.
+        * **`?reread=1`** — ask regardless. The control beside the "CAA checked"
+          row (#419), whose whole meaning is "look again", spelled the same way
+          the MusicBrainz re-read control spells it.
+
+        Both asking forms go through `caa_cache`, so a forced check still
+        refreshes the stored row and still sends the stored etag.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
-        if check and mbid:
-            _check_cover_art(mbid, _artwork_view(album))
-        caa = activity_store.cached_cover_art(mbid) if mbid else None
+        asking = check or reread
+        if asking and mbid is not None:
+            _check_cover_art(
+                mbid, _artwork_view(album), max_age=caa_cache.FRESH if reread else None
+            )
+        caa = caa_cache.stored(mbid) if mbid else None
         ctx = _ctx(
             request,
             album=album,
             artwork=_artwork_view(album, caa, _archive_image(mbid)),
+            # Whether this response should ask the browser to come back and put
+            # the question to the archive (#436). Never on a response that has
+            # just tried: a check that failed leaves the answer stale, and a
+            # section that re-triggered on staleness alone would retry forever.
+            caa_check_due=mbid is not None and not asking and caa_cache.due(mbid),
             # The panel's dates ride back out of band, so the timestamp and the
             # answer it describes update together — the same pairing the
             # MusicBrainz control has with the Tags section.
@@ -4914,21 +4936,27 @@ def _register_routes(app: FastAPI) -> None:
         )
         return _templates(request).TemplateResponse(request, "partials/_artwork.html", ctx)
 
-    def _check_cover_art(mbid: str, current: artwork.ArtworkView) -> None:
+    def _check_cover_art(
+        mbid: str, current: artwork.ArtworkView, *, max_age: timedelta | None = None
+    ) -> None:
         """Ask the archive, and remember the answer — including "nothing".
 
         Failure is swallowed here on purpose, and it is the one place in this
-        feature where that is right: the user pressed a button to learn
-        something optional about their artwork, the album page around it is
+        feature where that is right: this is something optional Harmonist wanted
+        to learn about the user's artwork, the album page around it is
         unaffected, and the stored answer keeps whatever it said before rather
         than being overwritten with a failure. Loud in the log, per the
         unattended rule, and the panel's timestamp simply does not move — which
         is the honest signal that the check did not happen.
+
+        That matters more now the check can happen without anyone pressing
+        anything (#436): a page that opened a red banner because the Internet
+        Archive was slow this morning would be reporting a failure the user did
+        not ask for and cannot act on.
         """
         # What the archive has to beat to be worth downloading: the widest image
         # the album already has. A candidate that loses is measured and
-        # forgotten; only a winner costs the full 200 KB–5 MB, and only during a
-        # check the user asked for.
+        # forgotten; only a winner costs the full 200 KB–5 MB.
         best = max(
             (r.image.size.width for r in current.images if r.image and r.image.size),
             default=None,
@@ -4940,16 +4968,14 @@ def _register_routes(app: FastAPI) -> None:
             # costs nothing and fixes itself the moment the page fetches one.
             stored = mb_cache.stored_release(mbid)
             group = (stored.get("release-group") or {}).get("id") if stored else None
-            answer = cover_art.check_front(
+            caa_cache.front(
                 mbid,
                 release_group_mbid=group if isinstance(group, str) else None,
-                known=activity_store.cached_cover_art(mbid),
                 keep_if_wider_than=best,
+                max_age=max_age,
             )
         except cover_art.CoverArtError:
             log.exception("could not ask the Cover Art Archive about release %s", mbid)
-            return
-        activity_store.store_cover_art(mbid, answer)
 
     @app.post("/album/{album_id}/artwork/update", response_class=HTMLResponse)
     def album_artwork_update(request: Request, album_id: str) -> Response:
@@ -4989,7 +5015,7 @@ def _register_routes(app: FastAPI) -> None:
         # Re-read from disk: the files just changed, and the section describes
         # what they carry.
         album = _refreshed_from_disk(request, _find_album(request, album_id))
-        caa = activity_store.cached_cover_art(mbid)
+        caa = caa_cache.stored(mbid)
         return _templates(request).TemplateResponse(
             request,
             "partials/_artwork.html",
@@ -4997,6 +5023,10 @@ def _register_routes(app: FastAPI) -> None:
                 request,
                 album=album,
                 artwork=_artwork_view(album, caa, _archive_image(mbid)),
+                # Stated rather than left undefined: writing artwork changes
+                # what the album carries, not what the archive holds, so this
+                # response has no reason to send anyone back to ask (#436).
+                caa_check_due=False,
             ),
         )
 

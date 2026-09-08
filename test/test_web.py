@@ -8914,7 +8914,10 @@ def test_the_cover_art_check_is_reachable_before_it_has_ever_run(client, cfg):
     assert r.status_code == 200
     rendered = " ".join(r.text.split())
     assert "CAA checked" in rendered
-    assert f"/album/{album_id}/artwork?check=1" in rendered
+    # `reread`, not `check`: the section asks on its own when the stored answer
+    # is stale (#436), so this control is the one that asks REGARDLESS — the
+    # same word the MusicBrainz re-read control beside it uses.
+    assert f"/album/{album_id}/artwork?reread=1" in rendered
 
 
 def test_the_artwork_action_is_offered_only_when_something_would_change(client, cfg):
@@ -9029,3 +9032,112 @@ def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
     assert "art-rows--muted" in rendered
     assert "not loaded" not in rendered  # nothing to load, so not that word
     assert 'class="text-sm text-mb-purple"' not in rendered
+
+
+def test_the_artwork_section_sends_the_page_back_to_ask_the_archive(client, cfg):
+    """The archive is asked on page open now, the way MusicBrainz is (#436) —
+    but out of band, from a second request the section triggers once it has
+    rendered from what is stored."""
+    d = _make_tagged_album(cfg, "Unasked", mbid="rel-unasked", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+
+    rendered = " ".join(client.get(f"/album/{album_id}/artwork").text.split())
+
+    assert f'hx-get="/album/{album_id}/artwork?check=1"' in rendered
+    assert 'hx-trigger="load"' in rendered
+
+
+def test_a_stored_archive_answer_inside_the_ttl_sends_nobody_back(client, cfg):
+    """The property that makes this invisible: browsing an album a second time
+    costs nothing. The trigger is what would spend sixteen seconds, so its
+    absence is the assertion."""
+    from harmonist import activity_store
+
+    d = _make_tagged_album(cfg, "Asked", mbid="rel-asked", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+    activity_store.store_cover_art(
+        "rel-asked", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    )
+
+    rendered = " ".join(client.get(f"/album/{album_id}/artwork").text.split())
+
+    assert f"/album/{album_id}/artwork?check=1" not in rendered
+
+
+def test_an_album_with_no_release_asks_the_archive_nothing(client, cfg):
+    """There is no release to ask about. The section renders — artwork facts are
+    disk facts — and nothing leaves the machine."""
+    d = _album_with_art(cfg, "Unidentified", covers=[_png(1)])
+    album_id = _id_for(cfg, d)
+
+    rendered = " ".join(client.get(f"/album/{album_id}/artwork").text.split())
+
+    assert "art-row" in rendered
+    assert f"/album/{album_id}/artwork?check=1" not in rendered
+
+
+def test_a_check_that_failed_does_not_ask_the_page_to_try_again(client, cfg, monkeypatch):
+    """The loop this feature could have been: a failed check leaves the stored
+    answer stale, and a section that re-triggered on staleness alone would ask
+    the archive forever, once per response, for as long as it stayed down."""
+    from harmonist import cover_art
+
+    def boom(mbid, **kw):
+        raise cover_art.CoverArtError("the archive is down")
+
+    monkeypatch.setattr(cover_art, "check_front", boom)
+    d = _make_tagged_album(cfg, "Downed", mbid="rel-downed", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+
+    r = client.get(f"/album/{album_id}/artwork?check=1")
+    rendered = " ".join(r.text.split())
+
+    # The page still renders, and says the question has not been answered —
+    # loud in the log, silent in the UI.
+    assert r.status_code == 200
+    assert "not yet" in rendered
+    assert f"/album/{album_id}/artwork?check=1" not in rendered
+
+
+def test_the_page_open_check_is_served_from_the_store_when_it_is_fresh(client, cfg, monkeypatch):
+    """`?check=1` goes through the cache, so two tabs opened at once cost one
+    check rather than two. The request count is the feature."""
+    from harmonist import activity_store, cover_art
+
+    calls: list[str] = []
+
+    def counting(mbid, **kw):
+        calls.append(mbid)
+        return activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+
+    monkeypatch.setattr(cover_art, "check_front", counting)
+    d = _make_tagged_album(cfg, "Twice", mbid="rel-twice", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+
+    client.get(f"/album/{album_id}/artwork?check=1")
+    client.get(f"/album/{album_id}/artwork?check=1")
+
+    assert calls == ["rel-twice"]
+
+
+def test_the_re_ask_control_asks_even_when_the_stored_answer_is_fresh(client, cfg, monkeypatch):
+    """The other half of the same rule: a control whose whole meaning is "look
+    again" must never be served a stored answer (#419)."""
+    from harmonist import activity_store, cover_art
+
+    calls: list[str] = []
+
+    def counting(mbid, **kw):
+        calls.append(mbid)
+        return activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+
+    monkeypatch.setattr(cover_art, "check_front", counting)
+    d = _make_tagged_album(cfg, "Forced", mbid="rel-forced", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+    activity_store.store_cover_art(
+        "rel-forced", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    )
+
+    client.get(f"/album/{album_id}/artwork?reread=1")
+
+    assert calls == ["rel-forced"]
