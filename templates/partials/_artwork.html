@@ -181,3 +181,22 @@
 {% if caa_checked_at is defined and oob is defined %}
 {% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
 {% endif %}
+
+{# …and the pointer to all this, up beside the album's other findings (#417).
+   Sent out of band from the fetch that already knows the answer, so the top of
+   the page costs no second pass over the files. Emitted even when there is
+   nothing to say — an empty div is what CLEARS the note after the artwork has
+   been updated. #}
+<div id="album-artwork-note-{{ album.id }}" hx-swap-oob="true">
+    {% if artwork.writes %}
+    <section class="border border-line rounded-lg px-4 py-3 flex items-center gap-3">
+        <span class="text-sm text-ink">{{ artwork.summary }}</span>
+        {# An in-page anchor, not an hx-get: the section is already on the page,
+           and this is navigation to it rather than a request for it. #}
+        <a href="#album-artwork"
+           class="text-2xs uppercase tracking-widest font-bold text-mb-purple hover:underline">
+            Artwork ↓
+        </a>
+    </section>
+    {% endif %}
+</div>

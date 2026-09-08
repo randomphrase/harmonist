@@ -67,7 +67,12 @@
                     hx-post="/retag/{{ album.id }}"
                     hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
                     class="px-3 py-1.5 bg-mb-purple/10 hover:bg-mb-purple/20 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition"
-                    title="Re-tag from MusicBrainz. Per-track embedded artwork is preserved.">
+                    {# What it does to artwork, kept true (#417). It read
+                       "Per-track embedded artwork is preserved", which was the
+                       whole story until a re-tag could also replace a folder
+                       cover and embed a larger image. Since #418 it is simpler
+                       than either: a re-tag never replaces an image you have. #}
+                    title="Re-tag from MusicBrainz. Your artwork is left alone — a track with none is given the album's cover.">
                 Re-tag from MB
             </button>
             {% endif %}

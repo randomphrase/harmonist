@@ -48,6 +48,22 @@
        album's state. #}
     <div id="album-update-{{ album.id }}"></div>
 
+    {# A pointer to the Artwork section when it has something to act on (#417).
+       The section is typically well below the fold, and until now the top of
+       the page said nothing about artwork at all.
+
+       Its OWN line rather than a clause of the update section above, because
+       the two answer to different things: that section is what MusicBrainz has
+       that your files don't, and it renders only when MusicBrainz has something
+       to say. Artwork can want attention when the tags are perfect — and the
+       better image is often one of the album's own files, which MusicBrainz has
+       no opinion about whatsoever.
+
+       Filled out of band by the artwork fetch below, which has already made the
+       one pass over the files this needs. Empty at page build, and empty again
+       whenever nothing would change. #}
+    <div id="album-artwork-note-{{ album.id }}"></div>
+
     {# The decisions the inbox would offer about this album, offered here (#150).
 
        The inbox is where the decisions are and the album page is where the

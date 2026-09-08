@@ -308,6 +308,26 @@ class ArtworkView:
         return tuple(out.values())
 
     @property
+    def summary(self) -> str:
+        """One line for the top of the page (#417) — what updating the artwork
+        would do, in the terms the rows use.
+
+        Written here rather than in the template for the reason the verdict was:
+        it has several shapes, and a Jinja `{% if %}` chain is where wording goes
+        to stop being reviewed.
+        """
+        filled = sum(len(r.tracks) for r in self.rows if r.is_gap and r.writes)
+        replaced = sum(1 for r in self.images if r.writes)
+        parts = []
+        if filled:
+            parts.append(f"{filled} track{'' if filled == 1 else 's'} missing artwork")
+        if replaced:
+            parts.append(f"{replaced} image{'' if replaced == 1 else 's'} that could be better")
+        if not parts:
+            return "This album's artwork can be updated."
+        return f"This album has {' and '.join(parts)}."
+
+    @property
     def caa_note(self) -> str | None:
         """What the archive has, said in one line — or None when it has not been
         asked, which is most albums.

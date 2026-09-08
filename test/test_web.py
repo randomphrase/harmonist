@@ -8787,3 +8787,28 @@ def test_the_artwork_action_writes_artwork_and_not_tags(client, cfg):
 
     assert r.status_code == 200
     assert MP4(track)[ATOM_TITLE] == ["Left alone"]
+
+
+def test_the_artwork_note_points_at_the_section_when_there_is_something_to_do(client, cfg):
+    """The section is below the fold, and the top of the page said nothing about
+    artwork at all (#417)."""
+    d = _album_with_art(cfg, "Improvable", covers=[_png(1), None], folder=_png(2))
+
+    r = client.get(f"/album/{_id_for(cfg, d)}/artwork")
+
+    rendered = " ".join(r.text.split())
+    assert "missing artwork" in rendered
+    assert 'href="#album-artwork"' in rendered
+
+
+def test_the_artwork_note_is_cleared_when_nothing_would_change(client, cfg):
+    """Emitted empty rather than omitted: the out-of-band swap is what clears a
+    note left over from before the artwork was updated."""
+    same = _png(1)
+    d = _album_with_art(cfg, "Settled", covers=[same, same], folder=same)
+
+    r = client.get(f"/album/{_id_for(cfg, d)}/artwork")
+
+    rendered = " ".join(r.text.split())
+    assert 'id="album-artwork-note-' in rendered  # the wrapper is always sent
+    assert 'href="#album-artwork"' not in rendered  # …and is empty

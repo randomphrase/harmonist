@@ -15,6 +15,11 @@ versions follow [semantic versioning](https://semver.org).
   likely to be worth undoing on its own, and it has always had its own Undo in
   History — now it has its own way to be done, too (#418).
 
+- **The top of an album's page says when its artwork wants attention**, with a
+  link down to the Artwork section, which is usually well below the fold. And
+  the Re-tag buttons no longer claim "per-track embedded artwork is preserved" —
+  true once, and since #418 simply: your artwork is left alone (#417).
+
 ### Added
 
 - **Harmonist can take better artwork from the Cover Art Archive.** The album
