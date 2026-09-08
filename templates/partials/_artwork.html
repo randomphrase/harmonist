@@ -4,12 +4,18 @@
    the folder cover alike, so an album where they agree is a single row reading
    "All 12 tracks and cover.jpg" rather than one picture drawn twice (#400).
 
-   A row that would be written to says so in a line of its own. There is no
-   second column: its only possible occupant was the folder cover, which by then
-   already has a row here — it gets one whenever no track carries it, which is
-   exactly when something is replaced or filled — so the column could never show
-   anything the reader could not already see (#406). Agreement is silence, as it
-   is everywhere else on this page.
+   A row that would be written to SHOWS what it would become, on the right,
+   under a heading that dates it. Words alone could not: "Replaced by the
+   album's own artwork" reads equally as something that has already happened
+   (#413), and no wording fixes that as directly as a second picture under
+   "After a re-tag" does. Rows that change nothing stay silent and keep the
+   column empty, as agreement does everywhere else on this page.
+
+   The incoming image is usually also a row of its own further down — the two
+   halves of one album's artwork are both things it HAS (#406). That repetition
+   is the price of the tense being unambiguous, and it stops being repetition at
+   all once the winner can come from the Cover Art Archive (#276), which is on
+   no row because it is not on disk.
 
    Register: this states facts. An album assembled over decades having uneven
    artwork is normal and a compilation having four covers is correct, so nothing
@@ -60,8 +66,16 @@
 
 {% if artwork.rows %}
 <div class="art-rows">
+    {% if artwork.writes %}
+    <div class="art-rows__head">
+        <span>Now</span>
+        <span>After a re-tag</span>
+    </div>
+    {% endif %}
+
     {% for r in artwork.rows %}
     <div class="art-row">
+        <div class="art-row__side">
         {{ image_cell(r.image, album.id, r.label) }}
         <div class="art-row__facts">
             <span class="art-row__who">{{ r.label }}</span>
@@ -78,17 +92,23 @@
                 {% for t in r.tracks %}{{ t.name }}{% if not loop.last %}<br>{% endif %}{% endfor %}
             </span>
             {% endif %}
-            {# What replaces this image is named by the row, not assumed to be
-               the folder cover: when the album's own artwork is the better
-               image it is the FOLDER file that changes, and the arrow points
-               the other way (#410). #}
-            {% if r.writes and r.written_from %}
-            <span class="art-row__outcome">
-                {{ 'Replaced by' if r.outcome == 'replaced' else 'Filled from' }}
-                {{ r.written_from }}
-            </span>
-            {% endif %}
         </div>
+        </div>
+
+        {# What this row would become. Named as well as shown, because which of
+           the album's images is winning is the thing a reader wants and a
+           thumbnail alone does not say — and named by the ROW rather than
+           assumed to be the folder cover, since when the album's own artwork is
+           the better image it is the FOLDER file that changes (#410). #}
+        {% if r.writes and r.written_image %}
+        <div class="art-row__side art-row__side--after">
+            {{ image_cell(r.written_image, album.id, r.written_from) }}
+            <div class="art-row__facts art-row__facts--mb">
+                <span class="art-row__who">{{ r.written_from }}</span>
+                <span class="art-row__meta">{{ describe_image(r.written_image) }}</span>
+            </div>
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>

@@ -137,6 +137,11 @@ class ArtRow:
     #: and the album's own artwork for the folder cover's row when that is the
     #: better image (#410). None where nothing is written.
     written_from: str | None = None
+    #: …and the image itself, so the row can SHOW what it would become rather
+    #: than only assert it (#413). "Replaced by the album's own artwork" carries
+    #: no tense — a reader cannot tell whether it already happened — and the
+    #: picture on the right under a dated heading is what settles that.
+    written_image: EmbeddedArt | None = None
 
     @property
     def is_gap(self) -> bool:
@@ -354,6 +359,7 @@ def summarise(
         outcome: Outcome,
         on_cover: str | None = None,
         written_from: str | None = None,
+        written_image: EmbeddedArt | None = None,
     ) -> ArtRow:
         return ArtRow(
             image=image,
@@ -363,6 +369,7 @@ def summarise(
             multi_disc=multi_disc,
             on_cover=on_cover,
             written_from=written_from,
+            written_image=written_image,
         )
 
     def carried_by_cover(digest: str) -> str | None:
@@ -389,6 +396,8 @@ def summarise(
     promote = keep_ours and beats(ours, theirs)
     #: What fills a track carrying nothing — the winner, whichever that is.
     fills_gaps = "the album's own artwork" if keep_ours else (cover.name if cover else None)
+    #: …and the image those words name.
+    gap_image = album_image if keep_ours else (cover.image if cover else None)
 
     rows = [
         row(
@@ -420,6 +429,7 @@ def summarise(
                 # Named as the thing it is rather than by a filename: the image
                 # replacing it lives in the tracks, and the row above is it.
                 written_from="the album's own artwork" if promote else None,
+                written_image=album_image if promote else None,
             )
         )
     # A gap is filled whenever there is anything to fill it with — including
@@ -434,6 +444,7 @@ def summarise(
                 tuple(gap),
                 Outcome.FILLED if fillable else Outcome.KEPT,
                 written_from=fills_gaps if fillable else None,
+                written_image=gap_image if fillable else None,
             )
         )
 

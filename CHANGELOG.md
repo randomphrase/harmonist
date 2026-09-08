@@ -8,6 +8,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **The Artwork section shows what a re-tag would put there**, beside what is
+  there now and under a heading that says which is which — where it previously
+  asserted "replaced by…" in a way that read equally as something that had
+  already happened (#413).
+
 - **A track missing its artwork no longer costs the other tracks theirs.** A gap
   is filled from the image the rest of the album already carries, and those
   tracks are left alone — where a re-tag used to overwrite every one of them

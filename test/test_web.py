@@ -8693,11 +8693,14 @@ def test_artwork_section_names_the_tracks_missing_art(client, cfg):
     # have it are left alone — filling one hole no longer costs the others
     # their artwork (#397). The folder cover here is the same size, so it wins
     # nothing.
-    # Whitespace-normalised: the template puts the verb and what it names on
-    # separate lines, and asserting the raw string would pin the indentation.
+    #
+    # Whitespace-normalised: the markup wraps, and asserting the raw string
+    # would pin the indentation.
     rendered = " ".join(r.text.split())
-    assert "Filled from the album&#39;s own artwork" in rendered
-    assert "Replaced by" not in rendered
+    # The incoming half names its source and dates itself, so "replaced" cannot
+    # be read as something that already happened (#413).
+    assert "After a re-tag" in rendered
+    assert "the album&#39;s own artwork" in rendered
 
 
 def test_artwork_section_promises_no_overwrite_where_art_is_preserved(client, cfg):

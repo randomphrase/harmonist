@@ -859,18 +859,53 @@ dialog::backdrop {
    --------------------------------------------------------------------------- */
 .art-rows { display: flex; flex-direction: column; }
 
-/* One image, and what is known about it. There is no second column: its only
-   occupant was the folder cover, which by then already has a row of its own
-   (#406). */
+/* What the row is now, and what a re-tag would make it (#413). The second half
+   is empty on a row that changes nothing, which is most of them. */
+.art-rows__head,
 .art-row {
   display: grid;
-  grid-template-columns: 6.5rem minmax(0, 1fr);
+  grid-template-columns: 6.5rem minmax(0, 1fr) 6.5rem minmax(0, 1fr);
   column-gap: .85rem;
+}
+.art-rows__head span:nth-child(1) { grid-column: 1 / span 2; }
+.art-rows__head span:nth-child(2) { grid-column: 3 / span 2; }
+.art-rows__head {
+  padding-bottom: .4rem;
+  border-bottom: 1px solid var(--color-line);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+.art-row {
   padding: .85rem 0;
   border-bottom: 1px solid var(--color-line);
   align-items: start;
 }
 .art-row:last-child { border-bottom: 0; padding-bottom: .2rem; }
+
+/* `display: contents` so each half's image and facts sit in the row's own grid
+   tracks rather than in a nested box — which is what keeps every row's images
+   on one vertical edge however long the text beside them runs. */
+.art-row__side { display: contents; }
+.art-row__side--after > * { margin-left: 1.6rem; }
+
+/* The incoming half takes the Tags panel's purple: it is the same kind of value
+   — what Harmonist would put over what you have. Not the hexagon, though: that
+   mark means MusicBrainz, and this image is one of your own files until #276
+   makes the Cover Art Archive a candidate. */
+.art-row__facts--mb .art-row__who { color: var(--color-mb-purple); }
+.art-row__facts--mb .art-row__meta {
+  color: color-mix(in srgb, var(--color-mb-purple) 78%, var(--color-muted));
+}
+
+@media (max-width: 56rem) {
+  .art-rows__head { display: none; }
+  .art-row { grid-template-columns: 6.5rem minmax(0, 1fr); row-gap: .7rem; }
+  .art-row__side--after > * { margin-left: 0; }
+  .art-row__side--after > .art-row__art { margin-left: 1.5rem; }
+}
 
 .art-row__art {
   display: block;
