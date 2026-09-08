@@ -15,7 +15,10 @@ versions follow [semantic versioning](https://semver.org).
   visible before you press anything. Per-track artwork on a compilation is shown
   as the normal thing it is, and marked as preserved. Every image opens full
   size. It needs no MusicBrainz release, so it works on albums Harmonist hasn't
-  identified yet (#155).
+  identified yet (#155). A row where nothing would change says nothing, the
+  folder cover appears as the file you already have rather than only as an
+  incoming value, and each image names the disc and track title carrying it
+  (#400).
 
 ## [1.15.0] - 2026-09-07
 

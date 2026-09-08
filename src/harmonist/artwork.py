@@ -5,23 +5,25 @@ page's Artwork section is a rendering of facts, and nothing here opens a file or
 knows what a MusicBrainz release is. The caller reads; this decides what the
 reading means.
 
-The unit is the **distinct image**, not the track. Twelve tracks sharing one
-cover is one thing to look at with twelve names on it, and a compilation with
-four covers is four — which is also how the section is laid out: one row per
-image, the tracks carrying it beside it, and what a re-tag would put there on
-the right.
+The unit is the **distinct image**, not the track — and not the place it is kept.
+Twelve tracks and a `cover.jpg` carrying one picture is ONE row reading "All 12
+tracks and cover.jpg", because that is one thing to look at; a compilation with
+four covers is four rows. The folder cover is a carrier like any track (#400):
+showing it only as an incoming value made a file already on disk read as
+something arriving from outside, and left the reader asking which of the two
+images was about to be replaced.
 
-That last part is the reason this is worth building. Harmonist already decides,
-per album, whether to embed the folder cover on every track or to leave per-track
-artwork alone, and until now the only trace of that decision was a tooltip. The
-`Outcome` on each row is that same decision, reached through the same predicate
-the tagger uses, so the page and the button cannot disagree.
+Each row also says what a re-tag would do to it — the decision `tagger._prepare`
+already makes and used to keep to itself, reached here through the same
+predicate so the page and the button cannot disagree. Rows where nothing is
+written say nothing at all: agreement is silence everywhere else on this page,
+and a column of "left as is" on a 37-image box set is 37 boxes of noise.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from .formats import TrackTags
@@ -48,18 +50,19 @@ def has_per_track_art(digests: Iterable[str | None]) -> bool:
 class Outcome(StrEnum):
     """What a re-tag would do to one row's image.
 
-    Four, because "what happens to your artwork" has four honest answers and
-    collapsing any two of them misleads: an album whose art is preserved must not
-    read like one whose art is about to be overwritten.
+    Only the first two reach the page. The other two are the two ways of writing
+    nothing, kept apart because they are different facts — one is a protection,
+    the other a no-op — and a caller asking "why is nothing happening here"
+    deserves the real answer.
     """
 
     #: This image is replaced by the folder cover.
     REPLACED = "replaced"
     #: These tracks have no image; the folder cover fills the gap.
     FILLED = "filled"
-    #: Per-track artwork Harmonist preserves. Nothing is written.
+    #: Per-track artwork Harmonist preserves.
     KEPT = "kept"
-    #: Already the folder cover. The write happens and changes nothing.
+    #: Already the folder cover, or the folder cover itself. Nothing changes.
     SAME = "same"
 
 
@@ -70,17 +73,16 @@ class TrackRef:
     name: str
     track_num: int | None = None
     disc_num: int | None = None
+    title: str | None = None
 
 
 @dataclass(frozen=True)
 class FolderCover:
-    """The `cover.*` beside the audio — what a re-tag would embed.
+    """The `cover.*` beside the audio.
 
-    Named separately from the tracks' own art because it is answering a different
-    question: not "what do your files carry" but "what is about to be written to
-    them". It is also what most players read off disk, so an album whose folder
-    cover disagrees with its tracks looks like two different albums depending on
-    which player opened it.
+    Two things at once, which is why it needs its own type: a file the album
+    already has — so it appears among the rows like any other carrier of an image
+    — and the thing a re-tag would embed into every track.
     """
 
     name: str
@@ -89,40 +91,98 @@ class FolderCover:
 
 @dataclass(frozen=True)
 class ArtRow:
-    """One distinct image, and everyone carrying it.
+    """One distinct image, and everything carrying it.
 
     `image` is None on the row for tracks with no embedded art at all. That row is
     not a gap in the data — it is the finding, and the section draws it as an
     empty frame rather than omitting it, because an album where two tracks have
     lost their artwork looks exactly like a healthy one if you only draw what is
     there.
+
+    `on_cover` is the folder cover's filename when this same image is also the
+    folder cover, so one row can say "All 12 tracks and cover.jpg" rather than
+    drawing one picture twice.
+
+    `total_tracks` and `multi_disc` are the album context the label needs. Carried
+    on the row rather than passed to `label` so the template can't render two rows
+    of one album against different totals.
     """
 
     image: EmbeddedArt | None
     tracks: tuple[TrackRef, ...]
     outcome: Outcome
+    total_tracks: int = 0
+    multi_disc: bool = False
+    on_cover: str | None = None
 
     @property
     def is_gap(self) -> bool:
         return self.image is None
 
-    def label(self, total: int) -> str:
-        """Who carries this image, in the fewest words that stay true.
+    @property
+    def writes(self) -> bool:
+        """Whether a re-tag would put something here. The rows that answer False
+        render nothing on the right at all (#400)."""
+        return self.outcome in (Outcome.REPLACED, Outcome.FILLED)
+
+    @property
+    def title(self) -> str | None:
+        """The track's own title, when this row is a single track.
+
+        Shown because there is room for it and because a number is a poor thing
+        to recognise an image by — on a box set of episodes, the title is how you
+        know which one you are looking at. Deliberately not shown for a row
+        covering several tracks: that is a list, and the row is about the image.
+        """
+        if len(self.tracks) != 1:
+            return None
+        return self.tracks[0].title
+
+    @property
+    def label(self) -> str:
+        """What carries this image, in the fewest words that stay true.
 
         "All 12 tracks" when it is all of them — the common case, and a list of
-        twelve numbers would say the same thing worse. Otherwise the numbers
-        themselves, collapsed into ranges, because "tracks 3, 7" is what tells the
-        user which files to look at. A track with no number falls back to a count:
-        an unnumbered file cannot be pointed at by position.
+        twelve numbers would say the same thing worse. Otherwise the positions
+        themselves, because that is what tells the reader which files to look at.
+
+        On a multi-disc release a bare track number is not a unique reference, and
+        rendering one is not merely terse but WRONG: *DRIFT Series 1* is eight
+        discs in one directory, and an image shared by disc 1's track 5 and disc
+        7's track 7 rendered as "Tracks 5, 7", which names two tracks that don't
+        exist as one pair that does (#400). Naming the disc is what the tracklist
+        already does for the same reason (`compare._number_column`).
+
+        A track with no number at all falls back to a count: an unnumbered file
+        cannot be pointed at by position.
         """
         n = len(self.tracks)
-        if n == total:
-            return f"All {total} tracks" if total != 1 else "The only track"
-        numbers = [t.track_num for t in self.tracks]
-        if any(num is None for num in numbers):
+        carriers = []
+        if n:
+            carriers.append(self._track_label(n))
+        if self.on_cover:
+            carriers.append(self.on_cover)
+        return " and ".join(carriers) if carriers else "Not on any track"
+
+    def _track_label(self, n: int) -> str:
+        if n == self.total_tracks:
+            return f"All {n} tracks" if n != 1 else "The only track"
+        if any(t.track_num is None for t in self.tracks):
             return f"{n} track" if n == 1 else f"{n} tracks"
-        spans = _ranges(sorted(num for num in numbers if num is not None))
-        return f"Track {spans}" if n == 1 else f"Tracks {spans}"
+        if not self.multi_disc:
+            spans = _ranges(sorted(t.track_num for t in self.tracks if t.track_num))
+            return f"Track {spans}" if n == 1 else f"Tracks {spans}"
+        # Grouped by disc, so each number is read against the disc it belongs to.
+        by_disc: dict[int | None, list[int]] = {}
+        for t in self.tracks:
+            if t.track_num is not None:
+                by_disc.setdefault(t.disc_num, []).append(t.track_num)
+        parts = []
+        for disc, numbers in sorted(by_disc.items(), key=lambda kv: (kv[0] is None, kv[0])):
+            spans = _ranges(sorted(numbers))
+            word = "track" if len(numbers) == 1 else "tracks"
+            parts.append(f"Disc {disc}, {word} {spans}" if disc else f"{word.title()} {spans}")
+        return " · ".join(parts)
 
 
 def _ranges(numbers: Sequence[int]) -> str:
@@ -137,21 +197,12 @@ def _ranges(numbers: Sequence[int]) -> str:
 
 
 @dataclass(frozen=True)
-class Disc:
-    """A disc's rows, when every image belongs to exactly one disc."""
-
-    number: int
-    rows: tuple[ArtRow, ...]
-    tracks: int
-
-
-@dataclass(frozen=True)
 class ArtworkView:
     """Everything the Artwork section shows about one album."""
 
-    rows: tuple[ArtRow, ...]
-    cover: FolderCover | None
-    total_tracks: int
+    rows: tuple[ArtRow, ...] = field(default_factory=tuple)
+    cover: FolderCover | None = None
+    total_tracks: int = 0
     #: Tracks that could not be read at all. They vote for nothing — a file
     #: Harmonist cannot open carries no evidence about artwork, and counting it
     #: as artless would report a mount that blinked as an album that lost its
@@ -172,68 +223,11 @@ class ArtworkView:
     def writes(self) -> bool:
         """Whether a re-tag would write anything at all.
 
-        The section's headings hang off this: with nothing to write there is no
+        The column headings hang off this: with nothing to write there is no
         second column to name, and "After a re-tag" over an empty half promises a
         change that is not coming.
         """
-        return any(r.outcome in (Outcome.REPLACED, Outcome.FILLED) for r in self.rows)
-
-    @property
-    def discs(self) -> tuple[Disc, ...]:
-        """The rows grouped by disc, or empty when that grouping isn't true.
-
-        A box set with per-disc artwork is a dozen images that read as a wall
-        unless the discs carry the structure. But only when every image really
-        does belong to one disc: an image spanning two discs, split under two
-        headings, would report one cover as two.
-        """
-        if len({t.disc_num for r in self.rows for t in r.tracks} - {None}) < 2:
-            return ()
-        groups: dict[int, list[ArtRow]] = {}
-        for row in self.rows:
-            discs = {t.disc_num for t in row.tracks}
-            if len(discs) != 1 or None in discs:
-                return ()
-            groups.setdefault(discs.pop(), []).append(row)  # type: ignore[arg-type]
-        return tuple(
-            Disc(number=n, rows=tuple(rows), tracks=sum(len(r.tracks) for r in rows))
-            for n, rows in sorted(groups.items())
-        )
-
-    @property
-    def verdict(self) -> str:
-        """The section's one line, stating what is there.
-
-        Written here rather than in the template for the reason
-        `Consensus.odd_summary` is: it is the sentence a user reads to decide
-        whether anything is wrong, and it has six shapes. Scattering those across
-        a Jinja `{% if %}` chain puts the wording where nobody reviews it.
-
-        No alarm anywhere in it. An album assembled over decades having uneven
-        artwork is normal, and a compilation having four covers is correct.
-        """
-        images = self.images
-        gaps = sum(len(r.tracks) for r in self.rows if r.is_gap)
-        carried = self.total_tracks - gaps - self.unreadable
-
-        if self.cover_unreadable and not images:
-            return "Harmonist couldn't read this album's folder cover."
-        if not images and self.cover is None:
-            return "No artwork. There is no cover file, and no track carries an embedded image."
-        if not images:
-            name = self.cover.name if self.cover else "cover"
-            return f"{name} only. No track carries an embedded image."
-        if len(images) > 1:
-            return f"{self.total_tracks} tracks, {len(images)} different images."
-        if gaps:
-            return (
-                f"{carried} of {self.total_tracks} tracks carry artwork. "
-                f"{gaps} {'has' if gaps == 1 else 'have'} none."
-            )
-        if self.cover and self.cover.image.digest != images[0].image.digest:  # type: ignore[union-attr]
-            return "Your tracks carry a different image from the folder cover."
-        where = f" and in {self.cover.name}" if self.cover else ""
-        return f"One image, on every track{where}."
+        return any(r.writes for r in self.rows)
 
     @property
     def distinct(self) -> tuple[tuple[EmbeddedArt, str], ...]:
@@ -248,7 +242,7 @@ class ArtworkView:
         out: dict[str, tuple[EmbeddedArt, str]] = {}
         for row in self.images:
             assert row.image is not None  # `images` filters them out
-            out.setdefault(row.image.digest, (row.image, row.label(self.total_tracks)))
+            out.setdefault(row.image.digest, (row.image, row.label))
         if self.cover is not None:
             out.setdefault(self.cover.image.digest, (self.cover.image, self.cover.name))
         return tuple(out.values())
@@ -258,14 +252,12 @@ class ArtworkView:
         """The count beside the section heading — "3 images · 2 gaps", or None
         when there is nothing to count. Mirrors History's `· N`.
 
-        Counts what the TRACKS carry, never the folder cover: the section is
-        about the album's own artwork, and the cover is what would be written
-        over it. The gaps are counted alongside because otherwise a heading
-        reading "1 image" sits above an album where a third of the tracks have
-        none — true, and quietly missing the point.
+        The gaps are counted alongside because otherwise a heading reading
+        "1 image" sits above an album where a third of the tracks have none —
+        true, and quietly missing the point.
         """
         n = len(self.images)
-        gaps = sum(1 for r in self.rows if r.is_gap for _ in r.tracks)
+        gaps = sum(len(r.tracks) for r in self.rows if r.is_gap)
         if not n:
             return None
         images = "1 image" if n == 1 else f"{n} images"
@@ -308,9 +300,9 @@ def summarise(
       nothing is FILLED.
 
     That third case is #397: an album that is uniform except for a hole in it has
-    one distinct image, so the preservation guard does not fire and the ten
-    correct images are rewritten to fill the two gaps. The section states it
-    plainly rather than hiding it — see the issue for what the fix costs.
+    one distinct image, so the preservation guard does not fire and the correct
+    images are rewritten to fill the gaps. The section states it plainly rather
+    than hiding it — see the issue for what the fix costs.
     """
     readable = [(name, t) for name, t in tracks if not t.unreadable]
     by_digest: dict[str, list[TrackRef]] = {}
@@ -318,7 +310,9 @@ def summarise(
     gap: list[TrackRef] = []
 
     for name, tags in readable:
-        ref = TrackRef(name=name, track_num=tags.track_num, disc_num=tags.disc_num)
+        ref = TrackRef(
+            name=name, track_num=tags.track_num, disc_num=tags.disc_num, title=tags.title
+        )
         if tags.art is None:
             gap.append(ref)
             continue
@@ -326,29 +320,50 @@ def summarise(
         art_of.setdefault(tags.art.digest, tags.art)
 
     preserved = cover is None or has_per_track_art(by_digest)
+    # More than one disc is a property of the ALBUM, not of a row: a box set
+    # whose images each sit on one disc still needs every label to name its disc,
+    # or two discs' track 1 read as one repeated row (#400).
+    multi_disc = len({t.disc_num for _, t in readable} - {None}) > 1
+
+    def row(
+        image: EmbeddedArt | None,
+        refs: tuple[TrackRef, ...],
+        outcome: Outcome,
+        on_cover: str | None = None,
+    ) -> ArtRow:
+        return ArtRow(
+            image=image,
+            tracks=refs,
+            outcome=outcome,
+            total_tracks=len(tracks),
+            multi_disc=multi_disc,
+            on_cover=on_cover,
+        )
+
+    def carried_by_cover(digest: str) -> str | None:
+        return cover.name if cover is not None and cover.image.digest == digest else None
 
     rows = [
-        ArtRow(
-            image=art_of[d],
-            tracks=tuple(refs),
-            outcome=(
-                Outcome.KEPT
-                if preserved
-                else Outcome.SAME
-                if cover is not None and cover.image.digest == d
-                else Outcome.REPLACED
-            ),
+        row(
+            art_of[digest],
+            tuple(refs),
+            Outcome.KEPT
+            if preserved
+            else Outcome.SAME
+            if carried_by_cover(digest)
+            else Outcome.REPLACED,
+            on_cover=carried_by_cover(digest),
         )
-        for d, refs in by_digest.items()
+        for digest, refs in by_digest.items()
     ]
+    # The folder cover is a carrier too, and gets a row of its own when no track
+    # already accounts for it (#400) — the album HAS this image, whatever the
+    # tracks carry, and a reader deciding what a re-tag would do needs to see it
+    # beside the rest rather than only as something arriving from outside.
+    if cover is not None and cover.image.digest not in by_digest:
+        rows.append(row(cover.image, (), Outcome.SAME, on_cover=cover.name))
     if gap:
-        rows.append(
-            ArtRow(
-                image=None,
-                tracks=tuple(gap),
-                outcome=Outcome.KEPT if preserved else Outcome.FILLED,
-            )
-        )
+        rows.append(row(None, tuple(gap), Outcome.KEPT if preserved else Outcome.FILLED))
 
     return ArtworkView(
         rows=tuple(rows),

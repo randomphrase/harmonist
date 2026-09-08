@@ -41,6 +41,7 @@ from harmonist.tagger import (
     ATOM_MB_ALBUM_COUNTRY,
     ATOM_MB_ALBUM_ID,
     ATOM_TITLE,
+    ATOM_TRACK_NUM,
 )
 from harmonist.web.main import create_app
 
@@ -8641,6 +8642,11 @@ def _album_with_art(cfg, name: str, *, covers: list[bytes | None], folder: bytes
     for i, cover in enumerate(covers, start=1):
         f = d / f"{i:02d} Track.m4a"
         shutil.copy(SINE_M4A, f)
+        # Numbered, because the Artwork section names the tracks carrying each
+        # image by position — an unnumbered file can only be counted (#400).
+        audio = MP4(f)
+        audio[ATOM_TRACK_NUM] = [(i, len(covers))]
+        audio.save()
         if cover is not None:
             formats.write_cover(f, cover)
     if folder is not None:
@@ -8666,7 +8672,7 @@ def test_artwork_section_renders_without_a_musicbrainz_release(client, cfg):
     r = client.get(f"/album/{album_id}/artwork")
 
     assert r.status_code == 200
-    assert "One image, on every track." in r.text
+    assert "All 2 tracks" in r.text
 
 
 def test_artwork_section_names_the_tracks_missing_art(client, cfg):
@@ -8677,8 +8683,12 @@ def test_artwork_section_names_the_tracks_missing_art(client, cfg):
 
     r = client.get(f"/album/{album_id}/artwork")
 
-    assert "2 of 3 tracks carry artwork. 1 has none." in r.text
+    # The tracks that have art, the file that doesn't, and the cover as its own
+    # row — the folder cover is a file the album HAS, not only an incoming
+    # value (#400).
+    assert "Tracks 1, 3" in r.text
     assert "02 Track.m4a" in r.text
+    assert "cover.jpg" in r.text
     # …and says plainly that filling the gap rewrites the two that were right.
     assert "Replaced" in r.text
     assert "Filled in" in r.text
@@ -8691,10 +8701,11 @@ def test_artwork_section_promises_no_overwrite_where_art_is_preserved(client, cf
 
     r = client.get(f"/album/{album_id}/artwork")
 
-    assert "2 tracks, 2 different images." in r.text
-    assert "Left as is" in r.text
+    # Nothing is written, so nothing is said: no outcome, no incoming image, and
+    # no column headings, exactly as a matching tag row says nothing (#400).
+    assert "Track 1" in r.text
     assert "Replaced" not in r.text
-    # No column headings either: there is no second column to name.
+    assert "Left as is" not in r.text
     assert "After a re-tag" not in r.text
 
 

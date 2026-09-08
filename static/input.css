@@ -919,20 +919,15 @@ dialog::backdrop {
   font-weight: 700;
   cursor: default;
 }
-/* The right half of a row that writes nothing. Holds the column open so the
-   rows stay aligned, and shows no second picture — one there would say
-   Harmonist is about to overwrite artwork it is in fact preserving. */
-.art-row__art--nil { display: block; width: 6.5rem; height: 6.5rem; }
-
 .art-row__facts { display: flex; flex-direction: column; gap: .18rem; min-width: 0; }
 .art-row__who { font-size: .85rem; font-weight: 600; }
+.art-row__title { font-size: .8rem; color: var(--color-ink); }
 .art-row__meta {
   font-family: var(--font-mono);
   font-size: .68rem;
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
-.art-row__meta-plain { font-size: .72rem; color: var(--color-muted); }
 .art-row__files {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
@@ -958,7 +953,6 @@ dialog::backdrop {
 .art-row__facts--mb .art-row__outcome {
   color: color-mix(in srgb, var(--color-mb-purple) 78%, var(--color-muted));
 }
-.art-row__facts--nil .art-row__who { font-weight: 400; color: var(--color-muted); }
 
 .art-rows__disc {
   font-size: var(--text-2xs);
@@ -1005,6 +999,5 @@ dialog::backdrop {
   .art-row { grid-template-columns: 6.5rem minmax(0, 1fr); row-gap: .7rem; }
   .art-row__side--after > * { margin-left: 0; }
   .art-row__side--after > .art-row__art,
-  .art-row__side--after > .art-row__art--none,
-  .art-row__side--after > .art-row__art--nil { margin-left: 1.5rem; }
+  .art-row__side--after > .art-row__art--none { margin-left: 1.5rem; }
 }
