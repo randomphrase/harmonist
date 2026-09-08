@@ -34,12 +34,11 @@
     {% endif %}
 </h2>
 
-{# What the Cover Art Archive holds, once it has been asked (#276). A line, not
-   a row: nothing is written from it yet, so it states a finding rather than
-   proposing a change. The control that asks lives with the panel's other
-   "checked" dates, where the MusicBrainz one already is. #}
+{# The answers the archive can give that have no row to draw — no front cover,
+   or one whose size could not be read (#276). Muted, not purple: purple means
+   the value about to be written, and neither of these is one (#433). #}
 {% if artwork.caa_note %}
-<p class="text-sm text-mb-purple">{{ artwork.caa_note }}</p>
+<p class="text-sm text-muted">{{ artwork.caa_note }}</p>
 {% endif %}
 
 {% if artwork.cover_unreadable %}
@@ -130,6 +129,31 @@
         {% endif %}
     </div>
     {% endfor %}
+</div>
+{% endif %}
+
+{# The archive's cover when it is not what would be written (#433) — a row like
+   any other candidate, because that is what it is, with a placeholder where the
+   picture would be.
+
+   The placeholder is honest rather than a stand-in: a losing candidate is never
+   downloaded, so there genuinely is no image to show, and fetching one would
+   spend megabytes on a picture nobody will use.
+
+   Muted throughout, and no hexagon. Both marks mean "about to be written", and
+   this is the one image on the page that certainly is not. Why should be legible
+   from the rows above: they are larger. #}
+{% if artwork.archive_candidate %}
+<div class="art-rows art-rows--muted">
+    <div class="art-row">
+        <div class="art-row__side">
+            <span class="art-row__art art-row__art--absent" aria-hidden="true">not loaded</span>
+            <div class="art-row__facts">
+                <span class="art-row__who">Cover Art Archive</span>
+                <span class="art-row__meta">{{ artwork.archive_candidate }}</span>
+            </div>
+        </div>
+    </div>
 </div>
 {% endif %}
 

@@ -70,6 +70,12 @@ class CoverArtAnswer(Protocol):
     @property
     def height(self) -> int | None: ...
 
+    @property
+    def length(self) -> int | None: ...
+
+    @property
+    def mime(self) -> str | None: ...
+
 
 def beats(mine: Size | None, theirs: Size | None) -> bool:
     """Whether `mine` is the better image: strictly larger on both axes (#410).
@@ -268,6 +274,9 @@ class ArtworkView:
     #: what is already on disk, and the archive's answer is here to say whether
     #: it is worth taking.
     caa: CoverArtAnswer | None = None
+    #: Whether the archive's cover beat everything the album has, and is
+    #: therefore the incoming value rather than an also-ran (#433).
+    archive_wins: bool = False
     #: A folder cover exists but could not be read. NOT the same as having none,
     #: and the difference is the whole right-hand column: with the cover unread
     #: there is no saying what a re-tag would write, so the section states that
@@ -328,6 +337,37 @@ class ArtworkView:
         return f"This album has {' and '.join(parts)}."
 
     @property
+    def archive_candidate(self) -> str | None:
+        """The archive's cover as a row of facts, when it is not what would be
+        written.
+
+        A row rather than a sentence, because it is one of the images this album
+        could carry and everything else in that category is a row (#433). Drawn
+        muted, with a placeholder where the picture would be and no hexagon: it
+        exists, and nothing is going to come of it.
+
+        The placeholder is honest rather than a stand-in. A losing candidate is
+        deliberately never downloaded (#276) — measured with a 64 KB range and
+        forgotten — so there genuinely is no picture, and fetching one to show
+        would spend megabytes on an image nobody will use.
+
+        None when the archive's cover WINS: it is then the incoming value, and
+        appears in that column with the hexagon, which is where purple belongs.
+
+        "Not what would be written" covers two cases and deliberately treats
+        them alike: a cover that is smaller than the album's own, and one that
+        is bigger but was never downloaded. The second is not a hole in the
+        model — the tagger reads the same cache, so an image that is not there
+        cannot be written whatever its measurement says, and a row stating its
+        size is the honest account of it.
+        """
+        answer = self.caa
+        if answer is None or not answer.has_art or self.archive_wins:
+            return None
+        size = Size(answer.width, answer.height) if answer.width and answer.height else None
+        return describe_parts(size, answer.mime, answer.length)
+
+    @property
     def caa_note(self) -> str | None:
         """What the archive has, said in one line — or None when it has not been
         asked, which is most albums.
@@ -343,20 +383,11 @@ class ArtworkView:
             return None
         if not answer.has_art:
             return "The Cover Art Archive has no front cover for this release."
-        theirs = Size(answer.width, answer.height) if answer.width and answer.height else None
-        if theirs is None:
+        if answer.width is None or answer.height is None:
             return "The Cover Art Archive has a front cover, but its size could not be read."
-        best = max(
-            (r.image.size for r in self.images if r.image and r.image.size),
-            key=lambda s: s.width,
-            default=None,
-        )
-        if best is not None and not beats(theirs, best):
-            return (
-                f"The Cover Art Archive's front cover is {theirs.width}×{theirs.height} — "
-                "no better than what this album already has."
-            )
-        return f"The Cover Art Archive has a larger front cover: {theirs.width}×{theirs.height}."
+        # Anything else has a ROW — either the placeholder above, or the incoming
+        # image when it wins. A sentence as well would say it twice (#433).
+        return None
 
     @property
     def count(self) -> str | None:
@@ -375,6 +406,23 @@ class ArtworkView:
         return f"{images} · {gaps} gap{'' if gaps == 1 else 's'}" if gaps else images
 
 
+def describe_parts(size: Size | None, mime: str | None, length: int | None) -> str:
+    """The facts line, from parts rather than from an image (#433).
+
+    The archive's losing cover is never downloaded, so there is no `EmbeddedArt`
+    to describe — only what the measurement recorded. Same formatter either way,
+    so the two are comparable at a glance, which is the whole point of showing
+    them together.
+    """
+    dims = f"{size.width}×{size.height} · " if size else ""
+    kind = f"{mime.removeprefix('image/').upper()}" if mime else "?"
+    if not length:
+        return f"{dims}{kind}"
+    kb = length / 1024
+    weight = f"{kb / 1024:.1f} MB" if kb >= 1024 else f"{kb:.0f} KB"
+    return f"{dims}{kind} · {weight}"
+
+
 def describe(image: EmbeddedArt) -> str:
     """One image as a line of facts: "1400×1400 · JPEG · 718 KB".
 
@@ -385,11 +433,7 @@ def describe(image: EmbeddedArt) -> str:
 
     KB and MB in the units a user recognises off a file listing, not bytes.
     """
-    size = f"{image.size.width}×{image.size.height} · " if image.size else ""
-    kind = image.mime.removeprefix("image/").upper()
-    kb = image.length / 1024
-    weight = f"{kb / 1024:.1f} MB" if kb >= 1024 else f"{kb:.0f} KB"
-    return f"{size}{kind} · {weight}"
+    return describe_parts(image.size, image.mime, image.length)
 
 
 def summarise(
@@ -569,4 +613,5 @@ def summarise(
         total_tracks=len(tracks),
         unreadable=len(tracks) - len(readable),
         caa=caa,
+        archive_wins=archive_wins,
     )

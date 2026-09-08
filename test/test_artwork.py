@@ -412,8 +412,9 @@ class TestCoverArtArchiveNote:
     """What the section says once the archive has been asked (#276)."""
 
     class _Answer:
-        def __init__(self, width=None, height=None, art=True):
+        def __init__(self, width=None, height=None, art=True, length=718000, mime="image/jpeg"):
             self.width, self.height, self._art = width, height, art
+            self.length, self.mime = length, mime
 
         @property
         def has_art(self) -> bool:
@@ -422,23 +423,31 @@ class TestCoverArtArchiveNote:
     def test_nothing_said_until_it_has_been_asked(self) -> None:
         assert artwork.summarise(album(art_of(1)), None).caa_note is None
 
-    def test_a_larger_archive_cover_is_worth_saying(self) -> None:
+    def test_a_winning_archive_cover_needs_no_sentence(self) -> None:
+        """It is the incoming value, shown in that column with the hexagon —
+        saying it in prose as well would say it twice (#433)."""
+        # The cached IMAGE as well as the answer: an archive cover that was
+        # never downloaded cannot be written, so it cannot win — the tagger
+        # reads the same cache.
         view = artwork.summarise(
-            album(art_of(1, width=600, height=600)), None, self._Answer(1400, 1400)
+            album(art_of(1, width=600, height=600)),
+            cover_of(art_of(2, width=600, height=600)),
+            self._Answer(1400, 1400),
+            archive=art_of(3, width=1400, height=1400),
         )
-        assert view.caa_note == "The Cover Art Archive has a larger front cover: 1400×1400."
+        assert view.caa_note is None
+        assert view.archive_candidate is None  # not an also-ran; it won
 
-    def test_measured_against_the_best_image_the_album_has(self) -> None:
-        """Not against the folder cover alone: an album whose tracks carry
-        3000px is not improved by a 2000px archive cover just because its
-        cover.jpg is smaller still."""
+    def test_a_losing_archive_cover_is_a_row_of_facts_not_a_sentence(self) -> None:
+        """Drawn as the candidate it is, muted, with no picture — a losing image
+        is never downloaded, so there genuinely is none to show (#433)."""
         big = art_of(1, width=3000, height=3000)
         small = art_of(2, width=500, height=500)
 
         view = artwork.summarise(album(big), cover_of(small), self._Answer(2000, 2000))
 
-        assert view.caa_note is not None
-        assert "no better than what this album already has" in view.caa_note
+        assert view.caa_note is None
+        assert view.archive_candidate == "2000×2000 · JPEG · 701 KB"
 
     def test_the_archive_having_nothing_is_reported(self) -> None:
         view = artwork.summarise(album(art_of(1)), None, self._Answer(art=False))

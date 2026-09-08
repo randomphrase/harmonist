@@ -8973,3 +8973,40 @@ def test_the_artwork_note_is_cleared_when_nothing_would_change(client, cfg):
     rendered = " ".join(r.text.split())
     assert 'id="album-artwork-note-' in rendered  # the wrapper is always sent
     assert 'href="#album-artwork"' not in rendered  # …and is empty
+
+
+def test_a_losing_archive_cover_is_drawn_as_a_muted_row(client, cfg):
+    """Not a purple sentence: purple means the value about to be written, and
+    this one certainly is not (#433)."""
+    from harmonist import activity_store, formats
+
+    d = _make_tagged_album(cfg, "Loser", mbid="rel-loser", tagged_at=datetime.now(UTC))
+    good = _png(1)
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, good)
+    (d / "cover.jpg").write_bytes(good)
+    # The archive has one, and it is smaller than what the album carries.
+    activity_store.store_cover_art(
+        "rel-loser",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-loser/1.jpg",
+            width=10,
+            height=10,
+            length=1024,
+            mime="image/jpeg",
+        ),
+    )
+
+    r = client.get(f"/album/{_id_for(cfg, d)}/artwork")
+    rendered = " ".join(r.text.split())
+
+    assert "Cover Art Archive" in rendered
+    assert "not loaded" in rendered  # never downloaded, so there is no picture
+    assert "10×10" in rendered
+    assert "art-rows--muted" in rendered
+    # …and none of the "about to be written" vocabulary. Scoped to the note's
+    # own class rather than the bare colour, which also appears on the refresh
+    # button's hover state further up the page.
+    assert "no better than what this album already has" not in rendered
+    assert 'class="text-sm text-mb-purple"' not in rendered
