@@ -91,7 +91,6 @@ versions follow [semantic versioning](https://semver.org).
   the Re-tag buttons no longer claim "per-track embedded artwork is preserved" —
   true once, and since #418 simply: your artwork is left alone (#417).
 
-
 - **The last five artwork changes to any album can always be undone**, whatever
   else Harmonist has been tagging. Kept artwork used to be bounded only by a
   total size, so a busy night's re-tagging could quietly evict the copy behind
@@ -99,6 +98,21 @@ versions follow [semantic versioning](https://semver.org).
   backstop, and Settings now states the promise rather than only the number.
   Configurable as `artwork_store.keep_per_album` (#408).
 
+- `make demo` starts a live-reloading demo server on port 8000 with separate
+  demo settings, ready for the devcontainer's port mapping.
+
+- **Harmonist can take better artwork from the Cover Art Archive.** The album
+  panel gains a **CAA checked** date beside the MusicBrainz one, with a control
+  to ask; if the archive's front cover is larger than anything the album has,
+  it is kept locally and a re-tag writes it — to the tracks and to the folder
+  cover, whose previous image is kept so the change can be undone. Nothing is
+  fetched unless you press, a tagging never reaches the network, and an archive
+  cover that is no better than yours is ignored. The Artwork section shows the
+  archive's image beside your own, marked as MusicBrainz's, and serves it from
+  Harmonist — so opening an album never tells the Internet Archive which records
+  you own (#276). The **CAA checked** row shows on any album with a MusicBrainz
+  release, reading *not yet* until you ask — it carries the control that asks,
+  so hiding it until the first check left nothing to press (#419).
 
 ### Fixed
 

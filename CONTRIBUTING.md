@@ -3,6 +3,10 @@
 Thanks for your interest in Harmonist. This is the short version of how work flows
 through the project.
 
+## Development workspace
+
+For a fresh clone, see [the devcontainer setup](docs/development.md).
+
 ## Every change comes as a pull request
 
 All contributions land through a PR — there is no direct pushing to `main`. Fork

@@ -1,0 +1,7 @@
+# Keep prompt customization out of non-interactive shells used by tools.
+[[ -o interactive ]] || return
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="robbyrussell"
+plugins=(git)
+zstyle ':omz:update' mode disabled
+source "$ZSH/oh-my-zsh.sh"

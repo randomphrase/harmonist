@@ -1,6 +1,8 @@
 # Keep the build context (and image) lean.
 .git
 .github
+.devcontainer
+.dev-data
 .venv
 venv
 __pycache__

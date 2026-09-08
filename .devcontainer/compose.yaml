@@ -1,0 +1,15 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: harmonist-dev
+    init: true
+    volumes:
+      - ..:/workspaces/harmonist
+    environment:
+      HARMONIST_MUSIC_DIR: /workspaces/harmonist/music
+      HARMONIST_CONFIG_DIR: /workspaces/harmonist/.dev-data/config
+    ports:
+      - "127.0.0.1:8000:8000"
+    command: ["sleep", "infinity"]

@@ -1,4 +1,4 @@
-.PHONY: css css-watch test coverage run lint format typecheck template-lint check e2e
+.PHONY: css css-watch test coverage run lint format typecheck template-lint check e2e demo
 
 # Pin the Tailwind standalone binary so `make css` is byte-reproducible across
 # machines + CI — pytailwindcss otherwise downloads 'latest', whose minified
@@ -54,3 +54,9 @@ e2e:
 # Local dev server. Set HARMONIST_MUSIC_DIR / HARMONIST_CONFIG_DIR as needed.
 run:
 	uvicorn harmonist.web.main:app --reload
+
+# Demo server, reachable through the devcontainer's published port.
+# Keep demo settings separate from ordinary development settings.
+demo:
+	HARMONIST_DEMO_MODE=1 HARMONIST_CONFIG_DIR="$(CURDIR)/.dev-data/demo-config" \
+		uvicorn harmonist.web.main:app --reload --host 0.0.0.0 --port 8000
