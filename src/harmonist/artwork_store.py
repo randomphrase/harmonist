@@ -100,6 +100,11 @@ def keep(data: bytes, *, mime: str | None = None) -> str | None:
     refusing it because the undo store is full would be a worse failure than
     losing the undo. Returns None so the caller can record honestly that no
     copy was kept.
+
+    **A digest means the image is still there** (#427). Callers treat one as
+    permission to destroy the original — `tagger._promote_album_image` overwrites
+    a folder cover on the strength of it — so a key for an image the sweep at the
+    end of this call already deleted is not a weaker promise, it is a false one.
     """
     root = _root
     if root is None:
@@ -127,7 +132,19 @@ def keep(data: bytes, *, mime: str | None = None) -> str | None:
         log.exception("could not keep artwork %s — the change will not be undoable", key[:12])
         return None
     audit.record("artwork.keep", digest=key, bytes=len(data))
-    _evict_if_over_cap()
+    # `pending`, because the tagging that is replacing this image has not
+    # recorded itself yet: protection is derived from those records, so for the
+    # length of this call the newest change is the one image nothing protects
+    # (#427). Without saying so here, eviction spends the overage on it first
+    # and hands back a key to a file it has just deleted.
+    _evict_if_over_cap(pending=key)
+    if path_for(key) is None:
+        log.warning(
+            "artwork %s could not be retained under the store's cap — the change "
+            "it was backing up will not be undoable",
+            key[:12],
+        )
+        return None
     return key
 
 
@@ -220,7 +237,7 @@ def protected_digests() -> frozenset[str]:
     return frozenset(out)
 
 
-def _evict_if_over_cap() -> None:
+def _evict_if_over_cap(*, pending: str | None = None) -> None:
     """Drop images until the store is under cap, protected ones last.
 
     Two passes, and the order is the whole point (#408). The first spends the
@@ -234,6 +251,11 @@ def _evict_if_over_cap() -> None:
     Within each pass, least recently *referenced* rather than stored: `keep`
     touches an image it already holds, so an image shared by several albums is
     as fresh as its newest use.
+
+    `pending` is the backup being taken right now, which no record protects yet
+    because the tagging that replaces it has not been written (#427). It joins
+    the protected pass as its newest member, so the documented policy — oldest
+    change first — applies to it rather than around it.
     """
     root = _root
     if root is None or not root.is_dir():
@@ -248,6 +270,8 @@ def _evict_if_over_cap() -> None:
         return
 
     protected = protected_digests()
+    if pending is not None:
+        protected |= {pending}
     by_age = sorted(entries, key=lambda e: e[1].st_mtime)
     passes = (
         [e for e in by_age if e[0].stem not in protected],

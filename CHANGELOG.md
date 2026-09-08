@@ -37,6 +37,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **The artwork change you just made is the one that can be undone.** A backup
+  taken as an image was replaced could be evicted by the store's size cap in the
+  same breath — leaving the newest change the only unreversible one, and, for a
+  folder cover, overwriting the original on the strength of a backup that was
+  already gone. The image being kept now is retained ahead of older history, and
+  if it genuinely cannot fit, the cover is left alone (#427).
+
 - **The Artwork section shows what a re-tag would put there**, beside what is
   there now and under a heading that says which is which — where it previously
   asserted "replaced by…" in a way that read equally as something that had

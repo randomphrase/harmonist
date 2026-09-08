@@ -2251,6 +2251,25 @@ def test_the_replaced_folder_cover_can_be_undone(album_with_tracks, tmp_path):
     assert kept.read_bytes() == small
 
 
+def test_a_cover_is_not_replaced_when_its_backup_could_not_be_retained(album_with_tracks, tmp_path):
+    """A digest from `keep` is what licenses the overwrite, so a digest for an
+    image the store's cap evicted on the way out would make the newest artwork
+    change the one irreversible one (#427). A cap too small to hold the cover
+    means the promotion does not happen at all."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork", max_bytes=10)
+    album_dir = album_with_tracks(1)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(1000, 1000))
+    cover = tmp_path / "cover.jpg"
+    small = _sized_jpeg(400, 400)
+    cover.write_bytes(small)
+
+    tagger.update_artwork(album_dir, _single_track_release(), cover)
+
+    assert cover.read_bytes() == small
+
+
 def test_a_larger_folder_cover_is_still_embedded(album_with_tracks, tmp_path):
     """The other direction is unchanged: the cover wins when it is the better
     image, which is what a re-tag has always done."""

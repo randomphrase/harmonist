@@ -137,12 +137,14 @@ def test_eviction_is_audited_because_it_deletes_the_last_copy(tmp_path):
 
 def test_a_zero_cap_keeps_nothing():
     """A legitimate choice on a volume with no room: artwork replacement stops
-    being reversible, and nothing accumulates."""
+    being reversible, and nothing accumulates. The caller is told so rather
+    than handed a digest for a file the cap evicted on its way out (#427) —
+    that digest is what `_promote_album_image` reads as permission to destroy
+    the original."""
     artwork_store.configure(artwork_store._root, max_bytes=0)
-    key = artwork_store.keep(JPEG, mime="image/jpeg")
 
-    assert key is not None  # the write happened...
-    assert artwork_store.path_for(key) is None  # ...and was immediately evicted
+    assert artwork_store.keep(JPEG, mime="image/jpeg") is None
+    assert artwork_store.path_for(artwork_store.digest(JPEG)) is None
 
 
 @pytest.mark.parametrize(
@@ -265,7 +267,10 @@ class TestEviction:
         # A cap that forces exactly one of the two out.
         artwork_store.configure(artwork_store._root, max_bytes=len(protected) + 100)
 
-        artwork_store.keep(_image(3))  # any keep triggers the sweep
+        # Swept directly rather than by keeping a third image, because the image
+        # a `keep` is in the middle of storing is protected in its own right
+        # (#427) and would be a third competitor rather than a trigger.
+        artwork_store._evict_if_over_cap()
 
         assert artwork_store.path_for(artwork_store.digest(protected)) is not None
         assert artwork_store.path_for(artwork_store.digest(old_unprotected)) is None
@@ -298,3 +303,29 @@ class TestEviction:
         artwork_store.keep(new)
 
         assert artwork_store.path_for(artwork_store.digest(old)) is None
+
+    def test_the_backup_being_taken_now_is_not_the_first_thing_evicted(self):
+        """#427. `keep` runs BEFORE the tagger records the replacement, so the
+        image it just wrote is the only unprotected candidate when older
+        protected ones already fill the cap — and eviction would spend the
+        overage on it. The newest change is the one most likely to be undone;
+        it must outlive older protected history, not be sacrificed for it."""
+        older, taking_now = _image(1), _image(2)
+        artwork_store.keep(older)
+        _replaced("album-a", older)
+        artwork_store.configure(artwork_store._root, max_bytes=len(taking_now) + 100)
+
+        key = artwork_store.keep(taking_now)
+
+        assert key is not None
+        assert artwork_store.path_for(key) is not None, "the new backup was evicted"
+        assert artwork_store.path_for(artwork_store.digest(older)) is None
+
+    def test_a_backup_that_could_not_be_retained_is_reported_as_not_kept(self):
+        """A digest is the caller's licence to overwrite the original (see
+        `tagger._promote_album_image`). If the cap cannot hold the image even
+        after everything else has gone, saying so is the difference between a
+        change that is merely unundoable and one whose original is destroyed."""
+        artwork_store.configure(artwork_store._root, max_bytes=10)
+
+        assert artwork_store.keep(_image(1)) is None
