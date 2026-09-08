@@ -138,6 +138,22 @@ class FolderCover:
 
 
 @dataclass(frozen=True)
+class ArchiveRow:
+    """The Cover Art Archive's answer, drawn as a row rather than a sentence.
+
+    Every answer it can give is one of these, because the archive's cover is one
+    of the images this album could carry and everything in that category is a row
+    (#433). `placeholder` is the word in the frame where a picture would be, and
+    it distinguishes the two ways there isn't one: *not loaded* for an image that
+    exists and was never downloaded because it lost, *none* for a release the
+    archive holds nothing for.
+    """
+
+    placeholder: str
+    meta: str
+
+
+@dataclass(frozen=True)
 class ArtRow:
     """One distinct image, and everything carrying it.
 
@@ -337,7 +353,7 @@ class ArtworkView:
         return f"This album has {' and '.join(parts)}."
 
     @property
-    def archive_candidate(self) -> str | None:
+    def archive_row(self) -> ArchiveRow | None:
         """The archive's cover as a row of facts, when it is not what would be
         written.
 
@@ -362,32 +378,18 @@ class ArtworkView:
         size is the honest account of it.
         """
         answer = self.caa
-        if answer is None or not answer.has_art or self.archive_wins:
-            return None
-        size = Size(answer.width, answer.height) if answer.width and answer.height else None
-        return describe_parts(size, answer.mime, answer.length)
-
-    @property
-    def caa_note(self) -> str | None:
-        """What the archive has, said in one line — or None when it has not been
-        asked, which is most albums.
-
-        Compared against the LARGEST image the album already has, not against
-        the folder cover alone: the question a reader is asking is whether the
-        archive is worth taking, and an album whose tracks carry 3000px is not
-        improved by a 2000px archive cover just because its `cover.jpg` is
-        smaller still.
-        """
-        answer = self.caa
-        if answer is None:
+        if answer is None or self.archive_wins:
             return None
         if not answer.has_art:
-            return "The Cover Art Archive has no front cover for this release."
-        if answer.width is None or answer.height is None:
-            return "The Cover Art Archive has a front cover, but its size could not be read."
-        # Anything else has a ROW — either the placeholder above, or the incoming
-        # image when it wins. A sentence as well would say it twice (#433).
-        return None
+            # A different word, because it is a different fact: there is nothing
+            # to load, rather than something not loaded (#433).
+            return ArchiveRow(placeholder="none", meta="no front cover for this release")
+        size = Size(answer.width, answer.height) if answer.width and answer.height else None
+        if size is None:
+            return ArchiveRow(placeholder="not loaded", meta="size could not be read")
+        return ArchiveRow(
+            placeholder="not loaded", meta=describe_parts(size, answer.mime, answer.length)
+        )
 
     @property
     def count(self) -> str | None:

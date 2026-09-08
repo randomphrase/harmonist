@@ -34,13 +34,6 @@
     {% endif %}
 </h2>
 
-{# The answers the archive can give that have no row to draw — no front cover,
-   or one whose size could not be read (#276). Muted, not purple: purple means
-   the value about to be written, and neither of these is one (#433). #}
-{% if artwork.caa_note %}
-<p class="text-sm text-muted">{{ artwork.caa_note }}</p>
-{% endif %}
-
 {% if artwork.cover_unreadable %}
 {# "Couldn't read it" and "there isn't one" lead to opposite conclusions about
    what a re-tag would write, so the section says which (#112). #}
@@ -143,14 +136,17 @@
    Muted throughout, and no hexagon. Both marks mean "about to be written", and
    this is the one image on the page that certainly is not. Why should be legible
    from the rows above: they are larger. #}
-{% if artwork.archive_candidate %}
+{% if artwork.archive_row %}
 <div class="art-rows art-rows--muted">
     <div class="art-row">
         <div class="art-row__side">
-            <span class="art-row__art art-row__art--absent" aria-hidden="true">not loaded</span>
+            {# The word distinguishes the two ways there is no picture: an image
+               that exists and was never downloaded because it lost, and a
+               release the archive holds nothing for. #}
+            <span class="art-row__art art-row__art--absent" aria-hidden="true">{{ artwork.archive_row.placeholder }}</span>
             <div class="art-row__facts">
                 <span class="art-row__who">Cover Art Archive</span>
-                <span class="art-row__meta">{{ artwork.archive_candidate }}</span>
+                <span class="art-row__meta">{{ artwork.archive_row.meta }}</span>
             </div>
         </div>
     </div>

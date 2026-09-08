@@ -9010,3 +9010,22 @@ def test_a_losing_archive_cover_is_drawn_as_a_muted_row(client, cfg):
     # button's hover state further up the page.
     assert "no better than what this album already has" not in rendered
     assert 'class="text-sm text-mb-purple"' not in rendered
+
+
+def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
+    """A different word from "not loaded": there is nothing to load (#433)."""
+    from harmonist import activity_store, formats
+
+    d = _make_tagged_album(cfg, "NoArt", mbid="rel-noart", tagged_at=datetime.now(UTC))
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, _png(1))
+    activity_store.store_cover_art(
+        "rel-noart", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    )
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+
+    assert "no front cover for this release" in rendered
+    assert "art-rows--muted" in rendered
+    assert "not loaded" not in rendered  # nothing to load, so not that word
+    assert 'class="text-sm text-mb-purple"' not in rendered

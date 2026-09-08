@@ -421,7 +421,7 @@ class TestCoverArtArchiveNote:
             return self._art
 
     def test_nothing_said_until_it_has_been_asked(self) -> None:
-        assert artwork.summarise(album(art_of(1)), None).caa_note is None
+        assert artwork.summarise(album(art_of(1)), None).archive_row is None
 
     def test_a_winning_archive_cover_needs_no_sentence(self) -> None:
         """It is the incoming value, shown in that column with the hexagon —
@@ -435,8 +435,7 @@ class TestCoverArtArchiveNote:
             self._Answer(1400, 1400),
             archive=art_of(3, width=1400, height=1400),
         )
-        assert view.caa_note is None
-        assert view.archive_candidate is None  # not an also-ran; it won
+        assert view.archive_row is None  # not an also-ran; it won
 
     def test_a_losing_archive_cover_is_a_row_of_facts_not_a_sentence(self) -> None:
         """Drawn as the candidate it is, muted, with no picture — a losing image
@@ -446,17 +445,23 @@ class TestCoverArtArchiveNote:
 
         view = artwork.summarise(album(big), cover_of(small), self._Answer(2000, 2000))
 
-        assert view.caa_note is None
-        assert view.archive_candidate == "2000×2000 · JPEG · 701 KB"
+        row = view.archive_row
+        assert row is not None
+        assert (row.placeholder, row.meta) == ("not loaded", "2000×2000 · JPEG · 701 KB")
 
-    def test_the_archive_having_nothing_is_reported(self) -> None:
+    def test_the_archive_having_nothing_is_its_own_placeholder(self) -> None:
+        """A different word from "not loaded": there is nothing to load, rather
+        than something that was not loaded (#433)."""
         view = artwork.summarise(album(art_of(1)), None, self._Answer(art=False))
-        assert view.caa_note == "The Cover Art Archive has no front cover for this release."
+        row = view.archive_row
+        assert row is not None
+        assert (row.placeholder, row.meta) == ("none", "no front cover for this release")
 
     def test_an_unmeasurable_archive_cover_says_so(self) -> None:
         view = artwork.summarise(album(art_of(1)), None, self._Answer())
-        assert view.caa_note is not None
-        assert "size could not be read" in view.caa_note
+        row = view.archive_row
+        assert row is not None
+        assert row.meta == "size could not be read"
 
 
 class TestArchiveWins:

@@ -45,10 +45,11 @@ versions follow [semantic versioning](https://semver.org).
   likely to be worth undoing on its own, and it has always had its own Undo in
   History — now it has its own way to be done, too (#418).
 
-- **A Cover Art Archive cover that isn't better than yours is shown as what it
-  is** — a greyed row with its size and format and a *not loaded* placeholder,
-  rather than a purple sentence that read like something about to be written
-  (#433).
+- **What the Cover Art Archive has is shown as a row like any other image** —
+  greyed, with its size and format, and a placeholder saying which kind of
+  nothing it is: *not loaded* for a cover that exists but lost, *none* for a
+  release the archive holds nothing for. It used to be a purple sentence, which
+  read like something about to be written (#433).
 
 - **The top of an album's page says when its artwork wants attention**, with a
   link down to the Artwork section, which is usually well below the fold. And
