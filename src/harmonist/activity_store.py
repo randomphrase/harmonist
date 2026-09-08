@@ -317,6 +317,21 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
             mime       TEXT
         )""",
     ),
+    # 9 -> 10: WHICH listing the answer came from (#434).
+    #
+    # The archive attaches a cover to a release or to its release group, and
+    # `cover_art` asks both — so an answer's etag belongs to one listing or the
+    # other, and revalidating the wrong one would return a 304 for a resource
+    # nobody asked about and quietly keep a stale measurement. The etag alone
+    # cannot say which; this says it.
+    #
+    # It is also what lets the album page report a group-level cover as the
+    # group's rather than this edition's, which is a real distinction to someone
+    # choosing between editions.
+    #
+    # NULL on every row written before this, which reads as "release" — the only
+    # listing that was ever asked.
+    ("ALTER TABLE caa_cache ADD COLUMN source TEXT",),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -811,6 +826,15 @@ class CachedCoverArt:
     height: int | None = None
     length: int | None = None
     mime: str | None = None
+    #: Which listing answered: "release" or "release-group" (#434). None on rows
+    #: written before that existed, which can only have been the release.
+    source: str | None = None
+
+    @property
+    def from_release_group(self) -> bool:
+        """Whether this cover belongs to the release GROUP rather than to this
+        edition — worth saying to someone choosing between editions."""
+        return self.source == "release-group"
 
     @property
     def has_art(self) -> bool:
@@ -828,7 +852,7 @@ def cached_cover_art(mbid: str) -> CachedCoverArt | None:
         conn = _ensure()
         with _LOCK:
             row = conn.execute(
-                "SELECT fetched_at, etag, image_url, width, height, length, mime "
+                "SELECT fetched_at, etag, image_url, width, height, length, mime, source "
                 "FROM caa_cache WHERE mbid = ?",
                 (mbid,),
             ).fetchone()
@@ -837,7 +861,7 @@ def cached_cover_art(mbid: str) -> CachedCoverArt | None:
         return None
     if row is None:
         return None
-    fetched_at, etag, image_url, width, height, length, mime = row
+    fetched_at, etag, image_url, width, height, length, mime, source = row
     return CachedCoverArt(
         fetched_at=datetime.fromisoformat(fetched_at),
         etag=etag,
@@ -846,6 +870,7 @@ def cached_cover_art(mbid: str) -> CachedCoverArt | None:
         height=height,
         length=length,
         mime=mime,
+        source=source,
     )
 
 
@@ -856,8 +881,8 @@ def store_cover_art(mbid: str, answer: CachedCoverArt) -> None:
         with _LOCK:
             conn.execute(
                 "INSERT OR REPLACE INTO caa_cache "
-                "(mbid, fetched_at, etag, image_url, width, height, length, mime) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "(mbid, fetched_at, etag, image_url, width, height, length, mime, source) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     mbid,
                     answer.fetched_at.isoformat(),
@@ -867,6 +892,7 @@ def store_cover_art(mbid: str, answer: CachedCoverArt) -> None:
                     answer.height,
                     answer.length,
                     answer.mime,
+                    answer.source,
                 ),
             )
             conn.commit()

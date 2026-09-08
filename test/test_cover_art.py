@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -267,3 +268,97 @@ def test_no_cache_configured_is_a_no_op(tmp_path):
     cover_art.configure_cache(None)
     assert cover_art.cache_image("demo-rel-3", b"data", "image/jpeg") is None
     assert cover_art.cached_image("demo-rel-3") is None
+
+
+# ---------- the release-group fallback (#434) ----------
+
+
+def _listing(url: str) -> dict:
+    return {"images": [{"front": True, "image": url}]}
+
+
+def _sized_jpeg(width: int) -> bytes:
+    from test.test_artwork import jpeg_bytes
+
+    return jpeg_bytes(width, width)
+
+
+def test_falls_back_to_the_release_group_when_the_release_has_no_cover():
+    """The archive very often keeps the artwork against the group, and asking
+    only the release reported "no front cover" for albums a tagging would
+    happily have fetched one for (#434)."""
+    from harmonist import cover_art
+
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        if request.url.path.startswith("/release/"):
+            return httpx.Response(404)
+        if request.url.path.startswith("/release-group/"):
+            return httpx.Response(200, json=_listing("https://caa.example/rg.jpg"))
+        return httpx.Response(200, content=_sized_jpeg(1400))
+
+    answer = cover_art.check_front("rel-1", release_group_mbid="grp-1", client=_client(handler))
+
+    assert answer.has_art is True
+    assert answer.from_release_group is True
+    assert answer.width == 1400
+    assert "/release/rel-1" in asked and "/release-group/grp-1" in asked
+
+
+def test_the_release_wins_when_it_has_its_own_cover():
+    """The group is a fallback, not a preference: this edition's own art is the
+    more specific answer."""
+    from harmonist import cover_art
+
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        if request.url.path.startswith("/release/"):
+            return httpx.Response(200, json=_listing("https://caa.example/rel.jpg"))
+        if request.url.path.startswith("/release-group/"):
+            raise AssertionError("asked the group when the release had a cover")
+        return httpx.Response(200, content=_sized_jpeg(900))
+
+    answer = cover_art.check_front("rel-1", release_group_mbid="grp-1", client=_client(handler))
+
+    assert answer.from_release_group is False
+    assert answer.width == 900
+
+
+def test_neither_listing_having_one_is_a_stored_answer():
+    from harmonist import cover_art
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    answer = cover_art.check_front("rel-1", release_group_mbid="grp-1", client=_client(handler))
+
+    assert answer.has_art is False
+    assert answer.source is None
+
+
+def test_the_etag_is_only_sent_to_the_listing_it_came_from():
+    """A 304 from the other listing would answer a question about a resource
+    nobody asked after, and keep a stale measurement (#434)."""
+    from harmonist import activity_store, cover_art
+
+    sent: dict[str, str | None] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent[request.url.path] = request.headers.get("if-none-match")
+        if request.url.path.startswith("/release/"):
+            return httpx.Response(404)
+        if request.url.path.startswith("/release-group/"):
+            return httpx.Response(304)
+        return httpx.Response(200, content=_sized_jpeg(1400))
+
+    known = activity_store.CachedCoverArt(
+        fetched_at=datetime.now(UTC), etag='"grp"', image_url="x", source="release-group"
+    )
+    cover_art.check_front("rel-1", release_group_mbid="grp-1", known=known, client=_client(handler))
+
+    assert sent["/release/rel-1"] is None  # not this listing's etag
+    assert sent["/release-group/grp-1"] == '"grp"'

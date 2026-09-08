@@ -420,6 +420,10 @@ class TestCoverArtArchiveNote:
         def has_art(self) -> bool:
             return self._art
 
+        @property
+        def from_release_group(self) -> bool:
+            return False
+
     def test_nothing_said_until_it_has_been_asked(self) -> None:
         assert artwork.summarise(album(art_of(1)), None).archive_row is None
 

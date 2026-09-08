@@ -45,6 +45,11 @@ versions follow [semantic versioning](https://semver.org).
   likely to be worth undoing on its own, and it has always had its own Undo in
   History — now it has its own way to be done, too (#418).
 
+- **The Cover Art Archive check now falls back to the release group**, where the
+  archive very often keeps an album's artwork — so albums that reported "no front
+  cover" may have one after all. A group's cover is labelled as the group's
+  rather than this edition's (#434).
+
 - **What the Cover Art Archive has is shown as a row like any other image** —
   greyed, with its size and format, and a placeholder saying which kind of
   nothing it is: *not loaded* for a cover that exists but lost, *none* for a

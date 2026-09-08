@@ -941,6 +941,9 @@ dialog::backdrop {
 .art-row__facts { display: flex; flex-direction: column; gap: .18rem; min-width: 0; }
 .art-row__who { font-size: .85rem; font-weight: 600; }
 .art-row__title { font-size: .8rem; color: var(--color-ink); }
+/* A plain-language aside under the facts — whose cover it is, when that is not
+   this edition's (#434). Not the mono facts line: it is prose, not a value. */
+.art-row__meta-plain { font-size: .72rem; color: var(--color-muted); }
 .art-row__meta {
   font-family: var(--font-mono);
   font-size: .68rem;

@@ -4934,8 +4934,15 @@ def _register_routes(app: FastAPI) -> None:
             default=None,
         )
         try:
+            # The release group, from the STORED release payload — a local read
+            # with no MusicBrainz request in it (#434). An album whose release
+            # has never been fetched simply gets no fallback this time, which
+            # costs nothing and fixes itself the moment the page fetches one.
+            stored = mb_cache.stored_release(mbid)
+            group = (stored.get("release-group") or {}).get("id") if stored else None
             answer = cover_art.check_front(
                 mbid,
+                release_group_mbid=group if isinstance(group, str) else None,
                 known=activity_store.cached_cover_art(mbid),
                 keep_if_wider_than=best,
             )

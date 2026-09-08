@@ -148,28 +148,32 @@ MEASURE_BYTES = 65536
 def check_front(
     release_mbid: str,
     *,
+    release_group_mbid: str | None = None,
     known: activity_store.CachedCoverArt | None = None,
     keep_if_wider_than: int | None = None,
     client: httpx.Client | None = None,
 ) -> activity_store.CachedCoverArt:
-    """Ask the archive what front cover it has for `release_mbid`, and measure it.
+    """Ask the archive what front cover it has, and measure it.
+
+    Asks the RELEASE first and falls back to its RELEASE GROUP, which is where
+    the archive very often keeps the artwork — exactly as `_fetch_to_disk` has
+    done since #131. Asking only the release made the album page report "no
+    front cover" for albums a tagging would happily have fetched one for (#434).
 
     Returns the answer whatever it is — including "nothing", which is a real
     answer and the commonest one for a private Bandcamp release. The caller
     stores it; re-asking is what the user presses the refresh control for.
 
-    **Two requests at most, and usually one and a bit.** The listing is
-    revalidated with `If-None-Match` when `known` carries an etag, and
-    coverartarchive.org answers a match with a 304 and no body — so a re-check of
-    an unchanged release costs one request and no transfer, and the previous
-    measurement is returned unchanged. Only a listing that has actually moved
-    costs the second request.
+    **Conditional, per listing.** `If-None-Match` is sent only against the
+    listing the stored etag actually came from (`known.source`): a 304 from the
+    other listing would be an answer about a resource nobody asked after, and
+    would keep a stale measurement. A release-group answer therefore costs the
+    release's 404 again on each re-check, which is a cheap way to notice a
+    release that has since gained a cover of its own.
 
-    That second request is a RANGE, not the whole image: the listing carries no
+    The second request, when it happens, is a RANGE: the listing carries no
     dimensions, so the only way to answer "is theirs bigger than mine" is to look
     at the image, and `MEASURE_BYTES` of it is enough to reach the frame header.
-    A server that ignores the range simply sends more than was asked for, which
-    still works.
 
     The thumbnails are no use for this. `front-1200` returns 200 for a release
     whose original is 350×350 — the archive caps a thumbnail at the original
@@ -178,8 +182,7 @@ def check_front(
     `keep_if_wider_than` is the album's current best width. When the archive's
     image beats it, the whole image is fetched and cached, so the page can show
     it and a re-tag can write it — the one case where the full 200 KB–5 MB is
-    worth spending, and only during a check the user asked for. An image that
-    loses is measured and forgotten.
+    worth spending, and only during a check the user asked for.
 
     Never raises for an ordinary "no": a 404 is an answer. A transport failure
     does propagate as `CoverArtError`, because "I could not ask" and "there is
@@ -188,55 +191,69 @@ def check_front(
     owns_client = client is None
     http = client or httpx.Client(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
     now = datetime.now(UTC)
+    targets = [("release", release_mbid)]
+    if release_group_mbid:
+        targets.append(("release-group", release_group_mbid))
     try:
-        headers = {"If-None-Match": known.etag} if known and known.etag else {}
-        try:
-            listing = http.get(f"{CAA_BASE}/release/{release_mbid}", headers=headers)
-        except httpx.HTTPError as e:
-            raise CoverArtError(f"CAA listing request failed for {release_mbid}: {e}") from e
+        for kind, mbid in targets:
+            # The etag belongs to ONE listing. Sending it at the other would ask
+            # a question about the wrong resource.
+            headers = (
+                {"If-None-Match": known.etag}
+                if known and known.etag and (known.source or "release") == kind
+                else {}
+            )
+            try:
+                listing = http.get(f"{CAA_BASE}/{kind}/{mbid}", headers=headers)
+            except httpx.HTTPError as e:
+                raise CoverArtError(f"CAA listing request failed for {mbid}: {e}") from e
 
-        if listing.status_code == 304 and known is not None:
-            # Unchanged since we last looked. The measurement still stands; only
-            # the timestamp moves, so the page can say when that was confirmed.
-            return replace(known, fetched_at=now)
-        if listing.status_code == 404:
-            return activity_store.CachedCoverArt(fetched_at=now)
-        if not listing.is_success:
-            raise CoverArtError(f"CAA returned {listing.status_code} for {release_mbid}")
+            if listing.status_code == 304 and known is not None:
+                # Unchanged since we last looked. The measurement still stands;
+                # only the timestamp moves, so the page can say when that was
+                # confirmed.
+                return replace(known, fetched_at=now)
+            if listing.status_code == 404:
+                continue  # this listing has nothing; the next one may
+            if not listing.is_success:
+                raise CoverArtError(f"CAA returned {listing.status_code} for {mbid}")
 
-        url = _front_url(listing)
-        etag = listing.headers.get("etag")
-        if url is None:
-            # A listing with images but no front — a back cover, a booklet. Not
-            # a cover to offer, and remembered so it is not asked again.
-            return activity_store.CachedCoverArt(fetched_at=now, etag=etag)
+            url = _front_url(listing)
+            if url is None:
+                # Images but no front — a back cover, a booklet. Not a cover to
+                # offer, and the group may still have one.
+                continue
 
-        try:
-            head = http.get(url, headers={"Range": f"bytes=0-{MEASURE_BYTES - 1}"})
-        except httpx.HTTPError as e:
-            raise CoverArtError(f"CAA image request failed for {release_mbid}: {e}") from e
-        if not head.is_success:
-            raise CoverArtError(f"CAA returned {head.status_code} for {url}")
-        size = images.dimensions(head.content)
-        if (
-            size is not None
-            and keep_if_wider_than is not None
-            and size.width > keep_if_wider_than
-            and cached_image(release_mbid) is None
-        ):
-            _fetch_and_cache(http, release_mbid, url, head.headers.get("content-type"))
-        return activity_store.CachedCoverArt(
-            fetched_at=now,
-            etag=etag,
-            image_url=url,
-            width=size.width if size else None,
-            height=size.height if size else None,
-            # The WHOLE image's length, off the range response, not what was
-            # read: `content-range` states it, and a server that ignored the
-            # range states it in `content-length` instead.
-            length=_total_length(head),
-            mime=head.headers.get("content-type"),
-        )
+            try:
+                head = http.get(url, headers={"Range": f"bytes=0-{MEASURE_BYTES - 1}"})
+            except httpx.HTTPError as e:
+                raise CoverArtError(f"CAA image request failed for {mbid}: {e}") from e
+            if not head.is_success:
+                raise CoverArtError(f"CAA returned {head.status_code} for {url}")
+            size = images.dimensions(head.content)
+            if (
+                size is not None
+                and keep_if_wider_than is not None
+                and size.width > keep_if_wider_than
+                and cached_image(release_mbid) is None
+            ):
+                _fetch_and_cache(http, release_mbid, url, head.headers.get("content-type"))
+            return activity_store.CachedCoverArt(
+                fetched_at=now,
+                etag=listing.headers.get("etag"),
+                image_url=url,
+                width=size.width if size else None,
+                height=size.height if size else None,
+                # The WHOLE image's length, off the range response, not what was
+                # read: `content-range` states it, and a server that ignored the
+                # range states it in `content-length` instead.
+                length=_total_length(head),
+                mime=head.headers.get("content-type"),
+                source=kind,
+            )
+        # Neither listing has a front cover. Recorded so the next check does not
+        # ask again — the timestamp says when that was established.
+        return activity_store.CachedCoverArt(fetched_at=now)
     finally:
         if owns_client:
             http.close()

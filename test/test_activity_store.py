@@ -1175,3 +1175,39 @@ def test_re_asking_replaces_the_stored_answer(tmp_path):
     got = activity_store.cached_cover_art("rel-3")
     assert got is not None
     assert (got.fetched_at, got.width) == (second, 1400)
+
+
+def test_migrates_a_v9_database_in_place_keeping_its_answers(tmp_path):
+    """The 9 -> 10 upgrade: a stored Cover Art Archive answer written before
+    `source` existed survives, and reads as the release's, which is the only
+    listing that build ever asked (#434)."""
+    db = tmp_path / "v9.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for statements in activity_store._MIGRATIONS[:9]:
+        for sql in statements:
+            conn.execute(sql)
+    conn.execute(
+        "INSERT INTO caa_cache (mbid, fetched_at, etag, image_url, width, height, length, mime) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "rel-old",
+            "2026-07-01T00:00:00+00:00",
+            '"e"',
+            "http://x/1.jpg",
+            500,
+            500,
+            1024,
+            "image/jpeg",
+        ),
+    )
+    conn.execute("PRAGMA user_version = 9")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    got = activity_store.cached_cover_art("rel-old")
+    assert got is not None
+    assert (got.width, got.etag) == (500, '"e"')
+    assert got.source is None
+    assert got.from_release_group is False  # NULL reads as the release's

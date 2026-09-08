@@ -65,6 +65,9 @@ class CoverArtAnswer(Protocol):
     def has_art(self) -> bool: ...
 
     @property
+    def from_release_group(self) -> bool: ...
+
+    @property
     def width(self) -> int | None: ...
 
     @property
@@ -151,6 +154,9 @@ class ArchiveRow:
 
     placeholder: str
     meta: str
+    #: Whether the archive keeps this cover against the RELEASE GROUP rather than
+    #: this edition (#434) — true of a great many albums, and worth saying.
+    from_release_group: bool = False
 
 
 @dataclass(frozen=True)
@@ -388,7 +394,13 @@ class ArtworkView:
         if size is None:
             return ArchiveRow(placeholder="not loaded", meta="size could not be read")
         return ArchiveRow(
-            placeholder="not loaded", meta=describe_parts(size, answer.mime, answer.length)
+            placeholder="not loaded",
+            meta=describe_parts(size, answer.mime, answer.length),
+            # Whose cover it is, when that is not this edition's (#434). A
+            # release group's artwork stands for every edition of the album, and
+            # someone comparing editions may care that this one is the general
+            # one rather than their pressing's.
+            from_release_group=answer.from_release_group,
         )
 
     @property

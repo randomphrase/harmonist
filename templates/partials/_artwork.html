@@ -147,6 +147,10 @@
             <div class="art-row__facts">
                 <span class="art-row__who">Cover Art Archive</span>
                 <span class="art-row__meta">{{ artwork.archive_row.meta }}</span>
+                {# Whose cover it is, when it is not this edition's (#434). #}
+                {% if artwork.archive_row.from_release_group %}
+                <span class="art-row__meta-plain">for the release group, not this edition</span>
+                {% endif %}
             </div>
         </div>
     </div>
