@@ -6,6 +6,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A re-tag no longer shrinks an album's artwork.** Where the image your tracks
+  already carry is larger than the folder `cover.jpg`, the folder file is
+  updated from it instead of being embedded over it — five of sixty albums
+  sampled from a real library were losing resolution this way, in one case
+  5700px replaced by 2000px. The replaced `cover.jpg` is kept, so it can be put
+  back from the album's History (#410).
+
 ### Changed
 
 - **The last five artwork changes to any album can always be undone**, whatever

@@ -78,10 +78,14 @@
                 {% for t in r.tracks %}{{ t.name }}{% if not loop.last %}<br>{% endif %}{% endfor %}
             </span>
             {% endif %}
-            {% if r.writes %}
+            {# What replaces this image is named by the row, not assumed to be
+               the folder cover: when the album's own artwork is the better
+               image it is the FOLDER file that changes, and the arrow points
+               the other way (#410). #}
+            {% if r.writes and r.written_from %}
             <span class="art-row__outcome">
                 {{ 'Replaced by' if r.outcome == 'replaced' else 'Filled from' }}
-                {{ artwork.cover.name }}
+                {{ r.written_from }}
             </span>
             {% endif %}
         </div>

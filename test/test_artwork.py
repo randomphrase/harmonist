@@ -335,3 +335,55 @@ class TestHeadingCount:
 
     def test_no_count_when_there_is_no_image_anywhere(self) -> None:
         assert artwork.summarise(album(None, None), None).count is None
+
+
+class TestLargerLocalImageWins:
+    """The page must reach the same verdict as `tagger._prepare` (#410)."""
+
+    def test_a_bigger_album_image_replaces_the_folder_cover_not_the_tracks(self) -> None:
+        big = art_of(1, width=1000, height=1000)
+        small = art_of(2, width=400, height=400)
+
+        view = artwork.summarise(album(big, big), cover_of(small))
+
+        tracks_row, cover_row = view.rows
+        assert tracks_row.outcome is artwork.Outcome.KEPT
+        assert cover_row.outcome is artwork.Outcome.REPLACED
+        assert cover_row.written_from == "the album's own artwork"
+
+    def test_a_bigger_folder_cover_still_replaces_the_tracks(self) -> None:
+        small = art_of(1, width=400, height=400)
+        big = art_of(2, width=1000, height=1000)
+
+        view = artwork.summarise(album(small, small), cover_of(big))
+
+        assert view.rows[0].outcome is artwork.Outcome.REPLACED
+        assert view.rows[0].written_from == "cover.jpg"
+
+    def test_an_unmeasurable_image_never_wins(self) -> None:
+        """A guess is not worth overwriting a user's cover for, in either
+        direction — `beats` says no when either size is unknown."""
+        unknown = EmbeddedArt.of(b"not an image at all", "image/jpeg")
+        assert unknown.size is None
+
+        view = artwork.summarise(album(unknown, unknown), cover_of(art_of(2, width=40, height=40)))
+
+        # Falls back to today's behaviour: the folder cover is embedded.
+        assert view.rows[0].outcome is artwork.Outcome.REPLACED
+
+    def test_equal_sizes_change_nothing(self) -> None:
+        mine = art_of(1, width=500, height=500)
+        theirs = art_of(2, width=500, height=500)
+
+        view = artwork.summarise(album(mine, mine), cover_of(theirs))
+
+        assert view.rows[0].outcome is artwork.Outcome.REPLACED
+        assert view.rows[1].outcome is artwork.Outcome.SAME
+
+    def test_per_track_art_is_never_promoted(self) -> None:
+        view = artwork.summarise(
+            album(art_of(1, width=900, height=900), art_of(2, width=900, height=900)),
+            cover_of(art_of(3, width=100, height=100)),
+        )
+
+        assert not any(r.writes for r in view.rows)

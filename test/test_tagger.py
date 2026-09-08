@@ -2137,3 +2137,133 @@ def test_release_events_is_empty_when_musicbrainz_records_none():
     """No events is a fact, not a failure: the page shows the Country row alone,
     with nothing extra to explain."""
     assert tagger.release_events({"id": "rel-1", "country": "GB"}) == ()
+
+
+# ---------- the larger local image wins (#410) ----------
+
+
+def _sized_jpeg(width: int, height: int) -> bytes:
+    """A JPEG whose frame header states a real size, so `images.dimensions` can
+    read it — `_minimal_jpeg` has no SOF and measures as unknown."""
+    from test.test_artwork import jpeg_bytes
+
+    return jpeg_bytes(width, height)
+
+
+def test_a_larger_embedded_image_is_promoted_to_the_folder_cover(album_with_tracks, tmp_path):
+    """A re-tag used to shrink these albums: it embedded the folder cover over
+    art that was better than it. Five of sixty albums sampled from a real
+    library were in this state, one of them 5700px replaced by 2000px (#410)."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    big = _sized_jpeg(1000, 1000)
+    _embed_cover(album_dir / "01 Track 1.m4a", big)
+    _embed_cover(album_dir / "02 Track 2.m4a", big)
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(400, 400))
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=cover)
+
+    # The tracks keep the better image…
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == big
+    # …and the folder cover catches up, rather than dragging them down.
+    assert cover.read_bytes() == big
+
+
+def test_the_replaced_folder_cover_can_be_undone(album_with_tracks, tmp_path):
+    """The first thing in Harmonist that overwrites a cover.jpg, so it is also
+    the first that has to keep one (#408)."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(1)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(1000, 1000))
+    cover = tmp_path / "cover.jpg"
+    small = _sized_jpeg(400, 400)
+    cover.write_bytes(small)
+
+    tagger.tag_album(album_dir, _single_track_release(), cover_path=cover)
+
+    kept = artwork_store.path_for(artwork_store.digest(small))
+    assert kept is not None, "the overwritten folder cover was not kept"
+    assert kept.read_bytes() == small
+
+
+def test_a_larger_folder_cover_is_still_embedded(album_with_tracks, tmp_path):
+    """The other direction is unchanged: the cover wins when it is the better
+    image, which is what a re-tag has always done."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(1)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(400, 400))
+    cover = tmp_path / "cover.jpg"
+    big = _sized_jpeg(1000, 1000)
+    cover.write_bytes(big)
+
+    tagger.tag_album(album_dir, _single_track_release(), cover_path=cover)
+
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
+    assert cover.read_bytes() == big
+
+
+def test_per_track_artwork_never_promotes_one_track_to_the_album_cover(album_with_tracks, tmp_path):
+    """A compilation's first track's sleeve is not the album's, however large it
+    is — promoting it would invent a cover the album never had."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(1000, 1000))
+    _embed_cover(album_dir / "02 Track 2.m4a", _sized_jpeg(1200, 1200))
+    cover = tmp_path / "cover.jpg"
+    small = _sized_jpeg(400, 400)
+    cover.write_bytes(small)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=cover)
+
+    assert cover.read_bytes() == small
+
+
+def test_a_promoted_cover_can_be_put_back(album_with_tracks, tmp_path):
+    """End to end: the promotion is undoable, and Undo targets the folder file
+    rather than the tracks — a different write from restoring a track's art."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(1)
+    big = _sized_jpeg(1000, 1000)
+    _embed_cover(album_dir / "01 Track 1.m4a", big)
+    cover = album_dir / "cover.jpg"
+    small = _sized_jpeg(400, 400)
+    cover.write_bytes(small)
+
+    tagger.tag_album(album_dir, _single_track_release(), cover_path=cover)
+    assert cover.read_bytes() == big  # promoted
+
+    restored = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
+
+    assert restored == 1
+    assert cover.read_bytes() == small
+    # …and the undo is itself undoable: what it overwrote was kept in turn.
+    assert artwork_store.path_for(artwork_store.digest(big)) is not None
+
+
+def test_restoring_a_folder_cover_twice_is_a_no_op(album_with_tracks, tmp_path):
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(1)
+    cover = album_dir / "cover.jpg"
+    small = _sized_jpeg(400, 400)
+    cover.write_bytes(small)
+    artwork_store.keep(small, mime="image/jpeg")
+
+    first = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
+    second = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
+
+    assert (first, second) == (0, 0)  # already correct both times
+    assert cover.read_bytes() == small

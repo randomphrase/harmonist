@@ -28,6 +28,7 @@ from enum import StrEnum
 
 from .formats import TrackTags
 from .formats.types import EmbeddedArt
+from .images import Size
 
 
 def has_per_track_art(digests: Iterable[str | None]) -> bool:
@@ -45,6 +46,24 @@ def has_per_track_art(digests: Iterable[str | None]) -> bool:
     wrong answer, not about this being the wrong reading of it.
     """
     return len({d for d in digests if d is not None}) > 1
+
+
+def beats(mine: Size | None, theirs: Size | None) -> bool:
+    """Whether `mine` is the better image: strictly larger on both axes (#410).
+
+    The one comparison, asked by the tagger when it decides what to write and by
+    the album page when it says what a re-tag would do. Two spellings of it would
+    let the page promise one thing and the button do another — the class of bug
+    #283 and #346 closed for the album title and country rows.
+
+    An unreadable header measures as None (see `images.dimensions`) and loses:
+    "leave it alone" is the safe answer, and today's behaviour is not a bad one
+    to fall back to. Equal sizes lose too — a re-encode of the same dimensions is
+    not an improvement worth overwriting a user's file for.
+    """
+    if mine is None or theirs is None:
+        return False
+    return mine.width > theirs.width and mine.height > theirs.height
 
 
 class Outcome(StrEnum):
@@ -114,6 +133,10 @@ class ArtRow:
     total_tracks: int = 0
     multi_disc: bool = False
     on_cover: str | None = None
+    #: What a re-tag would put here, named — the folder cover for a track row,
+    #: and the album's own artwork for the folder cover's row when that is the
+    #: better image (#410). None where nothing is written.
+    written_from: str | None = None
 
     @property
     def is_gap(self) -> bool:
@@ -330,6 +353,7 @@ def summarise(
         refs: tuple[TrackRef, ...],
         outcome: Outcome,
         on_cover: str | None = None,
+        written_from: str | None = None,
     ) -> ArtRow:
         return ArtRow(
             image=image,
@@ -338,21 +362,35 @@ def summarise(
             total_tracks=len(tracks),
             multi_disc=multi_disc,
             on_cover=on_cover,
+            written_from=written_from,
         )
 
     def carried_by_cover(digest: str) -> str | None:
         return cover.name if cover is not None and cover.image.digest == digest else None
+
+    # The album's own image may be the better one, in which case the folder file
+    # is what changes and the tracks are left alone (#410). Asked through the
+    # same `beats` the tagger asks, so the page cannot promise a different
+    # outcome from the one the button produces.
+    album_image = next(iter(art_of.values())) if len(art_of) == 1 else None
+    promote = (
+        not preserved
+        and cover is not None
+        and album_image is not None
+        and beats(album_image.size, cover.image.size)
+    )
 
     rows = [
         row(
             art_of[digest],
             tuple(refs),
             Outcome.KEPT
-            if preserved
+            if preserved or promote
             else Outcome.SAME
             if carried_by_cover(digest)
             else Outcome.REPLACED,
             on_cover=carried_by_cover(digest),
+            written_from=None if preserved or promote or carried_by_cover(digest) else cover.name,  # type: ignore[union-attr]
         )
         for digest, refs in by_digest.items()
     ]
@@ -361,9 +399,26 @@ def summarise(
     # tracks carry, and a reader deciding what a re-tag would do needs to see it
     # beside the rest rather than only as something arriving from outside.
     if cover is not None and cover.image.digest not in by_digest:
-        rows.append(row(cover.image, (), Outcome.SAME, on_cover=cover.name))
+        rows.append(
+            row(
+                cover.image,
+                (),
+                Outcome.REPLACED if promote else Outcome.SAME,
+                on_cover=cover.name,
+                # Named as the thing it is rather than by a filename: the image
+                # replacing it lives in the tracks, and the row above is it.
+                written_from="the album's own artwork" if promote else None,
+            )
+        )
     if gap:
-        rows.append(row(None, tuple(gap), Outcome.KEPT if preserved else Outcome.FILLED))
+        rows.append(
+            row(
+                None,
+                tuple(gap),
+                Outcome.KEPT if preserved or promote else Outcome.FILLED,
+                written_from=None if preserved or promote else cover.name,  # type: ignore[union-attr]
+            )
+        )
 
     return ArtworkView(
         rows=tuple(rows),

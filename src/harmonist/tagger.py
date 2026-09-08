@@ -11,6 +11,7 @@ constants are re-exported here.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -217,6 +218,23 @@ def tag_album(
     )
     if prep.art_after is not None:
         _keep_doomed_art(prep.art_before, prep.art_after)
+
+    # The album's own image is the better one, so the folder file catches up
+    # rather than the tracks being dragged down to it (#410). Recorded as a
+    # change to `cover.jpg` in the same shape a tagged file's artwork change
+    # takes, which is what puts an Undo on it: `tag_history.artwork_replaced`
+    # reads that pair, and `restore_artwork` writes it back.
+    if prep.promote_cover_from is not None and cover_path is not None:
+        promoted = _promote_album_image(album_dir, cover_path, prep.promote_cover_from, album_id)
+        if promoted is not None:
+            was, now = promoted
+            event_id = audit.record(
+                "tag.track", album_id=album_id, album=album_dir, file=cover_path.name
+            )
+            if event_id is not None:
+                activity_store.record_tag_changes(
+                    event_id, file=cover_path.name, changes={owned.ARTWORK: [was, now]}
+                )
 
     wrote_something = False
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
@@ -478,6 +496,11 @@ class _Prepared:
     #: not MusicBrainz's scalar `country` and is not stale either. Album-constant
     #: for the reason above.
     accepted_countries: frozenset[str]
+    #: The album's own embedded image, when it is BETTER than the folder cover
+    #: and should be promoted to it instead of being overwritten by it (#410).
+    #: The file to read it from, so `_prepare` stays free of image bytes and of
+    #: side effects — `plan_album` runs this same code and must write nothing.
+    promote_cover_from: Path | None = None
 
 
 def _prepare(
@@ -549,6 +572,21 @@ def _prepare(
     if preserves_per_track_art:
         cover = None
 
+    # The folder cover is not automatically the better image (#410). A re-tag
+    # embedded it regardless, which on a real library shrank one album in twelve
+    # — 3000px replaced by 2000px, in one case 5700px by 2000px — and the
+    # Artwork section has been reporting exactly that as "Replaced by
+    # cover.jpg". Where the album's own image is larger, the folder file catches
+    # up instead, and the tracks keep what they have.
+    #
+    # `overwrite_art` still means what it says: the user asking for the folder
+    # cover to be embedded is not asking for it to be judged.
+    promote_cover_from = None
+    if cover is not None and not overwrite_art:
+        promote_cover_from = _better_album_image(art_before, cover)
+        if promote_cover_from is not None:
+            cover = None
+
     return _Prepared(
         files=files,
         pairs=pairs,
@@ -558,6 +596,7 @@ def _prepare(
         # per-track-art guard above may have cancelled it.
         art_after=images.digest(cover) if cover is not None else None,
         preserves_per_track_art=preserves_per_track_art,
+        promote_cover_from=promote_cover_from,
         media_total=len(release.get("medium-list", [])) or 1,
         accepted_album_title=title_with_disambiguation(
             release.get("title"), release.get("disambiguation")
@@ -673,6 +712,95 @@ def _art_digests(files: list[Path]) -> dict[Path, str | None]:
     #131 stores the images content-addressed under it, so the two must agree.
     """
     return {f: images.digest(art[0]) if (art := formats.read_cover(f)) else None for f in files}
+
+
+def _mime_for(path: Path) -> str:
+    """The image type of a folder cover, from its name — the store uses it only
+    to give the kept file a real extension."""
+    return "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+
+
+def _better_album_image(digests: dict[Path, str | None], cover: bytes) -> Path | None:
+    """The file whose embedded image beats the folder cover, or None (#410).
+
+    Only when the album speaks with one voice: exactly one distinct embedded
+    image, carried by at least one track — so in practice the count guards the
+    album with NO embedded art at all, since per-track artwork has already set
+    `cover` to None upstream and this is never reached for it. Stated as the
+    positive condition anyway: what makes a promotion safe is that the album has
+    one image, and a reader should not have to trace an outer guard to see it.
+    (A compilation's first sleeve is not the album's cover however large it is.)
+
+    Strictly larger, by width and height together, and only when BOTH images
+    state a size. An unreadable header measures as None (see `images.dimensions`)
+    and the answer is then "leave it alone": today's behaviour is not a bad one,
+    and it is not worth overwriting a user's cover on a guess.
+    """
+    distinct = {d for d in digests.values() if d is not None}
+    if len(distinct) != 1:
+        return None
+    source = next((path for path, d in digests.items() if d is not None), None)
+    if source is None:
+        return None
+    art = formats.read_cover(source)
+    if art is None:
+        return None
+    # `artwork.beats` is the comparison, not a second copy of it: the album page
+    # asks the same question of the same sizes when it says what a re-tag would
+    # do, and the two must not be able to answer differently (#410).
+    mine, theirs = images.dimensions(art[0]), images.dimensions(cover)
+    return source if artwork.beats(mine, theirs) else None
+
+
+def _promote_album_image(
+    album_dir: Path, cover_path: Path, source: Path, album_id: str | None
+) -> tuple[str, str] | None:
+    """Write the album's own image over the folder cover, keeping what was there.
+
+    Returns `(was, now)` as digests so the caller can record the change the way a
+    tagged file's artwork change is recorded — which is what puts an Undo on it,
+    since `tag_history.artwork_replaced` reads exactly that pair.
+
+    Best-effort, like every other artwork operation: a promotion that cannot be
+    written is a reason to warn, not to abandon the re-tag the user asked for.
+    """
+    art = formats.read_cover(source)
+    if art is None:  # vanished between the two passes
+        return None
+    try:
+        was = cover_path.read_bytes()
+    except OSError:
+        log.exception("could not read %s to keep it before replacing it", cover_path)
+        return None
+    # Kept BEFORE the write, and the write is abandoned if it can't be: this is
+    # the first thing in Harmonist that overwrites a folder cover, so it is the
+    # first that could destroy one irrecoverably (#408).
+    if artwork_store.keep(was, mime=_mime_for(cover_path)) is None:
+        log.warning(
+            "not replacing %s with the album's larger image: its current cover "
+            "could not be kept, and the change would not be undoable",
+            cover_path.name,
+        )
+        return None
+    try:
+        tmp = cover_path.with_suffix(cover_path.suffix + ".tmp")
+        tmp.write_bytes(art[0])
+        os.replace(tmp, cover_path)
+    except OSError:
+        log.exception("could not write the album's larger image to %s", cover_path)
+        return None
+    audit.record(
+        "cover.write",
+        album_id=album_id,
+        album=album_dir,
+        file=cover_path.name,
+        source="album",
+        bytes=len(art[0]),
+        overwrote=True,
+        was=images.digest(was),
+        digest=images.digest(art[0]),
+    )
+    return images.digest(was), images.digest(art[0])
 
 
 def _keep_doomed_art(digests: dict[Path, str | None], incoming: str) -> None:
@@ -977,7 +1105,7 @@ def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
 
     restored = 0
     for path, data in resolved.items():
-        current = formats.read_cover(path)
+        current = _image_at(path)
         if current is not None and images.digest(current[0]) == images.digest(data):
             continue  # already correct — restoring twice is a no-op
         # Keep what we are about to overwrite, exactly as a tagging would: an
@@ -985,7 +1113,7 @@ def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
         # thing it undoes.
         if current is not None:
             artwork_store.keep(current[0], mime=current[1])
-        formats.write_cover(path, data)
+        _write_image_at(path, data)
         audit.record(
             "artwork.restore",
             album=album_dir,
@@ -994,6 +1122,38 @@ def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
         )
         restored += 1
     return restored
+
+
+def _image_at(path: Path) -> tuple[bytes, str] | None:
+    """The image `path` currently holds, whether it is a track or the folder
+    cover (#410).
+
+    A restore target is no longer always an audio file: since the album's own
+    image can be promoted to `cover.jpg`, that write is undoable too, and the
+    stored record names `cover.jpg` exactly as it names a track. The file IS the
+    image there, rather than carrying one.
+    """
+    if formats.is_supported(path):
+        return formats.read_cover(path)
+    try:
+        return path.read_bytes(), _mime_for(path)
+    except OSError:
+        return None
+
+
+def _write_image_at(path: Path, data: bytes) -> None:
+    """Put `data` back, into a track's tags or over the folder cover itself.
+
+    The folder file is replaced through a temp file and a rename, like every
+    other write Harmonist makes to the user's directory: a crash mid-restore
+    must not leave a half-image where a cover was.
+    """
+    if formats.is_supported(path):
+        formats.write_cover(path, data)
+        return
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
 
 
 def tagsets_for(release: Release) -> list[TagSet]:
