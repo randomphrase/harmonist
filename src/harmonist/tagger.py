@@ -238,6 +238,10 @@ def tag_album(
                 )
 
     wrote_something = False
+    # How this album's records name its files — built once from the files the
+    # tagging is actually writing, so a disc in a sibling directory is named by
+    # its disc rather than by a bare filename its sibling also answers to (#423).
+    naming = album_files.Naming(album_dir, prep.files)
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
         tagset = _build_tagset(release, medium, track_pos_in_medium, track, prep.media_total)
         before = formats.read_owned(file_path)
@@ -271,7 +275,7 @@ def tag_album(
         event_id = audit.record(
             "tag.track",
             album_id=album_id,
-            file=album_files.rel_name(album_dir, file_path),
+            file=naming.name_of(file_path),
             # +1 because `_flatten_tracks` enumerates from zero and MusicBrainz,
             # the files and the album page all count from one (#240). A record
             # off by one is worse than none: it is exactly what someone auditing
@@ -280,7 +284,7 @@ def tag_album(
             title=_track_title(track),
         )
         if event_id is not None:
-            _record_changes(event_id, album_dir, file_path, tagset, changes)
+            _record_changes(event_id, naming, file_path, tagset, changes)
 
     if prep.preserves_per_track_art and wrote_something:
         # Attributed to the album (#260). This is a decision Harmonist made on
@@ -778,7 +782,7 @@ def _changes_for(
 
 def _record_changes(
     event_id: int,
-    album_dir: Path,
+    naming: album_files.Naming,
     file_path: Path,
     tagset: TagSet,
     changes: dict[str, list[Any]],
@@ -795,7 +799,7 @@ def _record_changes(
         return
     activity_store.record_tag_changes(
         event_id,
-        file=album_files.rel_name(album_dir, file_path),
+        file=naming.name_of(file_path),
         changes=changes,
         track_ref=tagset.mb_release_track_id,
         rec_ref=tagset.mb_track_id,
@@ -992,7 +996,7 @@ class _IdentityRevert:
 
 
 def _identity_revert(
-    album_dir: Path, plan: Sequence[tag_history.FileRevert]
+    naming: album_files.Naming, files: Sequence[Path], plan: Sequence[tag_history.FileRevert]
 ) -> _IdentityRevert | None:
     """What `mb_album_id` should become, or None to leave it alone entirely.
 
@@ -1010,6 +1014,12 @@ def _identity_revert(
     * every file is readable, and there is no file in the album that the plan
       doesn't cover — a tagging that touched half the album can't speak for the
       identity of the other half.
+
+    "Every file in the album" means every file the album HAS, across all of its
+    directories (#423). Enumerating only the primary one made a split album's
+    second disc invisible here: the discs it could not see were counted as
+    absent, so the album's identity was moved on the files it could see and
+    left on the rest — the split the all-or-nothing rule exists to prevent.
     """
     field = owned.Owned.MB_ALBUM_ID
     # Keyed by file name, never by position: the plan's order and the
@@ -1022,7 +1032,7 @@ def _identity_revert(
     if len(befores) != 1:
         return None
 
-    on_disk = {album_files.rel_name(album_dir, p): p for p in album_files.audio_files(album_dir)}
+    on_disk = {naming.name_of(p): p for p in files}
     if set(on_disk) != set(changes):
         # Files have appeared or gone since. Any the plan doesn't name would
         # keep whatever id they carry, so moving the rest would split the
@@ -1038,6 +1048,30 @@ def _identity_revert(
 
     before = next(iter(befores))
     return _IdentityRevert(value=before if isinstance(before, str) and before else None)
+
+
+def _file_named(naming: album_files.Naming, name: str, error: type[Exception]) -> Path:
+    """The one file in this album a stored record names, or a refusal.
+
+    `name` reaches here from a permanent, unversioned record, so it is looked up
+    among the album's own files rather than joined to a directory — a name can
+    then never address anything outside the album, however malformed it is.
+
+    Two files can answer to one name only for a record written before the name
+    carried its disc (#423). There is nothing to choose between them, and
+    writing to the wrong one is worse than declining: an undo that quietly puts
+    disc 2's tags on disc 1 is a lie about the user's files that reports success.
+    """
+    matches = naming.matches(name)
+    if len(matches) > 1:
+        raise error(
+            f"{name!r} could be any of {len(matches)} files in this album — this "
+            "record was written before Harmonist recorded which disc a file was "
+            "on, and putting the tags on the wrong one is worse than declining"
+        )
+    if not matches:
+        raise error(f"{name} is no longer in this album")
+    return matches[0]
 
 
 def _resolve_in_album(album_dir: Path, name: str, error: type[Exception]) -> Path:
@@ -1066,7 +1100,12 @@ def _resolve_in_album(album_dir: Path, name: str, error: type[Exception]) -> Pat
     return path
 
 
-def revert_tags(album_dir: Path, plan: Sequence[tag_history.FileRevert]) -> RevertOutcome:
+def revert_tags(
+    album_dir: Path,
+    plan: Sequence[tag_history.FileRevert],
+    *,
+    paths: Sequence[Path] | None = None,
+) -> RevertOutcome:
     """Put back the tags one tagging changed, and report what actually moved.
 
     `plan` comes from `tag_history.revert_plan` — the same records the History
@@ -1090,21 +1129,24 @@ def revert_tags(album_dir: Path, plan: Sequence[tag_history.FileRevert]) -> Reve
     every file is opened and read first, and a missing or unreadable one raises
     rather than leaving the album half-reverted.
 
+    `paths` is every directory the album occupies, and a caller holding an
+    `Album` should pass them (#423): since #197 the album's files can sit in
+    sibling directories, and a record naming one of those was resolved against
+    the primary directory alone — which for two discs whose files share a
+    filename put one disc's tags on the other's file.
+
     Writes its own per-file records, so the undo appears in History with its own
     field list and is itself undoable.
     """
+    album_all = album_files.for_paths(paths if paths is not None else [album_dir])
+    naming = album_files.Naming(album_dir, album_all)
     targets: dict[Path, tuple[dict[str, Any], dict[str, Any]]] = {}
     restored: set[str] = set()
     stale: set[str] = set()
-    identity = _identity_revert(album_dir, plan)
+    identity = _identity_revert(naming, album_all, plan)
 
     for item in plan:
-        # `item.file` reaches here from a stored record and is joined to a path.
-        # Records are permanent and unversioned, so a malformed one will turn up
-        # eventually, and this join must not become a write outside the album.
-        path = _resolve_in_album(album_dir, item.file, RevertUnavailableError)
-        if not path.exists():
-            raise RevertUnavailableError(f"{item.file} is no longer in this album")
+        path = _file_named(naming, item.file, RevertUnavailableError)
         try:
             current = formats.read_owned(path)
         except Exception as e:
@@ -1158,13 +1200,13 @@ def revert_tags(album_dir: Path, plan: Sequence[tag_history.FileRevert]) -> Reve
             "tag.revert.track",
             album_id=album_id,
             album=album_dir,
-            file=album_files.rel_name(album_dir, path),
+            file=naming.name_of(path),
         )
         if event_id is not None:
             changes = owned.diff(before, target)
             if changes:
                 activity_store.record_tag_changes(
-                    event_id, file=album_files.rel_name(album_dir, path), changes=changes
+                    event_id, file=naming.name_of(path), changes=changes
                 )
         files += 1
 
@@ -1215,6 +1257,9 @@ def update_artwork(
     winner is already everywhere, which is what a second press should find.
     """
     paths = files if files is not None else album_files.audio_files(album_dir)
+    # Named the same way a tagging names them, or the Undo this records would
+    # address the wrong disc of a split album (#423).
+    naming = album_files.Naming(album_dir, paths)
     art = decide_artwork(paths, release, cover_path, overwrite_art=overwrite_art)
     winner, digest = art.winner, art.digest
     if winner is None or digest is None:
@@ -1252,12 +1297,12 @@ def update_artwork(
             "tag.track",
             album_id=album_id,
             album=album_dir,
-            file=album_files.rel_name(album_dir, path),
+            file=naming.name_of(path),
         )
         if event_id is not None:
             activity_store.record_tag_changes(
                 event_id,
-                file=album_files.rel_name(album_dir, path),
+                file=naming.name_of(path),
                 changes={owned.ARTWORK: [was, digest]},
             )
 
@@ -1276,7 +1321,9 @@ def update_artwork(
     return changed
 
 
-def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
+def restore_artwork(
+    album_dir: Path, digests: dict[str, str], *, paths: Sequence[Path] | None = None
+) -> int:
     """Put back the artwork `digests` names, and return how many files changed.
 
     `digests` maps a file name to the sha256 of the image that file should carry
@@ -1288,13 +1335,26 @@ def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
     restore would leave the album in a state that was never real, and neither
     half of it revertable. Files whose art already matches are skipped, so the
     operation is idempotent.
+
+    `paths` is every directory the album occupies, for the same reason
+    `revert_tags` takes them (#423): a track on a second disc is addressed by
+    the album's own file list rather than by a join onto the primary directory.
     """
+    files = album_files.for_paths(paths if paths is not None else [album_dir])
+    naming = album_files.Naming(album_dir, files)
     resolved: dict[Path, bytes] = {}
     for name, key in digests.items():
-        # `name` comes out of a stored record and is joined to a path. Records
-        # are permanent and unversioned, so a malformed one will turn up
-        # eventually, and this join must not become a write outside the album.
-        path = _resolve_in_album(album_dir, name, ArtworkUnavailableError)
+        # A record can name the folder cover as well as a track (#410), and that
+        # is not one of the album's audio files — so a name the album's own list
+        # doesn't answer falls back to a guarded join onto the primary directory,
+        # where the cover lives. `_file_named` refuses an ambiguous one first, so
+        # the fallback can never be reached by a name two tracks share.
+        matches = naming.matches(name)
+        path = (
+            _file_named(naming, name, ArtworkUnavailableError)
+            if matches
+            else _resolve_in_album(album_dir, name, ArtworkUnavailableError)
+        )
         if not path.exists():
             raise ArtworkUnavailableError(f"{name} is no longer in this album")
         stored = artwork_store.path_for(key)
@@ -1322,7 +1382,7 @@ def restore_artwork(album_dir: Path, digests: dict[str, str]) -> int:
         audit.record(
             "artwork.restore",
             album=album_dir,
-            file=album_files.rel_name(album_dir, path),
+            file=naming.name_of(path),
             digest=images.digest(data),
         )
         restored += 1

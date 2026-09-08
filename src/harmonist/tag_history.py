@@ -357,10 +357,11 @@ def from_plan(plan: Any, album_dir: Path, files: Sequence[Path]) -> tuple[FieldC
     — the "#" column of the per-track disclosure — where the album's own file
     order is what the reader is looking at anyway.
     """
+    naming = album_files.Naming(album_dir, files)
     return summarise(
         [
             _PlannedFile(
-                file=album_files.rel_name(album_dir, path),
+                file=naming.name_of(path),
                 position=str(i),
                 changes=plan.changes.get(path, {}),
             )

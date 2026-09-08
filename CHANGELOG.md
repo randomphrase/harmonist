@@ -37,6 +37,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **Undo now puts each disc's tags back on its own disc.** An album whose files
+  span several folders had every change recorded under a bare filename, so
+  undoing a tagging of a two-disc album whose discs both contain an `01.m4a`
+  restored one disc's tags onto the other — and where the filenames differed it
+  failed outright instead. Records now name the disc, artwork restores address
+  the right folder, and a record from before this fix that could mean either
+  disc is refused rather than guessed at (#423).
+
 - **A purchase is no longer skipped because a different artist used the same
   album address.** Bandcamp addresses like `/album/home` are unique to one page,
   not to the world; Harmonist treated them as an identity, so owning Zero 7's

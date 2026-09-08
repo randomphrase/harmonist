@@ -4559,7 +4559,7 @@ def _register_routes(app: FastAPI) -> None:
                 status.HTTP_404_NOT_FOUND, "no artwork change to undo on that history entry"
             )
         try:
-            restored = tagger_mod.restore_artwork(album.path, plan)
+            restored = tagger_mod.restore_artwork(album.path, plan, paths=album.folders)
         except tagger_mod.ArtworkUnavailableError as e:
             # Expected, not exceptional: the store evicts oldest-first, so an
             # old enough change is genuinely unrevertable and saying so plainly
@@ -4610,7 +4610,7 @@ def _register_routes(app: FastAPI) -> None:
                 status.HTTP_404_NOT_FOUND, "no tag change to undo on that history entry"
             )
         try:
-            outcome = tagger_mod.revert_tags(album.path, plan)
+            outcome = tagger_mod.revert_tags(album.path, plan, paths=album.folders)
         except tagger_mod.RevertUnavailableError as e:
             # Expected, not exceptional: files get renamed and deleted, and
             # saying so plainly beats a stack trace.

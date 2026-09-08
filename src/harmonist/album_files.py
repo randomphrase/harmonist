@@ -23,9 +23,10 @@ broke the import cycle in #200.
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from . import formats
 
@@ -84,24 +85,77 @@ def _key(path: Path) -> tuple[tuple[object, ...], str]:
     return sort_key(Path(path.name))
 
 
-def rel_name(album_dir: Path, path: Path) -> str:
-    """How a record names one of this album's files.
+class Naming:
+    """How one album's records name its files, and how a name gets back to a file.
 
-    The path relative to the album directory — which for a flat album is the
-    bare filename every record has always carried, and for a split release is
-    "CD2/01 - Intro.m4a" rather than a "01 - Intro.m4a" that two discs both
-    answer to. Records key reverts by this name (`tag_history`), so a collision
-    there does not merely display wrong: it restores one disc's tags onto the
-    other's file.
+    Both halves live here because they are the same decision seen twice: a
+    record written under one scheme and read under another is not a display
+    bug, it is an Undo writing one disc's tags onto another's file (#423).
 
-    Falls back to the bare name if `path` is somehow not under `album_dir`,
-    since a name that is merely ambiguous beats raising from inside an audit
-    write (see the `error-handling` skill).
+    **Named relative to the album's root** — the directory every one of its
+    files is under, which for a flat album is the album directory itself and so
+    leaves the bare filename every record has always carried. #197 made an album
+    the files that name its release *wherever they sit*, and those directories
+    are often siblings (`…/Album/CD1`, `…/Album/CD2`) rather than nested. A name
+    taken relative to the primary directory alone could not express the second
+    disc at all: it fell back to the bare filename, two discs answered to
+    `01.m4a`, and the record for one silently addressed the other.
+
+    **Resolved by looking the name up in the album's own files**, rather than by
+    joining it onto a directory. A record cannot then name a file outside the
+    album whatever it holds — no traversal check to get right — and a name from
+    before this scheme ("01.m4a" for a file now known as "CD2/01.m4a") still
+    finds its file by matching the tail of the name. When two files answer to
+    one name the caller is handed both, because refusing an ambiguous record is
+    the only safe answer and it has to be the caller's to give.
     """
+
+    def __init__(self, album_dir: Path, files: Sequence[Path] = ()) -> None:
+        self._album_dir = album_dir
+        self._files = tuple(files)
+        self._root = _root_of(album_dir, self._files)
+
+    def name_of(self, path: Path) -> str:
+        """How a record refers to `path`.
+
+        Falls back to the bare name for a path outside the album, since a name
+        that is merely ambiguous beats raising from inside an audit write (see
+        the `error-handling` skill).
+        """
+        try:
+            return str(path.relative_to(self._root))
+        except ValueError:
+            return path.name
+
+    def matches(self, name: str) -> list[Path]:
+        """Every file in this album that a stored `name` could mean — none, one,
+        or (for a record written before the name carried its disc) several.
+
+        Matched as the tail of the file's own path, so a name written under any
+        scheme this album has had still finds its file: the bare `01.m4a` of a
+        record older than #423, and the `CD2/01.m4a` of one written since, both
+        name the same file, and neither can reach a file that isn't the album's.
+        """
+        rel = PurePosixPath(name)
+        if not name or rel.is_absolute() or any(part in ("", ".", "..") for part in rel.parts):
+            return []
+        wanted = rel.parts
+        return [f for f in self._files if f.parts[-len(wanted) :] == wanted]
+
+
+def _root_of(album_dir: Path, files: Sequence[Path]) -> Path:
+    """The directory an album's names are relative to: the deepest one that
+    contains every file it has, and `album_dir` when they all sit in it."""
+    dirs = {album_dir, *(f.parent for f in files)}
+    if len(dirs) == 1:
+        return album_dir
     try:
-        return str(path.relative_to(album_dir))
+        return Path(os.path.commonpath([str(d) for d in dirs]))
     except ValueError:
-        return path.name
+        # Mixed absolute and relative paths, or different drives — no common
+        # root exists, so fall back to the album directory and let the tail
+        # match in `matches` do the work.
+        return album_dir
 
 
 def sort_key(rel: Path) -> tuple[tuple[object, ...], str]:

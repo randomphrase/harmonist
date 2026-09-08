@@ -3888,6 +3888,44 @@ def test_undo_puts_back_the_tags_a_tagging_changed(client, cfg):
     assert after["album"] is None
 
 
+def test_undo_reaches_the_second_disc_of_a_split_album(client, cfg):
+    """#423. An album is the files that name its release, wherever they sit, and
+    two discs in sibling folders can hold files with the same name. The route has
+    to hand the tagger every folder the album occupies — resolving a record
+    against the primary one alone put disc 2's tags on disc 1's file."""
+    import shutil
+
+    from harmonist import activity, activity_store, formats, tagger
+
+    root = cfg.paths.music_dir / "Artist" / "Split"
+    files = []
+    for i, disc in enumerate(("CD1", "CD2"), start=1):
+        d = root / disc
+        d.mkdir(parents=True)
+        f = d / "01 Track.m4a"
+        shutil.copy(SINE_M4A, f)
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-split"]
+        # Distinct release-track ids, which is what makes the two folders parts
+        # of one album rather than two copies of it (`_holds_different_tracks`).
+        audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [f"rt-{i}".encode()]
+        audio["\xa9nam"] = [f"Intro {i}"]
+        audio.save()
+        files.append(f)
+        sc.write(d, Sidecar(mb_release_id="rel-split"))
+    album_id = _id_for(cfg, root / "CD1")
+
+    with activity_store.action():
+        activity.record("Re-tagged", album_id=album_id, album_label="Artist — Split")
+        tagger.tag_album(root / "CD1", _release_for_match("rel-split", n_tracks=2), files=files)
+    tagged = next(e.id for e in activity_store.album_history(album_id) if e.message == "Re-tagged")
+
+    r = client.post(f"/tags/restore/{album_id}", data={"event_id": tagged})
+
+    assert r.status_code == 200, r.text
+    assert [formats.read_owned(f)["title"] for f in files] == ["Intro 1", "Intro 2"]
+
+
 def test_undo_unlinks_the_album_and_keeps_its_release_as_a_suggestion(client, cfg):
     """#158: the sidecar follows the files. Leaving `mb_release_id` set while
     the files carry no id derives as TAGGING — a spinner with no way out — so

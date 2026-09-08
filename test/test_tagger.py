@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
+from pathlib import Path
 
 import pytest
 from mutagen.mp4 import MP4, MP4Cover
 
+from harmonist import formats as formats_mod
 from harmonist import tagger
 from harmonist.formats import owned
 from harmonist.tagger import (
@@ -1117,6 +1120,119 @@ def _plan(last: int | None = None):
 
     records = _detail()
     return tag_history.revert_plan(records[-last:] if last else records)
+
+
+SINE_M4A = Path(__file__).parent / "fixtures" / "sine.m4a"
+
+
+def _release_2_tracks_same_title() -> dict:
+    """Both tracks called "Intro" — the case where a mis-addressed Undo doesn't
+    merely skip a file but writes the other disc's old title onto it: the value
+    the record says the tagging wrote is on both files, so neither looks stale."""
+    release = _release_2_tracks()
+    for track in release["medium-list"][0]["track-list"]:
+        track["title"] = "Intro"
+        track["recording"]["title"] = "Intro"
+    return release
+
+
+def _split_album(tmp_path, *, names=("01.m4a", "01.m4a")):
+    """A two-disc album whose discs sit in sibling directories — the layout #197
+    made an album — with a title on each file to put back."""
+    root = tmp_path / "Artist" / "Split Album"
+    files = []
+    for i, (disc, name) in enumerate(zip(("CD1", "CD2"), names, strict=True), start=1):
+        d = root / disc
+        d.mkdir(parents=True)
+        f = d / name
+        shutil.copy(SINE_M4A, f)
+        formats_mod.write_owned(f, {**formats_mod.read_owned(f), "title": f"Intro {i}"})
+        files.append(f)
+    return root / "CD1", files
+
+
+def test_undo_restores_each_disc_from_a_record_that_names_it(tmp_path):
+    """#423. Two discs in sibling directories, and both their files called
+    `01.m4a`: every record said `01.m4a`, so an Undo resolved both against the
+    primary directory. It reported one file restored, no stale fields, and had
+    put disc 2's title on disc 1 — a confident lie about the user's tags, with
+    the other file left as the tagging wrote it."""
+    from harmonist import activity_store
+
+    activity_store.init(tmp_path / "audit.db")
+    cd1, files = _split_album(tmp_path)
+
+    tagger.tag_album(cd1, _release_2_tracks_same_title(), files=files)
+    assert [formats_mod.read_owned(f)["title"] for f in files] == ["Intro", "Intro"]
+
+    outcome = tagger.revert_tags(cd1, _plan(), paths=[f.parent for f in files])
+
+    assert [formats_mod.read_owned(f)["title"] for f in files] == ["Intro 1", "Intro 2"]
+    assert outcome.files == 2
+    # And the album's identity came off BOTH discs. `_identity_revert` enumerated
+    # the primary directory alone, so disc 2 read as a file the plan didn't cover
+    # — the all-or-nothing rule declining on an album that was in fact complete.
+    assert outcome.release_id_reverted is True
+    assert [formats_mod.read_owned(f)["mb_album_id"] for f in files] == [None, None]
+
+
+def test_undo_reaches_a_second_disc_whose_filenames_differ(tmp_path):
+    """The same bug's other face: with distinct names there was nothing to
+    collide, and the record still resolved against the primary directory — so
+    the undo failed outright rather than reaching disc 2 where it lives."""
+    from harmonist import activity_store
+
+    activity_store.init(tmp_path / "audit.db")
+    cd1, files = _split_album(tmp_path, names=("01.m4a", "02.m4a"))
+
+    tagger.tag_album(cd1, _release_2_tracks_same_title(), files=files)
+    outcome = tagger.revert_tags(cd1, _plan(), paths=[f.parent for f in files])
+
+    assert [formats_mod.read_owned(f)["title"] for f in files] == ["Intro 1", "Intro 2"]
+    assert outcome.files == 2
+
+
+def test_undo_refuses_a_record_that_could_mean_either_disc(tmp_path):
+    """A record written before this fix names `01.m4a` and two files answer to
+    it. There is no way to tell which, and writing to the wrong one is worse
+    than declining — so it declines, before anything is written."""
+    from harmonist import activity_store
+    from harmonist.tag_history import FileRevert
+
+    activity_store.init(tmp_path / "audit.db")
+    cd1, files = _split_album(tmp_path)
+    tagger.tag_album(cd1, _release_2_tracks_same_title(), files=files)
+    legacy = (FileRevert(file="01.m4a", fields={"title": ("Intro 1", "Intro")}),)
+
+    with pytest.raises(tagger.RevertUnavailableError, match="01.m4a"):
+        tagger.revert_tags(cd1, legacy, paths=[f.parent for f in files])
+
+    # Nothing written: the tagging's titles are all still there.
+    assert [formats_mod.read_owned(f)["title"] for f in files] == ["Intro", "Intro"]
+
+
+def test_restoring_artwork_puts_each_discs_image_back_on_its_own_file(tmp_path):
+    """Artwork restoration addresses files the same way an Undo does, so it had
+    the same fault: two discs' records both named `01.m4a` and both resolved to
+    disc 1 (#423)."""
+    from harmonist import activity_store, artwork_store, tag_history
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    cd1, files = _split_album(tmp_path)
+    originals = [_sized_jpeg(300, 300), _sized_jpeg(400, 400)]
+    for f, art in zip(files, originals, strict=True):
+        _embed_cover(f, art)
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(1000, 1000))
+
+    tagger.update_artwork(
+        cd1, _release_2_tracks_same_title(), cover, files=files, overwrite_art=True
+    )
+    plan = tag_history.artwork_replaced(_detail())
+
+    assert tagger.restore_artwork(cd1, plan, paths=[f.parent for f in files]) == 2
+    assert [bytes(MP4(f)[ATOM_COVER][0]) for f in files] == originals
 
 
 def test_reverting_a_first_tagging_strips_the_tags_back_off(album_with_tracks, tmp_path):
