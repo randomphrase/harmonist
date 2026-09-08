@@ -33,6 +33,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from .formats.owned import ARTWORK
+
 log = logging.getLogger(__name__)
 
 
@@ -681,6 +683,79 @@ def version() -> str:
 #: The audit type written when the scanner first meets an album (#107). Also
 #: serves as the "have we met?" marker — see `already_discovered`.
 DISCOVERY_EVENT = "album.discovered"
+
+
+@dataclass(frozen=True)
+class ArtworkBackup:
+    """One tagging that replaced artwork, and the images it replaced.
+
+    The unit is the TAGGING, not the file: a compilation whose four per-track
+    covers are overwritten in one go is one thing the user would undo, and
+    retention counts it once (#408).
+    """
+
+    album_id: str
+    event_id: int
+    digests: frozenset[str]
+
+
+def artwork_backups() -> list[ArtworkBackup]:
+    """Every tagging that replaced artwork, newest first.
+
+    Facts, not policy: how many an album keeps is `artwork_store`'s decision.
+    This answers only "which images were replaced by which tagging, on which
+    album", which is the same question `_restorable_anchors` asks per album — so
+    retention protects exactly what the UI offers an Undo for, rather than a
+    second opinion about it that could disagree.
+
+    Grouped by event because `tag_changes` holds a row per FILE: an album's
+    tagging contributes as many rows as it wrote files, and all of them belong
+    to the one change.
+
+    Album id is the one stored on the event, NOT resolved through the alias
+    chain. That is correct here and worth stating: an album re-identified since
+    the tagging has its old id on these rows and its new one today, and both
+    sets are still its own backups — they are protected under whichever id they
+    were written with, so a re-identification cannot orphan them.
+    """
+    try:
+        conn = _ensure()
+        with _LOCK:
+            rows = conn.execute(
+                "SELECT e.album_id, c.event_id, c.changes "
+                "FROM tag_changes c JOIN events e ON e.id = c.event_id "
+                "WHERE e.album_id IS NOT NULL "
+                "ORDER BY c.event_id DESC"
+            ).fetchall()
+    except sqlite3.Error:
+        log.exception("activity_store artwork_backups failed", extra=_QUIET_MIRROR)
+        return []
+
+    by_event: dict[int, tuple[str, set[str]]] = {}
+    order: list[int] = []
+    for album_id, event_id, payload in rows:
+        try:
+            parsed = json.loads(payload)
+        except (TypeError, ValueError):
+            log.warning("tag_changes row %s has unreadable JSON — skipping", event_id)
+            continue
+        pair = parsed.get(ARTWORK) if isinstance(parsed, dict) else None
+        # `[before, after]`, and only a real `before` is a backup: a track that
+        # GAINED art it never had has nothing kept for it, exactly as
+        # `tag_history.artwork_replaced` reads the same pair.
+        if not isinstance(pair, list) or len(pair) != 2 or not isinstance(pair[0], str):
+            continue
+        if not pair[0]:
+            continue
+        key = int(event_id)
+        if key not in by_event:
+            by_event[key] = (str(album_id), set())
+            order.append(key)
+        by_event[key][1].add(pair[0])
+    return [
+        ArtworkBackup(album_id=by_event[e][0], event_id=e, digests=frozenset(by_event[e][1]))
+        for e in order
+    ]
 
 
 def already_discovered(album_ids: list[str]) -> set[str]:

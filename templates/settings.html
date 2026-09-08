@@ -166,14 +166,24 @@
     {% set used, cap = artwork_usage %}
     <section class="border border-line rounded-lg p-4 space-y-2">
         <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Kept artwork</h2>
+        {# Says the PROMISE first and the number second (#408). The number alone
+           was the old text, and it left the reader to guess what running out
+           would cost them — which was also the wrong guess, since it is no
+           longer simply the oldest copies that go. #}
         <p class="text-sm text-muted">
-            Harmonist keeps a copy of any embedded artwork a re-tag overwrites, so
-            replacing it can be undone from the album's History.
+            Harmonist keeps a copy of any artwork a re-tag overwrites, so replacing
+            it can be undone from the album's History.
+            {% if keep_per_album %}
+            The last <span class="font-bold text-ink">{{ keep_per_album }}</span>
+            artwork {{ 'change' if keep_per_album == 1 else 'changes' }} to any album
+            {{ 'is' if keep_per_album == 1 else 'are' }} kept, however many albums
+            you tag.
+            {% endif %}
             Using <span class="font-bold text-ink">{{ (used / 1048576) | round(1) }} MB</span>
             of {{ (cap / 1048576) | round(0) | int }} MB.
             {% if used > cap * 0.9 and cap %}
-            The oldest copies are removed first, so the oldest artwork changes are
-            no longer undoable.
+            Close to the limit: past it, copies are dropped oldest first — the ones
+            no album still needs before any it does.
             {% endif %}
         </p>
     </section>

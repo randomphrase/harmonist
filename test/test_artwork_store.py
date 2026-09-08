@@ -174,3 +174,127 @@ def test_a_partial_write_is_never_visible_under_its_digest(tmp_path):
     # And a stray .tmp is never served as if it were the image.
     (tmp_path / "artwork" / f"{artwork_store.digest(PNG)}.jpg.tmp").write_bytes(b"half")
     assert artwork_store.path_for(artwork_store.digest(PNG)) is None
+
+
+# ---------------------------------------------------------------------------
+# Per-album retention (#408) — the promise the store actually makes
+# ---------------------------------------------------------------------------
+
+
+def _replaced(album_id: str, before: bytes, after: bytes = b"new") -> int:
+    """Record a tagging on `album_id` that replaced `before` with `after`, the
+    way `tagger` does — an audit row plus its per-file change detail."""
+    event_id = activity_store.append(
+        message="tag.track file=01.m4a",
+        level=activity_store.Level.INFO,
+        source=activity_store.Source.AUDIT,
+        album_id=album_id,
+    )
+    assert event_id is not None
+    activity_store.record_tag_changes(
+        event_id,
+        file="01.m4a",
+        changes={"artwork": [artwork_store.digest(before), artwork_store.digest(after)]},
+    )
+    return event_id
+
+
+def _image(seed: int) -> bytes:
+    return b"\xff\xd8\xff" + bytes([seed]) * 4000
+
+
+class TestProtectedDigests:
+    def test_an_albums_recent_changes_are_protected(self):
+        one, two = _image(1), _image(2)
+        _replaced("album-a", one)
+        _replaced("album-a", two)
+
+        protected = artwork_store.protected_digests()
+
+        assert artwork_store.digest(one) in protected
+        assert artwork_store.digest(two) in protected
+
+    def test_only_the_last_n_per_album(self):
+        artwork_store.configure(artwork_store._root, keep_per_album=2)
+        images = [_image(i) for i in range(4)]
+        for img in images:  # oldest first
+            _replaced("album-a", img)
+
+        protected = artwork_store.protected_digests()
+
+        # The two most recent survive; the two before them are spendable.
+        assert {artwork_store.digest(i) for i in images[2:]} <= protected
+        assert not {artwork_store.digest(i) for i in images[:2]} & protected
+
+    def test_each_album_gets_its_own_allowance(self):
+        """A busy album must not spend another album's protection — the whole
+        failure the global byte cap had."""
+        artwork_store.configure(artwork_store._root, keep_per_album=1)
+        mine = _image(1)
+        _replaced("album-mine", mine)
+        for i in range(5):
+            _replaced("album-busy", _image(10 + i))
+
+        assert artwork_store.digest(mine) in artwork_store.protected_digests()
+
+    def test_art_a_track_gained_is_not_a_backup(self):
+        """Nothing was replaced, so nothing was kept — `artwork_replaced` reads
+        the same pair the same way."""
+        event_id = activity_store.append(
+            message="tag.track file=01.m4a",
+            level=activity_store.Level.INFO,
+            source=activity_store.Source.AUDIT,
+            album_id="album-a",
+        )
+        assert event_id is not None
+        activity_store.record_tag_changes(
+            event_id, file="01.m4a", changes={"artwork": [None, "abc"]}
+        )
+
+        assert artwork_store.protected_digests() == frozenset()
+
+
+class TestEviction:
+    def test_a_protected_image_outlives_an_unprotected_older_one(self):
+        """The point of the two passes: being old is not what decides."""
+        old_unprotected, protected = _image(1), _image(2)
+        artwork_store.keep(old_unprotected)
+        time.sleep(0.01)
+        artwork_store.keep(protected)
+        _replaced("album-a", protected)
+        # A cap that forces exactly one of the two out.
+        artwork_store.configure(artwork_store._root, max_bytes=len(protected) + 100)
+
+        artwork_store.keep(_image(3))  # any keep triggers the sweep
+
+        assert artwork_store.path_for(artwork_store.digest(protected)) is not None
+        assert artwork_store.path_for(artwork_store.digest(old_unprotected)) is None
+
+    def test_the_cap_still_wins_when_everything_is_protected(self):
+        """The backstop. A promise the disk cannot keep is not kept — but it is
+        said out loud, because the UI has been offering that Undo."""
+        first, second = _image(1), _image(2)
+        artwork_store.keep(first)
+        _replaced("album-a", first)
+        time.sleep(0.01)
+        _replaced("album-b", second)
+        artwork_store.configure(artwork_store._root, max_bytes=len(second) + 100)
+
+        artwork_store.keep(second)
+
+        assert artwork_store.path_for(artwork_store.digest(first)) is None
+        assert artwork_store.path_for(artwork_store.digest(second)) is not None
+
+    def test_an_unreadable_store_evicts_oldest_first_rather_than_nothing(self, monkeypatch):
+        """Empty protection is the safe direction: eviction falls back to what it
+        did before #408 instead of letting the store grow past its cap."""
+        monkeypatch.setattr(activity_store, "artwork_backups", list)
+        old, new = _image(1), _image(2)
+        artwork_store.keep(old)
+        time.sleep(0.01)
+        _replaced("album-a", old)
+        artwork_store.configure(artwork_store._root, max_bytes=len(new) + 100)
+
+        artwork_store.keep(new)
+
+        assert artwork_store.path_for(artwork_store.digest(old)) is None

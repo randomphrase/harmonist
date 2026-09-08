@@ -84,6 +84,12 @@ class ArtworkStoreConfig(BaseModel):
     """
 
     max_bytes: int = Field(default=500 * 1024 * 1024, ge=0)
+    # How many artwork changes each album keeps a copy of (#408). The promise
+    # the store actually makes; `max_bytes` is only the backstop under it.
+    # Zero keeps nothing per album, leaving the byte cap as the sole policy —
+    # the pre-#408 behaviour, where a busy library could evict the copy behind
+    # an Undo another album was still offering.
+    keep_per_album: int = Field(default=5, ge=0)
 
 
 class LibraryConfig(BaseModel):

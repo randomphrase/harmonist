@@ -6,6 +6,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+
+- **The last five artwork changes to any album can always be undone**, whatever
+  else Harmonist has been tagging. Kept artwork used to be bounded only by a
+  total size, so a busy night's re-tagging could quietly evict the copy behind
+  an Undo a different album was still offering. The size cap remains as a
+  backstop, and Settings now states the promise rather than only the number.
+  Configurable as `artwork_store.keep_per_album` (#408).
+
 ### Added
 
 - **An Artwork section on the album page** — what artwork your files actually

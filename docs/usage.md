@@ -488,9 +488,12 @@ point:
 
 The undo is itself recorded, so it can be undone in turn.
 
-**Cover art has its own Undo.** Artwork that a re-tag overwrites is kept in a
-bounded store (500 MB) and can be put back from the Artwork row in History.
-Settings shows what's held under **Kept artwork**.
+**Cover art has its own Undo.** Artwork that a re-tag overwrites is kept, and can
+be put back from the Artwork row in History. **The last five artwork changes to
+any album are kept**, however many albums you tag — so a busy library can't cost
+you the undo on the one album you were working on. A 500 MB ceiling sits under
+that as a backstop; both numbers are `harmonist.toml` settings, and Settings
+shows what's held under **Kept artwork**.
 
 ## Activity
 
@@ -535,7 +538,8 @@ What makes the record worth reading rather than just kept:
   MusicBrainz user agent, log level. Saved to `harmonist.toml` and applied right
   away; see [installation.md](installation.md#configuration) for the file itself.
 - **Won't download** — the purchases you've set aside, each with **Restore**.
-- **Kept artwork** — the images re-tags have overwritten, still recoverable.
+- **Kept artwork** — the images re-tags have overwritten, still recoverable:
+  the last five changes per album, and how much room they take.
 - **Maintenance** — erase all `.harmonist.json` sidecars. Audio files aren't
   touched, but every match and sync link is removed; this is the uninstall step,
   not a routine one.

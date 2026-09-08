@@ -431,7 +431,11 @@ def create_app(
     # Copies of artwork a re-tag overwrote, so replacing it can be undone (#131).
     # `artwork_dir` sandboxes itself in demo mode rather than switching off, so
     # the demo exercises the real path.
-    artwork_store.configure(cfg.artwork_dir, max_bytes=cfg.artwork_store.max_bytes)
+    artwork_store.configure(
+        cfg.artwork_dir,
+        max_bytes=cfg.artwork_store.max_bytes,
+        keep_per_album=cfg.artwork_store.keep_per_album,
+    )
     # Audit paths are recorded relative to the library (#98). Demo mode already
     # has its sandbox substituted into cfg, so this follows it automatically.
     audit.set_library_root(cfg.paths.music_dir)
@@ -3593,6 +3597,9 @@ def _register_routes(app: FastAPI) -> None:
             sidecar_count=sidecar_mod.count_all(cfg.paths.music_dir),
             ignored=_read_user_ignores(cfg.ignores_file),
             artwork_usage=artwork_store.usage(),
+            # The promise the figure sits under (#408) — what a user
+            # can rely on being undoable, as opposed to how full it is.
+            keep_per_album=cfg.artwork_store.keep_per_album,
             **extra,
         )
 
