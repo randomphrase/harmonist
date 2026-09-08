@@ -186,9 +186,22 @@ class Significance(StrEnum):
     #: What the album or one of its tracks IS — its name, its artist, or any of
     #: the MusicBrainz ids that say which entity it points at.
     IDENTITY = "identity"
-    #: The cover image. Its own level rather than a rank among the others,
-    #: because "let it update my cover art" is a trust decision people make
-    #: separately from anything about tags.
+    #: The cover image being REPLACED. Its own level rather than a rank among
+    #: the others, because "let it update my cover art" is a trust decision
+    #: people make separately from anything about tags — and, more sharply,
+    #: because this is the one level whose reversal may be unavailable:
+    #: `artwork_store` keeps embedded art only and evicts under a size cap, so
+    #: an undo can be gone for reasons that have nothing to do with the change
+    #: (the image was large; the cap has since been reached). On the merits it
+    #: is IDENTITY-equivalent — this is the image that IS the album to a player
+    #: — and a level whose reversibility is conditional cannot sit in a rank
+    #: where the ones above it are all reversible.
+    #:
+    #: So the level tracks reversibility, not subject matter, and the
+    #: consequence is worth stating because it reads as an inconsistency:
+    #: **not every artwork change is classified here.** Giving an album artwork
+    #: it does not have is additive with nothing to reverse, and is ENRICHMENT
+    #: (#269). Replacing one it has is this (#276).
     COVER_ART = "artwork"
 
 
