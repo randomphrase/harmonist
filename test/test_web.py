@@ -9141,3 +9141,31 @@ def test_the_re_ask_control_asks_even_when_the_stored_answer_is_fresh(client, cf
     client.get(f"/album/{album_id}/artwork?reread=1")
 
     assert calls == ["rel-forced"]
+
+
+def test_the_comparison_keeps_the_archive_date_it_swaps_over(client, cfg, monkeypatch):
+    """The panel's dates are ONE out-of-band block, so a response that sends half
+    of it blanks the other half (#438).
+
+    `/compare` has nothing to do with the Cover Art Archive and is the slowest
+    fetch on the page, so its swap lands last — and used to land with the CAA row
+    reading *not yet* over an answer the store had all along.
+    """
+    from harmonist import activity_store
+
+    d = _make_tagged_album(cfg, "Dated", mbid="rel-dated", tagged_at=datetime.now(UTC))
+    activity_store.store_cover_art(
+        "rel-dated", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    )
+
+    def fake_release(mbid):
+        return {"id": mbid, "title": "Dated", "medium-list": []}
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+
+    rendered = " ".join(client.get(f"/library/{_id_for(cfg, d)}/compare").text.split())
+
+    assert "Cover Art Archive last asked" in rendered
+    # The wording the row falls back to, which this album is past — and which the
+    # same block still renders for an album nobody has asked about.
+    assert "not yet" not in rendered

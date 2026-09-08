@@ -4288,6 +4288,13 @@ def _register_routes(app: FastAPI) -> None:
             # that failed the write it was just asked for) — "read just now" is
             # then still true of the fetch that produced this response.
             mb_read_at=mb_cache.fetched_at(mbid) or datetime.now(UTC),
+            # …and the Cover Art Archive's date beside it, which this response
+            # has nothing to do with and must send anyway (#438). The dates are
+            # ONE out-of-band block: a response that sends half of it blanks the
+            # other half, and this one is the slowest on the page, so its swap
+            # lands last and wins. The Artwork section carries `mb_read_at` for
+            # exactly the same reason. A local SQLite read, no request in it.
+            caa_checked_at=(answer.fetched_at if (answer := caa_cache.stored(mbid)) else None),
             # What the panel's MusicBrainz ids are called (#298). Off the same
             # release the comparison is built from, so an id and the name shown
             # for it can never come from two different payloads — which is the

@@ -25,6 +25,11 @@ playwright_sync = pytest.importorskip("playwright.sync_api")
 
 ALBUM = "demo-rel-dingoes"
 
+#: The MusicBrainz row's value, named by the one thing that distinguishes it from
+#: the Cover Art Archive row beside it (#436): what its hover says it is about.
+#: A bare `dd[title]` matched both and failed Playwright's strict mode.
+_MB_VALUE = 'dd[title^="MusicBrainz release last read"]'
+
 
 def test_read_again_issues_a_compare_request_and_refills_the_panel(demo_server: str) -> None:
     """Click it and a `reread=1` request must actually go out, then land."""
@@ -57,8 +62,9 @@ def test_read_again_issues_a_compare_request_and_refills_the_panel(demo_server: 
         assert page.locator(f"#album-update-{ALBUM} .album-update__legend").is_visible()
         # `dd[title]` is the VALUE. Since #358 the row holds a second <dd> for
         # the re-read control, in the grid's third column, and a bare `dd` here
-        # matches both.
-        assert page.locator(f"#album-checked-{ALBUM} dd[title]").is_visible()
+        # matches both — and since #436 the block holds a Cover Art Archive date
+        # with a title of its own, so the title has to name WHICH service.
+        assert page.locator(f"#album-checked-{ALBUM} {_MB_VALUE}").is_visible()
 
         browser.close()
 
@@ -71,7 +77,7 @@ def test_the_panel_reports_when_it_last_read_musicbrainz(demo_server: str) -> No
         page = browser.new_page()
 
         page.goto(f"{demo_server}/album/{ALBUM}")
-        when = page.locator(f"#album-checked-{ALBUM} dd[title]")
+        when = page.locator(f"#album-checked-{ALBUM} {_MB_VALUE}")
         when.wait_for(timeout=10_000)
 
         # The elapsed time itself is the wrong thing to assert on: `ago` renders
@@ -79,7 +85,10 @@ def test_the_panel_reports_when_it_last_read_musicbrainz(demo_server: str) -> No
         # fetched says nothing containing "ago". What must hold on every run is
         # that the value states WHICH read it is reporting — that is the claim
         # the user checks a stale comparison against.
-        assert page.locator(f"#album-checked-{ALBUM} dt").text_content() == "Checked"
+        #
+        # `.first`: the block lists several dates, and this row is the first of
+        # them (#355 put it there, #436 gave the archive one of its own below).
+        assert page.locator(f"#album-checked-{ALBUM} dt").first.text_content() == "MB checked"
         assert "MusicBrainz release last read" in (when.get_attribute("title") or "")
         assert (when.text_content() or "").strip()
 
