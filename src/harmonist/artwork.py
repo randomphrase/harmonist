@@ -160,6 +160,10 @@ class ArtRow:
     #: and the album's own artwork for the folder cover's row when that is the
     #: better image (#410). None where nothing is written.
     written_from: str | None = None
+    #: Whether what would be written came from the Cover Art Archive (#276) —
+    #: which is the one case where the MusicBrainz hexagon is a claim Harmonist
+    #: can support. A folder cover may have come from a Bandcamp download.
+    from_archive: bool = False
     #: …and the image itself, so the row can SHOW what it would become rather
     #: than only assert it (#413). "Replaced by the album's own artwork" carries
     #: no tense — a reader cannot tell whether it already happened — and the
@@ -372,6 +376,7 @@ def summarise(
     tracks: Sequence[tuple[str, TrackTags]],
     cover: FolderCover | None,
     caa: CoverArtAnswer | None = None,
+    archive: EmbeddedArt | None = None,
 ) -> ArtworkView:
     """Everything the section shows, from tags already read and a folder cover.
 
@@ -430,10 +435,19 @@ def summarise(
             on_cover=on_cover,
             written_from=written_from,
             written_image=written_image,
+            from_archive=written_image is not None and archive_wins,
         )
 
     def carried_by_cover(digest: str) -> str | None:
         return cover.name if cover is not None and cover.image.digest == digest else None
+
+    def _unchanged(digest: str) -> bool:
+        """Whether this row's tracks keep what they have — preserved per-track
+        art, an album image that already won, or art that already IS the
+        winner."""
+        if preserved or keep_ours:
+            return True
+        return bool(carried_by_cover(digest)) and not archive_wins
 
     # The album's own image may be the better one, in which case the folder file
     # is what changes and the tracks are left alone (#410). Asked through the
@@ -459,6 +473,23 @@ def summarise(
     #: …and the image those words name.
     gap_image = album_image if keep_ours else (cover.image if cover else None)
 
+    # The archive is the third candidate, and it displaces both when it beats
+    # them (#276). Asked in the same order and by the same `beats` as
+    # `tagger._prepare`, because this is the page saying what that code will do.
+    local_best = gap_image.size if gap_image else None
+    archive_wins = (
+        not preserved
+        and archive is not None
+        and cover is not None
+        and beats(archive.size, local_best)
+    )
+    if archive_wins:
+        assert archive is not None  # narrowed by `archive_wins`
+        keep_ours = False
+        promote = archive.digest != cover.image.digest if cover else False
+        fills_gaps = "the Cover Art Archive"
+        gap_image = archive
+
     rows = [
         row(
             art_of[digest],
@@ -466,12 +497,15 @@ def summarise(
             Outcome.KEPT
             if preserved or keep_ours
             else Outcome.SAME
-            if carried_by_cover(digest)
+            if carried_by_cover(digest) and not archive_wins
             else Outcome.REPLACED,
             on_cover=carried_by_cover(digest),
-            written_from=(
-                None if preserved or keep_ours or carried_by_cover(digest) else cover.name  # type: ignore[union-attr]
-            ),
+            # What this row would become, named and shown. `fills_gaps` is the
+            # winner whatever it turned out to be — the folder cover, or the
+            # archive when it beat everything — so the row cannot name one and
+            # be written the other.
+            written_from=None if _unchanged(digest) else fills_gaps,
+            written_image=None if _unchanged(digest) else gap_image,
         )
         for digest, refs in by_digest.items()
     ]
@@ -486,10 +520,11 @@ def summarise(
                 (),
                 Outcome.REPLACED if promote else Outcome.SAME,
                 on_cover=cover.name,
-                # Named as the thing it is rather than by a filename: the image
-                # replacing it lives in the tracks, and the row above is it.
-                written_from="the album's own artwork" if promote else None,
-                written_image=album_image if promote else None,
+                # Named as the thing it is rather than by a filename: what
+                # replaces the folder cover is the album's own image or the
+                # archive's, neither of which is a file in this album.
+                written_from=fills_gaps if promote else None,
+                written_image=gap_image if promote else None,
             )
         )
     # A gap is filled whenever there is anything to fill it with — including

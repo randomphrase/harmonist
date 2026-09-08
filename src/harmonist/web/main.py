@@ -2235,8 +2235,33 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 _IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
 
 
+def _archive_image(mbid: str | None) -> formats.EmbeddedArt | None:
+    """The Cover Art Archive's image for this release, described, when one has
+    been fetched (#276).
+
+    Read from the local cache — the page never asks the archive on a render, and
+    an album nobody has checked simply has no candidate here. Described rather
+    than carried, like every other image on this page: the bytes go back to the
+    browser through the image route, keyed by the digest measured here.
+    """
+    if mbid is None:
+        return None
+    path = cover_art.cached_image(mbid)
+    if path is None:
+        return None
+    try:
+        data = path.read_bytes()
+    except OSError:
+        log.exception("could not read the cached archive image for %s", mbid)
+        return None
+    mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+    return formats.EmbeddedArt.of(data, mime)
+
+
 def _artwork_view(
-    album: Album, caa: activity_store.CachedCoverArt | None = None
+    album: Album,
+    caa: activity_store.CachedCoverArt | None = None,
+    archive: formats.EmbeddedArt | None = None,
 ) -> artwork.ArtworkView:
     """What the album page's Artwork section shows (#155).
 
@@ -2253,7 +2278,7 @@ def _artwork_view(
     """
     audio, _ = _album_tracks(album.path, album.folders)
     if album.cover_path is None or not album.cover_path.exists():
-        return artwork.summarise(audio, None, caa)
+        return artwork.summarise(audio, None, caa, archive)
     try:
         data = album.cover_path.read_bytes()
     except OSError:
@@ -2262,13 +2287,13 @@ def _artwork_view(
         # lead to opposite conclusions about what a re-tag would do (#112). The
         # view says so and shows no outcomes at all rather than guessing.
         log.exception("could not read the folder cover for %s", album.path)
-        return replace(artwork.summarise(audio, None, caa), cover_unreadable=True)
+        return replace(artwork.summarise(audio, None, caa, archive), cover_unreadable=True)
     mime = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
     cover = artwork.FolderCover(
         name=album.cover_path.name,
         image=formats.EmbeddedArt.of(data, mime),
     )
-    return artwork.summarise(audio, cover, caa)
+    return artwork.summarise(audio, cover, caa, archive)
 
 
 def _albums(request: Request) -> list[Album]:
@@ -4839,7 +4864,7 @@ def _register_routes(app: FastAPI) -> None:
         ctx = _ctx(
             request,
             album=album,
-            artwork=_artwork_view(album, caa),
+            artwork=_artwork_view(album, caa, _archive_image(mbid)),
             # The panel's dates ride back out of band, so the timestamp and the
             # answer it describes update together — the same pairing the
             # MusicBrainz control has with the Tags section.
@@ -4908,6 +4933,17 @@ def _register_routes(app: FastAPI) -> None:
             art = formats.read_cover(path)
             if art is not None and images.digest(art[0]) == digest:
                 return Response(content=art[0], media_type=art[1], headers=_IMMUTABLE)
+        # …and the Cover Art Archive's candidate, which is not in the album at
+        # all (#276). Served from Harmonist rather than linked to the archive:
+        # the page talks to one host, so opening an album cannot tell the
+        # Internet Archive which records this user owns.
+        mbid = album.sidecar.mb_release_id if album.sidecar else None
+        cached = cover_art.cached_image(mbid) if mbid else None
+        if cached is not None:
+            data = cached.read_bytes()
+            if images.digest(data) == digest:
+                media = "image/png" if cached.suffix.lower() == ".png" else "image/jpeg"
+                return Response(content=data, media_type=media, headers=_IMMUTABLE)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
 
     @app.get("/cover/{album_id}")

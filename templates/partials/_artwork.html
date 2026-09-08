@@ -112,7 +112,18 @@
         <div class="art-row__side art-row__side--after">
             {{ image_cell(r.written_image, album.id, r.written_from) }}
             <div class="art-row__facts art-row__facts--mb">
-                <span class="art-row__who">{{ r.written_from }}</span>
+                <span class="art-row__who">{{ r.written_from }}{% if r.from_archive %}{#
+                    #}{# The hexagon, finally truthful (#276). It was left off
+                         every earlier incoming image on purpose — a folder cover
+                         may have come from a Bandcamp download, and marking it
+                         MusicBrainz's would have been a claim Harmonist could
+                         not support. This image really is the archive's. #}
+                    <span class="mb-mark" tabindex="0" role="img"
+                          title="From the Cover Art Archive"
+                          aria-label="From the Cover Art Archive"><svg
+                        viewBox="0 0 24 24" width="9" height="9" fill="currentColor"
+                        aria-hidden="true"
+                        ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span>{% endif %}</span>
                 <span class="art-row__meta">{{ describe_image(r.written_image) }}</span>
             </div>
         </div>

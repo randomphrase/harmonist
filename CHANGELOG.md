@@ -14,7 +14,10 @@ versions follow [semantic versioning](https://semver.org).
   it is kept locally and a re-tag writes it — to the tracks and to the folder
   cover, whose previous image is kept so the change can be undone. Nothing is
   fetched unless you press, a tagging never reaches the network, and an archive
-  cover that is no better than yours is ignored (#276).
+  cover that is no better than yours is ignored. The Artwork section shows the
+  archive's image beside your own, marked as MusicBrainz's, and serves it from
+  Harmonist — so opening an album never tells the Internet Archive which records
+  you own (#276).
 
 ### Fixed
 

@@ -448,3 +448,82 @@ class TestCoverArtArchiveNote:
         view = artwork.summarise(album(art_of(1)), None, self._Answer())
         assert view.caa_note is not None
         assert "size could not be read" in view.caa_note
+
+
+class TestArchiveWins:
+    """The archive as the third candidate, on the page (#276)."""
+
+    def test_a_larger_archive_image_replaces_everything(self) -> None:
+        mine = art_of(1, width=600, height=600)
+        theirs = art_of(2, width=800, height=800)
+        archive = art_of(3, width=1400, height=1400)
+
+        view = artwork.summarise(album(mine, mine), cover_of(theirs), archive=archive)
+
+        # Both the tracks and the folder cover are replaced, by the same image.
+        assert {r.outcome for r in view.rows} == {artwork.Outcome.REPLACED}
+        assert {r.written_from for r in view.rows} == {"the Cover Art Archive"}
+        assert {r.written_image for r in view.rows} == {archive}
+
+    def test_an_archive_image_that_loses_changes_nothing(self) -> None:
+        big = art_of(1, width=3000, height=3000)
+
+        view = artwork.summarise(
+            album(big, big), cover_of(big), archive=art_of(2, width=400, height=400)
+        )
+
+        assert not any(r.writes for r in view.rows)
+
+    def test_it_must_beat_the_best_the_album_has_not_just_the_cover(self) -> None:
+        """An album whose tracks carry 3000px is not improved by a 2000px
+        archive cover just because its folder file is smaller still."""
+        tracks = art_of(1, width=3000, height=3000)
+        folder = art_of(2, width=500, height=500)
+
+        view = artwork.summarise(
+            album(tracks), cover_of(folder), archive=art_of(3, width=2000, height=2000)
+        )
+
+        assert not any(r.written_from == "the Cover Art Archive" for r in view.rows)
+
+    def test_per_track_artwork_is_still_never_overwritten(self) -> None:
+        """The archive does not get to flatten a compilation, however large."""
+        view = artwork.summarise(
+            album(art_of(1, width=500, height=500), art_of(2, width=500, height=500)),
+            cover_of(art_of(3, width=500, height=500)),
+            archive=art_of(4, width=3000, height=3000),
+        )
+
+        assert not any(r.writes for r in view.rows)
+
+
+def test_a_track_row_replaced_by_the_cover_shows_the_incoming_image() -> None:
+    """The gap this missed until #276: only the gap and folder rows carried an
+    incoming image, so the commonest changing row of all — tracks about to be
+    overwritten by a better folder cover — showed nothing on the right."""
+    small = art_of(1, width=400, height=400)
+    big = art_of(2, width=900, height=900)
+
+    view = artwork.summarise(album(small, small), cover_of(big))
+
+    tracks_row = view.rows[0]
+    assert tracks_row.outcome is artwork.Outcome.REPLACED
+    assert tracks_row.written_from == "cover.jpg"
+    assert tracks_row.written_image == big
+
+
+def test_only_the_archives_image_carries_the_musicbrainz_mark() -> None:
+    """The hexagon is a claim about provenance. A folder cover may have come
+    from a Bandcamp download, so it never gets one; the archive's image is the
+    one case Harmonist can support (#276)."""
+    small = art_of(1, width=400, height=400)
+    folder = art_of(2, width=900, height=900)
+    archive = art_of(3, width=1400, height=1400)
+
+    from_cover = artwork.summarise(album(small), cover_of(folder))
+    from_archive = artwork.summarise(album(small), cover_of(folder), archive=archive)
+
+    assert from_cover.rows[0].written_image == folder
+    assert from_cover.rows[0].from_archive is False
+    assert from_archive.rows[0].written_image == archive
+    assert from_archive.rows[0].from_archive is True
