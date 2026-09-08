@@ -572,20 +572,42 @@ def _prepare(
     if preserves_per_track_art:
         cover = None
 
-    # The folder cover is not automatically the better image (#410). A re-tag
-    # embedded it regardless, which on a real library shrank one album in twelve
-    # — 3000px replaced by 2000px, in one case 5700px by 2000px — and the
-    # Artwork section has been reporting exactly that as "Replaced by
-    # cover.jpg". Where the album's own image is larger, the folder file catches
-    # up instead, and the tracks keep what they have.
+    # The folder cover is not automatically the better image (#410), and a track
+    # with no art is not a reason to rewrite the tracks that have it (#397). A
+    # re-tag used to do both: on a real library it shrank one album in twelve —
+    # 3000px replaced by 2000px, in one case 5700px by 2000px — and it replaced
+    # every correct image on an album to fill the one track that had none.
     #
-    # `overwrite_art` still means what it says: the user asking for the folder
+    # `overwrite_art` still means what it says: a user asking for the folder
     # cover to be embedded is not asking for it to be judged.
     promote_cover_from = None
-    if cover is not None and not overwrite_art:
-        promote_cover_from = _better_album_image(art_before, cover)
-        if promote_cover_from is not None:
-            cover = None
+    own = _album_image(art_before) if cover is not None and not overwrite_art else None
+    if own is not None and cover is not None:
+        source, mine = own
+        ours, theirs = images.dimensions(mine), images.dimensions(cover)
+        # Two decisions, related and not the same.
+        #
+        # 1. WHAT GOES ON THE TRACKS. The folder cover has to be genuinely
+        #    better to be written over an image the album already carries: a
+        #    same-sized different picture is not an improvement, and replacing
+        #    ten correct images to fill two gaps is what #397 was filed for. So
+        #    unless the cover beats ours, OURS is what gets embedded — which
+        #    fills the empty tracks and is a no-op on the rest, whose art
+        #    already is this image, so `_changes_for` records an artwork change
+        #    for the gaps alone and `_keep_doomed_art` finds nothing to back up.
+        #
+        #    Both sizes have to be readable for any of it to apply. An
+        #    unmeasurable header is not evidence that the album's image is worth
+        #    keeping — it is no evidence at all — so the fallback is what a
+        #    re-tag has always done: embed the folder cover, gaps included.
+        if ours is not None and theirs is not None and not artwork.beats(theirs, ours):
+            cover = mine
+            # 2. WHETHER THE FOLDER FILE CATCHES UP. Only when ours is strictly
+            #    better (#410). Equal is not a reason to overwrite a user's
+            #    cover, and this is the one write here that could not be undone
+            #    from the tracks themselves.
+            if artwork.beats(ours, theirs):
+                promote_cover_from = source
 
     return _Prepared(
         files=files,
@@ -720,21 +742,17 @@ def _mime_for(path: Path) -> str:
     return "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
 
 
-def _better_album_image(digests: dict[Path, str | None], cover: bytes) -> Path | None:
-    """The file whose embedded image beats the folder cover, or None (#410).
+def _album_image(digests: dict[Path, str | None]) -> tuple[Path, bytes] | None:
+    """The album's own artwork and the file to read it from, when it has exactly
+    one — or None.
 
-    Only when the album speaks with one voice: exactly one distinct embedded
-    image, carried by at least one track — so in practice the count guards the
-    album with NO embedded art at all, since per-track artwork has already set
-    `cover` to None upstream and this is never reached for it. Stated as the
-    positive condition anyway: what makes a promotion safe is that the album has
+    "Exactly one distinct embedded image, carried by at least one track" is what
+    makes the album speak with one voice. In practice this guards the album with
+    NO embedded art at all, since per-track artwork has already set `cover` to
+    None upstream and this is never reached for it. Stated as the positive
+    condition anyway: what makes the decisions below safe is that the album has
     one image, and a reader should not have to trace an outer guard to see it.
-    (A compilation's first sleeve is not the album's cover however large it is.)
-
-    Strictly larger, by width and height together, and only when BOTH images
-    state a size. An unreadable header measures as None (see `images.dimensions`)
-    and the answer is then "leave it alone": today's behaviour is not a bad one,
-    and it is not worth overwriting a user's cover on a guess.
+    (A compilation's first sleeve is not the album's cover, however large it is.)
     """
     distinct = {d for d in digests.values() if d is not None}
     if len(distinct) != 1:
@@ -743,13 +761,7 @@ def _better_album_image(digests: dict[Path, str | None], cover: bytes) -> Path |
     if source is None:
         return None
     art = formats.read_cover(source)
-    if art is None:
-        return None
-    # `artwork.beats` is the comparison, not a second copy of it: the album page
-    # asks the same question of the same sizes when it says what a re-tag would
-    # do, and the two must not be able to answer differently (#410).
-    mine, theirs = images.dimensions(art[0]), images.dimensions(cover)
-    return source if artwork.beats(mine, theirs) else None
+    return (source, art[0]) if art is not None else None
 
 
 def _promote_album_image(

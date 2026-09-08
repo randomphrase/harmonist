@@ -8,6 +8,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A track missing its artwork no longer costs the other tracks theirs.** A gap
+  is filled from the image the rest of the album already carries, and those
+  tracks are left alone — where a re-tag used to overwrite every one of them
+  with the folder cover to fill the one that was empty. The folder cover is
+  still embedded where it is genuinely the better image (#397).
+
 - **A re-tag no longer shrinks an album's artwork.** Where the image your tracks
   already carry is larger than the folder `cover.jpg`, the folder file is
   updated from it instead of being embedded over it — five of sixty albums

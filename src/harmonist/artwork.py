@@ -373,24 +373,36 @@ def summarise(
     # same `beats` the tagger asks, so the page cannot promise a different
     # outcome from the one the button produces.
     album_image = next(iter(art_of.values())) if len(art_of) == 1 else None
-    promote = (
+    ours = album_image.size if album_image else None
+    theirs = cover.image.size if cover else None
+    # What goes on the tracks: the folder cover has to actually be better to be
+    # written over what the album already carries, and both sizes have to be
+    # readable for that to be established at all (#397, #410).
+    keep_ours = (
         not preserved
-        and cover is not None
         and album_image is not None
-        and beats(album_image.size, cover.image.size)
+        and ours is not None
+        and theirs is not None
+        and not beats(theirs, ours)
     )
+    # …and the folder file catches up only when ours is strictly better (#410).
+    promote = keep_ours and beats(ours, theirs)
+    #: What fills a track carrying nothing — the winner, whichever that is.
+    fills_gaps = "the album's own artwork" if keep_ours else (cover.name if cover else None)
 
     rows = [
         row(
             art_of[digest],
             tuple(refs),
             Outcome.KEPT
-            if preserved or promote
+            if preserved or keep_ours
             else Outcome.SAME
             if carried_by_cover(digest)
             else Outcome.REPLACED,
             on_cover=carried_by_cover(digest),
-            written_from=None if preserved or promote or carried_by_cover(digest) else cover.name,  # type: ignore[union-attr]
+            written_from=(
+                None if preserved or keep_ours or carried_by_cover(digest) else cover.name  # type: ignore[union-attr]
+            ),
         )
         for digest, refs in by_digest.items()
     ]
@@ -410,13 +422,18 @@ def summarise(
                 written_from="the album's own artwork" if promote else None,
             )
         )
+    # A gap is filled whenever there is anything to fill it with — including
+    # when the tracks' own image is the one being kept (#397). "Left alone" is
+    # the right answer for a track that has art; for one that has none it just
+    # means left empty.
     if gap:
+        fillable = not preserved and fills_gaps is not None
         rows.append(
             row(
                 None,
                 tuple(gap),
-                Outcome.KEPT if preserved or promote else Outcome.FILLED,
-                written_from=None if preserved or promote else cover.name,  # type: ignore[union-attr]
+                Outcome.FILLED if fillable else Outcome.KEPT,
+                written_from=fills_gaps if fillable else None,
             )
         )
 

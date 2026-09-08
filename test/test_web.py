@@ -8689,10 +8689,15 @@ def test_artwork_section_names_the_tracks_missing_art(client, cfg):
     assert "Tracks 1, 3" in r.text
     assert "02 Track.m4a" in r.text
     assert "cover.jpg" in r.text
-    # …and says plainly that filling the gap rewrites the two that were right,
-    # naming what would be written rather than drawing it twice (#406).
-    assert "Replaced by" in r.text
-    assert "Filled from" in r.text
+    # The gap is filled from the album's own image, and the tracks that already
+    # have it are left alone — filling one hole no longer costs the others
+    # their artwork (#397). The folder cover here is the same size, so it wins
+    # nothing.
+    # Whitespace-normalised: the template puts the verb and what it names on
+    # separate lines, and asserting the raw string would pin the indentation.
+    rendered = " ".join(r.text.split())
+    assert "Filled from the album&#39;s own artwork" in rendered
+    assert "Replaced by" not in rendered
 
 
 def test_artwork_section_promises_no_overwrite_where_art_is_preserved(client, cfg):

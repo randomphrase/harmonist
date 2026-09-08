@@ -198,8 +198,14 @@ class TestOutcomes:
     def test_a_differing_folder_cover_gets_its_own_row(self) -> None:
         """It is a file the album HAS. Showing it only as an incoming value read
         as something arriving from outside, and left the reader asking which of
-        the two images was about to be replaced (#400)."""
-        view = artwork.summarise(album(art_of(1), art_of(1)), cover_of(art_of(2)))
+        the two images was about to be replaced (#400).
+
+        A larger cover, so it is the one that wins and the row really is
+        replaced — an equal one is left alone since #397."""
+        view = artwork.summarise(
+            album(art_of(1, width=400, height=400), art_of(1, width=400, height=400)),
+            cover_of(art_of(2, width=900, height=900)),
+        )
 
         assert [r.label for r in view.rows] == ["All 2 tracks", "cover.jpg"]
         assert [r.outcome for r in view.rows] == [artwork.Outcome.REPLACED, artwork.Outcome.SAME]
@@ -216,12 +222,23 @@ class TestOutcomes:
         assert not any(r.writes for r in view.rows)
         assert view.writes is False
 
-    def test_gaps_are_filled_and_the_good_images_replaced(self) -> None:
-        """#397 stated on screen: one distinct image plus two holes is not
-        per-track art, so the holes are filled by rewriting the two tracks that
-        were already right."""
+    def test_a_gap_is_filled_without_rewriting_the_tracks_that_are_right(self) -> None:
+        """#397: the holes are filled from the album's own image, and the tracks
+        that already carry it are left alone. The folder cover here is no better
+        — same size, different picture — so it wins nothing."""
         one = art_of(1)
         view = artwork.summarise(album(one, None, one, None), cover_of(art_of(2)))
+
+        outcomes = {r.is_gap: r.outcome for r in view.rows if r.tracks}
+        assert outcomes == {False: artwork.Outcome.KEPT, True: artwork.Outcome.FILLED}
+        gap = next(r for r in view.rows if r.is_gap)
+        assert gap.written_from == "the album's own artwork"
+
+    def test_a_better_folder_cover_does_replace_the_tracks(self) -> None:
+        """The other direction, and the reason the rule is about size rather
+        than about never touching what is there."""
+        small = art_of(1, width=400, height=400)
+        view = artwork.summarise(album(small, None), cover_of(art_of(2, width=900, height=900)))
 
         outcomes = {r.is_gap: r.outcome for r in view.rows if r.tracks}
         assert outcomes == {False: artwork.Outcome.REPLACED, True: artwork.Outcome.FILLED}
@@ -372,13 +389,15 @@ class TestLargerLocalImageWins:
         assert view.rows[0].outcome is artwork.Outcome.REPLACED
 
     def test_equal_sizes_change_nothing(self) -> None:
+        """Neither image wins, so neither file is written: a same-sized
+        different picture is not an improvement in either direction (#397)."""
         mine = art_of(1, width=500, height=500)
         theirs = art_of(2, width=500, height=500)
 
         view = artwork.summarise(album(mine, mine), cover_of(theirs))
 
-        assert view.rows[0].outcome is artwork.Outcome.REPLACED
-        assert view.rows[1].outcome is artwork.Outcome.SAME
+        assert not any(r.writes for r in view.rows)
+        assert view.rows[0].outcome is artwork.Outcome.KEPT
 
     def test_per_track_art_is_never_promoted(self) -> None:
         view = artwork.summarise(

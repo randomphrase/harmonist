@@ -2267,3 +2267,45 @@ def test_restoring_a_folder_cover_twice_is_a_no_op(album_with_tracks, tmp_path):
 
     assert (first, second) == (0, 0)  # already correct both times
     assert cover.read_bytes() == small
+
+
+def test_gaps_are_filled_when_the_albums_own_image_wins(album_with_tracks, tmp_path):
+    """#410 promotes the album's image to the folder cover and leaves the tracks
+    alone — but a track with NO art is not "left alone", it is left empty. The
+    gap should be filled from the winning image (#397)."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    big = _sized_jpeg(1000, 1000)
+    _embed_cover(album_dir / "01 Track 1.m4a", big)
+    # Track 2 carries nothing at all.
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(400, 400))
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=cover)
+
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big  # untouched
+    assert ATOM_COVER in MP4(album_dir / "02 Track 2.m4a"), "the gap was left empty"
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == big
+
+
+def test_a_gap_is_filled_from_the_album_without_rewriting_the_rest(album_with_tracks, tmp_path):
+    """#397 proper: one track missing art must not cost the others theirs. The
+    folder cover here is no better — same size, different image — so filling the
+    gap from the album's own image leaves nothing destroyed."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(500, 500)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+    cover = tmp_path / "cover.jpg"
+    theirs = _sized_jpeg(500, 500) + b"_a_different_image"
+    cover.write_bytes(theirs)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), cover_path=cover)
+
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine  # not destroyed
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine  # gap filled
+    assert cover.read_bytes() == theirs  # no promotion: ours is not better, only equal
