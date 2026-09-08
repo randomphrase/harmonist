@@ -314,14 +314,34 @@ differently from new ones:
   for any library already on disk, *every* purchase is ignored.
 
 **The slug.** All matching below the exact-URL rung is on the **release slug** —
-the `/album/<slug>` (or `/track/<slug>`) path segment, subdomain stripped.
-Bandcamp routinely cross-lists one release under several subdomains (a label page
-**and** the artist's own page), so an on-disk `store_url` of
-`thelabel.bandcamp.com/album/home` (from MusicBrainz's relationship) and a
-purchase at `theartist.bandcamp.com/album/home` share the slug `album/home`. The
-slug is Bandcamp's **stable per-release handle** — minted once, immutable even as
-the artist renames the band or re-letters the title — which is what makes it a
-safe key. The item-type segment is kept so `album`/`track` can't collide.
+the `/album/<slug>` (or `/track/<slug>`) path segment. Within one Bandcamp page
+the slug is that page's **stable per-release handle** — minted once, immutable
+even as the artist renames the band or re-letters the title — which is what makes
+it a safe key there. The item-type segment is kept so `album`/`track` can't
+collide.
+
+**Across pages it is not an identity** (#425). Nothing stops two artists reaching
+for the same title: [Zero 7's *Home*](https://zero7.bandcamp.com/album/home) and
+[The Gathering's *Home*](https://thegathering.bandcamp.com/album/home) are
+different records sharing `/album/home`, and treating the slug as global made
+owning one skip the other's purchase — added to `ignores.txt`, never downloaded,
+nothing said — or hand an unlinked album's `store_url` to the wrong purchase.
+
+Cross-listings are real all the same: Bandcamp routinely sells one release from a
+label page **and** the artist's own page, and dropping the match would re-download
+albums already on disk. So a same-slug album on a *different* host is a candidate,
+**confirmed by MusicBrainz rather than assumed**: `sync_item` asks whether the
+album's release (`mb_release_id`) carries the purchase's URL among its `url-rels`
+— the same authority §2.6 links on, and unlike a slug it can tell two artists
+apart. Confirmed → link/dedup as before. Not confirmed (no release, a lookup that
+failed, or a release that doesn't know the URL) → **neither answer is taken**: the
+purchase is not downloaded, `ignores.txt` is left alone, and it surfaces as a
+potential download for the user to decide. One MB call per unconfirmed candidate,
+cached, and paid at most once per purchase — a confirmed one ends up in
+`ignores.txt`, which short-circuits the check before the next sync reaches it.
+
+The backfill below is looser by design (its phase 2 links on title alone across a
+URL mismatch, and says so with a warning); this rule is about `sync_item`.
 
 #### The backfill: a two-phase matcher
 

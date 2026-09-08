@@ -38,9 +38,15 @@ def test_reset_from_builds_all_indexes():
     )
     assert library_index.item_ids() == {111}
     assert library_index.dir_for_url("https://x.bandcamp.com/album/a") == Path("/m/A")
-    # slug match is subdomain-insensitive:
-    assert library_index.slug_copies("https://other.bandcamp.com/album/a") == [(Path("/m/A"), True)]
-    assert library_index.unlinked_slug_match("https://z.bandcamp.com/album/b") == Path("/m/B")
+    # The slug index reaches across subdomains, and says which side of that line
+    # each copy is on — a same-host copy is the release, a cross-host one is a
+    # candidate its caller has to confirm (#425).
+    same_host = library_index.slug_copies("https://x.bandcamp.com/album/a")
+    assert [(c.album_dir, c.linked, c.same_host) for c in same_host] == [(Path("/m/A"), True, True)]
+    elsewhere = library_index.slug_copies("https://other.bandcamp.com/album/a")
+    assert [(c.album_dir, c.same_host, c.mb_release_id) for c in elsewhere] == [
+        (Path("/m/A"), False, "rel")
+    ]
 
 
 def test_upsert_then_remove_maintain_indexes():
@@ -55,17 +61,31 @@ def test_upsert_then_remove_maintain_indexes():
     assert library_index.dir_for_url("https://x.bandcamp.com/album/a") is None
 
 
-def test_slug_copies_carries_linked_flag_and_ambiguity():
+def test_slug_copies_carries_linked_flag_and_host():
     library_index.reset_from(
         _albums(
             (Path("/m/linked"), _sc(store_url="https://label.bandcamp.com/album/home", item_id=9)),
             (Path("/m/unl"), _sc(store_url="https://artist.bandcamp.com/album/home")),
         )
     )
-    copies = dict(library_index.slug_copies("https://w.bandcamp.com/album/home"))
-    assert copies == {Path("/m/linked"): True, Path("/m/unl"): False}
-    # one unlinked copy → a single link target; the linked one isn't a candidate.
-    assert library_index.unlinked_slug_match("https://w.bandcamp.com/album/home") == Path("/m/unl")
+    copies = {
+        c.album_dir: c for c in library_index.slug_copies("https://artist.bandcamp.com/album/home")
+    }
+
+    assert copies[Path("/m/linked")].linked and not copies[Path("/m/unl")].linked
+    # `/album/home` is a slug three different artists will have; only the album on
+    # the host the purchase came from is this release on the index's own evidence.
+    assert copies[Path("/m/unl")].same_host
+    assert not copies[Path("/m/linked")].same_host
+
+
+def test_a_www_prefix_is_not_a_different_bandcamp_page():
+    library_index.reset_from(
+        _albums((Path("/m/A"), _sc(store_url="https://artist.bandcamp.com/album/home")))
+    )
+    copies = library_index.slug_copies("https://www.artist.bandcamp.com/album/home")
+
+    assert [c.same_host for c in copies] == [True]
 
 
 def test_sidecar_write_and_delete_are_the_single_update_points(tmp_path):

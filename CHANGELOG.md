@@ -37,6 +37,16 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A purchase is no longer skipped because a different artist used the same
+  album address.** Bandcamp addresses like `/album/home` are unique to one page,
+  not to the world; Harmonist treated them as an identity, so owning Zero 7's
+  *Home* could quietly file The Gathering's away as already downloaded, or hand
+  an unlinked album's store URL to the wrong purchase. Cross-listings — one
+  release sold from both a label page and an artist page — are now confirmed
+  against MusicBrainz instead of assumed, and anything unconfirmed becomes a
+  potential download for you to decide rather than a decision made for you
+  (#425).
+
 - **A download that fits two MusicBrainz editions equally is no longer tagged as
   whichever one came back first.** Where a store URL resolves to several
   releases with the same tracklist, nothing is written: Activity says several

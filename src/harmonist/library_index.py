@@ -20,16 +20,33 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from .models import Album, Sidecar
-from .url_recovery import album_slug
+from .url_recovery import album_slug, store_host
 
 _lock = threading.Lock()
 _sidecars: dict[Path, Sidecar] = {}
 _by_item_id: dict[int, Path] = {}
 _by_url: dict[str, Path] = {}
 _by_slug: dict[str, set[Path]] = {}
+
+
+@dataclass(frozen=True)
+class SlugCopy:
+    """An on-disk album sharing a purchase URL's release slug, with what the
+    index knows about how far that resemblance goes."""
+
+    album_dir: Path
+    #: Already tied to a Bandcamp purchase id.
+    linked: bool
+    #: On the same Bandcamp host as the URL asked about — the case where the
+    #: shared slug IS shared identity.
+    same_host: bool
+    #: The release the album is tagged as, when it has one. What a cross-host
+    #: resemblance can be confirmed (or refused) against.
+    mb_release_id: str | None
 
 
 def _index(album_dir: Path, sc: Sidecar) -> None:
@@ -118,23 +135,29 @@ def dir_for_url(url: str) -> Path | None:
         return _by_url.get(url)
 
 
-def slug_copies(url: str) -> list[tuple[Path, bool]]:
-    """Every on-disk album sharing `url`'s release slug, as ``(album_dir, linked)``
-    — subdomain-insensitive, inclusive of linked albums (the dedup backstop)."""
+def slug_copies(url: str) -> list[SlugCopy]:
+    """Every on-disk album whose store URL carries `url`'s release slug.
+
+    Facts, not a verdict (#425). A shared slug on the SAME Bandcamp host is the
+    same release — that is what a slug is. On a different host it is only a
+    lookalike until something authoritative says otherwise, and this index holds
+    nothing that could say so, so it reports the host and the release id and
+    leaves the judgement to the caller (`bandcamp_hook` makes it).
+    """
     slug = album_slug(url)
     if slug is None:
         return []
+    host = store_host(url)
     with _lock:
-        out: list[tuple[Path, bool]] = []
+        out: list[SlugCopy] = []
         for d in _by_slug.get(slug, set()):
             sc = _sidecars.get(d)
-            linked = bool(sc and sc.bandcamp and sc.bandcamp.item_id is not None)
-            out.append((d, linked))
+            out.append(
+                SlugCopy(
+                    album_dir=d,
+                    linked=bool(sc and sc.bandcamp and sc.bandcamp.item_id is not None),
+                    same_host=bool(host and sc and store_host(sc.store_url) == host),
+                    mb_release_id=sc.mb_release_id if sc else None,
+                )
+            )
         return out
-
-
-def unlinked_slug_match(url: str) -> Path | None:
-    """The single UNLINKED album sharing `url`'s slug, or None (0 or 2+ → can't
-    pick) — the link target for a cross-listing whose id we don't yet have."""
-    matches = [d for d, linked in slug_copies(url) if not linked]
-    return matches[0] if len(matches) == 1 else None

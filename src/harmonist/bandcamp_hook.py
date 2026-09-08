@@ -32,12 +32,15 @@ from . import (
     formats,
     id_registry,
     library_index,
+    mb_cache,
+    mb_lookup,
     pending_downloads,
 )
 from . import sidecar as sidecar_mod
 from .models import BandcampInfo, Sidecar, is_bandcamp_url, title_words, titles_match
 from .pending_downloads import PendingPurchase
 from .url_recovery import album_slug as album_slug  # noqa: PLC0414 (explicit re-export)
+from .url_recovery import store_host
 
 log = logging.getLogger(__name__)
 
@@ -770,6 +773,64 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 e,
             )
 
+    def _copies_of_release(
+        self, url: str
+    ) -> tuple[list[library_index.SlugCopy], list[library_index.SlugCopy]]:
+        """Split the albums sharing `url`'s slug into `(this release, lookalikes)`.
+
+        A Bandcamp slug is minted per release *within one page*, so on the same
+        host a shared slug IS shared identity. Across hosts it is not, and it
+        used to be treated as though it were: Zero 7's `/album/home` and The
+        Gathering's `/album/home` are different records by different artists, and
+        owning one made Harmonist skip the other's purchase — never downloading
+        an album the user had paid for, and saying nothing (#425).
+
+        Cross-listings are real, though — one release under both a label page and
+        an artist page is common enough that dropping the match would re-download
+        dozens of albums — so a cross-host resemblance is *confirmed*, not
+        guessed: MusicBrainz has to say the album's release carries the
+        purchase's URL too. That is the same authority `_link_unmatched_by_
+        release_urls` already links on, and unlike a slug it distinguishes two
+        artists who chose the same title.
+
+        One MB call per unconfirmed cross-host candidate, served from the cache
+        when it is fresh, and paid at most once per purchase: a confirmed copy
+        ends with the purchase in `ignores.txt`, which short-circuits this
+        before the next sync gets here.
+        """
+        this_release: list[library_index.SlugCopy] = []
+        lookalikes: list[library_index.SlugCopy] = []
+        for copy in library_index.slug_copies(url):
+            if copy.same_host or self._is_cross_listing(copy, url):
+                this_release.append(copy)
+            else:
+                lookalikes.append(copy)
+        return this_release, lookalikes
+
+    def _is_cross_listing(self, copy: library_index.SlugCopy, url: str) -> bool:
+        """Whether MusicBrainz says `copy`'s release is also sold at `url`.
+
+        Compared as host AND slug, because the slug alone is what could not be
+        trusted in the first place. An album with no release, or a lookup that
+        fails, is not confirmed — the honest answer when the authority cannot be
+        reached is "I don't know", which sends the purchase to the user rather
+        than acting on a resemblance.
+        """
+        if copy.mb_release_id is None:
+            return False
+        try:
+            known = mb_cache.fetch_release_urls(copy.mb_release_id)
+        except mb_lookup.MBError as e:
+            log.warning(
+                "could not ask MusicBrainz whether %s is also sold at %s: %s",
+                copy.mb_release_id,
+                url,
+                e,
+            )
+            return False
+        slug, host = album_slug(url), store_host(url)
+        return any(album_slug(u) == slug and store_host(u) == host for u in known)
+
     def sync_item(self, item: Any, encoding: str | None = None) -> bool:
         if self._progress_callback:
             label = f"{getattr(item, 'band_name', '?')} / {getattr(item, 'item_title', '?')}"
@@ -782,14 +843,24 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # the in-memory library_index (built from the scan), so ZERO disk reads
         # here even on a fully-paged collection.
         url = construct_bandcamp_url(item)
+        # Albums that share this purchase's slug, split into the ones that really
+        # are its release and the ones that only look like it (#425). Computed
+        # once — both the link short-circuit and the dedup backstop below ask the
+        # same question, and the answer can cost a MusicBrainz call.
+        this_release: list[library_index.SlugCopy] = []
+        lookalikes: list[library_index.SlugCopy] = []
         if url:
-            # Exact-URL match first; fall back to a subdomain-agnostic slug match
-            # (same release cross-listed under a different subdomain). The slug
-            # fallback adopts the item's URL as the new store_url.
+            # Exact-URL match first; fall back to a slug match on another
+            # subdomain, which is the same release only where MusicBrainz
+            # confirms the cross-listing. The fallback adopts the item's URL as
+            # the new store_url.
             existing_dir = library_index.dir_for_url(url)
             by_slug = False
             if existing_dir is None:
-                existing_dir = library_index.unlinked_slug_match(url)
+                this_release, lookalikes = self._copies_of_release(url)
+                unlinked = [c.album_dir for c in this_release if not c.linked]
+                # 0 = nothing to link; 2+ = which one is the user's call.
+                existing_dir = unlinked[0] if len(unlinked) == 1 else None
                 by_slug = existing_dir is not None
             if existing_dir is not None:
                 # This runs EVERY sync for every on-disk album whose purchase is
@@ -844,24 +915,21 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 return False  # didn't download (already on disk)
 
         # Dedup backstop (BOTH modes): this item wasn't matched by the narrow
-        # short-circuit (exact-URL, or unlinked slug), but the release may still be
-        # on disk under a different subdomain (label vs artist page, same slug) or
-        # linked to a different purchase-id (a cross-listing). slug_copies matches
-        # subdomain-insensitively and inclusive of linked albums (in-memory, no
-        # disk); if found, do NOT re-download — ignore so it doesn't churn.
-        if url and not self.ignores.is_ignored(item):
-            on_disk = library_index.slug_copies(url)
-            if on_disk:
-                for path, linked in on_disk:
-                    log.info(
-                        "already on disk: item_id=%s url=%s at %s (linked=%s) — skipping download",
-                        getattr(item, "item_id", "?"),
-                        url,
-                        path,
-                        linked,
-                    )
-                self.ignores.add(item)
-                return False
+        # short-circuit (exact-URL, or a unique unlinked copy), but the release may
+        # still be on disk under a different subdomain (label vs artist page, same
+        # slug, confirmed on MusicBrainz) or linked to a different purchase-id (a
+        # cross-listing). If it is, do NOT re-download — ignore so it doesn't churn.
+        if url and this_release and not self.ignores.is_ignored(item):
+            for copy in this_release:
+                log.info(
+                    "already on disk: item_id=%s url=%s at %s (linked=%s) — skipping download",
+                    getattr(item, "item_id", "?"),
+                    url,
+                    copy.album_dir,
+                    copy.linked,
+                )
+            self.ignores.add(item)
+            return False
 
         item_id_int = int(getattr(item, "item_id", 0) or 0)
         approved = pending_downloads.is_approved(item_id_int)
@@ -877,6 +945,35 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # subdomain + title). If it links, the album leaves Needs Link for the
         # Library and this purchase is done — no download, no card.
         if self._link_only and not approved and url and self._adopt_link(item, url):
+            return False
+
+        # Something on disk shares this purchase's slug on another Bandcamp page,
+        # and MusicBrainz did not confirm the two are one release (#425). Both
+        # automatic answers are wrong here: downloading risks a duplicate of an
+        # album already owned, and skipping is how an unrelated purchase went
+        # missing without a word. So neither — ignores.txt is left alone (a
+        # decision recorded there would be permanent and invisible) and the
+        # purchase goes to the inbox as a potential download, where Download /
+        # Match to an existing album / Don't download are all one press away.
+        if url and lookalikes and not approved and not self.ignores.is_ignored(item):
+            log.warning(
+                "%s — %s (purchase %s) shares a Bandcamp slug with %s, which is on a "
+                "different Bandcamp page and is not the same MusicBrainz release: "
+                "not downloading it and not skipping it — decide from the inbox",
+                getattr(item, "band_name", "?"),
+                getattr(item, "item_title", "?"),
+                getattr(item, "item_id", "?"),
+                ", ".join(str(c.album_dir.name) for c in lookalikes),
+            )
+            self._pending_this_run.append(
+                PendingPurchase(
+                    item_id=item_id_int,
+                    band=str(getattr(item, "band_name", "") or "?"),
+                    title=str(getattr(item, "item_title", "") or "?"),
+                    url=url,
+                    fmt=encoding or str(getattr(self, "media_format", "?")),
+                )
+            )
             return False
 
         if self._link_only and not approved:

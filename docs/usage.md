@@ -146,6 +146,23 @@ it by artist and title, or **Don't download** to set it aside.
 That last one isn't a one-way door: Settings lists everything under **Won't
 download** with a **Restore** button beside each.
 
+**A purchase that shares its web address with an album you own.** Bandcamp album
+addresses are unique to a page, not to the world — Zero 7's *Home* and The
+Gathering's *Home* both live at `/album/home` — so a purchase whose address looks
+like one you already have, but on a different artist's page, is neither
+downloaded nor set aside: it surfaces as a potential download, and Activity says
+why. If MusicBrainz knows the two addresses are the same release (a label page
+and an artist page selling one record), it is linked to the album you own as
+before, with nothing to decide.
+
+Versions before 1.16 could skip such a purchase outright, recording it in
+`ignores.txt` in your config directory as though it had been downloaded. If an
+album you bought never arrived, open that file and look for its line — each is an
+id followed by `#` and the purchase's name. Delete **that one line**, save, and
+run Sync; the purchase is considered again. Don't empty the file: everything else
+in it is the record of what you already have, and clearing it re-downloads your
+collection.
+
 **When a purchase can't be found at all.** A *full* sync that pages your whole
 collection and still can't match an album has learned something real, so it says
 so: the album is demoted to Needs MBID with a read-only "no purchase found" note,

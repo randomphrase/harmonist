@@ -60,6 +60,27 @@ def album_slug(url: str | None) -> str | None:
     return None
 
 
+def store_host(url: str | None) -> str | None:
+    """The Bandcamp host a URL is on, lowercased, or None if it has none.
+
+    The other half of `album_slug` (#425). A slug is Bandcamp's per-release
+    handle *within one page*, not across the site: different artists reach for
+    the same album title, so `/album/home` belongs to Zero 7 on one host and The
+    Gathering on another. Comparing the host as well is what keeps two
+    unrelated releases from being read as one, and it is the whole of the
+    "scoped" in exact/scoped/unique matching for store URLs.
+
+    `www.` is stripped so one host doesn't read as two.
+    """
+    if not url:
+        return None
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return None
+    return host.removeprefix("www.") or None
+
+
 # Bandcamp embeds the link as prose in the comment tag, e.g.
 # "Visit https://artist.bandcamp.com/album/x" — so we extract the URL rather
 # than treating the whole comment as one.

@@ -374,7 +374,10 @@ def test_sync_item_skips_download_when_release_on_disk_by_slug(tmp_path, monkeyp
     """Dedup backstop: a release already on disk under a DIFFERENT subdomain (same
     slug) and linked to a DIFFERENT purchase-id must NOT re-download — by_url is
     exact and by_slug skips linked albums, so only the slug-inclusive check sees it.
-    This is the fix for the ~72 spurious re-downloads on a full-library sync."""
+    This is the fix for the ~72 spurious re-downloads on a full-library sync.
+
+    The cross-listing is confirmed rather than assumed (#425): MusicBrainz has
+    the label page's URL on the same release the album is tagged as."""
     album = tmp_path / "variant" / "sequential sleep"
     album.mkdir(parents=True)
     sc.write(
@@ -384,6 +387,13 @@ def test_sync_item_skips_download_when_release_on_disk_by_slug(tmp_path, monkeyp
             mb_release_id="rel-1",
             bandcamp=BandcampInfo(item_id=999),  # linked to a DIFFERENT purchase
         ),
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_cache.fetch_release_urls",
+        lambda mbid: [
+            "https://variant.bandcamp.com/album/sequential-sleep",
+            "https://echospace313.bandcamp.com/album/sequential-sleep",
+        ],
     )
     s = _bare_syncer()
     s.local_media = MagicMock()
@@ -407,6 +417,161 @@ def test_sync_item_skips_download_when_release_on_disk_by_slug(tmp_path, monkeyp
     assert s.sync_item(item) is False
     assert downloaded == []  # did NOT re-download the existing release
     assert 4032507453 in added  # ignored so it doesn't churn every sync
+
+
+# ---------- a shared slug across two Bandcamp pages (#425) ----------
+
+
+def _home_syncer(tmp_path, monkeypatch, *, downloaded: list[int]) -> HarmonistSyncer:
+    s = _bare_syncer()
+    s.local_media = MagicMock()
+    s.local_media.media_dir = str(tmp_path)
+    s.ignores.is_ignored = lambda item: False
+    s.ignores.add = lambda item: ignored.append(int(getattr(item, "item_id", 0)))
+
+    def fake_download(self, item, encoding=None):
+        downloaded.append(int(getattr(item, "item_id", 0)))
+        return True
+
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_item", fake_download)
+    return s
+
+
+def _gathering_purchase() -> _StubItem:
+    """The Gathering's Home — a real release that shares `/album/home` with
+    Zero 7's, on its own Bandcamp page."""
+    return _StubItem(
+        item_id=200,
+        band_name="The Gathering",
+        item_title="Home",
+        url_hints={"subdomain": "thegathering", "slug": "home"},
+    )
+
+
+ignored: list[int] = []
+
+
+@pytest.fixture(autouse=True)
+def _reset_ignored():
+    ignored.clear()
+    yield
+    ignored.clear()
+
+
+def test_another_artists_album_with_the_same_slug_is_not_skipped(tmp_path, monkeypatch):
+    """#425. Owning Zero 7's Home must not make The Gathering's Home vanish: the
+    slug is shared, the release is not, and the purchase used to be added to
+    ignores.txt — never downloaded, and nothing on screen to say why."""
+    owned = tmp_path / "Zero 7" / "Home"
+    owned.mkdir(parents=True)
+    sc.write(
+        owned,
+        Sidecar(
+            store_url="https://zero7.bandcamp.com/album/home",
+            mb_release_id="rel-zero7",
+            bandcamp=BandcampInfo(item_id=100),
+        ),
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_cache.fetch_release_urls",
+        lambda mbid: ["https://zero7.bandcamp.com/album/home"],
+    )
+    downloaded: list[int] = []
+    s = _home_syncer(tmp_path, monkeypatch, downloaded=downloaded)
+
+    assert s.sync_item(_gathering_purchase()) is False
+
+    # Not skipped for good: no ignores entry, and no download either — the
+    # purchase is a decision for the user, in the inbox.
+    assert ignored == []
+    assert downloaded == []
+    assert [(p.item_id, p.title) for p in s._pending_this_run] == [(200, "Home")]
+
+
+def test_another_artists_album_with_the_same_slug_is_not_relinked(tmp_path, monkeypatch):
+    """The other half of #425: an UNLINKED album with the shared slug used to be
+    adopted by the unrelated purchase, overwriting the store URL that said which
+    release it actually is."""
+    owned = tmp_path / "Zero 7" / "Home"
+    owned.mkdir(parents=True)
+    sc.write(
+        owned,
+        Sidecar(store_url="https://zero7.bandcamp.com/album/home", mb_release_id="rel-zero7"),
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_cache.fetch_release_urls",
+        lambda mbid: ["https://zero7.bandcamp.com/album/home"],
+    )
+    downloaded: list[int] = []
+    s = _home_syncer(tmp_path, monkeypatch, downloaded=downloaded)
+
+    assert s.sync_item(_gathering_purchase()) is False
+
+    kept = sc.read(owned)
+    assert kept.store_url == "https://zero7.bandcamp.com/album/home"
+    assert kept.bandcamp is None
+    assert downloaded == []
+
+
+def test_a_cross_listing_musicbrainz_confirms_still_links_the_unlinked_album(tmp_path, monkeypatch):
+    """And the case the slug match exists for: the same release on a label page
+    and an artist page. MusicBrainz carries both URLs on the one release, so the
+    purchase links the album it already has rather than downloading a second
+    copy."""
+    album = tmp_path / "variant" / "sequential sleep"
+    album.mkdir(parents=True)
+    sc.write(
+        album,
+        Sidecar(
+            store_url="https://variant.bandcamp.com/album/sequential-sleep",
+            mb_release_id="rel-1",
+        ),
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_cache.fetch_release_urls",
+        lambda mbid: [
+            "https://variant.bandcamp.com/album/sequential-sleep",
+            "https://echospace313.bandcamp.com/album/sequential-sleep",
+        ],
+    )
+    downloaded: list[int] = []
+    s = _home_syncer(tmp_path, monkeypatch, downloaded=downloaded)
+    item = _StubItem(
+        item_id=4032507453,
+        band_name="echospace [detroit]",
+        item_title="Sequential Sleep",
+        url_hints={"subdomain": "echospace313", "slug": "sequential-sleep"},
+    )
+
+    assert s.sync_item(item) is False
+
+    assert sc.read(album).bandcamp.item_id == 4032507453
+    assert downloaded == []
+    assert s._pending_this_run == []
+
+
+def test_an_unconfirmable_lookalike_is_not_asked_about_twice(tmp_path, monkeypatch):
+    """Idempotent: the purchase stays a potential download run after run rather
+    than accumulating decisions. Nothing is written on either pass."""
+    owned = tmp_path / "Zero 7" / "Home"
+    owned.mkdir(parents=True)
+    sc.write(
+        owned,
+        Sidecar(store_url="https://zero7.bandcamp.com/album/home", mb_release_id="rel-zero7"),
+    )
+    monkeypatch.setattr("harmonist.mb_cache.fetch_release_urls", lambda mbid: [])
+    downloaded: list[int] = []
+    s = _home_syncer(tmp_path, monkeypatch, downloaded=downloaded)
+
+    assert s.sync_item(_gathering_purchase()) is False
+    first = sc.read(owned)
+    s._pending_this_run.clear()
+    assert s.sync_item(_gathering_purchase()) is False
+
+    assert sc.read(owned) == first
+    assert ignored == []
+    assert downloaded == []
+    assert len(s._pending_this_run) == 1
 
 
 def test_link_only_does_not_advance_checkpoint(monkeypatch):
@@ -858,7 +1023,11 @@ def test_sync_item_short_circuit_records_transition_to_activity(monkeypatch, tmp
 
 def test_sync_item_slug_fallback_links_and_adopts_url(monkeypatch, tmp_path):
     """Exact URL misses (different subdomain) but the slug matches → link the
-    item_id WITHOUT downloading, and adopt the item's URL as store_url."""
+    item_id WITHOUT downloading, and adopt the item's URL as store_url.
+
+    Across hosts the slug is corroborated rather than trusted (#425): the album's
+    MusicBrainz release carries the purchase's URL as well as the one it was
+    tagged with, which is what makes the two the same record."""
     existing_dir = tmp_path / "Brock Van Wey" / "Home"
     existing_dir.mkdir(parents=True)
     sc.write(
@@ -869,6 +1038,13 @@ def test_sync_item_slug_fallback_links_and_adopts_url(monkeypatch, tmp_path):
         ),
     )
 
+    monkeypatch.setattr(
+        "harmonist.mb_cache.fetch_release_urls",
+        lambda mbid: [
+            "https://echospacedetroit.bandcamp.com/album/home",
+            "https://brockvanwey.bandcamp.com/album/home",
+        ],
+    )
     s = _bare_syncer()
     s.local_media.media_dir = str(tmp_path)
     s.ignores.is_ignored = MagicMock(return_value=False)
@@ -908,6 +1084,13 @@ def test_sync_item_ambiguous_slug_skips_download_no_dupe(monkeypatch, tmp_path):
             ),
         )
 
+    # Both albums really are this release — MusicBrainz has the purchase's URL
+    # on each of them — so the ambiguity is which copy to LINK, not whether the
+    # release is on disk (#425).
+    monkeypatch.setattr(
+        "harmonist.mb_cache.fetch_release_urls",
+        lambda mbid: ["https://artist.bandcamp.com/album/home"],
+    )
     s = _bare_syncer()
     s.local_media.media_dir = str(tmp_path)
     s.ignores.is_ignored = MagicMock(return_value=False)
