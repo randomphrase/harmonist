@@ -1268,20 +1268,60 @@ def check_front(
     keep_if_wider_than: int | None = None,
     client: Any = None,
 ) -> activity_store.CachedCoverArt:
-    """Demo answer from the Cover Art Archive: it holds nothing for this release.
-
-    A real answer, and the commonest one for a private Bandcamp release — the
-    Artwork section draws it as a muted row reading "no front cover for this
-    release", so the demo shows the shape of the feature without inventing a
-    picture that does not exist.
+    """Demo answer from the Cover Art Archive.
 
     It exists at all because the check is no longer something a user presses:
     since #436 an album page asks the archive by itself when the stored answer
     is stale, so an unpatched `check_front` would have demo mode making live
     requests to coverartarchive.org just for opening an album — the one thing
     demo mode promises it will never do.
+
+    Answers with a cover that LOSES — 350px against the demo library's 400px
+    art. Two demo-able states in one: the also-ran row (#433, #441), and the
+    control that fetches its picture anyway because bigger is not the same as
+    better (#448). It first answered "the archive holds nothing", which is the
+    commonest real answer and shows a placeholder and no more, so the half of
+    this feature that has anything to do could not be seen in the demo at all.
+
+    No etag, so a re-check answers freshly rather than 304-ing against a
+    conditional request nothing here would honour.
     """
-    return activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    return activity_store.CachedCoverArt(
+        fetched_at=datetime.now(UTC),
+        image_url=f"https://coverartarchive.org/release/{release_mbid}/front",
+        width=350,
+        height=350,
+        length=140_000,
+        mime="image/jpeg",
+        source="release",
+    )
+
+
+def fetch_image(release_mbid: str, url: str, *, client: Any = None) -> Path | None:
+    """Demo fetch of the archive's image: a placeholder from the demo assets,
+    kept in the real candidate cache.
+
+    #448 made loading a losing cover something a user can press, which in demo
+    mode would have been a live download from coverartarchive.org. It goes
+    through `cache_image` rather than round it, so what the demo exercises is
+    the real cache — only the bytes are local.
+
+    The bytes are made DISTINCT from the asset they start as, because every
+    `cover-N.jpg` is already carried by some demo album and the page deduplicates
+    images by digest (`ArtworkView.distinct`, #155). Handing back an album's own
+    picture would make the archive's row point at that album's popover, captioned
+    with the tracks carrying it — which is right for one image in two places and
+    nonsense as a demonstration of a cover from somewhere else. Trailing bytes
+    after a JPEG's end marker are ignored by every decoder and change nothing but
+    the digest, which is all that is wanted here.
+    """
+    from . import cover_art
+
+    placeholder = ASSETS_DIR / "cover-3.jpg"
+    if not placeholder.exists():
+        return None
+    data = placeholder.read_bytes() + b"demo-cover-art-archive"
+    return cover_art.cache_image(release_mbid, data, "image/jpeg")
 
 
 def install() -> None:
@@ -1299,6 +1339,7 @@ def install() -> None:
     mb_search.search_releases = search_releases
     cover_art.ensure_cover = ensure_cover
     cover_art.check_front = check_front
+    cover_art.fetch_image = fetch_image
     log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art")
 
 

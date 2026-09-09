@@ -68,6 +68,13 @@ versions follow [semantic versioning](https://semver.org).
   cover" may have one after all. A group's cover is labelled as the group's
   rather than this edition's (#434).
 
+- **A cover the archive holds can be loaded and looked at, even when it loses.**
+  Harmonist can only measure pixels, and bigger is not the same as better — a
+  larger scan can be softer, worse cropped, or a different pressing's sleeve. The
+  empty frame beside a losing candidate is now a **load** button that downloads
+  that cover so you can see it, full size like any other image on the page. It
+  changes nothing about what a re-tag would write (#448).
+
 - **What the Cover Art Archive has is shown as a row like any other image** —
   greyed, with its size and format, and a placeholder saying which kind of
   nothing it is: *not loaded* for a cover that exists but lost, *none* for a

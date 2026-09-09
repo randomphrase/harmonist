@@ -259,6 +259,39 @@ def check_front(
             http.close()
 
 
+def fetch_image(release_mbid: str, url: str, *, client: httpx.Client | None = None) -> Path | None:
+    """Fetch the archive's image for this release and keep it. Where it went, or
+    None if the cache is switched off.
+
+    For the image that LOST (#448). A losing candidate is deliberately never
+    downloaded — bigger is the only thing Harmonist can measure, and spending
+    megabytes on a picture nobody will use is the rule #276 set — but bigger is
+    not the same as better, and this is a user asking to see the other one.
+
+    Takes the URL rather than looking it up, because the caller has the stored
+    answer in hand and re-reading it here would be a second SQLite hit to learn
+    something already known.
+
+    Raises `CoverArtError` where `_fetch_and_cache` swallows and logs. The
+    difference is who asked: that one runs inside a check whose real answer is
+    the measurement, so losing the picture is a footnote. This one IS the
+    request, and somebody is waiting to look at the result.
+    """
+    owns_client = client is None
+    http = client or httpx.Client(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
+    try:
+        try:
+            resp = http.get(url)
+        except httpx.HTTPError as e:
+            raise CoverArtError(f"CAA image request failed for {release_mbid}: {e}") from e
+        if not resp.is_success:
+            raise CoverArtError(f"CAA returned {resp.status_code} for {url}")
+        return cache_image(release_mbid, resp.content, resp.headers.get("content-type"))
+    finally:
+        if owns_client:
+            http.close()
+
+
 def _fetch_and_cache(http: httpx.Client, release_mbid: str, url: str, mime: str | None) -> None:
     """Pull the whole image and keep it. Best-effort: a failure here loses the
     picture, not the measurement that was the point of the check."""

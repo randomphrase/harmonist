@@ -9012,7 +9012,9 @@ def test_a_losing_archive_cover_is_drawn_as_a_muted_row(client, cfg):
     rendered = " ".join(r.text.split())
 
     assert "Cover Art Archive" in rendered
-    assert "not loaded" in rendered  # never downloaded, so there is no picture
+    # Never downloaded, so there is no picture — and the empty frame is the way
+    # to go and get one rather than a statement about not having it (#448).
+    assert f'hx-post="/album/{_id_for(cfg, d)}/artwork/load-archive"' in rendered
     assert "10×10" in rendered
     assert "art-rows--muted" in rendered
     # …and none of the "about to be written" vocabulary. Scoped to the note's
@@ -9255,3 +9257,129 @@ def test_the_comparison_keeps_the_archive_date_it_swaps_over(client, cfg, monkey
     # The wording the row falls back to, which this album is past — and which the
     # same block still renders for an album nobody has asked about.
     assert "not yet" not in rendered
+
+
+def test_the_archives_losing_cover_can_be_loaded_and_then_looked_at(client, cfg, monkeypatch):
+    """Bigger is the only thing Harmonist can measure, and it is not the same as
+    better — so a cover that lost on pixels can still be fetched and looked at
+    (#448)."""
+    from harmonist import cover_art, formats
+    from test.test_artwork import png_bytes
+
+    d = _make_tagged_album(cfg, "Curious", mbid="rel-curious", tagged_at=datetime.now(UTC))
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, _png(1))
+    (d / "cover.jpg").write_bytes(_png(1))
+    theirs = png_bytes(10, 10)
+    activity_store.store_cover_art(
+        "rel-curious",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-curious/1.jpg",
+            width=10,
+            height=10,
+            mime="image/png",
+        ),
+    )
+    asked: list[str] = []
+
+    def fake_fetch(mbid, url, **kw):
+        asked.append(url)
+        return cover_art.cache_image(mbid, theirs, "image/png")
+
+    monkeypatch.setattr(cover_art, "fetch_image", fake_fetch)
+
+    r = client.post(f"/album/{_id_for(cfg, d)}/artwork/load-archive")
+    rendered = " ".join(r.text.split())
+
+    assert asked == ["https://coverartarchive.org/release/rel-curious/1.jpg"]
+    # The picture is on the page now, and openable full size like every other
+    # image — which is most of what loading it was for.
+    from harmonist import images
+
+    assert f"/artwork/image/{_id_for(cfg, d)}/{images.digest(theirs)}" in rendered
+    assert f'popovertarget="art-{images.digest(theirs)[:12]}"' in rendered
+
+
+def test_loading_the_archives_cover_does_not_make_it_the_winner(client, cfg, monkeypatch):
+    """The image being on disk is not a claim about its size. `archive_wins` is
+    decided on pixels and never consults the cache, so a loaded loser stays
+    muted, unmarked, and not going to be written (#441, #448)."""
+    from harmonist import cover_art, formats
+    from test.test_artwork import png_bytes
+
+    d = _make_tagged_album(cfg, "Unmoved", mbid="rel-unmoved", tagged_at=datetime.now(UTC))
+    big = png_bytes(1400, 1400)
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, big)
+    (d / "cover.jpg").write_bytes(big)
+    activity_store.store_cover_art(
+        "rel-unmoved",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-unmoved/1.jpg",
+            width=10,
+            height=10,
+            mime="image/png",
+        ),
+    )
+    monkeypatch.setattr(
+        cover_art,
+        "fetch_image",
+        lambda mbid, url, **kw: cover_art.cache_image(mbid, png_bytes(10, 10), "image/png"),
+    )
+
+    rendered = " ".join(client.post(f"/album/{_id_for(cfg, d)}/artwork/load-archive").text.split())
+
+    assert "art-rows--muted" in rendered  # still an also-ran
+    assert "mb-mark" not in rendered  # and still unmarked
+    assert "Update artwork" not in rendered  # nothing to write
+
+
+def test_a_failed_load_of_the_archives_cover_says_so(client, cfg, monkeypatch):
+    """Loud, unlike the page-open check (#436): nobody asked for that one, and
+    somebody pressed this and is waiting for a picture."""
+    from harmonist import cover_art, formats
+
+    d = _make_tagged_album(cfg, "Downed", mbid="rel-down", tagged_at=datetime.now(UTC))
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, _png(1))
+    activity_store.store_cover_art(
+        "rel-down",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-down/1.jpg",
+            width=10,
+            height=10,
+        ),
+    )
+
+    def boom(mbid, url, **kw):
+        raise cover_art.CoverArtError("the archive is down")
+
+    monkeypatch.setattr(cover_art, "fetch_image", boom)
+
+    r = client.post(f"/album/{_id_for(cfg, d)}/artwork/load-archive")
+
+    assert r.status_code == 200
+    # Asserted around the apostrophe rather than through it: the escape it
+    # renders as is Jinja's business, not this feature's.
+    assert "load the archive" in r.text
+    assert "the archive is down" in r.text  # …and what actually went wrong
+
+
+def test_loading_is_refused_when_the_archive_has_nothing_to_load(client, cfg):
+    """ "There is nothing there" and "I haven't fetched it" are different facts
+    (#433), and only the second has anything to fetch."""
+    d = _make_tagged_album(cfg, "Empty", mbid="rel-empty", tagged_at=datetime.now(UTC))
+    activity_store.store_cover_art(
+        "rel-empty", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    )
+
+    r = client.post(f"/album/{_id_for(cfg, d)}/artwork/load-archive")
+
+    assert r.status_code == 400
+    # …and the row offers no way to try, since there is nothing to try for.
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+    assert "load-archive" not in rendered
+    assert "no front cover for this release" in rendered

@@ -1057,6 +1057,20 @@ dialog::backdrop {
    left half to precede them they would land in column 1, back among the images
    the album actually has. Placing the first cell is enough; the facts follow it. */
 .art-rows--muted .art-row__side--after > :first-child { grid-column: 3; }
+
+/* The frame is a form when it is the way to fetch the picture (#448). The form
+   IS the grid cell — deliberately not `display: contents`, which was the first
+   attempt and put the row back in column 1: a box that generates no box cannot
+   be placed, so `grid-column` on it did nothing and its button flowed into the
+   first free track. Only a browser showed that; the markup reads correctly. */
+.art-row__load { display: block; }
+/* …and it is a button, so it says so on hover. The dashed frame is otherwise
+   identical to the one that is only ever a statement. */
+button.art-row__art--absent { cursor: pointer; }
+button.art-row__art--absent:hover {
+  border-color: var(--color-accent);
+  color: var(--color-ink);
+}
 .art-row__art--absent {
   display: flex;
   align-items: center;

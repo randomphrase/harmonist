@@ -5039,6 +5039,57 @@ def _register_routes(app: FastAPI) -> None:
             ),
         )
 
+    @app.post("/album/{album_id}/artwork/load-archive", response_class=HTMLResponse)
+    def album_load_archive_image(request: Request, album_id: str) -> Response:
+        """Fetch the archive's cover so it can be looked at, even though it lost
+        on size (#448).
+
+        A losing candidate is measured with a 64 KB range and never downloaded
+        (#276), which is the right default and a dead end: bigger is the only
+        thing Harmonist can measure, and a 900px scan can be softer, worse
+        cropped, or a different pressing's sleeve than a 500px one. This is the
+        way to find out.
+
+        It settles nothing about what gets written. The image being on disk is
+        not a claim about its size, `archive_wins` never consults this, and the
+        row stays muted and unmarked — see #441 for why the marks and not the
+        column carry that.
+
+        LOUD on failure, unlike the page-open check (#436). That one is silent
+        because nobody asked for it; somebody pressed this and is waiting for a
+        picture.
+        """
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        mbid = album.sidecar.mb_release_id if album.sidecar else None
+        answer = caa_cache.stored(mbid) if mbid else None
+        # The URL comes from the stored answer, never from the request: this is
+        # a server-side fetch, and a caller-supplied address would make it one
+        # anybody could point anywhere.
+        if mbid is None or answer is None or not answer.image_url:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "no archive cover is known for this album"
+            )
+        try:
+            cover_art.fetch_image(mbid, answer.image_url)
+        except cover_art.CoverArtError as e:
+            log.exception("could not load the Cover Art Archive image for %s", mbid)
+            return _flash_response(
+                "Couldn't load the archive's cover", str(e), level=Level.ERROR, tasks_changed=False
+            )
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/_artwork.html",
+            _ctx(
+                request,
+                album=album,
+                artwork=_artwork_view(album, answer, _archive_image(mbid)),
+                # Nothing was asked of the archive's LISTING, so its timestamp
+                # has not moved and this response has no reason to send anyone
+                # back to ask (#436).
+                caa_check_due=False,
+            ),
+        )
+
     @app.get("/artwork/image/{album_id}/{digest}")
     def artwork_image(request: Request, album_id: str, digest: str) -> Response:
         """One of the album's images, by content digest.

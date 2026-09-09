@@ -157,6 +157,24 @@ class ArchiveRow:
     #: Whether the archive keeps this cover against the RELEASE GROUP rather than
     #: this edition (#434) — true of a great many albums, and worth saying.
     from_release_group: bool = False
+    #: The picture itself, once someone has asked for it (#448). A losing
+    #: candidate is never downloaded on its own, because bigger is the only thing
+    #: Harmonist can measure and a loser by that measure is not worth the
+    #: megabytes — but bigger is not the same as better, and a reader deciding
+    #: whether theirs really is the better scan needs to see the other one.
+    #:
+    #: Its presence says nothing about whether it won. `archive_wins` is decided
+    #: on size and is not consulted here, so a loaded loser stays exactly what it
+    #: was: muted, unmarked, and not going to be written (#441).
+    image: EmbeddedArt | None = None
+
+    @property
+    def loadable(self) -> bool:
+        """Whether there is a picture to go and get: the archive has one, and it
+        is not here yet. False for a release the archive holds nothing for —
+        there is nothing to load, which is a different fact from not having
+        loaded it (#433)."""
+        return self.image is None and self.placeholder != "none"
 
 
 @dataclass(frozen=True)
@@ -299,6 +317,11 @@ class ArtworkView:
     #: Whether the archive's cover beat everything the album has, and is
     #: therefore the incoming value rather than an also-ran (#433).
     archive_wins: bool = False
+    #: The archive's image itself, when a copy is held locally. Present for a
+    #: WINNER, which is downloaded as part of the check, and for a loser someone
+    #: has asked to see (#448) — so it says only "there is a copy of this on
+    #: disk", never anything about which won.
+    archive: EmbeddedArt | None = None
     #: A folder cover exists but could not be read. NOT the same as having none,
     #: and the difference is the whole right-hand column: with the cover unread
     #: there is no saying what a re-tag would write, so the section states that
@@ -336,6 +359,13 @@ class ArtworkView:
             out.setdefault(row.image.digest, (row.image, row.label))
         if self.cover is not None:
             out.setdefault(self.cover.image.digest, (self.cover.image, self.cover.name))
+        # …and the archive's, once it is here to be looked at (#448). It is not
+        # one of `self.rows` — it is on no row, because it is not on the album —
+        # so without this the one image a user pressed a button to SEE would be
+        # the only one that could not be opened full size, which is most of what
+        # they wanted it for.
+        if (archive_row := self.archive_row) is not None and archive_row.image is not None:
+            out.setdefault(archive_row.image.digest, (archive_row.image, "Cover Art Archive"))
         return tuple(out.values())
 
     @property
@@ -417,7 +447,9 @@ class ArtworkView:
             return ArchiveRow(placeholder="none", meta="no front cover for this release")
         size = Size(answer.width, answer.height) if answer.width and answer.height else None
         if size is None:
-            return ArchiveRow(placeholder="not loaded", meta="size could not be read")
+            return ArchiveRow(
+                placeholder="not loaded", meta="size could not be read", image=self.archive
+            )
         return ArchiveRow(
             placeholder="not loaded",
             meta=describe_parts(size, answer.mime, answer.length),
@@ -426,6 +458,11 @@ class ArtworkView:
             # someone comparing editions may care that this one is the general
             # one rather than their pressing's.
             from_release_group=answer.from_release_group,
+            # The picture, when someone has asked for it (#448). Reaching this
+            # line at all means the archive's cover did NOT win — so an image
+            # here is one a user went and fetched to look at, and showing it
+            # changes nothing about what a re-tag would write.
+            image=self.archive,
         )
 
     @property
@@ -678,4 +715,5 @@ def summarise(
         unreadable=len(tracks) - len(readable),
         caa=caa,
         archive_wins=archive_wins,
+        archive=archive,
     )

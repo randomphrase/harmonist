@@ -161,10 +161,41 @@
     </div>
     <div class="art-row">
         <div class="art-row__side art-row__side--after">
-            {# The word distinguishes the two ways there is no picture: an image
-               that exists and was never downloaded because it lost, and a
-               release the archive holds nothing for. #}
+            {# Three states in this frame, and the word distinguishes the two
+               that have no picture: an image that exists and was never
+               downloaded because it lost, and a release the archive holds
+               nothing for.
+
+               The first of those is now a BUTTON rather than a statement
+               (#448). "Not loaded" is true and useless on its own: bigger is
+               the only thing Harmonist can measure, and a cover that loses on
+               pixels may still be the better scan — so the frame that says
+               there is no picture is also the way to go and get one. The other
+               two states are not buttons, because there is nothing to fetch and
+               because the picture is already here. #}
+            {% if artwork.archive_row.image %}
+            <button type="button"
+                    class="art-row__art"
+                    popovertarget="art-{{ artwork.archive_row.image.digest[:12] }}"
+                    aria-label="View the Cover Art Archive's cover full size">
+                <img src="/artwork/image/{{ album.id }}/{{ artwork.archive_row.image.digest }}"
+                     alt="" loading="lazy">
+            </button>
+            {% elif artwork.archive_row.loadable %}
+            {# `hx-disabled-elt` because this is a real download of up to five
+               megabytes from a service that answers slowly, and a second press
+               would spend it twice. No `hx-confirm`: it writes nothing of the
+               user's and can be undone by ignoring it. #}
+            <form hx-post="/album/{{ album.id }}/artwork/load-archive"
+                  hx-target="#album-artwork" hx-swap="innerHTML"
+                  hx-disabled-elt="find button" class="art-row__load">
+                <button type="submit" class="art-row__art art-row__art--absent"
+                        title="Download this cover from the Cover Art Archive so you can look at it. It is bigger that decides what a re-tag writes, and this is how you tell whether bigger is better."
+                        aria-label="Load the Cover Art Archive's cover">load</button>
+            </form>
+            {% else %}
             <span class="art-row__art art-row__art--absent" aria-hidden="true">{{ artwork.archive_row.placeholder }}</span>
+            {% endif %}
             <div class="art-row__facts">
                 <span class="art-row__who">Cover Art Archive</span>
                 <span class="art-row__meta">{{ artwork.archive_row.meta }}</span>

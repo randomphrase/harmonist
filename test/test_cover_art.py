@@ -362,3 +362,40 @@ def test_the_etag_is_only_sent_to_the_listing_it_came_from():
 
     assert sent["/release/rel-1"] is None  # not this listing's etag
     assert sent["/release-group/grp-1"] == '"grp"'
+
+
+# ---------- loading a cover that lost (#448) ----------
+
+
+def test_fetch_image_keeps_the_picture_where_the_page_can_find_it(tmp_path):
+    """The whole point: a losing candidate is never downloaded by the check, so
+    this is the only way its picture reaches the candidate cache."""
+    from harmonist import cover_art
+
+    cover_art.configure_cache(tmp_path / "caa")
+    art = _sized_jpeg(500)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=art, headers={"content-type": "image/jpeg"})
+
+    path = cover_art.fetch_image("rel-1", "https://caa.example/a.jpg", client=_client(handler))
+
+    assert path is not None and path.read_bytes() == art
+    assert cover_art.cached_image("rel-1") == path
+
+
+def test_fetch_image_raises_rather_than_shrugging(tmp_path):
+    """Where `_fetch_and_cache` swallows and logs, because losing the picture is
+    a footnote to the measurement it was really after. Here the picture IS the
+    request, and somebody is waiting to look at it."""
+    from harmonist import cover_art
+
+    cover_art.configure_cache(tmp_path / "caa")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    with pytest.raises(cover_art.CoverArtError):
+        cover_art.fetch_image("rel-1", "https://caa.example/a.jpg", client=_client(handler))
+
+    assert cover_art.cached_image("rel-1") is None  # nothing half-written

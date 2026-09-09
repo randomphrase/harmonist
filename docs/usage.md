@@ -480,15 +480,24 @@ If the release has no cover of its own, Harmonist asks its **release group**,
 which is where the archive very often keeps an album's artwork. A cover found
 that way is labelled as the group's rather than this edition's.
 
-What comes back is a row like any other, greyed, because nothing is going to
-come of it unless it wins:
+What comes back sits in the same column as anything else coming from outside
+the album, under **Also considered** — greyed, and without the hexagon, because
+nothing is going to come of it unless it wins.
 
-- **not loaded** — the archive has a cover, and it is no better than yours, so
-  it was measured and not downloaded.
-- **none** — the archive has nothing for this release or its group.
+Where the frame reads **none**, the archive has nothing for this release or its
+group, and there is nothing to fetch.
 
-When the archive's cover *is* larger, it is fetched, shown beside your own with
-the MusicBrainz hexagon, and **Update artwork** will write it.
+Where it reads **load**, the archive has a cover that is no better than yours on
+size, so it was measured and not downloaded — and that frame is a button.
+**Bigger is not the same as better**: a larger scan can be softer, more heavily
+compressed, worse cropped, or a different pressing's sleeve. Press it to
+download that cover and look at it, full size like any other image on the page.
+It changes nothing about what a re-tag would write; it is there so you can see
+what you are turning down.
+
+When the archive's cover *is* larger, it is fetched without being asked, shown
+beside your own with the MusicBrainz hexagon, and **Update artwork** will write
+it.
 
 ### Getting artwork back
 
