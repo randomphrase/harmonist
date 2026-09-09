@@ -6,6 +6,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- Demo re-download tagging now appears as one album-wide History action with one Undo, matching Re-tag (#450).
+
 ### Added
 
 - **Artwork a change added can be undone** — History's Undo takes an image back
