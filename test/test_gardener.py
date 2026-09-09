@@ -2015,3 +2015,33 @@ def test_the_band_draws_a_difference_exactly_as_the_album_panel_does(engaged, mo
     assert "tag-pair" in classes(band)
     assert "diff-run" in classes(band)
     assert "mb-mark" in classes(band)
+
+
+def test_a_cached_archive_cover_is_not_an_update(tmp_path, monkeypatch):
+    """The pass is about TAGS, and it said so by passing `cover_path=None` —
+    which stopped being enough (#442, #448).
+
+    `decide_artwork` gained a second source: with a cached archive image it can
+    now produce a winner without a folder cover, so a plan that was artwork-free
+    by construction started carrying an ARTWORK change. `owned.ranked` raises on
+    one deliberately, which turned the album page's own comparison into a 500
+    for every album whose archive cover happened to be on disk.
+    """
+    from harmonist import cover_art, formats
+    from test.test_artwork import jpeg_bytes
+
+    cover_art.configure_cache(tmp_path / "caa")
+    release = _release()
+    album = _tagged(tmp_path / "music", release)
+    # Art on the tracks and no `cover.jpg` beside them — the album shape #442
+    # opened up, and the one where the archive can win without a folder cover.
+    for track in album.path.glob("*.m4a"):
+        formats.write_cover(track, jpeg_bytes(400, 400))
+    # Something the archive holds that beats it — the shape a check leaves
+    # behind for a winner, and a press of "load" for a loser.
+    cover_art.cache_image(release["id"], jpeg_bytes(3000, 3000), "image/jpeg")
+
+    # Nothing about the tags changed, so there is no update — and asking must
+    # not raise.
+    assert _flag(album, release) is False
+    assert gardener.plan_for(album, release).changes == {}

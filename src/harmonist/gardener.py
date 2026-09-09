@@ -111,10 +111,18 @@ def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
     change, one of the loudest things MusicBrainz can do to an album, and it
     counts as an update (#266, #267). `update_flag` is what turns it into one.
 
-    Artwork is out of scope — `cover_path=None`, so the plan leaves each file's
-    own art alone and the verdict is about tags only. Asking the Cover Art
-    Archive here would spend a separate budget per album per pass, which
-    review-gate item 6 forbids and #269 owns instead.
+    Artwork is out of scope, and `artwork=False` is how that gets SAID. It used
+    to be implied by `cover_path=None`, on the reasoning that no cover meant
+    nothing to write — which was true until the Cover Art Archive became a
+    second source needing no folder cover (#442). The plan then started carrying
+    an ARTWORK change that `owned.ranked` raises on by design, and this call
+    became a 500 for any album whose archive cover happened to be cached. A
+    proxy that holds is still a proxy (#448).
+
+    Asking the archive itself here would spend a separate budget per album per
+    pass, which review-gate item 6 forbids and #269 owns instead; the flag also
+    saves the read of every file's embedded art, which is not free on a pass
+    that touches the whole library.
 
     A superseded tag spelling — MP4's legacy `MUSICBRAINZ_RELEASEID`, which a
     write clears without ever reading back — is deliberately NOT an update, even
@@ -132,6 +140,7 @@ def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
         album.path,
         release,
         cover_path=None,
+        artwork=False,
         # Same reading the re-tag button makes (`web/main.py:3829`), so the
         # flag never promises an update that the button would refuse to apply.
         # Without it every INCOMPLETE album raises `TagMismatchError` and flags

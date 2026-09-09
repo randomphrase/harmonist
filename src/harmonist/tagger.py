@@ -326,6 +326,7 @@ def plan_album(
     incomplete: bool = False,
     overwrite_art: bool = False,
     files: list[Path] | None = None,
+    artwork: bool = True,
 ) -> AlbumPlan:
     """What `tag_album` would change here, computed without writing anything.
 
@@ -353,6 +354,7 @@ def plan_album(
         incomplete=incomplete,
         overwrite_art=overwrite_art,
         files=files,
+        artwork_in_scope=artwork,
     )
     changes: dict[Path, dict[str, list[Any]]] = {}
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
@@ -570,6 +572,7 @@ def decide_artwork(
     cover_path: Path | None,
     *,
     overwrite_art: bool = False,
+    consider: bool = True,
 ) -> ArtworkPlan:
     """Which image wins, and what would have to change for it to be everywhere.
 
@@ -585,7 +588,18 @@ def decide_artwork(
     Reads files and the local caches, and nothing else. No network: `plan_album`
     reaches this on the gardener's path, where a request per album is exactly
     what must not happen.
+
+    `consider=False` opts out entirely: no candidates, no winner, and no reads.
+    The gardener's flag is about TAGS, and it used to say so by passing
+    `cover_path=None` — which was a proxy, not a statement, and stopped being
+    true the moment the archive became a second source that needs no folder
+    cover (#442). A plan that was artwork-free by construction started carrying
+    an ARTWORK change, which `owned.ranked` raises on by design, and the album
+    page's own comparison became a 500 for any album whose archive cover
+    happened to be cached. Say the thing rather than implying it (#448).
     """
+    if not consider:
+        return ArtworkPlan(before={}, winner=None)
     cover = cover_path.read_bytes() if cover_path else None
     # The archive's image, from the LOCAL CACHE only.
     archive = _archive_candidate(release)
@@ -646,12 +660,17 @@ def _prepare(
     incomplete: bool,
     overwrite_art: bool,
     files: list[Path] | None,
+    artwork_in_scope: bool = True,
 ) -> _Prepared:
     """Decide what a tagging of this album would consist of, reading no tags.
 
-    (It does read embedded artwork, when there is a cover that might replace
-    it — that is the only way to know whether replacing it would destroy
-    per-track images.)
+    (It does read embedded artwork, when there is a candidate that might
+    replace it — that is the only way to know whether replacing it would
+    destroy per-track images.)
+
+    `artwork_in_scope=False` leaves artwork out altogether, for a caller whose
+    question is only about tags. See `decide_artwork` for why that has to be
+    stated rather than implied by passing no cover path (#448).
     """
     files = files if files is not None else album_files.audio_files(album_dir)
     flat_tracks = list(_flatten_tracks(release))
@@ -692,7 +711,9 @@ def _prepare(
     # path where scanning is already the slow part (#44, #74). Guarding here
     # rather than relying on the `and` below, which used to short-circuit this
     # read and stopped doing so when the digests were hoisted out.
-    art = decide_artwork(files, release, cover_path, overwrite_art=overwrite_art)
+    art = decide_artwork(
+        files, release, cover_path, overwrite_art=overwrite_art, consider=artwork_in_scope
+    )
     art_before = art.before
     preserves_per_track_art = art.preserves_per_track_art
     # A TAGGING FILLS GAPS AND REPLACES NOTHING (#418). Improving an image the
