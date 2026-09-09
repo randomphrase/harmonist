@@ -905,6 +905,10 @@ dialog::backdrop {
   .art-row { grid-template-columns: 6.5rem minmax(0, 1fr); row-gap: .7rem; }
   .art-row__side--after > * { margin-left: 0; }
   .art-row__side--after > .art-row__art { margin-left: 1.5rem; }
+  /* There is no third column to place anything in down here — the grid is two
+     wide and the headings are hidden, so the also-ran block is simply the last
+     row rather than a column of its own (#441). */
+  .art-rows--muted .art-row__side--after > :first-child { grid-column: auto; }
 }
 
 .art-row__art {
@@ -987,6 +991,12 @@ dialog::backdrop {
    an also-ran beside the rows above rather than as something pending. */
 .art-rows--muted { opacity: .62; }
 .art-rows--muted .art-row { border-bottom: 0; }
+
+/* It sits in the INCOMING column with nothing beside it (#441), and `display:
+   contents` on the side means its cells flow into the grid themselves — with no
+   left half to precede them they would land in column 1, back among the images
+   the album actually has. Placing the first cell is enough; the facts follow it. */
+.art-rows--muted .art-row__side--after > :first-child { grid-column: 3; }
 .art-row__art--absent {
   display: flex;
   align-items: center;

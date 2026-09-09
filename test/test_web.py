@@ -9015,6 +9015,85 @@ def test_a_losing_archive_cover_is_drawn_as_a_muted_row(client, cfg):
     assert 'class="text-sm text-mb-purple"' not in rendered
 
 
+def test_a_losing_archive_cover_sits_in_the_incoming_column(client, cfg):
+    """Where an image came from is the column; whether it is coming is the mark
+    (#441).
+
+    Drawn on the left it was among the images the album HAS, which on an album
+    whose archive cover matches its own read as two copies of one picture with
+    one of them broken.
+    """
+    from harmonist import formats
+
+    d = _make_tagged_album(cfg, "Sidelined", mbid="rel-side", tagged_at=datetime.now(UTC))
+    good = _png(1)
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, good)
+    (d / "cover.jpg").write_bytes(good)
+    activity_store.store_cover_art(
+        "rel-side",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-side/1.jpg",
+            width=10,
+            height=10,
+            mime="image/jpeg",
+        ),
+    )
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+    muted = rendered[rendered.index("art-rows--muted") :]
+
+    # The incoming column, under a heading that is not the promise "After a
+    # re-tag" makes.
+    assert "art-row__side--after" in muted
+    assert "Also considered" in muted
+    assert "After a re-tag" not in muted
+    # Neither mark: both say "this is what would be put on your files", and a
+    # winning archive cover carries both — see
+    # `test_a_winning_archive_cover_is_marked_as_the_one_being_written`.
+    assert "mb-mark" not in muted
+    assert "art-row__facts--mb" not in muted
+
+
+def test_a_winning_archive_cover_is_marked_as_the_one_being_written(client, cfg):
+    """The other half of the rule the column change rests on (#441): the marks,
+    not the side of the page, are what say an image is coming.
+
+    Same column as the also-ran above, and the difference is the hexagon and the
+    purple — which is how the Tags panel has always distinguished a value
+    MusicBrainz would write from one that merely agrees.
+    """
+    from harmonist import cover_art, formats
+    from test.test_artwork import png_bytes
+
+    d = _make_tagged_album(cfg, "Bettered", mbid="rel-win", tagged_at=datetime.now(UTC))
+    small = png_bytes(64, 64)
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, small)
+    (d / "cover.jpg").write_bytes(small)
+    # The archive's, measured AND fetched — a winner is downloaded, which is
+    # what lets the page show it rather than a placeholder.
+    cover_art.cache_image("rel-win", png_bytes(1400, 1400), "image/png")
+    activity_store.store_cover_art(
+        "rel-win",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-win/1.jpg",
+            width=1400,
+            height=1400,
+            mime="image/png",
+        ),
+    )
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+
+    assert "art-rows--muted" not in rendered  # it won, so it is not an also-ran
+    assert "art-row__facts--mb" in rendered
+    assert "From the Cover Art Archive" in rendered  # the hexagon's label
+    assert "Update artwork" in rendered
+
+
 def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
     """A different word from "not loaded": there is nothing to load (#433)."""
     from harmonist import activity_store, formats

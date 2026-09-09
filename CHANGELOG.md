@@ -60,7 +60,12 @@ versions follow [semantic versioning](https://semver.org).
   greyed, with its size and format, and a placeholder saying which kind of
   nothing it is: *not loaded* for a cover that exists but lost, *none* for a
   release the archive holds nothing for. It used to be a purple sentence, which
-  read like something about to be written (#433).
+  read like something about to be written (#433). It now sits in the incoming
+  column under **Also considered**, rather than among the images the album
+  already has — on an album whose archive cover matches its own, two rows
+  stating the same size read as owning the picture twice with one copy broken.
+  Which column an image is in now says where it came from, and the hexagon and
+  purple say whether it is coming (#441).
 
 - **The top of an album's page says when its artwork wants attention**, with a
   link down to the Artwork section, which is usually well below the fold. And

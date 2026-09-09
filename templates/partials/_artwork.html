@@ -125,21 +125,41 @@
 </div>
 {% endif %}
 
-{# The archive's cover when it is not what would be written (#433) — a row like
-   any other candidate, because that is what it is, with a placeholder where the
-   picture would be.
+{# The archive's cover when it is not what would be written (#433) — a candidate
+   like any other, with a placeholder where the picture would be.
 
    The placeholder is honest rather than a stand-in: a losing candidate is never
    downloaded, so there genuinely is no image to show, and fetching one would
    spend megabytes on a picture nobody will use.
 
-   Muted throughout, and no hexagon. Both marks mean "about to be written", and
-   this is the one image on the page that certainly is not. Why should be legible
-   from the rows above: they are larger. #}
+   IN THE INCOMING COLUMN, with an empty cell beside it (#441). It was drawn on
+   the left, among the images the album HAS — which is what an album with a
+   matching archive cover made unreadable: two rows stating identical facts, one
+   of them with an empty frame, which reads as owning the picture twice and
+   failing to load one of them. It is not one of the album's images. It is a
+   candidate from outside, and outside is what this column means.
+
+   That leaves the column saying WHERE an image came from and the marks saying
+   whether it is coming: the hexagon and the purple facts go on the archive's
+   cover when it wins and are absent here, exactly as the Tags panel marks a
+   value MusicBrainz would write and leaves an agreeing one plain. Before this
+   the column had to carry both meanings, and could only carry one.
+
+   Its own heading, because "After a re-tag" above is a promise and this is the
+   one image on the page that certainly is not coming. "Also considered" is past
+   tense on purpose: it says the thing was weighed and lost, which is also why
+   there is no picture to show. #}
 {% if artwork.archive_row %}
 <div class="art-rows art-rows--muted">
+    <div class="art-rows__head">
+        {# Empty, and not omitted: the heading row is a grid, and the first span
+           is what holds the album's own column open so the second lands over
+           the incoming one. #}
+        <span></span>
+        <span>Also considered</span>
+    </div>
     <div class="art-row">
-        <div class="art-row__side">
+        <div class="art-row__side art-row__side--after">
             {# The word distinguishes the two ways there is no picture: an image
                that exists and was never downloaded because it lost, and a
                release the archive holds nothing for. #}
