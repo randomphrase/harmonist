@@ -68,6 +68,13 @@ versions follow [semantic versioning](https://semver.org).
   cover" may have one after all. A group's cover is labelled as the group's
   rather than this edition's (#434).
 
+- **The archive's cover gets a column of its own when a re-tag would write
+  something** — *Now*, *After a re-tag*, *Also considered*, read across. It used
+  to trail the rows in a block below them, a heading and a rule away from the
+  candidates it is a peer of. An album where nothing would be written keeps the
+  trailing block: there is no three-way comparison to draw when the middle
+  column is empty (#447).
+
 - **A cover the archive holds can be loaded and looked at, even when it loses.**
   Harmonist can only measure pixels, and bigger is not the same as better — a
   larger scan can be softer, worse cropped, or a different pressing's sleeve. The

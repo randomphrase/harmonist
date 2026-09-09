@@ -969,6 +969,13 @@ dialog::backdrop {
      wide and the headings are hidden, so the also-ran block is simply the last
      row rather than a column of its own (#441). */
   .art-rows--muted .art-row__side--after > :first-child { grid-column: auto; }
+  /* …and the same for the third column (#447): two tracks, no headings, so its
+     cell stacks under the row it was beside rather than being placed in a
+     column that is not there. */
+  .art-rows--3 .art-rows__head,
+  .art-rows--3 .art-row { grid-template-columns: 6.5rem minmax(0, 1fr); }
+  .art-row__side--third > * { margin-left: 0; }
+  .art-row__side--third > :first-child { grid-column: auto; margin-left: 1.5rem; }
 }
 
 .art-row__art {
@@ -1057,6 +1064,27 @@ dialog::backdrop {
    left half to precede them they would land in column 1, back among the images
    the album actually has. Placing the first cell is enough; the facts follow it. */
 .art-rows--muted .art-row__side--after > :first-child { grid-column: 3; }
+
+/* A THIRD COLUMN for the archive's candidate, when a re-tag is writing
+   something and there are genuinely three things to weigh (#447).
+
+   No `subgrid` needed: every row is its own grid over the same tracks, so
+   widening the template widens all of them together and the columns line up by
+   construction. The cell rides in the first row; the rows below it simply leave
+   these tracks empty. */
+.art-rows--3 .art-rows__head,
+.art-rows--3 .art-row {
+  grid-template-columns:
+    6.5rem minmax(0, 1fr) 6.5rem minmax(0, 1fr) 6.5rem minmax(0, 1fr);
+}
+.art-rows--3 .art-rows__head span:nth-child(3) { grid-column: 5 / span 2; }
+.art-row__side--third { display: contents; }
+.art-row__side--third > * { margin-left: 1.6rem; }
+.art-row__side--third > :first-child { grid-column: 5; }
+/* Muted PER CELL, not by wrapping: `art-row__side` is `display: contents`, and
+   a box that generates no box cannot take an opacity — the mistake that made
+   this read as a third full-weight candidate in the first mockup of it. */
+.art-rows--3 .art-row__side--third > * { opacity: .62; }
 
 /* The frame is a form when it is the way to fetch the picture (#448). The form
    IS the grid cell — deliberately not `display: contents`, which was the first

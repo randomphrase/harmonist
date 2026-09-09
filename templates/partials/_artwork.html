@@ -65,12 +65,74 @@
     {% endif %}
 {% endmacro %}
 
+{% macro archive_cell(row, album_id) %}
+    {# The archive's candidate: a frame, and the facts beside it. One definition
+       for both places it can appear — the third column of the rows above when a
+       re-tag is writing something, and the trailing block when it is not (#447).
+
+       Three states in the frame, and the word distinguishes the two that have no
+       picture: an image that exists and was never downloaded because it lost,
+       and a release the archive holds nothing for.
+
+       The first of those is a BUTTON rather than a statement (#448). "Not
+       loaded" is true and useless on its own: bigger is the only thing Harmonist
+       can measure, and a cover that loses on pixels may still be the better
+       scan — so the frame that says there is no picture is also the way to go
+       and get one. The other two states are not buttons, because there is
+       nothing to fetch and because the picture is already here. #}
+    {% if row.image %}
+    <button type="button"
+            class="art-row__art"
+            popovertarget="art-{{ row.image.digest[:12] }}"
+            aria-label="View the Cover Art Archive's cover full size">
+        <img src="/artwork/image/{{ album_id }}/{{ row.image.digest }}" alt="" loading="lazy">
+    </button>
+    {% elif row.loadable %}
+    {# `hx-disabled-elt` because this is a real download of up to five megabytes
+       from a service that answers slowly, and a second press would spend it
+       twice. No `hx-confirm`: it writes nothing of the user's and can be undone
+       by ignoring it. #}
+    <form hx-post="/album/{{ album_id }}/artwork/load-archive"
+          hx-target="#album-artwork" hx-swap="innerHTML"
+          hx-disabled-elt="find button" class="art-row__load">
+        <button type="submit" class="art-row__art art-row__art--absent"
+                title="Download this cover from the Cover Art Archive so you can look at it. It is bigger that decides what a re-tag writes, and this is how you tell whether bigger is better."
+                aria-label="Load the Cover Art Archive's cover">load</button>
+    </form>
+    {% else %}
+    <span class="art-row__art art-row__art--absent" aria-hidden="true">{{ row.placeholder }}</span>
+    {% endif %}
+    <div class="art-row__facts">
+        <span class="art-row__who">Cover Art Archive</span>
+        <span class="art-row__meta">{{ row.meta }}</span>
+        {# Whose cover it is, when it is not this edition's (#434). #}
+        {% if row.from_release_group %}
+        <span class="art-row__meta-plain">for the release group, not this edition</span>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{# The archive's candidate gets a COLUMN when a re-tag is writing something
+   (#447), because then there are three things to weigh — what you have, what
+   you would get, and what the archive holds — and two of them were columns
+   while the third trailed underneath as a postscript to rows it is a peer of.
+
+   It needs no `subgrid`: every row is its own grid over the same tracks, so
+   widening the template widens all of them together and the columns line up by
+   construction. The cell itself rides in the FIRST row, which is where a reader
+   looking across the comparison will be.
+
+   Only when something IS written. An album with an empty middle column has no
+   three-way comparison to draw, and the trailing block below is still the right
+   shape for it. #}
+{% set third_column = artwork.archive_row and artwork.writes %}
 {% if artwork.rows %}
-<div class="art-rows">
+<div class="art-rows{% if third_column %} art-rows--3{% endif %}">
     {% if artwork.writes %}
     <div class="art-rows__head">
         <span>Now</span>
         <span>After a re-tag</span>
+        {% if third_column %}<span>Also considered</span>{% endif %}
     </div>
     {% endif %}
 
@@ -121,6 +183,15 @@
             </div>
         </div>
         {% endif %}
+
+        {# …and the third candidate, on the first row (#447). Muted per cell
+           rather than by wrapping the block: `art-row__side` is `display:
+           contents`, and a box that generates no box cannot take an opacity. #}
+        {% if third_column and loop.first %}
+        <div class="art-row__side art-row__side--third">
+            {{ archive_cell(artwork.archive_row, album.id) }}
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>
@@ -150,7 +221,11 @@
    one image on the page that certainly is not coming. "Also considered" is past
    tense on purpose: it says the thing was weighed and lost, which is also why
    there is no picture to show. #}
-{% if artwork.archive_row %}
+{# …and when a re-tag is writing NOTHING, it trails the rows in its own block
+   with a heading of its own. There is no three-way comparison to draw on an
+   album where the middle column is empty, so the third column would be a
+   heading over a gap (#447). #}
+{% if artwork.archive_row and not artwork.writes %}
 <div class="art-rows art-rows--muted">
     <div class="art-rows__head">
         {# Empty, and not omitted: the heading row is a grid, and the first span
@@ -161,49 +236,7 @@
     </div>
     <div class="art-row">
         <div class="art-row__side art-row__side--after">
-            {# Three states in this frame, and the word distinguishes the two
-               that have no picture: an image that exists and was never
-               downloaded because it lost, and a release the archive holds
-               nothing for.
-
-               The first of those is now a BUTTON rather than a statement
-               (#448). "Not loaded" is true and useless on its own: bigger is
-               the only thing Harmonist can measure, and a cover that loses on
-               pixels may still be the better scan — so the frame that says
-               there is no picture is also the way to go and get one. The other
-               two states are not buttons, because there is nothing to fetch and
-               because the picture is already here. #}
-            {% if artwork.archive_row.image %}
-            <button type="button"
-                    class="art-row__art"
-                    popovertarget="art-{{ artwork.archive_row.image.digest[:12] }}"
-                    aria-label="View the Cover Art Archive's cover full size">
-                <img src="/artwork/image/{{ album.id }}/{{ artwork.archive_row.image.digest }}"
-                     alt="" loading="lazy">
-            </button>
-            {% elif artwork.archive_row.loadable %}
-            {# `hx-disabled-elt` because this is a real download of up to five
-               megabytes from a service that answers slowly, and a second press
-               would spend it twice. No `hx-confirm`: it writes nothing of the
-               user's and can be undone by ignoring it. #}
-            <form hx-post="/album/{{ album.id }}/artwork/load-archive"
-                  hx-target="#album-artwork" hx-swap="innerHTML"
-                  hx-disabled-elt="find button" class="art-row__load">
-                <button type="submit" class="art-row__art art-row__art--absent"
-                        title="Download this cover from the Cover Art Archive so you can look at it. It is bigger that decides what a re-tag writes, and this is how you tell whether bigger is better."
-                        aria-label="Load the Cover Art Archive's cover">load</button>
-            </form>
-            {% else %}
-            <span class="art-row__art art-row__art--absent" aria-hidden="true">{{ artwork.archive_row.placeholder }}</span>
-            {% endif %}
-            <div class="art-row__facts">
-                <span class="art-row__who">Cover Art Archive</span>
-                <span class="art-row__meta">{{ artwork.archive_row.meta }}</span>
-                {# Whose cover it is, when it is not this edition's (#434). #}
-                {% if artwork.archive_row.from_release_group %}
-                <span class="art-row__meta-plain">for the release group, not this edition</span>
-                {% endif %}
-            </div>
+            {{ archive_cell(artwork.archive_row, album.id) }}
         </div>
     </div>
 </div>

@@ -9383,3 +9383,68 @@ def test_loading_is_refused_when_the_archive_has_nothing_to_load(client, cfg):
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
     assert "load-archive" not in rendered
     assert "no front cover for this release" in rendered
+
+
+def test_the_archive_gets_a_column_when_a_re_tag_is_writing_something(client, cfg):
+    """Three things to weigh, three columns (#447).
+
+    The archive's candidate used to trail the rows in a block of its own, a
+    heading and a rule below rows it is a peer of. With something in the middle
+    column there is a real three-way comparison, and it reads across.
+    """
+    from harmonist import formats
+    from test.test_artwork import png_bytes
+
+    d = _make_tagged_album(cfg, "Threeway", mbid="rel-three", tagged_at=datetime.now(UTC))
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, png_bytes(300, 300))
+    # Strictly larger on both axes, or nothing is written and there is no middle
+    # column for the third one to sit beside.
+    (d / "cover.jpg").write_bytes(png_bytes(900, 900))
+    activity_store.store_cover_art(
+        "rel-three",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-three/1.jpg",
+            width=10,
+            height=10,
+            mime="image/jpeg",
+        ),
+    )
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+
+    assert "art-rows--3" in rendered
+    assert "art-row__side--third" in rendered
+    assert "Also considered" in rendered
+    # …in the rows themselves, not in a block trailing them.
+    assert "art-rows--muted" not in rendered
+
+
+def test_the_archive_keeps_its_own_block_when_nothing_would_be_written(client, cfg):
+    """The other half of the same rule: an album with an empty middle column has
+    no three-way comparison to draw, so a third column would be a heading over a
+    gap (#447)."""
+    from harmonist import formats
+
+    same = _png(1)
+    d = _make_tagged_album(cfg, "Settled", mbid="rel-settled", tagged_at=datetime.now(UTC))
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, same)
+    (d / "cover.jpg").write_bytes(same)
+    activity_store.store_cover_art(
+        "rel-settled",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-settled/1.jpg",
+            width=10,
+            height=10,
+            mime="image/jpeg",
+        ),
+    )
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+
+    assert "art-rows--muted" in rendered
+    assert "art-rows--3" not in rendered
+    assert "After a re-tag" not in rendered  # nothing is written, so nothing promises it
