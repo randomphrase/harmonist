@@ -40,29 +40,35 @@
 
     {% include 'partials/library_detail.html' %}
 
-    {# What MusicBrainz has that these files don't, and the answers to it (#366).
-       Empty until the /compare fetch fills it out of band, for the reason the
-       note it replaces was: everything in it comes from that fetch. Deliberately
-       nothing rather than a placeholder — an empty space says "not yet", where a
-       "Checking…" line between the panel and the Tags section would read as the
-       album's state. #}
-    <div id="album-update-{{ album.id }}"></div>
+    {# What this album could be asked to do about itself, and the answers to it
+       (#366, #443).
 
-    {# A pointer to the Artwork section when it has something to act on (#417).
-       The section is typically well below the fold, and until now the top of
-       the page said nothing about artwork at all.
+       ONE section, three parts, and each part arrives from a different response:
 
-       Its OWN line rather than a clause of the update section above, because
-       the two answer to different things: that section is what MusicBrainz has
-       that your files don't, and it renders only when MusicBrainz has something
-       to say. Artwork can want attention when the tags are perfect — and the
-       better image is often one of the album's own files, which MusicBrainz has
-       no opinion about whatsoever.
+       * what MusicBrainz has that these files don't, from /compare;
+       * what the album's artwork could be, from /artwork — which is the fetch
+         that has already made the pass over the files this needs;
+       * the answers other than taking the update, from /compare again.
 
-       Filled out of band by the artwork fetch below, which has already made the
-       one pass over the files this needs. Empty at page build, and empty again
-       whenever nothing would change. #}
-    <div id="album-artwork-note-{{ album.id }}"></div>
+       They were two bordered boxes stacked, which made the artwork finding look
+       like a different kind of thing from the tag finding when they are the same
+       kind of thing: something Harmonist noticed, with a button that acts on it.
+       Each finding now sits on a line with its own remedy, so which button does
+       what needs no reading.
+
+       Empty at page build, and the wrapper hides itself until something lands in
+       it — see `.album-findings` in input.css. That has to be CSS rather than a
+       server-side flag because no ONE of the three responses knows whether the
+       others found anything.
+
+       Deliberately no placeholder while they are in flight. An empty space says
+       "not yet"; a "Checking…" line between the panel and the Tags section would
+       read as the album's state. #}
+    <section class="album-findings" id="album-findings-{{ album.id }}">
+        <div id="album-update-{{ album.id }}"></div>
+        <div id="album-artwork-note-{{ album.id }}"></div>
+        <div id="album-update-ignore-{{ album.id }}" class="album-update__answers"></div>
+    </section>
 
     {# The decisions the inbox would offer about this album, offered here (#150).
 

@@ -29,9 +29,16 @@
    a fact about the album, it is MusicBrainz being wrong, and the fix belongs
    there, where it benefits everyone and comes back on the next check for free.
 
-   `oob` is set by the endpoint that toggles this and unset when the section
-   includes it: the section is itself an out-of-band swap, and nesting one inside
-   another would have htmx process the same block twice. #}
+   THE FOOT OF THE SECTION, and a sibling of the findings rather than part of
+   one (#443). Three answers, in the order a reader meets them: take it (the
+   finding's own button), defer it (this checkbox), dispute it (the link). They
+   used to sit in the action row, which put "stop telling me about this" at the
+   same weight as "take the update" and stacked a paragraph of explanation under
+   both. Ranked instead: the buttons lead, this is quiet, and the upstream line
+   is quieter still and pushed to the far end.
+
+   `oob` is set by every response that renders this — it is its own swap target
+   now, since it has no parent block to ride in on. #}
 <div id="album-update-ignore-{{ album.id }}"{% if oob %} hx-swap-oob="true"{% endif %}
      class="album-update__answers">
     {% if album.update_available and album.sidecar and album.sidecar.mb_release_id %}
@@ -48,12 +55,16 @@
                hx-on::after-request="if (!event.detail.successful) this.checked = !this.checked">
         Ignore until MusicBrainz changes
     </label>
+    {# Shorter, and last (#443). It was a whole sentence of explanation sitting
+       beside the checkbox — the third and least likely of the three answers,
+       given the most words. The reasoning it was carrying belongs in the link's
+       tooltip, where someone considering it will find it. #}
     <span class="album-update__upstream">
-        Not what MusicBrainz should say?
+        Wrong?
         <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit"
            target="_blank" rel="noopener"
-           title="Edit this release on MusicBrainz. Harmonist takes what MusicBrainz says, so a correction made there is what reaches your files.">Edit the release</a>,
-        and the next check will pick your edit up.
+           title="Edit this release on MusicBrainz. Harmonist applies what MusicBrainz says and keeps no local exceptions, so a correction made there is what reaches your files — and everyone else's.">Fix it on MusicBrainz</a>
+        — the next check takes your edit.
     </span>
     {% endif %}
 </div>

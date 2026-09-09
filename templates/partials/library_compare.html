@@ -18,6 +18,10 @@
    re-read (#355). #}
 {% include 'partials/_tracks_section.html' %}
 {% include 'partials/_album_update.html' %}
+{# …and the answers other than taking it, which are now a sibling of the
+   findings rather than part of one (#443): the foot of the section, rendered
+   by whoever renders the finding above it. #}
+{% with oob = true %}{% include 'partials/_update_ignore.html' %}{% endwith %}
 {% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
 {# …and the panel's merge note (#361), which this fetch is the only thing that
    can discover: a merged MBID redirects, so the difference between the id asked

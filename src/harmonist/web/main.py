@@ -1215,9 +1215,11 @@ def _update_ignore_oob(request: Request, album: Album, *, ignored: bool) -> str:
     block after a re-tag has taken one.
     """
     template = _templates(request).env.get_template("partials/_update_ignore.html")
-    # `oob` here and NOT when the update section includes this block: the section
-    # is itself an out-of-band swap, and an OOB element nested inside one would
-    # be processed twice (#366).
+    # `oob` everywhere now (#443). It used to be set here and NOT where the
+    # update section included this block, because an OOB element nested inside
+    # an OOB swap is processed twice (#366) — but the block is no longer nested
+    # in anything: it is the foot of the findings section, and a sibling of the
+    # findings themselves, so every renderer sets the flag.
     return template.render(_ctx(request, album=album, update_ignored=ignored, oob=True))
 
 

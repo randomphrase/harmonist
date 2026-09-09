@@ -30,6 +30,9 @@
    comparison did not happen rather than being left blank. #}
 {% include 'partials/_tracks_section.html' %}
 {% include 'partials/_album_update.html' %}
+{# The answers belong with it (#443) — a deleted release can still be ignored,
+   and the upstream link is the one thing that could bring it back. #}
+{% with oob = true %}{% include 'partials/_update_ignore.html' %}{% endwith %}
 
 <div id="album-alert-{{ album.id }}" hx-swap-oob="true">
     <div class="border border-amber-300 bg-amber-50 rounded-lg p-3 mb-3 flex items-start gap-3">

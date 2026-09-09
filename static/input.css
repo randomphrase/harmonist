@@ -131,6 +131,59 @@ button[disabled],
    three places a single subject was stated from. A section of its own needs no
    tint to separate it from what surrounds it, so the band's border and fill go
    with the band; the hexagon stays, because it is what says MusicBrainz. */
+/* One section for everything the album could be asked to do about itself
+   (#443). Its three parts arrive from two different fetches, each swapping its
+   own child out of band, so the wrapper is static and shows itself only once
+   something has landed in it. `:has()` rather than a server-side flag, because
+   no ONE of those responses knows whether the others found anything — the same
+   reason `#438` had to send both dates from every response that draws them. */
+.album-findings { display: flex; flex-direction: column; gap: .55rem; }
+/* A part that found nothing takes up no room — including no GAP, which an empty
+   flex item would still claim. Whitespace is what makes `:empty` no use here:
+   an out-of-band swap whose `{% if %}` came out false leaves the div holding a
+   newline, and `:empty` counts that as content. `:has(> *)` asks the question
+   that is actually meant, which is whether anything rendered. */
+.album-findings > div:not(:has(> *)) { display: none; }
+/* The chrome, and only once there is something to put a border around. Adding
+   it here rather than hiding the wrapper by default is deliberate: a browser
+   without `:has()` drops both rules, and the findings then render unboxed with
+   a little slack around them — where a default of `display: none` would hide
+   the album's findings outright. Degrade loose, never blank. */
+.album-findings:has(> div > *) {
+  padding: 1rem;
+  border: 1px solid var(--color-line);
+  border-radius: .5rem;
+}
+
+/* A finding and its remedy on one line (#443). Two findings can appear — what
+   MusicBrainz has, and what the artwork could be — and each answers to its own
+   button, so pairing them is what makes which-does-what unreadable-proof. */
+.album-finding { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.album-finding .album-update__legend { flex: 0 1 auto; }
+/* The action to the far end, so two findings' buttons line up down one edge
+   however long their sentences run. `auto` on the FORM too: the artwork action
+   is a form (it posts and confirms) and the tag action is a bare button. */
+.album-finding__act-form { margin-left: auto; }
+.album-finding__act { margin-left: auto; }
+.album-finding__act-form .album-finding__act { margin-left: 0; }
+/* One definition for both buttons, which is what "equal prominence" has to mean
+   if it is to survive an edit to one of them. */
+.album-finding__act {
+  padding: .375rem .75rem; border-radius: .25rem;
+  border: 1px solid color-mix(in srgb, var(--color-mb-purple) 30%, transparent);
+  background: color-mix(in srgb, var(--color-mb-purple) 10%, transparent);
+  color: var(--color-mb-purple);
+  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em;
+  white-space: nowrap; cursor: pointer; transition: background .15s ease;
+}
+.album-finding__act:hover {
+  background: color-mix(in srgb, var(--color-mb-purple) 20%, transparent);
+}
+/* The artwork finding's glyph is about the album's own files; the hexagon on
+   the line above means MusicBrainz specifically. Muted so the difference is
+   visible without reading. */
+.album-finding__key--art { color: var(--color-muted); }
+
 .album-update__head { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
 .album-update__key { display: flex; align-items: center; align-self: center; }
 .album-update__legend { font-size: .85rem; color: var(--color-ink); font-weight: 600; }
@@ -139,7 +192,14 @@ button[disabled],
    rather than making the reader find the word inside each sentence. */
 .album-update__head .sev { margin-left: auto; }
 .album-update__acts { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: .7rem; }
+/* The section's foot: defer on the left, dispute pushed to the far end, both
+   below a rule that separates the answers from the findings (#443). */
 .album-update__answers { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.album-update__answers:has(> *) {
+  padding-top: .6rem;
+  border-top: 1px solid var(--color-line);
+}
+.album-update__answers .album-update__upstream { margin-left: auto; }
 .album-update__ignore {
   display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; user-select: none;
   font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .12em;

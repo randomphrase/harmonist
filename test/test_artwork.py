@@ -596,3 +596,50 @@ def test_only_the_archives_image_carries_the_musicbrainz_mark() -> None:
     assert from_cover.rows[0].from_archive is False
     assert from_archive.rows[0].written_image == archive
     assert from_archive.rows[0].from_archive is True
+
+
+class TestSummaryWording:
+    """The one line at the top of the page (#417), counted in files (#443).
+
+    The distinct image is the right unit for the rows and the wrong one for this
+    sentence: "1 image that could be better" understates a change to twelve
+    files, and reads as a complaint about the picture rather than an offer.
+    """
+
+    def test_it_counts_the_tracks_that_change_not_the_images(self) -> None:
+        small = art_of(1, width=300, height=300)
+        view = artwork.summarise(album(small, small, small), cover_of(art_of(2)))
+
+        assert view.summary == "Better artwork is available for 3 tracks."
+
+    def test_the_folder_cover_is_named_when_it_is_all_that_changes(self) -> None:
+        """The album's own art beats `cover.jpg`, so the FOLDER file catches up
+        and no track moves (#410). A count of tracks would say zero here."""
+        big = art_of(1, width=3000, height=3000)
+        view = artwork.summarise(album(big, big), cover_of(art_of(2, width=500, height=500)))
+
+        assert view.summary == "Better artwork is available for cover.jpg."
+
+    def test_tracks_and_the_cover_together(self) -> None:
+        """The archive beats both, so both change and both are named."""
+        view = artwork.summarise(
+            album(art_of(1, width=400, height=400), art_of(1, width=400, height=400)),
+            cover_of(art_of(2, width=500, height=500)),
+            archive=art_of(3, width=2000, height=2000),
+        )
+
+        assert view.summary == "Better artwork is available for 2 tracks and cover.jpg."
+
+    def test_a_gap_and_an_improvement_are_two_clauses(self) -> None:
+        small = art_of(1, width=300, height=300)
+        view = artwork.summarise(album(small, small, None), cover_of(art_of(2)))
+
+        assert view.summary == (
+            "1 track is missing artwork, and better artwork is available for 2 tracks."
+        )
+
+    def test_a_gap_alone_says_only_that(self) -> None:
+        same = art_of(1)
+        view = artwork.summarise(album(same, None, None), cover_of(same))
+
+        assert view.summary == "2 tracks are missing artwork."

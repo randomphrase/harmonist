@@ -8953,16 +8953,23 @@ def test_the_artwork_action_writes_artwork_and_not_tags(client, cfg):
     assert MP4(track)[ATOM_TITLE] == ["Left alone"]
 
 
-def test_the_artwork_note_points_at_the_section_when_there_is_something_to_do(client, cfg):
-    """The section is below the fold, and the top of the page said nothing about
-    artwork at all (#417)."""
+def test_the_artwork_finding_carries_the_action_rather_than_a_link_to_it(client, cfg):
+    """The section is below the fold and the top of the page said nothing about
+    artwork at all (#417) — and then said it without offering the button, which
+    is how a reader who knew the feature existed concluded there was none (#443).
+    """
     d = _album_with_art(cfg, "Improvable", covers=[_png(1), None], folder=_png(2))
+    album_id = _id_for(cfg, d)
 
-    r = client.get(f"/album/{_id_for(cfg, d)}/artwork")
+    r = client.get(f"/album/{album_id}/artwork")
 
     rendered = " ".join(r.text.split())
-    assert "missing artwork" in rendered
-    assert 'href="#album-artwork"' in rendered
+    finding = rendered[rendered.index("album-artwork-note-") :]
+    assert "missing artwork" in finding
+    # The action itself, on the finding's own line, in the same class as
+    # Re-tag from MB — one definition, so "equal prominence" survives an edit.
+    assert f'hx-post="/album/{album_id}/artwork/update"' in finding
+    assert "album-finding__act" in finding
 
 
 def test_the_artwork_note_is_cleared_when_nothing_would_change(client, cfg):

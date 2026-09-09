@@ -346,17 +346,42 @@ class ArtworkView:
         Written here rather than in the template for the reason the verdict was:
         it has several shapes, and a Jinja `{% if %}` chain is where wording goes
         to stop being reviewed.
+
+        Counted in FILES, not in images (#443). The distinct image is the right
+        unit for the rows — twelve tracks sharing one picture is one thing to
+        look at — and the wrong one for a sentence at the top of the page, where
+        "1 image that could be better" understates a change to twelve files and
+        reads as a complaint about the picture rather than an offer to improve
+        it.
+
+        The folder cover is counted by NAME rather than folded into the number,
+        because it is not a track and because it can be the only thing that
+        changes: when the album's own art beats `cover.jpg`, it is the folder
+        file that catches up and no track moves at all (#410). A count of tracks
+        would report zero for that album and say nothing.
         """
         filled = sum(len(r.tracks) for r in self.rows if r.is_gap and r.writes)
-        replaced = sum(1 for r in self.images if r.writes)
+        # A row that writes and sits on the cover means the cover file changes,
+        # whether or not any track shares that image.
+        improved = sum(len(r.tracks) for r in self.images if r.writes)
+        cover_improved = any(r.writes and r.on_cover for r in self.images)
+
+        carriers = []
+        if improved:
+            carriers.append(f"{improved} track{'' if improved == 1 else 's'}")
+        if cover_improved and self.cover is not None:
+            carriers.append(self.cover.name)
+
         parts = []
         if filled:
-            parts.append(f"{filled} track{'' if filled == 1 else 's'} missing artwork")
-        if replaced:
-            parts.append(f"{replaced} image{'' if replaced == 1 else 's'} that could be better")
+            parts.append(f"{filled} track{' is' if filled == 1 else 's are'} missing artwork")
+        if carriers:
+            parts.append(f"better artwork is available for {' and '.join(carriers)}")
         if not parts:
             return "This album's artwork can be updated."
-        return f"This album has {' and '.join(parts)}."
+        # Capitalised from whichever clause leads, since either can.
+        line = ", and ".join(parts)
+        return line[0].upper() + line[1:] + "."
 
     @property
     def archive_row(self) -> ArchiveRow | None:

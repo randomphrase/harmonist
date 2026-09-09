@@ -1,3 +1,4 @@
+{% from 'macros.html' import severity_chip %}
 {# What artwork this album carries, and what a re-tag would do to it (#155).
 
    One row per distinct image, labelled by everything carrying it — tracks and
@@ -251,21 +252,53 @@
 {% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
 {% endif %}
 
-{# …and the pointer to all this, up beside the album's other findings (#417).
+{# …and the same finding stated up beside the album's other one (#417, #443).
    Sent out of band from the fetch that already knows the answer, so the top of
    the page costs no second pass over the files. Emitted even when there is
-   nothing to say — an empty div is what CLEARS the note after the artwork has
-   been updated. #}
+   nothing to say — an empty div is what CLEARS the finding after the artwork has
+   been updated.
+
+   It carries the ACTION now, not a link down to it. It was a sentence and an
+   "Artwork ↓" anchor, which is how a reader who knew this feature existed still
+   concluded there was no way to act: a control one scroll from the sentence
+   explaining why you would press it is a control nobody presses. So the same
+   button that lives beside the images lives here too, beside the finding, at the
+   same weight as **Re-tag from MB** on the line above.
+
+   Both, deliberately. Up here it can be acted on without scrolling; down there
+   it can be acted on having actually looked at the pictures (#418), which is the
+   whole reason that section exists.
+
+   The anchor is gone with it, and its stray purple with it — purple means
+   MusicBrainz, and navigating down a page is not that. #}
 <div id="album-artwork-note-{{ album.id }}" hx-swap-oob="true">
     {% if artwork.writes %}
-    <section class="border border-line rounded-lg px-4 py-3 flex items-center gap-3">
-        <span class="text-sm text-ink">{{ artwork.summary }}</span>
-        {# An in-page anchor, not an hx-get: the section is already on the page,
-           and this is navigation to it rather than a request for it. #}
-        <a href="#album-artwork"
-           class="text-2xs uppercase tracking-widest font-bold text-mb-purple hover:underline">
-            Artwork ↓
-        </a>
-    </section>
+    <div class="album-finding">
+        {# The album glyph the Artwork severity already uses, muted: this finding
+           is about the album's own files, and the hexagon on the line above
+           means MusicBrainz specifically. #}
+        <span class="album-update__key album-finding__key--art">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4.5" width="18" height="15" rx="2"/>
+                <path d="M3 15.5l4.5-4.5 3.5 3.5 3-3 7 7"/>
+            </svg>
+        </span>
+        <h2 class="album-update__legend">{{ artwork.summary }}</h2>
+        {# The dashed chip, which has existed for artwork since #366 and has
+           never had anywhere to appear: artwork is a fifth level on its own
+           axis rather than a rank among the other four. #}
+        {{ severity_chip('artwork') }}
+        <form hx-post="/album/{{ album.id }}/artwork/update"
+              hx-target="#album-artwork" hx-swap="innerHTML"
+              hx-disabled-elt="find button"
+              hx-confirm="Update this album's artwork? What is replaced is kept, so this can be undone from History."
+              class="album-finding__act-form">
+            <button type="submit" class="album-finding__act"
+                    title="Write the winning image to every track and to the folder cover. No tags are touched.">
+                Update artwork
+            </button>
+        </form>
+    </div>
     {% endif %}
 </div>

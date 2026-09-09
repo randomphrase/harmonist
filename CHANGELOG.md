@@ -44,6 +44,18 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **An album's findings are one section, each with its own button beside it.**
+  What MusicBrainz has and what the album's artwork could be were two stacked
+  boxes, and only the first carried an action — **Update artwork** was a scroll
+  away in the Artwork section, behind a link, which is enough to make a control
+  invisible. Both buttons now sit at the same weight on their own finding's
+  line. **Ignore until MusicBrainz changes** moves to a quiet foot instead of
+  standing beside the primary action, and the upstream sentence goes with it,
+  shortened to *"Wrong? Fix it on MusicBrainz — the next check takes your
+  edit."* The artwork finding counts files rather than pictures — *"better
+  artwork is available for 12 tracks"* rather than *"1 image that could be
+  better"* — and names `cover.jpg` when that is what changes (#443).
+
 - **Updating artwork is now its own action, separate from a re-tag.** A re-tag
   fills tracks that have no artwork and never replaces one you already have;
   improving an album's images is an **Update artwork** button in the Artwork
