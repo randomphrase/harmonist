@@ -6,6 +6,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- Demo re-download tagging now appears as one album-wide History action with one Undo, matching Re-tag (#450).
+
 ### Added
 
 - **Harmonist can take better artwork from the Cover Art Archive.** The album

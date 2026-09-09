@@ -987,7 +987,9 @@ def run_demo_sync(
         result.new_items_downloaded = True
         if post_download_callback:
             album_dir = music_dir / _safe(spec["artist"]) / _safe(spec["album"])
-            with contextlib.suppress(Exception):
+            # Match the real Bandcamp hook: all tracks in this album's tagging
+            # share one History action and Undo, separate from its download.
+            with contextlib.suppress(Exception), activity_store.action():
                 post_download_callback(album_dir)
     return result
 
