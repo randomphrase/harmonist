@@ -1,6 +1,6 @@
 ---
 name: changelog
-description: Keep CHANGELOG.md current. When a change is user-visible — a new feature, a changed or removed behavior, a bug fix, or a UI/config/deployment change — add a one-line entry under the [Unreleased] section of CHANGELOG.md, in the same commit. Skip purely internal changes (refactors with no behavior change, tests, CI/tooling, dependency bumps, internal docs like design.md or CLAUDE.md). Also covers rolling [Unreleased] into a dated version section when a release is tagged.
+description: Keep CHANGELOG.md current. When a change is user-visible — a new feature, a changed or removed behavior, a bug fix, or a UI/config/deployment change — add a one-line entry under the [Unreleased] section of CHANGELOG.md, in the same commit. Skip purely internal changes (refactors with no behavior change, tests, CI/tooling, dependency bumps, internal docs like design.md or AGENTS.md). Also covers rolling [Unreleased] into a dated version section when a release is tagged.
 ---
 
 # Changelog maintenance
@@ -23,7 +23,7 @@ Add a one-liner under `## [Unreleased]` when the change is **user-visible**:
 
 **Don't** add an entry for internal-only work: refactors with no behavior change,
 test-only changes, CI/tooling, formatting, dependency bumps that don't change
-behavior, or internal docs (`docs/design.md`, `CLAUDE.md`, planning notes). The
+behavior, or internal docs (`docs/design.md`, `AGENTS.md`, planning notes). The
 test: *"would a user reading the release notes care?"* If no, skip it. If genuinely
 unsure, ask.
 

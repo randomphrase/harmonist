@@ -18,7 +18,7 @@
    already happened by hand; this makes it impossible to reintroduce (#180).
 
 Mechanical rules, so they live here (Makefile `check`) rather than in the
-review-gate skill — see CLAUDE.md "Working conventions".
+review-gate skill — see AGENTS.md "Working conventions".
 
 Exit 0 when clean; exit 1 listing template:line for each offending element.
 """
