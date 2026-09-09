@@ -359,12 +359,14 @@ When there is something to report, the whole comparison is summed up once, in a
 section of its own directly under the album panel: a hexagon, a line saying how
 much of the tags and the tracklist differ, and a chip saying how far the change
 reaches — *Enrichment* for a catalogue number MusicBrainz has filled in,
-*Identity* for a release that has been merged into another. The actions are
-there with it, because they are the answers to that sentence: **Re-tag from MB**
-takes the change, the checkbox waits for an edit to land, and the link goes to
-MusicBrainz to make one. An album where everything matches gets no section — the
-**Checked** date says when that was established, and there is nothing else to
-say.
+*Identity* for a release that has been merged into another. **Re-tag from MB**
+sits on that line, at the end of it, because it is the answer to that sentence.
+Artwork that could be better is a second finding in the same section, with
+**Update artwork** on its own line in the same way. At the foot of the section,
+quieter than either button, are the two other answers: a checkbox that waits for
+an edit to land — *Ignore until MusicBrainz changes* — and a link to MusicBrainz
+to make one. An album where everything matches gets no section — the **Checked**
+date says when that was established, and there is nothing else to say.
 
 A track MusicBrainz lists that you don't have says *"Not in your files"*, with a
 dashed ring beside its number — so a half-ripped disc reads as a column of them

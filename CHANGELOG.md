@@ -6,181 +6,99 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-09
+
 ### Added
 
-- **Harmonist can take better artwork from the Cover Art Archive.** The album
-  panel gains a **CAA checked** date beside the MusicBrainz one, with a control
-  to ask; if the archive's front cover is larger than anything the album has,
-  it is kept locally and a re-tag writes it — to the tracks and to the folder
-  cover, whose previous image is kept so the change can be undone. A tagging
-  never reaches the network, and an archive cover that is no better than yours
-  is ignored. The Artwork section shows the
-  archive's image beside your own, marked as MusicBrainz's, and serves it from
-  Harmonist — so opening an album never tells the Internet Archive which records
-  you own (#276). The **CAA checked** row shows on any album with a MusicBrainz
-  release, reading *not yet* until you ask — it carries the control that asks,
-  so hiding it until the first check left nothing to press (#419). Opening an
-  album's page now asks the archive by itself when the stored answer is missing
-  or more than a week old, exactly as it asks MusicBrainz — after the page is
-  up, so nothing waits on it, and never twice inside the window. The control
-  beside the date still asks regardless, and a check that fails leaves the
-  previous answer and its date untouched. Tune it with `[cover_art]
-  cache_ttl_seconds` (#436).
-
+- **Harmonist can take better artwork from the Cover Art Archive.** An album
+  page carries a **CAA checked** date beside the MusicBrainz one, asks the
+  archive by itself when the stored answer is stale, and offers the archive's
+  front cover when it is larger than anything the album already has. Images are
+  served from Harmonist, so opening an album never tells the Internet Archive
+  which records you own. Tune the interval with `cache_ttl_seconds` under
+  `[cover_art]` (#276, #419, #436).
 
 - **An Artwork section on the album page** — what artwork your files actually
-  carry, one row per image, with its dimensions, format and size, and the tracks
-  carrying it. Beside each row: what a re-tag would put there, so a folder cover
-  about to replace a larger image, or a track quietly missing its art, is
-  visible before you press anything. Per-track artwork on a compilation is shown
-  as the normal thing it is, and marked as preserved. Every image opens full
-  size. It needs no MusicBrainz release, so it works on albums Harmonist hasn't
-  identified yet (#155). A row where nothing would change says nothing, the
-  folder cover appears as the file you already have rather than only as an
-  incoming value, and each image names the disc and track title carrying it
-  (#400). A row a re-tag would write to says so in a line, rather than drawing
-  the folder cover a second time beside it (#406).
-
+  carry, one row per image, with its dimensions, format and size, the tracks
+  carrying it, and what a re-tag or an artwork update would put there instead.
+  It needs no MusicBrainz release, so it works on albums Harmonist hasn't
+  identified yet (#155, #400, #406).
 
 ### Changed
 
-- **An album's findings are one section, each with its own button beside it.**
-  What MusicBrainz has and what the album's artwork could be were two stacked
-  boxes, and only the first carried an action — **Update artwork** was a scroll
-  away in the Artwork section, behind a link, which is enough to make a control
-  invisible. Both buttons now sit at the same weight on their own finding's
-  line. **Ignore until MusicBrainz changes** moves to a quiet foot instead of
-  standing beside the primary action, and the upstream sentence goes with it,
-  shortened to *"Wrong? Fix it on MusicBrainz — the next check takes your
-  edit."* The artwork finding counts files rather than pictures — *"better
-  artwork is available for 12 tracks"* rather than *"1 image that could be
-  better"* — and names `cover.jpg` when that is what changes (#443).
-
 - **Updating artwork is now its own action, separate from a re-tag.** A re-tag
   fills tracks that have no artwork and never replaces one you already have;
-  improving an album's images is an **Update artwork** button in the Artwork
-  section, beside the pictures it changes. Replacing artwork is the change most
-  likely to be worth undoing on its own, and it has always had its own Undo in
-  History — now it has its own way to be done, too (#418).
+  replacing is **Update artwork**, in the Artwork section beside the pictures it
+  changes (#418).
+
+- **An album's findings are one section, each with its own button beside it.**
+  What MusicBrainz has and what the album's artwork could be were two stacked
+  boxes, and only the first carried an action. **Ignore until MusicBrainz
+  changes** moves to a quiet foot (#443).
 
 - **The Cover Art Archive check now falls back to the release group**, where the
-  archive very often keeps an album's artwork — so albums that reported "no front
-  cover" may have one after all. A group's cover is labelled as the group's
-  rather than this edition's (#434).
+  archive very often keeps an album's artwork — so albums that reported "no
+  front cover" may have one after all (#434).
 
 - **A cover the archive holds can be loaded and looked at, even when it loses.**
-  Harmonist can only measure pixels, and bigger is not the same as better — a
-  larger scan can be softer, worse cropped, or a different pressing's sleeve. The
-  empty frame beside a losing candidate is now a **load** button that downloads
-  that cover so you can see it, full size like any other image on the page. It
-  changes nothing about what a re-tag would write (#448).
+  Bigger is not the same as better, so the empty frame beside a losing candidate
+  is now a **load** button. It changes nothing about what a re-tag would write
+  (#448).
 
 - **What the Cover Art Archive has is shown as a row like any other image** —
-  greyed, with its size and format, and a placeholder saying which kind of
-  nothing it is: *not loaded* for a cover that exists but lost, *none* for a
-  release the archive holds nothing for. It used to be a purple sentence, which
-  read like something about to be written (#433). It now sits in the incoming
-  column under **Also considered**, rather than among the images the album
-  already has — on an album whose archive cover matches its own, two rows
-  stating the same size read as owning the picture twice with one copy broken.
-  Which column an image is in now says where it came from, and the hexagon and
-  purple say whether it is coming (#441).
+  greyed, with its size and format, in the incoming column under **Also
+  considered** (#433, #441).
 
 - **The top of an album's page says when its artwork wants attention**, with a
-  link down to the Artwork section, which is usually well below the fold. And
-  the Re-tag buttons no longer claim "per-track embedded artwork is preserved" —
-  true once, and since #418 simply: your artwork is left alone (#417).
+  link down to the Artwork section, which is usually well below the fold. The
+  Re-tag buttons no longer claim "per-track embedded artwork is preserved" —
+  since #418 it is simply: your artwork is left alone (#417).
 
 - **The last five artwork changes to any album can always be undone**, whatever
-  else Harmonist has been tagging. Kept artwork used to be bounded only by a
-  total size, so a busy night's re-tagging could quietly evict the copy behind
-  an Undo a different album was still offering. The size cap remains as a
-  backstop, and Settings now states the promise rather than only the number.
-  Configurable as `artwork_store.keep_per_album` (#408).
-
-- `make demo` starts a live-reloading demo server on port 8000 with separate
-  demo settings, ready for the devcontainer's port mapping.
-
-- **Harmonist can take better artwork from the Cover Art Archive.** The album
-  panel gains a **CAA checked** date beside the MusicBrainz one, with a control
-  to ask; if the archive's front cover is larger than anything the album has,
-  it is kept locally and a re-tag writes it — to the tracks and to the folder
-  cover, whose previous image is kept so the change can be undone. Nothing is
-  fetched unless you press, a tagging never reaches the network, and an archive
-  cover that is no better than yours is ignored. The Artwork section shows the
-  archive's image beside your own, marked as MusicBrainz's, and serves it from
-  Harmonist — so opening an album never tells the Internet Archive which records
-  you own (#276). The **CAA checked** row shows on any album with a MusicBrainz
-  release, reading *not yet* until you ask — it carries the control that asks,
-  so hiding it until the first check left nothing to press (#419).
+  else Harmonist has been tagging. Configurable as
+  `artwork_store.keep_per_album` (#408).
 
 ### Fixed
 
 - **An album with no `cover.jpg` can now take the Cover Art Archive's cover.**
   Art embedded in the files with no cover file beside them — the shape an
   adopted library arrives in — was ruled out before its size was even
-  considered, so the archive's cover was reported as an also-ran however much
-  better it was. It is now judged against the tracks' own image, and written to
-  them when it wins; no `cover.jpg` is created where none existed. A
-  compilation's per-track artwork is still never overwritten, and now says so in
-  the album's History (#442).
+  considered. No `cover.jpg` is created where none existed (#442).
 
 - **A release you have two copies of now has two tiles that open two albums.**
   Both copies were addressed by the release's MusicBrainz id, so either tile
-  opened the same one and a re-tag or a re-download taken from the second copy
-  acted on the first. Each copy now has its own address; a link written before
-  the second copy appeared says which copies it could mean rather than picking
-  one, and both show the release's history, each entry naming the folder it
-  touched (#424).
+  opened the same one and a re-tag taken from the second copy acted on the first
+  (#424).
 
-- **Undo now puts each disc's tags back on its own disc.** An album whose files
-  span several folders had every change recorded under a bare filename, so
-  undoing a tagging of a two-disc album whose discs both contain an `01.m4a`
-  restored one disc's tags onto the other — and where the filenames differed it
-  failed outright instead. Records now name the disc, artwork restores address
-  the right folder, and a record from before this fix that could mean either
-  disc is refused rather than guessed at (#423).
+- **Undo now puts each disc's tags back on its own disc.** A record from before
+  this fix that could mean either disc is refused rather than guessed at (#423).
 
 - **A purchase is no longer skipped because a different artist used the same
   album address.** Bandcamp addresses like `/album/home` are unique to one page,
-  not to the world; Harmonist treated them as an identity, so owning Zero 7's
-  *Home* could quietly file The Gathering's away as already downloaded, or hand
-  an unlinked album's store URL to the wrong purchase. Cross-listings — one
-  release sold from both a label page and an artist page — are now confirmed
-  against MusicBrainz instead of assumed, and anything unconfirmed becomes a
-  potential download for you to decide rather than a decision made for you
-  (#425).
+  not to the world; anything Harmonist cannot confirm against MusicBrainz now
+  becomes a potential download for you to decide (#425).
 
 - **A download that fits two MusicBrainz editions equally is no longer tagged as
-  whichever one came back first.** Where a store URL resolves to several
-  releases with the same tracklist, nothing is written: Activity says several
-  editions fit, and *Look up releases at this URL* on the album's card lets you
-  pick the right one — the choice Recheck already offered (#426).
+  whichever one came back first.** Nothing is written: *Look up releases at this
+  URL* on the album's card lets you pick the right one (#426).
 
-- **The artwork change you just made is the one that can be undone.** A backup
+- **The artwork change you just made is the one that can be undone.** The backup
   taken as an image was replaced could be evicted by the store's size cap in the
-  same breath — leaving the newest change the only unreversible one, and, for a
-  folder cover, overwriting the original on the strength of a backup that was
-  already gone. The image being kept now is retained ahead of older history, and
-  if it genuinely cannot fit, the cover is left alone (#427).
+  same breath (#427).
 
 - **The Artwork section shows what a re-tag would put there**, beside what is
   there now and under a heading that says which is which — where it previously
   asserted "replaced by…" in a way that read equally as something that had
   already happened (#413).
 
-- **A track missing its artwork no longer costs the other tracks theirs.** A gap
-  is filled from the image the rest of the album already carries, and those
-  tracks are left alone — where a re-tag used to overwrite every one of them
-  with the folder cover to fill the one that was empty. The folder cover is
-  still embedded where it is genuinely the better image (#397).
+- **A track missing its artwork no longer costs the other tracks theirs.** The
+  gap is filled from the image the rest of the album already carries, and those
+  tracks are left alone (#397).
 
 - **A re-tag no longer shrinks an album's artwork.** Where the image your tracks
   already carry is larger than the folder `cover.jpg`, the folder file is
   updated from it instead of being embedded over it — five of sixty albums
-  sampled from a real library were losing resolution this way, in one case
-  5700px replaced by 2000px. The replaced `cover.jpg` is kept, so it can be put
-  back from the album's History (#410).
+  sampled from a real library were losing resolution this way (#410).
 
 
 ## [1.15.0] - 2026-09-07

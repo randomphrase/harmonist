@@ -104,7 +104,7 @@ the whole reason the `NEEDS_SYNC` state exists.
 
 1. User edits a release in MB (track titles, dates, etc.) — or just wants to refresh tags.
 2. User clicks **Re-tag from MB** on a Library album's page.
-3. Harmonist re-fetches the MB release and rewrites the file tags. Per-track embedded artwork is preserved unless the user forces **Replace artwork**.
+3. Harmonist re-fetches the MB release and rewrites the file tags. Artwork the album already carries is left alone — a re-tag only fills a track that has none. Replacing artwork is **Update artwork**, its own action in the Artwork section (#418).
 4. If the release now lists **more** tracks than the album has files, the tagger's
    count guard refuses (§15.3) and the refusal is presented as a decision rather
    than an error: both counts, plus a **Re-tag as incomplete** control that
@@ -1144,7 +1144,7 @@ Plex with the MusicBrainz agent can fetch its own artwork from external sources,
 2. Embeds the image in every track's `covr` atom (`mutagen.mp4.MP4Cover` with `FORMAT_JPEG` or `FORMAT_PNG`).
 3. Writes the same image to `<album_dir>/cover.jpg` (or `.png`, matching format) for tools that prefer the sidecar (Navidrome, MPD, foobar2000, etc.).
 
-**Resolution policy:** `original` (full CAA resolution). Lossless audio is the dominant cost in this library; an extra 10 MB of cover art per album is negligible by comparison. Configurable via `cover_art_size` in `harmonist.toml` (`250 | 500 | 1200 | original`) so a constrained deployment can downsize, but this is not the primary use case. Library-wide cover-art optimisation (clipping / recompressing) is a separate, future enhancement — not in scope here.
+**Resolution policy:** `original` (full CAA resolution). Lossless audio is the dominant cost in this library; an extra 10 MB of cover art per album is negligible by comparison. Configurable via `size` under `[cover_art]` in `harmonist.toml` (`250 | 500 | 1200 | original`) so a constrained deployment can downsize, but this is not the primary use case. Library-wide cover-art optimisation (clipping / recompressing) is a separate, future enhancement — not in scope here.
 
 **Caching:** the downloaded image goes to `<album_dir>/cover.<ext>` first, and the embed step reads it from there. This means re-tagging an album doesn't refetch CAA, and the user can manually replace `cover.jpg` to override the embedded art on next retag.
 
