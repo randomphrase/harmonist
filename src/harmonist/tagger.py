@@ -532,7 +532,11 @@ class ArtworkPlan:
     #: none. The gaps are the None entries.
     before: dict[Path, str | None]
     #: The image that ought to be on every track, or None when nothing should be
-    #: written at all — no folder cover, or per-track artwork worth preserving.
+    #: written at all — per-track artwork worth preserving, or an album with
+    #: nothing outside its tracks to consider (no folder cover and no cached
+    #: archive image). An album with no folder cover DOES still have a winner
+    #: when it has one image of its own: it is the incumbent the archive has to
+    #: beat, and what a tagging fills that album's gaps from (#442).
     winner: bytes | None
     #: The image the folder cover should become, when something beats it.
     promote_cover: bytes | None = None
@@ -583,23 +587,31 @@ def decide_artwork(
     what must not happen.
     """
     cover = cover_path.read_bytes() if cover_path else None
-    before = _art_digests(files) if cover is not None else {}
+    # The archive's image, from the LOCAL CACHE only.
+    archive = _archive_candidate(release)
+    # Read what the tracks carry whenever ANYTHING could overwrite it. The read
+    # used to be skipped when there was no folder cover, which was safe only
+    # while the cover was the sole candidate: `before` is what the per-track-art
+    # guard below consults, so an album with no cover and an archive candidate
+    # would have been judged on an empty dict and its sleeves flattened (#442).
+    before = _art_digests(files) if (cover is not None or archive is not None) else {}
 
     # DATA SAFETY: if the tracks carry DIFFERENT embedded art (a per-track-art
     # album, e.g. a compilation), embedding one album cover would destroy those
     # images. Preserve them — the folder cover.* is still written separately.
-    preserves = (
-        cover is not None and not overwrite_art and artwork.has_per_track_art(before.values())
-    )
+    preserves = not overwrite_art and artwork.has_per_track_art(before.values())
     if preserves:
         return ArtworkPlan(before=before, winner=None, preserves_per_track_art=True)
-    if cover is None or overwrite_art:
+    if overwrite_art:
+        # Asking for the folder cover to be embedded is not asking for it to be
+        # judged — and with no cover to embed there is nothing to do.
         return ArtworkPlan(before=before, winner=cover)
+    if cover is None and archive is None:
+        # Nothing from outside the tracks, so nothing can change.
+        return ArtworkPlan(before=before, winner=None)
 
-    folder_size = images.dimensions(cover)
+    folder_size = images.dimensions(cover) if cover is not None else None
     own = _album_image(before)
-    # The archive's image, from the LOCAL CACHE only.
-    archive = _archive_candidate(release)
 
     # Ordered worst-first so each candidate has to genuinely beat the one before
     # it to displace it — ties go to what is already there, because a same-sized
@@ -609,7 +621,10 @@ def decide_artwork(
     if own is not None:
         _, mine = own
         ours = images.dimensions(mine)
-        if ours is not None and folder_size is not None and not artwork.beats(folder_size, ours):
+        # With no folder cover the tracks' own image is the incumbent rather
+        # than a challenger — there is nothing for it to beat, and it is what
+        # the archive then has to beat.
+        if ours is not None and (folder_size is None or not artwork.beats(folder_size, ours)):
             winner, winner_size = mine, ours
     if archive is not None:
         theirs = images.dimensions(archive)

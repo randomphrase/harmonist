@@ -2571,3 +2571,137 @@ def test_tagging_never_asks_the_archive(album_with_tracks, tmp_path, monkeypatch
     cover.write_bytes(_sized_jpeg(800, 800))
 
     tagger.tag_album(album_dir, _single_track_release(), cover_path=cover)
+
+
+def test_a_larger_archive_image_wins_with_no_folder_cover(album_with_tracks, tmp_path):
+    """The album shape an adopted library arrives in: art embedded in the files,
+    no `cover.jpg` beside them (#442).
+
+    The archive needs no folder cover to be a candidate — the folder file is not
+    what carries it — so it is judged against the tracks' own image and written
+    when it wins. The page says the same thing, through the same `beats`.
+    """
+    from harmonist import artwork_store, cover_art
+
+    artwork_store.configure(tmp_path / "artwork")
+    cover_art.configure_cache(tmp_path / "caa")
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(500, 500)
+    for track in ("01 Track 1.m4a", "02 Track 2.m4a"):
+        _embed_cover(album_dir / track, mine)
+    theirs = _sized_jpeg(1400, 1400)
+    release = _release_2_tracks()
+    cover_art.cache_image(release["id"], theirs, "image/jpeg")
+
+    changed = tagger.update_artwork(album_dir, release, None)
+
+    assert changed == 2
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == theirs
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == theirs
+    # No cover.jpg is created. Writing a new file into the user's album dir is
+    # an additive behaviour of its own, and `promote_cover` asks for a strict
+    # improvement on a folder cover that is not there to be improved on.
+    assert not (album_dir / "cover.jpg").exists()
+    # What it replaced is recoverable. This album has no folder cover, so
+    # everything overwritten here is EMBEDDED art — the half the store keeps —
+    # which makes this the reversible case rather than #276's hazardous one.
+    assert artwork_store.path_for(artwork_store.digest(mine)) is not None
+    # …and pressing again finds the winner already everywhere.
+    assert tagger.update_artwork(album_dir, release, None) == 0
+
+
+def test_a_smaller_archive_image_is_ignored_with_no_folder_cover(album_with_tracks, tmp_path):
+    """With no cover file the tracks' own image is the incumbent, and it keeps
+    the tie: a same-sized different picture is not an improvement."""
+    from harmonist import artwork_store, cover_art
+
+    artwork_store.configure(tmp_path / "artwork")
+    cover_art.configure_cache(tmp_path / "caa")
+    album_dir = album_with_tracks(1)
+    mine = _sized_jpeg(1400, 1400)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+    release = _single_track_release()
+    cover_art.cache_image(release["id"], _sized_jpeg(1400, 1400) + b"_other", "image/jpeg")
+
+    assert tagger.update_artwork(album_dir, release, None) == 0
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
+
+
+def test_per_track_artwork_survives_an_archive_cover_with_no_folder_cover(
+    album_with_tracks, tmp_path
+):
+    """The promise, and the report that says Harmonist made a decision.
+
+    The sleeves survive structurally — an album with more than one image has no
+    single `_album_image`, so nothing measurable is on offer for the archive to
+    beat — and that held before this change too. What changes is that the album
+    now SAYS so: the per-track-art guard used to be keyed on there being a
+    folder cover, so a coverless compilation fell out through the early return
+    with the flag unset, and its History recorded nothing about the images
+    Harmonist chose not to touch (#260, #442).
+    """
+    from harmonist import artwork_store, cover_art
+
+    artwork_store.configure(tmp_path / "artwork")
+    cover_art.configure_cache(tmp_path / "caa")
+    album_dir = album_with_tracks(2)
+    first, second = _sized_jpeg(500, 500), _sized_jpeg(500, 500) + b"_different"
+    _embed_cover(album_dir / "01 Track 1.m4a", first)
+    _embed_cover(album_dir / "02 Track 2.m4a", second)
+    release = _release_2_tracks()
+    cover_art.cache_image(release["id"], _sized_jpeg(3000, 3000), "image/jpeg")
+
+    assert tagger.update_artwork(album_dir, release, None) == 0
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == first
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == second
+    # …and it is reported as the decision it is, rather than as nothing having
+    # happened. This is the half the guard change actually moves.
+    plan = tagger.decide_artwork(sorted(album_dir.glob("*.m4a")), release, cover_path=None)
+    assert plan.preserves_per_track_art is True
+
+
+def test_a_coverless_album_with_no_candidate_still_reads_no_artwork(album_with_tracks, tmp_path):
+    """The gardener's path must not get more expensive (#442).
+
+    `plan_album` reaches `decide_artwork` for every album in the library, and
+    `_art_digests` opens every file. An album with no folder cover and no cached
+    archive image has nothing that could overwrite its tracks, so it is decided
+    without reading any of them — which is why the widened read is conditional
+    on there being a candidate rather than unconditional.
+    """
+    from harmonist import cover_art
+
+    cover_art.configure_cache(tmp_path / "caa")  # configured, and empty
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(500, 500))
+
+    plan = tagger.decide_artwork(
+        sorted(album_dir.glob("*.m4a")), _release_2_tracks(), cover_path=None
+    )
+
+    assert plan.winner is None
+    assert plan.before == {}
+
+
+def test_a_losing_archive_still_lets_the_albums_own_art_fill_a_gap(album_with_tracks, tmp_path):
+    """The consequence of making the tracks' image the incumbent (#442).
+
+    Once there is a candidate to weigh, the album's own image is a real winner
+    rather than the None a coverless album used to get — so #397's rule reaches
+    an album with no `cover.jpg`, and the track that lost its art is filled from
+    the rest. Additive: the track that HAS art keeps exactly what it had.
+    """
+    from harmonist import artwork_store, cover_art
+
+    artwork_store.configure(tmp_path / "artwork")
+    cover_art.configure_cache(tmp_path / "caa")
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(500, 500)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)  # …and track 2 has none
+    release = _release_2_tracks()
+    cover_art.cache_image(release["id"], _sized_jpeg(300, 300), "image/jpeg")
+
+    tagger.tag_album(album_dir, release)
+
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine

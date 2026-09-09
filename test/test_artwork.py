@@ -514,6 +514,57 @@ class TestArchiveWins:
 
         assert not any(r.writes for r in view.rows)
 
+    def test_it_wins_on_an_album_that_has_no_folder_cover(self) -> None:
+        """The population #276 said the wins were in: art embedded in the files,
+        no `cover.jpg` beside them, which is how an adopted library arrives.
+
+        The archive needs no folder cover to be a candidate — it is an image
+        from outside, and the folder file is not what carries it (#442).
+        """
+        mine = art_of(1, width=600, height=600)
+        archive = art_of(2, width=1400, height=1400)
+
+        view = artwork.summarise(album(mine, mine), None, archive=archive)
+
+        assert [r.outcome for r in view.rows] == [artwork.Outcome.REPLACED]
+        assert view.rows[0].written_from == "the Cover Art Archive"
+        assert view.rows[0].written_image == archive
+        assert view.rows[0].from_archive is True
+
+    def test_it_must_still_beat_the_tracks_when_there_is_no_folder_cover(self) -> None:
+        """With no cover file there is nothing else to compare against, so the
+        tracks' own image is the incumbent — and ties go to what is there."""
+        mine = art_of(1, width=1400, height=1400)
+
+        same = artwork.summarise(
+            album(mine, mine), None, archive=art_of(2, width=1400, height=1400)
+        )
+        smaller = artwork.summarise(
+            album(mine, mine), None, archive=art_of(3, width=600, height=600)
+        )
+
+        assert not any(r.writes for r in same.rows)
+        assert not any(r.writes for r in smaller.rows)
+
+    def test_per_track_artwork_survives_having_no_folder_cover(self) -> None:
+        """The promise, on the album shape #442 opened up.
+
+        Two things hold it, and the second is the one doing the work here: the
+        `not per_track` guard on `archive_wins` (which is what protects a
+        compilation that HAS a folder cover), and — with no cover — the fact
+        that an album with more than one image has no single `album_image`, so
+        `album_best` cannot be measured and there is nothing for the archive to
+        beat. Removing either leaves this passing; removing both does not, and
+        the promise is worth pinning by its outcome rather than its mechanism.
+        """
+        view = artwork.summarise(
+            album(art_of(1, width=500, height=500), art_of(2, width=500, height=500)),
+            None,
+            archive=art_of(3, width=3000, height=3000),
+        )
+
+        assert not any(r.writes for r in view.rows)
+
 
 def test_a_track_row_replaced_by_the_cover_shows_the_incoming_image() -> None:
     """The gap this missed until #276: only the gap and folder rows carried an

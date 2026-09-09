@@ -490,7 +490,11 @@ def summarise(
         by_digest.setdefault(tags.art.digest, []).append(ref)
         art_of.setdefault(tags.art.digest, tags.art)
 
-    preserved = cover is None or has_per_track_art(by_digest)
+    # Per-track artwork is user data, and nothing overwrites it — not the folder
+    # cover, not the archive, however large. Its own name because it is its own
+    # rule: `preserved` below adds "and there is nothing to write anyway", which
+    # is a different fact and used to be conflated with this one (#442).
+    per_track = has_per_track_art(by_digest)
     # More than one disc is a property of the ALBUM, not of a row: a box set
     # whose images each sit on one disc still needs every label to name its disc,
     # or two discs' track 1 read as one repeated row (#400).
@@ -534,6 +538,37 @@ def summarise(
     album_image = next(iter(art_of.values())) if len(art_of) == 1 else None
     ours = album_image.size if album_image else None
     theirs = cover.image.size if cover else None
+
+    # The best image the album ALREADY has, from either carrier — what a
+    # candidate from outside has to beat. An image that cannot be measured
+    # loses, exactly as `beats` reads a None.
+    #
+    # A folder cover that cannot be measured is the exception, and makes the
+    # answer unknown rather than "the tracks' one": something is there, its size
+    # is not, and leaving it alone is the safe reading of that.
+    album_best = (
+        None
+        if cover is not None and theirs is None
+        else ours
+        if theirs is None or (ours is not None and beats(ours, theirs))
+        else theirs
+    )
+
+    # The archive is the third candidate, and it displaces both when it beats
+    # them (#276). It needs NO FOLDER COVER to be one: it is an image from
+    # outside the album, and the folder file is not what carries it — requiring
+    # one ruled the archive out on exactly the albums #276 said the wins were in,
+    # art embedded in the files and no cover.jpg beside them (#442).
+    #
+    # Asked in the same order and by the same `beats` as `tagger.decide_artwork`,
+    # because this is the page saying what that code will do.
+    archive_wins = not per_track and archive is not None and beats(archive.size, album_best)
+
+    # Nothing is written when the album's own artwork is protected, or when
+    # there is nothing to write from: the folder cover normally, and the archive
+    # when it has beaten everything.
+    preserved = per_track or (cover is None and not archive_wins)
+
     # What goes on the tracks: the folder cover has to actually be better to be
     # written over what the album already carries, and both sizes have to be
     # readable for that to be established at all (#397, #410).
@@ -551,16 +586,6 @@ def summarise(
     #: …and the image those words name.
     gap_image = album_image if keep_ours else (cover.image if cover else None)
 
-    # The archive is the third candidate, and it displaces both when it beats
-    # them (#276). Asked in the same order and by the same `beats` as
-    # `tagger._prepare`, because this is the page saying what that code will do.
-    local_best = gap_image.size if gap_image else None
-    archive_wins = (
-        not preserved
-        and archive is not None
-        and cover is not None
-        and beats(archive.size, local_best)
-    )
     if archive_wins:
         assert archive is not None  # narrowed by `archive_wins`
         keep_ours = False

@@ -78,6 +78,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **An album with no `cover.jpg` can now take the Cover Art Archive's cover.**
+  Art embedded in the files with no cover file beside them — the shape an
+  adopted library arrives in — was ruled out before its size was even
+  considered, so the archive's cover was reported as an also-ran however much
+  better it was. It is now judged against the tracks' own image, and written to
+  them when it wins; no `cover.jpg` is created where none existed. A
+  compilation's per-track artwork is still never overwritten, and now says so in
+  the album's History (#442).
+
 - **A release you have two copies of now has two tiles that open two albums.**
   Both copies were addressed by the release's MusicBrainz id, so either tile
   opened the same one and a re-tag or a re-download taken from the second copy
