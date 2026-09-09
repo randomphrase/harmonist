@@ -91,6 +91,32 @@ button[disabled],
   cursor: progress;
 }
 
+/* The album panel's "MB checked" row while a refresh nobody pressed is in
+   flight (#387). The comparison beside it is being shown from the stored
+   release, so the row has to say a newer one is coming — otherwise the date is
+   true and the page still looks like it has stopped.
+
+   Same mechanism as the overlay above: the trigger in `library_compare.html`
+   points hx-indicator at the span, htmx toggles .htmx-request on it, and the
+   spinner takes the re-read control's place — the cell holds one 16px item
+   either way, so the dates keep their column and the row keeps its height.
+
+   `:has(+ …)` rather than a class on the button, because only ONE of the two is
+   under htmx's control: the class arrives on the spinner and the button has to
+   react to it. It also means the button cannot be left hidden by a response
+   that forgot to say the refresh had ended — there is no second state to
+   forget. */
+.mb-refreshing {
+  display: none;
+}
+.mb-refreshing.htmx-request {
+  display: inline-flex;
+  cursor: progress;
+}
+.mb-reread:has(+ .mb-refreshing.htmx-request) {
+  display: none;
+}
+
 /* The library tile whose detail panel is currently open. */
 .lib-tile-active img {
   box-shadow: 0 0 0 2px var(--color-accent);

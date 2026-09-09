@@ -33,7 +33,39 @@ def _free_port() -> int:
 @pytest.fixture(scope="module")
 def demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Uvicorn in demo mode against throwaway dirs; yields the base URL."""
-    root = tmp_path_factory.mktemp("e2e")
+    yield from _run_demo_server(tmp_path_factory.mktemp("e2e"))
+
+
+@pytest.fixture(scope="module")
+def stale_cache_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """A demo server whose stored MusicBrainz releases are stale the moment they
+    are written (#387).
+
+    A zero TTL means "never serve a stored answer without asking again", which
+    is the state an album read yesterday is in — `mb_cache.due` is true either
+    way. Reaching it by config rather than by backdating a row keeps the test out
+    of the server's database, and makes EVERY album on this server a case rather
+    than one prepared album.
+
+    Here rather than in the module that uses it because `test/e2e` is not a
+    package, so a test module cannot import from this one — fixtures are the only
+    thing it can share.
+    """
+    yield from _run_demo_server(
+        tmp_path_factory.mktemp("e2e-stale"),
+        config_toml="[musicbrainz]\ncache_ttl_seconds = 0\n",
+    )
+
+
+def _run_demo_server(root: Path, *, config_toml: str | None = None) -> Iterator[str]:
+    """The body of the server fixtures, so one that needs a differently
+    CONFIGURED server can have it without copying the launcher.
+
+    `config_toml` is written to `harmonist.toml` in the throwaway config dir
+    before startup — the only way to reach settings that have no env override
+    (the cache TTLs, for one). Everything else is identical, including the demo
+    library reset, so a test module choosing its own settings does not also
+    quietly choose its own fixture library."""
     port = _free_port()
     env = os.environ | {
         "HARMONIST_DEMO_MODE": "1",
@@ -42,6 +74,8 @@ def demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     }
     (root / "music").mkdir()
     (root / "config").mkdir()
+    if config_toml is not None:
+        (root / "config" / "harmonist.toml").write_text(config_toml, encoding="utf-8")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "harmonist.web.main:app", "--port", str(port)],
         env=env,

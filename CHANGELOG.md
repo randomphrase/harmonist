@@ -6,6 +6,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- An album page now shows its tag and track comparison straight from the last
+  answer MusicBrainz gave, and refreshes it in the background instead of making
+  you wait for the fetch (#387).
+
 ## [1.16.0] - 2026-09-09
 
 ### Added

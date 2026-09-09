@@ -4152,7 +4152,9 @@ def _register_routes(app: FastAPI) -> None:
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 
     @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
-    def library_compare(request: Request, album_id: str, reread: bool = False) -> Response:
+    def library_compare(
+        request: Request, album_id: str, check: bool = False, reread: bool = False
+    ) -> Response:
         """On-demand disk-vs-MB comparison for a tagged album — the per-field tag
         comparison (#106) and the per-track one, from a SINGLE MusicBrainz fetch.
 
@@ -4160,11 +4162,27 @@ def _register_routes(app: FastAPI) -> None:
         costing two against a 1-req/sec budget (review-gate item 6).
 
         Served from the release cache (#127), so opening album pages no longer
-        spends a rate-limited request each. `reread=True` is the user pressing
-        "read again" on the staleness line: it forces a live fetch and refreshes
-        the stored row. That control is what keeps a cached comparison from
-        being a dead end — the user can always see how old the answer is, and
-        always get a newer one, without touching a config file.
+        spends a rate-limited request each. Three ways in, spelled the way the
+        Artwork section spells them (#436) — and only two of them can leave the
+        machine:
+
+        * **no parameter** — render from the stored payload *whatever its age*,
+          network untouched, and ask the browser to come back for a fresh one
+          when that payload is past its TTL (#387). Nothing stored is the one
+          case that must fetch here: there is no comparison to show while it
+          waits.
+        * **`?check=1`** — the refresh behind that render. Goes through the TTL,
+          so it costs a request exactly when the render it replaces was stale,
+          and never re-triggers.
+        * **`?reread=1`** — the user pressing "read again" on the staleness line:
+          a live fetch regardless, refreshing the stored row. That control is
+          what keeps a cached comparison from being a dead end — the user can
+          always see how old the answer is, and always get a newer one, without
+          touching a config file.
+
+        The MusicBrainz cost is unchanged in all three: a stale album spent one
+        request when the page blocked on it, and spends one now that the page
+        doesn't.
         """
         album = _find_album(request, album_id)
         sc = album.sidecar
@@ -4180,9 +4198,11 @@ def _register_routes(app: FastAPI) -> None:
         with timing.warn_if_slow(
             "album comparison", _SLOW_COMPARE, album=album.path, mbid=sc.mb_release_id
         ):
-            return _compare_response(request, album, sc.mb_release_id, reread=reread)
+            return _compare_response(request, album, sc.mb_release_id, check=check, reread=reread)
 
-    def _compare_response(request: Request, album: Album, mbid: str, *, reread: bool) -> Response:
+    def _compare_response(
+        request: Request, album: Album, mbid: str, *, check: bool, reread: bool
+    ) -> Response:
         """The body of `library_compare`, split out only so the timing guard
         above can wrap it — every `return` in here is a way the comparison can
         end, and a guard that covered some of them would report the fast paths
@@ -4192,6 +4212,26 @@ def _register_routes(app: FastAPI) -> None:
         established it is present, and passing the narrowed value states that
         precondition in the signature instead of leaving it as something the
         two functions have to agree about silently."""
+        if not (check or reread):
+            # The stored payload, at any age, and no network at all (#387). An
+            # album read last night has the whole answer sitting in SQLite, and
+            # the page used to show "Checking tags against MusicBrainz…" over the
+            # top of it until a live fetch came back — a placeholder standing in
+            # for data we already had.
+            #
+            # `stored_release`, not `fetch_release(max_age=...)`: the TTL decides
+            # whether to ASK AGAIN, and this render does not depend on the answer.
+            # The refresh is `due`'s job to schedule and `?check=1`'s to make.
+            #
+            # A merged id has no row of its own — rows are keyed by the id the
+            # release actually has (#268) — so a merge always falls through to
+            # the fetch below and is discovered there, never half-reported off a
+            # row that predates it.
+            stored = mb_cache.stored_release(mbid)
+            if stored is not None:
+                return _comparison_response(
+                    request, album, mbid, stored, refreshing=mb_cache.due(mbid)
+                )
         try:
             release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH if reread else None)
         except mb_lookup.ReleaseGoneError:
@@ -4237,6 +4277,18 @@ def _register_routes(app: FastAPI) -> None:
                 ),
             )
         except mb_lookup.MBError as e:
+            # A refresh that failed still has the answer it was refreshing (#387).
+            # Wiping a comparison the user is reading, to report that a request
+            # they never made didn't work, would make a stale-first render worse
+            # than the placeholder it replaced — so keep showing what we had, and
+            # say what it is. The re-read control comes back with it, which is
+            # the way to try again.
+            stored = mb_cache.stored_release(mbid)
+            if stored is not None:
+                log.warning("could not refresh release %s: %s", mbid, e)
+                return _comparison_response(
+                    request, album, mbid, stored, refreshing=False, refresh_error=str(e)
+                )
             # A template rather than a bare string so the failure reaches BOTH
             # halves of the page (#228): the in-band note here settled Tags, and
             # Tracks was left on its "checking…" placeholder forever, reading as
@@ -4250,6 +4302,29 @@ def _register_routes(app: FastAPI) -> None:
                 "partials/_compare_failed.html",
                 _ctx(request, album=album, error=str(e)),
             )
+        return _comparison_response(request, album, mbid, release)
+
+    def _comparison_response(
+        request: Request,
+        album: Album,
+        mbid: str,
+        release: Release,
+        *,
+        refreshing: bool = False,
+        refresh_error: str | None = None,
+    ) -> Response:
+        """Render the comparison from `release`, whether it came off the wire or
+        out of the store (#387).
+
+        `refreshing` asks the browser to come back for a fresher payload and
+        holds the controls that act on this one — Re-tag and the ignore box —
+        for as long as that takes. `refresh_error` is the other end of the same
+        story: the fresher payload was asked for and did not come.
+
+        Both are properties of THIS response rather than of the release, which
+        is why they are arguments and not something the template infers from a
+        timestamp: the same stored payload renders one way behind a refresh and
+        another way after one failed."""
         # No `assess_match` here any more (#135). It re-opened every file in the
         # album for a duration and a title that `_album_comparison` had just
         # read, to produce a release-fit verdict that is stale news on an album
@@ -4271,6 +4346,14 @@ def _register_routes(app: FastAPI) -> None:
         ctx = _ctx(
             request,
             album=album,
+            # Whether a newer payload is on its way, and whether the last attempt
+            # at one failed (#387). The template turns the first into the
+            # out-of-band trigger that goes and gets it, a spinner where the
+            # re-read control sits, and a hold on the two controls that act on a
+            # release — Re-tag and the ignore box — because the release they
+            # would act on may not be the one that answers.
+            refreshing=refreshing,
+            refresh_error=refresh_error,
             # Read AFTER `refresh_flag`, which is what sets `album.mb_version` —
             # the thing an ignore is compared against. Reading it before would
             # ask whether the ignore holds for the payload we had a moment ago.

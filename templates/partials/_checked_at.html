@@ -74,13 +74,38 @@
                 hx-disabled-elt="this"
                 title="Read this release from MusicBrainz again"
                 aria-label="Read this release from MusicBrainz again"
-                class="inline-flex items-center justify-center w-4 h-4 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
+                class="mb-reread inline-flex items-center justify-center w-4 h-4 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
                  stroke-width="2.5" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 11-2.34-5.66"/>
                 <path stroke-linecap="round" stroke-linejoin="round" d="M20 3.5V9h-5.5"/>
             </svg>
         </button>
+        {# …and, in the same cell, what shows INSTEAD of it while a newer answer
+           is on its way (#387). The comparison beside this row can be last
+           night's — that is the point of showing it at once rather than waiting
+           — so the date alone would be true and misleading: it says how old the
+           answer is and not that a fresher one is already coming.
+
+           The `.tagging-overlay` pattern exactly: hidden markup that the
+           requesting element points `hx-indicator` at, shown by a rule in
+           input.css when htmx puts `.htmx-request` on it. Which means it clears
+           itself however the request ends — including on the responses that do
+           not re-render this block (a failed fetch, a deleted release).
+
+           SECOND, because the rule that hides the button is `:has(+ …)`: the
+           spinner has to be the button's next sibling.
+
+           `role="status"` with its own text: the swap is silent and the control
+           it replaces is one nobody can see disappear. #}
+        <span id="mb-refreshing-{{ album.id }}" class="mb-refreshing w-4 h-4 items-center justify-center text-muted"
+              role="status" title="Reading this release from MusicBrainz again…">
+            <svg class="animate-spin" viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path>
+            </svg>
+            <span class="sr-only">Reading this release from MusicBrainz again…</span>
+        </span>
     </dd>
     {% endif %}
 

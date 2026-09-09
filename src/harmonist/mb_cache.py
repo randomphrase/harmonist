@@ -165,6 +165,23 @@ def stored_release(mbid: str) -> Release | None:
     return cached.payload if cached is not None else None
 
 
+def due(mbid: str) -> bool:
+    """Whether this release is worth asking MusicBrainz about again.
+
+    The question `stored_release` leaves open. A caller that renders the stored
+    payload has to decide, *without spending a request*, whether to go on and ask
+    for a newer one — which is why this is a question of its own rather than a
+    side effect of `fetch_release`. The album page asks it to decide whether to
+    send the out-of-band refresh behind a stale comparison (#387).
+
+    True when nothing is stored, because "we have never asked" is the clearest
+    case of all for asking. The same shape as `caa_cache.due`, for the other
+    service an album page reads about a release.
+    """
+    cached = activity_store.cached_release(mbid, _key(mb_lookup.RELEASE_INCLUDES))
+    return cached is None or not _fresh(cached, _ttl)
+
+
 def fetch_release_urls(mbid: str, *, max_age: timedelta | None = None) -> list[str]:
     """`mb_lookup.fetch_release_urls`, served from the cache when fresh enough.
 

@@ -129,6 +129,20 @@ def _album_id(cfg, album_dir: Path) -> str:
     raise AssertionError(f"no album at {album_dir}")
 
 
+def _age_stored_release(by: timedelta) -> None:
+    """Backdate the stored release, so the next read finds it stale.
+
+    Ageing the ROW rather than shortening the TTL: `mb_cache.configure` is
+    process state that every later test inherits (hence the `default_ttl`
+    fixture), and an old answer is the situation these tests are about."""
+    conn = activity_store._ensure()
+    conn.execute(
+        "UPDATE mb_release_cache SET fetched_at = ?",
+        ((datetime.now(UTC) - by).isoformat(),),
+    )
+    conn.commit()
+
+
 def test_opening_an_album_page_twice_costs_one_musicbrainz_request(client, cfg, monkeypatch):
     """The headline saving. Browsing a library used to spend a rate-limited
     request per album page view, every view."""
@@ -147,9 +161,10 @@ def test_the_compare_panel_says_when_it_last_read_musicbrainz(client, cfg, monke
     """The affordance that makes a cached comparison honest. Before the cache
     this said "just now" unconditionally, because it always was.
 
-    The row is aged to three hours under a SIX-hour TTL, so it is stale-looking
-    but still servable. Ageing it past the TTL would prove nothing: the next read
-    would re-fetch and re-stamp it, and "read just now" would be the truth.
+    The row is aged to three hours under a SIX-hour TTL, so it is *within* the
+    window and served without anything being asked. A row past the TTL is served
+    too since #387, with its real age and a refresh behind it — this is the case
+    where the age is all there is, so nothing but the date can be under test.
     """
     d = _album(cfg)
     monkeypatch.setattr(mb_lookup, "fetch_release", _Counter(_release()))
@@ -157,12 +172,7 @@ def test_the_compare_panel_says_when_it_last_read_musicbrainz(client, cfg, monke
 
     client.get(f"/library/{album_id}/compare")
     mb_cache.configure(timedelta(hours=6))
-    conn = activity_store._ensure()
-    conn.execute(
-        "UPDATE mb_release_cache SET fetched_at = ?",
-        ((datetime.now(UTC) - timedelta(hours=3)).isoformat(),),
-    )
-    conn.commit()
+    _age_stored_release(timedelta(hours=3))
     body = client.get(f"/library/{album_id}/compare").text
 
     assert "3 hours ago" in body, body[:400]
@@ -281,3 +291,144 @@ def test_a_forced_read_leaves_the_cache_current_for_the_next_reader(client, cfg,
     client.get(f"/library/{album_id}/compare")
 
     assert fetch.calls == calls_after_retag, "the re-tag should have filled the cache"
+
+
+# ---------------------------------------------------------------------------
+# Serving the stored answer while a fresher one is fetched (#387)
+#
+# The TTL used to decide whether the comparison was shown AT ALL: a row past it
+# was not served, so the page sat on "Checking tags against MusicBrainz…" over
+# the top of a payload it already had. Now the TTL decides only whether to ask
+# again, and the asking happens behind a rendered comparison.
+#
+# The request COUNT is what these hold onto: this may not have bought
+# responsiveness with a second request against a 1-req/sec budget.
+# ---------------------------------------------------------------------------
+
+
+def test_a_stale_comparison_renders_before_musicbrainz_is_asked(client, cfg, monkeypatch):
+    """The whole of #387. An album read last night has the entire answer in
+    SQLite, and the page used to block on a live fetch before showing any of it.
+
+    Asserted on the FETCH COUNT, not on the elapsed time: "did not wait" and
+    "did not ask" are the same claim here, and only one of them is observable
+    without a clock."""
+    d = _album(cfg)
+    fetch = _Counter(_release())
+    monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
+    album_id = _album_id(cfg, d)
+    client.get(f"/library/{album_id}/compare")  # fills the store
+    _age_stored_release(timedelta(hours=20))
+
+    body = client.get(f"/library/{album_id}/compare").text
+
+    assert fetch.calls == 1, "the page must not have waited on MusicBrainz"
+    assert 'class="tag-fields' in body, "the comparison itself, not a placeholder"
+    # …and the refresh that keeps it from being last night's answer for good.
+    assert f'hx-get="/library/{album_id}/compare?check=1"' in body
+    # The two controls that act on a release, held until it lands: a re-tag
+    # writes from whatever MusicBrainz says when it is pressed, and an ignore is
+    # recorded against the version this render came from. (The trigger names
+    # itself first only so the selector always matches something — see the
+    # template.)
+    assert f'#retag-btn-{album_id}, #album-update-ignore-{album_id} input"' in body
+
+
+def test_the_refresh_behind_a_stale_comparison_costs_one_request_and_stops(
+    client, cfg, monkeypatch
+):
+    """The other half of the count. The stale render asks nothing, so the refresh
+    has to ask — once — and must not ask the browser to come back again, or a
+    MusicBrainz outage would turn one page view into a loop."""
+    d = _album(cfg)
+    fetch = _Counter(_release())
+    monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
+    album_id = _album_id(cfg, d)
+    client.get(f"/library/{album_id}/compare")
+    _age_stored_release(timedelta(hours=20))
+    client.get(f"/library/{album_id}/compare")  # the stale render
+
+    body = client.get(f"/library/{album_id}/compare?check=1").text
+
+    assert fetch.calls == 2, "one page view, one request — the same as before #387"
+    assert 'class="tag-fields' in body
+    assert "check=1" not in body, "a response to a refresh must never ask for another"
+
+
+def test_a_fresh_stored_comparison_asks_for_nothing_further(client, cfg, monkeypatch):
+    """Inside the TTL there is nothing to refresh, so no refresh is scheduled.
+
+    Without this, every album page view would send a second request that the
+    cache would then have to answer — free in MusicBrainz terms and a re-read of
+    every file in the album for nothing."""
+    d = _album(cfg)
+    monkeypatch.setattr(mb_lookup, "fetch_release", _Counter(_release()))
+    album_id = _album_id(cfg, d)
+    client.get(f"/library/{album_id}/compare")
+
+    body = client.get(f"/library/{album_id}/compare").text
+
+    assert 'class="tag-fields' in body
+    assert "check=1" not in body
+
+
+def test_a_failed_refresh_keeps_the_comparison_it_was_refreshing(client, cfg, monkeypatch):
+    """A stale-first render must not be WORSE than the placeholder it replaced.
+
+    The user is reading a comparison; the failure is of a request they never made.
+    Wiping what they are reading to report it would make the page unusable at
+    exactly the moment MusicBrainz is unreachable — which is when the stored
+    answer is worth the most."""
+    d = _album(cfg)
+    monkeypatch.setattr(mb_lookup, "fetch_release", _Counter(_release()))
+    album_id = _album_id(cfg, d)
+    client.get(f"/library/{album_id}/compare")
+    _age_stored_release(timedelta(hours=20))
+
+    def boom(mbid):
+        raise mb_lookup.MBError("network is down")
+
+    monkeypatch.setattr(mb_lookup, "fetch_release", boom)
+    body = client.get(f"/library/{album_id}/compare?check=1").text
+
+    assert 'class="tag-fields' in body, "the stored comparison is still there"
+    assert "Couldn't read MusicBrainz again" in body, "and the page says what it is"
+    assert "Couldn't fetch from MusicBrainz" not in body, "that is the nothing-stored case"
+
+
+def test_a_failed_fetch_with_nothing_stored_still_says_so(client, cfg, monkeypatch):
+    """The live path for the note the test above requires to be absent. With no
+    stored answer there is nothing to fall back to, and the section has to report
+    the failure rather than render empty."""
+    d = _album(cfg)
+
+    def boom(mbid):
+        raise mb_lookup.MBError("network is down")
+
+    monkeypatch.setattr(mb_lookup, "fetch_release", boom)
+    album_id = _album_id(cfg, d)
+
+    body = client.get(f"/library/{album_id}/compare").text
+
+    assert "Couldn't fetch from MusicBrainz" in body
+
+
+def test_a_release_deleted_since_the_stored_answer_gives_way_to_the_banner(
+    client, cfg, monkeypatch
+):
+    """A stored payload plus a 404 means the release has been deleted (#194/#210),
+    and the page has a whole response built for that. The stale render must give
+    way to it rather than sitting there contradicting the banner."""
+    d = _album(cfg)
+    monkeypatch.setattr(mb_lookup, "fetch_release", _Counter(_release()))
+    album_id = _album_id(cfg, d)
+    client.get(f"/library/{album_id}/compare")
+    _age_stored_release(timedelta(hours=20))
+
+    def gone(mbid):
+        raise mb_lookup.ReleaseGoneError(f"no release {mbid}")
+
+    monkeypatch.setattr(mb_lookup, "fetch_release", gone)
+    body = client.get(f"/library/{album_id}/compare?check=1").text
+
+    assert "This release is gone from MusicBrainz" in body

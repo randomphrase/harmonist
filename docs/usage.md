@@ -344,10 +344,14 @@ value, which is what makes that row's difference visible.
 
 MusicBrainz allows one request per second, so the release behind this comparison
 is cached and re-used for an hour rather than re-fetched every time you open the
-page. The album panel's **Checked** date says when it was last read — "20 minutes
-ago" — with a refresh button beside it if you've just edited MusicBrainz and want
-to see the edit now. Re-tagging and **Recheck** always go to MusicBrainz itself,
-so an action never runs on a cached answer.
+page. An answer older than that is still shown at once and refreshed while you
+read it, rather than making you wait: a spinner where the refresh button sits
+means a newer one is on its way, and **Re-tag from MB** is held until it lands,
+since the release it would write from may not be the one you are looking at. The
+album panel's **Checked** date says when it was last read — "20 minutes ago" —
+with a refresh button beside it if you've just edited MusicBrainz and want to see
+the edit now. Re-tagging and **Recheck** always go to MusicBrainz itself, so an
+action never runs on a cached answer.
 
 **Tracks** compares the tracklist, flagging tracks that are missing, unreadable,
 or absent from MusicBrainz. Video files are listed as present and marked *video*;

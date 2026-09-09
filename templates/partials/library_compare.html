@@ -6,6 +6,22 @@
 
    This used to branch on whether `comparison` was in scope, so the same
    fragment could serve a smaller dialog. The dialog is gone (#129). #}
+
+{# A refresh that was asked for and did not arrive (#387). The comparison below
+   is the stored answer — the one this response was sent to replace — so the
+   page has to say that rather than showing it as if it were current. The
+   panel's "MB checked" date is the age itself, and its re-read control is how
+   to try again, so this states the failure and points there.
+
+   Amber, not red: nothing is broken and nothing was lost. `_compare_failed.html`
+   is the red one, and it is what an album with NO stored answer still gets —
+   there the fetch failing means the section has nothing at all to show. #}
+{% if refresh_error %}
+<p class="text-2xs text-amber-700 mb-2">
+    Couldn't read MusicBrainz again just now ({{ refresh_error }}) — this
+    comparison is the answer from {{ ago(mb_read_at) }}.
+</p>
+{% endif %}
 {% include 'partials/_tag_comparison.html' %}
 
 {# Out-of-band: htmx swaps these into the page's Tracks section, the album
@@ -85,4 +101,49 @@
     {% include 'partials/_tag_changes.html' %}
     {% endwith %}
 </div>
+{% endif %}
+
+{# Go and get a newer release, now that everything above has been drawn from the
+   stored one (#387).
+
+   Sent only when that stored answer is past its TTL, and NEVER on the response
+   to this request — `refreshing` is false there whatever came back, so a failed
+   refresh leaves a stale comparison and no retry rather than a section asking
+   forever. The same shape, and the same reasoning, as the Artwork section's
+   out-of-band check (#436).
+
+   It costs no EXTRA MusicBrainz request: this is the fetch the page used to
+   block on, moved off the path that paints. The swap replaces this element
+   along with the rest of the section, which is what retires the trigger.
+
+   `hx-disabled-elt` holds the two controls that act on a release for as long as
+   the request is in flight. There is a real race in both: **Re-tag** writes from
+   whatever MusicBrainz says at the moment it is pressed, which may not be the
+   release the diff above was drawn from, and the **ignore** box records a
+   decision against `mb_version` — the version this render just set from the
+   stale payload — so an ignore taken here would be undone by the answer landing
+   a second later. A diff you cannot act on for a moment is still worth seeing;
+   one you can act on wrongly is not.
+
+   Selectors rather than `this`, and htmx resolves them against the document, so
+   they reach the two blocks this same response has just swapped out of band.
+   Whatever the outcome, htmx re-enables them when the request settles — which is
+   what makes this safe on the paths that do not re-render them (a failed fetch),
+   and on the one that deliberately does not draw the button at all (a deleted
+   release, `_release_gone.html`).
+
+   THIS ELEMENT LEADS THE LIST, and that is not decoration: htmx logs an error
+   for an `hx-disabled-elt` selector that matches nothing, and on an album with
+   no update available NEITHER control is on the page — which is most albums, so
+   the console would carry an error for the ordinary case. Disabling a <div>
+   does nothing, so the only thing this adds is a guaranteed match.
+
+   `hx-indicator` puts the spinner in the panel, where the re-read control sits:
+   see `_checked_at.html`. #}
+{% if refreshing %}
+<div id="compare-refresh-{{ album.id }}"
+     hx-get="/library/{{ album.id }}/compare?check=1" hx-trigger="load"
+     hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"
+     hx-indicator="#mb-refreshing-{{ album.id }}"
+     hx-disabled-elt="#compare-refresh-{{ album.id }}, #retag-btn-{{ album.id }}, #album-update-ignore-{{ album.id }} input"></div>
 {% endif %}
