@@ -25,6 +25,12 @@ versions follow [semantic versioning](https://semver.org).
   is something you were told about rather than something you find afterwards
   (#457).
 
+- A Cover Art Archive outage no longer fills the Activity feed. The optional
+  check that asks the archive what it holds now reports a failure to the log
+  only — the "CAA checked" date simply stops moving, which is the signal that
+  the check didn't happen — and pressing **load** for the archive's cover
+  reports a failure once instead of twice (#464).
+
 ## [1.16.0] - 2026-09-09
 
 ### Added

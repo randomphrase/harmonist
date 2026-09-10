@@ -9353,6 +9353,12 @@ def test_a_check_that_failed_does_not_ask_the_page_to_try_again(client, cfg, mon
     assert r.status_code == 200
     assert "not yet" in rendered
     assert f"/album/{album_id}/artwork?check=1" not in rendered
+    # ...and the FEED is part of the UI (#464). This assertion is what the
+    # comment above always claimed and never checked: the report went out at
+    # ERROR, so `_ActivityLogHandler` mirrored it into the feed and the banner
+    # this function is careful not to raise arrived in the Activity tab instead —
+    # once per album page opened, naming an MBID, attributed to nothing.
+    assert not [e for e in activity.recent(20) if "Cover Art Archive" in e.message]
 
 
 def test_the_page_open_check_is_served_from_the_store_when_it_is_fresh(client, cfg, monkeypatch):
@@ -9534,6 +9540,12 @@ def test_a_failed_load_of_the_archives_cover_says_so(client, cfg, monkeypatch):
     # renders as is Jinja's business, not this feature's.
     assert "load the archive" in r.text
     assert "the archive is down" in r.text  # …and what actually went wrong
+    # ONE feed entry, not two (#464). The user pressed a button, so an entry is
+    # wanted — but `_flash_response` is the authoritative writer, and the ERROR
+    # log beside it was mirrored in as a second, unattributed copy naming an
+    # MBID. Same shape as #461, one route along.
+    archive_lines = [e for e in activity.recent(20) if "archive" in e.message.lower()]
+    assert len(archive_lines) == 1, [e.message for e in archive_lines]
 
 
 def test_loading_is_refused_when_the_archive_has_nothing_to_load(client, cfg):

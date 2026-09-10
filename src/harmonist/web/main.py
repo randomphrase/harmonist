@@ -5099,7 +5099,28 @@ def _register_routes(app: FastAPI) -> None:
                 max_age=max_age,
             )
         except cover_art.CoverArtError:
-            log.exception("could not ask the Cover Art Archive about release %s", mbid)
+            # `_LOG_ONLY`, because the docstring above is the design and the feed
+            # is part of the UI (#464). At ERROR this was mirrored into the
+            # Activity tab by `_ActivityLogHandler` — so the banner this function
+            # is careful not to raise arrived there instead, once per album page
+            # opened while the archive was down, naming an MBID and attributed
+            # to no album. The stale "CAA checked" date is the signal, as below.
+            #
+            # WARNING, not ERROR: nothing was lost and nothing stopped working.
+            # The stored answer is intact and the check will be re-asked.
+            #
+            # The wording says what happened rather than what Harmonist didn't
+            # do. "Could not ask" is this module's term of art for keeping "I
+            # could not ask" apart from "the archive has nothing" — a
+            # distinction the CODE needs when deciding whether to overwrite a
+            # stored answer, and one no reader shares. `exc_info` carries the
+            # status and URL, which is the detail that message dropped.
+            log.warning(
+                "Cover Art Archive check failed for release %s — the stored answer is unchanged",
+                mbid,
+                exc_info=True,
+                extra=_LOG_ONLY,
+            )
 
     @app.post("/album/{album_id}/artwork/update", response_class=HTMLResponse)
     def album_artwork_update(request: Request, album_id: str) -> Response:
@@ -5187,7 +5208,14 @@ def _register_routes(app: FastAPI) -> None:
         try:
             cover_art.fetch_image(mbid, answer.image_url)
         except cover_art.CoverArtError as e:
-            log.exception("could not load the Cover Art Archive image for %s", mbid)
+            # `_LOG_ONLY` for the opposite reason to the check above: here a feed
+            # entry IS wanted, because someone pressed a button — but
+            # `_flash_response` is the authoritative writer of it, and at ERROR
+            # this line was mirrored in beside it as a second copy naming an
+            # MBID and attributed to nothing (#464). One press, one entry.
+            log.exception(
+                "could not load the Cover Art Archive image for %s", mbid, extra=_LOG_ONLY
+            )
             return _flash_response(
                 "Couldn't load the archive's cover", str(e), level=Level.ERROR, tasks_changed=False
             )
