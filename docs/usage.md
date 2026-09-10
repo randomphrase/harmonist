@@ -458,7 +458,9 @@ is left alone.
 Two separate actions, deliberately:
 
 - **A re-tag fills gaps and never replaces an image you already have.** A track
-  carrying nothing gets the album's cover; a track that has one keeps it.
+  carrying nothing gets the album's cover; a track that has one keeps it. An
+  album with no `cover.jpg` at all gets one written beside its tracks, and the
+  section says so beforehand, naming where that image would come from.
 - **Update artwork**, in this section, is what replaces. It writes the winning
   image to every track and to the folder cover, and touches no tags at all.
 

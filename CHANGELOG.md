@@ -6,30 +6,25 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
-- An album page now shows its tag and track comparison straight from the last
-  answer MusicBrainz gave, and refreshes it in the background instead of making
-  you wait for the fetch (#387).
+## [1.16.1] - 2026-09-10
 
-- A Cover Art Archive outage no longer abandons a re-tag. Harmonist falls
-  through to the release group and then to the artwork already in your files,
-  and if none of those serve an image it tags the album anyway and says the
-  cover was unavailable (#458).
+### Changed
 
-- When Harmonist writes a `cover.jpg` into an album folder, that now shows up in
-  the album's own History like any other file it writes. The record was being
-  kept, but not against the album, so the one page you would look at never
-  showed it (#456).
+- **An album page draws its Tags and Tracks comparison from the stored
+  MusicBrainz answer straight away**, and refreshes it in the background instead
+  of making you wait for the fetch (#387).
+- **An album page now says when a re-tag will create a `cover.jpg` the album
+  hasn't got**, and where the image would come from (#457).
 
-- An album page now says when a re-tag is going to create a `cover.jpg` the
-  album hasn't got, and where the image would come from — so the file arriving
-  is something you were told about rather than something you find afterwards
-  (#457).
+### Fixed
 
-- A Cover Art Archive outage no longer fills the Activity feed. The optional
-  check that asks the archive what it holds now reports a failure to the log
-  only — the "CAA checked" date simply stops moving, which is the signal that
-  the check didn't happen — and pressing **load** for the archive's cover
-  reports a failure once instead of twice (#464).
+- **A Cover Art Archive outage no longer abandons a re-tag** — the album is
+  tagged anyway, and says the cover was unavailable (#458).
+- **A Cover Art Archive outage no longer fills the Activity feed** — and
+  pressing **load** for the archive's cover reports a failure once instead of
+  twice (#464).
+- **A `cover.jpg` Harmonist writes now shows up in that album's own History**,
+  like any other file it writes (#456).
 
 ## [1.16.0] - 2026-09-09
 
