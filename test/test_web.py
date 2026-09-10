@@ -3718,6 +3718,62 @@ def test_activity_shows_album_label_even_when_link_is_dead(client, cfg):
     assert 'href="/album/' not in body  # ...but not a link
 
 
+def test_a_cover_written_before_tagging_reaches_the_albums_history(client, cfg, monkeypatch):
+    """#456, end to end and in the order it really happens.
+
+    The cover is fetched BEFORE the tagging that renames the album, so the row is
+    written under the temp_uid and the album answers to the MBID by the time
+    anyone looks. Both halves have to hold for the user to find it: the record
+    must carry an id at all, and the alias chain must carry that id forward.
+
+    The identity genuinely moves here — asserted, because a fixture whose id
+    never changed would pass this with the fix reverted, which is exactly how
+    #65's first regression test managed to prove nothing.
+    """
+    import httpx
+
+    from harmonist import cover_art
+
+    d = _make_album(cfg, "CoverThenTag")
+    sc.write(
+        d,
+        Sidecar(
+            store_url="https://x.bandcamp.com/album/cover-then-tag",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-cover", confidence="exact", file_count=1, track_count=1
+            ),
+        ),
+    )
+    old_id = _id_for(cfg, d)
+    activity_store.clear()
+
+    # The cover lands first, under whatever the album is called right now.
+    cover_art.ensure_cover(
+        d,
+        "rel-cover",
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda req: httpx.Response(
+                    200, content=b"COVERBYTES", headers={"content-type": "image/jpeg"}
+                )
+            ),
+            follow_redirects=True,
+        ),
+    )
+    assert (d / "cover.jpg").exists()
+
+    # Confirming tags it: temp_uid is dropped for the MBID and the old id dies.
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    assert client.post(f"/confirm/{old_id}").status_code == 200
+    new_id = _id_for(cfg, d)
+    assert new_id != old_id, "the identity has to move, or this proves nothing"
+
+    history = [e.message for e in activity_store.album_history(new_id)]
+    assert [m for m in history if m.startswith("cover.write")], history
+
+
 def test_album_page_shows_history_from_before_the_album_was_re_identified(client, cfg):
     """#103's reason for existing, and the consumer the alias table (#73) was
     built for: an album's records are spread across every id it has ever had.

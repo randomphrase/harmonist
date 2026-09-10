@@ -18,7 +18,7 @@ from pathlib import Path
 
 import httpx
 
-from . import activity_store, album_files, audit, formats, images
+from . import activity_store, album_files, audit, formats, id_registry, images, sidecar
 
 CAA_BASE = "https://coverartarchive.org"
 DEFAULT_TIMEOUT = 30.0
@@ -66,26 +66,56 @@ def ensure_cover(
     if cached := cached_cover(album_dir):
         return cached
 
+    album_id = _album_id_for_record(album_dir)
+
     # Remembered rather than propagated: the rung below needs no network, so an
     # archive that cannot answer must not skip it. Re-raised at the end only if
     # nothing else served an image.
     unreachable: CoverArtError | None = None
     try:
-        fetched = _fetch_to_disk(album_dir, release_mbid, release_group_mbid, size, client=client)
+        fetched = _fetch_to_disk(
+            album_dir, release_mbid, release_group_mbid, size, client=client, album_id=album_id
+        )
     except CoverArtError as e:
         unreachable = e
         fetched = None
     if fetched is not None:
         return fetched
 
-    if (embedded := _extract_embedded_cover(album_dir)) is not None:
+    if (embedded := _extract_embedded_cover(album_dir, album_id)) is not None:
         return embedded
     if unreachable is not None:
         raise unreachable
     return None
 
 
-def _extract_embedded_cover(album_dir: Path) -> Path | None:
+def _album_id_for_record(album_dir: Path) -> str:
+    """The id this album answers to right now, for the `cover.write` records
+    below (#456).
+
+    Read ONCE by `ensure_cover` and handed to whichever rung ends up writing.
+    Both rungs put a file in the user's album directory and both record it as
+    `cover.write`; taking the id in one place is what stops them drifting into
+    recording it differently, or a third rung arriving that forgets it entirely.
+
+    Mirrors `scanner._album_id`: the sidecar's MBID, else its temp_uid, else the
+    path-derived id. That last fall-back is the load-bearing part. A cover is
+    fetched BEFORE the tagging that will write the album's first sidecar, so on a
+    first tag `album_id_for` has nothing to read — and a bare None there would
+    leave exactly the albums most likely to gain a cover with no record of having
+    gained one. `id_registry.peek` is not a guess: it is a pure hash of the path,
+    it is what `sidecar.write()` then persists as `temp_uid`, and it is what the
+    scanner already calls the album meanwhile. So the record lands on the id the
+    album has, and the alias chain carries it forward when tagging replaces that
+    id with the MBID.
+
+    Deliberately NOT folded into `sidecar.album_id_for`, whose None means "this
+    album has no sidecar" — a distinction its other callers rely on.
+    """
+    return sidecar.album_id_for(album_dir) or id_registry.peek(album_dir)
+
+
+def _extract_embedded_cover(album_dir: Path, album_id: str) -> Path | None:
     """Write a folder cover from the first audio file that carries embedded
     art. Ensures a `cover.*` exists on disk even when CAA has no match."""
     for path in album_files.audio_files(album_dir):
@@ -101,7 +131,12 @@ def _extract_embedded_cover(album_dir: Path) -> Path | None:
         overwrote = target.exists()
         target.write_bytes(data)
         audit.record(
-            "cover.write", album=album_dir, file=target.name, source="embedded", overwrote=overwrote
+            "cover.write",
+            album_id=album_id,
+            album=album_dir,
+            file=target.name,
+            source="embedded",
+            overwrote=overwrote,
         )
         log.debug("cover: extracted embedded art from %s -> %s", path.name, target.name)
         return target
@@ -115,6 +150,7 @@ def _fetch_to_disk(
     size: str,
     *,
     client: httpx.Client | None,
+    album_id: str,
 ) -> Path | None:
     suffix = "" if size == "original" else f"-{size}"
     targets = [("release", release_mbid)]
@@ -153,6 +189,7 @@ def _fetch_to_disk(
                 target.write_bytes(resp.content)
                 audit.record(
                     "cover.write",
+                    album_id=album_id,
                     album=album_dir,
                     file=target.name,
                     source="caa",

@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from harmonist import id_registry
 from harmonist.cover_art import CoverArtError, cached_cover, ensure_cover
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -72,11 +73,69 @@ def test_caa_cover_write_is_audited(tmp_path):
     album.mkdir()
     assert ensure_cover(album, "rel-1", client=_client(handler)) == album / "cover.jpg"
 
-    rows = [e.message for e in activity_store.recent(10, source=Source.AUDIT)]
-    line = next(m for m in rows if m.startswith("cover.write"))
-    assert "source=caa" in line
-    assert "overwrote=False" in line  # created, not replaced
-    assert "bytes=10" in line
+    rows = [e for e in activity_store.recent(10, source=Source.AUDIT)]
+    row = next(e for e in rows if e.message.startswith("cover.write"))
+    assert "source=caa" in row.message
+    assert "overwrote=False" in row.message  # created, not replaced
+    assert "bytes=10" in row.message
+    # The COLUMN, not the message (#456). Asserting the message alone is what let
+    # this ship: every field above was right while `album_id` was NULL, so the
+    # row was real, correct, and unreachable from the album whose directory it
+    # describes — `album_history` selects by id.
+    assert row.album_id == id_registry.peek(album)
+
+
+def test_embedded_cover_write_is_audited_against_the_album(tmp_path):
+    """The other rung that writes a file, and it needs the id just as much (#456)
+    — more, arguably, since it fires exactly when CAA had nothing to say and the
+    user is most likely to wonder where the image came from."""
+    from harmonist import activity_store
+    from harmonist.activity_store import Source
+
+    activity_store.init(tmp_path / "audit.db")
+    album = tmp_path / "album"
+    album.mkdir()
+    _flac_with_embedded_art(album, _TINY_JPEG)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    assert ensure_cover(album, "rel-1", client=_client(handler)) == album / "cover.jpg"
+
+    row = next(
+        e
+        for e in activity_store.recent(10, source=Source.AUDIT)
+        if e.message.startswith("cover.write")
+    )
+    assert "source=embedded" in row.message
+    assert row.album_id == id_registry.peek(album)
+
+
+def test_cover_write_is_recorded_against_the_sidecars_id_when_there_is_one(tmp_path):
+    """An album that already has an identity is recorded under THAT, not under
+    the path hash — otherwise the row lands on an id the album stopped answering
+    to the moment it was tagged, and `album_history` would need an alias that
+    was never recorded because the id never actually moved."""
+    from harmonist import activity_store, sidecar
+    from harmonist.activity_store import Source
+    from harmonist.models import Sidecar
+
+    activity_store.init(tmp_path / "audit.db")
+    album = tmp_path / "album"
+    album.mkdir()
+    sidecar.write(album, Sidecar(mb_release_id="rel-already-tagged"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"img", headers={"content-type": "image/jpeg"})
+
+    ensure_cover(album, "rel-already-tagged", client=_client(handler))
+
+    row = next(
+        e
+        for e in activity_store.recent(10, source=Source.AUDIT)
+        if e.message.startswith("cover.write")
+    )
+    assert row.album_id == "rel-already-tagged"
 
 
 def test_ensure_cover_uses_cache_without_network(tmp_path):

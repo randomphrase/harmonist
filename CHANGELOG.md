@@ -15,6 +15,11 @@ versions follow [semantic versioning](https://semver.org).
   and if none of those serve an image it tags the album anyway and says the
   cover was unavailable (#458).
 
+- When Harmonist writes a `cover.jpg` into an album folder, that now shows up in
+  the album's own History like any other file it writes. The record was being
+  kept, but not against the album, so the one page you would look at never
+  showed it (#456).
+
 ## [1.16.0] - 2026-09-09
 
 ### Added
