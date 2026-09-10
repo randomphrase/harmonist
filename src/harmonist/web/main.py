@@ -3197,7 +3197,16 @@ def _tag_with_release(
         # pressed a button finds out their album is now tagged without the cover
         # it should have. Neither is a failure of the tagging, so neither claims
         # to be one.
-        log.exception("cover art unavailable for %s — tagging without it", album_path)
+        #
+        # `_LOG_ONLY` because `_ActivityLogHandler` mirrors every WARNING+ record
+        # on the `harmonist` logger into the feed, so without it this line lands
+        # there too and the album gets the same news twice (#461). The mirror is
+        # the copy worth losing: it carries this raw absolute path — a container
+        # path under Docker, which is why audit records are relativised — and no
+        # album id, so it floats attributed to nothing.
+        log.exception(
+            "cover art unavailable for %s — tagging without it", album_path, extra=_LOG_ONLY
+        )
         activity.warning(
             "Cover art unavailable — tagged without it",
             album_id=sidecar_mod.album_id_for(album_path),

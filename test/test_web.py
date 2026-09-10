@@ -3354,11 +3354,16 @@ def test_retag_proceeds_when_the_cover_art_archive_is_unreachable(client, cfg, m
     # Degraded VISIBLY: the album is now tagged without the cover it should
     # have, and the only way anyone finds that out is this line. Succeeding
     # quietly here would trade a loud wrong outcome for a silent one.
-    assert [
-        e
-        for e in activity.recent(20)
-        if e.level == "warning" and "Cover art unavailable" in e.message
-    ]
+    #
+    # Exactly ONE line, though (#461). `_ActivityLogHandler` mirrors every
+    # WARNING+ record on the `harmonist` logger into the feed, so the deliberate
+    # entry used to arrive beside an automatic copy of the `log.exception` —
+    # carrying a raw absolute path and no album, which is the one of the two a
+    # reader would have found least useful.
+    unavailable = [e for e in activity.recent(20) if "over art unavailable" in e.message]
+    assert len(unavailable) == 1, [e.message for e in unavailable]
+    assert unavailable[0].level == "warning"
+    assert unavailable[0].album_id, "attributed, so it reaches the album's History"
 
 
 def test_retagging_with_the_archive_down_stays_a_no_op_the_second_time(client, cfg, monkeypatch):
