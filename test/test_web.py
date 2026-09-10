@@ -3320,6 +3320,81 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
     assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=UTC)
 
 
+def test_retag_proceeds_when_the_cover_art_archive_is_unreachable(client, cfg, monkeypatch):
+    """#458: a CAA outage abandoned the whole tagging run — "Re-tag failed", no
+    tags written — for work that never needed the archive to answer. Design
+    §"Cover art (mandatory)" already settled it: with no cover available the
+    album is tagged anyway, without one."""
+    from datetime import datetime
+
+    from harmonist.cover_art import CoverArtError
+
+    d = _make_tagged_album(
+        cfg, "CaaDown", mbid="rel-1", tagged_at=datetime(2026, 1, 1, tzinfo=UTC), item_id=1
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: _release_for_match(mbid, n_tracks=1),
+    )
+
+    def down(*a, **kw):
+        raise CoverArtError("CAA returned status 503 for https://coverartarchive.org/…/front")
+
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", down)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}")
+    assert r.status_code == 200
+    assert "Re-tag failed" not in r.text
+    # The tags are the point: the run has to have actually happened, not merely
+    # to have reported success.
+    loaded = sc.read(d)
+    assert loaded is not None
+    assert loaded.tagged_at is not None
+    assert loaded.tagged_at > datetime(2026, 1, 1, tzinfo=UTC)
+    # Degraded VISIBLY: the album is now tagged without the cover it should
+    # have, and the only way anyone finds that out is this line. Succeeding
+    # quietly here would trade a loud wrong outcome for a silent one.
+    assert [
+        e
+        for e in activity.recent(20)
+        if e.level == "warning" and "Cover art unavailable" in e.message
+    ]
+
+
+def test_retagging_with_the_archive_down_stays_a_no_op_the_second_time(client, cfg, monkeypatch):
+    """The degraded path has to be idempotent like the healthy one. Tagging
+    without a cover must not make the files look different on every attempt —
+    a re-tag that finds nothing changed writes nothing, CAA reachable or not."""
+    from datetime import datetime
+
+    from harmonist.activity_store import Source
+    from harmonist.cover_art import CoverArtError
+
+    d = _make_tagged_album(
+        cfg, "CaaDownTwice", mbid="rel-1", tagged_at=datetime(2026, 1, 1, tzinfo=UTC), item_id=1
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: _release_for_match(mbid, n_tracks=1),
+    )
+
+    def down(*a, **kw):
+        raise CoverArtError("CAA returned status 503")
+
+    monkeypatch.setattr("harmonist.cover_art.ensure_cover", down)
+
+    def track_writes() -> int:
+        return len(
+            [e for e in activity_store.recent(200, source=Source.AUDIT) if "tag.track" in e.message]
+        )
+
+    aid = _id_for(cfg, d)
+    assert client.post(f"/retag/{aid}").status_code == 200
+    after_first = track_writes()
+    assert client.post(f"/retag/{aid}").status_code == 200
+    assert track_writes() == after_first
+
+
 def test_retag_works_on_an_album_confirmed_as_incomplete(client, cfg, monkeypatch):
     """#133: the tagger refuses file_count < track_count unless told the album is
     knowingly incomplete. /retag never told it, so re-tagging failed for exactly

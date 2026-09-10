@@ -165,6 +165,42 @@ def test_ensure_cover_returns_none_when_release_404_and_no_release_group(tmp_pat
     assert result is None
 
 
+def test_ensure_cover_falls_back_to_release_group_when_the_release_endpoint_is_down(tmp_path):
+    """#458: a 503 says nothing about whether this release has a cover, so it
+    must not end the ladder the way a 404's definitive "there is none" does.
+    The release-group rung is still worth asking."""
+    seen_urls = []
+
+    def handler(req):
+        seen_urls.append(str(req.url))
+        if "release-group" in str(req.url):
+            return httpx.Response(200, content=b"RG_JPEG", headers={"content-type": "image/jpeg"})
+        return httpx.Response(503)
+
+    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
+    assert result == tmp_path / "cover.jpg"
+    assert result.read_bytes() == b"RG_JPEG"
+    assert seen_urls == [
+        "https://coverartarchive.org/release/rel-123/front",
+        "https://coverartarchive.org/release-group/rg-456/front",
+    ]
+
+
+def test_ensure_cover_falls_back_to_release_group_after_a_transport_failure(tmp_path):
+    """#458, the other way the first rung fails. A refused connection reaches
+    `_fetch_to_disk` as an httpx error rather than a status, and used to raise
+    from a different line — so it needs its own proof that it now falls through."""
+
+    def handler(req):
+        if "release-group" in str(req.url):
+            return httpx.Response(200, content=b"RG_JPEG", headers={"content-type": "image/jpeg"})
+        raise httpx.ConnectError("connection refused")
+
+    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
+    assert result == tmp_path / "cover.jpg"
+    assert result.read_bytes() == b"RG_JPEG"
+
+
 # ---------- fallback to embedded art ----------
 
 
@@ -175,6 +211,20 @@ def test_ensure_cover_extracts_embedded_art_when_caa_misses(tmp_path):
 
     def handler(req):
         return httpx.Response(404)
+
+    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
+    assert result == tmp_path / "cover.jpg"
+    assert result.read_bytes() == _TINY_JPEG
+
+
+def test_ensure_cover_extracts_embedded_art_when_caa_is_down(tmp_path):
+    """#458: the embedded-art rung is the one that needs no network at all, so an
+    archive that cannot answer is the case it is most useful in — and the case it
+    used to be skipped in, because the 503 propagated past it."""
+    _flac_with_embedded_art(tmp_path, _TINY_JPEG)
+
+    def handler(req):
+        return httpx.Response(503)
 
     result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
     assert result == tmp_path / "cover.jpg"
@@ -210,6 +260,13 @@ def test_ensure_cover_none_when_caa_misses_and_audio_has_no_art(tmp_path):
 
 
 def test_ensure_cover_raises_on_non_404_failure(tmp_path):
+    """Once every rung has been tried and none of them served an image, the
+    archive's silence is reported rather than swallowed — "I could not ask" and
+    "there is nothing there" must not arrive as the same answer (#458). The
+    404 tests above are the other half of that pair: they return None, because a
+    404 IS an answer. `tmp_path` holds no audio, so the embedded rung has nothing
+    to offer and this really is the end of the ladder."""
+
     def handler(req):
         return httpx.Response(500, content=b"server explosion")
 
@@ -223,6 +280,20 @@ def test_ensure_cover_raises_on_network_error(tmp_path):
 
     with pytest.raises(CoverArtError):
         ensure_cover(tmp_path, "rel-123", client=_client(handler))
+
+
+def test_a_later_404_does_not_erase_an_earlier_could_not_ask(tmp_path):
+    """The release rung was unreachable and the release-group rung answered "no
+    art here". The album still has no cover AND the archive was never properly
+    asked about it, so this must raise rather than return None: returning None
+    would report a definitive "there is nothing for this release" that only one
+    of the two rungs is entitled to say (#458)."""
+
+    def handler(req):
+        return httpx.Response(404 if "release-group" in str(req.url) else 503)
+
+    with pytest.raises(CoverArtError):
+        ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
 
 
 # ---------- the candidate cache (#276) ----------

@@ -10,6 +10,11 @@ versions follow [semantic versioning](https://semver.org).
   answer MusicBrainz gave, and refreshes it in the background instead of making
   you wait for the fetch (#387).
 
+- A Cover Art Archive outage no longer abandons a re-tag. Harmonist falls
+  through to the release group and then to the artwork already in your files,
+  and if none of those serve an image it tags the album anyway and says the
+  cover was unavailable (#458).
+
 ## [1.16.0] - 2026-09-09
 
 ### Added

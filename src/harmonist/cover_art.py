@@ -54,15 +54,35 @@ def ensure_cover(
     for fresh / private Bandcamp releases not yet in CAA), fall back to art
     already embedded in the album's audio files. Returns None only when no
     cover is available from any source.
+
+    Raises `CoverArtError` only when the archive could not be *asked* and no
+    other rung served an image (#458). "I could not ask" and "there is nothing
+    there" are different answers, and collapsing them into None would let a
+    caller — and later #269's probe backoff — record an outage as a fact about
+    the release. Every rung is tried before that error is raised, because the
+    one that needs no network is the last one and it is the one an outage makes
+    most useful.
     """
     if cached := cached_cover(album_dir):
         return cached
 
-    fetched = _fetch_to_disk(album_dir, release_mbid, release_group_mbid, size, client=client)
+    # Remembered rather than propagated: the rung below needs no network, so an
+    # archive that cannot answer must not skip it. Re-raised at the end only if
+    # nothing else served an image.
+    unreachable: CoverArtError | None = None
+    try:
+        fetched = _fetch_to_disk(album_dir, release_mbid, release_group_mbid, size, client=client)
+    except CoverArtError as e:
+        unreachable = e
+        fetched = None
     if fetched is not None:
         return fetched
 
-    return _extract_embedded_cover(album_dir)
+    if (embedded := _extract_embedded_cover(album_dir)) is not None:
+        return embedded
+    if unreachable is not None:
+        raise unreachable
+    return None
 
 
 def _extract_embedded_cover(album_dir: Path) -> Path | None:
@@ -104,13 +124,25 @@ def _fetch_to_disk(
     owns_client = client is None
     http = client or httpx.Client(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
 
+    # The first rung that failed for a reason that is NOT an answer. A 404 says
+    # "this release has no front cover" and the loop moves on having learned
+    # something; anything else says only that the archive could not be reached,
+    # which is not grounds for abandoning the rungs below it (#458). Kept so the
+    # caller can still tell the two apart once every rung is exhausted.
+    failure: CoverArtError | None = None
+
     try:
         for kind, mbid in targets:
             url = f"{CAA_BASE}/{kind}/{mbid}/front{suffix}"
             try:
                 resp = http.get(url)
             except httpx.HTTPError as e:
-                raise CoverArtError(f"CAA request failed for {url}: {e}") from e
+                # WARNING, not ERROR: another rung may still serve this album,
+                # and the caller raises if none does. `exc_info` here rather than
+                # on the eventual raise — this is where the traceback is.
+                log.warning("CAA: %s/%s unreachable (%s)", kind, mbid, e, exc_info=True)
+                failure = failure or CoverArtError(f"CAA request failed for {url}: {e}")
+                continue
 
             if resp.status_code == 404:
                 log.debug("CAA: no cover for %s/%s (404)", kind, mbid)
@@ -130,7 +162,10 @@ def _fetch_to_disk(
                 )
                 log.debug("CAA: wrote %s (%d bytes)", target, len(resp.content))
                 return target
-            raise CoverArtError(f"CAA returned status {resp.status_code} for {url}")
+            log.warning("CAA: %s/%s returned status %d", kind, mbid, resp.status_code)
+            failure = failure or CoverArtError(f"CAA returned status {resp.status_code} for {url}")
+        if failure is not None:
+            raise failure
         return None
     finally:
         if owns_client:

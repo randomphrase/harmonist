@@ -3174,12 +3174,35 @@ def _tag_with_release(
     # fact arriving beside them.
     requested_mbid, mbid = mbid, release["id"]
     rg = release.get("release-group") or {}
-    cover_path = cover_art.ensure_cover(
-        album_path,
-        release_mbid=release["id"],
-        release_group_mbid=rg.get("id"),
-        size=cfg.cover_art.size,
-    )
+    try:
+        cover_path = cover_art.ensure_cover(
+            album_path,
+            release_mbid=release["id"],
+            release_group_mbid=rg.get("id"),
+            size=cfg.cover_art.size,
+        )
+    except cover_art.CoverArtError:
+        # Tagging is the work; the cover is a side effect of it (#458). Design
+        # §"Cover art (mandatory)" already rules that an album with no cover
+        # available is tagged anyway — so an archive that could not ANSWER must
+        # not produce a worse outcome than one that answered "there is none".
+        # Losing a whole re-tag to a transient 503 is exactly that inversion.
+        #
+        # `cover_path=None` is a value the tagger already handles: `_prepare`
+        # reads no bytes, `write_tags` leaves every file's existing art alone,
+        # and no artwork change is recorded because none happens.
+        #
+        # Loud in both channels, because the two readers are different: the log
+        # is all there is at 3am, and the activity line is how someone who
+        # pressed a button finds out their album is now tagged without the cover
+        # it should have. Neither is a failure of the tagging, so neither claims
+        # to be one.
+        log.exception("cover art unavailable for %s — tagging without it", album_path)
+        activity.warning(
+            "Cover art unavailable — tagged without it",
+            album_id=sidecar_mod.album_id_for(album_path),
+        )
+        cover_path = None
     tagger.tag_album(
         album_path,
         release,
