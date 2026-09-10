@@ -44,6 +44,29 @@
 </p>
 {% endif %}
 
+{# There is no cover.jpg, and re-tagging writes one (#457). Said BEFORE the fact
+   rather than discovered afterwards in the folder: the file is mandatory for
+   Navidrome (design §"Cover art"), so a tagging creates it whether or not
+   anyone pressed anything about artwork, and an unannounced 3 MB image
+   appearing in a music folder reads as Harmonist having done something it was
+   not asked to.
+
+   Attributed to RE-TAGGING specifically, not to "Harmonist": the Update artwork
+   button below cannot create this file, only replace one that exists, and a
+   sentence that blurred the two would send the reader to the wrong control.
+
+   Stated, not drawn as a row. A row would count toward `artwork.writes`, which
+   is what puts that button on the page — see `ArtworkView.creates_cover_from`.
+
+   Neutral, not amber: nothing is wrong here. The album is missing a file that
+   is about to arrive, which is the same register as the rest of the section. #}
+{% if artwork.creates_cover_from %}
+<p class="text-sm text-muted">
+    This album has no <code class="text-2xs">cover.jpg</code> beside its tracks.
+    Re-tagging creates one from {{ artwork.creates_cover_from }}.
+</p>
+{% endif %}
+
 {% macro image_cell(image, album_id, who) %}
     {# The image itself, or a frame where one is missing. The empty frame is the
        finding on an album whose tracks have lost their art, so it is drawn as

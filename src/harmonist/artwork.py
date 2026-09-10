@@ -334,6 +334,43 @@ class ArtworkView:
         return tuple(r for r in self.rows if r.image is not None)
 
     @property
+    def creates_cover_from(self) -> str | None:
+        """Where a RE-TAG would get the folder cover this album hasn't got,
+        named — or None when it has one, or when nothing could make one (#457).
+
+        Mirrors `cover_art.ensure_cover`'s ladder, which is the code that
+        actually writes the file: the archive first, then art already embedded
+        in the album's audio files.
+
+        Deliberately NOT a row, and deliberately not counted by `writes`. Rows
+        say what the album's images become and `writes` draws the Update artwork
+        button — and that button cannot do this. `tagger.update_artwork` only
+        ever promotes OVER an existing cover (it needs a `cover_path`); creating
+        one is `ensure_cover`, which only a tagging calls. A row would put a
+        button on the page promising a file it would not write, which is the one
+        thing this module exists to prevent.
+
+        A property rather than a field because `cover_unreadable` is applied by
+        `replace()` AFTER `summarise` returns. Computed here, the unreadable case
+        can never claim a cover is coming: there is a file on disk, `ensure_cover`
+        returns it without reading it, and nothing is written. As a field that
+        distinction depended on the caller setting two things in the right order.
+        """
+        if self.cover is not None or self.cover_unreadable:
+            return None
+        files = "the artwork already in your files"
+        tracks_have_art = bool(self.images)
+        if self.caa is None:
+            # Nobody has asked the archive. Both rungs are live, and the wording
+            # carries that rather than resolving it in either direction.
+            if tracks_have_art:
+                return f"the Cover Art Archive, or {files}"
+            return "the Cover Art Archive, if it has this release"
+        if self.caa.has_art:
+            return "the Cover Art Archive"
+        return files if tracks_have_art else None
+
+    @property
     def writes(self) -> bool:
         """Whether a re-tag would write anything at all.
 

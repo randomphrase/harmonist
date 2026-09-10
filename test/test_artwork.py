@@ -643,3 +643,68 @@ class TestSummaryWording:
         view = artwork.summarise(album(same, None, None), cover_of(same))
 
         assert view.summary == "2 tracks are missing artwork."
+
+
+class TestAnnouncingACoverThatWillBeCreated:
+    """#457: a re-tag writes a `cover.jpg` into an album that hasn't got one —
+    mandatory for Navidrome, and so not gated on anything the user pressed. The
+    section had no way to say so, because the folder cover is modelled as a
+    carrier of an image and a carrier that doesn't exist yet carries nothing."""
+
+    Answer = TestCoverArtArchiveNote._Answer
+
+    def test_an_album_with_a_cover_is_told_nothing(self) -> None:
+        """`ensure_cover` returns an existing cover untouched — no rung runs, no
+        file is written, and there is no event to announce."""
+        one = art_of(1)
+        assert artwork.summarise(album(one), cover_of(one)).creates_cover_from is None
+
+    def test_the_archive_is_named_when_it_has_this_release(self) -> None:
+        view = artwork.summarise(album(art_of(1)), None, self.Answer(art=True))
+        assert view.creates_cover_from == "the Cover Art Archive"
+
+    def test_it_falls_to_your_own_files_when_the_archive_has_nothing(self) -> None:
+        """The second rung, and the one that needs no network. Naming the
+        archive here would promise an image that has been established not to
+        exist."""
+        view = artwork.summarise(album(art_of(1)), None, self.Answer(art=False))
+        assert view.creates_cover_from == "the artwork already in your files"
+
+    def test_nothing_is_promised_when_nothing_could_make_a_cover(self) -> None:
+        """No archive art and no embedded art: `ensure_cover` writes nothing, so
+        the section says nothing rather than announcing a file that isn't
+        coming."""
+        view = artwork.summarise(album(None, None), None, self.Answer(art=False))
+        assert view.creates_cover_from is None
+
+    def test_an_unasked_archive_names_both_rungs_rather_than_guessing(self) -> None:
+        """`caa is None` is "nobody has asked", not "there is nothing". Either
+        rung may serve, and the wording carries that."""
+        view = artwork.summarise(album(art_of(1)), None)
+        assert view.creates_cover_from == (
+            "the Cover Art Archive, or the artwork already in your files"
+        )
+
+    def test_an_unasked_archive_with_no_embedded_art_stays_conditional(self) -> None:
+        view = artwork.summarise(album(None), None)
+        assert view.creates_cover_from == "the Cover Art Archive, if it has this release"
+
+    def test_an_unreadable_cover_is_not_a_missing_one(self) -> None:
+        """The file IS there — `cached_cover` only checks that it exists, so
+        `ensure_cover` hands it back without reading it and writes nothing. The
+        view is built with `cover=None` and `cover_unreadable` set afterwards by
+        `replace()`, so this case reaches the same code as a genuinely absent
+        cover and has to be told apart from it (#112)."""
+        from dataclasses import replace
+
+        view = replace(artwork.summarise(album(art_of(1)), None), cover_unreadable=True)
+        assert view.creates_cover_from is None
+
+    def test_it_does_not_put_the_update_artwork_button_on_the_page(self) -> None:
+        """The load-bearing one. `writes` is what draws that button, and
+        `tagger.update_artwork` cannot create a folder cover — it only promotes
+        over one that exists. Counting this as a write would offer a control
+        that does not do what the sentence beside it just said."""
+        view = artwork.summarise(album(art_of(1)), None, self.Answer(art=True))
+        assert view.creates_cover_from  # there IS something to announce...
+        assert view.writes is False  # ...and still no button

@@ -20,6 +20,11 @@ versions follow [semantic versioning](https://semver.org).
   kept, but not against the album, so the one page you would look at never
   showed it (#456).
 
+- An album page now says when a re-tag is going to create a `cover.jpg` the
+  album hasn't got, and where the image would come from — so the file arriving
+  is something you were told about rather than something you find afterwards
+  (#457).
+
 ## [1.16.0] - 2026-09-09
 
 ### Added

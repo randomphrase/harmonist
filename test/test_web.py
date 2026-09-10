@@ -9000,6 +9000,38 @@ def test_artwork_section_names_the_tracks_missing_art(client, cfg):
     assert "the album&#39;s own artwork" in rendered
 
 
+def test_artwork_section_says_a_folder_cover_is_about_to_be_created(client, cfg):
+    """#457: a re-tag writes a cover.jpg into an album that hasn't got one —
+    mandatory for Navidrome, so it happens whether or not anyone pressed
+    anything about artwork. The section said nothing, and a 3 MB image appearing
+    in a music folder read as Harmonist acting unasked."""
+    art = _png(1)
+    d = _album_with_art(cfg, "NoFolderCover", covers=[art, art])  # no `folder=`
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+
+    # Attributed to RE-TAGGING, not to the artwork button beside it, which
+    # cannot create this file at all.
+    assert "This album has no" in rendered
+    assert "Re-tagging creates one from" in rendered
+    # ...and that button stays off: nothing about the album's existing images
+    # changes, so offering the control would promise the sentence's outcome from
+    # a button that does not produce it.
+    assert "Update artwork" not in rendered
+
+
+def test_artwork_section_does_not_announce_a_cover_the_album_already_has(client, cfg):
+    """The control for the test above, and the reason it can fail: the same
+    album WITH a folder cover must say nothing, or the sentence is unconditional
+    text rather than a finding."""
+    art = _png(1)
+    d = _album_with_art(cfg, "HasFolderCover", covers=[art, art], folder=art)
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+
+    assert "Re-tagging creates one from" not in rendered
+
+
 def test_artwork_section_promises_no_overwrite_where_art_is_preserved(client, cfg):
     """A compilation's covers are kept, so no row may offer a replacement."""
     d = _album_with_art(cfg, "Compilation", covers=[_png(1), _png(2)], folder=_png(3))
