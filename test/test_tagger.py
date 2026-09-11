@@ -13,6 +13,7 @@ from mutagen.mp4 import MP4, MP4Cover
 from harmonist import formats as formats_mod
 from harmonist import tagger
 from harmonist.formats import owned
+from harmonist.tag_history import ArtworkRevert
 from harmonist.tagger import (
     ATOM_ALBUM,
     ATOM_ALBUM_ARTIST,
@@ -1276,9 +1277,9 @@ def test_restoring_artwork_puts_each_discs_image_back_on_its_own_file(tmp_path):
     cover.write_bytes(_sized_jpeg(1000, 1000))
 
     _update_artwork(cd1, _release_2_tracks_same_title(), cover, files=files, overwrite_art=True)
-    plan = tag_history.artwork_replaced(_detail())
+    plan = tag_history.artwork_revert_plan(_detail())
 
-    assert tagger.restore_artwork(cd1, plan, paths=[f.parent for f in files]) == 2
+    assert tagger.restore_artwork(cd1, plan, paths=[f.parent for f in files]).restored == 2
     assert [bytes(MP4(f)[ATOM_COVER][0]) for f in files] == originals
 
 
@@ -2485,9 +2486,10 @@ def test_a_promoted_cover_can_be_put_back(album_with_tracks, tmp_path):
     _update_artwork(album_dir, _single_track_release(), cover)
     assert cover.read_bytes() == big  # promoted
 
-    restored = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
+    plan = [ArtworkRevert("cover.jpg", artwork_store.digest(small), artwork_store.digest(big))]
+    restored = tagger.restore_artwork(album_dir, plan)
 
-    assert restored == 1
+    assert restored.restored == 1
     assert cover.read_bytes() == small
     # …and the undo is itself undoable: what it overwrote was kept in turn.
     assert artwork_store.path_for(artwork_store.digest(big)) is not None
@@ -2503,10 +2505,11 @@ def test_restoring_a_folder_cover_twice_is_a_no_op(album_with_tracks, tmp_path):
     cover.write_bytes(small)
     keep_one(small, mime="image/jpeg")
 
-    first = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
-    second = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
+    plan = [ArtworkRevert("cover.jpg", artwork_store.digest(small), "sha-of-what-replaced-it")]
+    first = tagger.restore_artwork(album_dir, plan)
+    second = tagger.restore_artwork(album_dir, plan)
 
-    assert (first, second) == (0, 0)  # already correct both times
+    assert (first.changed, second.changed) == (0, 0)  # already correct both times
     assert cover.read_bytes() == small
 
 
@@ -3071,6 +3074,118 @@ def test_an_undo_that_cannot_keep_what_it_overwrites_is_refused(album_with_track
     artwork_store.configure(store, max_bytes=len(old) - 1)
 
     with pytest.raises(tagger.ArtworkUnavailableError, match="could not be kept"):
-        tagger.restore_artwork(album_dir, {track.name: key})
+        tagger.restore_artwork(
+            album_dir, [ArtworkRevert(track.name, key, artwork_store.digest(new))]
+        )
 
     assert bytes(MP4(track)[ATOM_COVER][0]) == new
+
+
+# ---------- undoing an addition back to absence (#471) ----------
+
+
+def _undo_latest(album_dir, *, paths=None):
+    """Undo every artwork change recorded so far — what History's button runs,
+    for tests that make one change."""
+    from harmonist import tag_history
+
+    return tagger.restore_artwork(
+        album_dir, tag_history.artwork_revert_plan(_detail()), paths=paths
+    )
+
+
+def test_undoing_a_taggings_additions_takes_them_off_again(
+    album_with_tracks, tmp_path, monkeypatch
+):
+    """A tagging filled a track that had no image and created the folder cover.
+    Undo takes both back to absence — and leaves the tags, the image the
+    tagging did not touch, and every unrelated file exactly as they are."""
+    from harmonist import activity_store, artwork_store, cover_art
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(800, 800)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+    (album_dir / "notes.txt").write_text("the user's own file")
+    tagger.tag_album(album_dir, _release_2_tracks())
+    assert (album_dir / "cover.jpg").exists()
+    assert ATOM_COVER in MP4(album_dir / "02 Track 2.m4a")
+    files = sorted(album_dir.glob("*.m4a"))
+    tags = {f: formats_mod.read_owned(f) for f in files}
+
+    outcome = _undo_latest(album_dir)
+
+    assert (outcome.removed, outcome.restored, outcome.stale) == (2, 0, ())
+    assert ATOM_COVER not in MP4(album_dir / "02 Track 2.m4a")
+    assert not (album_dir / "cover.jpg").exists()
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
+    assert {f: formats_mod.read_owned(f) for f in files} == tags
+    assert (album_dir / "notes.txt").read_text() == "the user's own file"
+    # What it took off is kept, as any image an undo destroys is.
+    assert artwork_store.path_for(artwork_store.digest(mine)) is not None
+    # …and a second undo finds nothing left to do.
+    assert _undo_latest(album_dir).changed == 0
+
+
+def test_one_artwork_action_undoes_its_additions_and_replacements_together(
+    album_with_tracks, tmp_path
+):
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    small = _sized_jpeg(400, 400)
+    _embed_cover(album_dir / "01 Track 1.m4a", small)  # track 2 has none
+    cover = album_dir / "cover.jpg"
+    big = _sized_jpeg(1400, 1400)
+    cover.write_bytes(big)
+    _update_artwork(album_dir, _release_2_tracks(), cover)
+
+    outcome = _undo_latest(album_dir)
+
+    assert (outcome.restored, outcome.removed) == (1, 1)
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == small
+    assert ATOM_COVER not in MP4(album_dir / "02 Track 2.m4a")
+    assert cover.read_bytes() == big  # never part of the change
+
+
+def test_an_image_put_there_since_is_not_taken_away(album_with_tracks, tmp_path, monkeypatch):
+    """The undo acts only where a file still carries what the change left. One
+    the user has changed since keeps their image, and is named."""
+    from harmonist import activity_store, artwork_store, cover_art
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(800, 800))
+    tagger.tag_album(album_dir, _release_2_tracks())
+    theirs = _sized_jpeg(900, 900) + b"_the_users"
+    _embed_cover(album_dir / "02 Track 2.m4a", theirs)
+
+    outcome = _undo_latest(album_dir)
+
+    assert outcome.stale == ("02 Track 2.m4a",)
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == theirs
+    assert not (album_dir / "cover.jpg").exists()  # still what the change left
+
+
+def test_additions_across_split_discs_come_off_the_right_files(tmp_path):
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    cd1, files = _split_album(tmp_path)
+    cover = cd1 / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(600, 600))
+    tagger.tag_album(cd1, _release_2_tracks_same_title(), cover, files=files)
+    assert all(ATOM_COVER in MP4(f) for f in files)
+
+    outcome = _undo_latest(cd1, paths=[f.parent for f in files])
+
+    assert outcome.removed == 2
+    assert not any(ATOM_COVER in MP4(f) for f in files)
+    assert cover.exists()  # it was there before the tagging, and stays

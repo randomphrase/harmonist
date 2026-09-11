@@ -216,23 +216,47 @@ def group_records(events: Sequence[Any], detail: Mapping[int, Any]) -> dict[int,
     return out
 
 
-def artwork_replaced(records: Sequence[Any]) -> dict[str, str]:
-    """`{file_name: digest}` for the artwork one tagging overwrote.
+@dataclass(frozen=True)
+class ArtworkRevert:
+    """One file's share of an artwork Undo (#131, #471).
 
-    The plan an Undo executes. Only files whose artwork actually changed AND had
-    something there before appear: a track that gained art it never had is not
-    restored to "no art", because removing an image the user has since been
-    looking at is not what "undo" reads as on a row that says *added*.
+    `before` is the image to put back, or None where the change ADDED an image
+    to a file that had none — undoing that means taking it off again. `after`
+    is the image the change left, and it is what proves the file still carries
+    this change: one changed since is left alone, as a tag Undo leaves a field.
     """
-    out: dict[str, str] = {}
+
+    file: str
+    before: str | None
+    after: str
+
+
+def artwork_revert_plan(records: Sequence[Any]) -> tuple[ArtworkRevert, ...]:
+    """What an artwork Undo of one change would do, per file.
+
+    Additions and replacements alike (#471). An addition used to be left out —
+    a track that gained art was not "restored to no art" — which made the
+    artwork half of a change undoable only when it had overwritten something,
+    and left the folder cover a change created with no way back at all. Both
+    sides are recorded, so both can be undone; the per-file check on `after` is
+    what keeps an image the user has put there since from being taken away.
+
+    A pair with no `after` records a removal, which is not an artwork change
+    this undoes. Records written before a change carried its `after` digest do
+    not exist, so nothing here has to guess one.
+    """
+    out: list[ArtworkRevert] = []
     for record in records:
         pair = _pair(record.changes.get(ARTWORK))
         if pair is None:
             continue
-        before, _after = pair
-        if isinstance(before, str) and before:
-            out[record.file] = before
-    return out
+        before, after = pair
+        if not isinstance(after, str) or not after:
+            continue
+        was = before if isinstance(before, str) and before else None
+        if was != after:
+            out.append(ArtworkRevert(file=record.file, before=was, after=after))
+    return tuple(out)
 
 
 def label_for(field: str) -> str:

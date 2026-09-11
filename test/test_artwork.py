@@ -119,6 +119,19 @@ class TestEmbeddedArtOnRead:
         assert art.length == len(cover)
         assert art.mime == "image/png"
 
+    def test_an_image_comes_off_without_touching_a_tag(self, track: Path) -> None:
+        """The undo of an addition (#471), in every writable format: the image
+        goes and nothing else moves. Twice is a no-op, not an error."""
+        formats.write_cover(track, png_bytes(64, 64))
+        tags = formats.read_owned(track)
+
+        formats.remove_cover(track)
+        formats.remove_cover(track)
+
+        assert formats.read_cover(track) is None
+        assert formats.read_tags(track).art is None
+        assert formats.read_owned(track) == tags
+
     def test_digest_is_the_one_the_tagger_records(self, track: Path) -> None:
         """The album page compares tracks by this digest and the tagger decides
         whether to preserve per-track art by it. Two spellings of sha256 would

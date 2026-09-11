@@ -78,6 +78,23 @@ def test_a_folder_cover_in_a_tagging_is_named_not_counted():
     assert _row(rows, ARTWORK).reach == "all tracks and cover.jpg"
 
 
+def test_an_addition_is_in_the_artwork_undo_plan():
+    """Undone back to absence (#471), beside a replacement put back — and a
+    record that touched no artwork is not in it."""
+    from harmonist.tag_history import ArtworkRevert, artwork_revert_plan
+
+    records = [
+        TagChanges(file="01.flac", changes={ARTWORK: [None, "sha-new"]}),
+        TagChanges(file="02.flac", changes={ARTWORK: ["sha-old", "sha-new"]}),
+        TagChanges(file="03.flac", changes={"artist": ["A", "B"]}),
+    ]
+
+    assert artwork_revert_plan(records) == (
+        ArtworkRevert(file="01.flac", before=None, after="sha-new"),
+        ArtworkRevert(file="02.flac", before="sha-old", after="sha-new"),
+    )
+
+
 def test_an_artwork_change_to_the_folder_cover_alone_names_it():
     """The album's own image promoted over `cover.jpg`, and no track moved:
     "1 track" named something that did not happen."""

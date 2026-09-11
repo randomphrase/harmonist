@@ -425,6 +425,23 @@ class VorbisTagger:
         self._set_cover(audio, cover)
         audio.save()
 
+    def remove_cover(self, path: Path) -> None:
+        """Take the embedded image off, touching nothing else (#471's undo of an
+        addition). Both places a Vorbis-family file can carry one: FLAC's native
+        picture blocks and the Ogg/Opus METADATA_BLOCK_PICTURE comment."""
+        audio = self._open(path)
+        if audio is None:
+            raise OSError(f"could not open {path} to remove its cover")
+        changed = False
+        if getattr(audio, "pictures", None):
+            audio.clear_pictures()
+            changed = True
+        if audio.tags is not None and audio.tags.get("metadata_block_picture"):
+            del audio.tags["metadata_block_picture"]
+            changed = True
+        if changed:
+            audio.save()
+
     def write_tags(self, path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
         """Write `tagset` to `path`, returning the owned fields as they were
         BEFORE the write — read from the handle already open here, so the

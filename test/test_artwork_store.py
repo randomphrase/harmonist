@@ -241,8 +241,8 @@ class TestProtectedDigests:
         assert artwork_store.digest(mine) in artwork_store.protected_digests()
 
     def test_art_a_track_gained_is_not_a_backup(self):
-        """Nothing was replaced, so nothing was kept — `artwork_replaced` reads
-        the same pair the same way."""
+        """Nothing was replaced, so nothing was kept — undoing it takes the image
+        off rather than putting one back (#471)."""
         event_id = activity_store.append(
             message="tag.track file=01.m4a",
             level=activity_store.Level.INFO,

@@ -6,6 +6,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **Artwork a change added can be undone** — History's Undo takes an image back
+  off a track that had none, and removes a `cover.jpg` Harmonist created (#471).
+
 ### Changed
 
 - **A missing `cover.jpg` is now a row in the Artwork section**, showing the

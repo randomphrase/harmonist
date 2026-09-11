@@ -1350,7 +1350,10 @@ def apply_artwork(
         return ArtworkOutcome()
     image = _winner_bytes(plan, cover_path, archive)
     digest = images.digest(image)
-    album_id = sidecar_mod.album_id_for(album_dir)
+    # The id the album answers to right now, sidecar or not (#456). The artwork
+    # action works on an album Harmonist has not identified, and a record with
+    # no album id is one History — and so the artwork Undo — can never find.
+    album_id = sidecar_mod.album_id_for(album_dir) or id_registry.peek(album_dir)
     # Named the same way a tagging names them, or the Undo this records would
     # address the wrong disc of a split album (#423).
     naming = album_files.Naming(album_dir, files)
@@ -1388,7 +1391,7 @@ def apply_artwork(
         formats.write_cover(change.target, image)
         changed += 1
         # Recorded in the shape a tagged file's artwork change takes, which is
-        # what puts an Undo on it: `tag_history.artwork_replaced` reads that
+        # what puts an Undo on it: `tag_history.artwork_revert_plan` reads that
         # pair and `restore_artwork` writes it back.
         event_id = audit.record("tag.track", album_id=album_id, album=album_dir, file=name)
         if event_id is not None:
@@ -1418,20 +1421,55 @@ def apply_artwork(
 # back is exactly the parallel decision that change removed.
 
 
+@dataclass(frozen=True)
+class ArtworkRestoreOutcome:
+    """What an artwork Undo actually did (#471) — not what it was asked to."""
+
+    #: Images put back where the change had replaced one.
+    restored: int = 0
+    #: Images taken back off where the change had added one.
+    removed: int = 0
+    #: Files left alone because they no longer carry what the change left —
+    #: changed since, by a later action or by hand. Named, so the user can look.
+    stale: tuple[str, ...] = ()
+
+    @property
+    def changed(self) -> int:
+        return self.restored + self.removed
+
+
 def restore_artwork(
-    album_dir: Path, digests: dict[str, str], *, paths: Sequence[Path] | None = None
-) -> int:
-    """Put back the artwork `digests` names, and return how many files changed.
+    album_dir: Path,
+    plan: Sequence[tag_history.ArtworkRevert],
+    *,
+    paths: Sequence[Path] | None = None,
+) -> ArtworkRestoreOutcome:
+    """Undo one artwork change: put back what it replaced, and take back off
+    what it added (#131, #471).
 
-    `digests` maps a file name to the sha256 of the image that file should carry
-    — straight out of a tagging's `artwork` before-values (#86). Restoring by
-    digest rather than "the album's old cover" is what makes a compilation's
-    per-track art come back to the right tracks.
+    `plan` comes from `tag_history.artwork_revert_plan` — the same records the
+    History row described, so the button undoes what the user just read.
+    Restoring by digest rather than "the album's old cover" is what makes a
+    compilation's per-track art come back to the right tracks.
 
-    Every image is checked to be present BEFORE anything is written: a partial
-    restore would leave the album in a state that was never real, and neither
-    half of it revertable. Files whose art already matches are skipped, so the
-    operation is idempotent.
+    **Per file, against what the change left.** A file still carrying the
+    change's `after` is undone. One carrying anything else has been changed
+    since — a later action, an image put there by hand — and is left alone and
+    reported, the way `revert_tags` leaves a field: an undo that reached past
+    this change into someone else's would be the confident lie the design
+    forbids. A file already back where it started is skipped, so running this
+    twice changes nothing.
+
+    **An addition goes back to absence.** Its `before` is None: the embedded
+    image is taken off (`formats.remove_cover`), and a folder cover the change
+    created is deleted. Nothing is needed from the store for that.
+
+    **Everything resolves before anything is written**: every file is found,
+    every image to put back is read from the store, and every image about to be
+    destroyed is kept — or `ArtworkUnavailableError` is raised and nothing is
+    written. An undo is itself a destructive write, and must be as undoable as
+    the thing it undoes (#470). The existing safeguards against a record that
+    two files could answer to still apply.
 
     `paths` is every directory the album occupies, for the same reason
     `revert_tags` takes them (#423): a track on a second disc is addressed by
@@ -1439,64 +1477,83 @@ def restore_artwork(
     """
     files = album_files.for_paths(paths if paths is not None else [album_dir])
     naming = album_files.Naming(album_dir, files)
-    resolved: dict[Path, bytes] = {}
-    for name, key in digests.items():
+    #: (target, the image to put back or None to take it off, what it holds now)
+    actions: list[tuple[Path, bytes | None, str]] = []
+    stale: list[str] = []
+    for item in plan:
         # A record can name the folder cover as well as a track (#410), and that
         # is not one of the album's audio files — so a name the album's own list
         # doesn't answer falls back to a guarded join onto the primary directory,
         # where the cover lives. `_file_named` refuses an ambiguous one first, so
         # the fallback can never be reached by a name two tracks share.
-        matches = naming.matches(name)
         path = (
-            _file_named(naming, name, ArtworkUnavailableError)
-            if matches
-            else _resolve_in_album(album_dir, name, ArtworkUnavailableError)
+            _file_named(naming, item.file, ArtworkUnavailableError)
+            if naming.matches(item.file)
+            else _resolve_in_album(album_dir, item.file, ArtworkUnavailableError)
         )
-        if not path.exists():
-            raise ArtworkUnavailableError(f"{name} is no longer in this album")
-        stored = artwork_store.path_for(key)
-        if stored is None:
-            raise ArtworkUnavailableError(
-                f"the image {name} used to carry is no longer kept "
-                "(the artwork store evicted it, or never held it)"
-            )
-        try:
-            resolved[path] = stored.read_bytes()
-        except OSError as e:
-            raise ArtworkUnavailableError(f"could not read the kept image for {name}: {e}") from e
+        if formats.is_supported(path) and not path.exists():
+            raise ArtworkUnavailableError(f"{item.file} is no longer in this album")
+        data: bytes | None = None
+        if item.before is not None:
+            stored = artwork_store.path_for(item.before)
+            if stored is None:
+                raise ArtworkUnavailableError(
+                    f"the image {item.file} used to carry is no longer kept "
+                    "(the artwork store evicted it, or never held it)"
+                )
+            try:
+                data = stored.read_bytes()
+            except OSError as e:
+                raise ArtworkUnavailableError(
+                    f"could not read the kept image for {item.file}: {e}"
+                ) from e
+        # A folder cover that is not there reads as None — which is exactly
+        # what a created cover is undone TO.
+        current = _image_at(path)
+        now = images.digest(current[0]) if current is not None else None
+        if now == item.before:
+            continue  # already back where it started
+        if now != item.after:
+            stale.append(naming.name_of(path))
+            continue
+        actions.append((path, data, item.after))
 
-    # Keep what is about to be overwritten, exactly as a tagging would: an undo
-    # is itself a destructive write, and must be as undoable as the thing it
-    # undoes. All of it, BEFORE anything is written — and if any of it cannot be
-    # kept, nothing is written at all (#470). Refusing the whole undo rather
-    # than restoring the rest is this function's own rule: a partial restore is
-    # a state the album never had.
-    current = {path: art for path in resolved if (art := _image_at(path)) is not None}
-    overwritten = {
-        path: images.digest(art[0])
-        for path, art in current.items()
-        if images.digest(art[0]) != images.digest(resolved[path])
-    }
-    kept = _keep_doomed_art(overwritten)
-    if unkept := [path for path, key in overwritten.items() if key not in kept]:
+    # Keep what is about to be destroyed, all of it BEFORE anything is written —
+    # and if any of it cannot be kept, nothing is written at all (#470).
+    # Refusing the whole undo rather than doing the rest is this function's own
+    # rule: a partial restore is a state the album never had.
+    kept = _keep_doomed_art({path: after for path, _data, after in actions})
+    if unkept := [path for path, _data, after in actions if after not in kept]:
         raise ArtworkUnavailableError(
             f"the image {naming.name_of(unkept[0])} carries now could not be kept, "
             "and undoing would destroy it with no way back"
         )
 
-    restored = 0
-    for path, data in resolved.items():
-        if path not in overwritten and path in current:
-            continue  # already correct — restoring twice is a no-op
-        _write_image_at(path, data)
+    restored = removed = 0
+    for path, data, _after in actions:
+        if data is not None:
+            _write_image_at(path, data)
+            restored += 1
+        else:
+            _remove_image_at(path)
+            removed += 1
         audit.record(
             "artwork.restore",
             album=album_dir,
             file=naming.name_of(path),
-            digest=images.digest(data),
+            digest=images.digest(data) if data is not None else "-",
+            removed=data is None,
         )
-        restored += 1
-    return restored
+    return ArtworkRestoreOutcome(restored=restored, removed=removed, stale=tuple(stale))
+
+
+def _remove_image_at(path: Path) -> None:
+    """Take an added image back off: out of a track's tags, or the folder cover
+    file itself, which the change created (#471)."""
+    if formats.is_supported(path):
+        formats.remove_cover(path)
+        return
+    path.unlink()
 
 
 def _image_at(path: Path) -> tuple[bytes, str] | None:

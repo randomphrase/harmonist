@@ -1944,8 +1944,8 @@ def _report_unmatched_after_sync(
             )
 
 
-def _artwork_plan(album: Album, event_id: int) -> dict[str, str]:
-    """`{file_name: digest}` for the artwork change shown under `event_id`.
+def _artwork_plan(album: Album, event_id: int) -> tuple[tag_history.ArtworkRevert, ...]:
+    """What undoing the artwork change shown under `event_id` would do, per file.
 
     Rebuilt from this album's own stored records — never from client input —
     and grouped by exactly the function that produced the summary the user is
@@ -1955,7 +1955,7 @@ def _artwork_plan(album: Album, event_id: int) -> dict[str, str]:
     history = activity_store.album_history(album.id, also=album.shared_history_ids)
     detail = activity_store.tag_changes_for([e.id for e in history])
     records = tag_history.group_records(history, detail).get(event_id)
-    return tag_history.artwork_replaced(records) if records else {}
+    return tag_history.artwork_revert_plan(records) if records else ()
 
 
 def _restorable_anchors(
@@ -1968,11 +1968,16 @@ def _restorable_anchors(
     first, so an old enough change has no images left, and offering a button
     that would fail is worse than offering none. One `path_for` glob per
     distinct digest — cheap enough for a page render.
+
+    An ADDITION needs nothing from the store (#471): undoing it takes the image
+    back off, and there is no older image to find. So a change that only added
+    artwork is always undoable while its records last.
     """
     out: set[int] = set()
     for anchor, records in tag_history.group_records(history, detail).items():
-        plan = tag_history.artwork_replaced(records)
-        if plan and all(artwork_store.path_for(d) is not None for d in set(plan.values())):
+        plan = tag_history.artwork_revert_plan(records)
+        needed = {item.before for item in plan if item.before is not None}
+        if plan and all(artwork_store.path_for(d) is not None for d in needed):
             out.add(anchor)
     return out
 
@@ -4728,7 +4733,7 @@ def _register_routes(app: FastAPI) -> None:
                 status.HTTP_404_NOT_FOUND, "no artwork change to undo on that history entry"
             )
         try:
-            restored = tagger_mod.restore_artwork(album.path, plan, paths=album.folders)
+            outcome = tagger_mod.restore_artwork(album.path, plan, paths=album.folders)
         except tagger_mod.ArtworkUnavailableError as e:
             # Expected, not exceptional: the store evicts oldest-first, so an
             # old enough change is genuinely unrevertable and saying so plainly
@@ -4741,13 +4746,31 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "Couldn't undo", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
-        if not restored:
+        # A file changed since this change is left as it is, and named: the
+        # undo reaching past this change into someone else's would be the
+        # confident lie the tag Undo refuses too (#471).
+        left = f"left alone, changed since: {', '.join(outcome.stale)}" if outcome.stale else None
+        if not outcome.changed:
             return _flash_response(
-                "Nothing to undo", "the artwork already matches", tasks_changed=False, album=album
+                "Nothing undone" if outcome.stale else "Nothing to undo",
+                left or "the artwork already matches",
+                level=Level.WARNING if outcome.stale else Level.INFO,
+                tasks_changed=False,
+                album=album,
             )
+
+        def files(n: int) -> str:
+            return f"{n} file{'s' if n != 1 else ''}"
+
+        done = [
+            *([f"{files(outcome.restored)} put back"] if outcome.restored else []),
+            *([f"{files(outcome.removed)} taken back off"] if outcome.removed else []),
+            *([left] if left else []),
+        ]
         return _flash_response(
             "Artwork restored",
-            f"{restored} file{'s' if restored != 1 else ''}",
+            "; ".join(done),
+            level=Level.WARNING if outcome.stale else Level.INFO,
             extra_triggers=_retagged_trigger(album),
             album=album,
         )

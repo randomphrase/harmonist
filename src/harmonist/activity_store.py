@@ -792,8 +792,8 @@ def artwork_backups() -> list[ArtworkBackup]:
             continue
         pair = parsed.get(ARTWORK) if isinstance(parsed, dict) else None
         # `[before, after]`, and only a real `before` is a backup: a track that
-        # GAINED art it never had has nothing kept for it, exactly as
-        # `tag_history.artwork_replaced` reads the same pair.
+        # GAINED art it never had has nothing kept for it — its Undo takes the
+        # image off rather than putting anything back (#471).
         if not isinstance(pair, list) or len(pair) != 2 or not isinstance(pair[0], str):
             continue
         if not pair[0]:

@@ -180,6 +180,19 @@ def write_cover(path: Path, cover: bytes) -> None:
     mod.write_cover(path, cover)
 
 
+def remove_cover(path: Path) -> None:
+    """Take `path`'s embedded image off, leaving every tag alone.
+
+    The undo of an ADDITION (#471): a track that had no image before a change
+    gave it one goes back to having none. Separate from `write_tags` for the
+    reason `write_cover` is — undoing artwork must not rewrite tags.
+    """
+    mod = _module_for(path)
+    if mod is None:
+        raise UnsupportedFormatError(f"no audio module handles {path.suffix}")
+    mod.remove_cover(path)
+
+
 def read_owned(path: Path) -> dict[str, Any]:
     """Every field Harmonist owns, as `path` currently carries it.
 

@@ -45,6 +45,7 @@ write_owned = _impl.write_owned
 read_owned = _impl.read_owned
 has_superseded_tags = _impl.has_superseded_tags
 write_cover = _impl.write_cover
+remove_cover = _impl.remove_cover
 read_cover = _impl.read_cover
 
 

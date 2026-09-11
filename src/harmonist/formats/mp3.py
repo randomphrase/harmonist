@@ -582,6 +582,15 @@ def write_cover(path: Path, cover: bytes) -> None:
     audio.save()
 
 
+def remove_cover(path: Path) -> None:
+    """Take the embedded image off, touching nothing else (#471's undo of an
+    addition)."""
+    audio = MP3(path)
+    if audio.tags is not None and audio.tags.getall("APIC"):
+        audio.tags.delall("APIC")
+        audio.save()
+
+
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
     """Write `tagset` to `path`, returning the owned fields as they were BEFORE
     the write — read from the handle already open here, so the tagging audit

@@ -9198,6 +9198,39 @@ def test_apply_artwork_names_the_images_it_could_not_keep(client, cfg, tmp_path)
     assert notes and "01 Track.m4a" in notes[0]
 
 
+def test_history_offers_undo_for_artwork_a_change_added(client, cfg):
+    """An addition used to have no Undo: the button was drawn only where the
+    change had replaced something. Now the row for artwork a change ADDED offers
+    one, and pressing it takes the images back off — the artless track's, and
+    the folder cover the change created (#471)."""
+    import re
+
+    from harmonist import formats
+
+    art = _png(1)
+    d = _album_with_art(cfg, "Added", covers=[art, None])
+    aid = _id_for(cfg, d)
+    shown = _form_value(client.get(f"/album/{aid}/artwork").text, "plan")
+    client.post(f"/album/{aid}/artwork/update", data={"plan": shown})
+    assert formats.read_cover(d / "02 Track.m4a") is not None
+    assert (d / "cover.png").exists()
+
+    page = client.get(f"/album/{_id_for(cfg, d)}").text
+    undo = re.search(
+        r'hx-post="/artwork/restore/[^"]+"\s+hx-vals=\'\{"event_id": "(\d+)"\}\'', page
+    )
+    assert undo, "no artwork Undo offered for a change that only added images"
+
+    r = client.post(f"/artwork/restore/{_id_for(cfg, d)}", data={"event_id": undo.group(1)})
+
+    assert "Artwork restored" in r.text
+    assert "taken back off" in r.text
+    assert formats.read_cover(d / "02 Track.m4a") is None
+    assert not (d / "cover.png").exists()
+    track1 = formats.read_cover(d / "01 Track.m4a")
+    assert track1 is not None and track1[0] == art
+
+
 def _png_sized(seed: int, size: int) -> bytes:
     from test.test_artwork import png_bytes
 

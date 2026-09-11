@@ -569,6 +569,15 @@ def write_cover(path: Path, cover: bytes) -> None:
     audio.save()
 
 
+def remove_cover(path: Path) -> None:
+    """Take the embedded image off, touching nothing else (#471's undo of an
+    addition)."""
+    audio = MP4(path)
+    if ATOM_COVER in audio:
+        del audio[ATOM_COVER]
+        audio.save()
+
+
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
     """Serialise the TagSet to MP4 atoms on `path`, plus optional cover.
 

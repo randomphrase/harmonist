@@ -50,19 +50,21 @@
         <span class="tag-changes__opaque">{{ c.summary }}</span>
 
         {# Undo sits on the row that states what happened, so it can only mean
-           one thing: put back the image this tagging replaced. Offered only
-           when the image is still kept — the store evicts oldest-first, and a
-           button that would fail is worse than no button (#131). #}
-        {% if restorable and anchor_id in restorable and c.before %}
+           one thing: undo this change's artwork — put back an image it
+           replaced, take back off an image it added (#471). Offered only when
+           every image it would put back is still kept — the store evicts
+           oldest-first, and a button that would fail is worse than no button
+           (#131). An addition puts nothing back, so needs nothing kept. #}
+        {% if restorable and anchor_id in restorable %}
         {# hx-swap="none": the response is a flash delivered by HX-Trigger, and
            the album-retagged event reloads the page so every stale region —
            the cover, the comparison, this very row — comes back correct. #}
         <button hx-post="/artwork/restore/{{ album.id }}"
                 hx-vals='{"event_id": "{{ anchor_id }}"}'
                 hx-swap="none" hx-disabled-elt="this"
-                hx-confirm="Put back the artwork this tagging replaced? The current image is kept, so this can be undone in turn."
+                hx-confirm="Undo this artwork change? Images it replaced are put back and images it added are taken off; any you have changed since are left alone. What is there now is kept, so this can be undone in turn."
                 class="tag-changes__undo"
-                title="Restore the embedded artwork these files carried before this tagging"
+                title="Put back the artwork this change replaced, and take off the artwork it added"
                 aria-label="Undo this artwork change">Undo</button>
         {% endif %}
 

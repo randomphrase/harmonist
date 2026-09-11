@@ -480,10 +480,11 @@ page was drawn — an image edited elsewhere, or the archive's answer arriving
 late — **Apply artwork** writes nothing and redraws the section, and a re-tag
 writes its tags but no artwork, saying why in the album's History.
 
-Replacing artwork is the change you are most likely to want to undo on its own,
-which is why it has its own Undo in History. Undoing an addition — taking an
-image back off a track that had none, or removing a `cover.jpg` Harmonist
-created — is not offered yet.
+Artwork is the change you are most likely to want to undo on its own, which is
+why it has its own Undo in History, separate from the tags. It puts back an
+image a change replaced, and takes back off an image a change added — to a track
+that had none, or a `cover.jpg` Harmonist created — while leaving alone any
+image you have put there since.
 
 ### Asking the Cover Art Archive
 
@@ -629,7 +630,9 @@ The undo is itself recorded, so it can be undone in turn.
 
 **Cover art has its own Undo.** Any image Harmonist overwrites — on a track or
 as the folder cover — is kept first, and can be put back from the Artwork row in
-History, separately from undoing the tagging. **The last five artwork changes to
+History, separately from undoing the tagging. Artwork it *added* comes back off
+the same way: the track goes back to having none, and a `cover.jpg` it created
+is removed. Anything you have changed since is left as it is. **The last five artwork changes to
 any album are kept**, however many albums you tag, so a busy library can't cost
 you the undo on the one album you were working on. A 500 MB ceiling sits under
 that as a backstop, and can still make an older undo unavailable; both numbers
