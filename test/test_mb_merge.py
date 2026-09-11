@@ -51,7 +51,7 @@ def cfg(tmp_path):
 @pytest.fixture(autouse=True)
 def no_cover_fetch(monkeypatch):
     """No cover-art requests: this module is about identity, and CAA is off-box."""
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
 
 @pytest.fixture

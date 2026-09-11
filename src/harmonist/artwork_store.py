@@ -102,7 +102,7 @@ def keep(data: bytes, *, mime: str | None = None) -> str | None:
     copy was kept.
 
     **A digest means the image is still there** (#427). Callers treat one as
-    permission to destroy the original — `tagger._promote_album_image` overwrites
+    permission to destroy the original — `tagger._write_folder_cover` overwrites
     a folder cover on the strength of it — so a key for an image the sweep at the
     end of this call already deleted is not a weaker promise, it is a false one.
     """

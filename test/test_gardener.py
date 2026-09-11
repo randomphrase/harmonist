@@ -1967,7 +1967,7 @@ def test_taking_the_update_clears_the_ignore(engaged, monkeypatch):
         mb_lookup, "fetch_release", lambda *a, **k: _release("Test Album (remastered)")
     )
     # The re-tag path asks the Cover Art Archive, which a test must not.
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     client, runner = engage()
     album_id = _flagged(runner).id
     client.get(f"/library/{album_id}/compare")

@@ -1,16 +1,23 @@
-{% from 'macros.html' import severity_chip %}
-{# What artwork this album carries, and what a re-tag would do to it (#155).
+{% from 'macros.html' import artwork_chip %}
+{# What artwork this album carries, and what applying it would do (#155).
 
    One row per distinct image, labelled by everything carrying it — tracks and
    the folder cover alike, so an album where they agree is a single row reading
-   "All 12 tracks and cover.jpg" rather than one picture drawn twice (#400).
+   "All 12 tracks and cover.jpg" rather than one picture drawn twice (#400). A
+   folder cover the album does not have yet is a row too, when the plan
+   creates one (#457).
 
    A row that would be written to SHOWS what it would become, on the right,
    under a heading that dates it. Words alone could not: "Replaced by the
    album's own artwork" reads equally as something that has already happened
    (#413), and no wording fixes that as directly as a second picture under
-   "After a re-tag" does. Rows that change nothing stay silent and keep the
+   "After Apply" does. Rows that change nothing stay silent and keep the
    column empty, as agreement does everywhere else on this page.
+
+   The right-hand column is the artwork PLAN — the one the Apply button
+   executes, checked against the fingerprint the form carries (#469). The rows
+   on the left are what the album has; nothing on the left implies a write. #}
+{#
 
    The incoming image is usually also a row of its own further down — the two
    halves of one album's artwork are both things it HAS (#406). That repetition
@@ -37,33 +44,23 @@
 
 {% if artwork.cover_unreadable %}
 {# "Couldn't read it" and "there isn't one" lead to opposite conclusions about
-   what a re-tag would write, so the section says which (#112). #}
+   what applying would write, so the section says which (#112). #}
 <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-    This album has a folder cover, but Harmonist couldn't read it — so what a
-    re-tag would embed can't be shown. The error is in the application log.
+    This album has a folder cover, but Harmonist couldn't read it — so what
+    applying the artwork would write can't be shown. The error is in the
+    application log.
 </p>
 {% endif %}
 
-{# There is no cover.jpg, and re-tagging writes one (#457). Said BEFORE the fact
-   rather than discovered afterwards in the folder: the file is mandatory for
-   Navidrome (design §"Cover art"), so a tagging creates it whether or not
-   anyone pressed anything about artwork, and an unannounced 3 MB image
-   appearing in a music folder reads as Harmonist having done something it was
-   not asked to.
-
-   Attributed to RE-TAGGING specifically, not to "Harmonist": the Update artwork
-   button below cannot create this file, only replace one that exists, and a
-   sentence that blurred the two would send the reader to the wrong control.
-
-   Stated, not drawn as a row. A row would count toward `artwork.writes`, which
-   is what puts that button on the page — see `ArtworkView.creates_cover_from`.
-
-   Neutral, not amber: nothing is wrong here. The album is missing a file that
-   is about to arrive, which is the same register as the rest of the section. #}
-{% if artwork.creates_cover_from %}
-<p class="text-sm text-muted">
-    This album has no <code class="text-2xs">cover.jpg</code> beside its tracks.
-    Re-tagging creates one from {{ artwork.creates_cover_from }}.
+{# The button was pressed on a page that no longer describes the album (#469):
+   an image edited since, or an archive cover that arrived after the page was
+   drawn. Nothing was written, and the section below is the fresh account —
+   which is the thing to look at before pressing again. Amber, because the user
+   asked for something and it did not happen. #}
+{% if artwork_changed_since %}
+<p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+    This album's artwork changed after the page showed it, so nothing was
+    written. This is what applying would do now.
 </p>
 {% endif %}
 
@@ -93,7 +90,7 @@
     {% if artwork.writes %}
     <div class="art-rows__head">
         <span>Now</span>
-        <span>After a re-tag</span>
+        <span>After Apply</span>
     </div>
     {% endif %}
 
@@ -109,6 +106,10 @@
             {% if r.title %}<span class="art-row__title">{{ r.title }}</span>{% endif %}
             {% if r.image %}
             <span class="art-row__meta">{{ describe_image(r.image) }}</span>
+            {% elif r.creates %}
+            {# A folder cover the album does not have yet (#457): the empty
+               frame is the finding, the picture beside it what will fill it. #}
+            <span class="art-row__meta-plain">not in the folder yet</span>
             {% else %}
             {# Named, not counted: the remedy is per file, so the user needs to
                know which files to look at. #}
@@ -169,7 +170,7 @@
    value MusicBrainz would write and leaves an agreeing one plain. Before this
    the column had to carry both meanings, and could only carry one.
 
-   Its own heading, because "After a re-tag" above is a promise and this is the
+   Its own heading, because "After Apply" above is a promise and this is the
    one image on the page that certainly is not coming. "Also considered" is past
    tense on purpose: it says the thing was weighed and lost, which is also why
    there is no picture to show. #}
@@ -239,19 +240,26 @@
 
    No button when nothing would change, the same way the rows say nothing then.
 
-   `hx-confirm` because this overwrites images the user has; the folder cover is
-   kept first, so it can be put back from History (#408). #}
+   `plan` is the fingerprint of the right-hand column. The server rebuilds the
+   plan and writes only if it still matches, so the button applies what the
+   reader is looking at — not whatever the album has become since (#469).
+
+   `hx-confirm` only for a Replacement, because that overwrites images the user
+   has (kept first, so it can be put back from History, #408). An Addition fills
+   an empty place and costs a few megabytes at most; asking about it would train
+   the reader to click through the one question that matters. #}
 {% if artwork.writes %}
 <form hx-post="/album/{{ album.id }}/artwork/update"
       hx-target="#album-artwork" hx-swap="innerHTML"
       hx-disabled-elt="find button"
-      hx-confirm="Update this album's artwork? What is replaced is kept, so this can be undone from History."
+      {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
       class="pt-1">
+    <input type="hidden" name="plan" value="{{ artwork.fingerprint }}">
     <button type="submit"
             class="text-2xs uppercase tracking-widest font-bold px-3 py-1.5 rounded
                    border border-mb-purple/40 text-mb-purple hover:bg-mb-purple/10 transition"
-            title="Write the winning image to every track and to the folder cover"
-            aria-label="Update this album's artwork">Update artwork</button>
+            title="Write what the After Apply column shows. No tags are touched."
+            aria-label="Apply this album's artwork">Apply artwork</button>
 </form>
 {% endif %}
 
@@ -324,8 +332,17 @@
    whole reason that section exists.
 
    The anchor is gone with it, and its stray purple with it — purple means
-   MusicBrainz, and navigating down a page is not that. #}
+   MusicBrainz, and navigating down a page is not that.
+
+   The hidden input is what Re-tag from MB carries (`hx-include`): the
+   fingerprint of the artwork a re-tag would ADD, as drawn here. A re-tag whose
+   own plan no longer matches it tags the album and writes no artwork (#469).
+   Here, in the element that is always swapped, so it is present whenever the
+   section has loaded and absent — the re-tag then carries nothing — until it
+   has. #}
 <div id="album-artwork-note-{{ album.id }}" hx-swap-oob="true">
+    <input type="hidden" id="art-plan-{{ album.id }}" name="art_plan"
+           value="{{ artwork.tagging_fingerprint }}">
     {% if artwork.writes %}
     <div class="album-finding">
         {# The album glyph the Artwork severity already uses, muted: this finding
@@ -339,18 +356,20 @@
             </svg>
         </span>
         <h2 class="album-update__legend">{{ artwork.summary }}</h2>
-        {# The dashed chip, which has existed for artwork since #366 and has
-           never had anywhere to appear: artwork is a fifth level on its own
-           axis rather than a rank among the other four. #}
-        {{ severity_chip('artwork') }}
+        {# What KIND of artwork change this is — Addition or Replacement (#468).
+           Not a rank beside the tag levels: whether the target already held an
+           image is the question a reader deciding whether they mind is asking,
+           and it is also whether there is anything for an Undo to put back. #}
+        {{ artwork_chip(artwork.operation) }}
         <form hx-post="/album/{{ album.id }}/artwork/update"
               hx-target="#album-artwork" hx-swap="innerHTML"
               hx-disabled-elt="find button"
-              hx-confirm="Update this album's artwork? What is replaced is kept, so this can be undone from History."
+              {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
               class="album-finding__act-form">
+            <input type="hidden" name="plan" value="{{ artwork.fingerprint }}">
             <button type="submit" class="album-finding__act"
-                    title="Write the winning image to every track and to the folder cover. No tags are touched.">
-                Update artwork
+                    title="Write the artwork the Artwork section shows under After Apply. No tags are touched.">
+                Apply artwork
             </button>
         </form>
     </div>

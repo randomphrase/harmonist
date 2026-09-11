@@ -11,7 +11,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 TestMode = Literal["fixture", "cassette", "live"]
-CoverArtSize = Literal["250", "500", "1200", "original"]
 GardenerLevel = Literal["off", "review"]
 
 
@@ -65,7 +64,11 @@ class AuthConfig(BaseModel):
 
 
 class CoverArtConfig(BaseModel):
-    size: CoverArtSize = "original"
+    # No `size`: the archive's ORIGINAL is always what Harmonist fetches, since
+    # the largest image available is the one it prefers and the one the album
+    # page measures (#469). An older harmonist.toml still naming `size` loads
+    # fine — the key is ignored.
+    #
     # How long a stored Cover Art Archive answer may be re-served before an album
     # page asks again (#436). The same knob `musicbrainz.cache_ttl_seconds` is,
     # for the other service Harmonist asks about a release.
@@ -211,7 +214,6 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     bandcamp = data.setdefault("bandcamp", {})
     server = data.setdefault("server", {})
     auth = data.setdefault("auth", {})
-    cover_art = data.setdefault("cover_art", {})
     library = data.setdefault("library", {})
     gardener = data.setdefault("gardener", {})
     test = data.setdefault("test", {})
@@ -239,8 +241,6 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         test["mode"] = v
     if v := env.get("HARMONIST_LOG_LEVEL"):
         data["log_level"] = v
-    if v := env.get("HARMONIST_COVER_ART_SIZE"):
-        cover_art["size"] = v
     if v := env.get("HARMONIST_WATCH_SETTLE_SECONDS"):
         library["watch_settle_seconds"] = float(v)
     if v := env.get("HARMONIST_GARDENER_LEVEL"):

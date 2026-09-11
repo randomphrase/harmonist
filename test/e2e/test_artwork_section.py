@@ -80,15 +80,20 @@ def test_every_row_reaches_its_own_image(demo_server: str) -> None:
         page.goto(f"{demo_server}/album/{ALBUM_ID}")
         page.wait_for_selector("#album-artwork .art-row")
 
+        # Every button that SHOWS an image. The archive's "load" frame shares the
+        # class and opens nothing by design — it fetches — so it names no target.
         targets = [
-            b.get_attribute("popovertarget")
+            t
             for b in page.locator("#album-artwork button.art-row__art").all()
+            if (t := b.get_attribute("popovertarget"))
         ]
-        # The tracks' image and the folder cover — one button each. The folder
-        # cover is no longer drawn a second time per row it would replace (#406).
-        assert len(targets) == 2, "expected the tracks' image and the folder cover"
+        # Two images on this album — the tracks' and the folder cover's — however
+        # many places each is drawn: the tracks' image is also what fills the
+        # gap, on the After Apply side. Counting buttons rather than images went
+        # stale the moment an image could appear twice.
+        assert len(set(targets)) == 2, "expected the tracks' image and the folder cover"
 
-        for target in targets:
+        for target in set(targets):
             assert page.locator(f"#{target}").count() == 1, f"{target} is not a single element"
 
         browser.close()

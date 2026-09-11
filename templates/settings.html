@@ -91,16 +91,6 @@
         </label>
 
         <label class="block">
-            <span class="block text-xs font-bold text-ink mb-1">Cover art size</span>
-            <select name="cover_art_size"
-                    class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-                {% for s in ['250', '500', '1200', 'original'] %}
-                <option value="{{ s }}" {{ 'selected' if s == cfg.cover_art.size }}>{{ s }}</option>
-                {% endfor %}
-            </select>
-        </label>
-
-        <label class="block">
             <span class="block text-xs font-bold text-ink mb-1">MusicBrainz user agent</span>
             <input type="text" name="user_agent" required
                    value="{{ cfg.musicbrainz.user_agent }}"

@@ -13,18 +13,27 @@ showing it only as an incoming value made a file already on disk read as
 something arriving from outside, and left the reader asking which of the two
 images was about to be replaced.
 
-Each row also says what a re-tag would do to it — the decision `tagger._prepare`
-already makes and used to keep to itself, reached here through the same
-predicate so the page and the button cannot disagree. Rows where nothing is
+Each row also says what applying the artwork would do to it — read off the
+`ArtworkPlan` below, which is the same object the writer executes (#469). The
+page used to reach that verdict with its own copy of the size rule, and the two
+copies drifted: an unmeasurable folder cover made the page promise to replace
+the tracks while the writer filled their gaps instead. Rows where nothing is
 written say nothing at all: agreement is silence everywhere else on this page,
 and a column of "left as is" on a 37-image box set is 37 boxes of noise.
+
+Display and actionability are separate facts (#467). A row exists because the
+album HAS something to show — an image, a gap, an absent folder cover that is
+about to be created — and its right-hand side exists because the plan names a
+write there. Neither is derived from the other.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+import hashlib
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Protocol
 
 from .formats import TrackTags
@@ -98,8 +107,285 @@ def beats(mine: Size | None, theirs: Size | None) -> bool:
     return mine.width > theirs.width and mine.height > theirs.height
 
 
+# ---------------------------------------------------------------------------
+# The plan: what an album's images become, decided once (#418, #469)
+# ---------------------------------------------------------------------------
+
+
+class Operation(StrEnum):
+    """What one artwork write does to its target (#468).
+
+    Not a rank beside the tag levels. A tag change is described by how far it
+    reaches; an image is described by whether the place it lands already held
+    one — which is also what decides whether there is anything for an Undo to
+    put back.
+    """
+
+    #: The target carried no image: an artless track, or a folder cover that
+    #: does not exist yet.
+    ADDITION = "addition"
+    #: The target carried a different image, which this write overwrites.
+    REPLACEMENT = "replacement"
+
+
+class Source(StrEnum):
+    """Where the image a plan writes comes from — the three candidates an album
+    can offer (#276, #410)."""
+
+    #: The `cover.*` beside the tracks.
+    FOLDER = "folder"
+    #: The one image the tracks themselves carry.
+    ALBUM = "album"
+    #: The Cover Art Archive's front cover for the release, from the local cache.
+    ARCHIVE = "archive"
+
+
+class Scope(StrEnum):
+    """Which of a plan's changes an action may make.
+
+    The plan says everything the winning image implies; an action takes the
+    part of it that action is allowed to write. A tagging fills what is empty
+    and replaces nothing (#418); the artwork action does both.
+    """
+
+    ADDITIONS = "additions"
+    ALL = "all"
+
+
+@dataclass(frozen=True)
+class Change:
+    """One write the plan makes: a target, what it holds now, what it will hold.
+
+    `before` is None where the target holds no image at all — an artless track,
+    or a folder cover that does not exist. Digests on both sides, because that
+    is what the History records and the artwork store key on.
+    """
+
+    target: Path
+    before: str | None
+    after: str
+    folder_cover: bool = False
+
+    @property
+    def operation(self) -> Operation:
+        return Operation.ADDITION if self.before is None else Operation.REPLACEMENT
+
+
+@dataclass(frozen=True)
+class ArtworkPlan:
+    """What should happen to an album's images, as the writes that do it.
+
+    The single answer, consumed by the album page, the tagging, and the artwork
+    action alike (#469). Each of those used to reach its own verdict — the page
+    through a copy of the size rule, the tagging and the button through
+    `tagger.decide_artwork`, and the folder cover's creation through
+    `cover_art.ensure_cover` before any of them had looked — and a page
+    describing one decision while the writer made another is the bug class
+    this replaces.
+
+    `changes` is everything the winner implies. An action narrows it with
+    `scoped`; nothing narrows it by deciding again.
+    """
+
+    album_dir: Path
+    #: Every readable track's current image as a digest, or None where it has
+    #: none. Unreadable tracks are absent: a file nobody could open carries no
+    #: evidence, and is never a target.
+    before: Mapping[Path, str | None] = field(default_factory=dict)
+    #: The image being written, and where it comes from. None when nothing is.
+    winner: EmbeddedArt | None = None
+    source: Source | None = None
+    changes: tuple[Change, ...] = ()
+    #: The tracks carry differing images and are being left alone — a decision
+    #: worth reporting rather than a silent no-op (#260).
+    preserves_per_track_art: bool = False
+
+    def scoped(self, scope: Scope) -> tuple[Change, ...]:
+        """The changes `scope` permits."""
+        if scope is Scope.ALL:
+            return self.changes
+        return tuple(c for c in self.changes if c.operation is Operation.ADDITION)
+
+    def track_targets(self, scope: Scope) -> frozenset[Path]:
+        """The tracks `scope` writes to."""
+        return frozenset(c.target for c in self.scoped(scope) if not c.folder_cover)
+
+    def cover_change(self, scope: Scope) -> Change | None:
+        """The folder cover's write under `scope`, if it has one."""
+        return next((c for c in self.scoped(scope) if c.folder_cover), None)
+
+    def operation(self, scope: Scope) -> Operation | None:
+        """The summary of what `scope` would do: Replacement if anything is
+        overwritten, Addition if everything written lands where nothing was,
+        None if nothing is written. A mixed plan summarises as Replacement —
+        that is the half a reader deciding whether they mind needs to hear."""
+        changes = self.scoped(scope)
+        if not changes:
+            return None
+        if any(c.operation is Operation.REPLACEMENT for c in changes):
+            return Operation.REPLACEMENT
+        return Operation.ADDITION
+
+    def fingerprint(self, scope: Scope) -> str:
+        """A digest of exactly what `scope` would write, target by target.
+
+        What a reviewed page carries back to the server: the action rebuilds
+        its plan from disk and proceeds only if this matches, so an image edited
+        since the page was drawn, or a candidate that changed, cannot be written
+        under a preview that described something else.
+
+        Names are relative to the album, so the page — which reads through the
+        album — and the tagger — which reads through its file list — spell the
+        same target the same way.
+        """
+        lines = sorted(
+            f"{self._name(c.target)}\t{c.before or ''}\t{c.after}" for c in self.scoped(scope)
+        )
+        return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+
+    def _name(self, path: Path) -> str:
+        try:
+            return path.relative_to(self.album_dir).as_posix()
+        except ValueError:
+            return path.name
+
+
+def cover_name_for(mime: str) -> str:
+    """The name a created folder cover takes: `cover.png` for a PNG, else
+    `cover.jpg` — the two names `cover_art.cached_cover` looks for."""
+    return "cover.png" if "png" in mime.lower() else "cover.jpg"
+
+
+def plan(
+    album_dir: Path,
+    tracks: Sequence[tuple[Path, EmbeddedArt | None]],
+    cover: FolderCover | None,
+    archive: EmbeddedArt | None = None,
+    *,
+    overwrite_art: bool = False,
+    cover_unreadable: bool = False,
+) -> ArtworkPlan:
+    """Which image wins, and every write it takes for it to be everywhere.
+
+    Pure: descriptions in, a plan out. The caller reads — the album page from
+    the tags it already has, the tagger from the files — and both reach the same
+    plan because both come through here.
+
+    THE LARGEST IMAGE WINS among the three an album can offer: what its tracks
+    carry, what its folder holds, and what the Cover Art Archive has cached
+    (#276, #410). Strictly larger on both axes (`beats`), so a tie goes to what
+    is already there and an unmeasurable challenger never displaces anything.
+    An image does beat NOTHING, though: an album with no artwork anywhere takes
+    whatever candidate exists.
+
+    `overwrite_art` opts out of the comparison: the user asked for the folder
+    cover to be embedded, not judged.
+
+    A missing folder cover is a target like any other, created from the winner
+    (#457). What it is created FROM is the size rule's answer rather than a
+    ladder of its own, so an album with a 3000px image in its tracks is no longer
+    given a 1200px `cover.jpg` it then offers to replace.
+
+    Per-track artwork is user data and nothing overwrites it. The one write
+    such an album can still receive is a folder cover it lacks, and only from
+    the archive — a compilation's first sleeve is not the album's cover.
+
+    `cover_unreadable` is a folder cover that exists and could not be read. The
+    plan is then empty: nothing can be decided about a file nobody saw, and a
+    plan that treated it as absent would create a second cover beside it.
+    """
+    before = {path: (art.digest if art is not None else None) for path, art in tracks}
+    if cover_unreadable:
+        return ArtworkPlan(album_dir=album_dir, before=before)
+
+    if overwrite_art:
+        if cover is None:
+            return ArtworkPlan(album_dir=album_dir, before=before)
+        return _plan_for(album_dir, before, cover, cover.image, Source.FOLDER)
+
+    if has_per_track_art(before.values()):
+        if cover is None and archive is not None:
+            return _plan_for(
+                album_dir, {}, None, archive, Source.ARCHIVE, before=before, preserves=True
+            )
+        return ArtworkPlan(album_dir=album_dir, before=before, preserves_per_track_art=True)
+
+    own = next((art for _, art in tracks if art is not None), None)
+    winner: EmbeddedArt | None = None
+    source: Source | None = None
+    if cover is not None:
+        winner, source = cover.image, Source.FOLDER
+    # With no folder cover the tracks' image is the incumbent, measurable or not
+    # — there is nothing for it to beat. Against a folder cover it wins unless
+    # the cover is strictly larger, which is where ties to the tracks come from
+    # (#397): `tagger` has always resolved it that way.
+    if own is not None and (
+        cover is None
+        or (
+            own.digest != cover.image.digest
+            and own.size is not None
+            and (cover.image.size is None or not beats(cover.image.size, own.size))
+        )
+    ):
+        winner, source = own, Source.ALBUM
+    if archive is not None and (winner is None or beats(archive.size, winner.size)):
+        winner, source = archive, Source.ARCHIVE
+    if winner is None or source is None:
+        return ArtworkPlan(album_dir=album_dir, before=before)
+    return _plan_for(album_dir, before, cover, winner, source)
+
+
+def _plan_for(
+    album_dir: Path,
+    targets: Mapping[Path, str | None],
+    cover: FolderCover | None,
+    winner: EmbeddedArt,
+    source: Source,
+    *,
+    before: Mapping[Path, str | None] | None = None,
+    preserves: bool = False,
+) -> ArtworkPlan:
+    """Every write that puts `winner` on `targets` and on the folder cover.
+
+    The folder file catches up only on a strict improvement: it is the one
+    write here the tracks cannot be used to undo, so a same-sized different
+    picture stays where it is.
+    """
+    changes = [
+        Change(target=path, before=digest, after=winner.digest)
+        for path, digest in targets.items()
+        if digest != winner.digest
+    ]
+    if cover is None:
+        changes.append(
+            Change(
+                target=album_dir / cover_name_for(winner.mime),
+                before=None,
+                after=winner.digest,
+                folder_cover=True,
+            )
+        )
+    elif cover.image.digest != winner.digest and beats(winner.size, cover.image.size):
+        changes.append(
+            Change(
+                target=cover.path or album_dir / cover.name,
+                before=cover.image.digest,
+                after=winner.digest,
+                folder_cover=True,
+            )
+        )
+    return ArtworkPlan(
+        album_dir=album_dir,
+        before=before if before is not None else targets,
+        winner=winner,
+        source=source,
+        changes=tuple(changes),
+        preserves_per_track_art=preserves,
+    )
+
+
 class Outcome(StrEnum):
-    """What a re-tag would do to one row's image.
+    """What applying the artwork would do to one row's image.
 
     Only the first two reach the page. The other two are the two ways of writing
     nothing, kept apart because they are different facts — one is a protection,
@@ -107,11 +393,14 @@ class Outcome(StrEnum):
     deserves the real answer.
     """
 
-    #: This image is replaced by the folder cover.
+    #: This image is replaced by the winner.
     REPLACED = "replaced"
-    #: These tracks have no image; the folder cover fills the gap.
+    #: These tracks have no image, or the folder cover does not exist; the
+    #: winner fills the gap.
     FILLED = "filled"
-    #: Per-track artwork Harmonist preserves.
+    #: Left as it is though it is not the folder cover's image — per-track
+    #: artwork Harmonist preserves, an album image that won or tied against the
+    #: folder cover, or a gap with nothing to fill it.
     KEPT = "kept"
     #: Already the folder cover, or the folder cover itself. Nothing changes.
     SAME = "same"
@@ -138,6 +427,9 @@ class FolderCover:
 
     name: str
     image: EmbeddedArt
+    #: Where it is, when that is not simply `name` in the album's directory — a
+    #: caller holding the real path hands it over rather than have it rebuilt.
+    path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -215,6 +507,11 @@ class ArtRow:
     #: no tense — a reader cannot tell whether it already happened — and the
     #: picture on the right under a dated heading is what settles that.
     written_image: EmbeddedArt | None = None
+    #: The name of a folder cover that does not exist and that the plan will
+    #: create (#457). A row rather than a sentence, because an absent carrier
+    #: about to gain an image is a gap like an artless track, and a gap is the
+    #: finding.
+    creates: str | None = None
 
     @property
     def is_gap(self) -> bool:
@@ -222,7 +519,7 @@ class ArtRow:
 
     @property
     def writes(self) -> bool:
-        """Whether a re-tag would put something here. The rows that answer False
+        """Whether the plan puts something here. The rows that answer False
         render nothing on the right at all (#400)."""
         return self.outcome in (Outcome.REPLACED, Outcome.FILLED)
 
@@ -257,6 +554,8 @@ class ArtRow:
         A track with no number at all falls back to a count: an unnumbered file
         cannot be pointed at by position.
         """
+        if self.creates:
+            return self.creates
         n = len(self.tracks)
         carriers = []
         if n:
@@ -324,61 +623,48 @@ class ArtworkView:
     archive: EmbeddedArt | None = None
     #: A folder cover exists but could not be read. NOT the same as having none,
     #: and the difference is the whole right-hand column: with the cover unread
-    #: there is no saying what a re-tag would write, so the section states that
+    #: there is no saying what applying would write, so the section states that
     #: rather than showing outcomes derived from a file it never saw.
     cover_unreadable: bool = False
+    #: The plan the rows were read off — and the one the section's action
+    #: executes, checked by `fingerprint` (#469).
+    plan: ArtworkPlan | None = None
 
     @property
     def images(self) -> tuple[ArtRow, ...]:
-        """The rows that actually have an image — the gap row excluded."""
+        """The rows that actually have an image — the gap rows excluded."""
         return tuple(r for r in self.rows if r.image is not None)
 
     @property
-    def creates_cover_from(self) -> str | None:
-        """Where a RE-TAG would get the folder cover this album hasn't got,
-        named — or None when it has one, or when nothing could make one (#457).
+    def writes(self) -> bool:
+        """Whether applying the artwork would write anything at all.
 
-        Mirrors `cover_art.ensure_cover`'s ladder, which is the code that
-        actually writes the file: the archive first, then art already embedded
-        in the album's audio files.
-
-        Deliberately NOT a row, and deliberately not counted by `writes`. Rows
-        say what the album's images become and `writes` draws the Update artwork
-        button — and that button cannot do this. `tagger.update_artwork` only
-        ever promotes OVER an existing cover (it needs a `cover_path`); creating
-        one is `ensure_cover`, which only a tagging calls. A row would put a
-        button on the page promising a file it would not write, which is the one
-        thing this module exists to prevent.
-
-        A property rather than a field because `cover_unreadable` is applied by
-        `replace()` AFTER `summarise` returns. Computed here, the unreadable case
-        can never claim a cover is coming: there is a file on disk, `ensure_cover`
-        returns it without reading it, and nothing is written. As a field that
-        distinction depended on the caller setting two things in the right order.
+        Read off the plan, not off the rows: the rows are what the album HAS,
+        and a row existing says nothing about whether anything happens to it
+        (#467). The column headings and the action hang off this — with nothing
+        to write there is no second column to name, and "After Apply" over an
+        empty half promises a change that is not coming.
         """
-        if self.cover is not None or self.cover_unreadable:
-            return None
-        files = "the artwork already in your files"
-        tracks_have_art = bool(self.images)
-        if self.caa is None:
-            # Nobody has asked the archive. Both rungs are live, and the wording
-            # carries that rather than resolving it in either direction.
-            if tracks_have_art:
-                return f"the Cover Art Archive, or {files}"
-            return "the Cover Art Archive, if it has this release"
-        if self.caa.has_art:
-            return "the Cover Art Archive"
-        return files if tracks_have_art else None
+        return bool(self.plan and self.plan.changes)
 
     @property
-    def writes(self) -> bool:
-        """Whether a re-tag would write anything at all.
+    def operation(self) -> Operation | None:
+        """Addition or Replacement, for the action's own scope — what the
+        finding at the top of the page is labelled with (#468)."""
+        return self.plan.operation(Scope.ALL) if self.plan else None
 
-        The column headings hang off this: with nothing to write there is no
-        second column to name, and "After a re-tag" over an empty half promises a
-        change that is not coming.
-        """
-        return any(r.writes for r in self.rows)
+    @property
+    def fingerprint(self) -> str:
+        """What the section's action carries back, so it writes what was shown."""
+        return (self.plan or ArtworkPlan(album_dir=Path())).fingerprint(Scope.ALL)
+
+    @property
+    def tagging_fingerprint(self) -> str:
+        """The same, for the part of the plan a re-tag writes — the additions.
+
+        Carried by Re-tag from MB, so a folder cover created or a gap filled by
+        a tagging is one this page showed (#469)."""
+        return (self.plan or ArtworkPlan(album_dir=Path())).fingerprint(Scope.ADDITIONS)
 
     @property
     def distinct(self) -> tuple[tuple[EmbeddedArt, str], ...]:
@@ -403,6 +689,17 @@ class ArtworkView:
         # they wanted it for.
         if (archive_row := self.archive_row) is not None and archive_row.image is not None:
             out.setdefault(archive_row.image.digest, (archive_row.image, "Cover Art Archive"))
+        # …and the winner, wherever it came from. The incoming side of every
+        # written row points at it, and when it is the archive's it is on no
+        # row and no carrier, so nothing else above would emit its view.
+        if self.plan is not None and self.plan.winner is not None:
+            out.setdefault(
+                self.plan.winner.digest,
+                (
+                    self.plan.winner,
+                    _source_label(self.plan.source, self.cover) or "the incoming image",
+                ),
+            )
         return tuple(out.values())
 
     @property
@@ -432,6 +729,7 @@ class ArtworkView:
         # whether or not any track shares that image.
         improved = sum(len(r.tracks) for r in self.images if r.writes)
         cover_improved = any(r.writes and r.on_cover for r in self.images)
+        creates = next((r.creates for r in self.rows if r.creates and r.writes), None)
 
         carriers = []
         if improved:
@@ -444,6 +742,10 @@ class ArtworkView:
             parts.append(f"{filled} track{' is' if filled == 1 else 's are'} missing artwork")
         if carriers:
             parts.append(f"better artwork is available for {' and '.join(carriers)}")
+        if creates:
+            # Named, because it is a file that will appear in the user's folder
+            # and the one thing on this line they could not see coming (#457).
+            parts.append(f"there is no {creates}")
         if not parts:
             return "This album's artwork can be updated."
         # Capitalised from whichever clause leads, since either can.
@@ -549,51 +851,80 @@ def describe(image: EmbeddedArt) -> str:
     return describe_parts(image.size, image.mime, image.length)
 
 
+def _source_label(source: Source | None, cover: FolderCover | None) -> str | None:
+    """The winner, named the way a row names what it becomes.
+
+    By what it IS rather than by a filename, except where it is a file in this
+    album: the album's own image and the archive's are neither.
+    """
+    if source is Source.FOLDER:
+        return cover.name if cover is not None else "the folder cover"
+    if source is Source.ALBUM:
+        return "the album's own artwork"
+    if source is Source.ARCHIVE:
+        return "the Cover Art Archive"
+    return None
+
+
+def _name_in(path: Path, album_dir: Path) -> str:
+    """A track's name as the section shows it: relative to the album, or its
+    bare name when it sits outside the album's primary directory."""
+    try:
+        return path.relative_to(album_dir).as_posix()
+    except ValueError:
+        return path.name
+
+
 def summarise(
-    tracks: Sequence[tuple[str, TrackTags]],
+    album_dir: Path,
+    tracks: Sequence[tuple[Path, TrackTags]],
     cover: FolderCover | None,
     caa: CoverArtAnswer | None = None,
     archive: EmbeddedArt | None = None,
+    *,
+    cover_unreadable: bool = False,
 ) -> ArtworkView:
     """Everything the section shows, from tags already read and a folder cover.
 
-    `tracks` is `(file_name, tags)` in track order — the same shape the album
-    comparison takes, and taken in order for the same reason: the rows come out
-    in the order the album plays.
+    `tracks` is `(path, tags)` in track order — taken in order because the rows
+    come out in the order the album plays.
 
-    The outcomes mirror `tagger._prepare` exactly:
-
-    - no folder cover, or per-track artwork present → nothing is written, every
-      row is KEPT;
-    - otherwise the folder cover goes onto every track, so a row already carrying
-      it is SAME, a row carrying something else is REPLACED, and the row carrying
-      nothing is FILLED.
-
-    That third case is #397: an album that is uniform except for a hole in it has
-    one distinct image, so the preservation guard does not fire and the correct
-    images are rewritten to fill the gaps. The section states it plainly rather
-    than hiding it — see the issue for what the fix costs.
+    The rows are what the album HAS: one per distinct image, one for the tracks
+    carrying none, one for a folder cover that differs from them all, and one
+    for a folder cover that does not exist yet but is about to (#457). Which of
+    them change, and into what, is read off the `plan` built here from the same
+    descriptions — the plan the section's action then executes (#469). Nothing
+    below decides what wins; it only looks up what the plan decided.
     """
-    readable = [(name, t) for name, t in tracks if not t.unreadable]
-    by_digest: dict[str, list[TrackRef]] = {}
-    art_of: dict[str, EmbeddedArt] = {}
-    gap: list[TrackRef] = []
+    readable = [(path, t) for path, t in tracks if not t.unreadable]
+    the_plan = plan(
+        album_dir,
+        [(path, t.art) for path, t in readable],
+        cover,
+        archive,
+        cover_unreadable=cover_unreadable,
+    )
+    written = {c.target for c in the_plan.changes}
+    cover_change = the_plan.cover_change(Scope.ALL)
+    written_from = _source_label(the_plan.source, cover)
+    from_archive = the_plan.source is Source.ARCHIVE
 
-    for name, tags in readable:
+    by_digest: dict[str, list[tuple[Path, TrackRef]]] = {}
+    art_of: dict[str, EmbeddedArt] = {}
+    gap: list[tuple[Path, TrackRef]] = []
+    for path, tags in readable:
         ref = TrackRef(
-            name=name, track_num=tags.track_num, disc_num=tags.disc_num, title=tags.title
+            name=_name_in(path, album_dir),
+            track_num=tags.track_num,
+            disc_num=tags.disc_num,
+            title=tags.title,
         )
         if tags.art is None:
-            gap.append(ref)
+            gap.append((path, ref))
             continue
-        by_digest.setdefault(tags.art.digest, []).append(ref)
+        by_digest.setdefault(tags.art.digest, []).append((path, ref))
         art_of.setdefault(tags.art.digest, tags.art)
 
-    # Per-track artwork is user data, and nothing overwrites it — not the folder
-    # cover, not the archive, however large. Its own name because it is its own
-    # rule: `preserved` below adds "and there is nothing to write anyway", which
-    # is a different fact and used to be conflated with this one (#442).
-    per_track = has_per_track_art(by_digest)
     # More than one disc is a property of the ALBUM, not of a row: a box set
     # whose images each sit on one disc still needs every label to name its disc,
     # or two discs' track 1 read as one repeated row (#400).
@@ -601,149 +932,58 @@ def summarise(
 
     def row(
         image: EmbeddedArt | None,
-        refs: tuple[TrackRef, ...],
-        outcome: Outcome,
+        carriers: Sequence[tuple[Path, TrackRef]],
+        writes: bool,
+        *,
         on_cover: str | None = None,
-        written_from: str | None = None,
-        written_image: EmbeddedArt | None = None,
+        creates: str | None = None,
     ) -> ArtRow:
+        if writes:
+            outcome = Outcome.FILLED if image is None else Outcome.REPLACED
+        else:
+            outcome = Outcome.SAME if on_cover is not None else Outcome.KEPT
         return ArtRow(
             image=image,
-            tracks=refs,
+            tracks=tuple(ref for _, ref in carriers),
             outcome=outcome,
             total_tracks=len(tracks),
             multi_disc=multi_disc,
             on_cover=on_cover,
-            written_from=written_from,
-            written_image=written_image,
-            from_archive=written_image is not None and archive_wins,
+            written_from=written_from if writes else None,
+            written_image=the_plan.winner if writes else None,
+            from_archive=writes and from_archive,
+            creates=creates,
         )
 
-    def carried_by_cover(digest: str) -> str | None:
-        return cover.name if cover is not None and cover.image.digest == digest else None
+    def cover_written(digest: str) -> bool:
+        return cover_change is not None and cover_change.before == digest
 
-    def _unchanged(digest: str) -> bool:
-        """Whether this row's tracks keep what they have — preserved per-track
-        art, an album image that already won, or art that already IS the
-        winner."""
-        if preserved or keep_ours:
-            return True
-        return bool(carried_by_cover(digest)) and not archive_wins
-
-    # The album's own image may be the better one, in which case the folder file
-    # is what changes and the tracks are left alone (#410). Asked through the
-    # same `beats` the tagger asks, so the page cannot promise a different
-    # outcome from the one the button produces.
-    album_image = next(iter(art_of.values())) if len(art_of) == 1 else None
-    ours = album_image.size if album_image else None
-    theirs = cover.image.size if cover else None
-
-    # The best image the album ALREADY has, from either carrier — what a
-    # candidate from outside has to beat. An image that cannot be measured
-    # loses, exactly as `beats` reads a None.
-    #
-    # A folder cover that cannot be measured is the exception, and makes the
-    # answer unknown rather than "the tracks' one": something is there, its size
-    # is not, and leaving it alone is the safe reading of that.
-    album_best = (
-        None
-        if cover is not None and theirs is None
-        else ours
-        if theirs is None or (ours is not None and beats(ours, theirs))
-        else theirs
-    )
-
-    # The archive is the third candidate, and it displaces both when it beats
-    # them (#276). It needs NO FOLDER COVER to be one: it is an image from
-    # outside the album, and the folder file is not what carries it — requiring
-    # one ruled the archive out on exactly the albums #276 said the wins were in,
-    # art embedded in the files and no cover.jpg beside them (#442).
-    #
-    # Asked in the same order and by the same `beats` as `tagger.decide_artwork`,
-    # because this is the page saying what that code will do.
-    archive_wins = not per_track and archive is not None and beats(archive.size, album_best)
-
-    # Nothing is written when the album's own artwork is protected, or when
-    # there is nothing to write from: the folder cover normally, and the archive
-    # when it has beaten everything.
-    preserved = per_track or (cover is None and not archive_wins)
-
-    # What goes on the tracks: the folder cover has to actually be better to be
-    # written over what the album already carries, and both sizes have to be
-    # readable for that to be established at all (#397, #410).
-    keep_ours = (
-        not preserved
-        and album_image is not None
-        and ours is not None
-        and theirs is not None
-        and not beats(theirs, ours)
-    )
-    # …and the folder file catches up only when ours is strictly better (#410).
-    promote = keep_ours and beats(ours, theirs)
-    #: What fills a track carrying nothing — the winner, whichever that is.
-    fills_gaps = "the album's own artwork" if keep_ours else (cover.name if cover else None)
-    #: …and the image those words name.
-    gap_image = album_image if keep_ours else (cover.image if cover else None)
-
-    if archive_wins:
-        assert archive is not None  # narrowed by `archive_wins`
-        keep_ours = False
-        promote = archive.digest != cover.image.digest if cover else False
-        fills_gaps = "the Cover Art Archive"
-        gap_image = archive
-
-    rows = [
-        row(
-            art_of[digest],
-            tuple(refs),
-            Outcome.KEPT
-            if preserved or keep_ours
-            else Outcome.SAME
-            if carried_by_cover(digest) and not archive_wins
-            else Outcome.REPLACED,
-            on_cover=carried_by_cover(digest),
-            # What this row would become, named and shown. `fills_gaps` is the
-            # winner whatever it turned out to be — the folder cover, or the
-            # archive when it beat everything — so the row cannot name one and
-            # be written the other.
-            written_from=None if _unchanged(digest) else fills_gaps,
-            written_image=None if _unchanged(digest) else gap_image,
+    rows = []
+    for digest, carriers in by_digest.items():
+        on_cover = cover.name if cover is not None and cover.image.digest == digest else None
+        rows.append(
+            row(
+                art_of[digest],
+                carriers,
+                any(path in written for path, _ in carriers)
+                or (on_cover is not None and cover_written(digest)),
+                on_cover=on_cover,
+            )
         )
-        for digest, refs in by_digest.items()
-    ]
     # The folder cover is a carrier too, and gets a row of its own when no track
     # already accounts for it (#400) — the album HAS this image, whatever the
-    # tracks carry, and a reader deciding what a re-tag would do needs to see it
+    # tracks carry, and a reader deciding what applying would do needs to see it
     # beside the rest rather than only as something arriving from outside.
     if cover is not None and cover.image.digest not in by_digest:
-        rows.append(
-            row(
-                cover.image,
-                (),
-                Outcome.REPLACED if promote else Outcome.SAME,
-                on_cover=cover.name,
-                # Named as the thing it is rather than by a filename: what
-                # replaces the folder cover is the album's own image or the
-                # archive's, neither of which is a file in this album.
-                written_from=fills_gaps if promote else None,
-                written_image=gap_image if promote else None,
-            )
-        )
-    # A gap is filled whenever there is anything to fill it with — including
-    # when the tracks' own image is the one being kept (#397). "Left alone" is
-    # the right answer for a track that has art; for one that has none it just
-    # means left empty.
+        rows.append(row(cover.image, (), cover_written(cover.image.digest), on_cover=cover.name))
+    # …and when there is no folder cover and the plan makes one, that is a row
+    # too: an empty frame on the left, the image it will hold on the right. It
+    # was a sentence while nothing but a tagging could create it, because a row
+    # counts toward the section's action and that action could not (#457).
+    if cover is None and cover_change is not None:
+        rows.append(row(None, (), True, creates=cover_change.target.name))
     if gap:
-        fillable = not preserved and fills_gaps is not None
-        rows.append(
-            row(
-                None,
-                tuple(gap),
-                Outcome.FILLED if fillable else Outcome.KEPT,
-                written_from=fills_gaps if fillable else None,
-                written_image=gap_image if fillable else None,
-            )
-        )
+        rows.append(row(None, gap, any(path in written for path, _ in gap)))
 
     return ArtworkView(
         rows=tuple(rows),
@@ -751,6 +991,8 @@ def summarise(
         total_tracks=len(tracks),
         unreadable=len(tracks) - len(readable),
         caa=caa,
-        archive_wins=archive_wins,
+        archive_wins=from_archive,
         archive=archive,
+        cover_unreadable=cover_unreadable,
+        plan=the_plan,
     )

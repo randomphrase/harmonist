@@ -366,7 +366,7 @@ reaches — *Enrichment* for a catalogue number MusicBrainz has filled in,
 *Identity* for a release that has been merged into another. **Re-tag from MB**
 sits on that line, at the end of it, because it is the answer to that sentence.
 Artwork that could be better is a second finding in the same section, with
-**Update artwork** on its own line in the same way. At the foot of the section,
+**Apply artwork** on its own line in the same way. At the foot of the section,
 quieter than either button, are the two other answers: a checkbox that waits for
 an edit to land — *Ignore until MusicBrainz changes* — and a link to MusicBrainz
 to make one. An album where everything matches gets no section — the **Checked**
@@ -446,26 +446,44 @@ Some things it shows that are worth recognising:
 
 ### What would change, and the button that changes it
 
-Where a re-tag or an artwork update would alter a row, the section shows what it
-would become on the right, under **After a re-tag** — the picture itself, not a
-description of it.
+Where applying the artwork would alter a row, the section shows what it would
+become on the right, under **After Apply** — the picture itself, not a
+description of it. An album with no `cover.jpg` gets a row for the file it
+hasn't got: an empty frame, and beside it the image it would be created from.
 
 **The largest image wins.** Between what your tracks carry, what `cover.jpg`
 holds, and what the Cover Art Archive has, the one with the most pixels is the
-one Harmonist writes. A same-sized different picture is not an improvement and
-is left alone.
+one Harmonist writes — including into a `cover.jpg` it creates. A same-sized
+different picture is not an improvement and is left alone. When an album has no
+artwork at all, the archive's image is downloaded as soon as the page asks about
+it, so the preview can show the picture it would add.
 
-Two separate actions, deliberately:
+Each artwork change is labelled by what it does:
 
-- **A re-tag fills gaps and never replaces an image you already have.** A track
-  carrying nothing gets the album's cover; a track that has one keeps it. An
-  album with no `cover.jpg` at all gets one written beside its tracks, and the
-  section says so beforehand, naming where that image would come from.
-- **Update artwork**, in this section, is what replaces. It writes the winning
-  image to every track and to the folder cover, and touches no tags at all.
+- **Addition** — the image lands where there was none: a track without
+  artwork, or a folder cover the album hasn't got.
+- **Replacement** — it overwrites an image you already have. What is replaced
+  is kept first, so it can be undone from History. A change that does both is
+  labelled a Replacement.
 
-They are separate because replacing artwork is the change you are most likely to
-want to undo on its own — and it has always had its own Undo in History.
+Two actions write artwork, deliberately:
+
+- **A re-tag makes additions only.** A track carrying nothing gets the album's
+  best image and a missing `cover.jpg` is created beside the tracks; a track
+  that has an image keeps it.
+- **Apply artwork**, in this section, makes additions and replacements alike,
+  and touches no tags at all. It asks first only when it would replace
+  something.
+
+Both write only what the page showed. If the album's artwork changed after the
+page was drawn — an image edited elsewhere, or the archive's answer arriving
+late — **Apply artwork** writes nothing and redraws the section, and a re-tag
+writes its tags but no artwork, saying why in the album's History.
+
+Replacing artwork is the change you are most likely to want to undo on its own,
+which is why it has its own Undo in History. Undoing an addition — taking an
+image back off a track that had none, or removing a `cover.jpg` Harmonist
+created — is not offered yet.
 
 ### Asking the Cover Art Archive
 
@@ -504,7 +522,7 @@ It changes nothing about what a re-tag would write; it is there so you can see
 what you are turning down.
 
 When the archive's cover *is* larger, it is fetched without being asked, shown
-beside your own with the MusicBrainz hexagon, and **Update artwork** will write
+beside your own with the MusicBrainz hexagon, and **Apply artwork** will write
 it.
 
 ### Getting artwork back

@@ -86,7 +86,6 @@ user_agent = "Harmonist/1.0 ( you@example.com )"
 cache_ttl_seconds = 3600          # re-serve a fetched release for this long
 
 [cover_art]
-size = "original"                 # what to fetch from the Cover Art Archive
 cache_ttl_seconds = 604800        # re-serve a stored archive answer for a week
 
 [library]

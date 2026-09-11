@@ -1239,25 +1239,28 @@ def search_releases(artist: str, title: str, limit: int = 10) -> list[dict[str, 
     return results
 
 
-def ensure_cover(
-    album_dir: Path,
-    release_mbid: str = "",
+def front_image(
+    release_mbid: str,
     release_group_mbid: str | None = None,
-    size: str = "original",
     *,
     client: Any = None,
-) -> Path | None:
-    """Demo cover fetcher — returns existing cover.jpg if present, else copies a placeholder."""
-    for name in ("cover.jpg", "cover.png"):
-        p = album_dir / name
-        if p.exists():
-            return p
+) -> Any:
+    """Demo answer from the archive for a tagging: a placeholder from the demo
+    assets, never a request.
+
+    Kept in the real candidate cache like the live answer, so the album page
+    afterwards shows the image a tagging would have weighed. Returns a
+    `cover_art.Front` (typed `Any` so this module need not import `cover_art`
+    outside `install`, as for every other patch here).
+    """
+    from . import cover_art
+
     placeholder = ASSETS_DIR / "cover-7.jpg"  # generic green default
-    if placeholder.exists():
-        target = album_dir / "cover.jpg"
-        shutil.copy(placeholder, target)
-        return target
-    return None
+    if not placeholder.exists():
+        return None
+    data = placeholder.read_bytes()
+    cover_art.cache_image(release_mbid, data, "image/jpeg")
+    return cover_art.Front(data=data, mime="image/jpeg")
 
 
 def check_front(
@@ -1337,7 +1340,7 @@ def install() -> None:
     mb_lookup.lookup_by_bandcamp_url = lookup_by_bandcamp_url
     mb_lookup.browse_release_group_releases = browse_release_group_releases
     mb_search.search_releases = search_releases
-    cover_art.ensure_cover = ensure_cover
+    cover_art.front_image = front_image
     cover_art.check_front = check_front
     cover_art.fetch_image = fetch_image
     log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art")

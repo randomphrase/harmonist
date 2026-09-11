@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Any, NamedTuple, Protocol, runtime_checkable
 
@@ -26,6 +27,7 @@ from . import (
     compare,
     cover_art,
     formats,
+    id_registry,
     images,
     mb_lookup,
     tag_history,
@@ -122,6 +124,8 @@ class Tagger(Protocol):
         incomplete: bool = False,
         overwrite_art: bool = False,
         files: list[Path] | None = None,
+        archive: cover_art.Front | None = None,
+        expected_artwork: str | None = None,
     ) -> int: ...
 
 
@@ -138,6 +142,8 @@ class PicardCompatibleTagger:
         incomplete: bool = False,
         overwrite_art: bool = False,
         files: list[Path] | None = None,
+        archive: cover_art.Front | None = None,
+        expected_artwork: str | None = None,
     ) -> int:
         return tag_album(
             album_dir,
@@ -146,6 +152,8 @@ class PicardCompatibleTagger:
             incomplete=incomplete,
             overwrite_art=overwrite_art,
             files=files,
+            archive=archive,
+            expected_artwork=expected_artwork,
         )
 
 
@@ -157,6 +165,8 @@ def tag_album(
     incomplete: bool = False,
     overwrite_art: bool = False,
     files: list[Path] | None = None,
+    archive: cover_art.Front | None = None,
+    expected_artwork: str | None = None,
 ) -> int:
     """Tag every supported audio file in `album_dir`.
 
@@ -185,6 +195,17 @@ def tag_album(
     `overwrite_art=True` embeds the album cover even when the tracks carry
     differing per-track artwork (which is otherwise preserved) — the user's
     explicit "replace the artwork" override.
+
+    Artwork is the ADDITIONS of the album's artwork plan (#418, #469): gaps
+    filled and a missing folder cover created, from whichever image the plan
+    says wins. `archive` is the Cover Art Archive's image when the caller has
+    just fetched it; otherwise the local cache is read.
+
+    `expected_artwork` is the fingerprint of the additions a page showed the
+    user. When the plan built here no longer matches it — an image edited
+    since, a candidate that arrived after the page was drawn — the album is
+    tagged and NO artwork is written, and the album's History says so. Writing
+    an image the page never showed would be the confident surprise #457 was.
     """
     prep = _prepare(
         album_dir,
@@ -193,6 +214,8 @@ def tag_album(
         incomplete=incomplete,
         overwrite_art=overwrite_art,
         files=files,
+        archive=archive,
+        expected_artwork=expected_artwork,
     )
     # Read before the loop, and before anything can move it: tagging drops a
     # sidecar's `temp_uid` for the MBID afterwards, which is why `album_history`
@@ -217,25 +240,25 @@ def tag_album(
         art="embedded" if prep.cover is not None else "preserved",
         mode="incomplete" if incomplete else "full",
     )
-    if prep.art_after is not None:
-        _keep_doomed_art(prep.art_before, prep.art_after)
+    if prep.art_withheld:
+        # Attributed, so it reaches the album's History and the feed: the user
+        # pressed a button having looked at a preview, and is owed the reason
+        # the artwork half of it did not happen.
+        log.warning(
+            "the album's artwork changed after the page showed it — tagged without "
+            "writing any artwork. Review the Artwork section and apply it from there.",
+            extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
+        )
+    if prep.cover is not None and prep.art_after is not None:
+        # Only this tagging's own targets: an image the plan leaves alone is not
+        # being destroyed and has no business being backed up.
+        _keep_doomed_art({p: prep.art.before.get(p) for p in prep.art_targets}, prep.art_after)
 
-    # The album's own image is the better one, so the folder file catches up
-    # rather than the tracks being dragged down to it (#410). Recorded as a
-    # change to `cover.jpg` in the same shape a tagged file's artwork change
-    # takes, which is what puts an Undo on it: `tag_history.artwork_replaced`
-    # reads that pair, and `restore_artwork` writes it back.
-    if prep.promote_cover is not None and cover_path is not None:
-        promoted = _promote_album_image(album_dir, cover_path, prep.promote_cover, album_id)
-        if promoted is not None:
-            was, now = promoted
-            event_id = audit.record(
-                "tag.track", album_id=album_id, album=album_dir, file=cover_path.name
-            )
-            if event_id is not None:
-                activity_store.record_tag_changes(
-                    event_id, file=cover_path.name, changes={owned.ARTWORK: [was, now]}
-                )
+    # The folder cover this tagging creates, when the album has none (#457) —
+    # written from the plan like every other image here, where it used to be
+    # fetched into the folder before the tagging had decided anything.
+    if prep.cover is not None and prep.cover_change is not None:
+        _write_folder_cover(album_dir, prep.cover_change, prep.cover, prep.art.source, album_id)
 
     wrote_something = False
     # How this album's records name its files — built once from the files the
@@ -253,8 +276,8 @@ def tag_album(
             tagset,
             before,
             file_path,
-            prep.art_before,
-            images.digest(incoming) if incoming is not None else None,
+            prep.art.before,
+            prep.art_after if incoming is not None else None,
             prep.accepted_album_title,
             prep.accepted_countries,
         )
@@ -286,7 +309,7 @@ def tag_album(
         if event_id is not None:
             _record_changes(event_id, naming, file_path, tagset, changes)
 
-    if prep.preserves_per_track_art and wrote_something:
+    if prep.art.preserves_per_track_art and wrote_something:
         # Attributed to the album (#260). This is a decision Harmonist made on
         # the user's behalf about their files, so it has to reach that album's
         # own History — and the feed's log mirror drops any record that doesn't
@@ -363,13 +386,19 @@ def plan_album(
             tagset,
             formats.read_owned(file_path),
             file_path,
-            prep.art_before,
-            prep.art_after,
+            prep.art.before,
+            # Only where the tagging would really write it — the same targets
+            # `tag_album` hands `write_tags`. Every file differing from the
+            # winner used to be reported here, including the ones a tagging
+            # leaves alone since #418.
+            prep.art.winner.digest
+            if prep.art.winner is not None and file_path in prep.art_targets
+            else None,
             prep.accepted_album_title,
             prep.accepted_countries,
         ):
             changes[file_path] = file_changes
-    return AlbumPlan(changes=changes, preserves_per_track_art=prep.preserves_per_track_art)
+    return AlbumPlan(changes=changes, preserves_per_track_art=prep.art.preserves_per_track_art)
 
 
 @dataclass(frozen=True)
@@ -490,11 +519,14 @@ class _Prepared:
 
     files: list[Path]
     pairs: list[tuple[Path, _FlatTrack]]
-    #: The cover to embed, or None to leave each file's own art alone.
+    #: The album's artwork plan, whole. What this tagging writes of it is
+    #: `art_targets` and `cover_change`.
+    art: artwork.ArtworkPlan
+    #: The winning image's bytes, loaded only when this tagging writes it —
+    #: None to leave every file's own art alone.
     cover: bytes | None
-    art_before: dict[Path, str | None]
+    #: …and its digest, for the per-file records.
     art_after: str | None
-    preserves_per_track_art: bool
     media_total: int
     #: The one other album title that counts as already correct — Picard's
     #: disambiguated spelling (#283). Album-constant, since every file's TagSet
@@ -507,85 +539,40 @@ class _Prepared:
     #: not MusicBrainz's scalar `country` and is not stale either. Album-constant
     #: for the reason above.
     accepted_countries: frozenset[str]
-    #: The image the folder cover should become, when something beats it — the
-    #: album's own artwork (#410) or the Cover Art Archive's (#276). None when
-    #: the folder file already holds the winner, which is the common case.
-    #: Bytes rather than a source, because the winner may come from the archive
-    #: cache rather than from a track.
-    promote_cover: bytes | None = None
     #: The files this TAGGING may write `cover` to — the ones carrying nothing,
     #: or every file under `overwrite_art` (#418). Everything else keeps the
     #: image it has; improving those is the artwork action's job.
     art_targets: frozenset[Path] = frozenset()
-
-
-@dataclass(frozen=True)
-class ArtworkPlan:
-    """What should happen to an album's images, decided once (#418).
-
-    Shared by the two paths that act on artwork so they cannot reach different
-    verdicts: a tagging, which fills gaps and touches nothing else, and the
-    artwork action, which replaces. Splitting the decision out is what lets the
-    second exist — `_prepare` also pairs files to tracks and enforces the count
-    guard, neither of which an artwork change has any business requiring.
-    """
-
-    #: Every file's current embedded image as a digest, or None where it has
-    #: none. The gaps are the None entries.
-    before: dict[Path, str | None]
-    #: The image that ought to be on every track, or None when nothing should be
-    #: written at all — per-track artwork worth preserving, or an album with
-    #: nothing outside its tracks to consider (no folder cover and no cached
-    #: archive image). An album with no folder cover DOES still have a winner
-    #: when it has one image of its own: it is the incumbent the archive has to
-    #: beat, and what a tagging fills that album's gaps from (#442).
-    winner: bytes | None
-    #: The image the folder cover should become, when something beats it.
-    promote_cover: bytes | None = None
-    #: Whether per-track artwork is being preserved, which is a decision worth
-    #: reporting rather than a silent no-op.
-    preserves_per_track_art: bool = False
-
-    @property
-    def digest(self) -> str | None:
-        """The winner's content address, or None when nothing would be written."""
-        return images.digest(self.winner) if self.winner is not None else None
-
-    def gaps(self) -> list[Path]:
-        """The files carrying no image at all — what a TAGGING may fill."""
-        return [path for path, digest in self.before.items() if digest is None]
-
-    def replacements(self) -> list[Path]:
-        """The files carrying a DIFFERENT image from the winner — what only the
-        artwork action may overwrite (#418)."""
-        winner = self.digest
-        if winner is None:
-            return []
-        return [
-            path for path, digest in self.before.items() if digest is not None and digest != winner
-        ]
+    #: The folder cover this tagging creates, when the album has none (#457).
+    cover_change: artwork.Change | None = None
+    #: The page's preview no longer matches the plan, so this tagging writes no
+    #: artwork at all (#469).
+    art_withheld: bool = False
 
 
 def decide_artwork(
-    files: list[Path],
-    release: Release,
+    album_dir: Path,
+    files: Sequence[Path],
     cover_path: Path | None,
     *,
+    archive: cover_art.Front | None = None,
     overwrite_art: bool = False,
     consider: bool = True,
-) -> ArtworkPlan:
-    """Which image wins, and what would have to change for it to be everywhere.
+) -> artwork.ArtworkPlan:
+    """The album's artwork plan, read from its files (#418, #469).
 
-    THE LARGEST IMAGE WINS, among the three an album can offer: what its tracks
-    carry, what its folder holds, and what the Cover Art Archive has if anyone
-    has asked (#276, #410). A re-tag used to embed the folder cover regardless,
-    which on a real library shrank one album in twelve — 3000px replaced by
-    2000px, in one case 5700px by 2000px.
+    The reading half of `artwork.plan`, which decides. Every track's image and
+    the folder cover are described through the same `EmbeddedArt.of` the album
+    page's tag read uses, so the page and this reach the same plan from the
+    same disk — the property a reviewed page's fingerprint relies on.
 
-    `overwrite_art` opts out of the comparison entirely: a user asking for the
-    folder cover to be embedded is not asking for it to be judged.
+    THE LARGEST IMAGE WINS — see `artwork.plan`. A re-tag used to embed the
+    folder cover regardless, which on a real library shrank one album in twelve:
+    3000px replaced by 2000px, in one case 5700px by 2000px.
 
-    Reads files and the local caches, and nothing else. No network: `plan_album`
+    Reads files and nothing else. `archive` is the Cover Art Archive's image,
+    handed in by a caller that has it — from the cache, or fetched by the
+    tagging entry point before any of this starts. No network here: `plan_album`
     reaches this on the gardener's path, where a request per album is exactly
     what must not happen.
 
@@ -593,63 +580,24 @@ def decide_artwork(
     The gardener's flag is about TAGS, and it used to say so by passing
     `cover_path=None` — which was a proxy, not a statement, and stopped being
     true the moment the archive became a second source that needs no folder
-    cover (#442). A plan that was artwork-free by construction started carrying
-    an ARTWORK change, which `owned.ranked` raises on by design, and the album
-    page's own comparison became a 500 for any album whose archive cover
-    happened to be cached. Say the thing rather than implying it (#448).
+    cover (#442). Say the thing rather than implying it (#448).
     """
     if not consider:
-        return ArtworkPlan(before={}, winner=None)
-    cover = cover_path.read_bytes() if cover_path else None
-    # The archive's image, from the LOCAL CACHE only.
-    archive = _archive_candidate(release)
-    # Read what the tracks carry whenever ANYTHING could overwrite it. The read
-    # used to be skipped when there was no folder cover, which was safe only
-    # while the cover was the sole candidate: `before` is what the per-track-art
-    # guard below consults, so an album with no cover and an archive candidate
-    # would have been judged on an empty dict and its sleeves flattened (#442).
-    before = _art_digests(files) if (cover is not None or archive is not None) else {}
-
-    # DATA SAFETY: if the tracks carry DIFFERENT embedded art (a per-track-art
-    # album, e.g. a compilation), embedding one album cover would destroy those
-    # images. Preserve them — the folder cover.* is still written separately.
-    preserves = not overwrite_art and artwork.has_per_track_art(before.values())
-    if preserves:
-        return ArtworkPlan(before=before, winner=None, preserves_per_track_art=True)
-    if overwrite_art:
-        # Asking for the folder cover to be embedded is not asking for it to be
-        # judged — and with no cover to embed there is nothing to do.
-        return ArtworkPlan(before=before, winner=cover)
-    if cover is None and archive is None:
-        # Nothing from outside the tracks, so nothing can change.
-        return ArtworkPlan(before=before, winner=None)
-
-    folder_size = images.dimensions(cover) if cover is not None else None
-    own = _album_image(before)
-
-    # Ordered worst-first so each candidate has to genuinely beat the one before
-    # it to displace it — ties go to what is already there, because a same-sized
-    # different picture is not an improvement and is not worth overwriting a
-    # user's file for.
-    winner, winner_size = cover, folder_size
-    if own is not None:
-        _, mine = own
-        ours = images.dimensions(mine)
-        # With no folder cover the tracks' own image is the incumbent rather
-        # than a challenger — there is nothing for it to beat, and it is what
-        # the archive then has to beat.
-        if ours is not None and (folder_size is None or not artwork.beats(folder_size, ours)):
-            winner, winner_size = mine, ours
-    if archive is not None:
-        theirs = images.dimensions(archive)
-        if artwork.beats(theirs, winner_size):
-            winner, winner_size = archive, theirs
-
-    # The folder file catches up when the winner is not what it holds. That
-    # write is the one here that could not be undone from the tracks themselves,
-    # so it happens only on a strict improvement.
-    promote = winner if winner is not cover and artwork.beats(winner_size, folder_size) else None
-    return ArtworkPlan(before=before, winner=winner, promote_cover=promote)
+        return artwork.ArtworkPlan(album_dir=album_dir)
+    cover = None
+    if cover_path is not None:
+        cover = artwork.FolderCover(
+            name=cover_path.name,
+            image=formats.EmbeddedArt.of(cover_path.read_bytes(), _mime_for(cover_path)),
+            path=cover_path,
+        )
+    return artwork.plan(
+        album_dir,
+        [(f, _embedded_art(f)) for f in files],
+        cover,
+        formats.EmbeddedArt.of(archive.data, archive.mime) if archive is not None else None,
+        overwrite_art=overwrite_art,
+    )
 
 
 def _prepare(
@@ -661,6 +609,8 @@ def _prepare(
     overwrite_art: bool,
     files: list[Path] | None,
     artwork_in_scope: bool = True,
+    archive: cover_art.Front | None = None,
+    expected_artwork: str | None = None,
 ) -> _Prepared:
     """Decide what a tagging of this album would consist of, reading no tags.
 
@@ -704,46 +654,63 @@ def _prepare(
     # exists to avoid.
     pairs = _assign_files_to_tracks(files, flat_tracks)
 
-    cover = cover_path.read_bytes() if cover_path else None
-    # Only when there IS a cover to embed. With `cover=None` write_tags leaves
-    # the existing art alone, so nothing changes and there is nothing to record
-    # — reading every file's cover would be a wasted pass over the album, on the
-    # path where scanning is already the slow part (#44, #74). Guarding here
-    # rather than relying on the `and` below, which used to short-circuit this
-    # read and stopped doing so when the digests were hoisted out.
+    if archive is None and artwork_in_scope:
+        archive = _archive_candidate(release)
     art = decide_artwork(
-        files, release, cover_path, overwrite_art=overwrite_art, consider=artwork_in_scope
+        album_dir,
+        files,
+        cover_path,
+        archive=archive,
+        overwrite_art=overwrite_art,
+        consider=artwork_in_scope,
     )
-    art_before = art.before
-    preserves_per_track_art = art.preserves_per_track_art
     # A TAGGING FILLS GAPS AND REPLACES NOTHING (#418). Improving an image the
-    # album already has is its own action now, because it is the change a user
-    # is most likely to want to undo on its own — and because the severity
-    # levels have said so all along: adding artwork where there is none is
-    # ENRICHMENT, replacing it is COVER_ART.
+    # album already has is the artwork action's, because it is the change a user
+    # is most likely to want to undo on its own — an Addition and a Replacement
+    # are different operations (#468), and a tagging is permitted only the first.
     #
     # Per FILE, not per album, which is why this is a set of targets rather than
     # a flag: an album with ten good images and two gaps gets the two filled and
     # the ten left exactly as they are. That album is #397, and it is the shape
-    # this rule exists for.
+    # this rule exists for. A folder cover the album lacks is an addition too.
     #
     # `overwrite_art` remains what it always was — an explicit "embed the folder
     # cover over everything" — and is the one way a tagging still replaces.
-    cover = art.winner
-    art_targets = frozenset(files if overwrite_art else art.gaps())
-    promote_cover = art.promote_cover if overwrite_art else None
+    scope = artwork.Scope.ALL if overwrite_art else artwork.Scope.ADDITIONS
+    withheld = expected_artwork is not None and art.fingerprint(scope) != expected_artwork
+    art_targets = frozenset() if withheld else art.track_targets(scope)
+    cover_change = None if withheld else art.cover_change(scope)
+    # The bytes only when something is really written. With `cover=None`
+    # write_tags leaves the existing art alone, so an album that needs nothing
+    # costs no second read of its winner (#44, #74).
+    cover: bytes | None = None
+    if art_targets or cover_change is not None:
+        try:
+            cover = _winner_bytes(art, cover_path, archive)
+        except ArtworkChangedError:
+            # Between reading the album and loading the image, the image moved.
+            # Tag without it rather than write something the plan never named.
+            log.warning(
+                "the winning artwork for %s changed while it was being tagged — "
+                "tagging without writing any",
+                album_dir.name,
+                exc_info=True,
+                extra={"album_id": sidecar_mod.album_id_for(album_dir)},
+            )
+            art_targets, cover_change = frozenset(), None
 
     return _Prepared(
         files=files,
         pairs=pairs,
+        art=art,
         cover=cover,
-        art_before=art_before,
         # Only now is it settled that the embed is really happening — the
-        # per-track-art guard above may have cancelled it.
-        art_after=images.digest(cover) if cover is not None else None,
-        preserves_per_track_art=preserves_per_track_art,
-        promote_cover=promote_cover,
+        # per-track-art guard may have cancelled it, and the preview check may
+        # have withheld it.
+        art_after=art.winner.digest if cover is not None and art.winner is not None else None,
         art_targets=art_targets,
+        cover_change=cover_change,
+        art_withheld=withheld,
         media_total=len(release.get("medium-list", [])) or 1,
         accepted_album_title=title_with_disambiguation(
             release.get("title"), release.get("disambiguation")
@@ -756,7 +723,7 @@ def _changes_for(
     tagset: TagSet,
     before: dict[str, Any],
     file_path: Path,
-    art_before: dict[Path, str | None],
+    art_before: Mapping[Path, str | None],
     art_after: str | None,
     accepted_album_title: str | None = None,
     accepted_countries: frozenset[str] = frozenset(),
@@ -847,18 +814,21 @@ def _record_changes(
     )
 
 
-def _art_digests(files: list[Path]) -> dict[Path, str | None]:
-    """Each file's embedded cover as a sha256, or None where it has none.
+def _embedded_art(path: Path) -> formats.EmbeddedArt | None:
+    """One file's embedded image, described — or None where it carries none.
 
     One read per file, at tag time, when the files are being opened anyway. The
-    same pass answers two questions that used to need separate machinery: whether
-    the album carries per-track artwork worth preserving, and what each track's
-    art WAS, so a tagging can record that it replaced it (#86).
+    same pass answers the questions that used to need separate machinery:
+    whether the album carries per-track artwork worth preserving, how large each
+    image is, and what each track's art WAS, so a tagging can record that it
+    replaced it (#86).
 
-    sha256 rather than the sha1 this used before #86: the digest is recorded, and
-    #131 stores the images content-addressed under it, so the two must agree.
+    Described by `EmbeddedArt.of`, exactly as `formats.read_tags` describes it
+    for the album page — so the digest this records is the one the artwork store
+    keys on (#131), and the page and the tagger plan from identical facts.
     """
-    return {f: images.digest(art[0]) if (art := formats.read_cover(f)) else None for f in files}
+    art = formats.read_cover(path)
+    return formats.EmbeddedArt.of(art[0], art[1]) if art is not None else None
 
 
 def _mime_for(path: Path) -> str:
@@ -867,96 +837,148 @@ def _mime_for(path: Path) -> str:
     return "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
 
 
-def _archive_candidate(release: Release) -> bytes | None:
-    """The archive's image for this release, when it is cached AND larger than
-    the folder cover — or None.
+def _archive_candidate(release: Release) -> cover_art.Front | None:
+    """The archive's image for this release from the LOCAL CACHE, or None.
 
-    Cache-only, deliberately. The fetch happens when the user asks for a check
-    (#276); by the time a tagging runs, the answer either is on disk or is not,
-    and a tagging that reached the network would put a request behind every
-    album the gardener touches.
+    Cache-only, deliberately. A tagging entry point that needs the archive asks
+    it before tagging starts (`cover_art.front_image`) and hands the answer in;
+    everything else — the gardener's `plan_album` above all — must not put a
+    request behind every album it touches.
     """
     mbid = release.get("id")
-    if not isinstance(mbid, str):
-        return None
-    path = cover_art.cached_image(mbid)
-    if path is None:
-        return None
-    try:
-        return path.read_bytes()
-    except OSError:
-        log.exception("could not read the cached archive image for %s", mbid)
-        return None
+    return cover_art.cached_front(mbid) if isinstance(mbid, str) else None
 
 
-def _album_image(digests: dict[Path, str | None]) -> tuple[Path, bytes] | None:
-    """The album's own artwork and the file to read it from, when it has exactly
-    one — or None.
+class ArtworkChangedError(Exception):
+    """The image a plan names is not the image found when it came to be written.
 
-    "Exactly one distinct embedded image, carried by at least one track" is what
-    makes the album speak with one voice. In practice this guards the album with
-    NO embedded art at all, since per-track artwork has already set `cover` to
-    None upstream and this is never reached for it. Stated as the positive
-    condition anyway: what makes the decisions below safe is that the album has
-    one image, and a reader should not have to trace an outer guard to see it.
-    (A compilation's first sleeve is not the album's cover, however large it is.)
+    Raised before anything is written. The plan was reviewed, or at least
+    decided, against one picture; writing a different one under it would be the
+    preview saying one thing and the write doing another (#469).
     """
-    distinct = {d for d in digests.values() if d is not None}
-    if len(distinct) != 1:
-        return None
-    source = next((path for path, d in digests.items() if d is not None), None)
-    if source is None:
-        return None
-    art = formats.read_cover(source)
-    return (source, art[0]) if art is not None else None
 
 
-def _promote_album_image(
-    album_dir: Path, cover_path: Path, incoming: bytes, album_id: str | None
-) -> tuple[str, str] | None:
-    """Write the album's own image over the folder cover, keeping what was there.
+def _winner_bytes(
+    plan: artwork.ArtworkPlan, cover_path: Path | None, archive: cover_art.Front | None
+) -> bytes:
+    """The image the plan writes, read from where the plan found it — and
+    checked to BE that image, by digest.
 
-    Returns `(was, now)` as digests so the caller can record the change the way a
-    tagged file's artwork change is recorded — which is what puts an Undo on it,
-    since `tag_history.artwork_replaced` reads exactly that pair.
+    The plan carries descriptions, not bytes: an album page holds every track's
+    tags at once, and carrying the images too would be hundreds of megabytes on
+    a box set (`EmbeddedArt`). So the bytes are fetched here, once, at the last
+    moment — and anything that has moved since the plan was made is refused
+    rather than written.
+    """
+    winner = plan.winner
+    if winner is None:
+        raise ArtworkChangedError("the plan writes no image")
+    data: bytes | None = None
+    try:
+        if plan.source is artwork.Source.FOLDER and cover_path is not None:
+            data = cover_path.read_bytes()
+        elif plan.source is artwork.Source.ALBUM:
+            carrier = next((p for p, d in plan.before.items() if d == winner.digest), None)
+            art = formats.read_cover(carrier) if carrier is not None else None
+            data = art[0] if art is not None else None
+        elif plan.source is artwork.Source.ARCHIVE and archive is not None:
+            data = archive.data
+    except OSError as e:
+        raise ArtworkChangedError(f"could not read the winning image again: {e}") from e
+    if data is None or images.digest(data) != winner.digest:
+        raise ArtworkChangedError("the winning image is no longer where the plan found it")
+    return data
 
-    Best-effort, like every other artwork operation: a promotion that cannot be
+
+class _Wrote(StrEnum):
+    """How one folder-cover write went."""
+
+    WRITTEN = "written"
+    #: The folder no longer holds what the plan saw — an edit made since.
+    STALE = "stale"
+    #: It could not be done safely: unreadable, unkeepable, or unwritable.
+    FAILED = "failed"
+
+
+def _write_folder_cover(
+    album_dir: Path,
+    change: artwork.Change,
+    image: bytes,
+    source: artwork.Source | None,
+    album_id: str | None,
+) -> _Wrote:
+    """Create or replace the folder cover as `change` says, and record it.
+
+    Checked against the plan first. A creation finds no `cover.*` there now; a
+    replacement finds the very image it was planned against. Either one failing
+    means somebody changed the folder since, and their change stands.
+
+    A replacement keeps what it overwrites BEFORE writing, and is abandoned if
+    it can't: this is the one image the tracks cannot be used to put back, so
+    it is the one a failed backup would destroy irrecoverably (#408).
+
+    Best-effort, like every other artwork operation: a cover that cannot be
     written is a reason to warn, not to abandon the re-tag the user asked for.
+
+    Recorded twice, as a promotion always was: `cover.write` for forensics, and
+    a `tag.track` line carrying the `artwork` pair — the shape History renders
+    and the artwork Undo reads. A creation's pair is `[None, digest]`: the image
+    it added and the absence it added it to (#471 builds the Undo on that).
     """
+    target = change.target
+    if change.before is None:
+        if cover_art.cached_cover(target.parent) is not None:
+            log.info("%s gained a folder cover since it was planned; leaving it", album_dir.name)
+            return _Wrote.STALE
+    else:
+        try:
+            was = target.read_bytes()
+        except OSError:
+            log.exception("could not read %s to keep it before replacing it", target)
+            return _Wrote.FAILED
+        if images.digest(was) != change.before:
+            log.info("%s changed since it was planned; leaving it", target.name)
+            return _Wrote.STALE
+        if artwork_store.keep(was, mime=_mime_for(target)) is None:
+            log.warning(
+                "not replacing %s: its current image could not be kept, and the "
+                "change would not be undoable",
+                target.name,
+            )
+            return _Wrote.FAILED
     try:
-        was = cover_path.read_bytes()
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_bytes(image)
+        os.replace(tmp, target)
     except OSError:
-        log.exception("could not read %s to keep it before replacing it", cover_path)
-        return None
-    # Kept BEFORE the write, and the write is abandoned if it can't be: this is
-    # the first thing in Harmonist that overwrites a folder cover, so it is the
-    # first that could destroy one irrecoverably (#408).
-    if artwork_store.keep(was, mime=_mime_for(cover_path)) is None:
-        log.warning(
-            "not replacing %s with the album's larger image: its current cover "
-            "could not be kept, and the change would not be undoable",
-            cover_path.name,
-        )
-        return None
-    try:
-        tmp = cover_path.with_suffix(cover_path.suffix + ".tmp")
-        tmp.write_bytes(incoming)
-        os.replace(tmp, cover_path)
-    except OSError:
-        log.exception("could not write the album's larger image to %s", cover_path)
-        return None
+        log.exception("could not write the album's artwork to %s", target)
+        return _Wrote.FAILED
+
+    # The id the album answers to right now (#456). A cover is often created by
+    # an album's FIRST tagging, before any sidecar names it — and a bare None
+    # would leave exactly the albums most likely to gain a cover with no record
+    # of having gained one. `id_registry.peek` is a pure hash of the path, what
+    # `sidecar.write()` then persists as `temp_uid`, and what the scanner already
+    # calls the album meanwhile; the alias chain carries it forward from there.
+    album_id = album_id or id_registry.peek(album_dir)
+    details = {"was": change.before} if change.before is not None else {}
     audit.record(
         "cover.write",
         album_id=album_id,
         album=album_dir,
-        file=cover_path.name,
-        source="album",
-        bytes=len(incoming),
-        overwrote=True,
-        was=images.digest(was),
-        digest=images.digest(incoming),
+        file=target.name,
+        source=source.value if source is not None else "-",
+        bytes=len(image),
+        overwrote=change.before is not None,
+        digest=change.after,
+        **details,
     )
-    return images.digest(was), images.digest(incoming)
+    event_id = audit.record("tag.track", album_id=album_id, album=album_dir, file=target.name)
+    if event_id is not None:
+        activity_store.record_tag_changes(
+            event_id, file=target.name, changes={owned.ARTWORK: [change.before, change.after]}
+        )
+    return _Wrote.WRITTEN
 
 
 def _keep_doomed_art(digests: dict[Path, str | None], incoming: str) -> None:
@@ -1265,46 +1287,50 @@ class ArtworkUnavailableError(Exception):
     restoring anything is the confident lie the design forbids."""
 
 
-def update_artwork(
+@dataclass(frozen=True)
+class ArtworkOutcome:
+    """What an artwork action actually wrote — not what it was asked to."""
+
+    changed: int = 0
+    #: Targets left alone because they no longer held what the plan saw: an
+    #: edit made since, which stands. Named, so the user knows where to look.
+    stale: tuple[str, ...] = ()
+    #: Targets that could not be written safely, already logged.
+    failed: tuple[str, ...] = ()
+
+
+def apply_artwork(
     album_dir: Path,
-    release: Release,
-    cover_path: Path | None,
+    plan: artwork.ArtworkPlan,
     *,
-    files: list[Path] | None = None,
-    overwrite_art: bool = False,
-) -> int:
-    """Put the winning image on every track and on the folder cover (#418).
+    files: Sequence[Path],
+    cover_path: Path | None,
+    archive: cover_art.Front | None = None,
+    scope: artwork.Scope = artwork.Scope.ALL,
+) -> ArtworkOutcome:
+    """Carry out the part of `plan` that `scope` permits, and nothing else.
 
-    The other half of the split: a tagging fills gaps and replaces nothing, and
-    this replaces. It exists as its own action because replacing artwork is the
-    change a user is most likely to want to undo on its own — History has
-    offered a separate Undo for it since #131, and having one way to reverse
-    them separately and no way to do them separately was the asymmetry.
+    The executor half of #469. It decides nothing: which image, and where, came
+    from the plan — the one the album page drew its rows from, when the page is
+    who asked. A plan whose winner can no longer be found raises
+    `ArtworkChangedError` before anything is written.
 
-    Writes ARTWORK ONLY. Tags are not touched, not even the ones that happen to
-    be stale: pressing a button about images must not quietly re-tag an album,
-    which is the whole point of separating them.
+    Each target is re-read before it is written and left alone if it no longer
+    holds what the plan saw, so an image changed by anyone in between survives
+    and is reported rather than overwritten.
 
-    No count guard and no file-to-track pairing, unlike `_prepare` — an album
-    missing half its tracks still has artwork worth fixing, and which file is
-    which track has no bearing on what image it should carry.
-
-    Returns how many files changed. Zero is an ordinary answer: it means the
-    winner is already everywhere, which is what a second press should find.
+    Writes ARTWORK ONLY, through `formats.write_cover`. Tags are not touched.
     """
-    paths = files if files is not None else album_files.audio_files(album_dir)
+    changes = plan.scoped(scope)
+    if not changes:
+        return ArtworkOutcome()
+    image = _winner_bytes(plan, cover_path, archive)
+    digest = images.digest(image)
+    album_id = sidecar_mod.album_id_for(album_dir)
     # Named the same way a tagging names them, or the Undo this records would
     # address the wrong disc of a split album (#423).
-    naming = album_files.Naming(album_dir, paths)
-    art = decide_artwork(paths, release, cover_path, overwrite_art=overwrite_art)
-    winner, digest = art.winner, art.digest
-    if winner is None or digest is None:
-        return 0
-
-    album_id = sidecar_mod.album_id_for(album_dir)
-    targets = [p for p in paths if art.before.get(p) != digest]
-    if not targets and art.promote_cover is None:
-        return 0
+    naming = album_files.Naming(album_dir, files)
+    tracks = [c for c in changes if not c.folder_cover]
 
     # Before anything is written, and for the same reason `tag_album` records
     # its `tag.album` line first: a crash part-way through leaves evidence of
@@ -1313,48 +1339,50 @@ def update_artwork(
         "artwork.update",
         album_id=album_id,
         album=album_dir,
-        files=len(targets),
+        files=len(tracks),
         digest=digest,
-        mode="replace" if overwrite_art else "best",
+        scope=scope.value,
     )
     # Keep whatever is about to be destroyed, so this is undoable — the same
     # pass a tagging makes, and the reason the artwork store exists (#131).
-    _keep_doomed_art(art.before, digest)
+    _keep_doomed_art({c.target: c.before for c in tracks}, digest)
 
     changed = 0
-    for path in targets:
-        was = art.before.get(path)
-        formats.write_cover(path, winner)
+    stale: list[str] = []
+    failed: list[str] = []
+    for change in tracks:
+        name = naming.name_of(change.target)
+        current = formats.read_cover(change.target)
+        if (images.digest(current[0]) if current is not None else None) != change.before:
+            stale.append(name)
+            continue
+        formats.write_cover(change.target, image)
         changed += 1
         # Recorded in the shape a tagged file's artwork change takes, which is
         # what puts an Undo on it: `tag_history.artwork_replaced` reads that
         # pair and `restore_artwork` writes it back.
-        event_id = audit.record(
-            "tag.track",
-            album_id=album_id,
-            album=album_dir,
-            file=naming.name_of(path),
-        )
+        event_id = audit.record("tag.track", album_id=album_id, album=album_dir, file=name)
         if event_id is not None:
             activity_store.record_tag_changes(
-                event_id,
-                file=naming.name_of(path),
-                changes={owned.ARTWORK: [was, digest]},
+                event_id, file=name, changes={owned.ARTWORK: [change.before, change.after]}
             )
 
-    if art.promote_cover is not None and cover_path is not None:
-        promoted = _promote_album_image(album_dir, cover_path, art.promote_cover, album_id)
-        if promoted is not None:
-            was, now = promoted
-            event_id = audit.record(
-                "tag.track", album_id=album_id, album=album_dir, file=cover_path.name
-            )
-            if event_id is not None:
-                activity_store.record_tag_changes(
-                    event_id, file=cover_path.name, changes={owned.ARTWORK: [was, now]}
-                )
+    if (cover := plan.cover_change(scope)) is not None:
+        wrote = _write_folder_cover(album_dir, cover, image, plan.source, album_id)
+        if wrote is _Wrote.WRITTEN:
             changed += 1
-    return changed
+        elif wrote is _Wrote.STALE:
+            stale.append(cover.target.name)
+        else:
+            failed.append(cover.target.name)
+    return ArtworkOutcome(changed=changed, stale=tuple(stale), failed=tuple(failed))
+
+
+# No `update_artwork(album_dir, release, ...)` that decides and applies in one
+# call. It was the artwork action's entry point until #469, and would now have
+# no production caller: the action applies the plan its page was DRAWN from,
+# checked by fingerprint, and a convenience that re-decides behind the page's
+# back is exactly the parallel decision that change removed.
 
 
 def restore_artwork(

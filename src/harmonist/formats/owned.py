@@ -186,30 +186,17 @@ class Significance(StrEnum):
     #: What the album or one of its tracks IS — its name, its artist, or any of
     #: the MusicBrainz ids that say which entity it points at.
     IDENTITY = "identity"
-    #: The cover image being REPLACED. Its own level rather than a rank among
-    #: the others, because "let it update my cover art" is a trust decision
-    #: people make separately from anything about tags — and, more sharply,
-    #: because this is the one level whose reversal may be unavailable:
-    #: `artwork_store` keeps embedded art only and evicts under a size cap, so
-    #: an undo can be gone for reasons that have nothing to do with the change
-    #: (the image was large; the cap has since been reached). On the merits it
-    #: is IDENTITY-equivalent — this is the image that IS the album to a player
-    #: — and a level whose reversibility is conditional cannot sit in a rank
-    #: where the ones above it are all reversible.
-    #:
-    #: So the level tracks reversibility, not subject matter, and the
-    #: consequence is worth stating because it reads as an inconsistency:
-    #: **not every artwork change is classified here.** Giving an album artwork
-    #: it does not have is additive with nothing to reverse, and is ENRICHMENT
-    #: (#269). Replacing one it has is this (#276).
-    COVER_ART = "artwork"
 
 
-#: What kind of change each key of a tagging diff represents, keyed exactly as
-#: `diff` keys its result — the `Owned` values plus `ARTWORK`. Keyed by string
-#: for that reason: a classifier iterates a plan's changes, and artwork arrives
-#: in them under a key that is deliberately not an owned field. One lookup table
-#: for the whole diff means no caller has to remember which key is the exception.
+#: What kind of change each owned field's entry in a tagging diff represents.
+#: Keyed by string, as `diff` keys its result.
+#:
+#: `ARTWORK` is deliberately absent (#469). An image is not a tag, and the scale
+#: here describes how far a metadata change reaches — which says nothing about
+#: a picture. Artwork has its own description, `artwork.Operation`: whether the
+#: target already held an image (a Replacement) or did not (an Addition). A key
+#: missing from this table raises in `tagger.significance_of`, so an artwork
+#: entry can never be ranked against a retitle by accident.
 #:
 #: Placed here, beside `SCOPE`, so the totality test can hold: a field added to
 #: `Owned` later **cannot** slip through unclassified, because
@@ -275,8 +262,6 @@ SIGNIFICANCE: dict[str, Significance] = {
     Owned.TRACK_TOTAL: Significance.STRUCTURE,
     Owned.DISC_NUM: Significance.STRUCTURE,
     Owned.DISC_TOTAL: Significance.STRUCTURE,
-    # --- Artwork ---
-    ARTWORK: Significance.COVER_ART,
 }
 
 #: The tag levels, least far-reaching first — the ordering `Significance`'s
@@ -289,13 +274,9 @@ SIGNIFICANCE: dict[str, Significance] = {
 #: album is in question — an ISRC arriving beside a retitle does not make the
 #: retitle an enrichment.
 #:
-#: COVER_ART IS ABSENT, and its absence is the enum's own position: cover art is
-#: "its own level rather than a rank among the others", so it has no place in a
-#: line the others sit on. `ranked` refuses it rather than guessing where it
-#: would go. Nothing is lost today — the gardener plans with `cover_path=None`,
-#: so artwork cannot appear in a diff it classifies (#269 owns art, on its own
-#: cadence) — and when something does classify artwork it will need a verdict of
-#: its own, not a rank pretending to compare with a retitle.
+#: Artwork has no place on this line (#469): it is described by
+#: `artwork.Operation`, and the gardener's diff never carries it (`plan_for`
+#: passes `artwork=False`).
 ORDER: tuple[Significance, ...] = (
     Significance.COSMETIC,
     Significance.ENRICHMENT,
@@ -307,10 +288,9 @@ ORDER: tuple[Significance, ...] = (
 def ranked(significance: Significance) -> int:
     """How far `significance` reaches, as a sortable number.
 
-    Raises `ValueError` for COVER_ART — see `ORDER`. A caller that can produce
-    one has to say what it means before it can be compared, and the failure to
-    do that must not be silently resolved to "least significant", which is where
-    a `.get(..., 0)` would put it.
+    `ORDER.index`, not a `.get(..., 0)`: a level added to the enum without a
+    place in the order must fail here rather than silently rank as the least
+    significant.
     """
     return ORDER.index(significance)
 

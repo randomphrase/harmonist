@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from . import album_files
+from . import album_files, formats
 from .compare import Run, diff_runs
 from .formats.owned import ARTWORK, LABELS, SCOPE, Owned, Scope
 
@@ -80,6 +80,10 @@ class FieldChange:
     #: pair above already says everything. When they differ, these are the only
     #: honest values there are: the row shows `varied_summary` instead.
     variants: tuple[TrackChange, ...] = ()
+    #: The folder cover's name, when this artwork change reached it too. It is
+    #: not a track, so it is named beside the track count rather than counted
+    #: in it (#469).
+    cover: str | None = None
 
     @property
     def uniform(self) -> bool:
@@ -124,12 +128,20 @@ class FieldChange:
         to check eighteen things. A field that moved on only some tracks always
         gets the count, whatever its scope, because that is the case where the
         album has no single answer.
+
+        The folder cover is named rather than counted: "cover.jpg" alone when
+        it was the only thing an artwork change reached, and after the tracks
+        when it was one of several.
         """
+        if self.cover is not None and not self.tracks:
+            return self.cover
         if self.tracks < self.total:
-            return f"{self.tracks} of {self.total} tracks"
-        if self.scope is Scope.ALBUM:
-            return "album"
-        return "all tracks" if self.total > 1 else "1 track"
+            reach = f"{self.tracks} of {self.total} tracks"
+        elif self.scope is Scope.ALBUM:
+            reach = "album"
+        else:
+            reach = "all tracks" if self.total > 1 else "1 track"
+        return f"{reach} and {self.cover}" if self.cover is not None else reach
 
 
 def group_by_action(
@@ -376,10 +388,14 @@ def summarise(records: Sequence[Any]) -> tuple[FieldChange, ...]:
     `records` is one tagging's `activity_store.TagChanges`, in the order they
     were written (which is file order). The result is ordered by `_ORDER`, so
     album-level fields come before per-track ones and artwork sits last.
+
+    `total` counts TRACKS. A tagging that also created or replaced the folder
+    cover records that as a file of its own, and counting it would report a
+    field that reached all thirteen tracks as "13 of 14" (#469).
     """
-    total = len(records)
-    if not total:
+    if not records:
         return ()
+    total = sum(1 for record in records if _is_track(record.file))
 
     # field -> [(file, position, before, after)], in file order.
     by_field: dict[str, list[tuple[str, str | None, Any, Any]]] = {}
@@ -392,6 +408,13 @@ def summarise(records: Sequence[Any]) -> tuple[FieldChange, ...]:
 
     rows = [_row(field, entries, total) for field, entries in by_field.items()]
     return tuple(sorted(rows, key=lambda r: (_ORDER.get(r.field, len(_ORDER)), r.label)))
+
+
+def _is_track(file: str) -> bool:
+    """Whether a record names a track rather than the folder cover. By the name's
+    extension alone — no file is opened — so it holds for a record whose file has
+    since gone."""
+    return formats.is_supported(Path(file))
 
 
 def _row(field: str, entries: list[tuple[str, str | None, Any, Any]], total: int) -> FieldChange:
@@ -425,8 +448,9 @@ def _row(field: str, entries: list[tuple[str, str | None, Any, Any]], total: int
         before=before,
         after=after,
         opaque=opaque,
-        tracks=len(entries),
+        tracks=sum(1 for f, _, _, _ in entries if _is_track(f)),
         total=total,
+        cover=next((f for f, _, _, _ in entries if not _is_track(f)), None),
         scope=SCOPE.get(Owned(field)) if field in _ORDER and field != ARTWORK else None,
         before_runs=before_runs,
         after_runs=after_runs,

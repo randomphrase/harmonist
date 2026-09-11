@@ -290,19 +290,17 @@ def test_search_releases_empty_inputs_returns_all():
     assert len(results) == len(demo.MB_RELEASES)
 
 
-def test_ensure_cover_returns_existing(music_dir):
-    album_dir = music_dir / "alb"
-    album_dir.mkdir(parents=True)
-    (album_dir / "cover.jpg").write_bytes(b"existing")
-    assert demo.ensure_cover(album_dir, release_mbid="demo-rel-x") == album_dir / "cover.jpg"
+def test_front_image_answers_with_a_placeholder_and_keeps_it(tmp_path, monkeypatch):
+    """Demo mode never asks the archive; a tagging still gets a candidate to
+    weigh, and it lands in the real cache like a live answer would."""
+    from harmonist import cover_art
 
+    monkeypatch.setattr(cover_art, "_caa_root", tmp_path / "caa")
+    front = demo.front_image("demo-rel-x")
 
-def test_ensure_cover_copies_placeholder(music_dir):
-    album_dir = music_dir / "alb"
-    album_dir.mkdir(parents=True)
-    result = demo.ensure_cover(album_dir, release_mbid="demo-rel-x")
-    assert result == album_dir / "cover.jpg"
-    assert result.exists()
+    assert front is not None
+    assert front.data == (demo.ASSETS_DIR / "cover-7.jpg").read_bytes()
+    assert cover_art.cached_image("demo-rel-x") is not None
 
 
 # ---------- web integration ----------

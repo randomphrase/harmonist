@@ -139,7 +139,7 @@ def test_a_zero_cap_keeps_nothing():
     """A legitimate choice on a volume with no room: artwork replacement stops
     being reversible, and nothing accumulates. The caller is told so rather
     than handed a digest for a file the cap evicted on its way out (#427) —
-    that digest is what `_promote_album_image` reads as permission to destroy
+    that digest is what `_write_folder_cover` reads as permission to destroy
     the original."""
     artwork_store.configure(artwork_store._root, max_bytes=0)
 
@@ -323,7 +323,7 @@ class TestEviction:
 
     def test_a_backup_that_could_not_be_retained_is_reported_as_not_kept(self):
         """A digest is the caller's licence to overwrite the original (see
-        `tagger._promote_album_image`). If the cap cannot hold the image even
+        `tagger._write_folder_cover`). If the cap cannot hold the image even
         after everything else has gone, saying so is the difference between a
         change that is merely unundoable and one whose original is destroyed."""
         artwork_store.configure(artwork_store._root, max_bytes=10)

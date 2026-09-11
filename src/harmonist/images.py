@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 def digest(data: bytes) -> str:
     """The content address of an image: sha256, hex.
 
-    Load-bearing across three readers that must agree — `tagger._art_digests`
+    Load-bearing across three readers that must agree — the artwork plan
     decides whether per-track art is preserved, `artwork_store` names its files
     by this, and the album page compares tracks to each other with it. They were
     the same expression written three times before this existed.

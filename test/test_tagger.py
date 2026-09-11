@@ -49,6 +49,29 @@ from harmonist.tagger import (
 )
 
 
+def _update_artwork(
+    album_dir: Path,
+    release: dict,
+    cover_path: Path | None,
+    *,
+    files: list[Path] | None = None,
+    overwrite_art: bool = False,
+) -> int:
+    """What the Artwork section's button does, from files rather than a page:
+    decide the album's plan, then apply all of it (#418, #469). Returns how many
+    files changed — zero once the winner is everywhere."""
+    from harmonist import album_files, cover_art
+
+    paths = files if files is not None else album_files.audio_files(album_dir)
+    archive = cover_art.cached_front(release["id"])
+    plan = tagger.decide_artwork(
+        album_dir, paths, cover_path, archive=archive, overwrite_art=overwrite_art
+    )
+    return tagger.apply_artwork(
+        album_dir, plan, files=paths, cover_path=cover_path, archive=archive
+    ).changed
+
+
 def _release_2_tracks() -> dict:
     """Build a synthetic 2-track MB release dict with all the trimmings."""
     return {
@@ -260,24 +283,23 @@ def test_tagging_records_artwork_replacement_by_digest(album_with_tracks, tmp_pa
     newer = tmp_path / "cover2.jpg"
     newer.write_bytes(b"\xff\xd8\xff" + b"second" * 40)
     before = len(_detail())
-    tagger.update_artwork(album_dir, _release_2_tracks(), newer)
+    _update_artwork(album_dir, _release_2_tracks(), newer)
 
     replaced = _detail()[before:][0].changes[owned.ARTWORK]
     assert replaced[0] == first[1]  # what was there is what we recorded before
     assert replaced[1] != replaced[0]
 
 
-def test_tagging_without_a_cover_does_not_read_the_files_artwork(
+def test_planning_tags_alone_does_not_read_the_files_artwork(
     album_with_tracks, tmp_path, monkeypatch
 ):
-    """With no cover to embed, `write_tags` leaves existing art alone — so
-    nothing about artwork can change, and reading it would be a wasted pass over
-    every file on the path where scanning is already the slow part (#44, #74).
+    """With artwork out of scope nothing about it can change, and reading it
+    would be a wasted pass over every file — on the gardener's path, which
+    plans every album in the library (#44, #74, #448).
 
-    This used to be free: the read sat behind `cover is not None and ...` and
-    Python short-circuited it. Hoisting the digests out for #86 silently removed
-    that guard, which is the kind of regression no assertion about OUTPUT can
-    see."""
+    A TAGGING does read it now, even with no folder cover: the album's own
+    image is what a missing cover is created from (#469). This is the path
+    where that read would be pure waste."""
     from harmonist import formats
 
     reads: list[str] = []
@@ -290,7 +312,7 @@ def test_tagging_without_a_cover_does_not_read_the_files_artwork(
     monkeypatch.setattr(formats, "read_cover", counting_read_cover)
 
     album_dir = album_with_tracks(2)
-    tagger.tag_album(album_dir, _release_2_tracks())  # no cover_path
+    tagger.plan_album(album_dir, _release_2_tracks(), artwork=False)
 
     assert reads == []
 
@@ -303,7 +325,10 @@ def _cover(tmp_path, name: str, body: bytes):
 
 def test_replacing_embedded_art_keeps_a_copy_of_what_it_destroyed(album_with_tracks, tmp_path):
     """#131: embedding a cover overwrites whatever the track carried, and until
-    now that image was simply gone. The copy is what makes it undoable."""
+    now that image was simply gone. The copy is what makes it undoable.
+
+    Replacing is the artwork action's since #418 — a tagging fills gaps — so
+    that is what does the overwriting here."""
     from harmonist import activity_store, artwork_store, formats
 
     activity_store.init(tmp_path / "audit.db")
@@ -315,7 +340,7 @@ def test_replacing_embedded_art_keeps_a_copy_of_what_it_destroyed(album_with_tra
     assert original is not None
     was = artwork_store.digest(original[0])
 
-    tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "b.jpg", b"second" * 40))
+    _update_artwork(album_dir, _release_2_tracks(), _cover(tmp_path, "b.jpg", b"second" * 40))
 
     kept = artwork_store.path_for(was)
     assert kept is not None, "the overwritten image was not kept"
@@ -330,9 +355,26 @@ def test_the_shared_cover_of_an_album_is_kept_once_not_once_per_track(album_with
     album_dir = album_with_tracks(2)
 
     tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "a.jpg", b"first" * 40))
-    tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "b.jpg", b"second" * 40))
+    _update_artwork(album_dir, _release_2_tracks(), _cover(tmp_path, "b.jpg", b"second" * 40))
 
     assert len(list((tmp_path / "artwork").iterdir())) == 1
+
+
+def test_a_tagging_keeps_nothing_it_does_not_overwrite(album_with_tracks, tmp_path):
+    """The other side of the same rule. A tagging fills gaps and replaces
+    nothing (#418), so an image it leaves in place is not being destroyed and
+    has no business in the store — whose size cap it would spend, evicting the
+    backups of changes that really did happen."""
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "a.jpg", b"first" * 40))
+    tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "b.jpg", b"second" * 40))
+
+    assert not (tmp_path / "artwork").exists() or not list((tmp_path / "artwork").iterdir())
 
 
 def test_re_tagging_with_the_same_cover_keeps_nothing(album_with_tracks, tmp_path):
@@ -908,7 +950,7 @@ def test_the_artwork_action_replaces_what_a_tagging_would_not(album_with_tracks,
     new_cover = tmp_path / "cover.jpg"
     new_cover.write_bytes(new)
 
-    changed = tagger.update_artwork(album_dir, _release_2_tracks(), new_cover)
+    changed = _update_artwork(album_dir, _release_2_tracks(), new_cover)
 
     assert changed == 2
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == new
@@ -929,7 +971,7 @@ def test_the_artwork_action_touches_no_tags(album_with_tracks, tmp_path):
     cover = tmp_path / "cover.jpg"
     cover.write_bytes(b"\xff\xd8\xff\xe0NEW\xff\xd9")
 
-    tagger.update_artwork(album_dir, _single_track_release(), cover)
+    _update_artwork(album_dir, _single_track_release(), cover)
 
     assert MP4(track)[ATOM_TITLE] == ["A title MusicBrainz disagrees with"]
 
@@ -943,8 +985,8 @@ def test_the_artwork_action_is_idempotent(album_with_tracks, tmp_path):
     cover = tmp_path / "cover.jpg"
     cover.write_bytes(b"\xff\xd8\xff\xe0ONLY\xff\xd9")
 
-    first = tagger.update_artwork(album_dir, _release_2_tracks(), cover)
-    second = tagger.update_artwork(album_dir, _release_2_tracks(), cover)
+    first = _update_artwork(album_dir, _release_2_tracks(), cover)
+    second = _update_artwork(album_dir, _release_2_tracks(), cover)
 
     assert first == 2
     assert second == 0
@@ -1226,9 +1268,7 @@ def test_restoring_artwork_puts_each_discs_image_back_on_its_own_file(tmp_path):
     cover = tmp_path / "cover.jpg"
     cover.write_bytes(_sized_jpeg(1000, 1000))
 
-    tagger.update_artwork(
-        cd1, _release_2_tracks_same_title(), cover, files=files, overwrite_art=True
-    )
+    _update_artwork(cd1, _release_2_tracks_same_title(), cover, files=files, overwrite_art=True)
     plan = tag_history.artwork_replaced(_detail())
 
     assert tagger.restore_artwork(cd1, plan, paths=[f.parent for f in files]) == 2
@@ -1857,16 +1897,15 @@ def test_every_by_value_field_has_a_rule_deciding_when_it_lowers():
     assert set(owned.BY_VALUE) == set(tagger.LOWERED_WHEN)
 
 
-def test_artwork_is_its_own_level():
+def test_artwork_is_refused_a_tag_significance():
     """Artwork arrives in a plan's changes under a key that is deliberately not
-    an owned field, and it still has to be classified — `owned.ARTWORK` is in the
-    table so the classifier can't meet a key it has no answer for.
-
-    Its own level rather than a rank among the others because "let it update my
-    cover art" is a trust decision people make separately from anything about
-    tags, and #273's setting is per level.
+    an owned field, and it has no place on the tag scale (#469): it is an
+    Addition or a Replacement, not something that reaches further or less far
+    than a retitle. Refused loudly, so it can never be ranked by accident —
+    and so no trust setting over tag levels can come to authorise an image.
     """
-    assert tagger.significance_of(owned.ARTWORK, "sha-a", "sha-b") is owned.Significance.COVER_ART
+    with pytest.raises(KeyError):
+        tagger.significance_of(owned.ARTWORK, "sha-a", "sha-b")
 
 
 def test_an_unknown_key_is_refused_rather_than_guessed():
@@ -1892,7 +1931,6 @@ def test_every_change_reaching_the_runner_still_goes_to_review():
         ("title", "Dawn  Chorus", "Dawn Chorus"),
         ("album", "A", "B"),
         ("track_num", 1, 2),
-        (owned.ARTWORK, "sha-a", "sha-b"),
     ]:
         assert owned.needs_review(tagger.significance_of(field, was, now)), field
 
@@ -1912,8 +1950,10 @@ def test_every_change_a_real_plan_produces_can_be_classified(album_with_tracks, 
     plan = tagger.plan_album(album_dir, _release_2_tracks(), cover_path=cover)
 
     seen = {f for changes in plan.changes.values() for f in changes}
-    assert owned.ARTWORK in seen  # the key most likely to be forgotten
-    for field in seen:
+    # Artwork is in a real plan — and is the one key the tag scale refuses,
+    # which is why the gardener's diff must never carry it (`plan_for`).
+    assert owned.ARTWORK in seen
+    for field in seen - {owned.ARTWORK}:
         assert isinstance(tagger.significance_of(field, None, "x"), owned.Significance)
 
 
@@ -2339,7 +2379,7 @@ def test_a_larger_embedded_image_is_promoted_to_the_folder_cover(album_with_trac
     cover = tmp_path / "cover.jpg"
     cover.write_bytes(_sized_jpeg(400, 400))
 
-    tagger.update_artwork(album_dir, _release_2_tracks(), cover)
+    _update_artwork(album_dir, _release_2_tracks(), cover)
 
     # The tracks keep the better image…
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
@@ -2360,7 +2400,7 @@ def test_the_replaced_folder_cover_can_be_undone(album_with_tracks, tmp_path):
     small = _sized_jpeg(400, 400)
     cover.write_bytes(small)
 
-    tagger.update_artwork(album_dir, _single_track_release(), cover)
+    _update_artwork(album_dir, _single_track_release(), cover)
 
     kept = artwork_store.path_for(artwork_store.digest(small))
     assert kept is not None, "the overwritten folder cover was not kept"
@@ -2381,7 +2421,7 @@ def test_a_cover_is_not_replaced_when_its_backup_could_not_be_retained(album_wit
     small = _sized_jpeg(400, 400)
     cover.write_bytes(small)
 
-    tagger.update_artwork(album_dir, _single_track_release(), cover)
+    _update_artwork(album_dir, _single_track_release(), cover)
 
     assert cover.read_bytes() == small
 
@@ -2398,7 +2438,7 @@ def test_a_larger_folder_cover_is_still_embedded(album_with_tracks, tmp_path):
     big = _sized_jpeg(1000, 1000)
     cover.write_bytes(big)
 
-    tagger.update_artwork(album_dir, _single_track_release(), cover)
+    _update_artwork(album_dir, _single_track_release(), cover)
 
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
     assert cover.read_bytes() == big
@@ -2417,7 +2457,7 @@ def test_per_track_artwork_never_promotes_one_track_to_the_album_cover(album_wit
     small = _sized_jpeg(400, 400)
     cover.write_bytes(small)
 
-    tagger.update_artwork(album_dir, _release_2_tracks(), cover)
+    _update_artwork(album_dir, _release_2_tracks(), cover)
 
     assert cover.read_bytes() == small
 
@@ -2435,7 +2475,7 @@ def test_a_promoted_cover_can_be_put_back(album_with_tracks, tmp_path):
     small = _sized_jpeg(400, 400)
     cover.write_bytes(small)
 
-    tagger.update_artwork(album_dir, _single_track_release(), cover)
+    _update_artwork(album_dir, _single_track_release(), cover)
     assert cover.read_bytes() == big  # promoted
 
     restored = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
@@ -2523,7 +2563,7 @@ def test_a_larger_archive_image_wins_and_is_written(album_with_tracks, tmp_path)
     release = _single_track_release()
     cover_art.cache_image(release["id"], theirs, "image/jpeg")
 
-    tagger.update_artwork(album_dir, release, cover)
+    _update_artwork(album_dir, release, cover)
 
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == theirs
     assert cover.read_bytes() == theirs
@@ -2546,7 +2586,7 @@ def test_a_smaller_archive_image_is_ignored(album_with_tracks, tmp_path):
     release = _single_track_release()
     cover_art.cache_image(release["id"], _sized_jpeg(400, 400), "image/jpeg")
 
-    tagger.update_artwork(album_dir, release, cover)
+    _update_artwork(album_dir, release, cover)
 
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
     assert cover.read_bytes() == big  # the album's own image still won
@@ -2593,26 +2633,27 @@ def test_a_larger_archive_image_wins_with_no_folder_cover(album_with_tracks, tmp
     release = _release_2_tracks()
     cover_art.cache_image(release["id"], theirs, "image/jpeg")
 
-    changed = tagger.update_artwork(album_dir, release, None)
+    changed = _update_artwork(album_dir, release, None)
 
-    assert changed == 2
+    assert changed == 3
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == theirs
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == theirs
-    # No cover.jpg is created. Writing a new file into the user's album dir is
-    # an additive behaviour of its own, and `promote_cover` asks for a strict
-    # improvement on a folder cover that is not there to be improved on.
-    assert not (album_dir / "cover.jpg").exists()
+    # …and the folder cover the album lacked is created from the same winner
+    # (#469): an addition like an artless track's, and the button's to make.
+    assert (album_dir / "cover.jpg").read_bytes() == theirs
     # What it replaced is recoverable. This album has no folder cover, so
     # everything overwritten here is EMBEDDED art — the half the store keeps —
     # which makes this the reversible case rather than #276's hazardous one.
     assert artwork_store.path_for(artwork_store.digest(mine)) is not None
     # …and pressing again finds the winner already everywhere.
-    assert tagger.update_artwork(album_dir, release, None) == 0
+    assert _update_artwork(album_dir, release, None) == 0
 
 
 def test_a_smaller_archive_image_is_ignored_with_no_folder_cover(album_with_tracks, tmp_path):
     """With no cover file the tracks' own image is the incumbent, and it keeps
-    the tie: a same-sized different picture is not an improvement."""
+    the tie: a same-sized different picture is not an improvement. It is also
+    what the missing folder cover is created from — the largest image the album
+    can offer, which here is its own."""
     from harmonist import artwork_store, cover_art
 
     artwork_store.configure(tmp_path / "artwork")
@@ -2623,8 +2664,9 @@ def test_a_smaller_archive_image_is_ignored_with_no_folder_cover(album_with_trac
     release = _single_track_release()
     cover_art.cache_image(release["id"], _sized_jpeg(1400, 1400) + b"_other", "image/jpeg")
 
-    assert tagger.update_artwork(album_dir, release, None) == 0
+    assert _update_artwork(album_dir, release, None) == 1
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
+    assert (album_dir / "cover.jpg").read_bytes() == mine
 
 
 def test_per_track_artwork_survives_an_archive_cover_with_no_folder_cover(
@@ -2649,38 +2691,36 @@ def test_per_track_artwork_survives_an_archive_cover_with_no_folder_cover(
     _embed_cover(album_dir / "01 Track 1.m4a", first)
     _embed_cover(album_dir / "02 Track 2.m4a", second)
     release = _release_2_tracks()
-    cover_art.cache_image(release["id"], _sized_jpeg(3000, 3000), "image/jpeg")
+    archive = _sized_jpeg(3000, 3000)
+    cover_art.cache_image(release["id"], archive, "image/jpeg")
 
-    assert tagger.update_artwork(album_dir, release, None) == 0
+    # One write: the folder cover the album lacked, from the archive. The
+    # sleeves are user data and nothing overwrites them; a compilation's first
+    # sleeve is not the album's cover, but the archive's front cover is.
+    assert _update_artwork(album_dir, release, None) == 1
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == first
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == second
+    assert (album_dir / "cover.jpg").read_bytes() == archive
     # …and it is reported as the decision it is, rather than as nothing having
     # happened. This is the half the guard change actually moves.
-    plan = tagger.decide_artwork(sorted(album_dir.glob("*.m4a")), release, cover_path=None)
+    plan = tagger.decide_artwork(album_dir, sorted(album_dir.glob("*.m4a")), None)
     assert plan.preserves_per_track_art is True
 
 
-def test_a_coverless_album_with_no_candidate_still_reads_no_artwork(album_with_tracks, tmp_path):
-    """The gardener's path must not get more expensive (#442).
-
-    `plan_album` reaches `decide_artwork` for every album in the library, and
-    `_art_digests` opens every file. An album with no folder cover and no cached
-    archive image has nothing that could overwrite its tracks, so it is decided
-    without reading any of them — which is why the widened read is conditional
-    on there being a candidate rather than unconditional.
-    """
+def test_a_compilation_with_no_archive_cover_gets_no_folder_cover(album_with_tracks, tmp_path):
+    """Per-track artwork and nothing from outside: no image is the album's, so
+    none is written — not even into the folder, where the first sleeve would
+    claim to be the cover of a record it is one track of."""
     from harmonist import cover_art
 
     cover_art.configure_cache(tmp_path / "caa")  # configured, and empty
     album_dir = album_with_tracks(2)
     _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(500, 500))
+    _embed_cover(album_dir / "02 Track 2.m4a", _sized_jpeg(900, 900))
 
-    plan = tagger.decide_artwork(
-        sorted(album_dir.glob("*.m4a")), _release_2_tracks(), cover_path=None
-    )
-
-    assert plan.winner is None
-    assert plan.before == {}
+    assert _update_artwork(album_dir, _release_2_tracks(), None) == 0
+    tagger.tag_album(album_dir, _release_2_tracks())
+    assert cover_art.cached_cover(album_dir) is None
 
 
 def test_a_losing_archive_still_lets_the_albums_own_art_fill_a_gap(album_with_tracks, tmp_path):
@@ -2705,3 +2745,188 @@ def test_a_losing_archive_still_lets_the_albums_own_art_fill_a_gap(album_with_tr
 
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine
+
+
+# ---------- the folder cover, created from the plan (#457, #469) ----------
+
+
+def _audit(prefix: str) -> list:
+    from harmonist import activity_store
+    from harmonist.activity_store import Source
+
+    return [
+        e for e in activity_store.recent(200, source=Source.AUDIT) if e.message.startswith(prefix)
+    ]
+
+
+def test_a_first_tagging_creates_the_folder_cover_from_the_albums_own_image(
+    album_with_tracks, tmp_path, monkeypatch
+):
+    """The shape a Bandcamp download arrives in: art embedded, no `cover.jpg`.
+    The cover is created from the winner of the size rule, like every other
+    image a tagging writes — the album's own here, with nothing from the
+    archive — and recorded as the addition it is."""
+    from harmonist import activity_store, cover_art, id_registry, images
+
+    activity_store.init(tmp_path / "audit.db")
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(800, 800)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+
+    tagger.tag_album(album_dir, _release_2_tracks())
+
+    assert (album_dir / "cover.jpg").read_bytes() == mine
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine  # the gap
+    digest = images.digest(mine)
+    [write] = _audit("cover.write")
+    assert "overwrote=False" in write.message
+    assert f"digest={digest}" in write.message
+    # Under the id the album answers to before any sidecar names it (#456).
+    assert write.album_id == id_registry.peek(album_dir)
+    # …and in the shape History renders and the artwork Undo reads: the image
+    # added, and the absence it was added to.
+    [line] = [e for e in _audit("tag.track") if "file=cover.jpg" in e.message]
+    detail = activity_store.tag_changes_for([line.id])[line.id]
+    assert detail.changes == {owned.ARTWORK: [None, digest]}
+
+    # A second tagging finds the cover there and writes nothing more.
+    tagger.tag_album(album_dir, _release_2_tracks())
+    assert len(_audit("cover.write")) == 1
+
+
+def test_a_larger_archive_image_becomes_the_created_cover(album_with_tracks, tmp_path, monkeypatch):
+    """What a tagging fetched from the archive is a candidate, not the folder
+    cover by right: it lands because it is the largest image on offer. The track
+    that already has art keeps it — a tagging replaces nothing (#418)."""
+    from harmonist import activity_store, cover_art
+
+    activity_store.init(tmp_path / "audit.db")
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(800, 800)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+    theirs = _sized_jpeg(3000, 3000)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), archive=cover_art.Front(theirs, "image/jpeg"))
+
+    assert (album_dir / "cover.jpg").read_bytes() == theirs
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == theirs
+
+
+def test_a_smaller_archive_image_does_not_become_the_created_cover(
+    album_with_tracks, tmp_path, monkeypatch
+):
+    """The ladder this replaced took the archive first whatever its size, and
+    gave an album with a 3000px image in its tracks a 1200px `cover.jpg` — which
+    the album page then offered to replace (#457)."""
+    from harmonist import activity_store, cover_art
+
+    activity_store.init(tmp_path / "audit.db")
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    album_dir = album_with_tracks(1)
+    mine = _sized_jpeg(3000, 3000)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+
+    tagger.tag_album(
+        album_dir,
+        _single_track_release(),
+        archive=cover_art.Front(_sized_jpeg(1200, 1200), "image/jpeg"),
+    )
+
+    assert (album_dir / "cover.jpg").read_bytes() == mine
+
+
+def test_a_tagging_writes_no_artwork_its_preview_did_not_show(
+    album_with_tracks, tmp_path, monkeypatch, caplog
+):
+    """Re-tag carries the page's fingerprint of what it would add. A plan that
+    no longer matches it — the album changed after the page was drawn — tags the
+    album and writes no image at all, and says so (#469)."""
+    import logging
+
+    from harmonist import activity_store, artwork, cover_art
+
+    activity_store.init(tmp_path / "audit.db")
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(800, 800))
+    files = sorted(album_dir.glob("*.m4a"))
+    shown = tagger.decide_artwork(album_dir, files, None).fingerprint(artwork.Scope.ADDITIONS)
+    # …and then the image the page showed is swapped for another.
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(900, 900))
+
+    with caplog.at_level(logging.WARNING, logger="harmonist"):
+        tagger.tag_album(album_dir, _release_2_tracks(), expected_artwork=shown)
+
+    assert not (album_dir / "cover.jpg").exists()
+    assert ATOM_COVER not in MP4(album_dir / "02 Track 2.m4a")
+    # The tags are the point, and they were written.
+    assert (
+        MP4(album_dir / "02 Track 2.m4a")[ATOM_MB_ALBUM_ID][0].decode()
+        == (_release_2_tracks()["id"])
+    )
+    assert "changed after the page showed it" in caplog.text
+
+
+def test_a_tagging_writes_the_artwork_its_preview_showed(album_with_tracks, tmp_path, monkeypatch):
+    """The same check passing — without this, a mutation that withheld every
+    page-driven tagging's artwork would go unnoticed."""
+    from harmonist import activity_store, artwork, cover_art
+
+    activity_store.init(tmp_path / "audit.db")
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(800, 800)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+    files = sorted(album_dir.glob("*.m4a"))
+    shown = tagger.decide_artwork(album_dir, files, None).fingerprint(artwork.Scope.ADDITIONS)
+
+    tagger.tag_album(album_dir, _release_2_tracks(), expected_artwork=shown)
+
+    assert (album_dir / "cover.jpg").read_bytes() == mine
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine
+
+
+def test_the_artwork_action_leaves_an_image_changed_since_its_plan(album_with_tracks, tmp_path):
+    """Every target is re-read before it is written. An edit made between the
+    plan and the write stands, and is named in the outcome (#469)."""
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(400, 400))  # track 2 has none
+    cover = album_dir / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(1400, 1400))
+    files = sorted(album_dir.glob("*.m4a"))
+    plan = tagger.decide_artwork(album_dir, files, cover)
+    theirs = _sized_jpeg(400, 400) + b"_edited_since"
+    _embed_cover(album_dir / "01 Track 1.m4a", theirs)
+
+    outcome = tagger.apply_artwork(album_dir, plan, files=files, cover_path=cover)
+
+    assert outcome.stale == ("01 Track 1.m4a",)
+    assert outcome.changed == 1
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == theirs
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == cover.read_bytes()
+
+
+def test_the_artwork_action_refuses_a_winner_that_has_moved(album_with_tracks, tmp_path):
+    """The plan names an image by digest. If the file it was found in now holds
+    something else, nothing is written — the preview described the old one."""
+    from harmonist import activity_store
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(1)
+    cover = album_dir / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(1400, 1400))
+    files = sorted(album_dir.glob("*.m4a"))
+    plan = tagger.decide_artwork(album_dir, files, cover)
+    cover.write_bytes(_sized_jpeg(1400, 1400) + b"_swapped")
+
+    with pytest.raises(tagger.ArtworkChangedError):
+        tagger.apply_artwork(album_dir, plan, files=files, cover_path=cover)
+
+    assert ATOM_COVER not in MP4(files[0])

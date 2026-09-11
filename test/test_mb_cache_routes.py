@@ -44,7 +44,7 @@ def cfg(tmp_path):
 
 @pytest.fixture(autouse=True)
 def no_cover_fetch(monkeypatch):
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
 
 @pytest.fixture(autouse=True)

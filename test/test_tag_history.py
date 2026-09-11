@@ -64,6 +64,28 @@ def test_reach_distinguishes_album_wide_from_partial_and_per_track():
     assert _row(rows, "title").reach == "1 of 18 tracks"
 
 
+def test_a_folder_cover_in_a_tagging_is_named_not_counted():
+    """A tagging that creates the folder cover records it as a file of its own
+    (#469). It is not a track: counting it reported a field that reached every
+    one of thirteen tracks as "13 of 14"."""
+    records = _album(13, lambda i: {"artist": ["A", "B"], ARTWORK: [None, "sha-new"]}) + [
+        TagChanges(file="cover.jpg", changes={ARTWORK: [None, "sha-new"]})
+    ]
+
+    rows = summarise(records)
+
+    assert _row(rows, "artist").reach == "all tracks"
+    assert _row(rows, ARTWORK).reach == "all tracks and cover.jpg"
+
+
+def test_an_artwork_change_to_the_folder_cover_alone_names_it():
+    """The album's own image promoted over `cover.jpg`, and no track moved:
+    "1 track" named something that did not happen."""
+    records = [TagChanges(file="cover.jpg", changes={ARTWORK: ["sha-old", "sha-new"]})]
+
+    assert summarise(records)[0].reach == "cover.jpg"
+
+
 def test_album_fields_sort_before_track_fields_and_artwork_sits_last():
     records = _album(2, lambda i: {"title": ["a", "b"], "label": [None, "L"], ARTWORK: ["x", "y"]})
 

@@ -172,6 +172,7 @@
                describes the mechanism; here what matters is the effect on the
                files this badge is counting. #}
             <button hx-post="/retag/{{ album.id }}"
+                    hx-include="#art-plan-{{ album.id }}"
                     hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
                     class="mt-2 ml-1.5 px-2 py-1 rounded-md text-2xs font-bold uppercase tracking-widest
                            bg-white hover:bg-surface text-ink border border-line transition"

@@ -70,16 +70,18 @@
            cover that; not drawing it at all is better, and the endpoint's
            own refusal (#194) was always the real guard. #}
         {% if comparison.mb_available and album.sidecar and album.sidecar.mb_release_id %}
+        {# `hx-include` carries the Artwork section's fingerprint of what this
+           re-tag would add (#469), so it writes only artwork the page showed.
+           Nothing is carried until that section has loaded. #}
         <button id="retag-btn-{{ album.id }}"
                 hx-post="/retag/{{ album.id }}"
+                hx-include="#art-plan-{{ album.id }}"
                 hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
                 class="album-finding__act"
-                {# What it does to artwork, kept true (#417). It read
-                   "Per-track embedded artwork is preserved", which was the
-                   whole story until a re-tag could also replace a folder
-                   cover and embed a larger image. Since #418 it is simpler
-                   than either: a re-tag never replaces an image you have. #}
-                title="Re-tag from MusicBrainz. Your artwork is left alone — a track with none is given the album's cover.">
+                {# What it does to artwork, kept true (#417). Since #418 a
+                   re-tag never replaces an image you have; it fills what is
+                   empty, and a missing folder cover is one of those (#457). #}
+                title="Re-tag from MusicBrainz. Your artwork is left alone — a track with none, or a missing folder cover, is given the album's best image.">
             Re-tag from MB
         </button>
         {% endif %}

@@ -1,10 +1,10 @@
-"""Cover Art Archive fetcher with album-dir caching.
+"""Cover Art Archive fetcher, and the candidate cache its images are kept in.
 
-Tries the release endpoint first, falls back to the release-group endpoint
-if no front cover is linked at the release level, and finally to art already
-embedded in the album's audio files. Caches the result as `cover.jpg` (or
-`.png`) inside the album directory so there is always a folder cover for
-tools (notably Plex) that read art from disk.
+Asks the release endpoint first and falls back to the release group, where the
+archive very often keeps an album's artwork. What comes back is a CANDIDATE,
+held in a cache outside the music library: whether it is written into the
+album, and where, is the artwork plan's decision (`artwork.plan`, #469), made
+after this module has answered. Nothing here writes into an album directory.
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 
-from . import activity_store, album_files, audit, formats, id_registry, images, sidecar
+from . import activity_store, images
 
 CAA_BASE = "https://coverartarchive.org"
 DEFAULT_TIMEOUT = 30.0
@@ -38,121 +38,62 @@ def cached_cover(album_dir: Path) -> Path | None:
     return None
 
 
-def ensure_cover(
-    album_dir: Path,
+@dataclass(frozen=True)
+class Front:
+    """The archive's front cover for one release, with its bytes in hand.
+
+    Bytes rather than a path because the candidate cache can be switched off:
+    a tagging that needs the archive's image must still be able to use the one
+    it just fetched, whether or not there was anywhere to keep it.
+    """
+
+    data: bytes
+    mime: str
+
+
+def cached_front(release_mbid: str) -> Front | None:
+    """The archive's image for this release from the local cache only, or None.
+
+    No network, so it is safe on every path — the gardener's included. An
+    unreadable cache file is logged and treated as absent: the copy is
+    disposable, and the archive still has the original.
+    """
+    path = cached_image(release_mbid)
+    if path is None:
+        return None
+    try:
+        return Front(data=path.read_bytes(), mime=_mime_of(path))
+    except OSError:
+        log.exception("could not read the cached archive image for %s", release_mbid)
+        return None
+
+
+def front_image(
     release_mbid: str,
     release_group_mbid: str | None = None,
-    size: str = "original",
     *,
     client: httpx.Client | None = None,
-) -> Path | None:
-    """Return the path to a cover for the album.
+) -> Front | None:
+    """The archive's front cover for this release: from the cache, or fetched
+    into it.
 
-    If `cover.{jpg,png}` already exists in album_dir, it's returned as-is
-    (treated as a manual override / cache hit). Otherwise, fetch from CAA:
-    release first, then release-group fallback. If CAA has nothing (common
-    for fresh / private Bandcamp releases not yet in CAA), fall back to art
-    already embedded in the album's audio files. Returns None only when no
-    cover is available from any source.
+    Asked by a tagging for an album with no folder cover, which is the one case
+    where the archive's image may be written without anyone having looked at the
+    album page first — the same single request a tagging has always spent there.
+    Always the ORIGINAL: the largest image available is the one Harmonist wants
+    (#469), and it is what the page's own check measures, so the tagging and the
+    preview compare the same picture.
 
-    Raises `CoverArtError` only when the archive could not be *asked* and no
-    other rung served an image (#458). "I could not ask" and "there is nothing
-    there" are different answers, and collapsing them into None would let a
-    caller — and later #269's probe backoff — record an outage as a fact about
-    the release. Every rung is tried before that error is raised, because the
-    one that needs no network is the last one and it is the one an outage makes
-    most useful.
+    Returns None when the archive has no front cover for the release or its
+    group. Raises `CoverArtError` when it could not be ASKED (#458): "I could not
+    ask" and "there is nothing there" are different answers, and collapsing them
+    would let a caller record an outage as a fact about the release.
+
+    Writes nothing into the album. The image goes to the candidate cache, and
+    whether it lands anywhere in the library is the artwork plan's decision.
     """
-    if cached := cached_cover(album_dir):
+    if (cached := cached_front(release_mbid)) is not None:
         return cached
-
-    album_id = _album_id_for_record(album_dir)
-
-    # Remembered rather than propagated: the rung below needs no network, so an
-    # archive that cannot answer must not skip it. Re-raised at the end only if
-    # nothing else served an image.
-    unreachable: CoverArtError | None = None
-    try:
-        fetched = _fetch_to_disk(
-            album_dir, release_mbid, release_group_mbid, size, client=client, album_id=album_id
-        )
-    except CoverArtError as e:
-        unreachable = e
-        fetched = None
-    if fetched is not None:
-        return fetched
-
-    if (embedded := _extract_embedded_cover(album_dir, album_id)) is not None:
-        return embedded
-    if unreachable is not None:
-        raise unreachable
-    return None
-
-
-def _album_id_for_record(album_dir: Path) -> str:
-    """The id this album answers to right now, for the `cover.write` records
-    below (#456).
-
-    Read ONCE by `ensure_cover` and handed to whichever rung ends up writing.
-    Both rungs put a file in the user's album directory and both record it as
-    `cover.write`; taking the id in one place is what stops them drifting into
-    recording it differently, or a third rung arriving that forgets it entirely.
-
-    Mirrors `scanner._album_id`: the sidecar's MBID, else its temp_uid, else the
-    path-derived id. That last fall-back is the load-bearing part. A cover is
-    fetched BEFORE the tagging that will write the album's first sidecar, so on a
-    first tag `album_id_for` has nothing to read — and a bare None there would
-    leave exactly the albums most likely to gain a cover with no record of having
-    gained one. `id_registry.peek` is not a guess: it is a pure hash of the path,
-    it is what `sidecar.write()` then persists as `temp_uid`, and it is what the
-    scanner already calls the album meanwhile. So the record lands on the id the
-    album has, and the alias chain carries it forward when tagging replaces that
-    id with the MBID.
-
-    Deliberately NOT folded into `sidecar.album_id_for`, whose None means "this
-    album has no sidecar" — a distinction its other callers rely on.
-    """
-    return sidecar.album_id_for(album_dir) or id_registry.peek(album_dir)
-
-
-def _extract_embedded_cover(album_dir: Path, album_id: str) -> Path | None:
-    """Write a folder cover from the first audio file that carries embedded
-    art. Ensures a `cover.*` exists on disk even when CAA has no match."""
-    for path in album_files.audio_files(album_dir):
-        result = formats.read_cover(path)
-        if result is None:
-            continue
-        data, mime = result
-        name = "cover.png" if "png" in mime.lower() else "cover.jpg"
-        target = album_dir / name
-        # Writing into the user's album dir, and possibly over an existing
-        # cover.* they put there themselves — audited like any other file
-        # overwrite (#88). `overwrote` distinguishes creating from replacing.
-        overwrote = target.exists()
-        target.write_bytes(data)
-        audit.record(
-            "cover.write",
-            album_id=album_id,
-            album=album_dir,
-            file=target.name,
-            source="embedded",
-            overwrote=overwrote,
-        )
-        log.debug("cover: extracted embedded art from %s -> %s", path.name, target.name)
-        return target
-    return None
-
-
-def _fetch_to_disk(
-    album_dir: Path,
-    release_mbid: str,
-    release_group_mbid: str | None,
-    size: str,
-    *,
-    client: httpx.Client | None,
-    album_id: str,
-) -> Path | None:
-    suffix = "" if size == "original" else f"-{size}"
     targets = [("release", release_mbid)]
     if release_group_mbid:
         targets.append(("release-group", release_group_mbid))
@@ -169,7 +110,7 @@ def _fetch_to_disk(
 
     try:
         for kind, mbid in targets:
-            url = f"{CAA_BASE}/{kind}/{mbid}/front{suffix}"
+            url = f"{CAA_BASE}/{kind}/{mbid}/front"
             try:
                 resp = http.get(url)
             except httpx.HTTPError as e:
@@ -184,21 +125,14 @@ def _fetch_to_disk(
                 log.debug("CAA: no cover for %s/%s (404)", kind, mbid)
                 continue
             if resp.is_success:
-                target = album_dir / _filename_for(resp)
-                overwrote = target.exists()
-                target.write_bytes(resp.content)
-                audit.record(
-                    "cover.write",
-                    album_id=album_id,
-                    album=album_dir,
-                    file=target.name,
-                    source="caa",
-                    mbid=mbid,
-                    bytes=len(resp.content),
-                    overwrote=overwrote,
-                )
-                log.debug("CAA: wrote %s (%d bytes)", target, len(resp.content))
-                return target
+                ct = resp.headers.get("content-type", "").lower()
+                front = Front(data=resp.content, mime="image/png" if "png" in ct else "image/jpeg")
+                # Kept under the RELEASE's id even when the group answered, as
+                # `check_front` keeps it: the cache holds this release's front
+                # cover, wherever the archive filed it.
+                cache_image(release_mbid, front.data, front.mime)
+                log.debug("CAA: fetched %s/%s (%d bytes)", kind, mbid, len(resp.content))
+                return front
             log.warning("CAA: %s/%s returned status %d", kind, mbid, resp.status_code)
             failure = failure or CoverArtError(f"CAA returned status {resp.status_code} for {url}")
         if failure is not None:
@@ -228,8 +162,8 @@ def check_front(
     """Ask the archive what front cover it has, and measure it.
 
     Asks the RELEASE first and falls back to its RELEASE GROUP, which is where
-    the archive very often keeps the artwork — exactly as `_fetch_to_disk` has
-    done since #131. Asking only the release made the album page report "no
+    the archive very often keeps the artwork — exactly as a tagging's fetch
+    (`front_image`) does. Asking only the release made the album page report "no
     front cover" for albums a tagging would happily have fetched one for (#434).
 
     Returns the answer whatever it is — including "nothing", which is a real
@@ -487,8 +421,5 @@ def _is_mbid(value: str) -> bool:
 _SAFE_ID = re.compile(r"(?!\.)[A-Za-z0-9._-]{1,64}")
 
 
-def _filename_for(resp: httpx.Response) -> str:
-    ct = resp.headers.get("content-type", "").lower()
-    if "png" in ct:
-        return "cover.png"
-    return "cover.jpg"
+def _mime_of(path: Path) -> str:
+    return "image/png" if path.suffix.lower() == ".png" else "image/jpeg"

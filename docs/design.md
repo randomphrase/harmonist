@@ -104,7 +104,7 @@ the whole reason the `NEEDS_SYNC` state exists.
 
 1. User edits a release in MB (track titles, dates, etc.) — or just wants to refresh tags.
 2. User clicks **Re-tag from MB** on a Library album's page.
-3. Harmonist re-fetches the MB release and rewrites the file tags. Artwork the album already carries is left alone — a re-tag only fills a track that has none. Replacing artwork is **Update artwork**, its own action in the Artwork section (#418).
+3. Harmonist re-fetches the MB release and rewrites the file tags. Artwork the album already carries is left alone — a re-tag only fills a track that has none. Replacing artwork is **Apply artwork**, its own action in the Artwork section (#418).
 4. If the release now lists **more** tracks than the album has files, the tagger's
    count guard refuses (§15.3) and the refusal is presented as a decision rather
    than an error: both counts, plus a **Re-tag as incomplete** control that
@@ -1052,9 +1052,9 @@ The levels, ordered by how much of the album they call into question:
 - **Enrichment** — MusicBrainz filling in or correcting a detail: `album_artist_sort`, `artist_sort`, `mb_album_status`, `mb_album_country`, `date`, `original_date`, `script`, `label`, `catalog_number`, `barcode`, `asin`, `disc_subtitle`, `media`, `isrcs`.
 - **Structure** — the same album, laid out differently: `track_num`, `track_total`, `disc_num`, `disc_total`.
 - **Identity** — what the album or one of its tracks *is*: `album`, `album_artist`, `album_artists`, `artist`, `artists`, `title`, `mb_album_type`, and every MusicBrainz id.
-- **Artwork** — the cover image. Its own level rather than a rank among the others, because "let it update my cover art" is a trust decision people make separately from anything about tags.
+**Artwork is not on this scale** (#469). The scale says how far a *metadata* change reaches, which says nothing about a picture. An image write is described by its **operation** instead (`artwork.Operation`): an **Addition** where the target held no image, a **Replacement** where it did — which is also whether there is anything for an Undo to put back. A plan doing both summarises as a Replacement. `significance_of` refuses the `artwork` key rather than rank it, so no trust setting over tag levels can come to authorise an image, and the gardener's diff never carries one (`plan_for` passes `artwork=False`).
 
-`SIGNIFICANCE` lives beside `SCOPE` in `owned.py` and is keyed exactly as a tagging diff is keyed — the `Owned` values plus `ARTWORK` — so a classifier iterating a plan's changes needs no special case for the one key that isn't an owned field. A totality test over that vocabulary is the point of the placement: **a field added to `Owned` later cannot slip through unclassified**, because the test fails until someone places it. The cost of forgetting `SCOPE` is a mis-rendered history row; the cost of forgetting this is a change whose significance nothing can state, in the table a trust setting is read through.
+`SIGNIFICANCE` lives beside `SCOPE` in `owned.py` and is keyed exactly as a tagging diff keys its owned fields. A totality test over that vocabulary is the point of the placement: **a field added to `Owned` later cannot slip through unclassified**, because the test fails until someone places it. The cost of forgetting `SCOPE` is a mis-rendered history row; the cost of forgetting this is a change whose significance nothing can state, in the table a trust setting is read through.
 
 **Every level currently goes to review.** `AUTO_APPLY` is empty and `needs_review` is true for everything. That is deliberate rather than unfinished: nothing has watched this classification run against a real library, and the way to find out whether `mb_album_type` really belongs under Identity is to see it arrive in the Inbox, not to argue it out in advance. Starting closed also means the first cut of the runner cannot write anything unattended, whatever else is wrong with it. `AUTO_APPLY` is the seam #273 turns into a setting: a user who trusts Enrichment gets that level in the set, and everything else keeps going to review.
 
@@ -1096,7 +1096,7 @@ Embedding a cover overwrites whatever image the track already carried, and that 
 
 **Content-addressed files, not database rows.** Cover art runs 200 KB–5 MB per track and is mostly identical between tracks of one album, so the natural handling is dedup by digest: an eight-track album usually costs one file, not eight. Keeping the bytes out of `activity.db` also keeps that store cheap to poll, since it is read on every feed refresh. The digest recorded by the tagging audit *is* the lookup key, so the store needs no index of its own.
 
-**Only what is about to be destroyed.** The copy is taken *after* the per-track-art decision, not during the digest pass — `_has_per_track_art` can still cancel the embed, and an image that survives has no business being backed up. So `_keep_doomed_art` re-reads only the files whose art differs from the incoming cover, and an album already carrying that cover reads nothing at all.
+**Only what is about to be destroyed.** The copy is taken from the plan's *targets* — the files an action will really write — not from every file whose art differs from the winner: a tagging makes additions only, so an image it leaves in place is not being destroyed and has no business being backed up. `_keep_doomed_art` re-reads only those files, and an album already carrying the winner reads nothing at all.
 
 **Bounded, and honest about it.** The store has a size cap (default 500 MB) and evicts oldest-first, which makes restore best-effort by design: an old enough change becomes unrevertable. The album page checks availability *before* rendering, so no Undo button is offered for a change whose image has gone — a button that would fail is worse than none. Usage is shown in Settings, because "how much disk is this costing me" is the question the cap exists to answer.
 
@@ -1136,19 +1136,17 @@ Artwork is not in the plan: it is not an owned tag, and it has its own store, it
 
 Plex with the MusicBrainz agent can fetch its own artwork from external sources, but **Navidrome does not** — it reads from embedded tags and `cover.jpg` only. Navidrome is the strict consumer; we design for it.
 
-**The tagger always:**
+**One plan decides every image an album carries** (`artwork.plan`, #469). It is built from descriptions — each track's embedded image, the folder cover, and the Cover Art Archive's candidate — and names every write that would put the winning image in place: the target, what it holds now (or that it holds nothing), and what it will hold. The album page draws its Artwork section from the plan; a tagging and the Apply artwork action execute it (`tagger.apply_artwork`, and the tag loop for gap fills). Nothing decides twice — the page used to carry its own copy of the size rule, and it drifted from the writer's.
 
-1. Fetches the front cover from the [Cover Art Archive](https://coverartarchive.org) using the MB release ID:
-   - `GET https://coverartarchive.org/release/{mbid}/front` (follows redirects to the actual image)
-   - If unavailable, falls back to `release-group/{mbgid}/front` (release-group-level art).
-   - If CAA has nothing (common for a fresh / private Bandcamp release not yet in CAA), falls back to art **already embedded** in one of the album's audio files — Bandcamp downloads ship with cover art baked in, so this guarantees a folder `cover.*` even off-CAA.
-   - If still nothing (no CAA match, no embedded art), the album is tagged but with no cover; logged, surfaced in the inbox.
-2. Embeds the image in every track's `covr` atom (`mutagen.mp4.MP4Cover` with `FORMAT_JPEG` or `FORMAT_PNG`).
-3. Writes the same image to `<album_dir>/cover.jpg` (or `.png`, matching format) for tools that prefer the sidecar (Navidrome, MPD, foobar2000, etc.).
+1. **Candidates.** The archive's front cover for the release (`GET https://coverartarchive.org/release/{mbid}/front`), falling back to the release group's — always the original. A tagging asks for it only when the album has no folder cover, the one request a tagging has always spent (`cover_art.front_image`); otherwise it weighs whatever the album page's check has cached (`cached_front`). The candidate lives in a cache outside the library, and fetching it writes nothing into the album. An archive that cannot be reached is not a reason to abandon the tagging (#458).
+2. **The largest image wins** (`artwork.beats`): strictly larger on both axes, ties to what is already there, and an unmeasurable image never displaces anything — though any image beats none. Per-track artwork (tracks carrying *different* images) is never overwritten.
+3. **Operations.** Each write is an **Addition** — an artless track, or a folder cover the album lacks — or a **Replacement**. A tagging may make additions only (#418); the Apply artwork action makes both. A missing folder cover is created from the winner, as `cover.jpg` or `cover.png` to match it, so an album whose tracks carry a 3000px image is not given a 1200px archive cover. A compilation's folder cover comes only from the archive: its first sleeve is not the album's cover.
+4. **Revalidation.** The page carries a fingerprint of what it showed — the additions for Re-tag from MB, the whole plan for Apply artwork. The action rebuilds the plan from disk and proceeds only if it matches: Apply artwork otherwise writes nothing and redraws the section, and a re-tag writes its tags and no artwork, with a warning in the album's History. Each target is also re-read immediately before it is written, and one that no longer holds what the plan saw is left alone and reported. A tagging nobody previewed (exact-match auto-tagging, confirmation, recheck) carries no fingerprint and writes its plan's additions.
+5. **Records.** Every image written is recorded as an `artwork` before/after pair on a `tag.track` line — `[None, digest]` for an addition, including a created folder cover — and a folder cover also gets a `cover.write` audit line.
 
-**Resolution policy:** `original` (full CAA resolution). Lossless audio is the dominant cost in this library; an extra 10 MB of cover art per album is negligible by comparison. Configurable via `size` under `[cover_art]` in `harmonist.toml` (`250 | 500 | 1200 | original`) so a constrained deployment can downsize, but this is not the primary use case. Library-wide cover-art optimisation (clipping / recompressing) is a separate, future enhancement — not in scope here.
+If nothing is available — no archive image and no embedded art — the album is tagged without a cover.
 
-**Caching:** the downloaded image goes to `<album_dir>/cover.<ext>` first, and the embed step reads it from there. This means re-tagging an album doesn't refetch CAA, and the user can manually replace `cover.jpg` to override the embedded art on next retag.
+**Resolution policy:** always the archive's `original`. The largest available image is the one Harmonist prefers, and it is the one the album page measures, so a preview and the tagging that follows compare the same picture. (The former `[cover_art] size` setting is no longer read; an old `harmonist.toml` naming it still loads.) Library-wide cover-art optimisation (clipping / recompressing) is a separate, future enhancement.
 
 ---
 
@@ -1172,8 +1170,9 @@ src/harmonist/
   mb_search.py          MB free-text search (manual-ingest path)
   match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
   compare.py            Field-by-field tag-vs-MB comparison primitives (Tags section + tracklist)
-  tagger.py             Picard-compatible tag writer (+ embedded cover), and the undo of one (#157)
-  cover_art.py          Cover Art Archive fetch + cover.* writing
+  tagger.py             Picard-compatible tag writer, the artwork plan's reader and executor, and undo (#157)
+  artwork.py            The artwork plan — which image wins, and every write it takes (#469) — and the Artwork section's view of it
+  cover_art.py          Cover Art Archive fetch + the candidate cache (writes nothing into an album)
   caa_cache.py          TTL cache over cover_art's front-cover check, in activity.db (#436)
   formats/              Per-format tag I/O (m4a, mp3, flac, ogg, opus; _vorbis shared; types)
                         owned.py names the tags Harmonist writes, per-album vs per-track

@@ -1774,7 +1774,7 @@ def test_manual_assign_with_full_url(client, cfg, monkeypatch):
         return _release_for_match(mbid, n_tracks=1)
 
     monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fake_fetch)
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     r = client.post(
         f"/manual/{aid}/assign",
@@ -1795,7 +1795,7 @@ def test_manual_assign_with_bare_mbid(client, cfg, monkeypatch):
         "harmonist.mb_lookup.fetch_release",
         lambda mbid: _release_for_match(mbid, n_tracks=1),
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     r = client.post(
         f"/manual/{aid}/assign",
@@ -1828,7 +1828,7 @@ def test_manual_assign_derives_store_url_from_embedded_comment(client, cfg, monk
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda m: _release_for_match(m, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     def no_urls(_m):
         raise AssertionError("MB url-rels must not be queried when ©cmt has a precise URL")
@@ -1850,7 +1850,7 @@ def test_manual_assign_falls_back_to_mb_url_when_comment_is_root(client, cfg, mo
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda m: _release_for_match(m, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release_urls",
         lambda _m: ["https://artist.bandcamp.com/album/canonical"],
@@ -1872,7 +1872,7 @@ def test_manual_assign_uses_artist_root_placeholder_when_no_mb_url(client, cfg, 
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda m: _release_for_match(m, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     monkeypatch.setattr("harmonist.mb_lookup.fetch_release_urls", lambda _m: [])
 
     r = client.post(f"/manual/{aid}/assign", data={"mbid": _ASSIGN_MBID})
@@ -1888,7 +1888,7 @@ def test_manual_assign_store_url_derivation_error_is_swallowed(client, cfg, monk
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda m: _release_for_match(m, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     def boom(*a, **kw):
         raise RuntimeError("derivation failed")
@@ -3307,7 +3307,7 @@ def test_retag_re_runs_tagger(client, cfg, monkeypatch):
         "harmonist.mb_lookup.fetch_release",
         lambda mbid: _release_for_match(mbid, n_tracks=1),
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     aid = _id_for(cfg, d)
     r = client.post(f"/retag/{aid}")
@@ -3340,7 +3340,7 @@ def test_retag_proceeds_when_the_cover_art_archive_is_unreachable(client, cfg, m
     def down(*a, **kw):
         raise CoverArtError("CAA returned status 503 for https://coverartarchive.org/…/front")
 
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", down)
+    monkeypatch.setattr("harmonist.cover_art.front_image", down)
 
     r = client.post(f"/retag/{_id_for(cfg, d)}")
     assert r.status_code == 200
@@ -3360,7 +3360,7 @@ def test_retag_proceeds_when_the_cover_art_archive_is_unreachable(client, cfg, m
     # entry used to arrive beside an automatic copy of the `log.exception` —
     # carrying a raw absolute path and no album, which is the one of the two a
     # reader would have found least useful.
-    unavailable = [e for e in activity.recent(20) if "over art unavailable" in e.message]
+    unavailable = [e for e in activity.recent(20) if "Archive unavailable" in e.message]
     assert len(unavailable) == 1, [e.message for e in unavailable]
     assert unavailable[0].level == "warning"
     assert unavailable[0].album_id, "attributed, so it reaches the album's History"
@@ -3386,7 +3386,7 @@ def test_retagging_with_the_archive_down_stays_a_no_op_the_second_time(client, c
     def down(*a, **kw):
         raise CoverArtError("CAA returned status 503")
 
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", down)
+    monkeypatch.setattr("harmonist.cover_art.front_image", down)
 
     def track_writes() -> int:
         return len(
@@ -3411,7 +3411,7 @@ def test_retag_works_on_an_album_confirmed_as_incomplete(client, cfg, monkeypatc
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=4)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     r = client.post(f"/retag/{_id_for(cfg, d)}")
     assert r.status_code == 200
@@ -3433,7 +3433,7 @@ def test_retag_still_refuses_an_unconfirmed_short_album(client, cfg, monkeypatch
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=4)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     r = client.post(f"/retag/{_id_for(cfg, d)}")
     assert "Re-tagged" not in r.text
@@ -3460,7 +3460,7 @@ def test_retag_offers_incomplete_when_mb_has_grown_tracks(client, cfg, monkeypat
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     aid = _id_for(cfg, d)
 
     r = client.post(f"/retag/{aid}")
@@ -3494,7 +3494,7 @@ def test_retag_as_incomplete_takes_the_grown_releases_tags(client, cfg, monkeypa
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     r = client.post(f"/retag/{_id_for(cfg, d)}", data={"accept_short": "true"})
     assert r.status_code == 200
@@ -3524,7 +3524,7 @@ def test_retag_reports_extra_files_as_a_failure_with_no_way_out(client, cfg, mon
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     r = client.post(f"/retag/{_id_for(cfg, d)}")
     assert "Re-tag failed" in r.text
@@ -3544,7 +3544,7 @@ def test_album_action_records_activity_against_that_album(client, cfg, monkeypat
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     activity_store.clear()
 
     r = client.post(f"/retag/{aid}")
@@ -3601,7 +3601,7 @@ def test_status_bar_payload_carries_the_album_name(client, cfg, monkeypatch):
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     r = client.post(f"/retag/{aid}")
     payload = _json.loads(r.headers["HX-Trigger"])["harmonist-status"]
@@ -3723,20 +3723,19 @@ def test_activity_shows_album_label_even_when_link_is_dead(client, cfg):
     assert 'href="/album/' not in body  # ...but not a link
 
 
-def test_a_cover_written_before_tagging_reaches_the_albums_history(client, cfg, monkeypatch):
+def test_a_cover_created_by_a_first_tagging_reaches_the_albums_history(client, cfg, monkeypatch):
     """#456, end to end and in the order it really happens.
 
-    The cover is fetched BEFORE the tagging that renames the album, so the row is
-    written under the temp_uid and the album answers to the MBID by the time
-    anyone looks. Both halves have to hold for the user to find it: the record
-    must carry an id at all, and the alias chain must carry that id forward.
+    The cover is created by the same tagging that renames the album (#469), and
+    its record is written under the id the album had when that tagging started —
+    the temp_uid — while the album answers to the MBID by the time anyone looks.
+    Both halves have to hold for the user to find it: the record must carry an
+    id at all, and the alias chain must carry that id forward.
 
     The identity genuinely moves here — asserted, because a fixture whose id
     never changed would pass this with the fix reverted, which is exactly how
     #65's first regression test managed to prove nothing.
     """
-    import httpx
-
     from harmonist import cover_art
 
     d = _make_album(cfg, "CoverThenTag")
@@ -3752,26 +3751,21 @@ def test_a_cover_written_before_tagging_reaches_the_albums_history(client, cfg, 
     old_id = _id_for(cfg, d)
     activity_store.clear()
 
-    # The cover lands first, under whatever the album is called right now.
-    cover_art.ensure_cover(
-        d,
-        "rel-cover",
-        client=httpx.Client(
-            transport=httpx.MockTransport(
-                lambda req: httpx.Response(
-                    200, content=b"COVERBYTES", headers={"content-type": "image/jpeg"}
-                )
-            ),
-            follow_redirects=True,
-        ),
+    # The archive has a cover for the release, and the album has no folder
+    # cover — so the tagging creates one, under whatever the album is called
+    # at the moment it starts.
+    monkeypatch.setattr(
+        "harmonist.cover_art.front_image",
+        lambda *a, **kw: cover_art.Front(data=b"COVERBYTES", mime="image/jpeg"),
     )
-    assert (d / "cover.jpg").exists()
+    assert not (d / "cover.jpg").exists()
 
     # Confirming tags it: temp_uid is dropped for the MBID and the old id dies.
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
     assert client.post(f"/confirm/{old_id}").status_code == 200
+    assert (d / "cover.jpg").read_bytes() == b"COVERBYTES"
     new_id = _id_for(cfg, d)
     assert new_id != old_id, "the identity has to move, or this proves nothing"
 
@@ -4522,7 +4516,7 @@ def test_action_records_an_id_that_still_resolves_after_tagging(client, cfg, mon
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     activity.clear()
 
     # Confirming TAGS it: temp_uid is dropped, the id becomes the MBID.
@@ -4615,7 +4609,7 @@ def test_post_sync_auto_tag_entry_links_to_the_album(cfg, monkeypatch):
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     activity.clear()
 
     assert _resolve_by_store_url(d, cfg, PicardCompatibleTagger()) == "tagged"
@@ -4641,7 +4635,7 @@ def test_a_download_matching_two_editions_equally_is_not_tagged_as_either(cfg, m
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     tagged_as = []
     for order in (["rel-ed-a", "rel-ed-b"], ["rel-ed-b", "rel-ed-a"]):
@@ -4744,7 +4738,7 @@ def test_retag_emits_album_retagged_trigger(client, cfg, monkeypatch):
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     r = client.post(f"/retag/{_id_for(cfg, d)}")
     assert r.status_code == 200
     assert "album-retagged" in r.headers.get("HX-Trigger", "")
@@ -4870,7 +4864,7 @@ def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg,
         "harmonist.mb_lookup.fetch_release",
         lambda mbid: _release_for_match(mbid, n_tracks=1),
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     r = client.post(f"/retag/{_id_for(cfg, d)}")
     assert r.status_code == 200
@@ -5107,7 +5101,7 @@ def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkey
         }
 
     monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fake_release)
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     aid = _id_for(cfg, d)
     r = client.post(f"/confirm/{aid}/incomplete")
@@ -5154,7 +5148,7 @@ def test_confirm_mistag_adopts_owned_store_url(client, cfg, monkeypatch):
         "harmonist.mb_lookup.fetch_release",
         lambda mbid: _release_for_match(mbid, n_tracks=1),
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     aid = _id_for(cfg, d)
     r = client.post(f"/confirm/{aid}")
@@ -5185,7 +5179,7 @@ def test_confirm_normal_candidate_keeps_store_url(client, cfg, monkeypatch):
         "harmonist.mb_lookup.fetch_release",
         lambda mbid: _release_for_match(mbid, n_tracks=1),
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     aid = _id_for(cfg, d)
     client.post(f"/confirm/{aid}")
     assert sc.read(d).store_url == "https://x.bandcamp.com/album/keep-me"
@@ -5306,7 +5300,7 @@ def test_canonical_id_change_mid_transaction(client, cfg, monkeypatch):
         "harmonist.mb_lookup.fetch_release",
         lambda mbid: _release_for_match(mbid, n_tracks=1),
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
     # POST at the temp_uid URL — runs the handler, returns 200
     r = client.post(f"/manual/{temp_uid}/assign", data={"mbid": mbid})
@@ -5584,7 +5578,6 @@ def test_settings_save_persists_and_applies_live(client, cfg):
             "download_format": "alac",
             "max_downloads_per_sync": "12",
             "user_agent": "Harmonist/9.9 ( me@example.com )",
-            "cover_art_size": "500",
             "gardener_level": "review",
             "log_level": "warning",
         },
@@ -5595,7 +5588,6 @@ def test_settings_save_persists_and_applies_live(client, cfg):
     live = client.app.state.cfg
     assert live.bandcamp.download_format == "alac"
     assert live.bandcamp.max_downloads_per_sync == 12
-    assert live.cover_art.size == "500"
     assert live.gardener.level == "review"
     assert live.log_level == "warning"
     # Persisted to harmonist.toml (round-trips on next load)
@@ -5603,24 +5595,6 @@ def test_settings_save_persists_and_applies_live(client, cfg):
     assert "alac" in toml
     assert "max_downloads_per_sync = 12" in toml
     assert 'level = "review"' in toml
-
-
-def test_settings_save_rejects_invalid_cover_size(client, cfg):
-    r = client.post(
-        "/settings",
-        data={
-            "download_format": "flac",
-            "max_downloads_per_sync": "5",
-            "user_agent": "Harmonist/0.1 ( x@y.z )",
-            "cover_art_size": "999",  # not a valid Literal
-            "gardener_level": "off",
-            "log_level": "info",
-        },
-    )
-    assert r.status_code == 200
-    assert "Couldn't save" in r.text
-    # nothing persisted
-    assert not (cfg.paths.config_dir / "harmonist.toml").exists()
 
 
 def test_settings_save_rejects_an_unknown_gardener_level(client, cfg):
@@ -5634,7 +5608,6 @@ def test_settings_save_rejects_an_unknown_gardener_level(client, cfg):
             "download_format": "flac",
             "max_downloads_per_sync": "5",
             "user_agent": "Harmonist/0.1 ( x@y.z )",
-            "cover_art_size": "original",
             "gardener_level": "enrich",  # #273's level, not implemented yet
             "log_level": "info",
         },
@@ -7602,7 +7575,7 @@ def test_request_scope_correlates_the_action_with_its_audit_records(client, cfg,
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     activity.clear()
 
     assert client.post(f"/confirm/{aid}").status_code == 200
@@ -8567,7 +8540,7 @@ def test_a_replacement_musicbrainz_cannot_match_lands_in_the_inbox_not_the_libra
 def no_cover_fetch(monkeypatch):
     """Tagging embeds cover art, which would otherwise reach the real Cover Art
     Archive over the network for every release id these tests invent."""
-    monkeypatch.setattr("harmonist.cover_art.ensure_cover", lambda *a, **kw: None)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
 
 def _resolve_the_download(cfg, album_dir: Path) -> str:
@@ -8996,28 +8969,31 @@ def test_artwork_section_names_the_tracks_missing_art(client, cfg):
     rendered = " ".join(r.text.split())
     # The incoming half names its source and dates itself, so "replaced" cannot
     # be read as something that already happened (#413).
-    assert "After a re-tag" in rendered
+    assert "After Apply" in rendered
     assert "the album&#39;s own artwork" in rendered
 
 
-def test_artwork_section_says_a_folder_cover_is_about_to_be_created(client, cfg):
-    """#457: a re-tag writes a cover.jpg into an album that hasn't got one —
-    mandatory for Navidrome, so it happens whether or not anyone pressed
-    anything about artwork. The section said nothing, and a 3 MB image appearing
-    in a music folder read as Harmonist acting unasked."""
+def test_artwork_section_shows_the_folder_cover_it_would_create(client, cfg):
+    """#457: a cover file gets written into an album that hasn't got one, and
+    the section said nothing — a 3 MB image appearing in a music folder read as
+    Harmonist acting unasked.
+
+    It is a ROW now (#467): an empty frame for the file that is not there, and
+    beside it the image that will be. And the section's own button creates it
+    (#469), so the button is offered — it used to be withheld because it could
+    not make the file its row would have promised."""
     art = _png(1)
     d = _album_with_art(cfg, "NoFolderCover", covers=[art, art])  # no `folder=`
 
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
 
-    # Attributed to RE-TAGGING, not to the artwork button beside it, which
-    # cannot create this file at all.
-    assert "This album has no" in rendered
-    assert "Re-tagging creates one from" in rendered
-    # ...and that button stays off: nothing about the album's existing images
-    # changes, so offering the control would promise the sentence's outcome from
-    # a button that does not produce it.
-    assert "Update artwork" not in rendered
+    # Named for the image it will hold: the tracks' own art is a PNG.
+    assert "not in the folder yet" in rendered
+    assert "There is no cover.png." in rendered
+    assert "the album&#39;s own artwork" in rendered
+    assert "Apply artwork" in rendered
+    # An addition, and labelled as one.
+    assert "Addition" in rendered
 
 
 def test_artwork_section_does_not_announce_a_cover_the_album_already_has(client, cfg):
@@ -9044,7 +9020,7 @@ def test_artwork_section_promises_no_overwrite_where_art_is_preserved(client, cf
     assert "Track 1" in r.text
     assert "Replaced" not in r.text
     assert "Left as is" not in r.text
-    assert "After a re-tag" not in r.text
+    assert "After Apply" not in r.text
 
 
 def test_artwork_images_are_served_by_digest(client, cfg):
@@ -9097,8 +9073,125 @@ def test_the_artwork_action_is_offered_only_when_something_would_change(client, 
     quiet = client.get(f"/album/{_id_for(cfg, settled)}/artwork")
     offered = client.get(f"/album/{_id_for(cfg, improvable)}/artwork")
 
-    assert "Update artwork" not in quiet.text
-    assert "Update artwork" in offered.text
+    assert "Apply artwork" not in quiet.text
+    assert "Apply artwork" in offered.text
+
+
+# ---------- one plan for the page and the writers (#469) ----------
+
+
+def _form_value(html: str, name: str) -> str:
+    """The value of the hidden input named `name` — a fingerprint."""
+    import re
+
+    match = re.search(rf'name="{name}"\s+value="([0-9a-f]*)"', html)
+    assert match, f"no {name} input in the response"
+    return match.group(1)
+
+
+def _release_backed_album_with_art(cfg, name: str, mbid: str, **kw) -> Path:
+    """`_album_with_art`, with a sidecar naming a release so it can be re-tagged."""
+    from harmonist.models import Sidecar
+
+    d = _album_with_art(cfg, name, **kw)
+    sc.write(d, Sidecar(mb_release_id=mbid))
+    return d
+
+
+def test_the_page_and_the_tagger_fingerprint_one_plan_alike(client, cfg):
+    """Re-tag carries the page's fingerprint back, and the tagger compares it
+    with its own. The two must spell one plan identically — read through the
+    album on one side and through the file list on the other — or every re-tag
+    pressed from a page would withhold its artwork."""
+    from harmonist import artwork, tagger
+
+    d = _album_with_art(cfg, "Agreed", covers=[_png(1), None])
+
+    html = client.get(f"/album/{_id_for(cfg, d)}/artwork").text
+
+    plan = tagger.decide_artwork(d, sorted(d.glob("*.m4a")), None)
+    assert _form_value(html, "art_plan") == plan.fingerprint(artwork.Scope.ADDITIONS)
+    assert _form_value(html, "plan") == plan.fingerprint(artwork.Scope.ALL)
+
+
+def test_retag_writes_the_artwork_the_page_showed(client, cfg, monkeypatch):
+    from harmonist import formats
+
+    art = _png(1)
+    d = _release_backed_album_with_art(cfg, "Shown", "rel-shown", covers=[art, None])
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=2)
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+    aid = _id_for(cfg, d)
+    shown = _form_value(client.get(f"/album/{aid}/artwork").text, "art_plan")
+
+    r = client.post(f"/retag/{aid}", data={"art_plan": shown})
+
+    assert "Re-tagged" in r.text
+    assert (d / "cover.png").read_bytes() == art
+    cover = formats.read_cover(d / "02 Track.m4a")
+    assert cover is not None and cover[0] == art
+
+
+def test_retag_writes_no_artwork_the_page_did_not_show(client, cfg, monkeypatch):
+    """The page was drawn from an album that has changed since: tags go on,
+    no image does, and the album's History says why (#469)."""
+    from harmonist import formats
+
+    d = _release_backed_album_with_art(cfg, "Unshown", "rel-unshown", covers=[_png(1), None])
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=2)
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}", data={"art_plan": "0" * 64})
+
+    assert "Re-tagged" in r.text
+    assert not list(d.glob("cover.*"))
+    assert formats.read_cover(d / "02 Track.m4a") is None
+    assert any("changed after the page showed it" in e.message for e in activity.recent(20))
+
+
+def test_apply_artwork_writes_only_what_the_page_showed(client, cfg):
+    """The button carries the fingerprint of the column it sits under. A
+    mismatch — or none at all — writes nothing and re-draws the section; the
+    fingerprint the page really showed writes exactly that."""
+    from harmonist import formats
+
+    art = _png(1)
+    d = _album_with_art(cfg, "Button", covers=[art, None])
+    aid = _id_for(cfg, d)
+
+    stale = client.post(f"/album/{aid}/artwork/update", data={"plan": "0" * 64})
+    assert "changed after the page showed it" in " ".join(stale.text.split())
+    client.post(f"/album/{aid}/artwork/update")
+    assert not list(d.glob("cover.*"))
+    assert formats.read_cover(d / "02 Track.m4a") is None
+
+    shown = _form_value(client.get(f"/album/{aid}/artwork").text, "plan")
+    client.post(f"/album/{aid}/artwork/update", data={"plan": shown})
+
+    assert (d / "cover.png").read_bytes() == art
+    cover = formats.read_cover(d / "02 Track.m4a")
+    assert cover is not None and cover[0] == art
+
+
+def test_the_archive_check_downloads_any_cover_for_an_album_with_no_art(client, cfg, monkeypatch):
+    """A preview of an addition has to show the picture it adds (#469). The
+    check downloads only an image wider than the album's widest — and an album
+    with no image has no width, so it used to download nothing."""
+    d = _release_backed_album_with_art(cfg, "Artless", "rel-artless", covers=[None, None])
+    seen: list[int | None] = []
+
+    def front(mbid, **kw):
+        seen.append(kw.get("keep_if_wider_than"))
+
+    monkeypatch.setattr("harmonist.caa_cache.front", front)
+
+    client.get(f"/album/{_id_for(cfg, d)}/artwork?check=1")
+
+    assert seen == [0]
 
 
 def test_the_artwork_action_writes_artwork_and_not_tags(client, cfg):
@@ -9221,11 +9314,11 @@ def test_a_losing_archive_cover_sits_in_the_incoming_column(client, cfg):
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
     muted = rendered[rendered.index("art-rows--muted") :]
 
-    # The incoming column, under a heading that is not the promise "After a
-    # re-tag" makes.
+    # The incoming column, under a heading that is not the promise "After
+    # Apply" makes.
     assert "art-row__side--after" in muted
     assert "Also considered" in muted
-    assert "After a re-tag" not in muted
+    assert "After Apply" not in muted
     # Neither mark: both say "this is what would be put on your files", and a
     # winning archive cover carries both — see
     # `test_a_winning_archive_cover_is_marked_as_the_one_being_written`.
@@ -9268,7 +9361,7 @@ def test_a_winning_archive_cover_is_marked_as_the_one_being_written(client, cfg)
     assert "art-rows--muted" not in rendered  # it won, so it is not an also-ran
     assert "art-row__facts--mb" in rendered
     assert "From the Cover Art Archive" in rendered  # the hexagon's label
-    assert "Update artwork" in rendered
+    assert "Apply artwork" in rendered
 
 
 def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
@@ -9507,7 +9600,7 @@ def test_loading_the_archives_cover_does_not_make_it_the_winner(client, cfg, mon
 
     assert "art-rows--muted" in rendered  # still an also-ran
     assert "mb-mark" not in rendered  # and still unmarked
-    assert "Update artwork" not in rendered  # nothing to write
+    assert "Apply artwork" not in rendered  # nothing to write
 
 
 def test_a_failed_load_of_the_archives_cover_says_so(client, cfg, monkeypatch):

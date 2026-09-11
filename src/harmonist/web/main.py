@@ -2284,24 +2284,36 @@ def _artwork_view(
     pulled these bytes off disk and `TrackTags.art` is what it noticed about them.
     The one genuinely new read is the folder cover, once.
     """
-    audio, _ = _album_tracks(album.path, album.folders)
+    # Paths as well as tags: the view's plan names its targets by path, exactly
+    # as the tagger's does, so the fingerprint a re-tag carries back means the
+    # same files on both sides (#469). The same listing `_album_tracks` makes.
+    files = (
+        album_files.for_paths(album.folders)
+        if album.folders
+        else album_files.audio_files(album.path)
+    )
+    with timing.warn_if_slow(
+        "album artwork read", _SLOW_ALBUM_READ, album=album.path, files=len(files)
+    ):
+        tracks = [(f, formats.read_tags(f)) for f in files]
     if album.cover_path is None or not album.cover_path.exists():
-        return artwork.summarise(audio, None, caa, archive)
+        return artwork.summarise(album.path, tracks, None, caa, archive)
     try:
         data = album.cover_path.read_bytes()
     except OSError:
         # Loud, per the unattended rule — and NOT reported as "this album has no
         # folder cover". There is one; Harmonist couldn't read it, and the two
-        # lead to opposite conclusions about what a re-tag would do (#112). The
-        # view says so and shows no outcomes at all rather than guessing.
+        # lead to opposite conclusions about what applying would do (#112). The
+        # view says so and its plan writes nothing rather than guessing.
         log.exception("could not read the folder cover for %s", album.path)
-        return replace(artwork.summarise(audio, None, caa, archive), cover_unreadable=True)
+        return artwork.summarise(album.path, tracks, None, caa, archive, cover_unreadable=True)
     mime = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
     cover = artwork.FolderCover(
         name=album.cover_path.name,
         image=formats.EmbeddedArt.of(data, mime),
+        path=album.cover_path,
     )
-    return artwork.summarise(audio, cover, caa, archive)
+    return artwork.summarise(album.path, tracks, cover, caa, archive)
 
 
 def _albums(request: Request) -> list[Album]:
@@ -3128,8 +3140,13 @@ def _tag_with_release(
     store_url_override: str | None = None,
     overwrite_art: bool = False,
     paths: Sequence[Path] | None = None,
+    expected_artwork: str | None = None,
 ) -> None:
     """Fetch MB release, fetch cover, write tags, update sidecar.
+
+    `expected_artwork` is the fingerprint of the artwork additions the album
+    page showed, when a page is who asked (#469). A tagging whose plan no
+    longer matches it writes the tags and no artwork.
 
     `mbid` is what to ask MusicBrainz for, not necessarily what the album ends
     up tagged as: a merged release redirects, and this follows the release it
@@ -3174,13 +3191,17 @@ def _tag_with_release(
     # fact arriving beside them.
     requested_mbid, mbid = mbid, release["id"]
     rg = release.get("release-group") or {}
+    cover_path = cover_art.cached_cover(album_path)
+    archive: cover_art.Front | None = None
     try:
-        cover_path = cover_art.ensure_cover(
-            album_path,
-            release_mbid=release["id"],
-            release_group_mbid=rg.get("id"),
-            size=cfg.cover_art.size,
-        )
+        # Asked only when the album has no folder cover — the one case a
+        # tagging has always spent a request on, and the one where the archive
+        # may be what the cover is created from. The answer is a CANDIDATE: the
+        # tagger's plan decides whether it wins (#469). An album whose folder
+        # cover already exists weighs the archive only from the cache, which
+        # the album page's own check fills.
+        if cover_path is None:
+            archive = cover_art.front_image(release["id"], rg.get("id"))
     except cover_art.CoverArtError:
         # Tagging is the work; the cover is a side effect of it (#458). Design
         # §"Cover art (mandatory)" already rules that an album with no cover
@@ -3188,9 +3209,9 @@ def _tag_with_release(
         # not produce a worse outcome than one that answered "there is none".
         # Losing a whole re-tag to a transient 503 is exactly that inversion.
         #
-        # `cover_path=None` is a value the tagger already handles: `_prepare`
-        # reads no bytes, `write_tags` leaves every file's existing art alone,
-        # and no artwork change is recorded because none happens.
+        # `archive=None` is a value the tagger already handles: the plan weighs
+        # what the album has, and a folder cover may still be created from the
+        # album's own artwork.
         #
         # Loud in both channels, because the two readers are different: the log
         # is all there is at 3am, and the activity line is how someone who
@@ -3205,13 +3226,14 @@ def _tag_with_release(
         # path under Docker, which is why audit records are relativised — and no
         # album id, so it floats attributed to nothing.
         log.exception(
-            "cover art unavailable for %s — tagging without it", album_path, extra=_LOG_ONLY
+            "Cover Art Archive unavailable for %s — tagging without it",
+            album_path,
+            extra=_LOG_ONLY,
         )
         activity.warning(
-            "Cover art unavailable — tagged without it",
+            "Cover Art Archive unavailable — tagged without its artwork",
             album_id=sidecar_mod.album_id_for(album_path),
         )
-        cover_path = None
     tagger.tag_album(
         album_path,
         release,
@@ -3222,6 +3244,8 @@ def _tag_with_release(
         # primary one, so tagging what is under that alone would leave the rest
         # of the album on its old tags.
         files=album_files.for_paths(paths) if paths else None,
+        archive=archive,
+        expected_artwork=expected_artwork,
     )
 
     sc = sidecar_mod.read(album_path)
@@ -3749,13 +3773,12 @@ def _register_routes(app: FastAPI) -> None:
         download_format: str = Form(...),
         max_downloads_per_sync: int = Form(...),
         user_agent: str = Form(...),
-        cover_art_size: str = Form(...),
         gardener_level: str = Form(...),
         log_level: str = Form(...),
     ) -> Response:
         cfg: config_mod.Config = request.app.state.cfg
         # Re-validate by constructing fresh sub-models (model_copy does NOT
-        # validate). Bad values (e.g. an invalid cover-art size) raise here.
+        # validate). Bad values (e.g. an unknown gardener level) raise here.
         try:
             new_bandcamp = config_mod.BandcampConfig(
                 download_format=download_format.strip(),
@@ -3766,7 +3789,6 @@ def _register_routes(app: FastAPI) -> None:
             new_mb = config_mod.MusicBrainzConfig(user_agent=user_agent.strip())
             # model_validate (vs the constructor) keeps mypy happy about the
             # str→Literal narrowing while still validating the value at runtime.
-            new_cover = config_mod.CoverArtConfig.model_validate({"size": cover_art_size})
             new_gardener = config_mod.GardenerConfig.model_validate(
                 {"level": gardener_level.strip()}
             )
@@ -3774,7 +3796,6 @@ def _register_routes(app: FastAPI) -> None:
                 update={
                     "bandcamp": new_bandcamp,
                     "musicbrainz": new_mb,
-                    "cover_art": new_cover,
                     "gardener": new_gardener,
                     "log_level": log_level.strip().lower(),
                 }
@@ -3790,7 +3811,6 @@ def _register_routes(app: FastAPI) -> None:
                 "bandcamp.download_format": new_bandcamp.download_format,
                 "bandcamp.max_downloads_per_sync": new_bandcamp.max_downloads_per_sync,
                 "musicbrainz.user_agent": new_mb.user_agent,
-                "cover_art.size": new_cover.size,
                 "gardener.level": new_gardener.level,
                 "log_level": new_cfg.log_level,
             },
@@ -4559,6 +4579,7 @@ def _register_routes(app: FastAPI) -> None:
         album_id: str,
         overwrite_art: bool = Form(False),
         accept_short: bool = Form(False),
+        art_plan: str = Form(""),
     ) -> Response:
         """Re-tag a Library album from the MusicBrainz release it names.
 
@@ -4566,6 +4587,11 @@ def _register_routes(app: FastAPI) -> None:
         when the guard refuses (#252) — tag the files against a release that lists
         more tracks than are on disk. It is a decision, so it arrives from a
         control the user pressed; the endpoint never infers it from the counts.
+
+        `art_plan` is the fingerprint of the artwork this re-tag would add, as
+        the Artwork section drew it (#469). Absent when the section has not
+        loaded — the re-tag then writes what its own plan says, as every
+        tagging without a page does.
         """
         album = _find_album(request, album_id)
         sc = album.sidecar
@@ -4603,6 +4629,7 @@ def _register_routes(app: FastAPI) -> None:
                 incomplete=accept_short or album.state == AlbumState.INCOMPLETE,
                 overwrite_art=overwrite_art,
                 paths=album.folders,
+                expected_artwork=art_plan or None,
             )
         except mb_lookup.ReleaseGoneError:
             # Not a failure to report as one: MusicBrainz has deleted the release
@@ -5081,9 +5108,13 @@ def _register_routes(app: FastAPI) -> None:
         # What the archive has to beat to be worth downloading: the widest image
         # the album already has. A candidate that loses is measured and
         # forgotten; only a winner costs the full 200 KB–5 MB.
+        #
+        # Zero when the album has no image at all, so ANY cover the archive has
+        # is downloaded: it would be written into that album, and a preview of an
+        # addition has to show the picture it adds (#469).
         best = max(
             (r.image.size.width for r in current.images if r.image and r.image.size),
-            default=None,
+            default=0,
         )
         try:
             # The release group, from the STORED release payload — a local read
@@ -5123,8 +5154,9 @@ def _register_routes(app: FastAPI) -> None:
             )
 
     @app.post("/album/{album_id}/artwork/update", response_class=HTMLResponse)
-    def album_artwork_update(request: Request, album_id: str) -> Response:
-        """Put the winning image on every track and on the folder cover (#418).
+    def album_artwork_update(request: Request, album_id: str, plan: str = Form("")) -> Response:
+        """Apply the artwork the section shows: the plan its rows were read off
+        (#418, #469).
 
         Artwork only — no tags are written, not even stale ones. A button about
         images that quietly re-tagged an album would defeat the separation this
@@ -5132,48 +5164,71 @@ def _register_routes(app: FastAPI) -> None:
         want to undo on its own, and History has offered a separate Undo for it
         since #131.
 
+        `plan` is the fingerprint of what the page showed. The section is
+        rebuilt from disk here, and nothing is written unless it still says the
+        same thing — an image edited in another tab, or an archive candidate that
+        arrived after the page was drawn, sends the section back to be looked at
+        again rather than being written under a preview that described something
+        else. No MusicBrainz request either way: the archive's image comes from
+        the same local cache the page read.
+
         Re-renders the section, so what the page shows afterwards is what is now
         on disk rather than what was proposed a moment ago.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
-        if mbid is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "album has no MusicBrainz release")
-        try:
-            release = mb_cache.fetch_release(mbid)
-        except mb_lookup.MBError as e:
-            return _flash_response(
-                "Couldn't update artwork", str(e), level=Level.ERROR, tasks_changed=False
+        caa = caa_cache.stored(mbid) if mbid else None
+        view = _artwork_view(album, caa, _archive_image(mbid))
+
+        def section(*, changed_since: bool = False) -> Response:
+            # Re-read from disk: the files may just have changed, and the
+            # section describes what they carry.
+            fresh = _refreshed_from_disk(request, _find_album(request, album_id))
+            return _templates(request).TemplateResponse(
+                request,
+                "partials/_artwork.html",
+                _ctx(
+                    request,
+                    album=fresh,
+                    artwork=_artwork_view(fresh, caa, _archive_image(mbid)),
+                    artwork_changed_since=changed_since,
+                    # Stated rather than left undefined: writing artwork changes
+                    # what the album carries, not what the archive holds, so this
+                    # response has no reason to send anyone back to ask (#436).
+                    caa_check_due=False,
+                ),
             )
-        changed = tagger_mod.update_artwork(
-            album.path,
-            release,
-            album.cover_path,
-            files=album_files.for_paths(album.folders) if album.folders else None,
-        )
-        activity.info(
+
+        if view.plan is None or plan != view.fingerprint:
+            log.info("artwork for %s changed since the page was drawn; not applying", album.path)
+            return section(changed_since=True)
+        try:
+            outcome = tagger_mod.apply_artwork(
+                album.path,
+                view.plan,
+                files=album_files.for_paths(album.folders)
+                if album.folders
+                else album_files.audio_files(album.path),
+                cover_path=album.cover_path,
+                archive=cover_art.cached_front(mbid) if mbid else None,
+            )
+        except tagger_mod.ArtworkChangedError:
+            log.info("the winning image for %s moved before it was written", album.path)
+            return section(changed_since=True)
+        changed = outcome.changed
+        message = (
             f"Updated artwork on {changed} file{'s' if changed != 1 else ''}"
             if changed
-            else "Artwork was already up to date",
-            album_id=album.id,
+            else "Artwork was already up to date"
         )
-        # Re-read from disk: the files just changed, and the section describes
-        # what they carry.
-        album = _refreshed_from_disk(request, _find_album(request, album_id))
-        caa = caa_cache.stored(mbid)
-        return _templates(request).TemplateResponse(
-            request,
-            "partials/_artwork.html",
-            _ctx(
-                request,
-                album=album,
-                artwork=_artwork_view(album, caa, _archive_image(mbid)),
-                # Stated rather than left undefined: writing artwork changes
-                # what the album carries, not what the archive holds, so this
-                # response has no reason to send anyone back to ask (#436).
-                caa_check_due=False,
-            ),
-        )
+        if outcome.stale or outcome.failed:
+            # Named, because the remedy is to go and look at those files — and a
+            # count alone reads as Harmonist having done less than it said.
+            left = ", ".join((*outcome.stale, *outcome.failed))
+            activity.warning(f"{message} — left alone: {left}", album_id=album.id)
+        else:
+            activity.info(message, album_id=album.id)
+        return section()
 
     @app.post("/album/{album_id}/artwork/load-archive", response_class=HTMLResponse)
     def album_load_archive_image(request: Request, album_id: str) -> Response:

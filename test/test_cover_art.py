@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 import pytest
 
-from harmonist import id_registry
-from harmonist.cover_art import CoverArtError, cached_cover, ensure_cover
+from harmonist import cover_art
+from harmonist.cover_art import CoverArtError, Front, cached_cover, front_image
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
-_TINY_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00" + b"\x00" * 40
 
 
 def _client(handler) -> httpx.Client:
@@ -24,23 +22,17 @@ def _client(handler) -> httpx.Client:
     )
 
 
-def _flac_with_embedded_art(dirpath: Path, art: bytes) -> Path:
-    """Copy the FLAC fixture into dirpath and embed `art` as its front cover."""
-    from mutagen.flac import FLAC, Picture
-
-    dst = dirpath / "01 track.flac"
-    shutil.copy(FIXTURES_DIR / "sine.flac", dst)
-    audio = FLAC(dst)
-    pic = Picture()
-    pic.type = 3  # front cover
-    pic.mime = "image/jpeg"
-    pic.data = art
-    audio.add_picture(pic)
-    audio.save()
-    return dst
+@pytest.fixture
+def caa_cache(tmp_path, monkeypatch) -> Path:
+    """The candidate cache, configured for this test and put back afterwards —
+    `configure_cache` sets a module global, and a test that leaves it pointing
+    at its own tmp_path hands the next test a cache it did not ask for."""
+    root = tmp_path / "caa"
+    monkeypatch.setattr(cover_art, "_caa_root", root)
+    return root
 
 
-# ---------- cache hits ----------
+# ---------- folder covers already on disk ----------
 
 
 def test_cached_cover_finds_jpg(tmp_path):
@@ -57,138 +49,64 @@ def test_cached_cover_returns_none_when_absent(tmp_path):
     assert cached_cover(tmp_path) is None
 
 
-def test_caa_cover_write_is_audited(tmp_path):
-    """#88: fetching cover art writes into the user's album dir, and can land on
-    a cover.* they put there themselves — a file write like any other, so it's
-    audited. `overwrote` distinguishes creating from replacing."""
-    from harmonist import activity_store
-    from harmonist.activity_store import Source
-
-    activity_store.init(tmp_path / "audit.db")
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=b"imagebytes", headers={"content-type": "image/jpeg"})
-
-    album = tmp_path / "album"
-    album.mkdir()
-    assert ensure_cover(album, "rel-1", client=_client(handler)) == album / "cover.jpg"
-
-    rows = [e for e in activity_store.recent(10, source=Source.AUDIT)]
-    row = next(e for e in rows if e.message.startswith("cover.write"))
-    assert "source=caa" in row.message
-    assert "overwrote=False" in row.message  # created, not replaced
-    assert "bytes=10" in row.message
-    # The COLUMN, not the message (#456). Asserting the message alone is what let
-    # this ship: every field above was right while `album_id` was NULL, so the
-    # row was real, correct, and unreachable from the album whose directory it
-    # describes — `album_history` selects by id.
-    assert row.album_id == id_registry.peek(album)
+# ---------- the archive's image for a tagging: front_image (#469) ----------
+#
+# A CANDIDATE, not a folder cover. Whether it is written anywhere is the artwork
+# plan's decision — see test_tagger's creation tests — so nothing here can touch
+# an album directory: `front_image` is not given one.
 
 
-def test_embedded_cover_write_is_audited_against_the_album(tmp_path):
-    """The other rung that writes a file, and it needs the id just as much (#456)
-    — more, arguably, since it fires exactly when CAA had nothing to say and the
-    user is most likely to wonder where the image came from."""
-    from harmonist import activity_store
-    from harmonist.activity_store import Source
-
-    activity_store.init(tmp_path / "audit.db")
-    album = tmp_path / "album"
-    album.mkdir()
-    _flac_with_embedded_art(album, _TINY_JPEG)
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(404)
-
-    assert ensure_cover(album, "rel-1", client=_client(handler)) == album / "cover.jpg"
-
-    row = next(
-        e
-        for e in activity_store.recent(10, source=Source.AUDIT)
-        if e.message.startswith("cover.write")
-    )
-    assert "source=embedded" in row.message
-    assert row.album_id == id_registry.peek(album)
-
-
-def test_cover_write_is_recorded_against_the_sidecars_id_when_there_is_one(tmp_path):
-    """An album that already has an identity is recorded under THAT, not under
-    the path hash — otherwise the row lands on an id the album stopped answering
-    to the moment it was tagged, and `album_history` would need an alias that
-    was never recorded because the id never actually moved."""
-    from harmonist import activity_store, sidecar
-    from harmonist.activity_store import Source
-    from harmonist.models import Sidecar
-
-    activity_store.init(tmp_path / "audit.db")
-    album = tmp_path / "album"
-    album.mkdir()
-    sidecar.write(album, Sidecar(mb_release_id="rel-already-tagged"))
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=b"img", headers={"content-type": "image/jpeg"})
-
-    ensure_cover(album, "rel-already-tagged", client=_client(handler))
-
-    row = next(
-        e
-        for e in activity_store.recent(10, source=Source.AUDIT)
-        if e.message.startswith("cover.write")
-    )
-    assert row.album_id == "rel-already-tagged"
-
-
-def test_ensure_cover_uses_cache_without_network(tmp_path):
-    (tmp_path / "cover.jpg").write_bytes(b"existing")
-
-    def boom(req):
-        raise AssertionError(f"network should not be hit: {req.url}")
-
-    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(boom))
-    assert result == tmp_path / "cover.jpg"
-    assert result.read_bytes() == b"existing"
-
-
-# ---------- fetch from release endpoint ----------
-
-
-def test_ensure_cover_fetches_jpeg_from_release(tmp_path):
+def test_front_image_fetches_the_releases_original_and_keeps_it(caa_cache):
+    """The ORIGINAL, whatever size a deployment once configured: the largest
+    image available is the one Harmonist prefers, and it is the one the album
+    page's check measures — the preview and the tagging compare one picture."""
     seen_urls = []
 
     def handler(req):
         seen_urls.append(str(req.url))
         return httpx.Response(200, content=b"REAL_JPEG", headers={"content-type": "image/jpeg"})
 
-    result = ensure_cover(tmp_path, "rel-123", client=_client(handler))
-    assert result == tmp_path / "cover.jpg"
-    assert result.read_bytes() == b"REAL_JPEG"
+    assert front_image("rel-123", client=_client(handler)) == Front(b"REAL_JPEG", "image/jpeg")
     assert seen_urls == ["https://coverartarchive.org/release/rel-123/front"]
+    # Kept, so the album page afterwards shows the candidate a tagging weighed.
+    kept = cover_art.cached_image("rel-123")
+    assert kept is not None
+    assert kept.read_bytes() == b"REAL_JPEG"
 
 
-def test_ensure_cover_writes_png_when_content_type_says_png(tmp_path):
+def test_front_image_reports_a_png_as_one(caa_cache):
+    """The mime decides the name a created folder cover takes."""
+
     def handler(req):
         return httpx.Response(200, content=b"REAL_PNG", headers={"content-type": "image/png"})
 
-    result = ensure_cover(tmp_path, "rel-123", client=_client(handler))
-    assert result == tmp_path / "cover.png"
-    assert result.read_bytes() == b"REAL_PNG"
+    assert front_image("rel-123", client=_client(handler)) == Front(b"REAL_PNG", "image/png")
 
 
-def test_ensure_cover_with_explicit_size_hits_sized_url(tmp_path):
-    seen_urls = []
+def test_front_image_serves_the_cache_without_asking(caa_cache):
+    cover_art.cache_image("rel-123", b"CACHED", "image/jpeg")
+
+    def boom(req):
+        raise AssertionError(f"network should not be hit: {req.url}")
+
+    assert front_image("rel-123", "rg-456", client=_client(boom)) == Front(b"CACHED", "image/jpeg")
+
+
+def test_front_image_still_answers_with_the_cache_switched_off(monkeypatch):
+    """Bytes in hand rather than a path: a tagging needs the image it just
+    fetched whether or not there was anywhere to keep it."""
+    monkeypatch.setattr(cover_art, "_caa_root", None)
 
     def handler(req):
-        seen_urls.append(str(req.url))
-        return httpx.Response(200, content=b"x", headers={"content-type": "image/jpeg"})
+        return httpx.Response(200, content=b"REAL_JPEG", headers={"content-type": "image/jpeg"})
 
-    ensure_cover(tmp_path, "rel-123", size="500", client=_client(handler))
-    assert seen_urls == ["https://coverartarchive.org/release/rel-123/front-500"]
+    assert front_image("rel-123", client=_client(handler)) == Front(b"REAL_JPEG", "image/jpeg")
 
 
 # ---------- fallback to release-group ----------
 
 
-def test_ensure_cover_falls_back_to_release_group_on_404(tmp_path):
+def test_front_image_falls_back_to_release_group_on_404(caa_cache):
     seen_urls = []
 
     def handler(req):
@@ -197,37 +115,34 @@ def test_ensure_cover_falls_back_to_release_group_on_404(tmp_path):
             return httpx.Response(200, content=b"RG_JPEG", headers={"content-type": "image/jpeg"})
         return httpx.Response(404)
 
-    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
-    assert result == tmp_path / "cover.jpg"
-    assert result.read_bytes() == b"RG_JPEG"
+    assert front_image("rel-123", "rg-456", client=_client(handler)) == Front(
+        b"RG_JPEG", "image/jpeg"
+    )
     assert seen_urls == [
         "https://coverartarchive.org/release/rel-123/front",
         "https://coverartarchive.org/release-group/rg-456/front",
     ]
+    # Kept under the RELEASE, which is what the cache is keyed by.
+    assert cover_art.cached_image("rel-123") is not None
 
 
-def test_ensure_cover_returns_none_when_both_endpoints_404(tmp_path):
+def test_front_image_is_none_when_both_endpoints_404(caa_cache):
     def handler(req):
         return httpx.Response(404)
 
-    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
-    assert result is None
-    # No cover file written
-    assert not list(tmp_path.glob("cover.*"))
+    assert front_image("rel-123", "rg-456", client=_client(handler)) is None
 
 
-def test_ensure_cover_returns_none_when_release_404_and_no_release_group(tmp_path):
+def test_front_image_is_none_when_release_404_and_no_release_group(caa_cache):
     def handler(req):
         return httpx.Response(404)
 
-    result = ensure_cover(tmp_path, "rel-123", client=_client(handler))
-    assert result is None
+    assert front_image("rel-123", client=_client(handler)) is None
 
 
-def test_ensure_cover_falls_back_to_release_group_when_the_release_endpoint_is_down(tmp_path):
+def test_front_image_falls_back_to_release_group_when_the_release_endpoint_is_down(caa_cache):
     """#458: a 503 says nothing about whether this release has a cover, so it
-    must not end the ladder the way a 404's definitive "there is none" does.
-    The release-group rung is still worth asking."""
+    must not end the search the way a 404's definitive "there is none" does."""
     seen_urls = []
 
     def handler(req):
@@ -236,123 +151,64 @@ def test_ensure_cover_falls_back_to_release_group_when_the_release_endpoint_is_d
             return httpx.Response(200, content=b"RG_JPEG", headers={"content-type": "image/jpeg"})
         return httpx.Response(503)
 
-    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
-    assert result == tmp_path / "cover.jpg"
-    assert result.read_bytes() == b"RG_JPEG"
+    assert front_image("rel-123", "rg-456", client=_client(handler)) == Front(
+        b"RG_JPEG", "image/jpeg"
+    )
     assert seen_urls == [
         "https://coverartarchive.org/release/rel-123/front",
         "https://coverartarchive.org/release-group/rg-456/front",
     ]
 
 
-def test_ensure_cover_falls_back_to_release_group_after_a_transport_failure(tmp_path):
-    """#458, the other way the first rung fails. A refused connection reaches
-    `_fetch_to_disk` as an httpx error rather than a status, and used to raise
-    from a different line — so it needs its own proof that it now falls through."""
+def test_front_image_falls_back_to_release_group_after_a_transport_failure(caa_cache):
+    """#458, the other way the first endpoint fails: an httpx error rather than a
+    status."""
 
     def handler(req):
         if "release-group" in str(req.url):
             return httpx.Response(200, content=b"RG_JPEG", headers={"content-type": "image/jpeg"})
         raise httpx.ConnectError("connection refused")
 
-    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
-    assert result == tmp_path / "cover.jpg"
-    assert result.read_bytes() == b"RG_JPEG"
-
-
-# ---------- fallback to embedded art ----------
-
-
-def test_ensure_cover_extracts_embedded_art_when_caa_misses(tmp_path):
-    """When CAA has no cover (fresh/private release) but an audio file carries
-    embedded art, a folder cover.jpg is written from that art."""
-    _flac_with_embedded_art(tmp_path, _TINY_JPEG)
-
-    def handler(req):
-        return httpx.Response(404)
-
-    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
-    assert result == tmp_path / "cover.jpg"
-    assert result.read_bytes() == _TINY_JPEG
-
-
-def test_ensure_cover_extracts_embedded_art_when_caa_is_down(tmp_path):
-    """#458: the embedded-art rung is the one that needs no network at all, so an
-    archive that cannot answer is the case it is most useful in — and the case it
-    used to be skipped in, because the 503 propagated past it."""
-    _flac_with_embedded_art(tmp_path, _TINY_JPEG)
-
-    def handler(req):
-        return httpx.Response(503)
-
-    result = ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
-    assert result == tmp_path / "cover.jpg"
-    assert result.read_bytes() == _TINY_JPEG
-
-
-def test_ensure_cover_prefers_caa_over_embedded(tmp_path):
-    """CAA art wins over embedded — it's the authoritative match for the
-    tagged release and typically higher resolution."""
-    _flac_with_embedded_art(tmp_path, _TINY_JPEG)
-
-    def handler(req):
-        return httpx.Response(200, content=b"CAA_JPEG", headers={"content-type": "image/jpeg"})
-
-    result = ensure_cover(tmp_path, "rel-123", client=_client(handler))
-    assert result == tmp_path / "cover.jpg"
-    assert result.read_bytes() == b"CAA_JPEG"
-
-
-def test_ensure_cover_none_when_caa_misses_and_audio_has_no_art(tmp_path):
-    """An audio file with no embedded art and no CAA match → no cover written."""
-    shutil.copy(FIXTURES_DIR / "sine.flac", tmp_path / "01 track.flac")  # plain, no art
-
-    def handler(req):
-        return httpx.Response(404)
-
-    result = ensure_cover(tmp_path, "rel-123", client=_client(handler))
-    assert result is None
-    assert not list(tmp_path.glob("cover.*"))
+    assert front_image("rel-123", "rg-456", client=_client(handler)) == Front(
+        b"RG_JPEG", "image/jpeg"
+    )
 
 
 # ---------- error path ----------
 
 
-def test_ensure_cover_raises_on_non_404_failure(tmp_path):
-    """Once every rung has been tried and none of them served an image, the
-    archive's silence is reported rather than swallowed — "I could not ask" and
-    "there is nothing there" must not arrive as the same answer (#458). The
-    404 tests above are the other half of that pair: they return None, because a
-    404 IS an answer. `tmp_path` holds no audio, so the embedded rung has nothing
-    to offer and this really is the end of the ladder."""
+def test_front_image_raises_on_non_404_failure(caa_cache):
+    """Could-not-ask and there-is-nothing-there must not arrive as the same
+    answer (#458). The 404 tests above are the other half of that pair: they
+    return None, because a 404 IS an answer."""
 
     def handler(req):
         return httpx.Response(500, content=b"server explosion")
 
     with pytest.raises(CoverArtError):
-        ensure_cover(tmp_path, "rel-123", client=_client(handler))
+        front_image("rel-123", client=_client(handler))
 
 
-def test_ensure_cover_raises_on_network_error(tmp_path):
+def test_front_image_raises_on_network_error(caa_cache):
     def handler(req):
         raise httpx.ConnectError("connection refused")
 
     with pytest.raises(CoverArtError):
-        ensure_cover(tmp_path, "rel-123", client=_client(handler))
+        front_image("rel-123", client=_client(handler))
 
 
-def test_a_later_404_does_not_erase_an_earlier_could_not_ask(tmp_path):
-    """The release rung was unreachable and the release-group rung answered "no
-    art here". The album still has no cover AND the archive was never properly
-    asked about it, so this must raise rather than return None: returning None
-    would report a definitive "there is nothing for this release" that only one
-    of the two rungs is entitled to say (#458)."""
+def test_a_later_404_does_not_erase_an_earlier_could_not_ask(caa_cache):
+    """The release endpoint was unreachable and the release group answered "no
+    art here". The archive was never properly asked about this release, so this
+    must raise rather than return None: None would report a definitive "there is
+    nothing for this release" that only one of the two answers is entitled to
+    say (#458)."""
 
     def handler(req):
         return httpx.Response(404 if "release-group" in str(req.url) else 503)
 
     with pytest.raises(CoverArtError):
-        ensure_cover(tmp_path, "rel-123", release_group_mbid="rg-456", client=_client(handler))
+        front_image("rel-123", "rg-456", client=_client(handler))
 
 
 # ---------- the candidate cache (#276) ----------

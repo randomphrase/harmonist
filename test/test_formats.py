@@ -757,13 +757,13 @@ def test_every_owned_field_has_a_significance():
     forgetting `SCOPE` is a mis-rendered history row; the cost of forgetting this
     one is an unattended write nobody authorised (#267).
 
-    Keyed over the whole diff vocabulary, not just `Owned`: `ARTWORK` is a key a
-    plan really produces, so leaving it out would be a hole exactly where the map
-    is supposed to be total.
+    Exactly `Owned`, and deliberately not `ARTWORK` (#469): an image is not a
+    tag, and is described by `artwork.Operation` rather than ranked on this
+    scale. Its absence is what makes `significance_of` refuse it.
     """
-    from harmonist.formats.owned import ARTWORK, BY_VALUE, SIGNIFICANCE, Owned
+    from harmonist.formats.owned import BY_VALUE, SIGNIFICANCE, Owned
 
-    assert set(SIGNIFICANCE) == {f.value for f in Owned} | {ARTWORK}
+    assert set(SIGNIFICANCE) == {f.value for f in Owned}
     assert BY_VALUE.keys() <= {f.value for f in Owned}
 
 

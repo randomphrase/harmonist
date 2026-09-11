@@ -6,6 +6,27 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+
+- **A missing `cover.jpg` is now a row in the Artwork section**, showing the
+  image it will be created from, and **Apply artwork** (was *Update artwork*)
+  creates it (#467, #469).
+- **A folder cover Harmonist creates is the largest image on offer** — your
+  album's own artwork now beats a smaller Cover Art Archive image (#469).
+- **Artwork changes are labelled Addition or Replacement**, and only a
+  replacement asks you to confirm (#468).
+- **Re-tag and Apply artwork write only the artwork the page showed**; if it has
+  changed since, no artwork is written and the album page says so (#469).
+
+### Removed
+
+- **The Cover art size setting** — Harmonist always uses the Cover Art Archive's
+  original image (#469).
+
+### Fixed
+
+- **History names `cover.jpg` instead of counting it as a track** (#469).
+
 ## [1.16.1] - 2026-09-10
 
 ### Changed
