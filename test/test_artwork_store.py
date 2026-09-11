@@ -8,6 +8,7 @@ import time
 import pytest
 
 from harmonist import activity_store, artwork_store
+from test.helpers import keep_one
 
 JPEG = b"\xff\xd8\xff" + b"a" * 200
 PNG = b"\x89PNG\r\n\x1a\n" + b"b" * 200
@@ -22,7 +23,7 @@ def _store(tmp_path):
 
 
 def test_keeping_an_image_makes_it_retrievable_by_digest():
-    key = artwork_store.keep(JPEG, mime="image/jpeg")
+    key = keep_one(JPEG, mime="image/jpeg")
 
     assert key == artwork_store.digest(JPEG)
     path = artwork_store.path_for(key)
@@ -35,7 +36,7 @@ def test_keeping_an_image_makes_it_retrievable_by_digest():
 
 
 def test_a_png_keeps_its_own_extension():
-    key = artwork_store.keep(PNG, mime="image/png")
+    key = keep_one(PNG, mime="image/png")
     assert key is not None
     path = artwork_store.path_for(key)
     assert path is not None and path.suffix == ".png"
@@ -45,7 +46,7 @@ def test_the_same_image_is_stored_once_however_many_tracks_shared_it(tmp_path):
     """The whole reason for content-addressing: an album whose eight tracks
     carry one cover costs one file, not eight."""
     for _ in range(8):
-        artwork_store.keep(JPEG, mime="image/jpeg")
+        keep_one(JPEG, mime="image/jpeg")
 
     assert len(list((tmp_path / "artwork").iterdir())) == 1
 
@@ -54,7 +55,7 @@ def test_an_unconfigured_store_is_a_no_op_rather_than_an_error():
     """Failing to keep a backup must never stop the tagging it was backing up."""
     artwork_store.configure(None)
 
-    assert artwork_store.keep(JPEG) is None
+    assert keep_one(JPEG) is None
     assert artwork_store.path_for(artwork_store.digest(JPEG)) is None
     assert artwork_store.usage() == (0, artwork_store.DEFAULT_MAX_BYTES)
 
@@ -68,7 +69,7 @@ def test_an_unwritable_store_reports_failure_instead_of_raising(tmp_path, monkey
 
     monkeypatch.setattr(artwork_store.Path, "write_bytes", boom)
 
-    assert artwork_store.keep(JPEG, mime="image/jpeg") is None
+    assert keep_one(JPEG, mime="image/jpeg") is None
 
 
 def test_the_size_cap_evicts_the_oldest_images_first(tmp_path):
@@ -79,7 +80,7 @@ def test_the_size_cap_evicts_the_oldest_images_first(tmp_path):
 
     keys: list[str] = []
     for i, data in enumerate(images):
-        key = artwork_store.keep(data, mime="image/jpeg")
+        key = keep_one(data, mime="image/jpeg")
         assert key is not None
         keys.append(key)
         # Distinct mtimes, so "oldest" is well-defined rather than filesystem luck.
@@ -103,8 +104,8 @@ def test_re_keeping_an_image_saves_it_from_being_evicted_as_old(tmp_path):
     artwork_store.configure(tmp_path / "artwork", max_bytes=600)
     shared, only_old, newest = b"s" * 250, b"o" * 250, b"n" * 250
 
-    shared_key = artwork_store.keep(shared, mime="image/jpeg")
-    old_key = artwork_store.keep(only_old, mime="image/jpeg")
+    shared_key = keep_one(shared, mime="image/jpeg")
+    old_key = keep_one(only_old, mime="image/jpeg")
     assert shared_key is not None and old_key is not None
     for key, when in ((shared_key, 1000), (old_key, 1001)):
         path = artwork_store.path_for(key)
@@ -113,8 +114,8 @@ def test_re_keeping_an_image_saves_it_from_being_evicted_as_old(tmp_path):
 
     # A second album replaces the SAME image — the change is new even though the
     # stored file is not.
-    artwork_store.keep(shared, mime="image/jpeg")
-    artwork_store.keep(newest, mime="image/jpeg")
+    keep_one(shared, mime="image/jpeg")
+    keep_one(newest, mime="image/jpeg")
 
     assert artwork_store.path_for(shared_key) is not None, "a fresh change was evicted"
     assert artwork_store.path_for(old_key) is None
@@ -126,9 +127,9 @@ def test_eviction_is_audited_because_it_deletes_the_last_copy(tmp_path):
     from harmonist.activity_store import Source
 
     artwork_store.configure(tmp_path / "artwork", max_bytes=300)
-    artwork_store.keep(b"x" * 250, mime="image/jpeg")
+    keep_one(b"x" * 250, mime="image/jpeg")
     time.sleep(0.01)
-    artwork_store.keep(b"y" * 250, mime="image/jpeg")
+    keep_one(b"y" * 250, mime="image/jpeg")
 
     messages = [e.message for e in activity_store.recent(50, source=Source.AUDIT)]
     assert any(m.startswith("artwork.keep") for m in messages)
@@ -143,7 +144,7 @@ def test_a_zero_cap_keeps_nothing():
     the original."""
     artwork_store.configure(artwork_store._root, max_bytes=0)
 
-    assert artwork_store.keep(JPEG, mime="image/jpeg") is None
+    assert keep_one(JPEG, mime="image/jpeg") is None
     assert artwork_store.path_for(artwork_store.digest(JPEG)) is None
 
 
@@ -169,7 +170,7 @@ def test_a_key_that_is_not_a_digest_never_reaches_the_filesystem(key):
 def test_a_partial_write_is_never_visible_under_its_digest(tmp_path):
     """Written via a temp file then renamed, so a crash can't leave half an
     image under a digest that claims to be complete."""
-    artwork_store.keep(JPEG, mime="image/jpeg")
+    keep_one(JPEG, mime="image/jpeg")
     leftovers = [p for p in (tmp_path / "artwork").iterdir() if p.name.endswith(".tmp")]
 
     assert leftovers == []
@@ -260,9 +261,9 @@ class TestEviction:
     def test_a_protected_image_outlives_an_unprotected_older_one(self):
         """The point of the two passes: being old is not what decides."""
         old_unprotected, protected = _image(1), _image(2)
-        artwork_store.keep(old_unprotected)
+        keep_one(old_unprotected)
         time.sleep(0.01)
-        artwork_store.keep(protected)
+        keep_one(protected)
         _replaced("album-a", protected)
         # A cap that forces exactly one of the two out.
         artwork_store.configure(artwork_store._root, max_bytes=len(protected) + 100)
@@ -279,13 +280,13 @@ class TestEviction:
         """The backstop. A promise the disk cannot keep is not kept — but it is
         said out loud, because the UI has been offering that Undo."""
         first, second = _image(1), _image(2)
-        artwork_store.keep(first)
+        keep_one(first)
         _replaced("album-a", first)
         time.sleep(0.01)
         _replaced("album-b", second)
         artwork_store.configure(artwork_store._root, max_bytes=len(second) + 100)
 
-        artwork_store.keep(second)
+        keep_one(second)
 
         assert artwork_store.path_for(artwork_store.digest(first)) is None
         assert artwork_store.path_for(artwork_store.digest(second)) is not None
@@ -295,12 +296,12 @@ class TestEviction:
         did before #408 instead of letting the store grow past its cap."""
         monkeypatch.setattr(activity_store, "artwork_backups", list)
         old, new = _image(1), _image(2)
-        artwork_store.keep(old)
+        keep_one(old)
         time.sleep(0.01)
         _replaced("album-a", old)
         artwork_store.configure(artwork_store._root, max_bytes=len(new) + 100)
 
-        artwork_store.keep(new)
+        keep_one(new)
 
         assert artwork_store.path_for(artwork_store.digest(old)) is None
 
@@ -311,11 +312,11 @@ class TestEviction:
         overage on it. The newest change is the one most likely to be undone;
         it must outlive older protected history, not be sacrificed for it."""
         older, taking_now = _image(1), _image(2)
-        artwork_store.keep(older)
+        keep_one(older)
         _replaced("album-a", older)
         artwork_store.configure(artwork_store._root, max_bytes=len(taking_now) + 100)
 
-        key = artwork_store.keep(taking_now)
+        key = keep_one(taking_now)
 
         assert key is not None
         assert artwork_store.path_for(key) is not None, "the new backup was evicted"
@@ -328,4 +329,4 @@ class TestEviction:
         change that is merely unundoable and one whose original is destroyed."""
         artwork_store.configure(artwork_store._root, max_bytes=10)
 
-        assert artwork_store.keep(_image(1)) is None
+        assert keep_one(_image(1)) is None

@@ -43,11 +43,18 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+from collections.abc import Iterable
 from pathlib import Path
 
 from . import audit
 
 log = logging.getLogger(__name__)
+
+#: On every failure logged here: kept out of the Activity feed's log mirror.
+#: A backup that could not be kept stops a REPLACEMENT (#470), and the operation
+#: that was refused says so once, attributed to its album. The store's own line
+#: would arrive beside it as a second, unattributed copy of the same news.
+_LOG_ONLY = {"_activity": True}
 
 #: Default cap. Around a thousand typical covers — enough that undoing a
 #: re-tagging session weeks later still works, small enough to be unremarkable
@@ -88,64 +95,77 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def keep(data: bytes, *, mime: str | None = None) -> str | None:
-    """Store `data` under its digest and return that digest, or None if the
-    store isn't configured or the write failed.
+# No one-image `keep()`. Every caller is an operation that may overwrite several
+# images, and keeping them one call at a time is exactly what let the size cap
+# evict an earlier backup while the later one was being taken (#470).
+
+
+def keep_all(images: Iterable[tuple[bytes, str | None]]) -> frozenset[str]:
+    """Store every image one operation is about to overwrite, and return the
+    digests of those actually retained.
+
+    **A digest returned means the image is still there** (#427), and callers
+    treat it as the licence to destroy the original: NO RETAINED BACKUP MEANS NO
+    REPLACEMENT (#470). A key for an image the size cap has already swept away
+    is not a weaker promise, it is a false one — so retention is checked after
+    the cap is enforced, not assumed from the write having succeeded.
+
+    All at once, because one at a time was not enough. The images being kept
+    right now are protected by no record yet — the operation replacing them has
+    not written its own — so each is treated as `pending` while the cap is
+    enforced. Kept one per call, only the image in hand was pending: the second
+    image's sweep could evict the first, whose caller already held a digest and
+    had gone on to overwrite the original.
 
     Idempotent: an image already held is not rewritten, which is what makes an
     album whose tracks share one cover cost one file rather than one per track.
 
-    Best-effort by design. A backup that cannot be written is a reason to warn,
-    not a reason to abandon the tagging — the user asked for the re-tag, and
-    refusing it because the undo store is full would be a worse failure than
-    losing the undo. Returns None so the caller can record honestly that no
-    copy was kept.
-
-    **A digest means the image is still there** (#427). Callers treat one as
-    permission to destroy the original — `tagger._write_folder_cover` overwrites
-    a folder cover on the strength of it — so a key for an image the sweep at the
-    end of this call already deleted is not a weaker promise, it is a false one.
+    Empty when the store is not configured or cannot be written: the caller
+    then replaces nothing, and says so. Failures are logged here, loudly, but
+    kept out of the feed — see `_LOG_ONLY`.
     """
     root = _root
     if root is None:
-        return None
-    key = digest(data)
-    path = _path_for(root, key, mime)
-    try:
-        if path.exists():
-            # Already held — but mark it as referenced NOW. Eviction is
-            # oldest-first, and without this the mtime stays at first-store
-            # time: two albums sharing an image (a label's house sleeve, a
-            # reissue) would let a change made today be evicted before changes
-            # made months ago, because the FILE is old even though the change
-            # is not. What must survive is the most recently referenced image.
-            os.utime(path)
-            return key
-        root.mkdir(parents=True, exist_ok=True)
-        # Written via a temp file in the same directory then renamed, so a
-        # crash can't leave a half-image under a digest that claims to be
-        # complete — the same atomicity the sidecar writes use.
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_bytes(data)
-        os.replace(tmp, path)
-    except OSError:
-        log.exception("could not keep artwork %s — the change will not be undoable", key[:12])
-        return None
-    audit.record("artwork.keep", digest=key, bytes=len(data))
-    # `pending`, because the tagging that is replacing this image has not
-    # recorded itself yet: protection is derived from those records, so for the
-    # length of this call the newest change is the one image nothing protects
-    # (#427). Without saying so here, eviction spends the overage on it first
-    # and hands back a key to a file it has just deleted.
-    _evict_if_over_cap(pending=key)
-    if path_for(key) is None:
+        return frozenset()
+    stored: set[str] = set()
+    for data, mime in images:
+        key = digest(data)
+        path = _path_for(root, key, mime)
+        try:
+            if path_for(key) is not None:
+                # Already held — but mark it as referenced NOW. Eviction is
+                # oldest-first, and without this the mtime stays at first-store
+                # time: two albums sharing an image (a label's house sleeve, a
+                # reissue) would let a change made today be evicted before
+                # changes made months ago, because the FILE is old even though
+                # the change is not. What must survive is the most recently
+                # referenced image.
+                held = path_for(key)
+                assert held is not None
+                os.utime(held)
+            else:
+                root.mkdir(parents=True, exist_ok=True)
+                # Written via a temp file in the same directory then renamed, so
+                # a crash can't leave a half-image under a digest that claims to
+                # be complete — the same atomicity the sidecar writes use.
+                tmp = path.with_suffix(path.suffix + ".tmp")
+                tmp.write_bytes(data)
+                os.replace(tmp, path)
+                audit.record("artwork.keep", digest=key, bytes=len(data))
+        except OSError:
+            log.exception("could not keep artwork %s", key[:12], extra=_LOG_ONLY)
+            continue
+        stored.add(key)
+    if stored:
+        _evict_if_over_cap(pending=frozenset(stored))
+    retained = frozenset(key for key in stored if path_for(key) is not None)
+    for key in sorted(stored - retained):
         log.warning(
-            "artwork %s could not be retained under the store's cap — the change "
-            "it was backing up will not be undoable",
+            "artwork %s could not be retained under the store's cap",
             key[:12],
+            extra=_LOG_ONLY,
         )
-        return None
-    return key
+    return retained
 
 
 def path_for(key: str) -> Path | None:
@@ -237,7 +257,7 @@ def protected_digests() -> frozenset[str]:
     return frozenset(out)
 
 
-def _evict_if_over_cap(*, pending: str | None = None) -> None:
+def _evict_if_over_cap(*, pending: frozenset[str] = frozenset()) -> None:
     """Drop images until the store is under cap, protected ones last.
 
     Two passes, and the order is the whole point (#408). The first spends the
@@ -248,14 +268,14 @@ def _evict_if_over_cap(*, pending: str | None = None) -> None:
     promise the UI has been making, and on an unattended box the log is the only
     place that can say so.
 
-    Within each pass, least recently *referenced* rather than stored: `keep`
+    Within each pass, least recently *referenced* rather than stored: `keep_all`
     touches an image it already holds, so an image shared by several albums is
     as fresh as its newest use.
 
-    `pending` is the backup being taken right now, which no record protects yet
-    because the tagging that replaces it has not been written (#427). It joins
-    the protected pass as its newest member, so the documented policy — oldest
-    change first — applies to it rather than around it.
+    `pending` is the backups being taken right now, which no record protects yet
+    because the operation that replaces them has not been written (#427, #470).
+    They join the protected pass as its newest members, so the documented policy
+    — oldest change first — applies to them rather than around them.
     """
     root = _root
     if root is None or not root.is_dir():
@@ -269,9 +289,7 @@ def _evict_if_over_cap(*, pending: str | None = None) -> None:
     if total <= _max_bytes:
         return
 
-    protected = protected_digests()
-    if pending is not None:
-        protected |= {pending}
+    protected = protected_digests() | pending
     by_age = sorted(entries, key=lambda e: e[1].st_mtime)
     passes = (
         [e for e in by_age if e[0].stem not in protected],

@@ -47,6 +47,7 @@ from harmonist.tagger import (
     LEGACY_RELEASE_ID,
     TagMismatchError,
 )
+from test.helpers import keep_one
 
 
 def _update_artwork(
@@ -265,10 +266,13 @@ def test_tagging_records_a_field_the_new_release_removed(album_with_tracks, tmp_
 def test_tagging_records_artwork_replacement_by_digest(album_with_tracks, tmp_path):
     """Artwork isn't an owned tag, but replacing it is destructive and belongs
     in the record. The digests are what #131 will store the images under."""
-    from harmonist import activity_store
+    from harmonist import activity_store, artwork_store
     from harmonist.formats import owned
 
     activity_store.init(tmp_path / "audit.db")
+    # Somewhere to keep what the replacement below destroys — without one it
+    # is refused outright (#470).
+    artwork_store.configure(tmp_path / "artwork")
     album_dir = album_with_tracks(2)
     cover = tmp_path / "cover.jpg"
     cover.write_bytes(b"\xff\xd8\xff" + b"first" * 40)
@@ -906,7 +910,10 @@ def test_the_preserved_artwork_notice_is_not_repeated_by_a_no_op_re_tag(
 
 def test_tag_album_overwrite_art_forces_replacement(album_with_tracks, tmp_path):
     """overwrite_art=True is the explicit override: embed the album cover even over
-    differing per-track art."""
+    differing per-track art — provided what it overwrites can be kept (#470)."""
+    from harmonist import artwork_store
+
+    artwork_store.configure(tmp_path / "artwork")
     album_dir = album_with_tracks(2)
     _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())
     _embed_cover(album_dir / "02 Track 2.m4a", _minimal_jpeg() + b"_different")
@@ -2494,7 +2501,7 @@ def test_restoring_a_folder_cover_twice_is_a_no_op(album_with_tracks, tmp_path):
     cover = album_dir / "cover.jpg"
     small = _sized_jpeg(400, 400)
     cover.write_bytes(small)
-    artwork_store.keep(small, mime="image/jpeg")
+    keep_one(small, mime="image/jpeg")
 
     first = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
     second = tagger.restore_artwork(album_dir, {"cover.jpg": artwork_store.digest(small)})
@@ -2930,3 +2937,140 @@ def test_the_artwork_action_refuses_a_winner_that_has_moved(album_with_tracks, t
         tagger.apply_artwork(album_dir, plan, files=files, cover_path=cover)
 
     assert ATOM_COVER not in MP4(files[0])
+
+
+# ---------- no retained backup, no replacement (#470) ----------
+
+
+def _plan_over(album_dir, cover):
+    files = sorted(album_dir.glob("*.m4a"))
+    return files, tagger.decide_artwork(album_dir, files, cover)
+
+
+def test_an_embedded_image_that_cannot_be_kept_is_not_replaced(album_with_tracks, tmp_path):
+    """No store at all — nothing can be kept, so nothing is replaced, and the
+    outcome names what was left. The addition beside it destroys nothing and
+    still happens."""
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(None)
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(400, 400)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)  # track 2 has none
+    cover = album_dir / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(1400, 1400))
+    files, plan = _plan_over(album_dir, cover)
+
+    outcome = tagger.apply_artwork(album_dir, plan, files=files, cover_path=cover)
+
+    assert outcome.unkept == ("01 Track 1.m4a",)
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == cover.read_bytes()
+    # No record claims the refused replacement happened.
+    assert not [e for e in _audit("tag.track") if "01 Track 1" in e.message]
+
+
+def test_a_folder_cover_that_cannot_be_kept_is_not_replaced(album_with_tracks, tmp_path):
+    """A zero cap: a store that keeps nothing disables replacement, not merely
+    its undo."""
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork", max_bytes=0)
+    album_dir = album_with_tracks(1)
+    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(1400, 1400))
+    cover = album_dir / "cover.jpg"
+    small = _sized_jpeg(400, 400)
+    cover.write_bytes(small)
+    files, plan = _plan_over(album_dir, cover)
+
+    outcome = tagger.apply_artwork(album_dir, plan, files=files, cover_path=cover)
+
+    assert outcome.unkept == ("cover.jpg",)
+    assert cover.read_bytes() == small
+    assert not _audit("cover.write")
+
+
+def test_a_store_that_cannot_be_written_replaces_nothing(album_with_tracks, tmp_path):
+    """The write itself failing — here, a file where the store's directory
+    should be."""
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    blocked = tmp_path / "artwork"
+    blocked.write_bytes(b"not a directory")
+    artwork_store.configure(blocked)
+    album_dir = album_with_tracks(1)
+    mine = _sized_jpeg(400, 400)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+    cover = album_dir / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(1400, 1400))
+    files, plan = _plan_over(album_dir, cover)
+
+    outcome = tagger.apply_artwork(album_dir, plan, files=files, cover_path=cover)
+
+    assert outcome.unkept == ("01 Track 1.m4a",)
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
+
+
+def test_when_only_some_backups_fit_only_those_images_are_replaced(
+    album_with_tracks, tmp_path, caplog
+):
+    """Two distinct images to replace and room to keep one. Kept one at a time,
+    the sweep for the second evicted the first after its caller had been told it
+    was safe — and the first image was then overwritten with no copy anywhere.
+    Kept together, exactly the one that survived is replaced; the other track
+    keeps its image, and the tagging still writes every tag."""
+    import logging
+
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    first = _sized_jpeg(500, 500) + b"_one" * 50
+    second = _sized_jpeg(500, 500) + b"_two" * 50
+    artwork_store.configure(tmp_path / "artwork", max_bytes=len(first) + 10)
+    album_dir = album_with_tracks(2)
+    _embed_cover(album_dir / "01 Track 1.m4a", first)
+    _embed_cover(album_dir / "02 Track 2.m4a", second)
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(1400, 1400))
+    originals = {"01 Track 1.m4a": first, "02 Track 2.m4a": second}
+
+    with caplog.at_level(logging.WARNING, logger="harmonist"):
+        tagger.tag_album(album_dir, _release_2_tracks(), cover, overwrite_art=True)
+
+    now = {name: bytes(MP4(album_dir / name)[ATOM_COVER][0]) for name in originals}
+    replaced = [name for name, art in now.items() if art == cover.read_bytes()]
+    assert len(replaced) == 1
+    [left] = set(originals) - set(replaced)
+    assert now[left] == originals[left]
+    # The image that WAS overwritten has its copy — the whole point.
+    assert artwork_store.path_for(artwork_store.digest(originals[replaced[0]])) is not None
+    for name in originals:
+        assert MP4(album_dir / name)[ATOM_MB_ALBUM_ID][0].decode() == _release_2_tracks()["id"]
+    assert "could not be kept" in caplog.text
+
+
+def test_an_undo_that_cannot_keep_what_it_overwrites_is_refused(album_with_tracks, tmp_path):
+    """An undo overwrites too, and is refused whole rather than done in part —
+    a partial restore is a state the album never had."""
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    store = tmp_path / "artwork"
+    artwork_store.configure(store)
+    album_dir = album_with_tracks(1)
+    track = album_dir / "01 Track 1.m4a"
+    old = _sized_jpeg(500, 500)
+    key = keep_one(old)
+    assert key is not None
+    new = _sized_jpeg(900, 900) + b"_since"
+    _embed_cover(track, new)
+    # No room left to keep the image the undo would destroy.
+    artwork_store.configure(store, max_bytes=len(old) - 1)
+
+    with pytest.raises(tagger.ArtworkUnavailableError, match="could not be kept"):
+        tagger.restore_artwork(album_dir, {track.name: key})
+
+    assert bytes(MP4(track)[ATOM_COVER][0]) == new

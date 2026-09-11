@@ -9,6 +9,16 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def keep_one(data: bytes, *, mime: str | None = None) -> str | None:
+    """Keep one image in the artwork store, returning its digest if it was
+    retained — the one-image case of `artwork_store.keep_all`, for tests that
+    are about the store rather than about an operation overwriting images."""
+    from harmonist import artwork_store
+
+    key = artwork_store.digest(data)
+    return key if key in artwork_store.keep_all([(data, mime)]) else None
+
+
 def write_track_totals(
     album_dir: Path,
     *,

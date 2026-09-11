@@ -25,6 +25,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **Artwork is never replaced unless a copy of it was kept** — embedded images
+  now get the protection folder covers had, and a full artwork store leaves the
+  image in place rather than overwrite it (#470).
 - **History names `cover.jpg` instead of counting it as a track** (#469).
 
 ## [1.16.1] - 2026-09-10

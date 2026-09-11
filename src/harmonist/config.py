@@ -92,9 +92,10 @@ class ArtworkStoreConfig(BaseModel):
     design; the UI offers no undo for a change whose image has gone rather than
     a button that would fail.
 
-    Zero disables the store: no copies are kept and artwork replacement stops
-    being reversible, which is a legitimate choice on a volume with no room to
-    spare.
+    Zero disables the store: no copies are kept, and so no artwork is REPLACED —
+    Harmonist does not overwrite an image it cannot give back (#470). Filling a
+    track that has no image, or creating a missing folder cover, still works:
+    those destroy nothing.
     """
 
     max_bytes: int = Field(default=500 * 1024 * 1024, ge=0)

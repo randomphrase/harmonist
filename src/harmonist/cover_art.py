@@ -371,7 +371,7 @@ def configure_cache(root: Path | None) -> None:
 def cache_image(release_mbid: str, data: bytes, mime: str | None) -> Path | None:
     """Keep the archive's image for this release. Returns where, or None.
 
-    Best-effort by design, like `artwork_store.keep`: a cache that cannot be
+    Best-effort by design: a cache that cannot be
     written must not fail the check the user asked for. They lose a thumbnail,
     not an answer.
     """

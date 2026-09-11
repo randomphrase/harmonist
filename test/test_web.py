@@ -44,6 +44,7 @@ from harmonist.tagger import (
     ATOM_TRACK_NUM,
 )
 from harmonist.web.main import create_app
+from test.helpers import keep_one
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -3969,7 +3970,7 @@ def _tagging_with_artwork_change(cfg, name, *, keep_image=True):
         )
     was = artwork_store.digest(old)
     if keep_image:
-        artwork_store.keep(old, mime="image/jpeg")
+        keep_one(old, mime="image/jpeg")
 
     with activity_store.action():
         from harmonist import activity
@@ -9175,6 +9176,32 @@ def test_apply_artwork_writes_only_what_the_page_showed(client, cfg):
     assert (d / "cover.png").read_bytes() == art
     cover = formats.read_cover(d / "02 Track.m4a")
     assert cover is not None and cover[0] == art
+
+
+def test_apply_artwork_names_the_images_it_could_not_keep(client, cfg, tmp_path):
+    """No kept copy, no replacement (#470) — and the album's Activity says which
+    files were left alone and why, since the remedy (make room in the artwork
+    store) is not something the page itself shows."""
+    from harmonist import artwork_store, formats
+
+    small = _png(1)
+    d = _album_with_art(cfg, "NoRoom", covers=[small, small], folder=_png_sized(2, 900))
+    aid = _id_for(cfg, d)
+    artwork_store.configure(tmp_path / "artwork", max_bytes=0)
+
+    shown = _form_value(client.get(f"/album/{aid}/artwork").text, "plan")
+    client.post(f"/album/{aid}/artwork/update", data={"plan": shown})
+
+    cover = formats.read_cover(d / "01 Track.m4a")
+    assert cover is not None and cover[0] == small
+    notes = [e.message for e in activity.recent(20) if "could not be kept" in e.message]
+    assert notes and "01 Track.m4a" in notes[0]
+
+
+def _png_sized(seed: int, size: int) -> bytes:
+    from test.test_artwork import png_bytes
+
+    return png_bytes(size, size) + bytes([seed])
 
 
 def test_the_archive_check_downloads_any_cover_for_an_album_with_no_art(client, cfg, monkeypatch):

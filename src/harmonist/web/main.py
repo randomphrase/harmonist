@@ -5221,11 +5221,23 @@ def _register_routes(app: FastAPI) -> None:
             if changed
             else "Artwork was already up to date"
         )
-        if outcome.stale or outcome.failed:
-            # Named, because the remedy is to go and look at those files — and a
-            # count alone reads as Harmonist having done less than it said.
-            left = ", ".join((*outcome.stale, *outcome.failed))
-            activity.warning(f"{message} — left alone: {left}", album_id=album.id)
+        # Each file left alone is named, with WHY: the remedy differs — look at a
+        # file changed since, or make room in the artwork store (#470) — and a
+        # count alone reads as Harmonist having done less than it said.
+        notes = [
+            f"{why}: {', '.join(names)}"
+            for why, names in (
+                ("changed since the page was drawn", outcome.stale),
+                (
+                    "not replaced, because the image there could not be kept for Undo",
+                    outcome.unkept,
+                ),
+                ("could not be written", outcome.failed),
+            )
+            if names
+        ]
+        if notes:
+            activity.warning(f"{message} — {'; '.join(notes)}", album_id=album.id)
         else:
             activity.info(message, album_id=album.id)
         return section()

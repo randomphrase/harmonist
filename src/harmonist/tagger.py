@@ -249,10 +249,27 @@ def tag_album(
             "writing any artwork. Review the Artwork section and apply it from there.",
             extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
         )
+    art_targets = prep.art_targets
     if prep.cover is not None and prep.art_after is not None:
         # Only this tagging's own targets: an image the plan leaves alone is not
         # being destroyed and has no business being backed up.
-        _keep_doomed_art({p: prep.art.before.get(p) for p in prep.art_targets}, prep.art_after)
+        doomed = {p: prep.art.before.get(p) for p in art_targets}
+        kept = _keep_doomed_art(doomed, prep.art_after)
+        # NO RETAINED BACKUP, NO REPLACEMENT (#470). Reachable only under
+        # `overwrite_art` — the one way a tagging replaces — and it narrows the
+        # artwork, never the tagging: those files still take their tags, and
+        # keep the image they have.
+        unkept = {p for p, key in doomed.items() if key is not None and key not in kept}
+        if unkept:
+            log.warning(
+                "left the artwork on %d file%s in place: %s current image could not "
+                "be kept, and replacing it would have left no way back",
+                len(unkept),
+                "" if len(unkept) == 1 else "s",
+                "its" if len(unkept) == 1 else "their",
+                extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
+            )
+            art_targets = art_targets - unkept
 
     # The folder cover this tagging creates, when the album has none (#457) —
     # written from the plan like every other image here, where it used to be
@@ -271,7 +288,7 @@ def tag_album(
         # None for a file that already carries an image: `write_tags` then
         # leaves its art alone, and `_changes_for` records no artwork change for
         # it, because none happens (#418).
-        incoming = prep.cover if file_path in prep.art_targets else None
+        incoming = prep.cover if file_path in art_targets else None
         changes = _changes_for(
             tagset,
             before,
@@ -896,7 +913,9 @@ class _Wrote(StrEnum):
     WRITTEN = "written"
     #: The folder no longer holds what the plan saw — an edit made since.
     STALE = "stale"
-    #: It could not be done safely: unreadable, unkeepable, or unwritable.
+    #: Its current image could not be kept, so it was not replaced (#470).
+    UNKEPT = "unkept"
+    #: It could not be read or written.
     FAILED = "failed"
 
 
@@ -906,6 +925,7 @@ def _write_folder_cover(
     image: bytes,
     source: artwork.Source | None,
     album_id: str | None,
+    kept: frozenset[str] = frozenset(),
 ) -> _Wrote:
     """Create or replace the folder cover as `change` says, and record it.
 
@@ -913,12 +933,12 @@ def _write_folder_cover(
     replacement finds the very image it was planned against. Either one failing
     means somebody changed the folder since, and their change stands.
 
-    A replacement keeps what it overwrites BEFORE writing, and is abandoned if
-    it can't: this is the one image the tracks cannot be used to put back, so
-    it is the one a failed backup would destroy irrecoverably (#408).
+    A replacement goes ahead only if the image it overwrites is among `kept` —
+    the backups the caller took, all together, before any write (#408, #470).
+    No retained backup, no replacement.
 
-    Best-effort, like every other artwork operation: a cover that cannot be
-    written is a reason to warn, not to abandon the re-tag the user asked for.
+    A cover that cannot be written is a reason to warn, not to abandon the
+    re-tag the user asked for.
 
     Recorded twice, as a promotion always was: `cover.write` for forensics, and
     a `tag.track` line carrying the `artwork` pair — the shape History renders
@@ -934,18 +954,16 @@ def _write_folder_cover(
         try:
             was = target.read_bytes()
         except OSError:
-            log.exception("could not read %s to keep it before replacing it", target)
+            log.exception("could not read %s before replacing it", target)
             return _Wrote.FAILED
         if images.digest(was) != change.before:
             log.info("%s changed since it was planned; leaving it", target.name)
             return _Wrote.STALE
-        if artwork_store.keep(was, mime=_mime_for(target)) is None:
-            log.warning(
-                "not replacing %s: its current image could not be kept, and the "
-                "change would not be undoable",
-                target.name,
-            )
-            return _Wrote.FAILED
+        if change.before not in kept:
+            # Reported by the caller, once, with the rest of the operation's
+            # outcome — not here as well.
+            log.info("not replacing %s: its current image could not be kept", target.name)
+            return _Wrote.UNKEPT
     try:
         tmp = target.with_suffix(target.suffix + ".tmp")
         tmp.write_bytes(image)
@@ -981,32 +999,35 @@ def _write_folder_cover(
     return _Wrote.WRITTEN
 
 
-def _keep_doomed_art(digests: dict[Path, str | None], incoming: str) -> None:
-    """Copy every image this tagging is about to overwrite into the artwork
-    store, so replacing it can be undone (#131).
+def _keep_doomed_art(
+    digests: Mapping[Path, str | None], incoming: str | None = None
+) -> frozenset[str]:
+    """Copy every image an operation is about to overwrite into the artwork
+    store, and return the digests actually retained (#131, #470).
 
-    Runs AFTER the per-track-art decision, not during the digest pass, and that
-    ordering is the point: `artwork.has_per_track_art` can still cancel the embed,
-    and
-    an image that survives is not being destroyed and has no business being
-    backed up. So this re-reads the doomed files — but only the doomed ones, and
-    only when something really is about to be lost. An album whose art already
-    matches the incoming cover, or has none, reads nothing at all.
+    `digests` is each target and the image it is expected to hold — a track or
+    the folder cover alike. What comes back is the licence to replace: a target
+    whose image is not in it must be left as it is. NO RETAINED BACKUP MEANS NO
+    REPLACEMENT, for embedded and folder artwork alike; a backup is not a
+    nicety that a full store may quietly skip.
 
-    Deduplicated by digest inside the store, so tracks sharing one cover cost
-    one file rather than one each.
+    Kept ALL TOGETHER (`artwork_store.keep_all`), so the size cap cannot evict
+    one of this operation's backups to make room for another.
+
+    Reads only the doomed files, and only the ones still holding the image the
+    caller expects: an image that has changed since is not the one being
+    overwritten, and the per-target check that follows leaves it alone anyway.
+    Deduplicated by digest, so tracks sharing one cover cost one file.
     """
-    seen: set[str] = set()
+    wanted: dict[str, tuple[bytes, str | None]] = {}
     for path, key in digests.items():
-        if key is None or key == incoming or key in seen:
+        if key is None or key == incoming or key in wanted:
             continue
-        seen.add(key)
-        art = formats.read_cover(path)
-        if art is None:  # vanished between the two passes; nothing to keep
-            continue
-        # Best-effort: a copy that can't be written is a reason to warn, not to
-        # abandon the re-tag the user asked for. `keep` logs and returns None.
-        artwork_store.keep(art[0], mime=art[1])
+        art = _image_at(path)
+        if art is None or images.digest(art[0]) != key:
+            continue  # gone or changed since; the write will find it stale
+        wanted[key] = (art[0], art[1])
+    return artwork_store.keep_all(wanted.values()) if wanted else frozenset()
 
 
 class RevertUnavailableError(Exception):
@@ -1295,7 +1316,10 @@ class ArtworkOutcome:
     #: Targets left alone because they no longer held what the plan saw: an
     #: edit made since, which stands. Named, so the user knows where to look.
     stale: tuple[str, ...] = ()
-    #: Targets that could not be written safely, already logged.
+    #: Targets not replaced because the image they hold could not be kept, and
+    #: replacing it would have left no way back (#470).
+    unkept: tuple[str, ...] = ()
+    #: Targets that could not be read or written, already logged.
     failed: tuple[str, ...] = ()
 
 
@@ -1343,18 +1367,23 @@ def apply_artwork(
         digest=digest,
         scope=scope.value,
     )
-    # Keep whatever is about to be destroyed, so this is undoable — the same
-    # pass a tagging makes, and the reason the artwork store exists (#131).
-    _keep_doomed_art({c.target: c.before for c in tracks}, digest)
+    # Keep whatever is about to be destroyed — every track AND the folder cover,
+    # in one go — before a single write, so this is undoable (#131) and so a
+    # target whose image could not be kept is known before anything moves (#470).
+    kept = _keep_doomed_art({c.target: c.before for c in changes}, digest)
 
     changed = 0
     stale: list[str] = []
+    unkept: list[str] = []
     failed: list[str] = []
     for change in tracks:
         name = naming.name_of(change.target)
         current = formats.read_cover(change.target)
         if (images.digest(current[0]) if current is not None else None) != change.before:
             stale.append(name)
+            continue
+        if change.before is not None and change.before not in kept:
+            unkept.append(name)
             continue
         formats.write_cover(change.target, image)
         changed += 1
@@ -1368,14 +1397,18 @@ def apply_artwork(
             )
 
     if (cover := plan.cover_change(scope)) is not None:
-        wrote = _write_folder_cover(album_dir, cover, image, plan.source, album_id)
+        wrote = _write_folder_cover(album_dir, cover, image, plan.source, album_id, kept)
         if wrote is _Wrote.WRITTEN:
             changed += 1
         elif wrote is _Wrote.STALE:
             stale.append(cover.target.name)
+        elif wrote is _Wrote.UNKEPT:
+            unkept.append(cover.target.name)
         else:
             failed.append(cover.target.name)
-    return ArtworkOutcome(changed=changed, stale=tuple(stale), failed=tuple(failed))
+    return ArtworkOutcome(
+        changed=changed, stale=tuple(stale), unkept=tuple(unkept), failed=tuple(failed)
+    )
 
 
 # No `update_artwork(album_dir, release, ...)` that decides and applies in one
@@ -1432,16 +1465,29 @@ def restore_artwork(
         except OSError as e:
             raise ArtworkUnavailableError(f"could not read the kept image for {name}: {e}") from e
 
+    # Keep what is about to be overwritten, exactly as a tagging would: an undo
+    # is itself a destructive write, and must be as undoable as the thing it
+    # undoes. All of it, BEFORE anything is written — and if any of it cannot be
+    # kept, nothing is written at all (#470). Refusing the whole undo rather
+    # than restoring the rest is this function's own rule: a partial restore is
+    # a state the album never had.
+    current = {path: art for path in resolved if (art := _image_at(path)) is not None}
+    overwritten = {
+        path: images.digest(art[0])
+        for path, art in current.items()
+        if images.digest(art[0]) != images.digest(resolved[path])
+    }
+    kept = _keep_doomed_art(overwritten)
+    if unkept := [path for path, key in overwritten.items() if key not in kept]:
+        raise ArtworkUnavailableError(
+            f"the image {naming.name_of(unkept[0])} carries now could not be kept, "
+            "and undoing would destroy it with no way back"
+        )
+
     restored = 0
     for path, data in resolved.items():
-        current = _image_at(path)
-        if current is not None and images.digest(current[0]) == images.digest(data):
+        if path not in overwritten and path in current:
             continue  # already correct — restoring twice is a no-op
-        # Keep what we are about to overwrite, exactly as a tagging would: an
-        # undo is itself a destructive write, and must be as undoable as the
-        # thing it undoes.
-        if current is not None:
-            artwork_store.keep(current[0], mime=current[1])
         _write_image_at(path, data)
         audit.record(
             "artwork.restore",

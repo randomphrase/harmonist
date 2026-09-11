@@ -627,14 +627,22 @@ point:
 
 The undo is itself recorded, so it can be undone in turn.
 
-**Cover art has its own Undo.** Any image Harmonist overwrites — by **Update
-artwork**, or by filling a track that had none — is kept first, and can be put
-back from the Artwork row in History, separately from undoing the tagging.
-**The last five artwork changes to any album are kept**, however many albums you
-tag, so a busy library can't cost you the undo on the one album you were working
-on. A 500 MB ceiling sits under that as a backstop; both numbers are
-`harmonist.toml` settings, and Settings shows what's held under **Kept
-artwork**. See [Artwork](#artwork) for what changes an album's images in the
+**Cover art has its own Undo.** Any image Harmonist overwrites — on a track or
+as the folder cover — is kept first, and can be put back from the Artwork row in
+History, separately from undoing the tagging. **The last five artwork changes to
+any album are kept**, however many albums you tag, so a busy library can't cost
+you the undo on the one album you were working on. A 500 MB ceiling sits under
+that as a backstop, and can still make an older undo unavailable; both numbers
+are `harmonist.toml` settings, and Settings shows what's held under **Kept
+artwork**.
+
+**No kept copy, no replacement.** If Harmonist can't keep a copy of an image —
+the store is full, can't be written, or is switched off with a size of zero — it
+leaves that image where it is rather than replace it with no way back, and the
+album's Activity names the files it left alone. The rest of the change still
+happens: a re-tag still writes its tags, and a track that had no image still
+gets one. An undo that would overwrite an image it can't keep is refused
+outright. See [Artwork](#artwork) for what changes an album's images in the
 first place.
 
 ## Activity
