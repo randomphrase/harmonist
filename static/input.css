@@ -1034,6 +1034,22 @@ dialog::backdrop {
 /* A plain-language aside under the facts — whose cover it is, when that is not
    this edition's (#434). Not the mono facts line: it is prose, not a value. */
 .art-row__meta-plain { font-size: .72rem; color: var(--color-muted); }
+/* Take this image anyway (#472) — and go back to the best one. Quiet: it sits
+   under the facts of a candidate that lost, and it is a choice, not the
+   section's main action. Underlined so it reads as something to press without
+   spending a button's weight on it. */
+.art-row__choose {
+  font-size: .72rem;
+  color: var(--color-mb-purple);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+}
+.art-row__choose:hover { color: var(--color-ink); }
 .art-row__meta {
   font-family: var(--font-mono);
   font-size: .68rem;

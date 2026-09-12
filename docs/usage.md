@@ -526,6 +526,17 @@ When the archive's cover *is* larger, it is fetched without being asked, shown
 beside your own with the MusicBrainz hexagon, and **Apply artwork** will write
 it.
 
+**Taking it anyway.** Size is the only thing Harmonist can measure, and the
+bigger scan is not always the better one — it can be softer, worse cropped, or a
+different pressing's sleeve. So once the archive's cover is on screen, **Use this
+artwork** takes it whatever it measures: smaller than yours, the same size but a
+different picture, or on an album with nothing else pending. Pressing it draws
+the section again with that image as the one coming, so you can see what applying
+would do; nothing is written until you press **Apply artwork**, and **use the
+best image instead** puts the section back. Per-track artwork stays protected —
+the choice reaches the folder cover and the tracks that share one image, not a
+compilation's individual sleeves.
+
 ### Getting artwork back
 
 Any image Harmonist overwrites is kept first, and the album's History offers an

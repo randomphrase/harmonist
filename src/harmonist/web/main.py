@@ -2271,10 +2271,23 @@ def _archive_image(mbid: str | None) -> formats.EmbeddedArt | None:
     return formats.EmbeddedArt.of(data, mime)
 
 
+def _chosen(use: str) -> artwork.Source | None:
+    """The candidate a request names, or None for the size rule's answer (#472).
+
+    One spelling, read by the section's render and by the action that follows,
+    so the plan the fingerprint was taken from is the plan that gets applied.
+    An unknown name is no choice at all rather than an error: it can only come
+    from a hand-made request, and the ordinary section is the safe answer.
+    """
+    return artwork.Source.ARCHIVE if use == "archive" else None
+
+
 def _artwork_view(
     album: Album,
     caa: activity_store.CachedCoverArt | None = None,
     archive: formats.EmbeddedArt | None = None,
+    *,
+    chosen: artwork.Source | None = None,
 ) -> artwork.ArtworkView:
     """What the album page's Artwork section shows (#155).
 
@@ -2302,7 +2315,7 @@ def _artwork_view(
     ):
         tracks = [(f, formats.read_tags(f)) for f in files]
     if album.cover_path is None or not album.cover_path.exists():
-        return artwork.summarise(album.path, tracks, None, caa, archive)
+        return artwork.summarise(album.path, tracks, None, caa, archive, chosen=chosen)
     try:
         data = album.cover_path.read_bytes()
     except OSError:
@@ -2311,14 +2324,16 @@ def _artwork_view(
         # lead to opposite conclusions about what applying would do (#112). The
         # view says so and its plan writes nothing rather than guessing.
         log.exception("could not read the folder cover for %s", album.path)
-        return artwork.summarise(album.path, tracks, None, caa, archive, cover_unreadable=True)
+        return artwork.summarise(
+            album.path, tracks, None, caa, archive, cover_unreadable=True, chosen=chosen
+        )
     mime = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
     cover = artwork.FolderCover(
         name=album.cover_path.name,
         image=formats.EmbeddedArt.of(data, mime),
         path=album.cover_path,
     )
-    return artwork.summarise(album.path, tracks, cover, caa, archive)
+    return artwork.summarise(album.path, tracks, cover, caa, archive, chosen=chosen)
 
 
 def _albums(request: Request) -> list[Album]:
@@ -5057,7 +5072,11 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/album/{album_id}/artwork", response_class=HTMLResponse)
     def album_artwork(
-        request: Request, album_id: str, check: bool = False, reread: bool = False
+        request: Request,
+        album_id: str,
+        check: bool = False,
+        reread: bool = False,
+        use: str = "",
     ) -> Response:
         """The Artwork section (#155), fetched after the page paints.
 
@@ -5080,6 +5099,11 @@ def _register_routes(app: FastAPI) -> None:
 
         Both asking forms go through `caa_cache`, so a forced check still
         refreshes the stored row and still sends the stored etag.
+
+        `?use=archive` previews the archive's image as the chosen one (#472),
+        however it measures. It WRITES NOTHING: choosing is a render, and the
+        Apply button in that state carries the choice back with the fingerprint
+        of the plan this response showed.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
@@ -5089,10 +5113,15 @@ def _register_routes(app: FastAPI) -> None:
                 mbid, _artwork_view(album), max_age=caa_cache.FRESH if reread else None
             )
         caa = caa_cache.stored(mbid) if mbid else None
+        archive = _archive_image(mbid)
         ctx = _ctx(
             request,
             album=album,
-            artwork=_artwork_view(album, caa, _archive_image(mbid)),
+            artwork=_artwork_view(album, caa, archive, chosen=_chosen(use)),
+            # Asked for an image that is not here — the cache dropped it, or it
+            # was never loaded. Said rather than quietly showing the ordinary
+            # plan instead, which would be the unannounced fallback #472 forbids.
+            artwork_choice_unavailable=bool(use) and archive is None,
             # Whether this response should ask the browser to come back and put
             # the question to the archive (#436). Never on a response that has
             # just tried: a check that failed leaves the answer stale, and a
@@ -5177,7 +5206,9 @@ def _register_routes(app: FastAPI) -> None:
             )
 
     @app.post("/album/{album_id}/artwork/update", response_class=HTMLResponse)
-    def album_artwork_update(request: Request, album_id: str, plan: str = Form("")) -> Response:
+    def album_artwork_update(
+        request: Request, album_id: str, plan: str = Form(""), use: str = Form("")
+    ) -> Response:
         """Apply the artwork the section shows: the plan its rows were read off
         (#418, #469).
 
@@ -5195,13 +5226,19 @@ def _register_routes(app: FastAPI) -> None:
         else. No MusicBrainz request either way: the archive's image comes from
         the same local cache the page read.
 
+        `use` is the candidate the user chose, when they chose one (#472). The
+        plan is rebuilt with that same choice, so the fingerprint compared here
+        is the one the page showed — a choice that has since become impossible
+        simply fails the comparison, and the section comes back to be looked at.
+
         Re-renders the section, so what the page shows afterwards is what is now
         on disk rather than what was proposed a moment ago.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
         caa = caa_cache.stored(mbid) if mbid else None
-        view = _artwork_view(album, caa, _archive_image(mbid))
+        chosen = _chosen(use)
+        view = _artwork_view(album, caa, _archive_image(mbid), chosen=chosen)
 
         def section(*, changed_since: bool = False) -> Response:
             # Re-read from disk: the files may just have changed, and the

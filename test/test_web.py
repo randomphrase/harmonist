@@ -9178,6 +9178,97 @@ def test_apply_artwork_writes_only_what_the_page_showed(client, cfg):
     assert cover is not None and cover[0] == art
 
 
+def _archive_candidate(cfg, name: str, mbid: str, *, image: bytes, covers, folder) -> Path:
+    """An album whose release has a cached archive candidate the size rule loses
+    to — the state #472's override exists for."""
+    from harmonist import cover_art
+    from harmonist.activity_store import CachedCoverArt
+
+    d = _release_backed_album_with_art(cfg, name, mbid, covers=covers, folder=folder)
+    cover_art.cache_image(mbid, image, "image/png")
+    activity_store.store_cover_art(
+        mbid,
+        CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url=f"https://coverartarchive.org/release/{mbid}/front",
+            width=300,
+            height=300,
+            mime="image/png",
+        ),
+    )
+    return d
+
+
+def test_the_archive_image_can_be_chosen_whatever_its_size(client, cfg):
+    """The size rule keeps the album's own larger image, and says so. Choosing
+    the archive's smaller one previews it — writing nothing — and applying then
+    puts exactly that image on the tracks and the folder cover (#472)."""
+    from harmonist import formats
+    from test.test_artwork import png_bytes
+
+    mine = png_bytes(900, 900) + b"\x01"
+    theirs = png_bytes(300, 300) + b"\x02"
+    d = _archive_candidate(
+        cfg, "Chosen", "rel-choose", image=theirs, covers=[mine, mine], folder=mine
+    )
+    aid = _id_for(cfg, d)
+
+    ordinary = client.get(f"/album/{aid}/artwork").text
+    assert "Apply artwork" not in ordinary  # the album's own image wins on size
+    assert "Use this artwork" in ordinary
+
+    chosen = client.get(f"/album/{aid}/artwork?use=archive").text
+
+    assert "because you chose it" in " ".join(chosen.split())
+    assert "Apply artwork" in chosen
+    assert (d / "cover.jpg").read_bytes() == mine  # looking wrote nothing
+
+    client.post(
+        f"/album/{aid}/artwork/update",
+        data={"plan": _form_value(chosen, "plan"), "use": "archive"},
+    )
+
+    assert (d / "cover.jpg").read_bytes() == theirs
+    for track in ("01 Track.m4a", "02 Track.m4a"):
+        art = formats.read_cover(d / track)
+        assert art is not None and art[0] == theirs
+
+
+def test_applying_a_chosen_plan_without_the_choice_writes_nothing(client, cfg):
+    """The fingerprint describes the plan the choice produced. Sent back without
+    the choice, it describes a different one — and a different plan is never
+    written under a preview the user read (#469)."""
+    from test.test_artwork import png_bytes
+
+    mine = png_bytes(900, 900) + b"\x01"
+    d = _archive_candidate(
+        cfg,
+        "Mismatched",
+        "rel-mismatch",
+        image=png_bytes(300, 300) + b"\x02",
+        covers=[mine],
+        folder=mine,
+    )
+    aid = _id_for(cfg, d)
+    chosen = client.get(f"/album/{aid}/artwork?use=archive").text
+
+    r = client.post(f"/album/{aid}/artwork/update", data={"plan": _form_value(chosen, "plan")})
+
+    assert "changed after the page showed it" in " ".join(r.text.split())
+    assert (d / "cover.jpg").read_bytes() == mine
+
+
+def test_choosing_an_image_that_is_no_longer_here_says_so(client, cfg):
+    """No silent fallback: asked for an image the cache no longer holds, the
+    section says so rather than quietly showing the ordinary plan as though it
+    were the chosen one (#472)."""
+    d = _release_backed_album_with_art(cfg, "Gone", "rel-gone", covers=[_png(1)], folder=_png(2))
+
+    r = client.get(f"/album/{_id_for(cfg, d)}/artwork?use=archive")
+
+    assert "load it again to choose it" in " ".join(r.text.split())
+
+
 def test_apply_artwork_names_the_images_it_could_not_keep(client, cfg, tmp_path):
     """No kept copy, no replacement (#470) — and the album's Activity says which
     files were left alone and why, since the remedy (make room in the artwork

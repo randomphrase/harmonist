@@ -264,6 +264,7 @@ def plan(
     *,
     overwrite_art: bool = False,
     cover_unreadable: bool = False,
+    chosen: Source | None = None,
 ) -> ArtworkPlan:
     """Which image wins, and every write it takes for it to be everywhere.
 
@@ -280,6 +281,15 @@ def plan(
 
     `overwrite_art` opts out of the comparison: the user asked for the folder
     cover to be embedded, not judged.
+
+    `chosen` opts out of it the other way (#472): the user picked a candidate,
+    having looked at it, and it wins however it measures. Bigger is the only
+    thing Harmonist can measure, and a 900px scan can be softer, worse cropped
+    or a different pressing's sleeve than a 500px one — so the size rule is a
+    default, not a verdict. A chosen image replaces the folder cover even when
+    it is smaller, which is the one case the rule below would refuse. It still
+    writes nothing where the bytes already match, and per-track artwork is still
+    protected unless `overwrite_art` says otherwise.
 
     A missing folder cover is a target like any other, created from the winner
     (#457). What it is created FROM is the size rule's answer rather than a
@@ -303,12 +313,28 @@ def plan(
             return ArtworkPlan(album_dir=album_dir, before=before)
         return _plan_for(album_dir, before, cover, cover.image, Source.FOLDER)
 
+    picked = archive if chosen is Source.ARCHIVE else None
+
     if has_per_track_art(before.values()):
-        if cover is None and archive is not None:
+        # The sleeves are user data either way. A chosen image still reaches the
+        # folder cover — that carrier is not one of them — and replacing the
+        # sleeves themselves needs `overwrite_art`, which is its own decision.
+        candidate = picked if picked is not None else (archive if cover is None else None)
+        if candidate is not None:
             return _plan_for(
-                album_dir, {}, None, archive, Source.ARCHIVE, before=before, preserves=True
+                album_dir,
+                {},
+                cover if picked is not None else None,
+                candidate,
+                Source.ARCHIVE,
+                before=before,
+                preserves=True,
+                force=picked is not None,
             )
         return ArtworkPlan(album_dir=album_dir, before=before, preserves_per_track_art=True)
+
+    if picked is not None:
+        return _plan_for(album_dir, before, cover, picked, Source.ARCHIVE, force=True)
 
     own = next((art for _, art in tracks if art is not None), None)
     winner: EmbeddedArt | None = None
@@ -344,12 +370,14 @@ def _plan_for(
     *,
     before: Mapping[Path, str | None] | None = None,
     preserves: bool = False,
+    force: bool = False,
 ) -> ArtworkPlan:
     """Every write that puts `winner` on `targets` and on the folder cover.
 
     The folder file catches up only on a strict improvement: it is the one
     write here the tracks cannot be used to undo, so a same-sized different
-    picture stays where it is.
+    picture stays where it is. `force` is the user having chosen this image
+    anyway (#472) — the comparison is then not Harmonist's to make.
     """
     changes = [
         Change(target=path, before=digest, after=winner.digest)
@@ -365,7 +393,7 @@ def _plan_for(
                 folder_cover=True,
             )
         )
-    elif cover.image.digest != winner.digest and beats(winner.size, cover.image.size):
+    elif cover.image.digest != winner.digest and (force or beats(winner.size, cover.image.size)):
         changes.append(
             Change(
                 target=cover.path or album_dir / cover.name,
@@ -629,6 +657,11 @@ class ArtworkView:
     #: The plan the rows were read off — and the one the section's action
     #: executes, checked by `fingerprint` (#469).
     plan: ArtworkPlan | None = None
+    #: The candidate the USER chose, when this section is previewing an override
+    #: rather than the size rule's answer (#472). None is the ordinary section.
+    #: Set only where the choice could really be honoured, so the page never
+    #: says it is showing an image it has not got.
+    chosen: Source | None = None
 
     @property
     def images(self) -> tuple[ArtRow, ...]:
@@ -883,6 +916,7 @@ def summarise(
     archive: EmbeddedArt | None = None,
     *,
     cover_unreadable: bool = False,
+    chosen: Source | None = None,
 ) -> ArtworkView:
     """Everything the section shows, from tags already read and a folder cover.
 
@@ -895,14 +929,21 @@ def summarise(
     them change, and into what, is read off the `plan` built here from the same
     descriptions — the plan the section's action then executes (#469). Nothing
     below decides what wins; it only looks up what the plan decided.
+
+    `chosen` is the user having picked a candidate over the size rule's answer
+    (#472). Honoured only where the image is actually in hand, and recorded on
+    the view as such: a section that said it was showing a chosen image it had
+    not got would be describing a write nobody could make.
     """
     readable = [(path, t) for path, t in tracks if not t.unreadable]
+    taken = chosen if chosen is Source.ARCHIVE and archive is not None else None
     the_plan = plan(
         album_dir,
         [(path, t.art) for path, t in readable],
         cover,
         archive,
         cover_unreadable=cover_unreadable,
+        chosen=taken,
     )
     written = {c.target for c in the_plan.changes}
     cover_change = the_plan.cover_change(Scope.ALL)
@@ -995,4 +1036,5 @@ def summarise(
         archive=archive,
         cover_unreadable=cover_unreadable,
         plan=the_plan,
+        chosen=taken,
     )

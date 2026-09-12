@@ -64,6 +64,33 @@
 </p>
 {% endif %}
 
+{# The image the user chose, previewed (#472). Nothing is written yet: this is
+   the same section drawn against a different winner, and Apply below is still
+   the press that writes. Said plainly, because the rows underneath otherwise
+   look like the size rule's answer — and this is deliberately not it. #}
+{% if artwork.chosen %}
+<p class="text-sm text-muted">
+    Showing what applying the <strong>Cover Art Archive's</strong> image would
+    do, because you chose it — whatever its size. Nothing is written until you
+    apply it.
+    <button type="button"
+            hx-get="/album/{{ album.id }}/artwork"
+            hx-target="#album-artwork" hx-swap="innerHTML"
+            class="art-row__choose"
+            aria-label="Go back to the best image">use the best image instead</button>
+</p>
+{% endif %}
+
+{# Asked for a chosen image that is not here any more. The section below is the
+   ordinary plan, and saying so is the point: falling back to it in silence
+   would write something other than what was asked for. #}
+{% if artwork_choice_unavailable %}
+<p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+    That image isn't here any more — load it again to choose it. This is the
+    ordinary artwork for this album.
+</p>
+{% endif %}
+
 {% macro image_cell(image, album_id, who) %}
     {# The image itself, or a frame where one is missing. The empty frame is the
        finding on an album whose tracks have lost their art, so it is drawn as
@@ -227,6 +254,22 @@
                 {% if artwork.archive_row.from_release_group %}
                 <span class="art-row__meta-plain">for the release group, not this edition</span>
                 {% endif %}
+                {# …and the way to take it anyway (#472). Offered only once the
+                   picture is here to be looked at: choosing an image nobody has
+                   seen is the guess this whole section exists to avoid.
+
+                   A GET, because choosing is a RENDER — it re-draws the section
+                   with this image as the winner and writes nothing. Apply is
+                   still a separate press, and still carries the fingerprint of
+                   what that render showed. #}
+                {% if artwork.archive_row.image %}
+                <button type="button"
+                        hx-get="/album/{{ album.id }}/artwork?use=archive"
+                        hx-target="#album-artwork" hx-swap="innerHTML"
+                        class="art-row__choose"
+                        title="Show what applying this image would do. Bigger is the only thing Harmonist can measure, and bigger is not always better."
+                        aria-label="Use the Cover Art Archive's artwork">Use this artwork</button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -255,6 +298,9 @@
       {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
       class="pt-1">
     <input type="hidden" name="plan" value="{{ artwork.fingerprint }}">
+    {# The choice travels with the press, so the server rebuilds the same plan
+       this section was drawn from (#472). #}
+    {% if artwork.chosen %}<input type="hidden" name="use" value="archive">{% endif %}
     <button type="submit"
             class="text-2xs uppercase tracking-widest font-bold px-3 py-1.5 rounded
                    border border-mb-purple/40 text-mb-purple hover:bg-mb-purple/10 transition"
@@ -301,8 +347,27 @@
    The swap replaces this element along with the rest of the section, which is
    what retires the trigger. Nothing visible: the section is complete as it
    stands, and the "CAA checked" row swaps in when the answer arrives. #}
+{# …carrying the current choice with it (#472). This swap replaces the whole
+   section, and it lands whenever the archive gets round to answering — so
+   without the choice in the URL, a user who chose an image in the meantime
+   would watch it revert to the ordinary plan for no reason they could see,
+   and on an album needing no ordinary changes the Apply button would go with
+   it. The check is about what the ARCHIVE holds; it is not a verdict on what
+   the user picked. #}
+{# The check carries the current choice with it (#472), so an answer that lands
+   after one was made re-renders the section still showing it rather than
+   reverting to the ordinary plan.
+
+   It does NOT carry an `hx-sync`. Putting the section's own controls and this
+   trigger on one sync queue was tried and made things worse: the Apply form
+   began escaping htmx altogether on a swap, submitting natively to the album
+   page as a GET with its fields in the query string — the #144 failure mode,
+   from a different direction. A late check replacing a chosen preview is the
+   race that remains; it is narrow (only before any answer is stored) and
+   recoverable by choosing again. #}
 {% if caa_check_due %}
-<div hx-get="/album/{{ album.id }}/artwork?check=1" hx-trigger="load"
+<div hx-get="/album/{{ album.id }}/artwork?check=1{% if artwork.chosen %}&use=archive{% endif %}"
+     hx-trigger="load"
      hx-target="#album-artwork" hx-swap="innerHTML"></div>
 {% endif %}
 
@@ -367,6 +432,7 @@
               {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
               class="album-finding__act-form">
             <input type="hidden" name="plan" value="{{ artwork.fingerprint }}">
+            {% if artwork.chosen %}<input type="hidden" name="use" value="archive">{% endif %}
             <button type="submit" class="album-finding__act"
                     title="Write the artwork the Artwork section shows under After Apply. No tags are touched.">
                 Apply artwork

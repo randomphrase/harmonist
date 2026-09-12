@@ -8,6 +8,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- **Use this artwork** — take the Cover Art Archive's image whatever its size,
+  once you have loaded it and looked: the section previews what applying it
+  would do, and writes nothing until you apply (#472).
 - **Artwork a change added can be undone** — History's Undo takes an image back
   off a track that had none, and removes a `cover.jpg` Harmonist created (#471).
 

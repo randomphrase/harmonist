@@ -188,9 +188,12 @@ def summarise(
     archive: EmbeddedArt | None = None,
     *,
     cover_unreadable: bool = False,
+    chosen: artwork.Source | None = None,
 ) -> artwork.ArtworkView:
     """`artwork.summarise` for an album at `ALBUM`."""
-    return artwork.summarise(ALBUM, tracks, cover, caa, archive, cover_unreadable=cover_unreadable)
+    return artwork.summarise(
+        ALBUM, tracks, cover, caa, archive, cover_unreadable=cover_unreadable, chosen=chosen
+    )
 
 
 def album(
@@ -812,6 +815,56 @@ class TestPlan:
 
         assert [c.after for c in plan.changes] == [cover.image.digest] * 2
         assert not any(c.folder_cover for c in plan.changes)
+
+    def test_a_chosen_candidate_wins_however_it_measures(self) -> None:
+        """#472: bigger is the only thing Harmonist can measure, and bigger is
+        not always better. A user who has looked at both gets the one they
+        picked — onto the tracks AND over the folder cover, which the size rule
+        would never replace with something smaller."""
+        mine = art_of(1, width=900, height=900)
+        theirs = art_of(2, width=300, height=300)
+
+        view = summarise(
+            album(mine, mine), cover_of(mine), archive=theirs, chosen=artwork.Source.ARCHIVE
+        )
+
+        plan = view.plan
+        assert plan is not None
+        assert view.chosen is artwork.Source.ARCHIVE
+        assert {c.after for c in plan.changes} == {theirs.digest}
+        assert plan.cover_change(artwork.Scope.ALL) is not None
+
+    def test_choosing_writes_nothing_when_the_bytes_already_match(self) -> None:
+        """Same picture, chosen or not: there is nothing to write."""
+        same = art_of(1, width=300, height=300)
+
+        view = summarise(
+            album(same, same), cover_of(same), archive=same, chosen=artwork.Source.ARCHIVE
+        )
+
+        assert view.writes is False
+
+    def test_a_chosen_image_still_does_not_flatten_per_track_artwork(self) -> None:
+        """A compilation's sleeves are user data. Choosing an image reaches the
+        folder cover — which is not one of them — and no further."""
+        view = summarise(
+            album(art_of(1), art_of(2)),
+            cover_of(art_of(3)),
+            archive=art_of(4, width=100, height=100),
+            chosen=artwork.Source.ARCHIVE,
+        )
+
+        plan = view.plan
+        assert plan is not None
+        assert plan.preserves_per_track_art is True
+        assert [c.folder_cover for c in plan.changes] == [True]
+
+    def test_a_choice_with_no_image_in_hand_is_not_claimed(self) -> None:
+        """Nothing to choose: the section shows the ordinary plan and does not
+        say a chosen image is on its way."""
+        view = summarise(album(art_of(1)), cover_of(art_of(2)), chosen=artwork.Source.ARCHIVE)
+
+        assert view.chosen is None
 
     def test_a_created_cover_is_named_for_its_format(self) -> None:
         jpeg = EmbeddedArt.of(jpeg_bytes(600, 600), "image/jpeg")
