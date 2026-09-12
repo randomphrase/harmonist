@@ -233,16 +233,16 @@ class TestOutcomes:
         as something arriving from outside, and left the reader asking which of
         the two images was about to be replaced (#400).
 
-        A larger cover, so it is the one that wins and the row really is
-        replaced — an equal one is left alone since #397."""
+        A larger cover, which since #479 changes nothing: it is a layout, and
+        the tracks keep what they carry."""
         view = summarise(
             album(art_of(1, width=400, height=400), art_of(1, width=400, height=400)),
             cover_of(art_of(2, width=900, height=900)),
         )
 
         assert [r.label for r in view.rows] == ["All 2 tracks", "cover.jpg"]
-        assert [r.outcome for r in view.rows] == [artwork.Outcome.REPLACED, artwork.Outcome.SAME]
-        assert [r.writes for r in view.rows] == [True, False]
+        assert [r.outcome for r in view.rows] == [artwork.Outcome.KEPT, artwork.Outcome.SAME]
+        assert [r.writes for r in view.rows] == [False, False]
 
     def test_per_track_art_is_kept_and_says_nothing(self) -> None:
         """A compilation's covers are preserved, so no row may offer a
@@ -267,14 +267,17 @@ class TestOutcomes:
         gap = next(r for r in view.rows if r.is_gap)
         assert gap.written_from == "the album's own artwork"
 
-    def test_a_better_folder_cover_does_replace_the_tracks(self) -> None:
-        """The other direction, and the reason the rule is about size rather
-        than about never touching what is there."""
+    def test_a_better_folder_cover_fills_the_gap_and_leaves_the_rest(self) -> None:
+        """A bigger cover is a layout, not an upgrade (#479): the track that has
+        an image keeps it. The one with none is still filled — from the album's
+        own artwork, so it matches its sibling rather than standing out."""
         small = art_of(1, width=400, height=400)
         view = summarise(album(small, None), cover_of(art_of(2, width=900, height=900)))
 
         outcomes = {r.is_gap: r.outcome for r in view.rows if r.tracks}
-        assert outcomes == {False: artwork.Outcome.REPLACED, True: artwork.Outcome.FILLED}
+        assert outcomes == {False: artwork.Outcome.KEPT, True: artwork.Outcome.FILLED}
+        gap = next(r for r in view.rows if r.is_gap)
+        assert gap.written_image == small
 
     def test_no_folder_cover_takes_the_albums_own_image_everywhere_empty(self) -> None:
         """With no folder cover the tracks' image is the winner by default, and
@@ -409,14 +412,17 @@ class TestLargerLocalImageWins:
         assert cover_row.outcome is artwork.Outcome.REPLACED
         assert cover_row.written_from == "the album's own artwork"
 
-    def test_a_bigger_folder_cover_still_replaces_the_tracks(self) -> None:
+    def test_a_bigger_folder_cover_leaves_the_tracks_alone(self) -> None:
+        """The asymmetry #479 is built on: `cover.jpg` is one file and embedded
+        art is one copy per track, so the big image belongs in the folder and
+        the tracks keep theirs. Nothing is written, and nothing is offered."""
         small = art_of(1, width=400, height=400)
         big = art_of(2, width=1000, height=1000)
 
         view = summarise(album(small, small), cover_of(big))
 
-        assert view.rows[0].outcome is artwork.Outcome.REPLACED
-        assert view.rows[0].written_from == "cover.jpg"
+        assert view.rows[0].outcome is artwork.Outcome.KEPT
+        assert view.writes is False
 
     def test_an_unmeasurable_image_never_wins(self) -> None:
         """A guess is not worth overwriting a user's cover for, in either
@@ -426,8 +432,8 @@ class TestLargerLocalImageWins:
 
         view = summarise(album(unknown, unknown), cover_of(art_of(2, width=40, height=40)))
 
-        # Falls back to today's behaviour: the folder cover is embedded.
-        assert view.rows[0].outcome is artwork.Outcome.REPLACED
+        # …and the tracks keep theirs regardless now (#479), measurable or not.
+        assert view.rows[0].outcome is artwork.Outcome.KEPT
 
     def test_equal_sizes_change_nothing(self) -> None:
         """Neither image wins, so neither file is written: a same-sized
@@ -512,17 +518,22 @@ class TestCoverArtArchiveNote:
 class TestArchiveWins:
     """The archive as the third candidate, on the page (#276)."""
 
-    def test_a_larger_archive_image_replaces_everything(self) -> None:
+    def test_a_larger_archive_image_takes_the_folder_cover(self) -> None:
+        """It is the best image going, so the folder file catches up — and the
+        tracks keep theirs, because rewriting them is the expensive half and
+        nobody asked for it (#479)."""
         mine = art_of(1, width=600, height=600)
         theirs = art_of(2, width=800, height=800)
         archive = art_of(3, width=1400, height=1400)
 
         view = summarise(album(mine, mine), cover_of(theirs), archive=archive)
 
-        # Both the tracks and the folder cover are replaced, by the same image.
-        assert {r.outcome for r in view.rows} == {artwork.Outcome.REPLACED}
-        assert {r.written_from for r in view.rows} == {"the Cover Art Archive"}
-        assert {r.written_image for r in view.rows} == {archive}
+        tracks_row, cover_row = view.rows
+        assert (tracks_row.outcome, tracks_row.writes) == (artwork.Outcome.KEPT, False)
+        assert cover_row.outcome is artwork.Outcome.REPLACED
+        assert cover_row.written_from == "the Cover Art Archive"
+        assert cover_row.written_image == archive
+        assert cover_row.from_archive is True
 
     def test_an_archive_image_that_loses_changes_nothing(self) -> None:
         big = art_of(1, width=3000, height=3000)
@@ -566,14 +577,16 @@ class TestArchiveWins:
         view = summarise(album(mine, mine), None, archive=archive)
 
         tracks, created = view.rows
-        assert tracks.outcome is artwork.Outcome.REPLACED
-        assert tracks.written_from == "the Cover Art Archive"
-        assert tracks.written_image == archive
-        assert tracks.from_archive is True
-        # …and the folder cover the album lacked is created from it too (#469).
+        # The tracks keep theirs (#479); the folder cover the album lacked is
+        # created from the archive's, because that is the best image going.
+        assert (tracks.outcome, tracks.writes) == (artwork.Outcome.KEPT, False)
         assert created.creates == "cover.png"
+        assert created.written_from == "the Cover Art Archive"
         assert created.written_image == archive
-        assert view.operation is artwork.Operation.REPLACEMENT
+        assert created.from_archive is True
+        # An ADDITION now: the only write is the cover the album lacked, since
+        # the tracks keep what they carry (#479).
+        assert view.operation is artwork.Operation.ADDITION
 
     def test_it_must_still_beat_the_tracks_when_there_is_no_folder_cover(self) -> None:
         """With no cover file there is nothing else to compare against, so the
@@ -609,35 +622,37 @@ class TestArchiveWins:
 
 
 def test_a_track_row_replaced_by_the_cover_shows_the_incoming_image() -> None:
-    """The gap this missed until #276: only the gap and folder rows carried an
-    incoming image, so the commonest changing row of all — tracks about to be
-    overwritten by a better folder cover — showed nothing on the right."""
-    small = art_of(1, width=400, height=400)
-    big = art_of(2, width=900, height=900)
+    """The gap this missed until #276: a row that changes must SHOW what it
+    becomes, not only assert it. Since #479 the row that changes on this shape
+    of album is the folder cover's, taking the album's own larger image."""
+    big = art_of(1, width=900, height=900)
+    small = art_of(2, width=400, height=400)
 
-    view = summarise(album(small, small), cover_of(big))
+    view = summarise(album(big, big), cover_of(small))
 
-    tracks_row = view.rows[0]
-    assert tracks_row.outcome is artwork.Outcome.REPLACED
-    assert tracks_row.written_from == "cover.jpg"
-    assert tracks_row.written_image == big
+    cover_row = view.rows[1]
+    assert cover_row.outcome is artwork.Outcome.REPLACED
+    assert cover_row.written_from == "the album's own artwork"
+    assert cover_row.written_image == big
 
 
 def test_only_the_archives_image_carries_the_musicbrainz_mark() -> None:
     """The hexagon is a claim about provenance. A folder cover may have come
     from a Bandcamp download, so it never gets one; the archive's image is the
     one case Harmonist can support (#276)."""
-    small = art_of(1, width=400, height=400)
-    folder = art_of(2, width=900, height=900)
+    own = art_of(1, width=900, height=900)
+    folder = art_of(2, width=400, height=400)
     archive = art_of(3, width=1400, height=1400)
 
-    from_cover = summarise(album(small), cover_of(folder))
-    from_archive = summarise(album(small), cover_of(folder), archive=archive)
+    # The folder cover is the row that changes on both albums (#479): from the
+    # album's own image on the first, from the archive's on the second.
+    from_album = summarise(album(own), cover_of(folder))
+    from_archive = summarise(album(own), cover_of(folder), archive=archive)
 
-    assert from_cover.rows[0].written_image == folder
-    assert from_cover.rows[0].from_archive is False
-    assert from_archive.rows[0].written_image == archive
-    assert from_archive.rows[0].from_archive is True
+    assert from_album.rows[1].written_image == own
+    assert from_album.rows[1].from_archive is False
+    assert from_archive.rows[1].written_image == archive
+    assert from_archive.rows[1].from_archive is True
 
 
 class TestSummaryWording:
@@ -649,10 +664,18 @@ class TestSummaryWording:
     """
 
     def test_it_counts_the_tracks_that_change_not_the_images(self) -> None:
+        """Three tracks sharing one image is one row and three files. Counted in
+        files, since "1 image that could be better" understates a change to
+        three of them — reached here by asking for the cover explicitly, the
+        only way tracks are rewritten since #479."""
         small = art_of(1, width=300, height=300)
-        view = summarise(album(small, small, small), cover_of(art_of(2)))
+        cover = cover_of(art_of(2))
+        tracks = album(small, small, small)
+        plan = artwork.plan(ALBUM, [(p, t.art) for p, t in tracks], cover, overwrite_art=True)
+        view = artwork.summarise(ALBUM, tracks, cover)
 
-        assert view.summary == "Better artwork is available for 3 tracks."
+        assert len(plan.changes) == 3  # every track, because it was asked for
+        assert view.summary == "This album's artwork can be updated."
 
     def test_the_folder_cover_is_named_when_it_is_all_that_changes(self) -> None:
         """The album's own art beats `cover.jpg`, so the FOLDER file catches up
@@ -662,22 +685,26 @@ class TestSummaryWording:
 
         assert view.summary == "Better artwork is available for cover.jpg."
 
-    def test_tracks_and_the_cover_together(self) -> None:
-        """The archive beats both, so both change and both are named."""
+    def test_the_cover_is_named_when_the_archive_beats_it(self) -> None:
+        """The archive beats everything, and since #479 that means the folder
+        cover alone — so the line names it rather than counting tracks that are
+        not moving."""
         view = summarise(
             album(art_of(1, width=400, height=400), art_of(1, width=400, height=400)),
             cover_of(art_of(2, width=500, height=500)),
             archive=art_of(3, width=2000, height=2000),
         )
 
-        assert view.summary == "Better artwork is available for 2 tracks and cover.jpg."
+        assert view.summary == "Better artwork is available for cover.jpg."
 
     def test_a_gap_and_an_improvement_are_two_clauses(self) -> None:
-        small = art_of(1, width=300, height=300)
-        view = summarise(album(small, small, None), cover_of(art_of(2)))
+        """A gap to fill and a folder cover to improve are two different facts,
+        and the line carries both."""
+        big = art_of(1, width=900, height=900)
+        view = summarise(album(big, big, None), cover_of(art_of(2, width=300, height=300)))
 
         assert view.summary == (
-            "1 track is missing artwork, and better artwork is available for 2 tracks."
+            "1 track is missing artwork, and better artwork is available for cover.jpg."
         )
 
     def test_a_gap_alone_says_only_that(self) -> None:
@@ -790,8 +817,11 @@ class TestPlan:
         """A re-tag writes the additions and nothing else (#418), so a
         replacement on offer is no part of what it checks — and a mixed plan
         still reads as the Replacement it is to the section's own button."""
-        small = art_of(1, width=400, height=400)
-        view = summarise(album(small, None), cover_of(art_of(2, width=900, height=900)))
+        # A gap to fill AND the folder cover to improve: an addition and a
+        # replacement in one plan, which since #479 is what a mixed one looks
+        # like — the tracks that have art are no longer part of it.
+        big = art_of(1, width=900, height=900)
+        view = summarise(album(big, None), cover_of(art_of(2, width=300, height=300)))
         plan = view.plan
         assert plan is not None
 
@@ -865,6 +895,44 @@ class TestPlan:
         view = summarise(album(art_of(1)), cover_of(art_of(2)), chosen=artwork.Source.ARCHIVE)
 
         assert view.chosen is None
+
+    def test_a_high_resolution_cover_beside_modest_embedded_art_is_settled(self) -> None:
+        """The layout #479 exists for, and the whole point of it: an album in
+        this shape has nothing outstanding. It used to report a change to every
+        track, permanently, and applying it would have written several megabytes
+        into each one."""
+        modest = art_of(1, width=300, height=300)
+
+        view = summarise(
+            album(modest, modest, modest), cover_of(art_of(2, width=3000, height=3000))
+        )
+
+        assert view.writes is False
+        assert view.operation is None
+        assert not any(r.writes for r in view.rows)
+
+    def test_the_cover_still_catches_up_to_the_tracks(self) -> None:
+        """The other direction is untouched (#410): the folder file is one file,
+        so improving it is cheap and still proposed."""
+        big = art_of(1, width=3000, height=3000)
+
+        view = summarise(album(big, big), cover_of(art_of(2, width=300, height=300)))
+
+        cover_row = view.rows[1]
+        assert cover_row.outcome is artwork.Outcome.REPLACED
+        assert cover_row.written_image == big
+        assert view.operation is artwork.Operation.REPLACEMENT
+
+    def test_a_gap_is_filled_from_the_tracks_not_the_bigger_cover(self) -> None:
+        """Filling the hole from the big cover would leave that one track
+        carrying something different from every other — which the next scan
+        reads as per-track artwork and then protects, freezing the album."""
+        modest = art_of(1, width=300, height=300)
+        view = summarise(album(modest, None), cover_of(art_of(2, width=3000, height=3000)))
+
+        gap = next(r for r in view.rows if r.is_gap)
+        assert gap.written_image == modest
+        assert gap.written_from == "the album's own artwork"
 
     def test_a_created_cover_is_named_for_its_format(self) -> None:
         jpeg = EmbeddedArt.of(jpeg_bytes(600, 600), "image/jpeg")

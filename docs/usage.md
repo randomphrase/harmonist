@@ -451,12 +451,24 @@ become on the right, under **After Apply** — the picture itself, not a
 description of it. An album with no `cover.jpg` gets a row for the file it
 hasn't got: an empty frame, and beside it the image it would be created from.
 
-**The largest image wins.** Between what your tracks carry, what `cover.jpg`
-holds, and what the Cover Art Archive has, the one with the most pixels is the
-one Harmonist writes — including into a `cover.jpg` it creates. A same-sized
-different picture is not an improvement and is left alone. When an album has no
-artwork at all, the archive's image is downloaded as soon as the page asks about
-it, so the preview can show the picture it would add.
+**The largest image wins — for `cover.jpg`.** Between what your tracks carry,
+what `cover.jpg` holds, and what the Cover Art Archive has, the one with the
+most pixels is the one that ends up in the folder, whether Harmonist is creating
+that file or improving it. A same-sized different picture is not an improvement
+and is left alone. When an album has no artwork at all, the archive's image is
+downloaded as soon as the page asks about it, so the preview can show the
+picture it would add.
+
+**Your embedded artwork is not rewritten to match it.** A high-resolution
+`cover.jpg` beside modest embedded images is a layout, not a mistake — one file
+costs a few megabytes, the same image inside twenty tracks costs twenty times
+that, which is why a library using lossy codecs tends to end up this way. So a
+bigger folder cover is never a reason to rewrite your tracks: they keep what
+they carry, the album reads as settled, and nothing nags you to change it. What
+a track *doesn't* have is still filled in — from the album's own artwork where
+there is any, so the filled track matches the rest rather than standing out from
+them. And if you do want the big image inside every track, **Use this artwork**
+on it, or **Replace artwork**, does exactly that.
 
 Each artwork change is labelled by what it does:
 

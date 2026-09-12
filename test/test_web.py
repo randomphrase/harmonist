@@ -9273,20 +9273,22 @@ def test_apply_artwork_names_the_images_it_could_not_keep(client, cfg, tmp_path)
     """No kept copy, no replacement (#470) — and the album's Activity says which
     files were left alone and why, since the remedy (make room in the artwork
     store) is not something the page itself shows."""
-    from harmonist import artwork_store, formats
+    from harmonist import artwork_store
 
+    # The album's own image beats its folder cover, so the cover is what gets
+    # replaced — the one replacement the section proposes by itself since #479.
     small = _png(1)
-    d = _album_with_art(cfg, "NoRoom", covers=[small, small], folder=_png_sized(2, 900))
+    big = _png_sized(2, 900)
+    d = _album_with_art(cfg, "NoRoom", covers=[big, big], folder=small)
     aid = _id_for(cfg, d)
     artwork_store.configure(tmp_path / "artwork", max_bytes=0)
 
     shown = _form_value(client.get(f"/album/{aid}/artwork").text, "plan")
     client.post(f"/album/{aid}/artwork/update", data={"plan": shown})
 
-    cover = formats.read_cover(d / "01 Track.m4a")
-    assert cover is not None and cover[0] == small
+    assert (d / "cover.jpg").read_bytes() == small  # left exactly as it was
     notes = [e.message for e in activity.recent(20) if "could not be kept" in e.message]
-    assert notes and "01 Track.m4a" in notes[0]
+    assert notes and "cover.jpg" in notes[0], notes
 
 
 def test_history_offers_undo_for_artwork_a_change_added(client, cfg):

@@ -192,13 +192,31 @@ class ArtworkPlan:
     #: none. Unreadable tracks are absent: a file nobody could open carries no
     #: evidence, and is never a target.
     before: Mapping[Path, str | None] = field(default_factory=dict)
-    #: The image being written, and where it comes from. None when nothing is.
+    #: The image the TRACKS should carry, and where it comes from. None when
+    #: nothing is written to them.
     winner: EmbeddedArt | None = None
     source: Source | None = None
+    #: …and the folder cover's own, which may be a different and larger image
+    #: (#479). `cover.*` is one file; embedded art is one copy per track, so a
+    #: library can sensibly keep a high-resolution cover beside modest embedded
+    #: images. Defaults to the tracks' image, which is the ordinary case.
+    cover_image: EmbeddedArt | None = None
+    cover_source: Source | None = None
     changes: tuple[Change, ...] = ()
     #: The tracks carry differing images and are being left alone — a decision
     #: worth reporting rather than a silent no-op (#260).
     preserves_per_track_art: bool = False
+
+    def image_for(self, change: Change) -> tuple[EmbeddedArt | None, Source | None]:
+        """The image one change writes, and where it comes from.
+
+        The folder cover has its own (#479); every other target takes the
+        tracks' image. Asked by the writer and by the page alike, so a row
+        cannot show one image while the write puts another there.
+        """
+        if change.folder_cover:
+            return self.cover_image, self.cover_source
+        return self.winner, self.source
 
     def scoped(self, scope: Scope) -> tuple[Change, ...]:
         """The changes `scope` permits."""
@@ -329,36 +347,46 @@ def plan(
                 Source.ARCHIVE,
                 before=before,
                 preserves=True,
-                force=picked is not None,
             )
         return ArtworkPlan(album_dir=album_dir, before=before, preserves_per_track_art=True)
 
     if picked is not None:
-        return _plan_for(album_dir, before, cover, picked, Source.ARCHIVE, force=True)
+        return _plan_for(album_dir, before, cover, picked, Source.ARCHIVE)
 
     own = next((art for _, art in tracks if art is not None), None)
-    winner: EmbeddedArt | None = None
-    source: Source | None = None
-    if cover is not None:
-        winner, source = cover.image, Source.FOLDER
-    # With no folder cover the tracks' image is the incumbent, measurable or not
-    # — there is nothing for it to beat. Against a folder cover it wins unless
-    # the cover is strictly larger, which is where ties to the tracks come from
-    # (#397): `tagger` has always resolved it that way.
-    if own is not None and (
-        cover is None
-        or (
-            own.digest != cover.image.digest
-            and own.size is not None
-            and (cover.image.size is None or not beats(cover.image.size, own.size))
-        )
-    ):
-        winner, source = own, Source.ALBUM
-    if archive is not None and (winner is None or beats(archive.size, winner.size)):
-        winner, source = archive, Source.ARCHIVE
-    if winner is None or source is None:
+
+    # WHAT THE TRACKS SHOULD CARRY: their own image, whenever they have one. A
+    # larger folder cover does not displace it (#479) — `cover.*` is one file
+    # and embedded art is one copy per track, so a high-resolution cover beside
+    # modest embedded images is a layout somebody chose, not a gap to close.
+    # With nothing embedded anywhere, a gap can only be filled from outside.
+    track_image, track_source = (own, Source.ALBUM) if own is not None else (None, None)
+    if track_image is None and cover is not None:
+        track_image, track_source = cover.image, Source.FOLDER
+    if archive is not None and track_image is None:
+        track_image, track_source = archive, Source.ARCHIVE
+
+    # WHAT THE FOLDER COVER SHOULD HOLD: the best image going (#276, #410).
+    # One file, so improving it is cheap — this is the half of the album where
+    # the size rule still decides, and ties keep what is already there.
+    cover_image, cover_source = (cover.image, Source.FOLDER) if cover is not None else (None, None)
+    for candidate, candidate_source in ((own, Source.ALBUM), (archive, Source.ARCHIVE)):
+        if candidate is not None and (
+            cover_image is None or beats(candidate.size, cover_image.size)
+        ):
+            cover_image, cover_source = candidate, candidate_source
+
+    if track_image is None or track_source is None:
         return ArtworkPlan(album_dir=album_dir, before=before)
-    return _plan_for(album_dir, before, cover, winner, source)
+    return _plan_for(
+        album_dir,
+        before,
+        cover,
+        track_image,
+        track_source,
+        cover_image=cover_image,
+        cover_source=cover_source,
+    )
 
 
 def _plan_for(
@@ -370,15 +398,20 @@ def _plan_for(
     *,
     before: Mapping[Path, str | None] | None = None,
     preserves: bool = False,
-    force: bool = False,
+    cover_image: EmbeddedArt | None = None,
+    cover_source: Source | None = None,
 ) -> ArtworkPlan:
-    """Every write that puts `winner` on `targets` and on the folder cover.
+    """Every write that puts `winner` on `targets`, and `cover_image` on the
+    folder cover.
 
-    The folder file catches up only on a strict improvement: it is the one
-    write here the tracks cannot be used to undo, so a same-sized different
-    picture stays where it is. `force` is the user having chosen this image
-    anyway (#472) — the comparison is then not Harmonist's to make.
+    TWO IMAGES, because they are two kinds of carrier (#479). `cover_image`
+    defaults to the tracks' image, which is the ordinary album; where they
+    differ, the folder cover takes the better one and the tracks are left with
+    theirs. Each is written only where the target does not already hold it —
+    the selection is made by the caller, so a difference here IS the change.
     """
+    for_cover = cover_image if cover_image is not None else winner
+    for_cover_source = cover_source if cover_image is not None else source
     changes = [
         Change(target=path, before=digest, after=winner.digest)
         for path, digest in targets.items()
@@ -387,18 +420,18 @@ def _plan_for(
     if cover is None:
         changes.append(
             Change(
-                target=album_dir / cover_name_for(winner.mime),
+                target=album_dir / cover_name_for(for_cover.mime),
                 before=None,
-                after=winner.digest,
+                after=for_cover.digest,
                 folder_cover=True,
             )
         )
-    elif cover.image.digest != winner.digest and (force or beats(winner.size, cover.image.size)):
+    elif cover.image.digest != for_cover.digest:
         changes.append(
             Change(
                 target=cover.path or album_dir / cover.name,
                 before=cover.image.digest,
-                after=winner.digest,
+                after=for_cover.digest,
                 folder_cover=True,
             )
         )
@@ -407,6 +440,8 @@ def _plan_for(
         before=before if before is not None else targets,
         winner=winner,
         source=source,
+        cover_image=for_cover,
+        cover_source=for_cover_source,
         changes=tuple(changes),
         preserves_per_track_art=preserves,
     )
@@ -761,13 +796,17 @@ class ArtworkView:
         # A row that writes and sits on the cover means the cover file changes,
         # whether or not any track shares that image.
         improved = sum(len(r.tracks) for r in self.images if r.writes)
-        cover_improved = any(r.writes and r.on_cover for r in self.images)
         creates = next((r.creates for r in self.rows if r.creates and r.writes), None)
 
         carriers = []
         if improved:
             carriers.append(f"{improved} track{'' if improved == 1 else 's'}")
-        if cover_improved and self.cover is not None:
+        # The folder cover counts whether it shares a row with the tracks or has
+        # one of its own — since #479 it usually has one of its own, because it
+        # is often the only thing changing.
+        if self.cover is not None and any(
+            r.writes and (r.on_cover or (r.image is not None and not r.tracks)) for r in self.images
+        ):
             carriers.append(self.cover.name)
 
         parts = []
@@ -947,8 +986,10 @@ def summarise(
     )
     written = {c.target for c in the_plan.changes}
     cover_change = the_plan.cover_change(Scope.ALL)
-    written_from = _source_label(the_plan.source, cover)
-    from_archive = the_plan.source is Source.ARCHIVE
+    # Whether the archive's image is what is coming ANYWHERE — onto the tracks,
+    # or into the folder cover alone (#479). It is what marks the candidate as
+    # the incoming one rather than an also-ran.
+    from_archive = Source.ARCHIVE in (the_plan.source, the_plan.cover_source)
 
     by_digest: dict[str, list[tuple[Path, TrackRef]]] = {}
     art_of: dict[str, EmbeddedArt] = {}
@@ -978,11 +1019,21 @@ def summarise(
         *,
         on_cover: str | None = None,
         creates: str | None = None,
+        folder: bool = False,
     ) -> ArtRow:
         if writes:
             outcome = Outcome.FILLED if image is None else Outcome.REPLACED
         else:
             outcome = Outcome.SAME if on_cover is not None else Outcome.KEPT
+        # Each carrier shows ITS OWN incoming image (#479). The folder cover can
+        # be taking a better one than the tracks are — that is the whole point
+        # of the asymmetry — so a row drawn from one shared winner would show
+        # the wrong picture on one side of it.
+        incoming, incoming_source = (
+            (the_plan.cover_image, the_plan.cover_source)
+            if folder
+            else (the_plan.winner, the_plan.source)
+        )
         return ArtRow(
             image=image,
             tracks=tuple(ref for _, ref in carriers),
@@ -990,9 +1041,9 @@ def summarise(
             total_tracks=len(tracks),
             multi_disc=multi_disc,
             on_cover=on_cover,
-            written_from=written_from if writes else None,
-            written_image=the_plan.winner if writes else None,
-            from_archive=writes and from_archive,
+            written_from=_source_label(incoming_source, cover) if writes else None,
+            written_image=incoming if writes else None,
+            from_archive=writes and incoming_source is Source.ARCHIVE,
             creates=creates,
         )
 
@@ -1001,13 +1052,21 @@ def summarise(
 
     rows = []
     for digest, carriers in by_digest.items():
-        on_cover = cover.name if cover is not None and cover.image.digest == digest else None
+        # The folder cover shares this row only while it shares this row's FATE
+        # (#479). Since the tracks and the cover can be taking different images
+        # — the tracks keeping theirs while the cover takes a better one — a row
+        # reading "All 12 tracks and cover.jpg" would have to show two incoming
+        # pictures at once. When they diverge the cover gets its own row below.
+        on_cover = (
+            cover.name
+            if cover is not None and cover.image.digest == digest and cover_change is None
+            else None
+        )
         rows.append(
             row(
                 art_of[digest],
                 carriers,
-                any(path in written for path, _ in carriers)
-                or (on_cover is not None and cover_written(digest)),
+                any(path in written for path, _ in carriers),
                 on_cover=on_cover,
             )
         )
@@ -1015,14 +1074,23 @@ def summarise(
     # already accounts for it (#400) — the album HAS this image, whatever the
     # tracks carry, and a reader deciding what applying would do needs to see it
     # beside the rest rather than only as something arriving from outside.
-    if cover is not None and cover.image.digest not in by_digest:
-        rows.append(row(cover.image, (), cover_written(cover.image.digest), on_cover=cover.name))
+    if cover is not None and (cover.image.digest not in by_digest or cover_change is not None):
+        folder_cover: FolderCover = cover
+        rows.append(
+            row(
+                folder_cover.image,
+                (),
+                cover_written(folder_cover.image.digest),
+                on_cover=folder_cover.name,
+                folder=True,
+            )
+        )
     # …and when there is no folder cover and the plan makes one, that is a row
     # too: an empty frame on the left, the image it will hold on the right. It
     # was a sentence while nothing but a tagging could create it, because a row
     # counts toward the section's action and that action could not (#457).
     if cover is None and cover_change is not None:
-        rows.append(row(None, (), True, creates=cover_change.target.name))
+        rows.append(row(None, (), True, creates=cover_change.target.name, folder=True))
     if gap:
         rows.append(row(None, gap, any(path in written for path, _ in gap)))
 

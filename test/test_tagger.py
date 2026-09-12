@@ -288,7 +288,9 @@ def test_tagging_records_artwork_replacement_by_digest(album_with_tracks, tmp_pa
     newer = tmp_path / "cover2.jpg"
     newer.write_bytes(b"\xff\xd8\xff" + b"second" * 40)
     before = len(_detail())
-    _update_artwork(album_dir, _release_2_tracks(), newer)
+    # Asked for explicitly: a better folder cover is a layout rather than an
+    # upgrade since #479, so replacing embedded art is something you request.
+    _update_artwork(album_dir, _release_2_tracks(), newer, overwrite_art=True)
 
     replaced = _detail()[before:][0].changes[owned.ARTWORK]
     assert replaced[0] == first[1]  # what was there is what we recorded before
@@ -345,7 +347,12 @@ def test_replacing_embedded_art_keeps_a_copy_of_what_it_destroyed(album_with_tra
     assert original is not None
     was = artwork_store.digest(original[0])
 
-    _update_artwork(album_dir, _release_2_tracks(), _cover(tmp_path, "b.jpg", b"second" * 40))
+    _update_artwork(
+        album_dir,
+        _release_2_tracks(),
+        _cover(tmp_path, "b.jpg", b"second" * 40),
+        overwrite_art=True,
+    )
 
     kept = artwork_store.path_for(was)
     assert kept is not None, "the overwritten image was not kept"
@@ -360,7 +367,12 @@ def test_the_shared_cover_of_an_album_is_kept_once_not_once_per_track(album_with
     album_dir = album_with_tracks(2)
 
     tagger.tag_album(album_dir, _release_2_tracks(), _cover(tmp_path, "a.jpg", b"first" * 40))
-    _update_artwork(album_dir, _release_2_tracks(), _cover(tmp_path, "b.jpg", b"second" * 40))
+    _update_artwork(
+        album_dir,
+        _release_2_tracks(),
+        _cover(tmp_path, "b.jpg", b"second" * 40),
+        overwrite_art=True,
+    )
 
     assert len(list((tmp_path / "artwork").iterdir())) == 1
 
@@ -944,11 +956,15 @@ def test_tagging_fills_the_gap_and_leaves_the_rest(album_with_tracks, tmp_path):
     tagger.tag_album(album_dir, _release_2_tracks(), cover_path=new_cover)
 
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == had  # untouched
-    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == new  # filled
+    # Filled from the album's OWN image, not from the folder cover (#479): the
+    # filled track then matches its siblings instead of standing out from them.
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == had
 
 
 def test_the_artwork_action_replaces_what_a_tagging_would_not(album_with_tracks, tmp_path):
-    """The other half of the same album: the action does replace."""
+    """The other half of the same album: the action does replace — when asked.
+    Since #479 a better folder cover no longer proposes it by itself, so this
+    is the explicit request that does."""
     from harmonist import artwork_store
 
     artwork_store.configure(tmp_path / "artwork")
@@ -958,7 +974,7 @@ def test_the_artwork_action_replaces_what_a_tagging_would_not(album_with_tracks,
     new_cover = tmp_path / "cover.jpg"
     new_cover.write_bytes(new)
 
-    changed = _update_artwork(album_dir, _release_2_tracks(), new_cover)
+    changed = _update_artwork(album_dir, _release_2_tracks(), new_cover, overwrite_art=True)
 
     assert changed == 2
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == new
@@ -2434,22 +2450,32 @@ def test_a_cover_is_not_replaced_when_its_backup_could_not_be_retained(album_wit
     assert cover.read_bytes() == small
 
 
-def test_a_larger_folder_cover_is_still_embedded(album_with_tracks, tmp_path):
-    """The other direction is unchanged: the cover wins when it is the better
-    image, which is what a re-tag has always done."""
+def test_a_larger_folder_cover_is_a_layout_not_an_upgrade(album_with_tracks, tmp_path):
+    """One high-resolution file beside modest embedded images is a layout
+    somebody chose — commonly, a library on lossy codecs — so it proposes
+    nothing (#479). Writing it into every track would cost megabytes per album
+    to no end, and the album would never read as settled."""
     from harmonist import artwork_store
 
     artwork_store.configure(tmp_path / "artwork")
     album_dir = album_with_tracks(1)
-    _embed_cover(album_dir / "01 Track 1.m4a", _sized_jpeg(400, 400))
+    small = _sized_jpeg(400, 400)
+    _embed_cover(album_dir / "01 Track 1.m4a", small)
     cover = tmp_path / "cover.jpg"
     big = _sized_jpeg(1000, 1000)
     cover.write_bytes(big)
 
-    _update_artwork(album_dir, _single_track_release(), cover)
+    assert _update_artwork(album_dir, _single_track_release(), cover) == 0
 
-    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
+    # A LAYOUT, NOT AN UPGRADE (#479): one big file beside modest embedded art
+    # is what a library using lossy codecs sensibly looks like, and rewriting
+    # every track would cost it several megabytes per album to no end.
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == small
     assert cover.read_bytes() == big
+
+    # …and it is still one request away for someone who wants it.
+    _update_artwork(album_dir, _single_track_release(), cover, overwrite_art=True)
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == big
 
 
 def test_per_track_artwork_never_promotes_one_track_to_the_album_cover(album_with_tracks, tmp_path):
@@ -2573,9 +2599,11 @@ def test_a_larger_archive_image_wins_and_is_written(album_with_tracks, tmp_path)
     release = _single_track_release()
     cover_art.cache_image(release["id"], theirs, "image/jpeg")
 
-    _update_artwork(album_dir, release, cover)
+    assert _update_artwork(album_dir, release, cover) == 1
 
-    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == theirs
+    # The archive takes the FOLDER COVER, which is the cheap carrier, and the
+    # tracks keep what they have (#479).
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
     assert cover.read_bytes() == theirs
     # …and what it replaced is recoverable, since this overwrote a folder cover.
     assert artwork_store.path_for(artwork_store.digest(folder)) is not None
@@ -2645,17 +2673,14 @@ def test_a_larger_archive_image_wins_with_no_folder_cover(album_with_tracks, tmp
 
     changed = _update_artwork(album_dir, release, None)
 
-    assert changed == 3
-    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == theirs
-    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == theirs
-    # …and the folder cover the album lacked is created from the same winner
-    # (#469): an addition like an artless track's, and the button's to make.
+    # ONE write: the folder cover the album lacked, from the archive (#469) —
+    # the tracks keep the image they carry, whatever the archive measures
+    # (#479). Nothing was destroyed, so nothing needed keeping.
+    assert changed == 1
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine
     assert (album_dir / "cover.jpg").read_bytes() == theirs
-    # What it replaced is recoverable. This album has no folder cover, so
-    # everything overwritten here is EMBEDDED art — the half the store keeps —
-    # which makes this the reversible case rather than #276's hazardous one.
-    assert artwork_store.path_for(artwork_store.digest(mine)) is not None
-    # …and pressing again finds the winner already everywhere.
+    # …and pressing again finds everything already where it belongs.
     assert _update_artwork(album_dir, release, None) == 0
 
 
@@ -2820,9 +2845,13 @@ def test_a_larger_archive_image_becomes_the_created_cover(album_with_tracks, tmp
 
     tagger.tag_album(album_dir, _release_2_tracks(), archive=cover_art.Front(theirs, "image/jpeg"))
 
+    # TWO IMAGES IN ONE ACTION (#479), and the reason the plan carries both:
+    # the folder cover takes the archive's, because it is the better image and
+    # cheap to hold; the artless track is filled from the album's OWN, so it
+    # matches its sibling instead of standing out from it.
     assert (album_dir / "cover.jpg").read_bytes() == theirs
     assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == mine
-    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == theirs
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine
 
 
 def test_a_smaller_archive_image_does_not_become_the_created_cover(
@@ -2911,7 +2940,7 @@ def test_the_artwork_action_leaves_an_image_changed_since_its_plan(album_with_tr
     cover = album_dir / "cover.jpg"
     cover.write_bytes(_sized_jpeg(1400, 1400))
     files = sorted(album_dir.glob("*.m4a"))
-    plan = tagger.decide_artwork(album_dir, files, cover)
+    plan = tagger.decide_artwork(album_dir, files, cover, overwrite_art=True)
     theirs = _sized_jpeg(400, 400) + b"_edited_since"
     _embed_cover(album_dir / "01 Track 1.m4a", theirs)
 
@@ -2945,9 +2974,12 @@ def test_the_artwork_action_refuses_a_winner_that_has_moved(album_with_tracks, t
 # ---------- no retained backup, no replacement (#470) ----------
 
 
-def _plan_over(album_dir, cover):
+def _plan_over(album_dir, cover, *, overwrite=True):
+    """A plan that REPLACES the embedded art, which is what these tests are
+    about. Asked for explicitly since #479: a bigger folder cover no longer
+    proposes it on its own."""
     files = sorted(album_dir.glob("*.m4a"))
-    return files, tagger.decide_artwork(album_dir, files, cover)
+    return files, tagger.decide_artwork(album_dir, files, cover, overwrite_art=overwrite)
 
 
 def test_an_embedded_image_that_cannot_be_kept_is_not_replaced(album_with_tracks, tmp_path):
@@ -2986,7 +3018,9 @@ def test_a_folder_cover_that_cannot_be_kept_is_not_replaced(album_with_tracks, t
     cover = album_dir / "cover.jpg"
     small = _sized_jpeg(400, 400)
     cover.write_bytes(small)
-    files, plan = _plan_over(album_dir, cover)
+    # The ordinary rule: the album's own bigger image promotes into the folder
+    # cover (#410), which is the replacement this test is about.
+    files, plan = _plan_over(album_dir, cover, overwrite=False)
 
     outcome = tagger.apply_artwork(album_dir, plan, files=files, cover_path=cover)
 
@@ -3142,7 +3176,9 @@ def test_one_artwork_action_undoes_its_additions_and_replacements_together(
     cover = album_dir / "cover.jpg"
     big = _sized_jpeg(1400, 1400)
     cover.write_bytes(big)
-    _update_artwork(album_dir, _release_2_tracks(), cover)
+    # Explicitly, so the action really does both: a bigger folder cover is a
+    # layout rather than an upgrade since #479.
+    _update_artwork(album_dir, _release_2_tracks(), cover, overwrite_art=True)
 
     outcome = _undo_latest(album_dir)
 

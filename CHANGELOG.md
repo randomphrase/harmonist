@@ -16,6 +16,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **A `cover.jpg` larger than your embedded artwork is left alone** — one
+  high-resolution file beside modest embedded images is a layout, not something
+  to fix, so Harmonist no longer offers to write it into every track. **Use this
+  artwork** still does it deliberately (#479).
 - **A missing `cover.jpg` is now a row in the Artwork section**, showing the
   image it will be created from, and **Apply artwork** (was *Update artwork*)
   creates it (#467, #469).
