@@ -17,7 +17,7 @@ from mutagen.mp4 import MP4
 
 from harmonist import formats
 from harmonist.formats import m4a
-from harmonist.tagger import tag_album
+from harmonist.tagger import tag_album, tag_and_artwork
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -274,7 +274,7 @@ def test_read_cover_and_has_cover_after_embedding(tmp_path, ext, fixture):
     d = _make_album(tmp_path, fixture)
     cover = tmp_path / "art.jpg"
     cover.write_bytes(_TINY_JPEG)
-    tag_album(d, _release_one_track(), cover_path=cover)
+    tag_and_artwork(d, _release_one_track(), cover)
     f = next(d.glob(f"*{ext}"))
 
     assert formats.read_scan_fields(f).has_cover is True

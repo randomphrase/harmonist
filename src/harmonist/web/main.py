@@ -3254,7 +3254,7 @@ def _tag_with_release(
             "Cover Art Archive unavailable — tagged without its artwork",
             album_id=sidecar_mod.album_id_for(album_path),
         )
-    tagger.tag_album(
+    tagger.tag_and_artwork(
         album_path,
         release,
         cover_path=cover_path,

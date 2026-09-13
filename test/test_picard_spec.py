@@ -1,6 +1,6 @@
 """Picard MP4 tag-mapping spec conformance.
 
-Verifies that `PicardCompatibleTagger.tag_album` writes atoms whose NAMES
+Verifies that `PicardCompatibleTagger.tag_and_artwork` writes atoms whose NAMES
 and VALUES match the documented Picard mapping
 (https://picard.musicbrainz.org/docs/mappings/#mp4) for the subset of
 fields we currently support.
@@ -159,7 +159,7 @@ def _atom_strs(audio: MP4, atom: str) -> list[str]:
 def test_album_level_mbid_atoms_match_picard_names(tmp_path):
     """Album-level MB MBIDs use Picard's exact ----:com.apple.iTunes:<Spaced> form."""
     album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
+    PicardCompatibleTagger().tag_and_artwork(album_dir, _fully_populated_release())
 
     audio = MP4(album_dir / "01 Track 1.m4a")
     # Picard spec: album-level MBIDs every track carries
@@ -189,7 +189,7 @@ def test_the_release_type_carries_the_secondary_types_too(tmp_path):
     release["release-group"]["secondary-type-list"] = ["Live", "Compilation"]
     album_dir = _setup_album(tmp_path, 2)
 
-    PicardCompatibleTagger().tag_album(album_dir, release)
+    PicardCompatibleTagger().tag_and_artwork(album_dir, release)
 
     audio = MP4(album_dir / "01 Track 1.m4a")
     assert _atom_strs(audio, ATOM_MB_ALBUM_TYPE) == ["album", "live", "compilation"]
@@ -210,7 +210,7 @@ def test_a_picard_tagged_secondary_type_survives_a_re_tag(tmp_path):
 
     release = _fully_populated_release()
     release["release-group"]["secondary-type-list"] = ["Live"]
-    PicardCompatibleTagger().tag_album(album_dir, release)
+    PicardCompatibleTagger().tag_and_artwork(album_dir, release)
 
     assert _atom_strs(MP4(album_dir / "01 Track 1.m4a"), ATOM_MB_ALBUM_TYPE) == ["album", "live"]
 
@@ -218,7 +218,7 @@ def test_a_picard_tagged_secondary_type_survives_a_re_tag(tmp_path):
 def test_album_level_optional_metadata_atoms(tmp_path):
     """Label / catalog / barcode / asin / media — Picard writes these when MB has them."""
     album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
+    PicardCompatibleTagger().tag_and_artwork(album_dir, _fully_populated_release())
 
     audio = MP4(album_dir / "01 Track 1.m4a")
     assert _atom_str(audio, ATOM_LABEL) == "Reference Records"
@@ -231,7 +231,7 @@ def test_album_level_optional_metadata_atoms(tmp_path):
 def test_album_level_standard_text_tags(tmp_path):
     """Picard maps album/albumartist/date to ©alb/aART/©day."""
     album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
+    PicardCompatibleTagger().tag_and_artwork(album_dir, _fully_populated_release())
 
     audio = MP4(album_dir / "01 Track 1.m4a")
     assert audio["\xa9alb"] == ["Reference Album"]
@@ -250,7 +250,7 @@ def test_per_track_mbid_atoms_use_picard_convention(tmp_path):
       MusicBrainz Artist Id         ←  per-track artist credit MBIDs
     """
     album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
+    PicardCompatibleTagger().tag_and_artwork(album_dir, _fully_populated_release())
 
     t1 = MP4(album_dir / "01 Track 1.m4a")
     assert _atom_str(t1, ATOM_MB_TRACK_ID) == "rec01111-1111-1111-1111-111111111111"
@@ -271,7 +271,7 @@ def test_per_track_mbid_atoms_use_picard_convention(tmp_path):
 
 def test_per_track_standard_text_tags(tmp_path):
     album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
+    PicardCompatibleTagger().tag_and_artwork(album_dir, _fully_populated_release())
 
     t1 = MP4(album_dir / "01 Track 1.m4a")
     assert t1["\xa9nam"] == ["Side A Track"]
@@ -288,7 +288,7 @@ def test_per_track_standard_text_tags(tmp_path):
 def test_disc_number_atom(tmp_path):
     """Picard writes disk = (disc_pos, disc_total) on every track."""
     album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
+    PicardCompatibleTagger().tag_and_artwork(album_dir, _fully_populated_release())
 
     audio = MP4(album_dir / "01 Track 1.m4a")
     assert audio["disk"] == [(1, 1)]
@@ -299,7 +299,7 @@ def test_sort_artists_original_date_script_atoms(tmp_path):
     ORIGINALDATE + ORIGINALYEAR (release-group first release), SCRIPT
     (text-representation)."""
     album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
+    PicardCompatibleTagger().tag_and_artwork(album_dir, _fully_populated_release())
 
     t1 = MP4(album_dir / "01 Track 1.m4a")
     assert t1["soaa"] == ["Reference Artist, The"]
@@ -345,7 +345,7 @@ def test_the_compilation_atom_is_a_native_boolean(tmp_path):
         },
     ]
     album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, release)
+    PicardCompatibleTagger().tag_and_artwork(album_dir, release)
 
     for name in ("01 Track 1.m4a", "02 Track 2.m4a"):
         assert MP4(album_dir / name)["cpil"] is True
@@ -412,7 +412,7 @@ def test_complete_inventory_against_picard_spec(tmp_path):
     fully-populated MB release. Detects accidental atom additions/removals.
     """
     album_dir = _setup_album(tmp_path, 2)
-    PicardCompatibleTagger().tag_album(album_dir, _fully_populated_release())
+    PicardCompatibleTagger().tag_and_artwork(album_dir, _fully_populated_release())
 
     audio = MP4(album_dir / "01 Track 1.m4a")
     actual = set(audio.keys())

@@ -106,16 +106,20 @@ class TagMismatchError(Exception):
 
 @runtime_checkable
 class Tagger(Protocol):
-    """Contract for a Harmonist tagger.
+    """Contract for a Harmonist tagger — the seam the web layer holds.
 
-    Implementations write tags to every audio file in `album_dir` based on
-    the supplied MB release dict, optionally embedding cover art from
-    `cover_path`. Returns the number of files tagged. Raises
-    `TagMismatchError` when the file count and MB track count diverge
-    (unless `incomplete=True`).
+    One operation, in two halves (#481): implementations write tags to every
+    audio file in `album_dir` from the supplied MB release dict, and then write
+    the artwork that album's plan calls for — gaps filled, a missing folder
+    cover created, or the folder cover embedded outright under `overwrite_art`.
+    `TaggingOutcome` reports the halves separately, because they are separately
+    scoped and separately undoable.
+
+    Raises `TagMismatchError` when the file count and MB track count diverge
+    (unless `incomplete=True`), before anything is written.
     """
 
-    def tag_album(
+    def tag_and_artwork(
         self,
         album_dir: Path,
         release: Release,
@@ -126,14 +130,15 @@ class Tagger(Protocol):
         files: list[Path] | None = None,
         archive: cover_art.Front | None = None,
         expected_artwork: str | None = None,
-    ) -> int: ...
+    ) -> TaggingOutcome: ...
 
 
 class PicardCompatibleTagger:
     """Default tagger — builds Picard-compatible tags and writes them to
-    every supported audio file in the album dir."""
+    every supported audio file in the album dir, then applies the artwork
+    its plan calls for."""
 
-    def tag_album(
+    def tag_and_artwork(
         self,
         album_dir: Path,
         release: Release,
@@ -144,8 +149,8 @@ class PicardCompatibleTagger:
         files: list[Path] | None = None,
         archive: cover_art.Front | None = None,
         expected_artwork: str | None = None,
-    ) -> int:
-        return tag_album(
+    ) -> TaggingOutcome:
+        return tag_and_artwork(
             album_dir,
             release,
             cover_path,
@@ -160,15 +165,17 @@ class PicardCompatibleTagger:
 def tag_album(
     album_dir: Path,
     release: Release,
-    cover_path: Path | None = None,
     *,
     incomplete: bool = False,
-    overwrite_art: bool = False,
     files: list[Path] | None = None,
-    archive: cover_art.Front | None = None,
-    expected_artwork: str | None = None,
 ) -> int:
-    """Tag every supported audio file in `album_dir`.
+    """Write tags to every supported audio file in `album_dir`. TAGS ONLY.
+
+    Artwork is not this function's business (#481). It used to fill gaps as it
+    wrote — the image rode along in the same `write_tags` call — and while that
+    was true the two halves of a tagging could not be scoped, reported or undone
+    apart from each other. `tag_and_artwork` composes them instead, and is what
+    every entry point calls; this is the half that writes tags.
 
     `files` overrides which files those are, and a caller holding an `Album`
     should pass them: since #197 an album can span several directories, and
@@ -192,37 +199,45 @@ def tag_album(
     rung IS positional pairing, so a single-medium album is assigned exactly as
     before.
 
-    `overwrite_art=True` embeds the album cover even when the tracks carry
-    differing per-track artwork (which is otherwise preserved) — the user's
-    explicit "replace the artwork" override.
+    Returns the number of files tagged.
+    """
+    return _tag_files(album_dir, release, incomplete=incomplete, files=files)[0]
 
-    Artwork is the ADDITIONS of the album's artwork plan (#418, #469): gaps
-    filled and a missing folder cover created, from whichever image the plan
-    says wins. `archive` is the Cover Art Archive's image when the caller has
-    just fetched it; otherwise the local cache is read.
 
-    `expected_artwork` is the fingerprint of the additions a page showed the
-    user. When the plan built here no longer matches it — an image edited
-    since, a candidate that arrived after the page was drawn — the album is
-    tagged and NO artwork is written, and the album's History says so. Writing
-    an image the page never showed would be the confident surprise #457 was.
+def _tag_files(
+    album_dir: Path,
+    release: Release,
+    *,
+    incomplete: bool = False,
+    files: list[Path] | None = None,
+) -> tuple[int, bool]:
+    """`tag_album`, reporting both halves a composed tagging needs: how many
+    files the release covers, and whether any file was actually WRITTEN.
+
+    The second is #272's gate, and it cannot be inferred from the first. The
+    preserved-artwork notice reports a decision that recurs identically on every
+    re-tag rather than a change, so it rides on the write — and a re-tag that
+    finds the files already correct must not say it again. `tag_album` returns
+    the count alone because that is what the page reports ("Tagged N files"),
+    and it counts the files the release covers whether or not any of them
+    needed changing.
     """
     prep = _prepare(
         album_dir,
         release,
-        cover_path,
+        None,
         incomplete=incomplete,
-        overwrite_art=overwrite_art,
+        overwrite_art=False,
         files=files,
-        archive=archive,
-        expected_artwork=expected_artwork,
+        # No artwork decision here, and so no pass over the files to read their
+        # images: this function writes none (#481, and #448 for why that is
+        # stated rather than implied by passing no cover path).
+        artwork_in_scope=False,
     )
     # Read before the loop, and before anything can move it: tagging drops a
     # sidecar's `temp_uid` for the MBID afterwards, which is why `album_history`
     # unions an album's alias chain — the same reason the `tag.album` line below
-    # gets away with the pre-write id. The artwork notice at the end of this
-    # function reuses it rather than re-reading, so both records name the album
-    # the same way even if the id moves in between.
+    # gets away with the pre-write id.
     album_id = sidecar_mod.album_id_for(album_dir)
 
     # Tag writing replaces information in every audio file, so it belongs in the
@@ -237,66 +252,25 @@ def tag_album(
         album=album_dir,
         release=release.get("id"),
         tracks=len(prep.pairs),
-        art="embedded" if prep.cover is not None else "preserved",
         mode="incomplete" if incomplete else "full",
     )
-    if prep.art_withheld:
-        # Attributed, so it reaches the album's History and the feed: the user
-        # pressed a button having looked at a preview, and is owed the reason
-        # the artwork half of it did not happen.
-        log.warning(
-            "the album's artwork changed after the page showed it — tagged without "
-            "writing any artwork. Review the Artwork section and apply it from there.",
-            extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
-        )
-    art_targets = prep.art_targets
-    if prep.cover is not None and prep.art_after is not None:
-        # Only this tagging's own targets: an image the plan leaves alone is not
-        # being destroyed and has no business being backed up.
-        doomed = {p: prep.art.before.get(p) for p in art_targets}
-        kept = _keep_doomed_art(doomed, prep.art_after)
-        # NO RETAINED BACKUP, NO REPLACEMENT (#470). Reachable only under
-        # `overwrite_art` — the one way a tagging replaces — and it narrows the
-        # artwork, never the tagging: those files still take their tags, and
-        # keep the image they have.
-        unkept = {p for p, key in doomed.items() if key is not None and key not in kept}
-        if unkept:
-            log.warning(
-                "left the artwork on %d file%s in place: %s current image could not "
-                "be kept, and replacing it would have left no way back",
-                len(unkept),
-                "" if len(unkept) == 1 else "s",
-                "its" if len(unkept) == 1 else "their",
-                extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
-            )
-            art_targets = art_targets - unkept
-
-    # The folder cover this tagging creates, when the album has none (#457) —
-    # written from the plan like every other image here, where it used to be
-    # fetched into the folder before the tagging had decided anything.
-    if prep.folder_image is not None and prep.cover_change is not None:
-        _write_folder_cover(
-            album_dir, prep.cover_change, prep.folder_image, prep.art.cover_source, album_id
-        )
-
-    wrote_something = False
     # How this album's records name its files — built once from the files the
     # tagging is actually writing, so a disc in a sibling directory is named by
     # its disc rather than by a bare filename its sibling also answers to (#423).
     naming = album_files.Naming(album_dir, prep.files)
+    wrote_something = False
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
         tagset = _build_tagset(release, medium, track_pos_in_medium, track, prep.media_total)
         before = formats.read_owned(file_path)
-        # None for a file that already carries an image: `write_tags` then
-        # leaves its art alone, and `_changes_for` records no artwork change for
-        # it, because none happens (#418).
-        incoming = prep.cover if file_path in art_targets else None
+        # `cover=None` throughout: this writes tags, and leaves every file's
+        # image exactly as it is (#481). `_changes_for` records no artwork
+        # change either, because none happens here.
         changes = _changes_for(
             tagset,
             before,
             file_path,
             prep.art.before,
-            prep.art_after if incoming is not None else None,
+            None,
             prep.accepted_album_title,
             prep.accepted_countries,
         )
@@ -309,7 +283,7 @@ def tag_album(
             # is what makes the gardener's nightly pass (#32) a real no-op
             # rather than one that merely records nothing.
             continue
-        formats.write_tags(file_path, tagset, incoming)
+        formats.write_tags(file_path, tagset, None)
         wrote_something = True
         # The `tag.track` line comes AFTER the write, and the detail hangs off
         # it: a record claiming a change that never landed would make a future
@@ -328,36 +302,7 @@ def tag_album(
         if event_id is not None:
             _record_changes(event_id, naming, file_path, tagset, changes)
 
-    if prep.art.preserves_per_track_art and wrote_something:
-        # Attributed to the album (#260). This is a decision Harmonist made on
-        # the user's behalf about their files, so it has to reach that album's
-        # own History — and the feed's log mirror drops any record that doesn't
-        # say which album it means. The `art=preserved` token on the `tag.album`
-        # line above is not a substitute: it shows only under "Show details".
-        #
-        # AFTER the loop, and only if it wrote (#272). The decision recurs
-        # identically on every re-tag — preserving the user's artwork is the
-        # outcome every time — so announcing it unconditionally reports a
-        # decision rather than a change, and under #32's nightly pass that is one
-        # warning per night forever on every compilation. `_record_changes`
-        # already takes this position for the per-field detail; this line joins
-        # it rather than being demoted back to an audit-only token, which is the
-        # state #260 was filed against.
-        #
-        # A crash part-way through the loop therefore loses it — acceptable,
-        # because the `tag.album` line records `art=preserved` before the first
-        # write, so the forensic record of the decision is already down.
-        #
-        # The album's name is NOT repeated into the message; it rides in its own
-        # column, which is where the feed and the History both render it.
-        log.warning(
-            "tracks have per-track embedded artwork — keeping it, NOT embedding "
-            "the album cover (folder cover.* is still written). Re-tag with "
-            "'replace artwork' to override.",
-            extra={"album_id": album_id, "album_label": _album_label(release, album_dir)},
-        )
-
-    return len(prep.files)
+    return len(prep.files), wrote_something
 
 
 def plan_album(
@@ -1457,6 +1402,132 @@ def apply_artwork(
 # no production caller: the action applies the plan its page was DRAWN from,
 # checked by fingerprint, and a convenience that re-decides behind the page's
 # back is exactly the parallel decision that change removed.
+
+
+@dataclass(frozen=True)
+class TaggingOutcome:
+    """What one tag-and-artwork action did, in its two halves (#473, #481).
+
+    Separate on purpose: they are separately scoped, separately reported and
+    separately undoable, and an action that tagged an album perfectly while its
+    artwork was refused has to be able to say so.
+    """
+
+    files: int = 0
+    artwork: ArtworkOutcome = ArtworkOutcome()
+    #: The artwork was left alone because the plan no longer matched the
+    #: fingerprint a page carried back (#469).
+    artwork_withheld: bool = False
+
+
+def tag_and_artwork(
+    album_dir: Path,
+    release: Release,
+    cover_path: Path | None = None,
+    *,
+    incomplete: bool = False,
+    overwrite_art: bool = False,
+    files: list[Path] | None = None,
+    archive: cover_art.Front | None = None,
+    expected_artwork: str | None = None,
+) -> TaggingOutcome:
+    """Tag the album, then write the artwork its plan calls for (#481).
+
+    The composition every entry point uses — exact-match auto-tagging, a
+    re-download, Re-tag from MB, confirmation — so the order lives in one place
+    rather than in each caller.
+
+    **Tags first, and validated first.** `tag_album` raises `TagMismatchError`
+    before touching a file, so a release that does not fit these files costs
+    nothing. Artwork follows, and CANNOT undo the tagging: an image that fails
+    is reported in the outcome while the tags stay written (#468).
+
+    Artwork is the ADDITIONS of the plan (#418): gaps filled, and a missing
+    folder cover created from whichever image wins (#457, #469, #479).
+    `overwrite_art` is the explicit "embed the folder cover over everything"
+    override, and the one way this replaces.
+
+    `expected_artwork` is the fingerprint of the additions a page showed the
+    user. When the plan built here no longer matches it — an image edited
+    since, a candidate that arrived after the page was drawn — the album is
+    tagged and NO artwork is written, and the album's History says so. Writing
+    an image the page never showed would be the confident surprise #457 was.
+    """
+    paths = files if files is not None else album_files.audio_files(album_dir)
+    archive = archive if archive is not None else _archive_candidate(release)
+    art = decide_artwork(album_dir, paths, cover_path, archive=archive, overwrite_art=overwrite_art)
+    scope = artwork.Scope.ALL if overwrite_art else artwork.Scope.ADDITIONS
+    withheld = expected_artwork is not None and art.fingerprint(scope) != expected_artwork
+
+    tagged, wrote_something = _tag_files(album_dir, release, incomplete=incomplete, files=paths)
+
+    # After the write, which may have moved it: tagging drops a sidecar's
+    # `temp_uid` for the MBID (#65).
+    album_id = sidecar_mod.album_id_for(album_dir)
+    label = _album_label(release, album_dir)
+    if withheld:
+        # Attributed, so it reaches the album's History and the feed: the user
+        # pressed a button having looked at a preview, and is owed the reason
+        # the artwork half of it did not happen.
+        log.warning(
+            "the album's artwork changed after the page showed it — tagged without "
+            "writing any artwork. Review the Artwork section and apply it from there.",
+            extra={"album_id": album_id, "album_label": label},
+        )
+        return TaggingOutcome(files=tagged, artwork_withheld=True)
+
+    if art.preserves_per_track_art and wrote_something:
+        # Attributed to the album (#260). This is a decision Harmonist made on
+        # the user's behalf about their files, so it has to reach that album's
+        # own History — and the feed's log mirror drops any record that doesn't
+        # say which album it means.
+        #
+        # Only if the tagging wrote (#272). The decision recurs identically on
+        # every re-tag — preserving the user's artwork is the outcome every time
+        # — so announcing it unconditionally reports a decision rather than a
+        # change, and under #32's nightly pass that is one warning per night
+        # forever on every compilation.
+        #
+        # The album's name is NOT repeated into the message; it rides in its own
+        # column, which is where the feed and the History both render it.
+        log.warning(
+            "tracks have per-track embedded artwork — keeping it, NOT embedding "
+            "the album cover (folder cover.* is still written). Re-tag with "
+            "'replace artwork' to override.",
+            extra={"album_id": album_id, "album_label": label},
+        )
+
+    try:
+        outcome = apply_artwork(
+            album_dir, art, files=paths, cover_path=cover_path, archive=archive, scope=scope
+        )
+    except ArtworkChangedError:
+        # The image moved between deciding and writing. The TAGS stand: losing
+        # a correct tagging to an artwork race would be the inversion #458
+        # settled for an unreachable archive.
+        log.warning(
+            "the winning artwork for %s changed while it was being tagged — "
+            "tagged without writing any",
+            album_dir.name,
+            exc_info=True,
+            extra={"album_id": album_id, "album_label": label},
+        )
+        return TaggingOutcome(files=tagged, artwork_withheld=True)
+
+    if outcome.unkept:
+        # #470: the replacement did not happen, and the reason is the user's to
+        # know. Attributed, so it reaches the album's History — this runs
+        # unattended, and the outcome the web layer renders is only seen by
+        # someone who happened to be watching when it ran.
+        log.warning(
+            "left the artwork on %d file%s in place: %s current image could not "
+            "be kept, and replacing it would have left no way back",
+            len(outcome.unkept),
+            "" if len(outcome.unkept) == 1 else "s",
+            "its" if len(outcome.unkept) == 1 else "their",
+            extra={"album_id": album_id, "album_label": label},
+        )
+    return TaggingOutcome(files=tagged, artwork=outcome)
 
 
 @dataclass(frozen=True)
