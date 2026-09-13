@@ -643,6 +643,13 @@ def _prepare(
     #
     # `overwrite_art` remains what it always was — an explicit "embed the folder
     # cover over everything" — and is the one way a tagging still replaces.
+    #
+    # No `scope` parameter here, deliberately (#482). Widening what a write
+    # takes from the plan is `tag_and_artwork`'s question, because it is the
+    # only entry point that takes a fingerprint from a page and so the only one
+    # with a preview to be faithful to. This function serves `tag_album`, which
+    # writes no artwork at all, and `plan_album`, which writes nothing — a knob
+    # neither of them turns would be API with no reader.
     scope = artwork.Scope.ALL if overwrite_art else artwork.Scope.ADDITIONS
     withheld = expected_artwork is not None and art.fingerprint(scope) != expected_artwork
     art_targets = frozenset() if withheld else art.track_targets(scope)
@@ -1430,6 +1437,7 @@ def tag_and_artwork(
     files: list[Path] | None = None,
     archive: cover_art.Front | None = None,
     expected_artwork: str | None = None,
+    scope: artwork.Scope | None = None,
 ) -> TaggingOutcome:
     """Tag the album, then write the artwork its plan calls for (#481).
 
@@ -1442,21 +1450,34 @@ def tag_and_artwork(
     nothing. Artwork follows, and CANNOT undo the tagging: an image that fails
     is reported in the outcome while the tags stay written (#468).
 
-    Artwork is the ADDITIONS of the plan (#418): gaps filled, and a missing
-    folder cover created from whichever image wins (#457, #469, #479).
-    `overwrite_art` is the explicit "embed the folder cover over everything"
-    override, and the one way this replaces.
+    Artwork is the ADDITIONS of the plan by default (#418): gaps filled, and a
+    missing folder cover created from whichever image wins (#457, #469, #479).
 
-    `expected_artwork` is the fingerprint of the additions a page showed the
-    user. When the plan built here no longer matches it — an image edited
-    since, a candidate that arrived after the page was drawn — the album is
-    tagged and NO artwork is written, and the album's History says so. Writing
-    an image the page never showed would be the confident surprise #457 was.
+    `scope` widens that, and is a DIFFERENT question from `overwrite_art`
+    (#482). Scope selects how much of the plan this writes — `scoped` is a pure
+    filter over the changes already decided — so `Scope.ALL` applies the plan
+    the page drew, replacements included, and writes nothing the preview did not
+    show. `overwrite_art` changes the PLAN instead: it discards the size rule,
+    plans the folder cover onto every target, yields an empty plan on an album
+    that has no folder cover at all, and is the only thing that flattens a
+    compilation's per-track sleeves. Conflating them would let a checkbox about
+    the preview authorise an operation the preview never described.
+
+    Defaults to the old derivation, so every caller that does not ask keeps
+    exactly the behaviour it had.
+
+    `expected_artwork` is the fingerprint of the artwork a page showed the user,
+    taken at this same scope. When the plan built here no longer matches it — an
+    image edited since, a candidate that arrived after the page was drawn — the
+    album is tagged and NO artwork is written, and the album's History says so.
+    Writing an image the page never showed would be the confident surprise #457
+    was.
     """
     paths = files if files is not None else album_files.audio_files(album_dir)
     archive = archive if archive is not None else _archive_candidate(release)
     art = decide_artwork(album_dir, paths, cover_path, archive=archive, overwrite_art=overwrite_art)
-    scope = artwork.Scope.ALL if overwrite_art else artwork.Scope.ADDITIONS
+    if scope is None:
+        scope = artwork.Scope.ALL if overwrite_art else artwork.Scope.ADDITIONS
     withheld = expected_artwork is not None and art.fingerprint(scope) != expected_artwork
 
     tagged, wrote_something = _tag_files(album_dir, release, incomplete=incomplete, files=paths)
