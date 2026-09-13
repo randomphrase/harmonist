@@ -9133,6 +9133,11 @@ def test_retag_writes_the_artwork_the_page_showed(client, cfg, monkeypatch):
     assert (d / "cover.png").read_bytes() == art
     cover = formats.read_cover(d / "02 Track.m4a")
     assert cover is not None and cover[0] == art
+    # The other half of what the flash now reports (#482): the artwork it wrote,
+    # counted. Two targets here — the track that had none, and the folder cover
+    # the album lacked — so this fails if the count reports the plan rather than
+    # what landed.
+    assert "artwork written to 2 files" in r.text
 
 
 def test_retag_writes_no_artwork_the_page_did_not_show(client, cfg, monkeypatch):
@@ -9152,6 +9157,11 @@ def test_retag_writes_no_artwork_the_page_did_not_show(client, cfg, monkeypatch)
     assert not list(d.glob("cover.*"))
     assert formats.read_cover(d / "02 Track.m4a") is None
     assert any("changed after the page showed it" in e.message for e in activity.recent(20))
+    # …and the person who pressed the button is told, without going to look for
+    # it (#482). The flash said only "Re-tagged" until `_tag_with_release`
+    # returned its outcome: `TaggingOutcome.artwork_withheld` had no reader
+    # anywhere, so the one channel carrying the reason was the feed.
+    assert "artwork left alone" in r.text
 
 
 def test_apply_artwork_writes_only_what_the_page_showed(client, cfg):

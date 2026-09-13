@@ -3212,12 +3212,18 @@ def _tag_with_release(
     overwrite_art: bool = False,
     paths: Sequence[Path] | None = None,
     expected_artwork: str | None = None,
-) -> None:
+) -> tagger_mod.TaggingOutcome:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
-    `expected_artwork` is the fingerprint of the artwork additions the album
-    page showed, when a page is who asked (#469). A tagging whose plan no
-    longer matches it writes the tags and no artwork.
+    Returns what the tagging actually DID, in its two halves (#482). It used to
+    return None, which left `TaggingOutcome.artwork_withheld` with no reader
+    anywhere: a re-tag that tagged the album and refused its artwork said only
+    "Re-tagged", and the reason reached the user only if they went looking in
+    the feed. Callers with nothing to report are free to ignore it.
+
+    `expected_artwork` is the fingerprint of the artwork the album page showed,
+    when a page is who asked (#469). A tagging whose plan no longer matches it
+    writes the tags and no artwork, and says so in the outcome.
 
     `mbid` is what to ask MusicBrainz for, not necessarily what the album ends
     up tagged as: a merged release redirects, and this follows the release it
@@ -3305,7 +3311,7 @@ def _tag_with_release(
             "Cover Art Archive unavailable — tagged without its artwork",
             album_id=sidecar_mod.album_id_for(album_path),
         )
-    tagger.tag_and_artwork(
+    outcome = tagger.tag_and_artwork(
         album_path,
         release,
         cover_path=cover_path,
@@ -3367,6 +3373,7 @@ def _tag_with_release(
         activity_store.unignore_update(requested_mbid)
         _record_merge(album_path, requested_mbid, mbid)
     _claim_pending_by_store_url(store_url)
+    return outcome
 
 
 def _tag_as_redownloaded(
@@ -4749,7 +4756,7 @@ def _register_routes(app: FastAPI) -> None:
                 status.HTTP_400_BAD_REQUEST, "no mb_release_id on sidecar to re-tag from"
             )
         try:
-            _tag_with_release(
+            outcome = _tag_with_release(
                 album.path,
                 sc.mb_release_id,
                 request.app.state.cfg,
@@ -4827,9 +4834,37 @@ def _register_routes(app: FastAPI) -> None:
         # INCOMPLETE from here (§13.3) and starts showing a shortfall badge — a
         # visible change to how it is listed, which the entry should name rather
         # than leave to be discovered. It stays in the Library either way.
+        #
+        # The artwork half says what HAPPENED, not what was asked for (#482).
+        # It used to read `"artwork replaced" if overwrite_art`, which describes
+        # the request: an override that turned out to write nothing still
+        # claimed the images had been replaced, and — worse — a re-tag whose
+        # artwork was withheld because the page no longer matched said nothing
+        # at all. That reason reached the user only if they went and read the
+        # feed, which is not where someone who just pressed a button is looking.
+        art = outcome.artwork
         detail_parts = [
             *(["now listed as incomplete"] if accept_short else []),
-            *(["artwork replaced"] if overwrite_art else []),
+            *(
+                ["artwork left alone — it changed after the page showed it"]
+                if outcome.artwork_withheld
+                else []
+            ),
+            *(
+                [f"artwork written to {art.changed} file{'s' if art.changed != 1 else ''}"]
+                if art.changed
+                else []
+            ),
+            # Named rather than counted, for the reason `/artwork/update` names
+            # them: the remedy differs per file, and a bare count reads as
+            # Harmonist having done less than it said (#470).
+            *([f"left alone, changed since: {', '.join(art.stale)}"] if art.stale else []),
+            *(
+                [f"not replaced, no copy could be kept: {', '.join(art.unkept)}"]
+                if art.unkept
+                else []
+            ),
+            *([f"could not be written: {', '.join(art.failed)}"] if art.failed else []),
         ]
         details = ", ".join(detail_parts) or None
         # A re-tag can move the album's state — the totals it just wrote are what

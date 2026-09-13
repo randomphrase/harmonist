@@ -44,6 +44,10 @@ versions follow [semantic versioning](https://semver.org).
   now get the protection folder covers had, and a full artwork store leaves the
   image in place rather than overwrite it (#470).
 - **History names `cover.jpg` instead of counting it as a track** (#469).
+- **A re-tag says what it did to your artwork** — how many files it wrote, and
+  which it left alone and why. A re-tag whose artwork was skipped because the
+  page had gone stale said only "Re-tagged", and the reason reached you only if
+  you went looking in the Activity feed (#482).
 
 ## [1.16.1] - 2026-09-10
 
