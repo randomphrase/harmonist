@@ -34,6 +34,12 @@
    re-read (#355). #}
 {% include 'partials/_tracks_section.html' %}
 {% include 'partials/_album_update.html' %}
+{# …and the Artwork section with its finding (#485). Rendered from here rather
+   than fetched by the section itself: this response has already opened every
+   file in the album, and the artwork view is built from those same tags — so
+   the page draws both of its findings from ONE pass, where it used to read the
+   album twice to answer two questions about the same tags. #}
+{% include 'partials/_artwork_section.html' %}
 {# …and the answers other than taking it, which are now a sibling of the
    findings rather than part of one (#443): the foot of the section, rendered
    by whoever renders the finding above it. #}

@@ -352,7 +352,13 @@ def test_the_refresh_behind_a_stale_comparison_costs_one_request_and_stops(
 
     assert fetch.calls == 2, "one page view, one request — the same as before #387"
     assert 'class="tag-fields' in body
-    assert "check=1" not in body, "a response to a refresh must never ask for another"
+    # The MusicBrainz refresh specifically. Since #485 this response also carries
+    # the Artwork section, whose own `/artwork?check=1` trigger asks the Cover
+    # Art Archive — a different service on a different budget, and not what this
+    # is about. A bare "check=1" matched both.
+    assert f"/library/{album_id}/compare?check=1" not in body, (
+        "a response to a refresh must never ask for another"
+    )
 
 
 def test_a_fresh_stored_comparison_asks_for_nothing_further(client, cfg, monkeypatch):
@@ -369,7 +375,9 @@ def test_a_fresh_stored_comparison_asks_for_nothing_further(client, cfg, monkeyp
     body = client.get(f"/library/{album_id}/compare").text
 
     assert 'class="tag-fields' in body
-    assert "check=1" not in body
+    # Qualified for the reason above (#485): the archive's check rides in this
+    # response too, and it is not the request this test counts.
+    assert f"/library/{album_id}/compare?check=1" not in body
 
 
 def test_a_failed_refresh_keeps_the_comparison_it_was_refreshing(client, cfg, monkeypatch):

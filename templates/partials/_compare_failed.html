@@ -20,3 +20,10 @@
         Couldn't fetch from MusicBrainz — reload the page to try again.
     </p>
 </section>
+
+{# …and the Artwork section, which this response is now the only thing that
+   fills (#485). It renders in full even though the fetch failed, and that is
+   the point: artwork facts are disk facts and owe MusicBrainz nothing, so the
+   one part of this page that never needed the release must not be held hostage
+   to a request that didn't come back. #}
+{% include 'partials/_artwork_section.html' %}

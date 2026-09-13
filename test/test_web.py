@@ -9536,6 +9536,85 @@ def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
     assert 'class="text-sm text-mb-purple"' not in rendered
 
 
+@pytest.mark.parametrize(
+    "patch",
+    [
+        pytest.param(None, id="success"),
+        pytest.param(_gone, id="release-gone"),
+        pytest.param("error", id="fetch-failed"),
+    ],
+)
+def test_every_compare_exit_carries_the_artwork_section(client, cfg, monkeypatch, patch):
+    """The Artwork section is filled by /compare on an identified album (#485),
+    so EVERY way that response can end has to carry it.
+
+    album.html drops the section's own `hx-get` when the album names a release,
+    which makes this response the only thing that fills it — and artwork facts
+    are disk facts, which owe MusicBrainz nothing. A deleted release or a failed
+    fetch leaving the section on "Reading the album's artwork…" would hide the
+    user's own artwork for reasons that have nothing to do with it. The browser
+    suite caught the deleted-release case; the failed fetch has no browser
+    coverage at all, which is why it is asserted here.
+
+    On the out-of-band CONTRACT rather than on the rendered rows: the attribute
+    is what htmx acts on, and it is what would silently go missing — leaving a
+    response that still looks right and fills nothing (#40).
+    """
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Everyexit",
+            "medium-list": [
+                {
+                    "position": "1",
+                    "track-list": [{"id": "t1", "title": "Track 1", "length": "1000"}],
+                }
+            ],
+        }
+
+    def boom(mbid):
+        raise mb_lookup.MBError("MB request failed: HTTP Error 503")
+
+    d = _make_tagged_album(cfg, "Everyexit", mbid="rel-everyexit", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+    fetch = fake_release if patch is None else (boom if patch == "error" else patch)
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fetch)
+
+    body = client.get(f"/library/{album_id}/compare").text
+
+    assert 'hx-swap-oob="innerHTML:#album-artwork"' in body, "nothing would fill the section"
+    # …and the finding beside it, which is a SIBLING of that wrapper: htmx pulls
+    # out-of-band swaps off the top level of a response, so nesting it inside the
+    # wrapper would drop it without a word.
+    assert f'id="album-artwork-note-{album_id}"' in body
+    assert f'id="art-plan-{album_id}"' in body, "the fingerprint a re-tag carries (#469)"
+
+
+def test_a_musicbrainz_refresh_does_not_swap_the_artwork_section_again(client, cfg, monkeypatch):
+    """One page view, one artwork swap (#485).
+
+    The stale-first render draws the section, and the `?check=1` refresh behind
+    it re-renders this same response. Sending the section again would swap it a
+    second time — over the top of whatever the archive's own check had just put
+    there, from an older answer, which is #477 exactly. Nothing in a fresher
+    MusicBrainz payload can change what the album's files carry.
+    """
+
+    def fake_release(mbid):
+        return {"id": mbid, "title": "Refreshed", "medium-list": []}
+
+    d = _make_tagged_album(cfg, "Refreshed", mbid="rel-refreshed", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+
+    opened = client.get(f"/library/{album_id}/compare").text
+    refreshed = client.get(f"/library/{album_id}/compare?check=1").text
+
+    assert 'hx-swap-oob="innerHTML:#album-artwork"' in opened
+    assert 'hx-swap-oob="innerHTML:#album-artwork"' not in refreshed
+
+
 def test_the_artwork_section_sends_the_page_back_to_ask_the_archive(client, cfg):
     """The archive is asked on page open now, the way MusicBrainz is (#436) —
     but out of band, from a second request the section triggers once it has

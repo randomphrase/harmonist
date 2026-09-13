@@ -1,0 +1,33 @@
+{# The page's Artwork section and its finding, swapped out of band by whichever
+   /compare response is answering (#485).
+
+   ONE partial rather than this block written out in `library_compare.html`,
+   `_release_gone.html` and `_compare_failed.html` — the same reason
+   `_tracks_section.html` is one: a block duplicated across three files is one
+   that will eventually differ between them.
+
+   EVERY exit of /compare renders it, and that is the point. The section's own
+   `hx-get` in album.html is dropped on an album with a MusicBrainz release, so
+   this is the only thing that fills it — and artwork facts are disk facts, which
+   owe MusicBrainz nothing. A response that skipped this because the fetch failed
+   would leave the section on "Reading the album's artwork…" for as long as
+   MusicBrainz was down, which is exactly when a user is most likely to be
+   looking at their own files.
+
+   `innerHTML:#album-artwork` so this wrapper is discarded and the section's own
+   element in album.html — its id, its classes — survives untouched.
+
+   The note is a SIBLING of the wrapper, never inside it: htmx extracts
+   out-of-band swaps from the TOP LEVEL of a response, so a nested
+   `hx-swap-oob` is not processed and the finding would silently stop landing —
+   a correct-looking string in a response that does nothing, which is the #40
+   family. `section_only` is what tells the section to leave the note to here.
+
+   Absent when `artwork` is not set, which is how a MusicBrainz refresh avoids
+   swapping this a second time in one page view — see `_comparison_response`. #}
+{% if artwork %}
+<div hx-swap-oob="innerHTML:#album-artwork">
+{% with section_only = true %}{% include 'partials/_artwork.html' %}{% endwith %}
+</div>
+{% include 'partials/_artwork_note.html' %}
+{% endif %}

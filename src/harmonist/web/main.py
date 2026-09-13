@@ -914,7 +914,11 @@ def _rel_path(p: Path | str, base: Path | str) -> str:
 
 
 def _album_comparison(
-    album_dir: Path, release: Release, paths: Sequence[Path] | None = None
+    album_dir: Path,
+    release: Release,
+    paths: Sequence[Path] | None = None,
+    *,
+    reads: tuple[_FileTags, _FileTags] | None = None,
 ) -> tuple[compare.AlbumComparison, compare.TracklistComparison]:
     """Read the album's files and compare their tags to `release` (#106, #135).
 
@@ -930,8 +934,13 @@ def _album_comparison(
     panel and the tracklist want the same tags, and this is a full open of every
     file in the album — the read cost #106 flags, and the same cost problem as
     #44 / #74. Reading them twice for one page view would be careless.
+
+    `reads` extends that to a THIRD consumer (#485): the artwork view is built
+    from the same tags, so the album page's comparison hands over the pass it
+    already made rather than leaving the Artwork section to open every file
+    again.
     """
-    audio, video = _album_tracks(album_dir, paths)
+    audio, video = _album_tracks(album_dir, paths, reads)
     tagsets = tagsets_for(release)
     mb_tracks = [
         compare.MBTrack(tags=ts, length_ms=length)
@@ -966,7 +975,10 @@ def _album_comparison(
 
 
 def _album_disk_view(
-    album_dir: Path, paths: Sequence[Path] | None = None
+    album_dir: Path,
+    paths: Sequence[Path] | None = None,
+    *,
+    reads: tuple[_FileTags, _FileTags] | None = None,
 ) -> tuple[compare.AlbumComparison, compare.TracklistComparison]:
     """The same two halves as `_album_comparison`, from the files ALONE (#228).
 
@@ -976,19 +988,57 @@ def _album_disk_view(
     show them, when those tags are the evidence the user would use to find the
     replacement release.
 
-    One pass over the files, for the same reason `_album_comparison` makes one.
+    One pass over the files, for the same reason `_album_comparison` makes one —
+    and `reads` shares it with the artwork view, which this page's deleted-release
+    response now renders too (#485).
     """
-    audio, video = _album_tracks(album_dir, paths)
+    audio, video = _album_tracks(album_dir, paths, reads)
     return (
         compare.AlbumComparison(fields=compare.album_fields(audio, None), mb_available=False),
         compare.disk_tracklist(_in_track_order(audio + video)),
     )
 
 
+#: The album's files read once — `(path, tags)`, before names are put on them.
+_FileTags = list[tuple[Path, formats.TrackTags]]
+
+
+def _album_file_tags(album_dir: Path, paths: Sequence[Path] | None) -> tuple[_FileTags, _FileTags]:
+    """THE pass over the album's files, audio and video kept apart (#485).
+
+    Both things the album page builds out of its files — the tag comparison and
+    the artwork view — come from this one read. They used to make a pass each,
+    which is the read cost #106 flags and the same problem as #44 / #74: the
+    page opened every file twice to answer two questions about the same tags.
+
+    Paths rather than names, because the artwork plan names its targets BY PATH
+    and the fingerprint a re-tag carries back has to mean the same files on both
+    sides (#469). `_album_tracks` puts the names on for `compare`, which speaks
+    in names so a multi-folder album's two "01 - Intro.m4a" stay distinct.
+    """
+    audio = album_files.for_paths(paths) if paths else album_files.audio_files(album_dir)
+    video = album_files.videos_for_paths(paths) if paths else album_files.video_files(album_dir)
+    # The whole pass, not each file: one line naming a slow album is the signal,
+    # twenty-seven lines naming its tracks is the noise (#300).
+    with timing.warn_if_slow(
+        "album tag read", _SLOW_ALBUM_READ, album=album_dir, files=len(audio) + len(video)
+    ):
+        return (
+            [(f, formats.read_tags(f)) for f in audio],
+            [(f, formats.read_video_tags(f)) for f in video],
+        )
+
+
 def _album_tracks(
-    album_dir: Path, paths: Sequence[Path] | None
+    album_dir: Path,
+    paths: Sequence[Path] | None,
+    reads: tuple[_FileTags, _FileTags] | None = None,
 ) -> tuple[list[tuple[str, formats.TrackTags]], list[tuple[str, formats.TrackTags]]]:
     """The album's files read as `(name, tags)`, audio and video kept apart.
+
+    `reads` is a pass someone else has already made (#485), so a caller that
+    also wants the artwork view does not open every file a second time to get
+    it. Without one this makes the pass itself.
 
     Video is read too since #226 — a Picard-tagged `.m4v` states its disc, its
     position and its title exactly as the audio does, and not looking is what
@@ -1002,17 +1052,11 @@ def _album_tracks(
     multi-folder album (#197) stay distinguishable in the tracklist. Identical
     to the bare name for a one-folder album.
     """
-    audio = album_files.for_paths(paths) if paths else album_files.audio_files(album_dir)
-    video = album_files.videos_for_paths(paths) if paths else album_files.video_files(album_dir)
-    # The whole pass, not each file: one line naming a slow album is the signal,
-    # twenty-seven lines naming its tracks is the noise (#300).
-    with timing.warn_if_slow(
-        "album tag read", _SLOW_ALBUM_READ, album=album_dir, files=len(audio) + len(video)
-    ):
-        return (
-            [(_rel_to(f, album_dir), formats.read_tags(f)) for f in audio],
-            [(_rel_to(f, album_dir), formats.read_video_tags(f)) for f in video],
-        )
+    audio, video = reads if reads is not None else _album_file_tags(album_dir, paths)
+    return (
+        [(_rel_to(f, album_dir), tags) for f, tags in audio],
+        [(_rel_to(f, album_dir), tags) for f, tags in video],
+    )
 
 
 def _in_track_order(
@@ -2288,6 +2332,7 @@ def _artwork_view(
     archive: formats.EmbeddedArt | None = None,
     *,
     chosen: artwork.Source | None = None,
+    tracks: _FileTags | None = None,
 ) -> artwork.ArtworkView:
     """What the album page's Artwork section shows (#155).
 
@@ -2305,15 +2350,21 @@ def _artwork_view(
     # Paths as well as tags: the view's plan names its targets by path, exactly
     # as the tagger's does, so the fingerprint a re-tag carries back means the
     # same files on both sides (#469). The same listing `_album_tracks` makes.
-    files = (
-        album_files.for_paths(album.folders)
-        if album.folders
-        else album_files.audio_files(album.path)
-    )
-    with timing.warn_if_slow(
-        "album artwork read", _SLOW_ALBUM_READ, album=album.path, files=len(files)
-    ):
-        tracks = [(f, formats.read_tags(f)) for f in files]
+    #
+    # `tracks` is that listing already read, handed over by the album page's
+    # comparison (#485). The pass below is what every other caller still makes:
+    # the artwork endpoint answers on an album with no MusicBrainz release,
+    # where there is no comparison to share one with.
+    if tracks is None:
+        files = (
+            album_files.for_paths(album.folders)
+            if album.folders
+            else album_files.audio_files(album.path)
+        )
+        with timing.warn_if_slow(
+            "album artwork read", _SLOW_ALBUM_READ, album=album.path, files=len(files)
+        ):
+            tracks = [(f, formats.read_tags(f)) for f in files]
     if album.cover_path is None or not album.cover_path.exists():
         return artwork.summarise(album.path, tracks, None, caa, archive, chosen=chosen)
     try:
@@ -4326,7 +4377,8 @@ def _register_routes(app: FastAPI) -> None:
                 album.path,
                 mbid,
             )
-            comparison, tracks = _album_disk_view(album.path, album.folders)
+            gone_reads = _album_file_tags(album.path, album.folders)
+            comparison, tracks = _album_disk_view(album.path, album.folders, reads=gone_reads)
             return _templates(request).TemplateResponse(
                 request,
                 "partials/_release_gone.html",
@@ -4346,6 +4398,18 @@ def _register_routes(app: FastAPI) -> None:
                     # deleted the release, so there is nothing to say about
                     # where it came out beyond the country the files carry.
                     mb_release_events=(),
+                    # The Artwork section, from the pass just made (#485). This
+                    # response is the only thing that fills it on an identified
+                    # album, and a deleted release is no reason to stop showing
+                    # the user their own artwork — the same argument #228 makes
+                    # for still showing them their own tags.
+                    artwork=_artwork_view(album, tracks=gone_reads[0]),
+                    # …and the archive is still asked (#436). It is keyed by the
+                    # MBID, not by whether MusicBrainz still serves the release —
+                    # a deleted release can have a cover in the archive, and this
+                    # album's artwork is exactly what its owner is about to go
+                    # through looking for the replacement.
+                    caa_check_due=caa_cache.due(mbid),
                 ),
             )
         except mb_lookup.MBError as e:
@@ -4359,7 +4423,13 @@ def _register_routes(app: FastAPI) -> None:
             if stored is not None:
                 log.warning("could not refresh release %s: %s", mbid, e)
                 return _comparison_response(
-                    request, album, mbid, stored, refreshing=False, refresh_error=str(e)
+                    request,
+                    album,
+                    mbid,
+                    stored,
+                    refreshing=False,
+                    refresh_error=str(e),
+                    asking=check or reread,
                 )
             # A template rather than a bare string so the failure reaches BOTH
             # halves of the page (#228): the in-band note here settled Tags, and
@@ -4372,9 +4442,26 @@ def _register_routes(app: FastAPI) -> None:
             return _templates(request).TemplateResponse(
                 request,
                 "partials/_compare_failed.html",
-                _ctx(request, album=album, error=str(e)),
+                _ctx(
+                    request,
+                    album=album,
+                    error=str(e),
+                    # The Artwork section still renders (#485). This response is
+                    # the only thing that fills it, and the section never needed
+                    # the release: holding it hostage to a fetch that failed
+                    # would empty it for the length of a MusicBrainz outage.
+                    #
+                    # Its own pass over the files — this branch made none, and
+                    # there is no comparison here to share one with.
+                    artwork=_artwork_view(album),
+                    # …and the archive is still asked (#436): a different
+                    # service, and MusicBrainz being unreachable is no reason to
+                    # stop asking it. The section armed this when it fetched
+                    # itself, and must still.
+                    caa_check_due=caa_cache.due(mbid),
+                ),
             )
-        return _comparison_response(request, album, mbid, release)
+        return _comparison_response(request, album, mbid, release, asking=check or reread)
 
     def _comparison_response(
         request: Request,
@@ -4384,6 +4471,7 @@ def _register_routes(app: FastAPI) -> None:
         *,
         refreshing: bool = False,
         refresh_error: str | None = None,
+        asking: bool = False,
     ) -> Response:
         """Render the comparison from `release`, whether it came off the wire or
         out of the store (#387).
@@ -4396,14 +4484,25 @@ def _register_routes(app: FastAPI) -> None:
         Both are properties of THIS response rather than of the release, which
         is why they are arguments and not something the template infers from a
         timestamp: the same stored payload renders one way behind a refresh and
-        another way after one failed."""
+        another way after one failed.
+
+        `asking` says this response IS one of those refreshes, and it decides
+        one thing: whether the Artwork section rides along (#485). It cannot be
+        inferred from `refreshing`, which is false on a refresh response and
+        equally false on the first render of an album whose payload is fresh."""
         # No `assess_match` here any more (#135). It re-opened every file in the
         # album for a duration and a title that `_album_comparison` had just
         # read, to produce a release-fit verdict that is stale news on an album
         # already linked to that release — the tracklist now says what actually
         # differs, track by track. It stays where it earns its keep: behind the
         # Needs MBID suggestion card, deciding whether to link at all.
-        comparison, tracks = _album_comparison(album.path, release, album.folders)
+
+        # ONE pass over the files, for both halves of what this response
+        # describes (#485). The Artwork section used to fetch itself and open
+        # every file again; it is rendered from here now, so a page view reads
+        # the album once instead of twice.
+        reads = _album_file_tags(album.path, album.folders)
+        comparison, tracks = _album_comparison(album.path, release, album.folders, reads=reads)
         # Opening an album is a look at exactly the question the Library filter
         # asks, against a release already in hand — so answer it here too and
         # record it on the snapshot's Album (#287). That is what lets the filter
@@ -4415,6 +4514,27 @@ def _register_routes(app: FastAPI) -> None:
         # on a page the user asked for and is exactly why the Library's own
         # render cannot do this for every tile.
         plan = gardener.refresh_flag(album, release).plan
+        # The artwork half of the page's findings, from the pass made above
+        # rather than from one of its own (#485).
+        #
+        # ONLY on the render that opened the page. A MusicBrainz refresh
+        # re-renders this response, and the Artwork section has no business
+        # riding along on it: artwork facts are disk facts, built from the file
+        # pass and the cover-art cache, and nothing in a fresher MB payload can
+        # change them. Sending it anyway would swap the whole section a second
+        # time — over the top of whatever the archive's own check had just put
+        # there, from an older answer — which is the #477 failure exactly.
+        #
+        # No network in either line: the archive's answer and its image both
+        # come from the local cache, exactly as the artwork endpoint's render
+        # does. Asking the archive stays where it was, behind the out-of-band
+        # check the section triggers once it is on screen (#436).
+        caa_answer = caa_cache.stored(mbid)
+        artwork_view = (
+            None
+            if asking
+            else _artwork_view(album, caa_answer, _archive_image(mbid), tracks=reads[0])
+        )
         ctx = _ctx(
             request,
             album=album,
@@ -4451,7 +4571,16 @@ def _register_routes(app: FastAPI) -> None:
             # other half, and this one is the slowest on the page, so its swap
             # lands last and wins. The Artwork section carries `mb_read_at` for
             # exactly the same reason. A local SQLite read, no request in it.
-            caa_checked_at=(answer.fetched_at if (answer := caa_cache.stored(mbid)) else None),
+            caa_checked_at=(caa_answer.fetched_at if caa_answer else None),
+            # What the Artwork section shows, rendered out of band from here
+            # (#485).
+            artwork=artwork_view,
+            # …and whether it should ask the archive once it is on screen — the
+            # same rule the artwork endpoint applies (#436). Never on a response
+            # that carries no section, which is what keeps one page view to one
+            # check: the render that opened the page arms it, and the refresh
+            # landing afterwards does not arm it again.
+            caa_check_due=artwork_view is not None and caa_cache.due(mbid),
             # What the panel's MusicBrainz ids are called (#298). Off the same
             # release the comparison is built from, so an id and the name shown
             # for it can never come from two different payloads — which is the

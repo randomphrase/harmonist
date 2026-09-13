@@ -379,65 +379,12 @@
 {% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
 {% endif %}
 
-{# …and the same finding stated up beside the album's other one (#417, #443).
-   Sent out of band from the fetch that already knows the answer, so the top of
-   the page costs no second pass over the files. Emitted even when there is
-   nothing to say — an empty div is what CLEARS the finding after the artwork has
-   been updated.
+{# …and the same finding stated up beside the album's other one (#417, #443),
+   which is its own partial since #485 — the /compare response renders this
+   section out of band for an identified album, and has to emit the note as a
+   TOP-LEVEL element of its own response rather than nested inside the section
+   wrapper, or htmx never extracts the swap.
 
-   It carries the ACTION now, not a link down to it. It was a sentence and an
-   "Artwork ↓" anchor, which is how a reader who knew this feature existed still
-   concluded there was no way to act: a control one scroll from the sentence
-   explaining why you would press it is a control nobody presses. So the same
-   button that lives beside the images lives here too, beside the finding, at the
-   same weight as **Re-tag from MB** on the line above.
-
-   Both, deliberately. Up here it can be acted on without scrolling; down there
-   it can be acted on having actually looked at the pictures (#418), which is the
-   whole reason that section exists.
-
-   The anchor is gone with it, and its stray purple with it — purple means
-   MusicBrainz, and navigating down a page is not that.
-
-   The hidden input is what Re-tag from MB carries (`hx-include`): the
-   fingerprint of the artwork a re-tag would ADD, as drawn here. A re-tag whose
-   own plan no longer matches it tags the album and writes no artwork (#469).
-   Here, in the element that is always swapped, so it is present whenever the
-   section has loaded and absent — the re-tag then carries nothing — until it
-   has. #}
-<div id="album-artwork-note-{{ album.id }}" hx-swap-oob="true">
-    <input type="hidden" id="art-plan-{{ album.id }}" name="art_plan"
-           value="{{ artwork.tagging_fingerprint }}">
-    {% if artwork.writes %}
-    <div class="album-finding">
-        {# The album glyph the Artwork severity already uses, muted: this finding
-           is about the album's own files, and the hexagon on the line above
-           means MusicBrainz specifically. #}
-        <span class="album-update__key album-finding__key--art">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="3" y="4.5" width="18" height="15" rx="2"/>
-                <path d="M3 15.5l4.5-4.5 3.5 3.5 3-3 7 7"/>
-            </svg>
-        </span>
-        <h2 class="album-update__legend">{{ artwork.summary }}</h2>
-        {# What KIND of artwork change this is — Addition or Replacement (#468).
-           Not a rank beside the tag levels: whether the target already held an
-           image is the question a reader deciding whether they mind is asking,
-           and it is also whether there is anything for an Undo to put back. #}
-        {{ artwork_chip(artwork.operation) }}
-        <form hx-post="/album/{{ album.id }}/artwork/update"
-              hx-target="#album-artwork" hx-swap="innerHTML"
-              hx-disabled-elt="find button"
-              {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
-              class="album-finding__act-form">
-            <input type="hidden" name="plan" value="{{ artwork.fingerprint }}">
-            {% if artwork.chosen %}<input type="hidden" name="use" value="archive">{% endif %}
-            <button type="submit" class="album-finding__act"
-                    title="Write the artwork the Artwork section shows under After Apply. No tags are touched.">
-                Apply artwork
-            </button>
-        </form>
-    </div>
-    {% endif %}
-</div>
+   `section_only` is that host saying so: it takes the note itself, immediately
+   after this section, so the finding lands exactly once either way. #}
+{% if not section_only %}{% include 'partials/_artwork_note.html' %}{% endif %}

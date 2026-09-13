@@ -144,9 +144,22 @@
        arrives in, and where uneven artwork mostly lives.
 
        Lazy for the reason Tags and Tracks are: it opens every file in the album,
-       and the page should not wait on that to paint. #}
+       and the page should not wait on that to paint.
+
+       FETCHED BY ITSELF ONLY WHEN NOTHING ELSE WILL FILL IT (#485). On an album
+       with a MusicBrainz release the /compare response renders this section out
+       of band, from the same pass over the files its comparison is built from —
+       so a fetch here would open every file a second time to draw the same
+       thing, and land a second whole-section swap next to the first (#477).
+
+       An album with no release has no comparison to ride on: artwork facts are
+       disk facts and owe MusicBrainz nothing, so the section keeps its own
+       fetch there. That is the state an adopted library arrives in, and where
+       uneven artwork mostly lives. #}
     <section id="album-artwork" class="border border-line rounded-lg p-4 space-y-3"
-             hx-get="/album/{{ album.id }}/artwork" hx-trigger="load" hx-swap="innerHTML">
+             {% if not (album.sidecar and album.sidecar.mb_release_id) %}
+             hx-get="/album/{{ album.id }}/artwork" hx-trigger="load" hx-swap="innerHTML"
+             {% endif %}>
         <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Artwork</h2>
         <p class="text-2xs text-muted italic">Reading the album's artwork…</p>
     </section>
