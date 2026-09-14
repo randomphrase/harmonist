@@ -324,7 +324,7 @@ def test_a_merge_alone_still_offers_the_re_tag_that_resolves_it(client, cfg, mon
 def test_a_merge_arriving_with_a_tag_update_is_answered_by_one_button(client, cfg, monkeypatch):
     """The other half of the same rule, and the commoner case: a merge usually
     arrives WITH a tag update (#268), so the update section beneath the panel is
-    drawn and already carries **Re-tag from MB**.
+    drawn and already carries **Apply updates**.
 
     The note then states the identity change and names the remedy in words,
     without adding a second control that does the same POST in different words —
@@ -338,7 +338,7 @@ def test_a_merge_arriving_with_a_tag_update_is_answered_by_one_button(client, cf
     html = _compare(client, cfg, d)
 
     assert "merged this release" in html, html
-    assert "Re-tag from MB" in html, html
+    assert "Apply updates" in html, html
     assert html.count(f'hx-post="/retag/{_scanned(cfg, d).id}"') == 1, html
 
 

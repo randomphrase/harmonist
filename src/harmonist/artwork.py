@@ -730,8 +730,15 @@ class ArtworkView:
     def tagging_fingerprint(self) -> str:
         """The same, for the part of the plan a re-tag writes — the additions.
 
-        Carried by Re-tag from MB, so a folder cover created or a gap filled by
-        a tagging is one this page showed (#469)."""
+        Carried by the controls that only ADD — the partial-tag badge's "Write
+        it to those files", and any tagging without a page in front of it — so a
+        folder cover created or a gap filled is one this page showed (#469).
+
+        NOT what **Apply updates** carries (#482). That control applies the plan
+        in full, replacements included, so it sends `fingerprint` above. Sending
+        this one would compare an additions digest against an all-scope plan and
+        mismatch on every press, withholding the artwork and blaming a page that
+        had not changed."""
         return (self.plan or ArtworkPlan(album_dir=Path())).fingerprint(Scope.ADDITIONS)
 
     @property

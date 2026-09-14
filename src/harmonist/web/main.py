@@ -3233,6 +3233,7 @@ def _tag_with_release(
     paths: Sequence[Path] | None = None,
     expected_artwork: str | None = None,
     artwork_included: bool = True,
+    scope: artwork.Scope | None = None,
 ) -> tagger_mod.TaggingOutcome:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
@@ -3250,6 +3251,11 @@ def _tag_with_release(
     album page's artwork checkbox posts when unticked (#482). Distinct from a
     fingerprint that failed to match: that is a stale preview the user is owed a
     warning about, this is a choice they just made.
+
+    `scope` is how much of the plan to write, and must agree with the scope
+    `expected_artwork` was taken at or the comparison mismatches on every press.
+    None keeps the tagger's own derivation, which is what every caller without a
+    page in front of it wants.
 
     `mbid` is what to ask MusicBrainz for, not necessarily what the album ends
     up tagged as: a merged release redirects, and this follows the release it
@@ -3350,6 +3356,7 @@ def _tag_with_release(
         archive=archive,
         expected_artwork=expected_artwork,
         artwork_included=artwork_included,
+        scope=scope,
     )
 
     sc = sidecar_mod.read(album_path)
@@ -4764,6 +4771,7 @@ def _register_routes(app: FastAPI) -> None:
         accept_short: bool = Form(False),
         art_plan: str = Form(""),
         include_artwork: bool = Form(True),
+        artwork_scope: str = Form("additions"),
     ) -> Response:
         """Re-tag a Library album from the MusicBrainz release it names.
 
@@ -4778,10 +4786,23 @@ def _register_routes(app: FastAPI) -> None:
         tagging without a page does.
 
         `include_artwork` is the album page's artwork checkbox (#482). DEFAULTS
-        TO TRUE, which is both what the ticked box means and what every caller
-        that sends no such field has always got — an unticked checkbox posts
-        nothing at all, which is the native contract the ignore box relies on
-        too, so the default is doing real work rather than being a convenience.
+        TO TRUE, because absence means "a caller with no checkbox at all", which
+        must keep the artwork half it has always had.
+
+        That default is why the page cannot rely on the usual checkbox contract.
+        An unticked box posts NOTHING, and here nothing means *included* — the
+        opposite of what the user just asked for. So the control posts the
+        choice explicitly: a hidden `false` ahead of a checkbox sending `true`,
+        which Starlette resolves last-wins, making all three states distinct.
+
+        `artwork_scope` says which fingerprint `art_plan` was taken at, and has
+        to be declared rather than inferred. The combined **Apply updates**
+        control carries the plan the page drew in full — `Scope.ALL`,
+        replacements included — while every other host of this endpoint carries
+        the ADDITIONS fingerprint through `hx-include`. Comparing one against
+        the other always mismatches, so an undeclared scope would withhold the
+        artwork on every press and report a page that had gone stale when
+        nothing had changed at all.
         """
         album = _find_album(request, album_id)
         sc = album.sidecar
@@ -4821,6 +4842,10 @@ def _register_routes(app: FastAPI) -> None:
                 paths=album.folders,
                 expected_artwork=art_plan or None,
                 artwork_included=include_artwork,
+                # An unknown value is the ordinary scope, never an error: it can
+                # only come from a hand-made request, and a tagging that fills
+                # gaps is the safe reading of one (#482).
+                scope=(artwork.Scope.ALL if artwork_scope == "all" else artwork.Scope.ADDITIONS),
             )
         except mb_lookup.ReleaseGoneError:
             # Not a failure to report as one: MusicBrainz has deleted the release

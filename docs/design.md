@@ -100,11 +100,11 @@ the whole reason the `NEEDS_SYNC` state exists.
 2. User clicks **Recheck** on that album.
 3. Harmonist re-runs the MB URL lookup. If now matched, it tags; if still unmatched, the album stays in Needs MBID.
 
-### 2.4 Re-tag from MB
+### 2.4 Apply updates
 
 1. User edits a release in MB (track titles, dates, etc.) — or just wants to refresh tags.
-2. User clicks **Re-tag from MB** on a Library album's page.
-3. Harmonist re-fetches the MB release and rewrites the file tags. Artwork the album already carries is left alone — a re-tag only fills a track that has none. Replacing artwork is **Apply artwork**, its own action in the Artwork section (#418).
+2. User clicks **Apply updates** on a Library album's page.
+3. Harmonist re-fetches the MB release and rewrites the file tags, and applies the artwork changes the page showed while **Include artwork** is ticked — additions and replacements alike, exactly the plan drawn under *After Apply* (#482). Unticking it writes the tags alone and leaves every image untouched; the artwork stays on offer, both here and as **Apply artwork** in the Artwork section, which writes artwork and no tags. A tagging with no page in front of it still only fills gaps (#418).
 4. If the release now lists **more** tracks than the album has files, the tagger's
    count guard refuses (§15.3) and the refusal is presented as a decision rather
    than an error: both counts, plus a **Re-tag as incomplete** control that
@@ -1150,7 +1150,7 @@ Plex with the MusicBrainz agent can fetch its own artwork from external sources,
 
    **Unless the user chooses otherwise** (#472). Size is a default, not a verdict: a 900px scan can be softer or worse cropped than a 500px one, and only a person looking at both can say. `plan(chosen=…)` takes that candidate as the winner however it measures — including over the folder cover, the one write the rule would otherwise refuse to make smaller. Choosing is a RENDER (`?use=…`): the section is drawn again with that image as the winner, writes nothing, and the Apply that follows carries the choice back with the fingerprint of what was shown. Per-track artwork is still protected, and identical bytes are still nothing to write.
 3. **Operations.** Each write is an **Addition** — an artless track, or a folder cover the album lacks — or a **Replacement**. A tagging may make additions only (#418); the Apply artwork action makes both. A missing folder cover is created from the winner, as `cover.jpg` or `cover.png` to match it, so an album whose tracks carry a 3000px image is not given a 1200px archive cover. A compilation's folder cover comes only from the archive: its first sleeve is not the album's cover.
-4. **Revalidation.** The page carries a fingerprint of what it showed — the additions for Re-tag from MB, the whole plan for Apply artwork. The action rebuilds the plan from disk and proceeds only if it matches: Apply artwork otherwise writes nothing and redraws the section, and a re-tag writes its tags and no artwork, with a warning in the album's History. Each target is also re-read immediately before it is written, and one that no longer holds what the plan saw is left alone and reported. A tagging nobody previewed (exact-match auto-tagging, confirmation, recheck) carries no fingerprint and writes its plan's additions.
+4. **Revalidation.** The page carries a fingerprint of what it showed, at the scope the control applies — the whole plan for **Apply updates** and for **Apply artwork**, the additions alone for the controls that only add (the partial-tag badge, a merge note's own button). The scope is declared with the fingerprint rather than inferred, because comparing one scope's digest against another mismatches every time and would withhold the artwork on every press (#482). The action rebuilds the plan from disk and proceeds only if it matches: Apply artwork otherwise writes nothing and redraws the section, and a re-tag writes its tags and no artwork, with a warning in the album's History. Each target is also re-read immediately before it is written, and one that no longer holds what the plan saw is left alone and reported. A tagging nobody previewed (exact-match auto-tagging, confirmation, recheck) carries no fingerprint and writes its plan's additions.
 5. **Records.** Every image written is recorded as an `artwork` before/after pair on a `tag.track` line — `[None, digest]` for an addition, including a created folder cover — and a folder cover also gets a `cover.write` audit line.
 
 If nothing is available — no archive image and no embedded art — the album is tagged without a cover.

@@ -9143,6 +9143,87 @@ def test_the_page_and_the_tagger_fingerprint_one_plan_alike(client, cfg):
     assert _form_value(html, "plan") == plan.fingerprint(artwork.Scope.ALL)
 
 
+def test_apply_updates_writes_the_replacements_the_page_showed(client, cfg, monkeypatch):
+    """The combined control applies the plan in FULL — `Scope.ALL` (#482).
+
+    The fixture is the point, and it has to be this way round: the tracks carry
+    the BIG image and the folder cover a small one, so the cover loses on size
+    and the plan's one change is a REPLACEMENT — `before` is the cover's digest,
+    not None. An addition would pass this identically under the old
+    additions-scope and prove nothing about the contract the checkbox rests on.
+
+    The inverse fixture proves even less: a bigger `cover.jpg` beside modest
+    embedded art is a layout somebody chose, not a gap to close (#479), so the
+    plan comes back empty and there is no control at all.
+
+    The fingerprint is read off the rendered control rather than computed here,
+    because agreeing with the page is the whole property: the control carries
+    `Scope.ALL` and declares that scope, and a mismatch withholds the artwork.
+    """
+    from harmonist import formats
+
+    small, big = _png(1), _png_sized(2, 600)
+    d = _release_backed_album_with_art(
+        cfg, "Replaced", "rel-replaced", covers=[big, big], folder=small
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=2)
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+    aid = _id_for(cfg, d)
+    control = client.get(f"/library/{aid}/compare").text
+    assert "Apply updates" in control
+    assert 'name="artwork_scope" value="all"' in control, "the scope must be declared"
+
+    r = client.post(
+        f"/retag/{aid}",
+        data={
+            "art_plan": _form_value(control, "art_plan"),
+            "artwork_scope": "all",
+            "include_artwork": "true",
+        },
+    )
+
+    assert "Re-tagged" in r.text
+    # The folder cover took the tracks' better image — a REPLACEMENT, which an
+    # additions-only scope refuses to make, so this is the assertion that tells
+    # Scope.ALL and Scope.ADDITIONS apart.
+    assert (d / "cover.jpg").read_bytes() == big, "the replacement the page showed"
+    # …and the tracks keep their own, untouched: the folder cover is the only
+    # carrier the size rule decides (#479).
+    for track in ("01 Track.m4a", "02 Track.m4a"):
+        art = formats.read_cover(d / track)
+        assert art is not None and art[0] == big
+    assert "changed after the page showed it" not in r.text
+    assert "artwork written to 1 file" in r.text
+
+
+def test_the_combined_control_offers_the_artwork_choice_ticked(client, cfg, monkeypatch):
+    """Ticked every time it is drawn, with nothing remembering otherwise (#482).
+
+    The hidden `false` ahead of it is what makes unticking mean anything: an
+    unticked box posts nothing, and absence is read as INCLUDED so that callers
+    with no checkbox keep the artwork half they have always had. Both halves are
+    asserted, because the checkbox alone would look right and do the opposite.
+    """
+    small, big = _png(1), _png_sized(2, 600)
+    d = _release_backed_album_with_art(
+        cfg, "Offered", "rel-offered", covers=[big, big], folder=small
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=2)
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+
+    body = " ".join(client.get(f"/library/{_id_for(cfg, d)}/compare").text.split())
+
+    assert '<input type="hidden" name="include_artwork" value="false">' in body
+    checkbox = body[body.index('name="include_artwork" value="true"') :][:120]
+    assert "checked" in checkbox, "drawn ticked, every time"
+    # Both halves described separately, not merged into one rank (#468).
+    assert "sev--artwork" in body
+
+
 def test_retag_with_artwork_excluded_tags_and_leaves_every_image_alone(client, cfg, monkeypatch):
     """The album page's artwork checkbox, unticked (#482).
 

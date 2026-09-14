@@ -48,7 +48,7 @@ def test_a_re_tag_that_cannot_fit_offers_the_way_out(demo_server: str) -> None:
 
         page.goto(f"{demo_server}/album/{AGREEING_ALBUM_ID}")
         page.wait_for_load_state("networkidle")
-        page.get_by_role("button", name="Re-tag from MB").click()
+        page.get_by_role("button", name="Apply updates").click()
         # The control first: an album that fits gets no alert at all, so the
         # assertion below is about this state rather than about the slot always
         # being full.
@@ -57,7 +57,7 @@ def test_a_re_tag_that_cannot_fit_offers_the_way_out(demo_server: str) -> None:
 
         page.goto(f"{demo_server}/album/{ALBUM_ID}")
         page.wait_for_load_state("networkidle")
-        page.get_by_role("button", name="Re-tag from MB").click()
+        page.get_by_role("button", name="Apply updates").click()
 
         offer = page.locator("text=MusicBrainz now lists 4 tracks — you have 2")
         offer.wait_for(timeout=10_000)
@@ -76,7 +76,7 @@ def test_the_offered_button_sends_the_decision(demo_server: str) -> None:
 
         page.goto(f"{demo_server}/album/{ALBUM_ID}")
         page.wait_for_load_state("networkidle")
-        page.get_by_role("button", name="Re-tag from MB").click()
+        page.get_by_role("button", name="Apply updates").click()
         page.locator("text=MusicBrainz now lists 4 tracks — you have 2").wait_for(timeout=10_000)
 
         with page.expect_request(f"**/retag/{ALBUM_ID}") as request:

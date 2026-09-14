@@ -1,4 +1,4 @@
-{% from 'macros.html' import severity_chip %}
+{% from 'macros.html' import severity_chip, artwork_chip %}
 {# What MusicBrainz has that this album's files don't, and what to do about it
    (#366) — the first finding in the section under the panel, where three things
    used to be scattered inside it.
@@ -51,6 +51,18 @@
            comparison, so an album whose files differ in ways a re-tag would
            not write has a finding to state and no rank to state it at. #}
         {% if album.update_significance %}{{ severity_chip(album.update_significance) }}{% endif %}
+        {# …and what the artwork half would be, described SEPARATELY (#468, #482).
+           Two scales, deliberately not merged into one rank: significance says
+           how far a metadata change reaches, Addition/Replacement says whether
+           the target already held an image — which is the question a reader
+           deciding whether they mind is actually asking, and also whether there
+           is anything for an Undo to put back.
+
+           `artwork` is set by both responses that render this finding: the
+           /compare one (#485) and the deleted-release one, which draws it from
+           the same pass over the files. #}
+        {% set art = artwork if artwork is defined else none %}
+        {% if art and art.writes %}{{ artwork_chip(art.operation) }}{% endif %}
 
         {# Moved here from the panel's action row. Keeps `retag-btn-<id>`,
            which is not decoration: it is what a release-gone response used
@@ -70,20 +82,65 @@
            cover that; not drawing it at all is better, and the endpoint's
            own refusal (#194) was always the real guard. #}
         {% if comparison.mb_available and album.sidecar and album.sidecar.mb_release_id %}
-        {# `hx-include` carries the Artwork section's fingerprint of what this
-           re-tag would add (#469), so it writes only artwork the page showed.
-           Nothing is carried until that section has loaded. #}
-        <button id="retag-btn-{{ album.id }}"
-                hx-post="/retag/{{ album.id }}"
-                hx-include="#art-plan-{{ album.id }}"
-                hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
-                class="album-finding__act"
-                {# What it does to artwork, kept true (#417). Since #418 a
-                   re-tag never replaces an image you have; it fills what is
-                   empty, and a missing folder cover is one of those (#457). #}
-                title="Re-tag from MusicBrainz. Your artwork is left alone — a track with none, or a missing folder cover, is given the album's best image.">
-            Re-tag from MB
-        </button>
+        {# ONE action for both halves (#482). It was **Re-tag from MB**, which
+           named a mechanism and promised "your artwork is left alone" — no
+           longer true of a control that writes the artwork changes the reader
+           has just been shown and left included.
+
+           A FORM now rather than a bare button, because the checkbox has to be
+           submitted with it. No `hx-trigger`: a form's default trigger is
+           submit, and naming any other would REPLACE it rather than add to it,
+           which is #144's failure exactly (web-ui rule 2b).
+
+           `retag-btn-<id>` stays on the button. It is not decoration —
+           `library_compare.html` disables it by that selector while a refresh
+           is in flight, a test pins that selector string, and the release-gone
+           tests assert its absence. #}
+        <form hx-post="/retag/{{ album.id }}"
+              hx-swap="none" hx-disabled-elt="find button"
+              hx-indicator="#tagging-{{ album.id }}"
+              class="album-finding__act-form">
+            {# The fingerprint of the plan the page DREW, at the scope this
+               control applies — the whole of it, replacements included (#469).
+               Declared rather than left to be inferred: every other host of
+               /retag carries the ADDITIONS fingerprint, and comparing one
+               against the other mismatches every time, which would withhold the
+               artwork on every press and blame a page that had not changed.
+
+               Sent even when nothing would be written, which is the case that
+               looks pointless and is not: the tagger rebuilds its plan at write
+               time, so the fingerprint of an EMPTY plan is what says "and it
+               should still be empty" about an album someone has edited since. #}
+            {% if art %}
+            <input type="hidden" name="artwork_scope" value="all">
+            <input type="hidden" name="art_plan" value="{{ art.fingerprint }}">
+            {% endif %}
+            {% if art and art.writes %}
+            {# THE HIDDEN FALSE IS LOAD-BEARING — do not delete it as redundant.
+               An unticked checkbox posts nothing at all, and absence here means
+               "a caller with no checkbox", which the endpoint reads as INCLUDED.
+               Without the hidden field ahead of it, unticking the box would
+               write the artwork anyway. With it, unticked posts `false` alone
+               and ticked posts `false,true`, which Starlette resolves last-wins
+               — so all three states are distinct and explicit (#482). #}
+            <input type="hidden" name="include_artwork" value="false">
+            {# Ticked every time it is drawn, and nothing remembers otherwise:
+               the choice is about THIS press, not a setting the album carries. #}
+            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
+                          text-2xs uppercase tracking-widest font-bold text-muted
+                          hover:text-ink transition"
+                   title="Apply the artwork shown under After Apply as well as the tags. Untick to take the tags only — the artwork stays on offer here and in the Artwork section below.">
+                <input type="checkbox" name="include_artwork" value="true" checked
+                       class="cursor-pointer">
+                Include artwork
+            </label>
+            {% endif %}
+            <button id="retag-btn-{{ album.id }}" type="submit"
+                    class="album-finding__act"
+                    title="Write what MusicBrainz says to this album's files{% if art and art.writes %}, and the artwork shown under After Apply while it is included{% endif %}.">
+                Apply updates
+            </button>
+        </form>
         {% endif %}
     </div>
     {% endif %}

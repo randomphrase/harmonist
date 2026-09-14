@@ -94,7 +94,7 @@ elsewhere**.
 **Files that describe a different release.** If your tags say the album is a
 single disc while the MusicBrainz release it's matched to has three, the album's
 page says so. It isn't incomplete — by its own tags it's fine — but the tags are
-either stale (**Re-tag from MB** brings them into line) or the release is the
+either stale (**Apply updates** brings them into line) or the release is the
 wrong one (**Wrong MusicBrainz match**). Harmonist won't guess which.
 
 **A release that's vanished from MusicBrainz.** Editors occasionally delete a
@@ -346,7 +346,7 @@ MusicBrainz allows one request per second, so the release behind this comparison
 is cached and re-used for an hour rather than re-fetched every time you open the
 page. An answer older than that is still shown at once and refreshed while you
 read it, rather than making you wait: a spinner where the refresh button sits
-means a newer one is on its way, and **Re-tag from MB** is held until it lands,
+means a newer one is on its way, and **Apply updates** is held until it lands,
 since the release it would write from may not be the one you are looking at. The
 album panel's **Checked** date says when it was last read — "20 minutes ago" —
 with a refresh button beside it if you've just edited MusicBrainz and want to see
@@ -363,10 +363,14 @@ When there is something to report, the whole comparison is summed up once, in a
 section of its own directly under the album panel: a hexagon, a line saying how
 much of the tags and the tracklist differ, and a chip saying how far the change
 reaches — *Enrichment* for a catalogue number MusicBrainz has filled in,
-*Identity* for a release that has been merged into another. **Re-tag from MB**
+*Identity* for a release that has been merged into another. **Apply updates**
 sits on that line, at the end of it, because it is the answer to that sentence.
-Artwork that could be better is a second finding in the same section, with
-**Apply artwork** on its own line in the same way. At the foot of the section,
+Artwork that could be better is a second finding in the same section, described
+separately — *Addition* where there is no image yet, *Replacement* where there
+is — and **Apply updates** applies both halves together while **Include
+artwork** beside it is ticked. It starts ticked every time the page is drawn;
+unticking it takes the tags alone and leaves the artwork on offer. The Artwork
+section below keeps its own **Apply artwork**, which writes artwork and no tags. At the foot of the section,
 quieter than either button, are the two other answers: a checkbox that waits for
 an edit to land — *Ignore until MusicBrainz changes* — and a link to MusicBrainz
 to make one. An album where everything matches gets no section — the **Checked**
@@ -562,7 +566,7 @@ tagging — see [Settings](#settings) for what that is costing in disk.
 records written before it was last re-identified, so history doesn't rot when a
 release is re-matched or renamed.
 
-The actions live on the page too: **Re-tag from MB** in the update section
+The actions live on the page too: **Apply updates** in the update section
 above (a partially-tagged album gets its own copy of it, beside the badge
 counting the files missing the id), the wrong-match pencil beside the release
 badge (which sends the album back to Needs

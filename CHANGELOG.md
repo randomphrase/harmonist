@@ -29,6 +29,10 @@ versions follow [semantic versioning](https://semver.org).
   replacement asks you to confirm (#468).
 - **Re-tag and Apply artwork write only the artwork the page showed**; if it has
   changed since, no artwork is written and the album page says so (#469).
+- **One Apply updates action** on an album's page (was *Re-tag from MB*) applies
+  the tag changes and the artwork changes together, each still described in its
+  own terms. **Include artwork** beside it starts ticked every time the page is
+  drawn; untick it to take the tags alone and leave the artwork on offer (#482).
 - **An album page reads your files once instead of twice** — the tag comparison
   and the Artwork section are built from the same pass over the album, which
   tells on a slow mount (#485).

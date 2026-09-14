@@ -34,7 +34,7 @@
 
    Both halves of that matter. A merge can be the ONLY thing outstanding: every
    compared tag matches, the tracklist is clean, the update section is not drawn
-   and **Re-tag from MB** leaves with it, so without a button here the page would
+   and **Apply updates** leaves with it, so without a button here the page would
    state an identity change and offer nothing to do about it — #291's dead end,
    reopened for merges specifically. And a merge usually arrives WITH a tag
    update (#268), where that section is drawn a few pixels below; a second button
@@ -73,9 +73,13 @@
                 Re-tagging follows the merge.
             </span>
         </p>
-        {# Same route as Re-tag from MB, and deliberately not the same words:
-           there the mechanism is the point, here it is what happens to the files
-           this note is about. Drawn only where that button is not — see above. #}
+        {# Same route as **Apply updates**, and deliberately not the same words:
+           there the decision is the point, here it is what happens to the files
+           this note is about. Drawn only where that button is not — see above.
+
+           It sends no artwork fields, so the endpoint's defaults apply and this
+           writes tags plus the ordinary gap fills, exactly as it always has
+           (#482). #}
         {% if advisory(comparison, tracklist) %}
         <button hx-post="/retag/{{ album.id }}"
                 hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"

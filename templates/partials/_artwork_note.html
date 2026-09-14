@@ -17,18 +17,23 @@
    concluded there was no way to act: a control one scroll from the sentence
    explaining why you would press it is a control nobody presses. So the same
    button that lives beside the images lives here too, beside the finding, at the
-   same weight as **Re-tag from MB** on the line above.
+   same weight as **Apply updates** on the line above.
 
    Both, deliberately. Up here it can be acted on without scrolling; down there
    it can be acted on having actually looked at the pictures (#418), which is the
    whole reason that section exists.
 
-   The hidden input is what Re-tag from MB carries (`hx-include`): the
-   fingerprint of the artwork a re-tag would ADD, as drawn here. A re-tag whose
-   own plan no longer matches it tags the album and writes no artwork (#469).
-   Here, in the element that is always swapped, so it is present whenever the
-   section has loaded and absent — the re-tag then carries nothing — until it
-   has. #}
+   The hidden input is the fingerprint of the artwork a re-tag would ADD, as
+   drawn here. A re-tag whose own plan no longer matches it tags the album and
+   writes no artwork (#469). Here, in the element that is always swapped, so it
+   is present whenever the section has loaded and absent until it has.
+
+   **Apply updates** no longer reads it (#482): that control applies the plan
+   in full — replacements included — so it carries its own `Scope.ALL`
+   fingerprint inline rather than reaching across for this one. What still
+   `hx-include`s it is the partial-tag badge's "Write it to those files", which
+   is about a missing release id and must NOT gain artwork replacement. Keeping
+   this input at ADDITIONS is what holds those two apart. #}
 <div id="album-artwork-note-{{ album.id }}" hx-swap-oob="true">
     <input type="hidden" id="art-plan-{{ album.id }}" name="art_plan"
            value="{{ artwork.tagging_fingerprint }}">

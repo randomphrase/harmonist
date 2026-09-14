@@ -1473,7 +1473,7 @@ def headline(album: AlbumComparison, tracks: TracklistComparison) -> str:
 
     The hexagon band used to be drawn twice — once over the Tags panel, once
     over the tracklist — saying the same thing about the same fetch in two
-    places. It is now drawn once, in the album panel beside **Re-tag from MB**,
+    places. It is now drawn once, in the album panel beside **Apply updates**,
     which is the action a difference leads to.
 
     Composed HERE rather than in the template, for the reason each half is a

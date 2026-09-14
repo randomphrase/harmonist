@@ -139,7 +139,7 @@
                finding anywhere on this page.
 
                It sits with the badges, a line or two above the actions, on
-               purpose: Re-tag from MB is the remedy — it writes the id to the
+               purpose: re-tagging is the remedy — it writes the id to the
                files missing it — and the finding is useless three sections away
                from the button that fixes it.
 
@@ -150,7 +150,7 @@
             {% if album.partial_tag_count %}
             <p class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-2xs font-bold
                       bg-amber-50 text-amber-800 border border-amber-300"
-               title="Re-tag from MB writes the MusicBrainz Album Id to the {{ album.partial_tag_count[1] - album.partial_tag_count[0] }} file(s) missing it.">
+               title="Re-tagging writes the MusicBrainz Album Id to the {{ album.partial_tag_count[1] - album.partial_tag_count[0] }} file(s) missing it.">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
                      stroke-width="2" aria-hidden="true" class="flex-shrink-0">
                     <path stroke-linecap="round" stroke-linejoin="round"
@@ -161,16 +161,21 @@
             {# The remedy, beside the finding — which is what this badge's own
                note has always argued for, and what #366 finally had to build.
 
-               Re-tag from MB moved to the update section beneath the panel, and
-               it cannot serve this case: a file missing the release id produces
-               no finding anywhere on the page, so such an album is otherwise
-               clean and gets no section at all. Without a button here, the
-               remedy would have left with it and this badge would state a
-               problem the page offered no way to fix.
+               The update section's own control (**Apply updates**, #482) moved
+               beneath the panel, and it cannot serve this case: a file missing
+               the release id produces no finding anywhere on the page, so such
+               an album is otherwise clean and gets no section at all. Without a
+               button here, the remedy would have left with it and this badge
+               would state a problem the page offered no way to fix.
 
-               Same route, and deliberately not the same words. "Re-tag from MB"
-               describes the mechanism; here what matters is the effect on the
-               files this badge is counting. #}
+               Same route, and deliberately not the same words. "Apply updates"
+               names the decision; here what matters is the effect on the files
+               this badge is counting.
+
+               It still carries the ADDITIONS fingerprint through `hx-include`,
+               which is right: this button is about a missing release id, and it
+               has no business gaining the artwork replacements the combined
+               control applies (#482). #}
             <button hx-post="/retag/{{ album.id }}"
                     hx-include="#art-plan-{{ album.id }}"
                     hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"

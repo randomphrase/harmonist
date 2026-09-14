@@ -48,7 +48,7 @@ def test_re_tagging_a_merged_release_leaves_the_browser_on_the_surviving_one(
         # page can know at render time — so the note is what says it has arrived.
         page.wait_for_selector("text=merged this release", timeout=20_000)
 
-        page.get_by_role("button", name="Re-tag from MB").first.click()
+        page.get_by_role("button", name="Apply updates").first.click()
 
         # The address the album now lives at, not the one it was opened at.
         #
