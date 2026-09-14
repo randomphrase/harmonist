@@ -437,27 +437,25 @@ class VorbisTagger:
         addition). Both places a Vorbis-family file can carry one: FLAC's native
         picture blocks and the Ogg/Opus METADATA_BLOCK_PICTURE comment.
 
-        In both, only the FIRST — the image Harmonist read, kept and added. A
-        picture behind it stays: it was never backed up, so taking it off would
-        destroy the only copy (#489)."""
+        Remove the first image from the location `_cover_of` reads: native
+        pictures take precedence over comments when a FLAC carries both (#508).
+        Other pictures stay: they were never backed up (#489)."""
         audio = self._open(path)
         if audio is None:
             raise OSError(f"could not open {path} to remove its cover")
-        changed = False
         if pictures := list(getattr(audio, "pictures", None) or []):  # FLAC
             audio.clear_pictures()
             for picture in pictures[1:]:
                 audio.add_picture(picture)
-            changed = True
-        encoded = audio.tags.get("metadata_block_picture") if audio.tags is not None else None
-        if encoded:  # Ogg/Opus
+        else:
+            encoded = audio.tags.get("metadata_block_picture") if audio.tags is not None else None
+            if not encoded:
+                return
             if rest := list(encoded[1:]):
                 audio.tags["metadata_block_picture"] = rest
             else:
                 del audio.tags["metadata_block_picture"]
-            changed = True
-        if changed:
-            audio.save()
+        audio.save()
 
     def write_tags(self, path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
         """Write `tagset` to `path`, returning the owned fields as they were

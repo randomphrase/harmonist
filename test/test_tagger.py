@@ -3247,6 +3247,56 @@ def test_undoing_an_addition_leaves_a_picture_added_since_alone(
     assert outcome.stale == ()
 
 
+@pytest.mark.parametrize("extra_native_picture", [False, True])
+def test_flac_addition_undo_preserves_pictures_in_both_locations(tmp_path, extra_native_picture):
+    """Undo removes the native picture it added, not a comment picture added
+    since. Both storage locations can coexist in a FLAC file (#508)."""
+    import base64
+
+    from mutagen.flac import FLAC, Picture
+
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = tmp_path / "album"
+    album_dir.mkdir()
+    track = album_dir / "track.flac"
+    shutil.copy(Path(__file__).parent / "fixtures" / "sine.flac", track)
+    mine = _sized_jpeg(800, 800)
+    cover = album_dir / "cover.jpg"
+    cover.write_bytes(mine)
+    plan = tagger.decide_artwork(album_dir, [track], cover)
+    assert tagger.apply_artwork(album_dir, plan, files=[track], cover_path=cover).changed == 1
+
+    booklet = Picture()
+    booklet.type = 4
+    booklet.mime = "image/jpeg"
+    booklet.desc = "Back cover added afterwards"
+    booklet.data = _sized_jpeg(200, 200) + b"_booklet"
+    encoded = base64.b64encode(booklet.write()).decode("ascii")
+    audio = FLAC(track)
+    audio["metadata_block_picture"] = [encoded]
+    audio["comment"] = ["Keep this personal note"]
+    if extra_native_picture:
+        audio.add_picture(booklet)
+    audio.save()
+    tags = dict(FLAC(track).tags)
+    remaining_native = [p.write() for p in FLAC(track).pictures[1:]]
+
+    outcome = _undo_latest(album_dir)
+
+    restored = FLAC(track)
+    assert dict(restored.tags) == tags
+    assert [p.write() for p in restored.pictures] == remaining_native
+    assert (outcome.removed, outcome.restored, outcome.stale) == (1, 0, ())
+    assert formats_mod.read_cover(track) == (booklet.data, booklet.mime)
+    assert artwork_store.path_for(artwork_store.digest(mine)) is not None
+    before_repeat = track.read_bytes()
+    assert _undo_latest(album_dir).changed == 0
+    assert track.read_bytes() == before_repeat
+
+
 def test_one_artwork_action_undoes_its_additions_and_replacements_together(
     album_with_tracks, tmp_path
 ):

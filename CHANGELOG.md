@@ -50,6 +50,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Artwork Undo preserves additional FLAC pictures stored in comments when removing a native cover image (#508).
 - **A cover the archive keeps for the release group still says so when it's the
   one coming in** — the note appeared while the image was merely a candidate and
   vanished the moment it won or you chose it, which is when you're approving it.
