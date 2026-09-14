@@ -97,6 +97,59 @@ port = 8765
     assert cfg.server.port == 9999
 
 
+def test_a_retired_cover_art_size_is_reported_rather_than_ignored(monkeypatch, tmp_path, caplog):
+    """`[cover_art] size` was removed (#469): the archive's ORIGINAL is always
+    what Harmonist fetches now.
+
+    An old `harmonist.toml` naming it still loads, which is the right call — a
+    config file must not stop being readable because a key retired. But loading
+    and being honoured are different things, and an install that deliberately
+    asked for 500px images went on downloading originals with nothing said
+    (#497). Say it once, where an upgrade will be read.
+    """
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    (cfg_dir / "harmonist.toml").write_text(
+        """
+[cover_art]
+size = 500
+cache_ttl_seconds = 3600
+"""
+    )
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+
+    cfg = config_mod.load()
+
+    # It still loads, and the rest of the section still applies.
+    assert cfg.cover_art.cache_ttl_seconds == 3600
+    assert "size" in caplog.text
+    assert "original" in caplog.text.lower()
+
+
+def test_a_config_without_the_retired_key_says_nothing(monkeypatch, tmp_path, caplog):
+    """The other half, and the one that keeps the warning worth reading: every
+    install that never set it must start silently."""
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    (cfg_dir / "harmonist.toml").write_text(
+        """
+[cover_art]
+cache_ttl_seconds = 3600
+"""
+    )
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    # The retired ENV spelling is warned about too, and the developer running
+    # this may have it set — clear it so the silence being asserted is the
+    # config file's, not the environment's.
+    monkeypatch.delenv("HARMONIST_COVER_ART_SIZE", raising=False)
+
+    config_mod.load()
+
+    assert "cover_art" not in caplog.text
+
+
 def test_config_default_ignores_and_cookies(monkeypatch, tmp_path):
     monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(tmp_path / "cfg"))
     monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))

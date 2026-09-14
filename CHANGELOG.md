@@ -39,8 +39,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Removed
 
-- **The Cover art size setting** — Harmonist always uses the Cover Art Archive's
-  original image (#469).
+- **The Cover art size setting** — `[cover_art] size` and
+  `HARMONIST_COVER_ART_SIZE` are no longer read, and Harmonist always uses the
+  Cover Art Archive's original image: the largest on offer, and the one the
+  album page measures. A `harmonist.toml` still naming `size` loads as before
+  and now **says so at startup** instead of ignoring it quietly. An install that
+  asked for smaller images should expect larger downloads, a larger cover-art
+  cache, and larger images embedded where Harmonist fills in or replaces artwork
+  (#469, #497).
 
 ### Fixed
 

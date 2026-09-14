@@ -125,6 +125,15 @@ Harmonist talks to. An album's page asks it when the stored answer is older than
 that, in the background once the page is up, and reports it as the **CAA
 checked** date with its own refresh button beside it.
 
+**`[cover_art] size` and `HARMONIST_COVER_ART_SIZE` are no longer read.**
+Harmonist always fetches the archive's **original** image: it is the largest on
+offer, and it is the one the album page measures, so a preview and the tagging
+that follows compare the same picture. A `harmonist.toml` still naming `size`
+loads exactly as before — Harmonist warns once at startup rather than discarding
+the setting quietly. If yours asked for 250, 500 or 1200px images, expect larger
+downloads, a larger cover-art cache, and larger images embedded in the files
+whose artwork Harmonist fills in or replaces.
+
 `[gardener] level` decides whether Harmonist checks your library against
 MusicBrainz on its own. It ships **`off`**, and the only other setting today is
 **`review`**: a small, paced background pass that asks MusicBrainz about the

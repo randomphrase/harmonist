@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 import tomllib
@@ -9,6 +10,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+log = logging.getLogger(__name__)
 
 TestMode = Literal["fixture", "cassette", "live"]
 GardenerLevel = Literal["off", "review"]
@@ -67,7 +70,8 @@ class CoverArtConfig(BaseModel):
     # No `size`: the archive's ORIGINAL is always what Harmonist fetches, since
     # the largest image available is the one it prefers and the one the album
     # page measures (#469). An older harmonist.toml still naming `size` loads
-    # fine — the key is ignored.
+    # fine — the key is ignored, and `load` says so at startup rather than
+    # discarding somebody's resource constraint in silence (#497).
     #
     # How long a stored Cover Art Archive answer may be re-served before an album
     # page asks again (#436). The same knob `musicbrainz.cache_ttl_seconds` is,
@@ -256,6 +260,38 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _warn_retired(data: dict[str, Any]) -> None:
+    """Say which retired settings this config still names (#497).
+
+    An unknown key is ignored, which is what keeps an older `harmonist.toml`
+    loadable — and is also how a deliberate resource constraint came to be
+    discarded without a word. `[cover_art] size` asked for 250, 500 or 1200px
+    artwork; since #469 Harmonist always fetches the archive's original, so an
+    install that set it quietly started downloading bigger images and embedding
+    them in its files.
+
+    A warning rather than an error: the setting is gone, not wrong, and refusing
+    to start over a stale key would be a worse answer than saying so. Once per
+    start, where an upgrade will be read.
+
+    No migration path, because there is nothing to carry forward — the policy
+    the key configured does not exist any more, so rewriting it as another
+    setting would invent one.
+    """
+    section = data.get("cover_art")
+    if isinstance(section, dict) and "size" in section:
+        log.warning(
+            "[cover_art] size is no longer read: Harmonist always fetches the Cover Art "
+            "Archive's original image. Remove the key to silence this — and expect larger "
+            "downloads, a larger cover-art cache, and larger embedded artwork than it asked for."
+        )
+    if os.environ.get("HARMONIST_COVER_ART_SIZE"):
+        log.warning(
+            "HARMONIST_COVER_ART_SIZE is no longer read: Harmonist always fetches the Cover "
+            "Art Archive's original image."
+        )
+
+
 def load() -> Config:
     """Load config from env + optional TOML file. Env wins over TOML wins over defaults."""
     config_dir = Path(os.environ.get("HARMONIST_CONFIG_DIR", str(_default_config_dir())))
@@ -263,6 +299,10 @@ def load() -> Config:
     music_dir = Path(music_dir_env) if music_dir_env else _default_music_dir()
 
     data = _load_toml(config_dir)
+    # Before the model is built, because that is where a retired key disappears:
+    # an unknown key is ignored, so this is the last point at which the file can
+    # be seen as the user wrote it (#497).
+    _warn_retired(data)
     paths = data.setdefault("paths", {})
     paths["config_dir"] = str(config_dir)
     paths.setdefault("music_dir", str(music_dir))
