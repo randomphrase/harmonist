@@ -135,7 +135,7 @@
         {# Titled rather than anonymous: its two neighbours are, and an untitled
            box between them reads as belonging to whichever one it touches. #}
         <div id="compare-{{ album.id }}"
-             hx-get="/library/{{ album.id }}/compare" hx-trigger="load" hx-swap="innerHTML">
+             hx-get="/library/{{ album.id }}/compare" hx-trigger="load" hx-swap="innerHTML settle:0ms">
             <p class="text-2xs text-muted italic">Checking tags against MusicBrainz…</p>
         </div>
     </section>
@@ -169,7 +169,7 @@
        uneven artwork mostly lives. #}
     <section id="album-artwork" class="border border-line rounded-lg p-4 space-y-3"
              {% if not (album.sidecar and album.sidecar.mb_release_id) %}
-             hx-get="/album/{{ album.id }}/artwork" hx-trigger="load" hx-swap="innerHTML"
+             hx-get="/album/{{ album.id }}/artwork" hx-trigger="load" hx-swap="innerHTML settle:0ms"
              {% endif %}>
         <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Artwork</h2>
         <p class="text-2xs text-muted italic">Reading the album's artwork…</p>
@@ -290,6 +290,28 @@
    The query string rides along — `from_page` / `from_filter` / `from_q` are what
    Back is built out of, and a re-tag is not a reason to lose the way home. #}
 <script>
+    // All artwork controls share a stable target, including the check in the
+    // header and the primary action outside the section. Their settle:0ms swaps
+    // process inserted controls before another click can submit them natively.
+    // The first comparison uses the same timing for its out-of-band artwork.
+    // A response to an older
+    // request must not replace a newer choice, even through its out-of-band
+    // finding. Keep this in memory for this page only (#477).
+    let latestArtworkRequest;
+    document.body.addEventListener('htmx:beforeRequest', function (event) {
+        if (event.detail.target.id === 'album-artwork') {
+            latestArtworkRequest = event.detail.xhr;
+        }
+    });
+    document.body.addEventListener('htmx:beforeSwap', function (event) {
+        const target = event.detail.target.id;
+        if (target === 'album-artwork') {
+            if (event.detail.xhr !== latestArtworkRequest) {
+                event.preventDefault();
+                return;
+            }
+        }
+    });
     document.body.addEventListener('album-retagged', function (event) {
         var now = event.detail && event.detail.album_id;
         if (now && now !== {{ album.id | tojson }}) {

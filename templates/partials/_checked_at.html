@@ -150,7 +150,7 @@
            whole meaning is "look again" must never be served a stored answer. #}
         <button type="button"
                 hx-get="/album/{{ album.id }}/artwork?reread=1"
-                hx-target="#album-artwork" hx-swap="innerHTML"
+                hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
                 hx-disabled-elt="this"
                 title="Ask the Cover Art Archive about this release again"
                 aria-label="Ask the Cover Art Archive about this release again"

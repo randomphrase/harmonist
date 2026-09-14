@@ -18,7 +18,7 @@
         {% endif %}
         {% if artwork.writes %}
         <form hx-post="/album/{{ album.id }}/artwork/update"
-              hx-target="#album-artwork" hx-swap="innerHTML"
+              hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
               hx-disabled-elt="find button" hx-include=".apply-art-{{ album.id }}"
               {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
               class="album-finding__act-form album-artwork-apply">

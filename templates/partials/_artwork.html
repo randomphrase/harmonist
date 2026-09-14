@@ -75,7 +75,7 @@
     apply it.
     <button type="button"
             hx-get="/album/{{ album.id }}/artwork"
-            hx-target="#album-artwork" hx-swap="innerHTML"
+            hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
             class="art-row__choose"
             aria-label="Go back to the best image">use the best image instead</button>
 </p>
@@ -253,7 +253,7 @@
                would spend it twice. No `hx-confirm`: it writes nothing of the
                user's and can be undone by ignoring it. #}
             <form hx-post="/album/{{ album.id }}/artwork/load-archive"
-                  hx-target="#album-artwork" hx-swap="innerHTML"
+                  hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
                   hx-disabled-elt="find button" class="art-row__load">
                 <button type="submit" class="art-row__art art-row__art--absent"
                         title="Download this cover from the Cover Art Archive so you can look at it. It is bigger that decides what a re-tag writes, and this is how you tell whether bigger is better."
@@ -280,7 +280,7 @@
                 {% if artwork.archive_row.image %}
                 <button type="button"
                         hx-get="/album/{{ album.id }}/artwork?use=archive"
-                        hx-target="#album-artwork" hx-swap="innerHTML"
+                        hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
                         class="art-row__choose"
                         title="Show what applying this image would do. Bigger is the only thing Harmonist can measure, and bigger is not always better."
                         aria-label="Use the Cover Art Archive's artwork">Use this artwork</button>
@@ -308,7 +308,7 @@
    the reader to click through the one question that matters. #}
 {% if artwork.writes %}
 <form hx-post="/album/{{ album.id }}/artwork/update"
-      hx-target="#album-artwork" hx-swap="innerHTML"
+      hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
       hx-disabled-elt="find button"
       {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
       class="pt-1">
@@ -362,28 +362,14 @@
    The swap replaces this element along with the rest of the section, which is
    what retires the trigger. Nothing visible: the section is complete as it
    stands, and the "CAA checked" row swaps in when the answer arrives. #}
-{# …carrying the current choice with it (#472). This swap replaces the whole
-   section, and it lands whenever the archive gets round to answering — so
-   without the choice in the URL, a user who chose an image in the meantime
-   would watch it revert to the ordinary plan for no reason they could see,
-   and on an album needing no ordinary changes the Apply button would go with
-   it. The check is about what the ARCHIVE holds; it is not a verdict on what
-   the user picked. #}
-{# The check carries the current choice with it (#472), so an answer that lands
-   after one was made re-renders the section still showing it rather than
-   reverting to the ordinary plan.
-
-   It does NOT carry an `hx-sync`. Putting the section's own controls and this
-   trigger on one sync queue was tried and made things worse: the Apply form
-   began escaping htmx altogether on a swap, submitting natively to the album
-   page as a GET with its fields in the query string — the #144 failure mode,
-   from a different direction. A late check replacing a chosen preview is the
-   race that remains; it is narrow (only before any answer is stored) and
-   recoverable by choosing again. #}
+{# Carry the choice already shown. If another request changes it while this
+   check is in flight, the album page rejects this older response (#477).
+   settle:0ms processes replacement controls immediately; the default settling
+   delay otherwise leaves visible forms capable of submitting natively. #}
 {% if caa_check_due %}
 <div hx-get="/album/{{ album.id }}/artwork?check=1{% if artwork.chosen %}&use=archive{% endif %}"
      hx-trigger="load"
-     hx-target="#album-artwork" hx-swap="innerHTML"></div>
+     hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"></div>
 {% endif %}
 
 {# The panel's dates, refreshed alongside — this response may have just asked

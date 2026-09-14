@@ -1160,6 +1160,8 @@ If nothing is available — no archive image and no embedded art — the album i
 
 **Artwork preparation cannot block valid tags** (#511). The combined action validates and writes tags before reading its artwork plan. If an image read fails, it reports that failure, leaves every image alone, and lets the caller finish tagging bookkeeping; unreadable artwork is never treated as absent. Correcting the file permissions and retrying is sufficient. Excluding artwork skips both preparation and the archive fetch.
 
+**Artwork swaps settle immediately** (#477), including the initial comparison's out-of-band artwork. HTMX processes inserted controls during settling, so delaying it leaves visible forms briefly able to submit natively. The album page also accepts only the latest request's artwork response, rejecting older responses before any main or out-of-band swap; a slow archive check cannot erase a choice made since it started. Request ordering lives only in the open page, and server-side plan revalidation remains the write guard.
+
 **Resolution policy:** always the archive's `original`. The largest available image is the one Harmonist prefers, and it is the one the album page measures, so a preview and the tagging that follows compare the same picture. (The former `[cover_art] size` setting and its `HARMONIST_COVER_ART_SIZE` override are no longer read; an old `harmonist.toml` naming it still loads, and `config.load` warns once at startup rather than discarding a deliberate resource constraint in silence — #497. Retired rather than migrated, because the policy the key configured no longer exists, so rewriting it as another setting would invent one.) Library-wide cover-art optimisation (clipping / recompressing) is a separate, future enhancement.
 
 ---
