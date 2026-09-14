@@ -25,7 +25,7 @@
 
    Absent when `artwork` is not set, which is how a MusicBrainz refresh avoids
    swapping this a second time in one page view — see `_comparison_response`. #}
-{% if artwork %}
+{% if artwork and artwork_section|default(true) %}
 <div hx-swap-oob="innerHTML:#album-artwork">
 {% with section_only = true %}{% include 'partials/_artwork.html' %}{% endwith %}
 </div>

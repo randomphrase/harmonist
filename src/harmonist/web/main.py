@@ -1287,6 +1287,9 @@ def _retag_short_oob(
     tracks: int,
     overwrite_art: bool,
     include_artwork: bool,
+    art_plan: str,
+    artwork_scope: str,
+    use: str,
 ) -> str:
     """The album page's alert slot, stating that MusicBrainz now lists more tracks
     than the album has files, and offering the re-tag that accepts that (#252).
@@ -1301,6 +1304,11 @@ def _retag_short_oob(
     every caller that never had a checkbox, and wrong for exactly this one
     (#482): a user who unticked artwork, hit the guard, and accepted the offer
     would have had their exclusion silently reversed by the second press.
+
+    The rest of the artwork request rides back for the same reason (#488). The
+    checkbox was the only half carried, so accepting the offer re-tagged against
+    no reviewed plan, at the default scope, with any chosen image forgotten —
+    the second press writing a different action from the one that was refused.
     """
     template = _templates(request).env.get_template("partials/_retag_short.html")
     return template.render(
@@ -1311,6 +1319,9 @@ def _retag_short_oob(
             tracks=tracks,
             overwrite_art=overwrite_art,
             include_artwork=include_artwork,
+            art_plan=art_plan,
+            artwork_scope=artwork_scope,
+            use=use,
         )
     )
 
@@ -3234,6 +3245,7 @@ def _tag_with_release(
     expected_artwork: str | None = None,
     artwork_included: bool = True,
     scope: artwork.Scope | None = None,
+    chosen: artwork.Source | None = None,
 ) -> tagger_mod.TaggingOutcome:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
@@ -3357,6 +3369,9 @@ def _tag_with_release(
         expected_artwork=expected_artwork,
         artwork_included=artwork_included,
         scope=scope,
+        # The candidate the user chose, so the plan rebuilt at write time is the
+        # one they were shown rather than the one the size rule prefers (#488).
+        chosen=chosen,
     )
 
     sc = sidecar_mod.read(album_path)
@@ -4566,16 +4581,21 @@ def _register_routes(app: FastAPI) -> None:
         # time — over the top of whatever the archive's own check had just put
         # there, from an older answer — which is the #477 failure exactly.
         #
-        # No network in either line: the archive's answer and its image both
-        # come from the local cache, exactly as the artwork endpoint's render
-        # does. Asking the archive stays where it was, behind the out-of-band
-        # check the section triggers once it is on screen (#436).
+        # The VIEW is built either way, and only the swap is withheld (#488).
+        # This response also re-draws the update finding, whose combined action
+        # has an artwork half — and a refresh that knew nothing about artwork
+        # drew that action without its checkbox, silently changing what the next
+        # press would do. What the press carries comes from the section's own
+        # element, which `artwork_section` leaves alone, so a choice made in the
+        # meantime survives the refresh.
+        #
+        # No network in any of it: the archive's answer and its image both come
+        # from the local cache, exactly as the artwork endpoint's render does,
+        # and the file pass is one this response has already made. Asking the
+        # archive stays where it was, behind the out-of-band check the section
+        # triggers once it is on screen (#436).
         caa_answer = caa_cache.stored(mbid)
-        artwork_view = (
-            None
-            if asking
-            else _artwork_view(album, caa_answer, _archive_image(mbid), tracks=reads[0])
-        )
+        artwork_view = _artwork_view(album, caa_answer, _archive_image(mbid), tracks=reads[0])
         ctx = _ctx(
             request,
             album=album,
@@ -4616,12 +4636,18 @@ def _register_routes(app: FastAPI) -> None:
             # What the Artwork section shows, rendered out of band from here
             # (#485).
             artwork=artwork_view,
+            # …and whether this response should SWAP that section, as opposed to
+            # merely describing the artwork to the update finding beside it
+            # (#477, #488). False on a refresh: the section may have been
+            # redrawn since — by a choice, or by a candidate that has landed —
+            # and this response's older answer must not overwrite it.
+            artwork_section=not asking,
             # …and whether it should ask the archive once it is on screen — the
             # same rule the artwork endpoint applies (#436). Never on a response
             # that carries no section, which is what keeps one page view to one
             # check: the render that opened the page arms it, and the refresh
             # landing afterwards does not arm it again.
-            caa_check_due=artwork_view is not None and caa_cache.due(mbid),
+            caa_check_due=not asking and caa_cache.due(mbid),
             # What the panel's MusicBrainz ids are called (#298). Off the same
             # release the comparison is built from, so an id and the name shown
             # for it can never come from two different payloads — which is the
@@ -4772,6 +4798,7 @@ def _register_routes(app: FastAPI) -> None:
         art_plan: str = Form(""),
         include_artwork: bool = Form(True),
         artwork_scope: str = Form("additions"),
+        use: str = Form(""),
     ) -> Response:
         """Re-tag a Library album from the MusicBrainz release it names.
 
@@ -4784,6 +4811,14 @@ def _register_routes(app: FastAPI) -> None:
         the Artwork section drew it (#469). Absent when the section has not
         loaded — the re-tag then writes what its own plan says, as every
         tagging without a page does.
+
+        `use` is the candidate the user chose, spelled as the Artwork section's
+        own render spells it (#472, #488). The plan is REBUILT here, so the
+        choice has to be made again: without it the rebuilt plan is the size
+        rule's, which matches its own fingerprint and writes the image the user
+        had just overridden. It arrives with `art_plan` and
+        `artwork_scope` from the section's own element, which is what keeps all
+        three describing one plan.
 
         `include_artwork` is the album page's artwork checkbox (#482). DEFAULTS
         TO TRUE, because absence means "a caller with no checkbox at all", which
@@ -4846,6 +4881,10 @@ def _register_routes(app: FastAPI) -> None:
                 # only come from a hand-made request, and a tagging that fills
                 # gaps is the safe reading of one (#482).
                 scope=(artwork.Scope.ALL if artwork_scope == "all" else artwork.Scope.ADDITIONS),
+                # …and an unknown candidate name is no choice at all, for the
+                # same reason — `_chosen` is the one spelling the section's
+                # render and this share (#472).
+                chosen=_chosen(use),
             )
         except mb_lookup.ReleaseGoneError:
             # Not a failure to report as one: MusicBrainz has deleted the release
@@ -4887,6 +4926,9 @@ def _register_routes(app: FastAPI) -> None:
                     tracks=e.tracks,
                     overwrite_art=overwrite_art,
                     include_artwork=include_artwork,
+                    art_plan=art_plan,
+                    artwork_scope=artwork_scope,
+                    use=use,
                 ),
             )
         except Exception as e:

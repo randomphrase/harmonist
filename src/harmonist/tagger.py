@@ -139,6 +139,7 @@ class Tagger(Protocol):
         expected_artwork: str | None = None,
         scope: artwork.Scope | None = None,
         artwork_included: bool = True,
+        chosen: artwork.Source | None = None,
     ) -> TaggingOutcome: ...
 
 
@@ -160,6 +161,7 @@ class PicardCompatibleTagger:
         expected_artwork: str | None = None,
         scope: artwork.Scope | None = None,
         artwork_included: bool = True,
+        chosen: artwork.Source | None = None,
     ) -> TaggingOutcome:
         return tag_and_artwork(
             album_dir,
@@ -172,6 +174,7 @@ class PicardCompatibleTagger:
             expected_artwork=expected_artwork,
             scope=scope,
             artwork_included=artwork_included,
+            chosen=chosen,
         )
 
 
@@ -538,6 +541,7 @@ def decide_artwork(
     archive: cover_art.Front | None = None,
     overwrite_art: bool = False,
     consider: bool = True,
+    chosen: artwork.Source | None = None,
 ) -> artwork.ArtworkPlan:
     """The album's artwork plan, read from its files (#418, #469).
 
@@ -561,6 +565,13 @@ def decide_artwork(
     `cover_path=None` — which was a proxy, not a statement, and stopped being
     true the moment the archive became a second source that needs no folder
     cover (#442). Say the thing rather than implying it (#448).
+
+    `chosen` is the candidate the user picked, when they picked one (#472,
+    #488). It reaches here because the plan is rebuilt at write time: a re-tag
+    that rebuilt it without the choice would produce the plan the SIZE RULE
+    prefers, which still matches its own fingerprint and so writes a different
+    image from the one the page showed — silently, and only when the user had
+    overridden the rule.
     """
     if not consider:
         return artwork.ArtworkPlan(album_dir=album_dir)
@@ -577,6 +588,7 @@ def decide_artwork(
         cover,
         formats.EmbeddedArt.of(archive.data, archive.mime) if archive is not None else None,
         overwrite_art=overwrite_art,
+        chosen=chosen,
     )
 
 
@@ -1460,6 +1472,7 @@ def tag_and_artwork(
     expected_artwork: str | None = None,
     scope: artwork.Scope | None = None,
     artwork_included: bool = True,
+    chosen: artwork.Source | None = None,
 ) -> TaggingOutcome:
     """Tag the album, then write the artwork its plan calls for (#481).
 
@@ -1520,7 +1533,18 @@ def tag_and_artwork(
         return TaggingOutcome(files=tagged, artwork_excluded=True)
 
     archive = archive if archive is not None else _archive_candidate(release)
-    art = decide_artwork(album_dir, paths, cover_path, archive=archive, overwrite_art=overwrite_art)
+    # `chosen` rides along with the fingerprint, never instead of it (#488): the
+    # plan is rebuilt here, so a choice the page made must be made again or the
+    # rebuilt plan is a different one — matching its own fingerprint, and writing
+    # the image the size rule prefers over the image the user picked.
+    art = decide_artwork(
+        album_dir,
+        paths,
+        cover_path,
+        archive=archive,
+        overwrite_art=overwrite_art,
+        chosen=chosen,
+    )
     if scope is None:
         scope = artwork.Scope.ALL if overwrite_art else artwork.Scope.ADDITIONS
     withheld = expected_artwork is not None and art.fingerprint(scope) != expected_artwork

@@ -50,6 +50,11 @@ versions follow [semantic versioning](https://semver.org).
 - **A track's other pictures survive an artwork change** — a back cover or
   booklet page behind the front cover is no longer deleted when Harmonist writes
   the cover, or when Undo takes one back off (#489).
+- **Apply updates writes the artwork the page is showing** — choosing **Use this
+  artwork**, an archive cover that loads late, or a MusicBrainz refresh landing
+  no longer leaves the button carrying an older plan, and the choice survives
+  accepting the short-tracklist offer. Pressing it after choosing a smaller
+  image wrote the larger one Harmonist would have picked (#488).
 - **History names `cover.jpg` instead of counting it as a track** (#469).
 - **A re-tag says what it did to your artwork** — how many files it wrote, and
   which it left alone and why. A re-tag whose artwork was skipped because the

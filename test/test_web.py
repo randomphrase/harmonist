@@ -3509,6 +3509,39 @@ def test_the_short_offer_carries_the_artwork_choice_back(client, cfg, monkeypatc
     assert '"include_artwork": "true"' in included.text
 
 
+def test_the_short_offer_carries_the_reviewed_artwork_plan_back(client, cfg, monkeypatch):
+    """…and the rest of the artwork request with it (#488).
+
+    `include_artwork` was the only half that rode back out. The fingerprint, the
+    scope it was taken at and the image the user had chosen were dropped, so
+    accepting the offer re-tagged at the endpoint's defaults: additions only,
+    against no reviewed plan, with the chosen image forgotten. The second press
+    wrote a different action from the one the first had been refused.
+    """
+    from test.helpers import write_track_totals
+
+    d = _make_tagged_album(cfg, "GrownChosen", mbid="rel-grown-c", tagged_at=datetime.now(UTC))
+    write_track_totals(d, track_total=1)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+
+    r = client.post(
+        f"/retag/{_id_for(cfg, d)}",
+        data={
+            "art_plan": "a" * 64,
+            "artwork_scope": "all",
+            "include_artwork": "true",
+            "use": "archive",
+        },
+    )
+
+    assert f'"art_plan": "{"a" * 64}"' in r.text
+    assert '"artwork_scope": "all"' in r.text
+    assert '"use": "archive"' in r.text
+
+
 def test_retag_as_incomplete_takes_the_grown_releases_tags(client, cfg, monkeypatch):
     """The other half of #252: pressing the offered control re-runs the same
     re-tag with the shortfall accepted. The files take the release's current
@@ -9175,11 +9208,16 @@ def test_apply_updates_writes_the_replacements_the_page_showed(client, cfg, monk
     assert "Apply updates" in control
     assert 'name="artwork_scope" value="all"' in control, "the scope must be declared"
 
+    # Read off the fields the control actually submits (#488), which the Artwork
+    # section owns and keeps current — not off the page positionally, which
+    # would pick up the ADDITIONS fingerprint the partial-tag badge carries and
+    # post it at this control's scope.
+    carried = _carried_artwork(control, aid)
     r = client.post(
         f"/retag/{aid}",
         data={
-            "art_plan": _form_value(control, "art_plan"),
-            "artwork_scope": "all",
+            "art_plan": carried["art_plan"],
+            "artwork_scope": carried["artwork_scope"],
             "include_artwork": "true",
         },
     )
@@ -9428,6 +9466,100 @@ def test_choosing_an_image_that_is_no_longer_here_says_so(client, cfg):
     r = client.get(f"/album/{_id_for(cfg, d)}/artwork?use=archive")
 
     assert "load it again to choose it" in " ".join(r.text.split())
+
+
+def _carried_artwork(html: str, album_id: str) -> dict[str, str]:
+    """The artwork fields the combined **Apply updates** control would submit.
+
+    They live in the element the Artwork section owns and re-renders, rather
+    than in the form's own markup, so that choosing an image or a late archive
+    answer updates what the press carries (#488). Read the way HTMX reads them:
+    by the selector the form includes.
+    """
+    import re
+
+    # `\s+` rather than a space: the inputs are wrapped across lines like the
+    # rest of the markup, and a regex that only matched one of them would report
+    # a field missing that is on the wire.
+    return {
+        m.group(1): m.group(2)
+        for m in re.finditer(
+            rf'class="apply-art-{album_id}"\s+name="([a-z_]+)"\s+value="([^"]*)"', html
+        )
+    }
+
+
+def test_apply_updates_applies_the_image_the_user_chose(client, cfg, monkeypatch):
+    """Choosing the archive's image re-draws the section, and the combined
+    control must then apply THAT plan (#488).
+
+    It carried a fingerprint captured when the page was drawn, which still
+    described the ordinary plan — so the press wrote the album's own image over
+    the one the user had just chosen and been shown, with nothing on either half
+    of the page saying so.
+    """
+    from harmonist import formats
+    from test.test_artwork import png_bytes
+
+    mine = png_bytes(900, 900) + b"\x01"
+    theirs = png_bytes(300, 300) + b"\x02"
+    d = _archive_candidate(
+        cfg, "ChosenUpdate", "rel-chosen-update", image=theirs, covers=[mine, mine], folder=mine
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=2)
+    )
+    aid = _id_for(cfg, d)
+    page = client.get(f"/library/{aid}/compare").text
+    assert "Apply updates" in page
+    # Drawn against the ordinary plan: the album's own image wins on size.
+    assert _carried_artwork(page, aid)["use"] == ""
+
+    chosen = client.get(f"/album/{aid}/artwork?use=archive").text
+    carried = _carried_artwork(chosen, aid)
+
+    assert carried["use"] == "archive", "the choice must reach the combined control"
+    r = client.post(
+        f"/retag/{aid}",
+        data={
+            "art_plan": carried["art_plan"],
+            "artwork_scope": carried["artwork_scope"],
+            "use": carried["use"],
+            "include_artwork": "true",
+        },
+    )
+
+    assert "Re-tagged" in r.text
+    assert "changed after the page showed it" not in r.text
+    # The smaller image the user chose, everywhere the preview said it would go.
+    assert (d / "cover.jpg").read_bytes() == theirs
+    for track in ("01 Track.m4a", "02 Track.m4a"):
+        art = formats.read_cover(d / track)
+        assert art is not None and art[0] == theirs
+
+
+def test_a_musicbrainz_refresh_keeps_the_artwork_half_of_apply_updates(client, cfg, monkeypatch):
+    """A refresh re-draws the update finding from a fresher payload, and used to
+    take the artwork half of the combined control with it (#488).
+
+    The checkbox and every field the endpoint reads vanished, so the press that
+    followed ran at the endpoint's defaults — artwork included, additions only,
+    against no reviewed plan — which is a different action from the one the page
+    was still showing.
+    """
+    d = _release_backed_album_with_art(
+        cfg, "Refreshed", "rel-refreshed", covers=[_png(1), None], folder=_png(2)
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=2)
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+    aid = _id_for(cfg, d)
+
+    refreshed = client.get(f"/library/{aid}/compare?check=1").text
+
+    assert f'hx-include=".apply-art-{aid}"' in refreshed, "the form must still reach the fields"
+    assert 'name="include_artwork" value="true"' in refreshed, "the choice must stay visible"
 
 
 def test_apply_artwork_names_the_images_it_could_not_keep(client, cfg, tmp_path):

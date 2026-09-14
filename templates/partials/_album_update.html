@@ -96,25 +96,29 @@
            `library_compare.html` disables it by that selector while a refresh
            is in flight, a test pins that selector string, and the release-gone
            tests assert its absence. #}
+        {# `hx-include` is where the artwork half of this request comes from
+           (#488). The fields — the fingerprint of the plan the page drew, the
+           scope it was taken at, and the image chosen if one was — are rendered
+           by the Artwork section's own always-swapped element
+           (`_artwork_note.html`), not here.
+
+           They were inline, captured when this form was drawn, and that is the
+           defect: choosing "Use this artwork" re-renders the section and not
+           this form, so the press carried a fingerprint describing the ORDINARY
+           plan. It still matched at write time, so the artwork the user had just
+           chosen was quietly replaced by the one the size rule preferred. A
+           MusicBrainz refresh re-drew this form and dropped the fields
+           altogether, which handed the endpoint its defaults instead.
+
+           Sent even when nothing would be written, which is the case that looks
+           pointless and is not: the tagger rebuilds its plan at write time, so
+           the fingerprint of an EMPTY plan is what says "and it should still be
+           empty" about an album someone has edited since. #}
         <form hx-post="/retag/{{ album.id }}"
               hx-swap="none" hx-disabled-elt="find button"
+              hx-include=".apply-art-{{ album.id }}"
               hx-indicator="#tagging-{{ album.id }}"
               class="album-finding__act-form">
-            {# The fingerprint of the plan the page DREW, at the scope this
-               control applies — the whole of it, replacements included (#469).
-               Declared rather than left to be inferred: every other host of
-               /retag carries the ADDITIONS fingerprint, and comparing one
-               against the other mismatches every time, which would withhold the
-               artwork on every press and blame a page that had not changed.
-
-               Sent even when nothing would be written, which is the case that
-               looks pointless and is not: the tagger rebuilds its plan at write
-               time, so the fingerprint of an EMPTY plan is what says "and it
-               should still be empty" about an album someone has edited since. #}
-            {% if art %}
-            <input type="hidden" name="artwork_scope" value="all">
-            <input type="hidden" name="art_plan" value="{{ art.fingerprint }}">
-            {% endif %}
             {% if art and art.writes %}
             {# THE HIDDEN FALSE IS LOAD-BEARING — do not delete it as redundant.
                An unticked checkbox posts nothing at all, and absence here means

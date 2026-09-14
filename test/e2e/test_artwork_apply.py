@@ -58,6 +58,54 @@ def test_re_tag_carries_the_fingerprint_the_artwork_section_drew(demo_server: st
         browser.close()
 
 
+def test_apply_updates_gathers_the_whole_artwork_request(demo_server: str) -> None:
+    """The combined control's artwork half comes from the Artwork section's own
+    element, across the DOM, via `hx-include` (#488).
+
+    A browser question, and the #40 family exactly: the fields render correctly
+    in both fragments whether or not HTMX ever associates them with the form, and
+    a press that carried none of them would still POST, still re-tag, and simply
+    write different artwork from the page it was pressed on — silently, because
+    the endpoint's defaults are themselves valid.
+
+    Asked of HTMX rather than by pressing, which would re-tag the demo album
+    under the next test.
+    """
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+
+        page.goto(f"{demo_server}/album/{ALBUM_ID}")
+        page.wait_for_selector("#album-artwork .art-row")
+        # `attached`, not visible: these are hidden inputs, and the default wait
+        # would sit here until it timed out on fields that are on the page.
+        page.wait_for_selector(f".apply-art-{ALBUM_ID}", state="attached")
+
+        carried = page.evaluate(
+            """(id) => {
+                const form = document.querySelector(`form[hx-post="/retag/${id}"]`);
+                return form ? htmx.values(form) : null;
+            }""",
+            ALBUM_ID,
+        )
+
+        assert carried is not None, "no Apply updates form on the page"
+        # The scope the fingerprint was taken at, and the slot the chosen image
+        # travels in — both only reachable through `hx-include`.
+        assert carried.get("artwork_scope") == "all"
+        assert "use" in carried, "the choice slot must be on the wire, empty or not"
+        # …and the fingerprint it carries is the one that element is showing,
+        # rather than a copy this form captured when it was drawn.
+        shown = page.evaluate(
+            """(id) => document.querySelector(
+                   `.apply-art-${id}[name="art_plan"]`).value""",
+            ALBUM_ID,
+        )
+        assert carried.get("art_plan") == shown
+
+        browser.close()
+
+
 def test_apply_artwork_writes_what_the_section_showed(demo_server: str) -> None:
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()

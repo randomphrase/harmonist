@@ -28,15 +28,36 @@
    writes no artwork (#469). Here, in the element that is always swapped, so it
    is present whenever the section has loaded and absent until it has.
 
-   **Apply updates** no longer reads it (#482): that control applies the plan
-   in full — replacements included — so it carries its own `Scope.ALL`
-   fingerprint inline rather than reaching across for this one. What still
-   `hx-include`s it is the partial-tag badge's "Write it to those files", which
-   is about a missing release id and must NOT gain artwork replacement. Keeping
-   this input at ADDITIONS is what holds those two apart. #}
+   It is the ADDITIONS fingerprint, and what reads it is the partial-tag badge's
+   "Write it to those files" — about a missing release id, and something that
+   must NOT gain artwork replacement. Keeping this input at ADDITIONS is what
+   holds it apart from the cluster below. #}
 <div id="album-artwork-note-{{ album.id }}" hx-swap-oob="true">
     <input type="hidden" id="art-plan-{{ album.id }}" name="art_plan"
            value="{{ artwork.tagging_fingerprint }}">
+    {# …and the whole artwork request that **Apply updates** carries (#488).
+       HERE rather than in that control's own markup, because this element is
+       re-rendered by every response that can change the answer — choosing an
+       image, a candidate finishing its download, a check the archive answered
+       late — while the combined form is drawn once and would keep whatever was
+       true then. It carried a render-time fingerprint of the ORDINARY plan,
+       which still matched at write time, so a press that followed "Use this
+       artwork" wrote the album's own image over the one the user had chosen and
+       been shown.
+
+       Three fields rather than one, because the fingerprint means nothing on
+       its own: `artwork_scope` says which scope it was taken at (#482), and
+       `use` says which plan it describes. `use` is rendered EMPTY when there is
+       no choice, not omitted — the form includes these by selector, and a field
+       that disappears reads at the endpoint as a caller that never had one.
+
+       A class, not an id: HTMX includes every element its selector matches, so
+       one selector carries all three. #}
+    <input type="hidden" class="apply-art-{{ album.id }}" name="art_plan"
+           value="{{ artwork.fingerprint }}">
+    <input type="hidden" class="apply-art-{{ album.id }}" name="artwork_scope" value="all">
+    <input type="hidden" class="apply-art-{{ album.id }}" name="use"
+           value="{{ 'archive' if artwork.chosen else '' }}">
     {% if artwork.writes %}
     <div class="album-finding">
         {# The album glyph the Artwork severity already uses, muted: this finding

@@ -47,8 +47,13 @@
            the same tagging overlay as the first. No hx-confirm: this IS the
            confirmation, and it is not destructive — a re-tag rewrites tags the album
            already had, and the history keeps what they were. #}
+        {# EVERY decision the refused press carried rides back out here (#482,
+           #488) — the artwork checkbox, and with it the plan that was reviewed,
+           the scope it was fingerprinted at, and the image chosen if one was.
+           This is a fresh POST, so anything left out silently becomes the
+           endpoint's default rather than the user's answer. #}
         <button hx-post="/retag/{{ album.id }}"
-                hx-vals='{"accept_short": "true", "overwrite_art": "{{ 'true' if overwrite_art else 'false' }}", "include_artwork": "{{ 'true' if include_artwork else 'false' }}"}'
+                hx-vals='{"accept_short": "true", "overwrite_art": "{{ 'true' if overwrite_art else 'false' }}", "include_artwork": "{{ 'true' if include_artwork else 'false' }}", "art_plan": "{{ art_plan }}", "artwork_scope": "{{ artwork_scope }}", "use": "{{ use }}"}'
                 hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
                 class="flex-shrink-0 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded text-xs font-bold uppercase tracking-widest transition"
                 {# The accessible name must CONTAIN the visible text (WCAG "label in
