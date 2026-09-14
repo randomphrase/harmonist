@@ -3212,6 +3212,7 @@ def _tag_with_release(
     overwrite_art: bool = False,
     paths: Sequence[Path] | None = None,
     expected_artwork: str | None = None,
+    artwork_included: bool = True,
 ) -> tagger_mod.TaggingOutcome:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
@@ -3224,6 +3225,11 @@ def _tag_with_release(
     `expected_artwork` is the fingerprint of the artwork the album page showed,
     when a page is who asked (#469). A tagging whose plan no longer matches it
     writes the tags and no artwork, and says so in the outcome.
+
+    `artwork_included=False` leaves the artwork half out altogether — what the
+    album page's artwork checkbox posts when unticked (#482). Distinct from a
+    fingerprint that failed to match: that is a stale preview the user is owed a
+    warning about, this is a choice they just made.
 
     `mbid` is what to ask MusicBrainz for, not necessarily what the album ends
     up tagged as: a merged release redirects, and this follows the release it
@@ -3323,6 +3329,7 @@ def _tag_with_release(
         files=album_files.for_paths(paths) if paths else None,
         archive=archive,
         expected_artwork=expected_artwork,
+        artwork_included=artwork_included,
     )
 
     sc = sidecar_mod.read(album_path)
@@ -4736,6 +4743,7 @@ def _register_routes(app: FastAPI) -> None:
         overwrite_art: bool = Form(False),
         accept_short: bool = Form(False),
         art_plan: str = Form(""),
+        include_artwork: bool = Form(True),
     ) -> Response:
         """Re-tag a Library album from the MusicBrainz release it names.
 
@@ -4748,6 +4756,12 @@ def _register_routes(app: FastAPI) -> None:
         the Artwork section drew it (#469). Absent when the section has not
         loaded — the re-tag then writes what its own plan says, as every
         tagging without a page does.
+
+        `include_artwork` is the album page's artwork checkbox (#482). DEFAULTS
+        TO TRUE, which is both what the ticked box means and what every caller
+        that sends no such field has always got — an unticked checkbox posts
+        nothing at all, which is the native contract the ignore box relies on
+        too, so the default is doing real work rather than being a convenience.
         """
         album = _find_album(request, album_id)
         sc = album.sidecar
@@ -4786,6 +4800,7 @@ def _register_routes(app: FastAPI) -> None:
                 overwrite_art=overwrite_art,
                 paths=album.folders,
                 expected_artwork=art_plan or None,
+                artwork_included=include_artwork,
             )
         except mb_lookup.ReleaseGoneError:
             # Not a failure to report as one: MusicBrainz has deleted the release

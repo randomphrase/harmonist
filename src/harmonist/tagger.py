@@ -117,6 +117,13 @@ class Tagger(Protocol):
 
     Raises `TagMismatchError` when the file count and MB track count diverge
     (unless `incomplete=True`), before anything is written.
+
+    Three settings decide the artwork half, and they are three different
+    questions (#482). `artwork_included=False` removes it entirely. `scope`
+    selects how much of the decided plan is written — `Scope.ALL` applies what a
+    page drew, replacements included. `overwrite_art` changes the plan itself,
+    embedding the folder cover over everything, and is the only one that
+    flattens a compilation's per-track sleeves.
     """
 
     def tag_and_artwork(
@@ -130,6 +137,8 @@ class Tagger(Protocol):
         files: list[Path] | None = None,
         archive: cover_art.Front | None = None,
         expected_artwork: str | None = None,
+        scope: artwork.Scope | None = None,
+        artwork_included: bool = True,
     ) -> TaggingOutcome: ...
 
 
@@ -149,6 +158,8 @@ class PicardCompatibleTagger:
         files: list[Path] | None = None,
         archive: cover_art.Front | None = None,
         expected_artwork: str | None = None,
+        scope: artwork.Scope | None = None,
+        artwork_included: bool = True,
     ) -> TaggingOutcome:
         return tag_and_artwork(
             album_dir,
@@ -159,6 +170,8 @@ class PicardCompatibleTagger:
             files=files,
             archive=archive,
             expected_artwork=expected_artwork,
+            scope=scope,
+            artwork_included=artwork_included,
         )
 
 
@@ -1425,6 +1438,14 @@ class TaggingOutcome:
     #: The artwork was left alone because the plan no longer matched the
     #: fingerprint a page carried back (#469).
     artwork_withheld: bool = False
+    #: No artwork was asked for — the caller excluded it (#482).
+    #:
+    #: A DIFFERENT fact from `artwork_withheld`, and kept apart because only one
+    #: of them is a warning. "You asked for this and the preview had gone stale"
+    #: is something the user needs told; "you unticked the box" is what they
+    #: just did, and reporting it back as a reason would be noise at best and,
+    #: worded like the other, a lie.
+    artwork_excluded: bool = False
 
 
 def tag_and_artwork(
@@ -1438,6 +1459,7 @@ def tag_and_artwork(
     archive: cover_art.Front | None = None,
     expected_artwork: str | None = None,
     scope: artwork.Scope | None = None,
+    artwork_included: bool = True,
 ) -> TaggingOutcome:
     """Tag the album, then write the artwork its plan calls for (#481).
 
@@ -1466,6 +1488,15 @@ def tag_and_artwork(
     Defaults to the old derivation, so every caller that does not ask keeps
     exactly the behaviour it had.
 
+    `artwork_included=False` removes the artwork half entirely — a third
+    setting, not an empty scope, because "none of the plan's changes" is not a
+    subset of a plan but the absence of the step. It is what the album page's
+    artwork checkbox posts when unticked (#482), and it is deliberately NOT
+    spelled as a withheld fingerprint: withholding means "you asked for this and
+    the preview had gone stale", which is a warning the user is owed, while this
+    means "you did not ask", which is not a finding about anything. The outcome
+    keeps them apart for the same reason.
+
     `expected_artwork` is the fingerprint of the artwork a page showed the user,
     taken at this same scope. When the plan built here no longer matches it — an
     image edited since, a candidate that arrived after the page was drawn — the
@@ -1474,6 +1505,20 @@ def tag_and_artwork(
     was.
     """
     paths = files if files is not None else album_files.audio_files(album_dir)
+
+    # EXCLUDED means there is no artwork half at all (#482) — not an empty
+    # scope, because "none of them" is not a subset of a plan, it is the absence
+    # of the step. Nothing is decided and nothing is read: `decide_artwork`
+    # opens every file to describe its embedded image, and a caller who has said
+    # they do not want artwork should not pay for that (#44, #74) — the same
+    # saving `artwork_in_scope=False` buys `tag_album`.
+    #
+    # Reported as its own fact rather than as a withheld plan, which is a
+    # warning about a stale preview and would be untrue here.
+    if not artwork_included:
+        tagged, _ = _tag_files(album_dir, release, incomplete=incomplete, files=paths)
+        return TaggingOutcome(files=tagged, artwork_excluded=True)
+
     archive = archive if archive is not None else _archive_candidate(release)
     art = decide_artwork(album_dir, paths, cover_path, archive=archive, overwrite_art=overwrite_art)
     if scope is None:

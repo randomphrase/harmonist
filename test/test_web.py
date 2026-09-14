@@ -9115,6 +9115,48 @@ def test_the_page_and_the_tagger_fingerprint_one_plan_alike(client, cfg):
     assert _form_value(html, "plan") == plan.fingerprint(artwork.Scope.ALL)
 
 
+def test_retag_with_artwork_excluded_tags_and_leaves_every_image_alone(client, cfg, monkeypatch):
+    """The album page's artwork checkbox, unticked (#482).
+
+    An unticked checkbox posts nothing, so the endpoint's default has to be the
+    ticked meaning — that is the native contract, and it is also what every
+    caller sending no such field has always got.
+
+    Excluding artwork is NOT spelled as a fingerprint that failed to match.
+    Both leave the images alone, and only one of them is a warning: a stale
+    preview is something the user is owed an explanation for, while unticking a
+    box is what they just did. The flash must not tell them their page went
+    stale when it did not.
+    """
+    from harmonist import formats
+
+    art = _png(1)
+    d = _release_backed_album_with_art(cfg, "Excluded", "rel-excluded", covers=[art, None])
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=2)
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+    aid = _id_for(cfg, d)
+    shown = _form_value(client.get(f"/album/{aid}/artwork").text, "art_plan")
+
+    r = client.post(f"/retag/{aid}", data={"art_plan": shown, "include_artwork": "false"})
+
+    # The tags went on…
+    assert "Re-tagged" in r.text
+    tagged = MP4(d / "01 Track.m4a")
+    assert tagged[ATOM_MB_ALBUM_ID][0].decode() == "rel-excluded"
+    # …and nothing at all happened to the artwork: the gap stays a gap, and the
+    # folder cover the plan would have created was not created.
+    assert formats.read_cover(d / "02 Track.m4a") is None
+    assert not list(d.glob("cover.*"))
+    # The track that HAD an image still has exactly it — excluding artwork is
+    # not a licence to touch what is there either.
+    kept = formats.read_cover(d / "01 Track.m4a")
+    assert kept is not None and kept[0] == art
+    # …and the reason given is not the one that belongs to a stale preview.
+    assert "changed after the page showed it" not in r.text
+
+
 def test_retag_writes_the_artwork_the_page_showed(client, cfg, monkeypatch):
     from harmonist import formats
 
