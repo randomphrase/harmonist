@@ -113,7 +113,7 @@ class Naming:
     def __init__(self, album_dir: Path, files: Sequence[Path] = ()) -> None:
         self._album_dir = album_dir
         self._files = tuple(files)
-        self._root = _root_of(album_dir, self._files)
+        self._root = root_of(album_dir, self._files)
 
     def name_of(self, path: Path) -> str:
         """How a record refers to `path`.
@@ -143,9 +143,13 @@ class Naming:
         return [f for f in self._files if f.parts[-len(wanted) :] == wanted]
 
 
-def _root_of(album_dir: Path, files: Sequence[Path]) -> Path:
+def root_of(album_dir: Path, files: Sequence[Path]) -> Path:
     """The directory an album's names are relative to: the deepest one that
-    contains every file it has, and `album_dir` when they all sit in it."""
+    contains every file it has, and `album_dir` when they all sit in it.
+
+    Public because naming is not `Naming`'s alone: the artwork plan's
+    fingerprint has to spell a target exactly as the records do, or two discs'
+    `01.m4a` become one name in it (#495)."""
     dirs = {album_dir, *(f.parent for f in files)}
     if len(dirs) == 1:
         return album_dir

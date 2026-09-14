@@ -36,6 +36,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
+from . import album_files
 from .formats import TrackTags
 from .formats.types import EmbeddedArt
 from .images import Size
@@ -252,18 +253,36 @@ class ArtworkPlan:
         since the page was drawn, or a candidate that changed, cannot be written
         under a preview that described something else.
 
-        Names are relative to the album, so the page — which reads through the
-        album — and the tagger — which reads through its file list — spell the
-        same target the same way.
+        Names are relative to the album's COMMON ROOT, so the page — which reads
+        through the album — and the tagger — which reads through its file list —
+        spell the same target the same way, and two targets are never spelled
+        alike (#423, #495).
+
+        The root is taken once here and handed down, both because it is one
+        answer for the whole plan and because deriving it per target would be
+        quadratic on a box set.
         """
+        root = album_files.root_of(self.album_dir, tuple(self.before))
         lines = sorted(
-            f"{self._name(c.target)}\t{c.before or ''}\t{c.after}" for c in self.scoped(scope)
+            f"{self._name(c.target, root)}\t{c.before or ''}\t{c.after}" for c in self.scoped(scope)
         )
         return hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
-    def _name(self, path: Path) -> str:
+    def _name(self, path: Path, root: Path) -> str:
+        """How the fingerprint spells one target.
+
+        Relative to the album's root — the deepest directory holding every file
+        it has — which for the ordinary album IS its own directory and so leaves
+        every name exactly as it was. It differs only for an album spread across
+        sibling directories (`…/Album/CD1`, `…/Album/CD2`), and that is the case
+        this exists for: named relative to the primary directory alone, the
+        second disc fell outside it and dropped to its bare filename, so both
+        discs' `01.m4a` became one name. A plan filling CD1's gap then digested
+        identically to one filling CD2's, and the guard that exists to refuse an
+        unreviewed write accepted it (#495).
+        """
         try:
-            return path.relative_to(self.album_dir).as_posix()
+            return path.relative_to(root).as_posix()
         except ValueError:
             return path.name
 

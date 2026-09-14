@@ -813,6 +813,29 @@ class TestPlan:
         assert summarise(album(art_of(1), None), cover).fingerprint == drawn
         assert summarise(album(art_of(2), None), cover).fingerprint != drawn
 
+    def test_two_discs_each_with_an_01_are_two_different_targets(self) -> None:
+        """A split album names its files relative to the album's COMMON ROOT
+        (#423), and the fingerprint has to name them the same way (#495).
+
+        `/Album/CD1` and `/Album/CD2` both hold an `01.m4a`. Taken relative to
+        the primary directory alone, CD2's is outside it and falls back to its
+        bare filename — so both discs' track one are called `01.m4a`, and a plan
+        that fills CD1's gap digests identically to one that fills CD2's. The
+        apply guard then accepts a rebuilt plan that writes to the other disc,
+        which is an unreviewed write rather than a refusal.
+        """
+        cd1, cd2 = ALBUM / "CD1", ALBUM / "CD2"
+        image = art_of(1)
+
+        # The gap is on CD1, and CD2's image is what fills it…
+        fills_cd1 = artwork.plan(cd1, [(cd1 / "01.m4a", None), (cd2 / "01.m4a", image)], None)
+        # …and the same album with the image back on CD1 and the gap on CD2.
+        fills_cd2 = artwork.plan(cd1, [(cd1 / "01.m4a", image), (cd2 / "01.m4a", None)], None)
+
+        assert [c.target for c in fills_cd1.changes if not c.folder_cover] == [cd1 / "01.m4a"]
+        assert [c.target for c in fills_cd2.changes if not c.folder_cover] == [cd2 / "01.m4a"]
+        assert fills_cd1.fingerprint(artwork.Scope.ALL) != fills_cd2.fingerprint(artwork.Scope.ALL)
+
     def test_a_re_tag_answers_only_for_the_additions(self) -> None:
         """A re-tag writes the additions and nothing else (#418), so a
         replacement on offer is no part of what it checks — and a mixed plan
