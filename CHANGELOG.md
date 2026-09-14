@@ -50,6 +50,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Refreshing Cover Art Archive artwork now retires stale cached images, including when the replacement has a different format or no front cover remains (#510).
 - Apply updates keeps its artwork description and inclusion control current as candidates change, and preserves your inclusion choice across refreshes (#509).
 - Artwork Undo preserves additional FLAC pictures stored in comments when removing a native cover image (#508).
 - **A cover the archive keeps for the release group still says so when it's the

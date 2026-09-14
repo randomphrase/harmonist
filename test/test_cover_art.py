@@ -385,3 +385,151 @@ def test_fetch_image_raises_rather_than_shrugging(tmp_path):
         cover_art.fetch_image("rel-1", "https://caa.example/a.jpg", client=_client(handler))
 
     assert cover_art.cached_image("rel-1") is None  # nothing half-written
+
+
+@pytest.mark.parametrize("same_url", [False, True])
+def test_changed_listing_replaces_cached_bytes(caa_cache, same_url):
+    from harmonist import activity_store
+
+    old = _sized_jpeg(400)
+    new = _sized_jpeg(800)
+    cover_art.cache_image("rel-1", old, "image/jpeg")
+    url = "https://caa.example/old.jpg" if same_url else "https://caa.example/new.jpg"
+    known = activity_store.CachedCoverArt(
+        fetched_at=datetime.now(UTC),
+        etag='"old"',
+        image_url="https://caa.example/old.jpg",
+        width=400,
+        height=400,
+        source="release",
+    )
+    asked = []
+
+    def handler(request):
+        asked.append((str(request.url), request.headers.get("range")))
+        if request.url.path == "/release/rel-1":
+            if request.headers.get("if-none-match") == '"new"':
+                return httpx.Response(304)
+            return httpx.Response(200, json=_listing(url), headers={"etag": '"new"'})
+        assert str(request.url) == url
+        return httpx.Response(200, content=new, headers={"content-type": "image/jpeg"})
+
+    answer = cover_art.check_front(
+        "rel-1", known=known, keep_if_wider_than=100, client=_client(handler)
+    )
+    assert answer.width == 800
+    assert cover_art.cached_front("rel-1") == Front(new, "image/jpeg")
+    assert len(asked) == 3
+    asked.clear()
+    again = cover_art.check_front(
+        "rel-1", known=answer, keep_if_wider_than=100, client=_client(handler)
+    )
+    assert again.image_url == answer.image_url
+    assert cover_art.cached_front("rel-1") == Front(new, "image/jpeg")
+    assert len(asked) == 1
+
+
+@pytest.mark.parametrize("result", ["smaller", "absent", "download_failure"])
+def test_changed_listing_never_leaves_the_old_candidate(caa_cache, result):
+    cover_art.cache_image("rel-1", _sized_jpeg(400), "image/jpeg")
+
+    def handler(request):
+        if request.url.path == "/release/rel-1":
+            if result == "absent":
+                return httpx.Response(404)
+            return httpx.Response(200, json=_listing("https://caa.example/new.jpg"))
+        if request.headers.get("range"):
+            return httpx.Response(200, content=_sized_jpeg(800))
+        assert result == "download_failure"
+        return httpx.Response(503)
+
+    answer = cover_art.check_front(
+        "rel-1",
+        keep_if_wider_than=1000 if result == "smaller" else 100,
+        client=_client(handler),
+    )
+    assert answer.has_art == (result != "absent")
+    assert cover_art.cached_front("rel-1") is None
+
+
+@pytest.mark.parametrize("first,second", [("image/jpeg", "image/png"), ("image/png", "image/jpeg")])
+def test_replacing_a_candidate_changes_its_format(caa_cache, first, second):
+    cover_art.cache_image("rel-1", b"old", first)
+    cover_art.cache_image("rel-1", b"new", second)
+    assert cover_art.cached_front("rel-1") == Front(b"new", second)
+    assert len(list(caa_cache.iterdir())) == 1
+
+
+def test_unchanged_listing_can_retry_a_missing_candidate(caa_cache):
+    from harmonist import activity_store
+
+    new = _sized_jpeg(800)
+    known = activity_store.CachedCoverArt(
+        fetched_at=datetime.now(UTC),
+        etag='"new"',
+        image_url="https://caa.example/new.jpg",
+        width=800,
+        height=800,
+        source="release",
+    )
+
+    def handler(request):
+        if request.url.path == "/release/rel-1":
+            return httpx.Response(304)
+        assert str(request.url) == known.image_url
+        return httpx.Response(200, content=new, headers={"content-type": "image/jpeg"})
+
+    cover_art.check_front("rel-1", known=known, keep_if_wider_than=100, client=_client(handler))
+    assert cover_art.cached_front("rel-1") == Front(new, "image/jpeg")
+
+
+def test_release_cover_supersedes_the_cached_group_cover(caa_cache):
+    from harmonist import activity_store
+
+    cover_art.cache_image("rel-1", _sized_jpeg(400), "image/jpeg")
+    known = activity_store.CachedCoverArt(
+        fetched_at=datetime.now(UTC),
+        etag='"group"',
+        image_url="https://caa.example/group.jpg",
+        source="release-group",
+    )
+    new = _sized_jpeg(800)
+
+    def handler(request):
+        if request.url.path == "/release/rel-1":
+            assert "if-none-match" not in request.headers
+            return httpx.Response(200, json=_listing("https://caa.example/release.jpg"))
+        assert request.url.path == "/release.jpg"
+        return httpx.Response(200, content=new, headers={"content-type": "image/jpeg"})
+
+    answer = cover_art.check_front(
+        "rel-1",
+        release_group_mbid="grp-1",
+        known=known,
+        keep_if_wider_than=100,
+        client=_client(handler),
+    )
+    assert answer.source == "release"
+    assert cover_art.cached_front("rel-1") == Front(new, "image/jpeg")
+
+
+def test_failed_invalidation_cannot_publish_a_new_measurement(caa_cache, monkeypatch):
+    old = _sized_jpeg(400)
+    path = cover_art.cache_image("rel-1", old, "image/jpeg")
+    unlink = Path.unlink
+
+    def deny(candidate, *args, **kwargs):
+        if candidate == path:
+            raise PermissionError("read-only cache")
+        return unlink(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny)
+
+    def handler(request):
+        if request.url.path == "/release/rel-1":
+            return httpx.Response(200, json=_listing("https://caa.example/new.jpg"))
+        return httpx.Response(200, content=_sized_jpeg(800))
+
+    with pytest.raises(CoverArtError, match="could not retire"):
+        cover_art.check_front("rel-1", keep_if_wider_than=100, client=_client(handler))
+    assert cover_art.cached_front("rel-1") == Front(old, "image/jpeg")

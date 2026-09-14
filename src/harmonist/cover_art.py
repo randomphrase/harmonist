@@ -216,8 +216,15 @@ def check_front(
 
             if listing.status_code == 304 and known is not None:
                 # Unchanged since we last looked. The measurement still stands;
-                # only the timestamp moves, so the page can say when that was
-                # confirmed.
+                # retry a missing picture (a previous download may have failed).
+                if (
+                    known.image_url
+                    and known.width is not None
+                    and keep_if_wider_than is not None
+                    and known.width > keep_if_wider_than
+                    and cached_image(release_mbid) is None
+                ):
+                    _fetch_and_cache(http, release_mbid, known.image_url, known.mime)
                 return replace(known, fetched_at=now)
             if listing.status_code == 404:
                 continue  # this listing has nothing; the next one may
@@ -230,6 +237,11 @@ def check_front(
                 # offer, and the group may still have one.
                 continue
 
+            # Only a 304 validates the old bytes. Even the same URL may now
+            # serve a different image. Retire the old candidate before measuring
+            # or fetching: failures and smaller replacements must not leave it
+            # available for a plan under the new listing's description.
+            _discard_image(release_mbid)
             try:
                 head = http.get(url, headers={"Range": f"bytes=0-{MEASURE_BYTES - 1}"})
             except httpx.HTTPError as e:
@@ -241,7 +253,6 @@ def check_front(
                 size is not None
                 and keep_if_wider_than is not None
                 and size.width > keep_if_wider_than
-                and cached_image(release_mbid) is None
             ):
                 _fetch_and_cache(http, release_mbid, url, head.headers.get("content-type"))
             return activity_store.CachedCoverArt(
@@ -259,6 +270,7 @@ def check_front(
             )
         # Neither listing has a front cover. Recorded so the next check does not
         # ask again — the timestamp says when that was established.
+        _discard_image(release_mbid)
         return activity_store.CachedCoverArt(fetched_at=now)
     finally:
         if owns_client:
@@ -385,11 +397,33 @@ def cache_image(release_mbid: str, data: bytes, mime: str | None) -> Path | None
         # name that claims to be complete — as everywhere else Harmonist writes.
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_bytes(data)
+        # One current candidate, including when the archive changes format.
+        # Remove the alternate before publishing, so an old JPEG cannot shadow
+        # the new PNG in cached_image.
+        path.with_suffix(".jpg" if path.suffix == ".png" else ".png").unlink(missing_ok=True)
         os.replace(tmp, path)
     except OSError:
         log.exception("could not cache the Cover Art Archive image for %s", release_mbid)
         return None
     return path
+
+
+def _discard_image(release_mbid: str) -> None:
+    """Retire disposable candidate bytes, never artwork in the music library.
+
+    A failed invalidation must fail the check: publishing new measurements
+    while the old candidate remains would make the refresh misleading.
+    """
+    root = _caa_root
+    if root is None or not _is_mbid(release_mbid):
+        return
+    try:
+        for suffix in (".jpg", ".png"):
+            (root / f"{release_mbid}{suffix}").unlink(missing_ok=True)
+    except OSError as e:
+        raise CoverArtError(
+            f"could not retire the cached archive image for {release_mbid}: {e}"
+        ) from e
 
 
 def cached_image(release_mbid: str) -> Path | None:
