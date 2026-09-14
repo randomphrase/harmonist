@@ -459,9 +459,18 @@ class TestCoverArtArchiveNote:
     """What the section says once the archive has been asked (#276)."""
 
     class _Answer:
-        def __init__(self, width=None, height=None, art=True, length=718000, mime="image/jpeg"):
+        def __init__(
+            self,
+            width=None,
+            height=None,
+            art=True,
+            length=718000,
+            mime="image/jpeg",
+            release_group=False,
+        ):
             self.width, self.height, self._art = width, height, art
             self.length, self.mime = length, mime
+            self._release_group = release_group
 
         @property
         def has_art(self) -> bool:
@@ -469,10 +478,48 @@ class TestCoverArtArchiveNote:
 
         @property
         def from_release_group(self) -> bool:
-            return False
+            return self._release_group
 
     def test_nothing_said_until_it_has_been_asked(self) -> None:
         assert summarise(album(art_of(1)), None).archive_row is None
+
+    def test_a_release_group_cover_says_so_where_it_is_coming_in(self) -> None:
+        """The archive often keeps a cover against the RELEASE GROUP rather than
+        this edition (#434), and that is exactly what a reader approving an image
+        needs to know (#496).
+
+        The candidate row says it, and then stops existing the moment the image
+        wins or is chosen — so the provenance disappeared at the moment of
+        approval, leaving a generic "the Cover Art Archive" over a picture that
+        stands for every pressing rather than this one.
+        """
+        theirs = art_of(3, width=1400, height=1400)
+
+        view = summarise(
+            album(None, None),
+            None,
+            self._Answer(1400, 1400, release_group=True),
+            archive=theirs,
+        )
+
+        incoming = [r for r in view.rows if r.writes]
+        assert incoming, "nothing coming in to attribute"
+        assert all(r.from_archive for r in incoming)
+        assert all(r.from_release_group for r in incoming), (
+            "the incoming image does not say whose cover it is"
+        )
+
+    def test_an_exact_release_cover_claims_nothing_extra(self) -> None:
+        """The other half: a cover the archive holds for THIS edition must not
+        be labelled as the release group's, or the distinction says nothing."""
+        view = summarise(
+            album(None, None),
+            None,
+            self._Answer(1400, 1400),
+            archive=art_of(3, width=1400, height=1400),
+        )
+
+        assert not any(r.from_release_group for r in view.rows)
 
     def test_an_archive_cover_that_wins_the_tracks_needs_no_sentence(self) -> None:
         """It is the incoming value, shown in that column with the hexagon —

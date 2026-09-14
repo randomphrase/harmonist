@@ -50,6 +50,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A cover the archive keeps for the release group still says so when it's the
+  one coming in** — the note appeared while the image was merely a candidate and
+  vanished the moment it won or you chose it, which is when you're approving it.
+  A cover standing for every pressing no longer reads as verified artwork for
+  yours (#496).
 - **Artwork Undo is offered only when it can actually run** — on a change that
   *added* images it was offered even with the artwork store switched off or
   full, then refused when pressed. It also no longer claims it can itself be

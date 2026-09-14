@@ -9553,6 +9553,46 @@ def test_applying_a_chosen_plan_without_the_choice_writes_nothing(client, cfg):
     assert (d / "cover.jpg").read_bytes() == mine
 
 
+def test_a_chosen_release_group_cover_still_says_whose_it_is(client, cfg):
+    """The archive often holds a cover against the RELEASE GROUP rather than
+    this edition (#434), and the candidate row says so — then stops existing the
+    moment the image is chosen (#496).
+
+    That is the worst possible moment to drop it: the user is looking at the
+    preview of what they are about to write, and a cover standing for every
+    pressing of the album now reads as verified artwork for theirs.
+    """
+    from harmonist import cover_art
+    from test.test_artwork import png_bytes
+
+    mine = png_bytes(900, 900) + b"\x01"
+    theirs = png_bytes(300, 300) + b"\x02"
+    d = _release_backed_album_with_art(
+        cfg, "GroupCover", "rel-group-cover", covers=[mine, mine], folder=mine
+    )
+    cover_art.cache_image("rel-group-cover", theirs, "image/png")
+    activity_store.store_cover_art(
+        "rel-group-cover",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release-group/rg-1/front",
+            width=300,
+            height=300,
+            mime="image/png",
+            source="release-group",
+        ),
+    )
+    aid = _id_for(cfg, d)
+
+    ordinary = " ".join(client.get(f"/album/{aid}/artwork").text.split())
+    chosen = " ".join(client.get(f"/album/{aid}/artwork?use=archive").text.split())
+
+    # The candidate row says it while the image is only a candidate…
+    assert "for the release group, not this edition" in ordinary
+    # …and the incoming preview must keep saying it once it is the one coming in.
+    assert "for the release group, not this edition" in chosen
+
+
 def test_choosing_an_image_that_is_no_longer_here_says_so(client, cfg):
     """No silent fallback: asked for an image the cache no longer holds, the
     section says so rather than quietly showing the ordinary plan as though it

@@ -589,6 +589,13 @@ class ArtRow:
     #: which is the one case where the MusicBrainz hexagon is a claim Harmonist
     #: can support. A folder cover may have come from a Bandcamp download.
     from_archive: bool = False
+    #: …and whether that cover is the RELEASE GROUP's rather than this edition's
+    #: (#434, #496). Carried on the incoming side, not only on the candidate row,
+    #: because the candidate row stops existing the moment the image wins or is
+    #: chosen — which is the moment a reader is approving it. A cover standing
+    #: for every pressing of the album is a useful thing to take and a bad thing
+    #: to mistake for this pressing's.
+    from_release_group: bool = False
     #: …and the image itself, so the row can SHOW what it would become rather
     #: than only assert it (#413). "Replaced by the album's own artwork" carries
     #: no tense — a reader cannot tell whether it already happened — and the
@@ -1101,6 +1108,15 @@ def summarise(
             written_from=_source_label(incoming_source, cover) if writes else None,
             written_image=incoming if writes else None,
             from_archive=writes and incoming_source is Source.ARCHIVE,
+            # Read off the stored answer rather than the image: which listing
+            # replied is a fact about where the picture came from, and the bytes
+            # carry no trace of it (#496).
+            from_release_group=(
+                writes
+                and incoming_source is Source.ARCHIVE
+                and caa is not None
+                and caa.from_release_group
+            ),
             creates=creates,
         )
 

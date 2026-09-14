@@ -169,6 +169,14 @@
                         aria-hidden="true"
                         ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span>{% endif %}</span>
                 <span class="art-row__meta">{{ describe_image(r.written_image) }}</span>
+                {# Whose cover it is, when it is not this edition's (#434, #496).
+                   The candidate row below says this while the image is only a
+                   candidate — and stops existing the moment it wins or is
+                   chosen, which is exactly when someone is approving it. Same
+                   words in both places: it is the same fact. #}
+                {% if r.from_release_group %}
+                <span class="art-row__meta-plain">for the release group, not this edition</span>
+                {% endif %}
             </div>
         </div>
         {% endif %}
