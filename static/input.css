@@ -170,12 +170,20 @@ button[disabled],
    newline, and `:empty` counts that as content. `:has(> *)` asks the question
    that is actually meant, which is whether anything rendered. */
 .album-findings > div:not(:has(> *)) { display: none; }
+.album-findings > .album-artwork-note.hidden { display: none; }
+/* Each response owns its finding. Choose the primary action from what is
+   actually on the page, without re-fetching either source (#509). */
+.album-artwork-inclusion { display: none; }
+.album-findings:has(.album-tag-apply) .album-artwork-apply { display: none; }
+.album-findings:has(.album-tag-apply):has(.album-artwork-note:not(.hidden)) .album-artwork-inclusion {
+  display: inline-flex; align-items: center; gap: .375rem; margin-left: auto;
+}
 /* The chrome, and only once there is something to put a border around. Adding
    it here rather than hiding the wrapper by default is deliberate: a browser
    without `:has()` drops both rules, and the findings then render unboxed with
    a little slack around them — where a default of `display: none` would hide
    the album's findings outright. Degrade loose, never blank. */
-.album-findings:has(> div > *) {
+.album-findings:has(.album-update__legend, .album-update__answers > *) {
   padding: 1rem;
   border: 1px solid var(--color-line);
   border-radius: .5rem;
@@ -1157,4 +1165,3 @@ button.art-row__art--absent:hover {
   font-size: .75rem;
   color: var(--color-muted);
 }
-

@@ -368,8 +368,9 @@ sits on that line, at the end of it, because it is the answer to that sentence.
 Artwork that could be better is a second finding in the same section, described
 separately — *Addition* where there is no image yet, *Replacement* where there
 is — and **Apply updates** applies both halves together while **Include
-artwork** beside it is ticked. It starts ticked every time the page is drawn;
-unticking it takes the tags alone and leaves the artwork on offer. The Artwork
+artwork** beside the artwork finding is ticked. It starts ticked when you open
+the page; choosing another image or refreshing either source keeps your choice.
+Unticking it takes the tags alone and leaves the artwork on offer. The Artwork
 section below keeps its own **Apply artwork**, which writes artwork and no tags. At the foot of the section,
 quieter than either button, are the two other answers: a checkbox that waits for
 an edit to land — *Ignore until MusicBrainz changes* — and a link to MusicBrainz

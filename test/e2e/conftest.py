@@ -57,6 +57,13 @@ def stale_cache_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str
     )
 
 
+@pytest.fixture
+def reset_demo_server(demo_server: str) -> str:
+    """Start each mutating scenario from the same on-disk demo library."""
+    _reset_demo_library(demo_server)
+    return demo_server
+
+
 def _run_demo_server(root: Path, *, config_toml: str | None = None) -> Iterator[str]:
     """The body of the server fixtures, so one that needs a differently
     CONFIGURED server can have it without copying the launcher.
@@ -71,6 +78,10 @@ def _run_demo_server(root: Path, *, config_toml: str | None = None) -> Iterator[
         "HARMONIST_DEMO_MODE": "1",
         "HARMONIST_MUSIC_DIR": str(root / "music"),
         "HARMONIST_CONFIG_DIR": str(root / "config"),
+        # Demo music AND artwork caches live under gettempdir(), independently
+        # of the configured music/config dirs. Give each server its own so a
+        # candidate loaded in one module cannot leak into another (#509).
+        "TMPDIR": str(root),
     }
     (root / "music").mkdir()
     (root / "config").mkdir()
@@ -93,12 +104,8 @@ def _run_demo_server(root: Path, *, config_toml: str | None = None) -> Iterator[
         else:
             pytest.fail("demo server did not come up")
 
-        # Demo mode IGNORES HARMONIST_MUSIC_DIR: it always sandboxes the sample
-        # library at a fixed $TMPDIR/harmonist-demo, shared by every run on this
-        # machine. These tests mutate albums (a rematch sends one out of the
-        # Library for good), so without a reset each run permanently consumes
-        # part of the fixture and the suite eventually fails on an empty Library
-        # — which looks exactly like a product bug. Reset so runs are repeatable.
+        # Reset through the real route and wait for the initial scan to settle
+        # before handing the seeded library to a test.
         _reset_demo_library(base)
         yield base
     finally:

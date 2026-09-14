@@ -67,6 +67,17 @@
     <section class="album-findings" id="album-findings-{{ album.id }}">
         <div id="album-update-{{ album.id }}"></div>
         <div id="album-artwork-note-{{ album.id }}"></div>
+        {# Page-local choice, outside both sources' swaps (#509). CSS exposes it
+           when both kinds of change are actionable; HTMX includes it by id. #}
+        <label id="include-artwork-{{ album.id }}"
+               class="album-artwork-inclusion text-2xs uppercase tracking-widest font-bold text-muted cursor-pointer"
+               title="Include the artwork shown under After Apply. Untick to apply the tags alone.">
+            {# Keep both values in the included element: a hidden false inside
+               the submitting form takes precedence over an external checkbox. #}
+            <input type="hidden" name="include_artwork" value="false">
+            <input type="checkbox" name="include_artwork" value="true" checked class="cursor-pointer">
+            Include artwork
+        </label>
         <div id="album-update-ignore-{{ album.id }}" class="album-update__answers"></div>
     </section>
 

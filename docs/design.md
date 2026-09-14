@@ -104,7 +104,7 @@ the whole reason the `NEEDS_SYNC` state exists.
 
 1. User edits a release in MB (track titles, dates, etc.) — or just wants to refresh tags.
 2. User clicks **Apply updates** on a Library album's page.
-3. Harmonist re-fetches the MB release and rewrites the file tags, and applies the artwork changes the page showed while **Include artwork** is ticked — additions and replacements alike, exactly the plan drawn under *After Apply* (#482). Unticking it writes the tags alone and leaves every image untouched; the artwork stays on offer, both here and as **Apply artwork** in the Artwork section, which writes artwork and no tags. A tagging with no page in front of it still only fills gaps (#418).
+3. Harmonist re-fetches the MB release and rewrites the file tags, and applies the artwork changes the page showed while **Include artwork** is ticked — additions and replacements alike, exactly the plan drawn under *After Apply* (#482). Unticking it writes the tags alone and leaves every image untouched; the artwork stays on offer, both here and as **Apply artwork** in the Artwork section, which writes artwork and no tags. The artwork finding, inclusion control and submitted plan refresh together; the inclusion choice survives candidate changes and source refreshes on the open page (#509). A tagging with no page in front of it still only fills gaps (#418).
 4. If the release now lists **more** tracks than the album has files, the tagger's
    count guard refuses (§15.3) and the refusal is presented as a decision rather
    than an error: both counts, plus a **Re-tag as incomplete** control that

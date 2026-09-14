@@ -9173,13 +9173,9 @@ def test_an_artwork_only_album_gets_one_apply_updates_action(client, cfg, monkey
     assert "Addition" in html
 
 
-def test_a_mixed_album_offers_one_primary_action_not_two(client, cfg, monkeypatch):
-    """Tags and artwork both pending is still ONE primary (#491).
-
-    The findings offered **Apply updates** and **Apply artwork** side by side,
-    which made the reader choose between two buttons for one decision — and the
-    combined one already applies both halves.
-    """
+def test_a_mixed_album_describes_both_kinds_of_update(client, cfg, monkeypatch):
+    """Each domain supplies its finding; browser coverage verifies that CSS
+    offers one primary action as these independently refreshed findings change."""
     small, big = _png(1), _png_sized(2, 600)
     d = _release_backed_album_with_art(
         cfg, "MixedPrimary", "rel-mixed-primary", covers=[big, big], folder=small
@@ -9191,7 +9187,9 @@ def test_a_mixed_album_offers_one_primary_action_not_two(client, cfg, monkeypatc
 
     html = client.get(f"/library/{_id_for(cfg, d)}/compare").text
 
-    assert _primary_actions(html) == ["Apply updates"]
+    assert "album-tag-apply" in html
+    assert "album-artwork-apply" in html
+    assert "better artwork is available" in html.lower()
 
 
 def test_a_re_tag_whose_artwork_write_fails_still_reports_the_tags(client, cfg, monkeypatch):
@@ -9349,10 +9347,12 @@ def test_the_combined_control_offers_the_artwork_choice_ticked(client, cfg, monk
     )
     monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
-    body = " ".join(client.get(f"/library/{_id_for(cfg, d)}/compare").text.split())
+    aid = _id_for(cfg, d)
+    body = " ".join(client.get(f"/library/{aid}/compare").text.split())
 
-    assert '<input type="hidden" name="include_artwork" value="false">' in body
-    checkbox = body[body.index('name="include_artwork" value="true"') :][:120]
+    page = client.get(f"/album/{aid}").text
+    assert '<input type="hidden" name="include_artwork" value="false">' in page
+    checkbox = page[page.index('name="include_artwork" value="true"') :][:120]
     assert "checked" in checkbox, "drawn ticked, every time"
     # Both halves described separately, not merged into one rank (#468).
     assert "sev--artwork" in body
@@ -9694,8 +9694,11 @@ def test_a_musicbrainz_refresh_keeps_the_artwork_half_of_apply_updates(client, c
 
     refreshed = client.get(f"/library/{aid}/compare?check=1").text
 
-    assert f'hx-include=".apply-art-{aid}"' in refreshed, "the form must still reach the fields"
-    assert 'name="include_artwork" value="true"' in refreshed, "the choice must stay visible"
+    assert f'hx-include=".apply-art-{aid}, #include-artwork-{aid}"' in refreshed
+    # The checkbox belongs to the stable page. A refresh reaches it without
+    # replacing it; the browser test checks that exclusion survives.
+    initial = client.get(f"/album/{aid}").text
+    assert 'name="include_artwork" value="true"' in initial
 
 
 def test_apply_artwork_names_the_images_it_could_not_keep(client, cfg, tmp_path):

@@ -4595,13 +4595,9 @@ def _register_routes(app: FastAPI) -> None:
         # time — over the top of whatever the archive's own check had just put
         # there, from an older answer — which is the #477 failure exactly.
         #
-        # The VIEW is built either way, and only the swap is withheld (#488).
-        # This response also re-draws the update finding, whose combined action
-        # has an artwork half — and a refresh that knew nothing about artwork
-        # drew that action without its checkbox, silently changing what the next
-        # press would do. What the press carries comes from the section's own
-        # element, which `artwork_section` leaves alone, so a choice made in the
-        # meantime survives the refresh.
+        # The tag finding no longer owns the artwork description or checkbox
+        # (#509). A refresh needs neither an artwork view nor its image bytes:
+        # the artwork response owns the plan, and the page keeps the checkbox.
         #
         # No network in any of it: the archive's answer and its image both come
         # from the local cache, exactly as the artwork endpoint's render does,
@@ -4609,7 +4605,11 @@ def _register_routes(app: FastAPI) -> None:
         # archive stays where it was, behind the out-of-band check the section
         # triggers once it is on screen (#436).
         caa_answer = caa_cache.stored(mbid)
-        artwork_view = _artwork_view(album, caa_answer, _archive_image(mbid), tracks=reads[0])
+        artwork_view = (
+            None
+            if asking
+            else _artwork_view(album, caa_answer, _archive_image(mbid), tracks=reads[0])
+        )
         ctx = _ctx(
             request,
             album=album,
@@ -4650,9 +4650,8 @@ def _register_routes(app: FastAPI) -> None:
             # What the Artwork section shows, rendered out of band from here
             # (#485).
             artwork=artwork_view,
-            # …and whether this response should SWAP that section, as opposed to
-            # merely describing the artwork to the update finding beside it
-            # (#477, #488). False on a refresh: the section may have been
+            # …and whether this response should swap that section (#477, #488).
+            # False on a refresh: the section may have been
             # redrawn since — by a choice, or by a candidate that has landed —
             # and this response's older answer must not overwrite it.
             artwork_section=not asking,

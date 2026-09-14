@@ -1,73 +1,42 @@
 {% from 'macros.html' import artwork_chip %}
-{# The artwork finding, stated up beside the album's other one (#417, #443).
-   Sent out of band from whichever fetch already knows the answer, so the top of
-   the page costs no second pass over the files. Emitted even when there is
-   nothing to say — an empty div is what CLEARS the finding after the artwork has
-   been updated.
-
-   ITS OWN PARTIAL since #485, because it is emitted from two places now: the
-   Artwork section's own response, and the /compare response that renders that
-   section out of band for an identified album. One definition, two hosts — and
-   it has to be a TOP-LEVEL element of whichever response carries it, since htmx
-   extracts out-of-band swaps from a response's top level and would quietly drop
-   this one if it were nested inside the section wrapper.
-
-   HIDDEN FIELDS ONLY since #491. The sentence and the action moved into
-   `_album_update.html`, which is the album's findings row — because there can be
-   only ONE primary action and the two elements are filled by DIFFERENT
-   responses: this one by the Artwork section's own renders, that one by
-   /compare. Only /compare knows whether a metadata finding exists, so only it
-   can say which row owns the button; deciding here would mean guessing, and
-   either guess is wrong on some album (a mixed one sprouting a second primary
-   after a candidate loads, or an artwork-only one losing its primary).
-
-   What stays is what must be re-rendered by every artwork response: the
-   fingerprints and the choice the press carries (#488). The trade is that the
-   artwork SENTENCE now refreshes with /compare rather than with the section —
-   the action it belongs to is refreshed by neither, since `hx-include` reads
-   these fields at submit time.
-
-   The hidden input is the fingerprint of the artwork a re-tag would ADD, as
-   drawn here. A re-tag whose own plan no longer matches it tags the album and
-   writes no artwork (#469). Here, in the element that is always swapped, so it
-   is present whenever the section has loaded and absent until it has.
-
-   It is the ADDITIONS fingerprint, and what reads it is the partial-tag badge's
-   "Write it to those files" — about a missing release id, and something that
-   must NOT gain artwork replacement. Keeping this input at ADDITIONS is what
-   holds it apart from the cluster below. #}
-<div id="album-artwork-note-{{ album.id }}" hx-swap-oob="true">
+{# The artwork finding and its submitted plan travel together on every artwork
+   response (#509). An MB refresh leaves both alone. The inclusion input lives
+   outside these swaps in album.html, so refreshes cannot reset the choice.
+   Nothing here needs another MusicBrainz request. #}
+<div id="album-artwork-note-{{ album.id }}" hx-swap-oob="true"
+     class="album-artwork-note{% if not artwork.writes %} hidden{% endif %}">
+    <div class="album-finding">
+        {% if artwork.writes %}
+        <span class="album-update__key album-finding__key--art" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4.5" width="18" height="15" rx="2"/>
+                <path d="M3 15.5l4.5-4.5 3.5 3.5 3-3 7 7"/>
+            </svg>
+        </span>
+        <h2 class="album-update__legend">{{ artwork.summary }}</h2>
+        {{ artwork_chip(artwork.operation) }}
+        {% endif %}
+        {% if artwork.writes %}
+        <form hx-post="/album/{{ album.id }}/artwork/update"
+              hx-target="#album-artwork" hx-swap="innerHTML"
+              hx-disabled-elt="find button" hx-include=".apply-art-{{ album.id }}"
+              {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
+              class="album-finding__act-form album-artwork-apply">
+            <button type="submit" class="album-finding__act"
+                    title="Apply the artwork shown under After Apply. No tags are touched."
+                    aria-label="Apply updates">Apply updates</button>
+        </form>
+        {% endif %}
+    </div>
+    {# Partial-tag and merge controls add artwork only. The primary action uses
+       the separate full-scope fields below, including an empty fingerprint. #}
     <input type="hidden" id="art-plan-{{ album.id }}" name="art_plan"
            value="{{ artwork.tagging_fingerprint }}">
-    {# …and the whole artwork request that **Apply updates** carries (#488).
-       HERE rather than in that control's own markup, because this element is
-       re-rendered by every response that can change the answer — choosing an
-       image, a candidate finishing its download, a check the archive answered
-       late — while the combined form is drawn once and would keep whatever was
-       true then. It carried a render-time fingerprint of the ORDINARY plan,
-       which still matched at write time, so a press that followed "Use this
-       artwork" wrote the album's own image over the one the user had chosen and
-       been shown.
-
-       Three fields rather than one, because the fingerprint means nothing on
-       its own: `artwork_scope` says which scope it was taken at (#482), and
-       `use` says which plan it describes. `use` is rendered EMPTY when there is
-       no choice, not omitted — the form includes these by selector, and a field
-       that disappears reads at the endpoint as a caller that never had one.
-
-       A class, not an id: HTMX includes every element its selector matches, so
-       one selector carries all three. #}
     <input type="hidden" class="apply-art-{{ album.id }}" name="art_plan"
            value="{{ artwork.fingerprint }}">
     <input type="hidden" class="apply-art-{{ album.id }}" name="artwork_scope" value="all">
     <input type="hidden" class="apply-art-{{ album.id }}" name="use"
            value="{{ 'archive' if artwork.chosen else '' }}">
-    {# The same fingerprint under the name the ARTWORK endpoint reads (#491).
-       Two names for one value rather than one endpoint renamed: /retag calls it
-       `art_plan` because it also carries a tag plan, and the artwork action
-       calls it `plan` because that is all it carries. Both are served from this
-       element so the artwork-only primary is as current as the combined one —
-       a field rendered into the form instead would be the #488 defect again. #}
     <input type="hidden" class="apply-art-{{ album.id }}" name="plan"
            value="{{ artwork.fingerprint }}">
 </div>
