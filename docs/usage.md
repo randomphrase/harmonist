@@ -377,6 +377,10 @@ an edit to land — *Ignore until MusicBrainz changes* — and a link to MusicBr
 to make one. An album where everything matches gets no section — the **Checked**
 date says when that was established, and there is nothing else to say.
 
+If an image cannot be read while preparing artwork, valid tag updates still
+complete and the result explains that the images were left alone. Check the
+file permissions and retry to apply the artwork.
+
 A track MusicBrainz lists that you don't have says *"Not in your files"*, with a
 dashed ring beside its number — so a half-ripped disc reads as a column of them
 rather than as a stack of separate notices. A disc you never ripped at all carries

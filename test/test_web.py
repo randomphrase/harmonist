@@ -10429,3 +10429,47 @@ def test_loading_is_refused_when_the_archive_has_nothing_to_load(client, cfg):
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
     assert "load-archive" not in rendered
     assert "no front cover for this release" in rendered
+
+
+def test_retag_reports_unreadable_art_and_finishes_bookkeeping(client, cfg, monkeypatch):
+    from harmonist import formats
+
+    release = _release_for_match("rel-art-read", n_tracks=2)
+    image = _png(2)
+    d = _release_backed_album_with_art(
+        cfg, "ArtRead", "rel-art-read", covers=[_png(1), None], folder=image
+    )
+    album_id = _id_for(cfg, d)
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", lambda mbid: release)
+    read = Path.read_bytes
+
+    def deny(path):
+        if path == d / "cover.jpg":
+            raise PermissionError("cannot read folder cover")
+        return read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", deny)
+    r = client.post(f"/retag/{album_id}", data={"include_artwork": "true"})
+
+    assert "Re-tagged" in r.text
+    assert "could not prepare artwork" in r.text
+    assert sc.read(d).tagged_at is not None
+    for path in d.glob("*.m4a"):
+        assert formats.read_owned(path)["album"] == release["title"]
+    assert read(d / "cover.jpg") == image
+
+
+def test_retag_excluding_artwork_never_prepares_or_fetches_a_cover(client, cfg, monkeypatch):
+    release = _release_for_match("rel-tags-only", n_tracks=2)
+    d = _release_backed_album_with_art(cfg, "TagsOnly", "rel-tags-only", covers=[None, None])
+    album_id = _id_for(cfg, d)
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", lambda mbid: release)
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("excluded artwork must not be prepared or fetched")
+
+    monkeypatch.setattr("harmonist.cover_art.cached_cover", unexpected)
+    monkeypatch.setattr("harmonist.cover_art.front_image", unexpected)
+    r = client.post(f"/retag/{album_id}", data={"include_artwork": "false"})
+    assert "Re-tagged" in r.text
+    assert sc.read(d).tagged_at is not None

@@ -3326,7 +3326,7 @@ def _tag_with_release(
     # fact arriving beside them.
     requested_mbid, mbid = mbid, release["id"]
     rg = release.get("release-group") or {}
-    cover_path = cover_art.cached_cover(album_path)
+    cover_path = cover_art.cached_cover(album_path) if artwork_included else None
     archive: cover_art.Front | None = None
     try:
         # Asked only when the album has no folder cover — the one case a
@@ -3335,7 +3335,7 @@ def _tag_with_release(
         # tagger's plan decides whether it wins (#469). An album whose folder
         # cover already exists weighs the archive only from the cache, which
         # the album page's own check fills.
-        if cover_path is None:
+        if artwork_included and cover_path is None:
             archive = cover_art.front_image(release["id"], rg.get("id"))
     except cover_art.CoverArtError:
         # Tagging is the work; the cover is a side effect of it (#458). Design
@@ -4965,6 +4965,11 @@ def _register_routes(app: FastAPI) -> None:
         art = outcome.artwork
         detail_parts = [
             *(["now listed as incomplete"] if accept_short else []),
+            *(
+                ["could not prepare artwork — images left alone; check file permissions and retry"]
+                if outcome.artwork_unavailable
+                else []
+            ),
             *(
                 ["artwork left alone — it changed after the page showed it"]
                 if outcome.artwork_withheld

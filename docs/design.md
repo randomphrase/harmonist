@@ -1158,6 +1158,8 @@ Plex with the MusicBrainz agent can fetch its own artwork from external sources,
 
 If nothing is available — no archive image and no embedded art — the album is tagged without a cover.
 
+**Artwork preparation cannot block valid tags** (#511). The combined action validates and writes tags before reading its artwork plan. If an image read fails, it reports that failure, leaves every image alone, and lets the caller finish tagging bookkeeping; unreadable artwork is never treated as absent. Correcting the file permissions and retrying is sufficient. Excluding artwork skips both preparation and the archive fetch.
+
 **Resolution policy:** always the archive's `original`. The largest available image is the one Harmonist prefers, and it is the one the album page measures, so a preview and the tagging that follows compare the same picture. (The former `[cover_art] size` setting and its `HARMONIST_COVER_ART_SIZE` override are no longer read; an old `harmonist.toml` naming it still loads, and `config.load` warns once at startup rather than discarding a deliberate resource constraint in silence — #497. Retired rather than migrated, because the policy the key configured no longer exists, so rewriting it as another setting would invent one.) Library-wide cover-art optimisation (clipping / recompressing) is a separate, future enhancement.
 
 ---

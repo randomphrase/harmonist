@@ -3359,3 +3359,68 @@ def test_additions_across_split_discs_come_off_the_right_files(tmp_path):
     assert outcome.removed == 2
     assert not any(ATOM_COVER in MP4(f) for f in files)
     assert cover.exists()  # it was there before the tagging, and stays
+
+
+def test_unreadable_folder_art_does_not_block_tags(
+    album_with_tracks, tmp_path, monkeypatch, caplog
+):
+    from harmonist import activity_store, cover_art
+
+    activity_store.init(tmp_path / "audit.db")
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    album = album_with_tracks(2)
+    cover = album / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(800, 800))
+    original = _sized_jpeg(400, 400)
+    _embed_cover(album / "01 Track 1.m4a", original)
+    read = Path.read_bytes
+
+    def deny(path):
+        if path == cover:
+            raise PermissionError("cannot read folder cover")
+        return read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", deny)
+    outcome = tagger.tag_and_artwork(album, _release_2_tracks(), cover)
+
+    assert outcome.files == 2
+    assert outcome.artwork_unavailable
+    assert outcome.artwork.changed == 0
+    for path in sorted(album.glob("*.m4a")):
+        assert MP4(path)[ATOM_MB_ALBUM_ID][0].decode() == "rel-aaa"
+    assert bytes(MP4(album / "01 Track 1.m4a")[ATOM_COVER][0]) == original
+    assert ATOM_COVER not in MP4(album / "02 Track 2.m4a")
+    assert read(cover) == _sized_jpeg(800, 800)
+    assert "could not prepare artwork" in caplog.text
+    assert _audit("tag.track")
+    # Repeating writes no new track changes; the still-unreadable art remains
+    # a reported failure, not a successful no-op.
+    count = len(_audit("tag.track"))
+    again = tagger.tag_and_artwork(album, _release_2_tracks(), cover)
+    assert again.artwork_unavailable
+    assert len(_audit("tag.track")) == count
+    # Correcting permissions is sufficient to retry the artwork normally.
+    monkeypatch.setattr(Path, "read_bytes", read)
+    recovered = tagger.tag_and_artwork(album, _release_2_tracks(), cover)
+    assert not recovered.artwork_unavailable
+    assert recovered.artwork.changed == 1
+    assert bytes(MP4(album / "02 Track 2.m4a")[ATOM_COVER][0]) == original
+    assert tagger.tag_and_artwork(album, _release_2_tracks(), cover).artwork.changed == 0
+
+
+def test_tag_mismatch_is_checked_before_unreadable_art(album_with_tracks, monkeypatch):
+    album = album_with_tracks(1)
+    cover = album / "cover.jpg"
+    cover.write_bytes(b"cover")
+    before = (album / "01 Track 1.m4a").read_bytes()
+    read = Path.read_bytes
+
+    def deny(path):
+        if path == cover:
+            raise PermissionError("cannot read folder cover")
+        return read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", deny)
+    with pytest.raises(TagMismatchError):
+        tagger.tag_and_artwork(album, _release_2_tracks(), cover)
+    assert (album / "01 Track 1.m4a").read_bytes() == before

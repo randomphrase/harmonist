@@ -1473,6 +1473,8 @@ class TaggingOutcome:
     #: just did, and reporting it back as a reason would be noise at best and,
     #: worded like the other, a lie.
     artwork_excluded: bool = False
+    #: Artwork preparation failed; tags stand and every image was left alone (#511).
+    artwork_unavailable: bool = False
 
 
 def tag_and_artwork(
@@ -1533,6 +1535,7 @@ def tag_and_artwork(
     was.
     """
     paths = files if files is not None else album_files.audio_files(album_dir)
+    tagged, wrote_something = _tag_files(album_dir, release, incomplete=incomplete, files=paths)
 
     # EXCLUDED means there is no artwork half at all (#482) — not an empty
     # scope, because "none of them" is not a subset of a plan, it is the absence
@@ -1544,32 +1547,39 @@ def tag_and_artwork(
     # Reported as its own fact rather than as a withheld plan, which is a
     # warning about a stale preview and would be untrue here.
     if not artwork_included:
-        tagged, _ = _tag_files(album_dir, release, incomplete=incomplete, files=paths)
         return TaggingOutcome(files=tagged, artwork_excluded=True)
 
-    archive = archive if archive is not None else _archive_candidate(release)
+    # Tags are already validated and written. Attribute any artwork failure to
+    # the album after that write, and let the caller finish its bookkeeping.
+    album_id = sidecar_mod.album_id_for(album_dir)
+    label = _album_label(release, album_dir)
     # `chosen` rides along with the fingerprint, never instead of it (#488): the
     # plan is rebuilt here, so a choice the page made must be made again or the
     # rebuilt plan is a different one — matching its own fingerprint, and writing
     # the image the size rule prefers over the image the user picked.
-    art = decide_artwork(
-        album_dir,
-        paths,
-        cover_path,
-        archive=archive,
-        overwrite_art=overwrite_art,
-        chosen=chosen,
-    )
+    try:
+        archive = archive if archive is not None else _archive_candidate(release)
+        art = decide_artwork(
+            album_dir,
+            paths,
+            cover_path,
+            archive=archive,
+            overwrite_art=overwrite_art,
+            chosen=chosen,
+        )
+    except OSError:
+        # An unreadable image is not an absent one. Refuse the entire artwork
+        # half rather than building a plan from incomplete inputs (#511).
+        log.exception(
+            "could not prepare artwork — tagged without writing any artwork. "
+            "Check file permissions and retry.",
+            extra={"album_id": album_id, "album_label": label},
+        )
+        return TaggingOutcome(files=tagged, artwork_unavailable=True)
     if scope is None:
         scope = artwork.Scope.ALL if overwrite_art else artwork.Scope.ADDITIONS
     withheld = expected_artwork is not None and art.fingerprint(scope) != expected_artwork
 
-    tagged, wrote_something = _tag_files(album_dir, release, incomplete=incomplete, files=paths)
-
-    # After the write, which may have moved it: tagging drops a sidecar's
-    # `temp_uid` for the MBID (#65).
-    album_id = sidecar_mod.album_id_for(album_dir)
-    label = _album_label(release, album_dir)
     if withheld:
         # Attributed, so it reaches the album's History and the feed: the user
         # pressed a button having looked at a preview, and is owed the reason
