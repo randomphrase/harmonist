@@ -17,10 +17,12 @@ from typing import Any
 
 from . import flac, m4a, mp3, ogg, opus
 
-# `READ_ERRORS` is re-exported (redundant alias) rather than used here: this
-# package is where mutagen stops, so `formats.READ_ERRORS` is how the rest of
-# the codebase names an unreadable file without importing mutagen to do it.
+# `READ_ERRORS` and `WRITE_ERRORS` are re-exported (redundant aliases) rather
+# than used here: this package is where mutagen stops, so `formats.READ_ERRORS`
+# is how the rest of the codebase names an unreadable file — and
+# `formats.WRITE_ERRORS` an unwritable one — without importing mutagen to do it.
 from .types import READ_ERRORS as READ_ERRORS
+from .types import WRITE_ERRORS as WRITE_ERRORS
 from .types import EmbeddedArt, ScanFields, TagSet, TrackTags, UnsupportedFormatError
 
 _MODULES: tuple[ModuleType, ...] = (m4a, mp3, flac, ogg, opus)

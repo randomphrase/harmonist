@@ -2971,6 +2971,45 @@ def test_the_artwork_action_leaves_an_image_changed_since_its_plan(album_with_tr
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == cover.read_bytes()
 
 
+def test_a_track_whose_image_cannot_be_written_is_named_not_raised(
+    album_with_tracks, tmp_path, monkeypatch
+):
+    """A failed artwork write is one file's bad news, not the tagging's (#494).
+
+    The exception went all the way out of `apply_artwork` — past a composition
+    layer that catches only `ArtworkChangedError` — and reached the route as
+    "Re-tag failed", after the tags had already been written and with the
+    sidecar bookkeeping skipped. The outcome has had a place to say this all
+    along: `failed` is what the folder cover already uses.
+    """
+    from harmonist import activity_store, artwork_store
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    cover = album_dir / "cover.jpg"
+    cover.write_bytes(_sized_jpeg(1400, 1400))
+    files = sorted(album_dir.glob("*.m4a"))
+    plan = tagger.decide_artwork(album_dir, files, cover, overwrite_art=True)
+    doomed = album_dir / "01 Track 1.m4a"
+    real = formats_mod.write_cover
+
+    def fail_on_the_doomed_one(path, data):
+        if path == doomed:
+            raise OSError("no space left on device")
+        real(path, data)
+
+    monkeypatch.setattr(formats_mod, "write_cover", fail_on_the_doomed_one)
+
+    outcome = tagger.apply_artwork(album_dir, plan, files=files, cover_path=cover)
+
+    assert outcome.failed == ("01 Track 1.m4a",)
+    # The other track still got its image: one bad file does not stop the rest.
+    assert outcome.changed == 1
+    assert ATOM_COVER not in MP4(doomed)
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == cover.read_bytes()
+
+
 def test_the_artwork_action_refuses_a_winner_that_has_moved(album_with_tracks, tmp_path):
     """The plan names an image by digest. If the file it was found in now holds
     something else, nothing is written — the preview described the old one."""

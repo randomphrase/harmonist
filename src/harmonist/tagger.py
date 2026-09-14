@@ -1401,7 +1401,22 @@ def apply_artwork(
             unkept.append(name)
             continue
         assert track_image is not None  # there are track changes, so it loaded
-        formats.write_cover(change.target, track_image)
+        try:
+            formats.write_cover(change.target, track_image)
+        except formats.WRITE_ERRORS:
+            # One file's failure, not the tagging's (#494). Artwork is written
+            # AFTER the tags, so letting this propagate threw away the report of
+            # work that had really happened: the route caught it as an unknown
+            # error and said "Re-tag failed" over an album whose files had just
+            # been re-tagged, and the sidecar update that follows never ran.
+            #
+            # Tolerable here only because the outcome can still tell the truth —
+            # the file is named in `failed`, which both the album page and the
+            # feed already report, so this cannot read as success. The folder
+            # cover has been handled this way since #457.
+            log.exception("could not write the album's artwork to %s", change.target)
+            failed.append(name)
+            continue
         changed += 1
         # Recorded in the shape a tagged file's artwork change takes, which is
         # what puts an Undo on it: `tag_history.artwork_revert_plan` reads that

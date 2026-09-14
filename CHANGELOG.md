@@ -50,6 +50,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A re-tag that could not write one image says what it did do** — a file that
+  could not take its artwork (a full disk, a file another program has open)
+  reported **Re-tag failed** over an album whose tags had already been written.
+  The tags are now reported as written, the files that could not take their
+  image are named, and the rest of the album still gets its artwork (#494).
 - **One Apply updates button, whatever an album needs** — an album with artwork
   changes alone offered **Apply artwork** instead, and an album with both
   offered two primary buttons for one decision. Both findings are still

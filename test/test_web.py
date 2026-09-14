@@ -9194,6 +9194,34 @@ def test_a_mixed_album_offers_one_primary_action_not_two(client, cfg, monkeypatc
     assert _primary_actions(html) == ["Apply updates"]
 
 
+def test_a_re_tag_whose_artwork_write_fails_still_reports_the_tags(client, cfg, monkeypatch):
+    """The tags were written, so say so (#494).
+
+    An I/O error from the embedded write escaped to the route's generic handler,
+    which reported **Re-tag failed** — after the files had already been
+    re-tagged. The user was told nothing happened while their album had changed,
+    and the sidecar update that follows the tagging never ran.
+    """
+    from harmonist import formats
+
+    release = _release_for_match("rel-art-boom", n_tracks=2)
+    d = _release_backed_album_with_art(cfg, "ArtBoom", "rel-art-boom", covers=[_png(1), None])
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", lambda mbid: release)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+
+    def boom(path, data):
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(formats, "write_cover", boom)
+
+    r = client.post(f"/retag/{_id_for(cfg, d)}", data={"include_artwork": "true"})
+
+    assert "Re-tagged" in r.text
+    assert "Re-tag failed" not in r.text
+    # …and the artwork half reports itself, named rather than counted.
+    assert "could not be written" in r.text
+
+
 def test_the_artwork_action_is_offered_only_when_something_would_change(client, cfg):
     """No button when nothing would change, the same way the rows say nothing."""
     same = _png(1)

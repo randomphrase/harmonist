@@ -341,3 +341,20 @@ class UnsupportedFormatError(Exception):
 #: this" and can carry on. Anything writing on the user's behalf should let it
 #: propagate — see the error-handling skill.
 READ_ERRORS: tuple[type[Exception], ...] = (OSError, MutagenError, UnsupportedFormatError)
+
+#: What a WRITE to one file can fail with and still be that file's problem
+#: rather than the operation's (#494).
+#:
+#: Narrower than `READ_ERRORS` on purpose: `UnsupportedFormatError` is absent,
+#: because it does not mean the write failed — it means Harmonist aimed one at a
+#: file it has no module for, which is a bug to surface rather than a condition
+#: to tolerate per file.
+#:
+#: The rule above still holds — writing on the user's behalf propagates — and
+#: this is the exception that proves where the line is. Artwork is written AFTER
+#: the tags, so a raise there throws away the report of work that really
+#: happened: the album's files have changed and the route says the re-tag
+#: failed. A caller may use this only when it can still tell the truth
+#: afterwards: name the file in its outcome, log the traceback, and carry on
+#: with the rest.
+WRITE_ERRORS: tuple[type[Exception], ...] = (OSError, MutagenError)
