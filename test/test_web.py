@@ -3481,6 +3481,34 @@ def test_retag_offers_incomplete_when_mb_has_grown_tracks(client, cfg, monkeypat
     assert after is not None and after.tagged_at == tagged
 
 
+def test_the_short_offer_carries_the_artwork_choice_back(client, cfg, monkeypatch):
+    """The offer is a fresh POST, so every decision the refused press carried has
+    to ride back out with it (#482).
+
+    `include_artwork` defaults to True at the endpoint — right for every caller
+    that never had a checkbox, and wrong for exactly this path: unticking
+    artwork, meeting the guard, then accepting the offer would have the
+    exclusion undone by the user's own second press, writing images they had
+    just declined.
+    """
+    from test.helpers import write_track_totals
+
+    d = _make_tagged_album(cfg, "GrownExcluded", mbid="rel-grown-x", tagged_at=datetime.now(UTC))
+    write_track_totals(d, track_total=1)
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+
+    excluded = client.post(f"/retag/{_id_for(cfg, d)}", data={"include_artwork": "false"})
+    included = client.post(f"/retag/{_id_for(cfg, d)}")
+
+    # The choice is on the wire of the button the offer draws, both ways round —
+    # asserted as a pair, because a hard-coded value would satisfy either alone.
+    assert '"include_artwork": "false"' in excluded.text
+    assert '"include_artwork": "true"' in included.text
+
+
 def test_retag_as_incomplete_takes_the_grown_releases_tags(client, cfg, monkeypatch):
     """The other half of #252: pressing the offered control re-runs the same
     re-tag with the shortfall accepted. The files take the release's current

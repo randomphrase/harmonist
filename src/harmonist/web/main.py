@@ -1280,7 +1280,13 @@ def _update_check_oob(request: Request, outcome: str, *, ok: bool) -> str:
 
 
 def _retag_short_oob(
-    request: Request, album: Album, *, files: int, tracks: int, overwrite_art: bool
+    request: Request,
+    album: Album,
+    *,
+    files: int,
+    tracks: int,
+    overwrite_art: bool,
+    include_artwork: bool,
 ) -> str:
     """The album page's alert slot, stating that MusicBrainz now lists more tracks
     than the album has files, and offering the re-tag that accepts that (#252).
@@ -1288,10 +1294,24 @@ def _retag_short_oob(
     Rendered out of band because the page had no way to know: the counts only
     disagree once the re-tag has fetched the release, and the album's own state
     says what MusicBrainz said at *tagging* time (#195), not what it says now.
+
+    EVERY decision the refused press carried has to ride back out with the
+    offer, because the offer is a fresh POST and the endpoint's defaults are not
+    the user's choices. `include_artwork` defaults to True there — correct for
+    every caller that never had a checkbox, and wrong for exactly this one
+    (#482): a user who unticked artwork, hit the guard, and accepted the offer
+    would have had their exclusion silently reversed by the second press.
     """
     template = _templates(request).env.get_template("partials/_retag_short.html")
     return template.render(
-        _ctx(request, album=album, files=files, tracks=tracks, overwrite_art=overwrite_art)
+        _ctx(
+            request,
+            album=album,
+            files=files,
+            tracks=tracks,
+            overwrite_art=overwrite_art,
+            include_artwork=include_artwork,
+        )
     )
 
 
@@ -4836,7 +4856,12 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
                 album=album,
                 oob=_retag_short_oob(
-                    request, album, files=e.files, tracks=e.tracks, overwrite_art=overwrite_art
+                    request,
+                    album,
+                    files=e.files,
+                    tracks=e.tracks,
+                    overwrite_art=overwrite_art,
+                    include_artwork=include_artwork,
                 ),
             )
         except Exception as e:
