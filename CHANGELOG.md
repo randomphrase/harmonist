@@ -63,6 +63,10 @@ versions follow [semantic versioning](https://semver.org).
   wrong disc.** Both discs' `01.m4a` were the same name to the check that makes
   sure a page's preview still describes what is about to be written, so a change
   that had moved from one disc to the other passed it (#495).
+- **Use this artwork stays offered when the archive's image is upgrading only
+  your `cover.jpg`** — which is exactly when you might want it in the tracks
+  too. It disappeared in that case, so forcing the image into the tracks meant
+  applying the folder change first and coming back for the second half (#490).
 - **History names `cover.jpg` instead of counting it as a track** (#469).
 - **A re-tag says what it did to your artwork** — how many files it wrote, and
   which it left alone and why. A re-tag whose artwork was skipped because the

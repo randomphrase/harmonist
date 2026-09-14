@@ -200,7 +200,14 @@
    Its own heading, because "After Apply" above is a promise and this is the
    one image on the page that certainly is not coming. "Also considered" is past
    tense on purpose: it says the thing was weighed and lost, which is also why
-   there is no picture to show. #}
+   there is no picture to show.
+
+   …except when it is partly coming (#490). An archive cover can be the best
+   image for `cover.jpg` while the tracks keep their own, and the row is then
+   here to offer it to the tracks as well — so it is not an also-ran and must not
+   say it was. The heading is the only thing that changes: the picture stays
+   shown, because this row is where the choice is made and choosing an image you
+   cannot see is the guess this section exists to avoid. #}
 {% if artwork.archive_row %}
 <div class="art-rows art-rows--muted">
     <div class="art-rows__head">
@@ -208,7 +215,7 @@
            is what holds the album's own column open so the second lands over
            the incoming one. #}
         <span></span>
-        <span>Also considered</span>
+        <span>{{ "Also available" if artwork.archive_row.also_coming else "Also considered" }}</span>
     </div>
     <div class="art-row">
         <div class="art-row__side art-row__side--after">

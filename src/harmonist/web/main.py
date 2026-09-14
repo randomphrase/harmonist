@@ -5585,9 +5585,9 @@ def _register_routes(app: FastAPI) -> None:
         way to find out.
 
         It settles nothing about what gets written. The image being on disk is
-        not a claim about its size, `archive_wins` never consults this, and the
-        row stays muted and unmarked — see #441 for why the marks and not the
-        column carry that.
+        not a claim about its size, which destination it wins never consults
+        this, and the row stays muted and unmarked — see #441 for why the marks
+        and not the column carry that.
 
         LOUD on failure, unlike the page-open check (#436). That one is silent
         because nobody asked for it; somebody pressed this and is waiting for a

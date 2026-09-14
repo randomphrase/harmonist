@@ -537,10 +537,15 @@ class ArchiveRow:
     #: megabytes — but bigger is not the same as better, and a reader deciding
     #: whether theirs really is the better scan needs to see the other one.
     #:
-    #: Its presence says nothing about whether it won. `archive_wins` is decided
-    #: on size and is not consulted here, so a loaded loser stays exactly what it
+    #: Its presence says nothing about whether it won. Winning is decided on
+    #: size and is not consulted here, so a loaded loser stays exactly what it
     #: was: muted, unmarked, and not going to be written (#441).
     image: EmbeddedArt | None = None
+    #: This image is ALREADY coming to the folder cover, and the row is here to
+    #: offer it to the tracks as well (#490). "Also considered" is past tense and
+    #: would be untrue of it, so the heading says so instead — the row is not an
+    #: also-ran, it is a candidate for the half of the album it is not going to.
+    also_coming: bool = False
 
     @property
     def loadable(self) -> bool:
@@ -695,9 +700,18 @@ class ArtworkView:
     #: what is already on disk, and the archive's answer is here to say whether
     #: it is worth taking.
     caa: CoverArtAnswer | None = None
-    #: Whether the archive's cover beat everything the album has, and is
-    #: therefore the incoming value rather than an also-ran (#433).
-    archive_wins: bool = False
+    #: Whether the archive's cover is what the TRACKS are getting — the case
+    #: where it is wholly the incoming value rather than an also-ran (#433).
+    #:
+    #: Split from the folder cover's own source (#490). One flag meaning "the
+    #: archive supplies either destination" read as a verdict on both, so an
+    #: album whose tracks keep their image while `cover.jpg` takes the archive's
+    #: (the ordinary #479 outcome) counted as a clean win — and the candidate
+    #: row vanished, taking the only **Use this artwork** override with it.
+    archive_on_tracks: bool = False
+    #: …and whether it is what the FOLDER COVER is getting, which is a different
+    #: question and the common one.
+    archive_on_cover: bool = False
     #: The archive's image itself, when a copy is held locally. Present for a
     #: WINNER, which is downloaded as part of the check, and for a loser someone
     #: has asked to see (#448) — so it says only "there is a copy of this on
@@ -865,8 +879,16 @@ class ArtworkView:
         forgotten — so there genuinely is no picture, and fetching one to show
         would spend megabytes on an image nobody will use.
 
-        None when the archive's cover WINS: it is then the incoming value, and
-        appears in that column with the hexagon, which is where purple belongs.
+        None when the archive's cover is going ONTO THE TRACKS: it is then the
+        incoming value everywhere it could be, and appears in that column with
+        the hexagon, which is where purple belongs.
+
+        Not when it merely wins the folder cover (#490). That is the ordinary
+        #479 outcome — one high-resolution `cover.jpg` beside modest embedded
+        art — and the tracks are keeping what they carry, so the archive's image
+        is still a candidate for them. This row is the only place **Use this
+        artwork** lives, and suppressing it there left the deliberate choice
+        reachable only by applying the folder-only change and coming back.
 
         "Not what would be written" covers two cases and deliberately treats
         them alike: a cover that is smaller than the album's own, and one that
@@ -876,7 +898,7 @@ class ArtworkView:
         size is the honest account of it.
         """
         answer = self.caa
-        if answer is None or self.archive_wins:
+        if answer is None or self.archive_on_tracks:
             return None
         if not answer.has_art:
             # A different word, because it is a different fact: there is nothing
@@ -885,7 +907,10 @@ class ArtworkView:
         size = Size(answer.width, answer.height) if answer.width and answer.height else None
         if size is None:
             return ArchiveRow(
-                placeholder="not loaded", meta="size could not be read", image=self.archive
+                placeholder="not loaded",
+                meta="size could not be read",
+                image=self.archive,
+                also_coming=self.archive_on_cover,
             )
         return ArchiveRow(
             placeholder="not loaded",
@@ -896,10 +921,11 @@ class ArtworkView:
             # one rather than their pressing's.
             from_release_group=answer.from_release_group,
             # The picture, when someone has asked for it (#448). Reaching this
-            # line at all means the archive's cover did NOT win — so an image
-            # here is one a user went and fetched to look at, and showing it
-            # changes nothing about what a re-tag would write.
+            # line at all means the archive's cover is not going onto the tracks
+            # — so an image here is either one a user fetched to look at, or the
+            # folder cover's incoming image offered to the tracks as well (#490).
             image=self.archive,
+            also_coming=self.archive_on_cover,
         )
 
     @property
@@ -1012,10 +1038,15 @@ def summarise(
     )
     written = {c.target for c in the_plan.changes}
     cover_change = the_plan.cover_change(Scope.ALL)
-    # Whether the archive's image is what is coming ANYWHERE — onto the tracks,
-    # or into the folder cover alone (#479). It is what marks the candidate as
-    # the incoming one rather than an also-ran.
-    from_archive = Source.ARCHIVE in (the_plan.source, the_plan.cover_source)
+    # The two destinations, asked separately (#490). "Is the archive's image
+    # coming anywhere" was one flag, and it decided whether the candidate row —
+    # which carries the only explicit override — was drawn at all. An album whose
+    # tracks keep their own image while `cover.jpg` takes the archive's is the
+    # ORDINARY #479 outcome, and it hid the row on exactly the albums where the
+    # user most needs it: the image is there, better than what the tracks carry,
+    # and the size rule deliberately will not put it in them.
+    archive_on_tracks = the_plan.source is Source.ARCHIVE
+    archive_on_cover = the_plan.cover_source is Source.ARCHIVE
 
     by_digest: dict[str, list[tuple[Path, TrackRef]]] = {}
     art_of: dict[str, EmbeddedArt] = {}
@@ -1126,7 +1157,8 @@ def summarise(
         total_tracks=len(tracks),
         unreadable=len(tracks) - len(readable),
         caa=caa,
-        archive_wins=from_archive,
+        archive_on_tracks=archive_on_tracks,
+        archive_on_cover=archive_on_cover,
         archive=archive,
         cover_unreadable=cover_unreadable,
         plan=the_plan,

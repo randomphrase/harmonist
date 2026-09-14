@@ -474,19 +474,54 @@ class TestCoverArtArchiveNote:
     def test_nothing_said_until_it_has_been_asked(self) -> None:
         assert summarise(album(art_of(1)), None).archive_row is None
 
-    def test_a_winning_archive_cover_needs_no_sentence(self) -> None:
+    def test_an_archive_cover_that_wins_the_tracks_needs_no_sentence(self) -> None:
         """It is the incoming value, shown in that column with the hexagon —
-        saying it in prose as well would say it twice (#433)."""
+        saying it in prose as well would say it twice (#433).
+
+        WINNING means the tracks (#490). An archive image that is only upgrading
+        `cover.jpg` leaves the tracks their own under #479, and stays offerable
+        to them — the test below. Here the album has nothing embedded, so the
+        archive's image is what every target is getting and there is no half of
+        the album left to offer it to.
+        """
         # The cached IMAGE as well as the answer: an archive cover that was
         # never downloaded cannot be written, so it cannot win — the tagger
         # reads the same cache.
         view = summarise(
-            album(art_of(1, width=600, height=600)),
-            cover_of(art_of(2, width=600, height=600)),
+            album(None, None),
+            None,
             self._Answer(1400, 1400),
             archive=art_of(3, width=1400, height=1400),
         )
+
+        assert view.plan is not None and view.plan.source is artwork.Source.ARCHIVE
         assert view.archive_row is None  # not an also-ran; it won
+
+    def test_a_cover_only_upgrade_still_offers_the_archive_to_the_tracks(self) -> None:
+        """The archive's image can be the best thing going for the FOLDER cover
+        while #479 leaves the tracks the image they carry (#490).
+
+        The candidate row is the only place **Use this artwork** lives, and it
+        was suppressed as soon as the archive supplied either destination — so
+        an album whose tracks keep modest art beside a better archive cover had
+        no way to put that image into the tracks at all, short of applying the
+        folder-only change and coming back once the row reappeared.
+        """
+        mine = art_of(1, width=300, height=300)
+        folder = art_of(2, width=1000, height=1000)
+        theirs = art_of(3, width=2000, height=2000)
+
+        view = summarise(
+            album(mine, mine), cover_of(folder), self._Answer(2000, 2000), archive=theirs
+        )
+
+        # The ordinary plan upgrades the folder cover and nothing else (#479)…
+        assert view.plan is not None
+        assert [c.folder_cover for c in view.plan.changes] == [True]
+        # …and the archive's image is still there to be chosen for the tracks.
+        row = view.archive_row
+        assert row is not None
+        assert row.image == theirs
 
     def test_a_losing_archive_cover_is_a_row_of_facts_not_a_sentence(self) -> None:
         """Drawn as the candidate it is, muted, with no picture — a losing image

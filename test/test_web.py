@@ -9780,14 +9780,15 @@ def test_a_winning_archive_cover_is_marked_as_the_one_being_written(client, cfg)
     purple — which is how the Tags panel has always distinguished a value
     MusicBrainz would write from one that merely agrees.
     """
-    from harmonist import cover_art, formats
+    from harmonist import cover_art
     from test.test_artwork import png_bytes
 
+    # NOTHING embedded and no folder cover, so the archive's image is what the
+    # TRACKS get — a win everywhere. A folder-only upgrade is a different case
+    # since #490: the tracks keep their own image under #479 and the archive
+    # stays offered to them, muted row and all, so it would not test the marks
+    # this is about. See the test below for that one.
     d = _make_tagged_album(cfg, "Bettered", mbid="rel-win", tagged_at=datetime.now(UTC))
-    small = png_bytes(64, 64)
-    for track in d.glob("*.m4a"):
-        formats.write_cover(track, small)
-    (d / "cover.jpg").write_bytes(small)
     # The archive's, measured AND fetched — a winner is downloaded, which is
     # what lets the page show it rather than a placeholder.
     cover_art.cache_image("rel-win", png_bytes(1400, 1400), "image/png")
@@ -9808,6 +9809,46 @@ def test_a_winning_archive_cover_is_marked_as_the_one_being_written(client, cfg)
     assert "art-row__facts--mb" in rendered
     assert "From the Cover Art Archive" in rendered  # the hexagon's label
     assert "Apply artwork" in rendered
+
+
+def test_the_archive_stays_offerable_when_it_only_upgrades_the_folder_cover(client, cfg):
+    """The ordinary #479 outcome — modest embedded art beside a better archive
+    cover — must still offer **Use this artwork** for the tracks (#490).
+
+    Both halves belong on the page at once: the archive's image marked as the
+    one coming to `cover.jpg`, and the same image still offered for the tracks,
+    under a heading that does not call it an also-ran. It was suppressed
+    entirely, so the only way to put that image into the tracks was to apply the
+    folder change first and come back once the row reappeared.
+    """
+    from harmonist import cover_art, formats
+    from test.test_artwork import png_bytes
+
+    d = _make_tagged_album(cfg, "CoverOnly", mbid="rel-cover-only", tagged_at=datetime.now(UTC))
+    for track in d.glob("*.m4a"):
+        formats.write_cover(track, png_bytes(300, 300))
+    (d / "cover.jpg").write_bytes(png_bytes(1000, 1000))
+    cover_art.cache_image("rel-cover-only", png_bytes(2000, 2000), "image/png")
+    activity_store.store_cover_art(
+        "rel-cover-only",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-cover-only/1.jpg",
+            width=2000,
+            height=2000,
+            mime="image/png",
+        ),
+    )
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+
+    # Coming to the folder cover, and marked as the archive's…
+    assert "From the Cover Art Archive" in rendered
+    # …and still on offer for the tracks, which keep their own image under #479.
+    assert "Use this artwork" in rendered
+    # Not past tense: it was not weighed and dropped, it is partly coming.
+    assert "Also available" in rendered
+    assert "Also considered" not in rendered
 
 
 def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
