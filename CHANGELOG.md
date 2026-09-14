@@ -50,6 +50,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **One Apply updates button, whatever an album needs** — an album with artwork
+  changes alone offered **Apply artwork** instead, and an album with both
+  offered two primary buttons for one decision. Both findings are still
+  described separately, and artwork-only work no longer runs a re-tag to do it
+  (#491).
 - **Artwork is never replaced unless a copy of it was kept** — embedded images
   now get the protection folder covers had, and a full artwork store leaves the
   image in place rather than overwrite it (#470).

@@ -9051,11 +9051,11 @@ def test_artwork_section_shows_the_folder_cover_it_would_create(client, cfg):
 
     # Named for the image it will hold: the tracks' own art is a PNG.
     assert "not in the folder yet" in rendered
-    assert "There is no cover.png." in rendered
     assert "the album&#39;s own artwork" in rendered
     assert "Apply artwork" in rendered
-    # An addition, and labelled as one.
-    assert "Addition" in rendered
+    # The Addition/Replacement chip is the FINDING's, and since #491 the finding
+    # is drawn by /compare — see
+    # `test_an_artwork_only_album_gets_one_apply_updates_action`.
 
 
 def test_artwork_section_does_not_announce_a_cover_the_album_already_has(client, cfg):
@@ -9124,6 +9124,74 @@ def test_the_cover_art_check_is_reachable_before_it_has_ever_run(client, cfg):
     # is stale (#436), so this control is the one that asks REGARDLESS — the
     # same word the MusicBrainz re-read control beside it uses.
     assert f"/album/{album_id}/artwork?reread=1" in rendered
+
+
+def _primary_actions(html: str) -> list[str]:
+    """The primary buttons the album's FINDINGS offer, in order.
+
+    `album-finding__act` is the findings' own class. The Artwork section's
+    button below the images carries its own classes and is deliberately not
+    counted: #491 asks for one primary among the findings and keeps that one as
+    the explicit escape hatch.
+    """
+    import re
+
+    return [
+        " ".join(m.group(1).split())
+        for m in re.finditer(r'class="album-finding__act"[^>]*>(.*?)</button>', html, re.DOTALL)
+    ]
+
+
+def test_an_artwork_only_album_gets_one_apply_updates_action(client, cfg, monkeypatch):
+    """One primary action, whatever kind of change is pending (#491).
+
+    An album whose tags already match MusicBrainz but whose artwork has a gap
+    had no **Apply updates** at all — the combined control lived inside the
+    metadata finding — so the artwork finding offered **Apply artwork** instead,
+    and the page's primary action changed its name depending on what happened to
+    be wrong.
+
+    It must not re-tag to do it: there is no metadata change to write, and a
+    no-op tag write would drag an unrelated MusicBrainz validation in with it.
+    """
+    from harmonist import tagger
+
+    release = _release_for_match("rel-art-only", n_tracks=2)
+    d = _release_backed_album_with_art(cfg, "ArtworkOnly", "rel-art-only", covers=[_png(1), None])
+    tagger.tag_album(d, release)  # the tags now match — nothing for the metadata half
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", lambda mbid: release)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+    aid = _id_for(cfg, d)
+
+    html = client.get(f"/library/{aid}/compare").text
+
+    assert _primary_actions(html) == ["Apply updates"]
+    assert f'hx-post="/album/{aid}/artwork/update"' in html
+    # The artwork half is still described in its own terms beside the action:
+    # the sentence, and the Addition/Replacement chip that is not a tag rank.
+    assert "missing artwork" in html
+    assert "Addition" in html
+
+
+def test_a_mixed_album_offers_one_primary_action_not_two(client, cfg, monkeypatch):
+    """Tags and artwork both pending is still ONE primary (#491).
+
+    The findings offered **Apply updates** and **Apply artwork** side by side,
+    which made the reader choose between two buttons for one decision — and the
+    combined one already applies both halves.
+    """
+    small, big = _png(1), _png_sized(2, 600)
+    d = _release_backed_album_with_art(
+        cfg, "MixedPrimary", "rel-mixed-primary", covers=[big, big], folder=small
+    )
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=2)
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+
+    html = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    assert _primary_actions(html) == ["Apply updates"]
 
 
 def test_the_artwork_action_is_offered_only_when_something_would_change(client, cfg):
@@ -9660,18 +9728,30 @@ def test_the_artwork_action_writes_artwork_and_not_tags(client, cfg):
     assert MP4(track)[ATOM_TITLE] == ["Left alone"]
 
 
-def test_the_artwork_finding_carries_the_action_rather_than_a_link_to_it(client, cfg):
+def test_the_artwork_finding_carries_the_action_rather_than_a_link_to_it(client, cfg, monkeypatch):
     """The section is below the fold and the top of the page said nothing about
     artwork at all (#417) — and then said it without offering the button, which
     is how a reader who knew the feature existed concluded there was none (#443).
+
+    Stated by the FINDINGS row since #491, rather than by the artwork note: one
+    primary action means one element has to own it, and only /compare knows
+    whether the metadata half has a finding of its own.
     """
-    d = _album_with_art(cfg, "Improvable", covers=[_png(1), None], folder=_png(2))
+    from harmonist import tagger
+
+    release = _release_for_match("rel-improvable", n_tracks=2)
+    d = _release_backed_album_with_art(
+        cfg, "Improvable", "rel-improvable", covers=[_png(1), None], folder=_png(2)
+    )
+    tagger.tag_album(d, release)
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", lambda mbid: release)
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     album_id = _id_for(cfg, d)
 
-    r = client.get(f"/album/{album_id}/artwork")
+    r = client.get(f"/library/{album_id}/compare")
 
     rendered = " ".join(r.text.split())
-    finding = rendered[rendered.index("album-artwork-note-") :]
+    finding = rendered[rendered.index("album-update-") :]
     assert "missing artwork" in finding
     # The action itself, on the finding's own line, in the same class as
     # Re-tag from MB — one definition, so "equal prominence" survives an edit.

@@ -29,12 +29,27 @@
    gets nothing at all, and moving the sentence into a section does not change
    the question of whether to draw it. #}
 <div id="album-update-{{ album.id }}" hx-swap-oob="true">
-    {% if not advisory(comparison, tracklist) %}
+    {# BOTH findings and ONE action (#491). The artwork half used to state itself
+       in `_artwork_note.html` and carry its own **Apply artwork**, so an album
+       with both kinds of change offered two primary buttons for one decision,
+       and an album with artwork alone had no **Apply updates** at all — the
+       page's primary action changed its name depending on what was wrong.
+
+       They are drawn HERE, together, because this element is the only one that
+       knows both answers: the artwork responses that fill the note never fetch a
+       MusicBrainz comparison, so they cannot tell whether a metadata finding
+       exists and therefore cannot decide which row owns the button. #}
+    {% set art = artwork if artwork is defined else none %}
+    {% set tags_pending = not advisory(comparison, tracklist) %}
+    {% set art_pending = art and art.writes %}
+    {% set can_retag = comparison.mb_available and album.sidecar and album.sidecar.mb_release_id %}
+    {% if tags_pending or art_pending %}
     {# A FINDING ROW, not a section: the border and padding moved to the wrapper
        in album.html when the artwork finding joined this one (#443), so the two
        read as two things Harmonist noticed rather than as two kinds of thing.
        The action sits on this line, at the end of it. #}
     <div class="album-finding">
+        {% if tags_pending %}
         <span class="album-update__key">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
                 <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
@@ -61,8 +76,27 @@
            `artwork` is set by both responses that render this finding: the
            /compare one (#485) and the deleted-release one, which draws it from
            the same pass over the files. #}
-        {% set art = artwork if artwork is defined else none %}
-        {% if art and art.writes %}{{ artwork_chip(art.operation) }}{% endif %}
+        {% if art_pending %}{{ artwork_chip(art.operation) }}{% endif %}
+        {% endif %}
+
+        {# The artwork finding's own sentence, on its own line (#417, #443,
+           #491). Its own heading rather than a clause on the line above,
+           because the two findings are two things Harmonist noticed and only
+           one of them is about MusicBrainz — and because an album can have this
+           one alone, where it is the whole of what the page has to report. #}
+        {% if art_pending %}
+        <span class="album-update__key album-finding__key--art">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4.5" width="18" height="15" rx="2"/>
+                <path d="M3 15.5l4.5-4.5 3.5 3.5 3-3 7 7"/>
+            </svg>
+        </span>
+        <h2 class="album-update__legend">{{ art.summary }}</h2>
+        {# The chip goes beside whichever sentence is carrying it: up with the
+           tags when both are drawn, here when this is the only finding. #}
+        {% if not tags_pending %}{{ artwork_chip(art.operation) }}{% endif %}
+        {% endif %}
 
         {# Moved here from the panel's action row. Keeps `retag-btn-<id>`,
            which is not decoration: it is what a release-gone response used
@@ -81,7 +115,7 @@
            that could only fail. A disabled one used to be swapped in to
            cover that; not drawing it at all is better, and the endpoint's
            own refusal (#194) was always the real guard. #}
-        {% if comparison.mb_available and album.sidecar and album.sidecar.mb_release_id %}
+        {% if tags_pending and can_retag %}
         {# ONE action for both halves (#482). It was **Re-tag from MB**, which
            named a mechanism and promised "your artwork is left alone" — no
            longer true of a control that writes the artwork changes the reader
@@ -142,6 +176,27 @@
             <button id="retag-btn-{{ album.id }}" type="submit"
                     class="album-finding__act"
                     title="Write what MusicBrainz says to this album's files{% if art and art.writes %}, and the artwork shown under After Apply while it is included{% endif %}.">
+                Apply updates
+            </button>
+        </form>
+        {% elif art_pending %}
+        {# ARTWORK ALONE, and the same button (#491). It posts to the artwork
+           action rather than to /retag: there is no metadata change to write,
+           and a no-op re-tag would drag an unrelated MusicBrainz validation in
+           with it — refusing on a deleted release, or on a tracklist that has
+           grown, for a press that was only ever about a picture.
+
+           The fields come from the note through `hx-include`, exactly as the
+           combined control's do (#488), so choosing an image or a candidate
+           landing late updates what this press carries. #}
+        <form hx-post="/album/{{ album.id }}/artwork/update"
+              hx-target="#album-artwork" hx-swap="innerHTML"
+              hx-disabled-elt="find button"
+              hx-include=".apply-art-{{ album.id }}"
+              {% if art.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
+              class="album-finding__act-form">
+            <button type="submit" class="album-finding__act"
+                    title="Write the artwork the Artwork section shows under After Apply. No tags are touched.">
                 Apply updates
             </button>
         </form>
