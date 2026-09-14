@@ -2044,11 +2044,25 @@ def _restorable_anchors(
     that would fail is worse than offering none. One `path_for` glob per
     distinct digest — cheap enough for a page render.
 
-    An ADDITION needs nothing from the store (#471): undoing it takes the image
-    back off, and there is no older image to find. So a change that only added
-    artwork is always undoable while its records last.
+    TWO conditions, because an undo both puts images back and destroys what is
+    there now. The images it puts back must still be kept — that is the
+    per-digest check. And the store must be able to keep what the undo itself
+    overwrites or removes (#470), which is a fact about the store rather than
+    about this row.
+
+    An ADDITION needs nothing put back, which is why it used to be treated as
+    always undoable (#471) — but it is undone by REMOVING an image, and
+    Harmonist keeps an image before destroying it. With the store switched off
+    that undo was offered and then refused on press, availability and execution
+    disagreeing about the same button (#493).
+
+    Coarse on purpose: whether a particular image will fit is answered at write
+    time, where it can be answered truthfully. This rules out only the case the
+    page can already see.
     """
     out: set[int] = set()
+    if not artwork_store.can_keep():
+        return out
     for anchor, records in tag_history.group_records(history, detail).items():
         plan = tag_history.artwork_revert_plan(records)
         needed = {item.before for item in plan if item.before is not None}

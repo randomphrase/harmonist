@@ -9713,6 +9713,62 @@ def test_history_offers_undo_for_artwork_a_change_added(client, cfg):
     assert track1 is not None and track1[0] == art
 
 
+def test_an_addition_offers_no_undo_when_the_store_can_keep_nothing(client, cfg):
+    """Undoing an addition REMOVES an image, and Harmonist never destroys an
+    image it cannot put back (#470) — so with the store switched off that Undo
+    is refused on press.
+
+    It was offered anyway (#493): an addition needs nothing FROM the store, so
+    the availability check had nothing to look for and said yes. Availability
+    and execution disagreed, which is the one thing this check exists to stop.
+    """
+    import re
+
+    from harmonist import artwork_store
+
+    d = _album_with_art(cfg, "AddedNoRoom", covers=[_png(1), None])
+    aid = _id_for(cfg, d)
+    shown = _form_value(client.get(f"/album/{aid}/artwork").text, "plan")
+    client.post(f"/album/{aid}/artwork/update", data={"plan": shown})
+    # Switched off: nothing can be kept, so nothing may be destroyed.
+    artwork_store.configure(artwork_store._root, max_bytes=0)
+
+    page = client.get(f"/album/{_id_for(cfg, d)}").text
+
+    assert not re.search(r'hx-post="/artwork/restore/', page), (
+        "offered an Undo the store cannot carry out"
+    )
+
+
+def test_undoing_artwork_is_recorded_against_the_album(client, cfg):
+    """A restore is Harmonist writing to the user's files, so it belongs in that
+    album's own History (#493, #260).
+
+    It was audited without an album id, which the feed's mirror drops and the
+    album page can never find — so the one record of an Undo having happened was
+    invisible exactly where someone would look for it.
+    """
+    import re
+
+    from harmonist import activity_store
+
+    d = _album_with_art(cfg, "Recorded", covers=[_png(1), None])
+    aid = _id_for(cfg, d)
+    shown = _form_value(client.get(f"/album/{aid}/artwork").text, "plan")
+    client.post(f"/album/{aid}/artwork/update", data={"plan": shown})
+    page = client.get(f"/album/{_id_for(cfg, d)}").text
+    undo = re.search(
+        r'hx-post="/artwork/restore/[^"]+"\s+hx-vals=\'\{"event_id": "(\d+)"\}\'', page
+    )
+    assert undo, "no artwork Undo to press"
+    album_id = _id_for(cfg, d)
+
+    client.post(f"/artwork/restore/{album_id}", data={"event_id": undo.group(1)})
+
+    messages = [e.message for e in activity_store.album_history(album_id)]
+    assert any(m.startswith("artwork.restore") for m in messages), messages
+
+
 def _png_sized(seed: int, size: int) -> bytes:
     from test.test_artwork import png_bytes
 

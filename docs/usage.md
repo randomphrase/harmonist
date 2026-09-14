@@ -672,8 +672,12 @@ leaves that image where it is rather than replace it with no way back, and the
 album's Activity names the files it left alone. The rest of the change still
 happens: a re-tag still writes its tags, and a track that had no image still
 gets one. An undo that would overwrite an image it can't keep is refused
-outright. See [Artwork](#artwork) for what changes an album's images in the
-first place.
+outright — and so is one that would take an image *off*, since removing it means
+keeping it first. With the store switched off, artwork Undo isn't offered at
+all rather than offered and refused. Unlike the tag undo, an artwork undo is not
+itself offered back as an undo: what it replaced is kept, so you can put it back
+from the older History row, but there is no "undo the undo" button. See
+[Artwork](#artwork) for what changes an album's images in the first place.
 
 ## Activity
 

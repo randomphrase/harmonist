@@ -54,7 +54,9 @@
            replaced, take back off an image it added (#471). Offered only when
            every image it would put back is still kept — the store evicts
            oldest-first, and a button that would fail is worse than no button
-           (#131). An addition puts nothing back, so needs nothing kept. #}
+           (#131) — and only while the store can keep what this undo would
+           itself destroy, which an addition needs as much as a replacement
+           does (#493). #}
         {% if restorable and anchor_id in restorable %}
         {# hx-swap="none": the response is a flash delivered by HX-Trigger, and
            the album-retagged event reloads the page so every stale region —
@@ -62,7 +64,14 @@
         <button hx-post="/artwork/restore/{{ album.id }}"
                 hx-vals='{"event_id": "{{ anchor_id }}"}'
                 hx-swap="none" hx-disabled-elt="this"
-                hx-confirm="Undo this artwork change? Images it replaced are put back and images it added are taken off; any you have changed since are left alone. What is there now is kept, so this can be undone in turn."
+                {# NOT "so this can be undone in turn" (#493). That is true of
+                   the tag undo above, which records its own changes as a
+                   tagging History can offer back — and it was never true here:
+                   a restore writes an audit line, not a change row, so nothing
+                   can offer it as an undo. Promising a way back that does not
+                   exist is worse than the honest guarantee, which is that
+                   nothing is destroyed without a copy being kept first. #}
+                hx-confirm="Undo this artwork change? Images it replaced are put back and images it added are taken off; any you have changed since are left alone. What is there now is kept first, so nothing is removed without a copy."
                 class="tag-changes__undo"
                 title="Put back the artwork this change replaced, and take off the artwork it added"
                 aria-label="Undo this artwork change">Undo</button>

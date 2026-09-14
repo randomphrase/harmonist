@@ -185,6 +185,23 @@ def path_for(key: str) -> Path | None:
     return None
 
 
+def can_keep() -> bool:
+    """Whether the store could retain an image at all right now (#493).
+
+    Not whether a PARTICULAR image fits — that needs its bytes, and the honest
+    answer arrives at write time, where `keep_all` returns the digests it really
+    retained. This is the coarse question an availability check can afford on a
+    page render: is there a store, and is it switched on.
+
+    Its own predicate because "no kept copy, no replacement" (#470) governs UNDO
+    as well. An undo overwrites what is there now, or removes it; either way
+    Harmonist keeps it first. So a store that can keep nothing makes every
+    artwork undo refusable, and a button that would be refused on press is worse
+    than no button.
+    """
+    return _root is not None and _max_bytes > 0
+
+
 def usage() -> tuple[int, int]:
     """`(bytes_used, cap)` — what Settings shows."""
     root = _root

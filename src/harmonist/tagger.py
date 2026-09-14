@@ -1743,6 +1743,15 @@ def restore_artwork(
             "and undoing would destroy it with no way back"
         )
 
+    # The id this album answers to, for the same reason `apply_artwork` takes
+    # one (#260, #493): a record with no album id is one the feed's mirror drops
+    # and the album's own History can never find — so the single record that an
+    # Undo happened was invisible exactly where someone would look for it.
+    # Read here rather than after the loop because a restore writes images and
+    # touches neither tags nor the sidecar, so the album's identity cannot move
+    # underneath it.
+    album_id = sidecar_mod.album_id_for(album_dir) or id_registry.peek(album_dir)
+
     restored = removed = 0
     for path, data, _after in actions:
         if data is not None:
@@ -1753,6 +1762,7 @@ def restore_artwork(
             removed += 1
         audit.record(
             "artwork.restore",
+            album_id=album_id,
             album=album_dir,
             file=naming.name_of(path),
             digest=images.digest(data) if data is not None else "-",

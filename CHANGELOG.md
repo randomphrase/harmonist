@@ -50,6 +50,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **Artwork Undo is offered only when it can actually run** — on a change that
+  *added* images it was offered even with the artwork store switched off or
+  full, then refused when pressed. It also no longer claims it can itself be
+  undone, which was never true of artwork, and a successful Undo now appears in
+  that album's own History (#493).
 - **A re-tag that could not write one image says what it did do** — a file that
   could not take its artwork (a full disk, a file another program has open)
   reported **Re-tag failed** over an album whose tags had already been written.
