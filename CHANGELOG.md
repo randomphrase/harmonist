@@ -55,6 +55,10 @@ versions follow [semantic versioning](https://semver.org).
   no longer leaves the button carrying an older plan, and the choice survives
   accepting the short-tracklist offer. Pressing it after choosing a smaller
   image wrote the larger one Harmonist would have picked (#488).
+- **An album's last five artwork changes are five changes, not five files** —
+  one change across a ten-track album used up the whole allowance by itself, so
+  earlier changes to that album stopped being protected from the store's size
+  cap the moment it ran (#492).
 - **History names `cover.jpg` instead of counting it as a track** (#469).
 - **A re-tag says what it did to your artwork** — how many files it wrote, and
   which it left alone and why. A re-tag whose artwork was skipped because the

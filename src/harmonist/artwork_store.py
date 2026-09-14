@@ -27,8 +27,9 @@ broke it in the way that matters least visibly — a background pass backing up
 five hundred albums overnight would evict the copy behind the Undo button your
 album was still offering, on a schedule nobody can predict. Retention is
 therefore computed from the same records the UI reads (`activity_store`'s
-artwork backups, grouped per tagging), so what is protected is exactly what the
-page offers to restore rather than a second opinion about it.
+artwork backups, grouped per album ACTION — the unit History offers an Undo for,
+and not the per-file rows underneath it, #492), so what is protected is exactly
+what the page offers to restore rather than a second opinion about it.
 
 The byte cap remains as a **backstop**, not the policy: it only bites once every
 album is already down to its protected set, and when it does it takes the oldest
@@ -232,6 +233,12 @@ def protected_digests() -> frozenset[str]:
     Grouped per album under the id the tagging was RECORDED with, which is what
     makes a re-identified album keep its older backups: those rows carry its old
     id, and both sets are protected on their own terms.
+
+    What a slot buys is one ALBUM ACTION, however many files it wrote (#492).
+    `artwork_backups` does that grouping; counting its results is this
+    function's whole policy, so the two must agree about what "a change" is —
+    an album whose ten tracks share one cover is one change here and one row in
+    History.
 
     Empty when the store is unreachable — and that is the safe direction. An
     empty protected set makes eviction fall back to oldest-first over

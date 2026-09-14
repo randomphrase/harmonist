@@ -202,6 +202,31 @@ def _replaced(album_id: str, before: bytes, after: bytes = b"new") -> int:
     return event_id
 
 
+def _album_action(album_id: str, befores: list[bytes], after: bytes = b"new") -> None:
+    """Record ONE album-wide artwork change that replaced an image on each of
+    several files.
+
+    The shape every real artwork write takes: the HTTP middleware opens a single
+    action scope for the request, and the tagger writes a `tag.track` row per
+    file inside it (#84). `_replaced` above is the other shape — a row with no
+    action at all, which is what records written before #84 look like.
+    """
+    with activity_store.action():
+        for i, before in enumerate(befores, start=1):
+            event_id = activity_store.append(
+                message=f"tag.track file={i:02d}.m4a",
+                level=activity_store.Level.INFO,
+                source=activity_store.Source.AUDIT,
+                album_id=album_id,
+            )
+            assert event_id is not None
+            activity_store.record_tag_changes(
+                event_id,
+                file=f"{i:02d}.m4a",
+                changes={"artwork": [artwork_store.digest(before), artwork_store.digest(after)]},
+            )
+
+
 def _image(seed: int) -> bytes:
     return b"\xff\xd8\xff" + bytes([seed]) * 4000
 
@@ -255,6 +280,67 @@ class TestProtectedDigests:
         )
 
         assert artwork_store.protected_digests() == frozenset()
+
+    def test_one_album_action_spends_one_slot_however_many_files_it_wrote(self):
+        """Retention counts ALBUM ACTIONS, not files (#492).
+
+        An eight-track album whose tracks share one cover is one thing the user
+        would undo, and History offers it as one row. Counted per file, that
+        single action spent the whole allowance on itself — protecting the first
+        few of its own before-images and dropping its protection of every
+        earlier action of the same album in the same breath.
+        """
+        artwork_store.configure(artwork_store._root, keep_per_album=2)
+        older = _image(1)
+        _album_action("album-a", [older])
+        # Distinct images per track, so this also covers a compilation: every
+        # before-image of the action is protected, not just the first two rows.
+        recent = [_image(10 + i) for i in range(8)]
+        _album_action("album-a", recent)
+
+        protected = artwork_store.protected_digests()
+
+        assert {artwork_store.digest(i) for i in recent} <= protected
+        assert artwork_store.digest(older) in protected, (
+            "an earlier action still owes the user an Undo"
+        )
+
+    def test_the_ordinary_album_sharing_one_cover_counts_the_same(self):
+        """The common shape, and the one the promise is written for: ten tracks
+        carrying one picture, replaced in one go.
+
+        Counted per file it is ten units, so the two newest actions of this
+        album were both spent inside the latest one and everything before it
+        lost its protection — while the store's page went on offering the Undo.
+        """
+        artwork_store.configure(artwork_store._root, keep_per_album=2)
+        first, second, shared = _image(1), _image(2), _image(3)
+        _album_action("album-a", [first])
+        _album_action("album-a", [second])
+        _album_action("album-a", [shared] * 10)
+
+        protected = artwork_store.protected_digests()
+
+        assert artwork_store.digest(shared) in protected
+        assert artwork_store.digest(second) in protected, "the action before it is the second slot"
+        assert artwork_store.digest(first) not in protected, "and two is all this album keeps"
+
+    def test_records_with_no_action_are_still_counted_one_by_one(self):
+        """The fallback for rows written before actions were recorded (#84).
+
+        They carry no action id, and must not collapse into one unit — an album's
+        whole history protected under a single slot would be the opposite
+        mistake, and would quietly hold images the store is entitled to spend.
+        """
+        artwork_store.configure(artwork_store._root, keep_per_album=1)
+        old, new = _image(1), _image(2)
+        _replaced("album-a", old)
+        _replaced("album-a", new)
+
+        protected = artwork_store.protected_digests()
+
+        assert artwork_store.digest(new) in protected
+        assert artwork_store.digest(old) not in protected
 
 
 class TestEviction:

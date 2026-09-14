@@ -738,11 +738,14 @@ DISCOVERY_EVENT = "album.discovered"
 
 @dataclass(frozen=True)
 class ArtworkBackup:
-    """One tagging that replaced artwork, and the images it replaced.
+    """One artwork change on one album, and the images it replaced.
 
-    The unit is the TAGGING, not the file: a compilation whose four per-track
-    covers are overwritten in one go is one thing the user would undo, and
-    retention counts it once (#408).
+    The unit is the ALBUM ACTION, not the file: a compilation whose four
+    per-track covers are overwritten in one go is one thing the user would undo,
+    History offers it as one row, and retention counts it once (#408, #492).
+
+    `event_id` is the NEWEST event of that action — an anchor for ordering
+    rather than an identity, since an action writes one event per file.
     """
 
     album_id: str
@@ -759,9 +762,23 @@ def artwork_backups() -> list[ArtworkBackup]:
     retention protects exactly what the UI offers an Undo for, rather than a
     second opinion about it that could disagree.
 
-    Grouped by event because `tag_changes` holds a row per FILE: an album's
-    tagging contributes as many rows as it wrote files, and all of them belong
-    to the one change.
+    Grouped by ACTION, because both `events` and `tag_changes` hold a row per
+    FILE: one artwork change writes a `tag.track` event for every file it wrote,
+    and all of them are the one thing the user would undo. Grouping by event
+    counted them separately, so a ten-track album spent an entire five-change
+    allowance on a single action — protecting the first few of its own
+    before-images, and dropping every earlier action of that album at the same
+    moment (#492). `tag_history.group_by_action` groups History the same way, by
+    the same id, which is what keeps the promise and the offer in step.
+
+    Rows with NO action id are each their own unit. That is the honest reading
+    of a record written before actions were correlated (#84): nothing says which
+    of them belonged together, and collapsing them per album would protect an
+    album's whole history under one slot — the opposite mistake, and one that
+    would hold images the store is entitled to spend.
+
+    Keyed by album AND action, so an action that somehow spanned two albums is
+    still counted once against each. The promise is per album.
 
     Album id is the one stored on the event, NOT resolved through the alias
     chain. That is correct here and worth stating: an album re-identified since
@@ -773,7 +790,7 @@ def artwork_backups() -> list[ArtworkBackup]:
         conn = _ensure()
         with _LOCK:
             rows = conn.execute(
-                "SELECT e.album_id, c.event_id, c.changes "
+                "SELECT e.album_id, c.event_id, e.action_id, c.changes "
                 "FROM tag_changes c JOIN events e ON e.id = c.event_id "
                 "WHERE e.album_id IS NOT NULL "
                 "ORDER BY c.event_id DESC"
@@ -782,9 +799,12 @@ def artwork_backups() -> list[ArtworkBackup]:
         log.exception("activity_store artwork_backups failed", extra=_QUIET_MIRROR)
         return []
 
-    by_event: dict[int, tuple[str, set[str]]] = {}
-    order: list[int] = []
-    for album_id, event_id, payload in rows:
+    #: (album id, action) -> the action's newest event, and every image it
+    #: replaced. Rows arrive newest first, so the first event seen for a unit is
+    #: the one that orders it.
+    by_unit: dict[tuple[str, str], tuple[int, set[str]]] = {}
+    order: list[tuple[str, str]] = []
+    for album_id, event_id, action_id, payload in rows:
         try:
             parsed = json.loads(payload)
         except (TypeError, ValueError):
@@ -798,14 +818,17 @@ def artwork_backups() -> list[ArtworkBackup]:
             continue
         if not pair[0]:
             continue
-        key = int(event_id)
-        if key not in by_event:
-            by_event[key] = (str(album_id), set())
-            order.append(key)
-        by_event[key][1].add(pair[0])
+        # The `event:` prefix cannot collide with an action id, which is a uuid4
+        # hex — so a record from before correlation stands alone rather than
+        # joining whatever action happens to be keyed nearby.
+        unit = (str(album_id), str(action_id) if action_id else f"event:{int(event_id)}")
+        if unit not in by_unit:
+            by_unit[unit] = (int(event_id), set())
+            order.append(unit)
+        by_unit[unit][1].add(pair[0])
     return [
-        ArtworkBackup(album_id=by_event[e][0], event_id=e, digests=frozenset(by_event[e][1]))
-        for e in order
+        ArtworkBackup(album_id=u[0], event_id=by_unit[u][0], digests=frozenset(by_unit[u][1]))
+        for u in order
     ]
 
 
