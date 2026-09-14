@@ -565,11 +565,29 @@ _TXXX_LIST_FIELDS: dict[Owned, str] = {
 }
 
 
-def _apic(cover: bytes) -> APIC:
+def _apic(cover: bytes, *, desc: str = "") -> APIC:
     mime = "image/png" if cover[:4] == b"\x89PNG" else "image/jpeg"
     return APIC(
-        encoding=Encoding.UTF8, mime=mime, type=PictureType.COVER_FRONT, desc="", data=cover
+        encoding=Encoding.UTF8, mime=mime, type=PictureType.COVER_FRONT, desc=desc, data=cover
     )
+
+
+def _set_front_apic(tags: Any, cover: bytes) -> None:
+    """Put `cover` in the frame Harmonist reads as the album's image — the first
+    APIC — and leave the file's other picture frames alone (#489).
+
+    A file can carry several, and only the first is described, kept and
+    replaced; deleting the rest would destroy images no backup holds. They are
+    re-added in their original order, because *which* frame is first decides
+    which image the album page is talking about. The existing frame's
+    description is reused so the replacement lands on that frame rather than
+    beside it — ID3 keys a picture by its description.
+    """
+    existing = tags.getall("APIC")
+    tags.delall("APIC")
+    tags.add(_apic(cover, desc=existing[0].desc if existing else ""))
+    for extra in existing[1:]:
+        tags.add(extra)
 
 
 def write_cover(path: Path, cover: bytes) -> None:
@@ -577,18 +595,21 @@ def write_cover(path: Path, cover: bytes) -> None:
     audio = MP3(path)
     if audio.tags is None:
         audio.add_tags()
-    audio.tags.delall("APIC")
-    audio.tags.add(_apic(cover))
+    _set_front_apic(audio.tags, cover)
     audio.save()
 
 
 def remove_cover(path: Path) -> None:
     """Take the embedded image off, touching nothing else (#471's undo of an
-    addition)."""
+    addition) — and only that image, not the pictures behind it (#489)."""
     audio = MP3(path)
-    if audio.tags is not None and audio.tags.getall("APIC"):
-        audio.tags.delall("APIC")
-        audio.save()
+    existing = audio.tags.getall("APIC") if audio.tags is not None else []
+    if not existing:
+        return
+    audio.tags.delall("APIC")
+    for extra in existing[1:]:
+        audio.tags.add(extra)
+    audio.save()
 
 
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
@@ -680,8 +701,7 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
 
     # ---- Cover art ----
     if cover is not None:
-        tags.delall("APIC")
-        tags.add(_apic(cover))
+        _set_front_apic(tags, cover)
 
     # COMM intentionally NOT touched — preserves a recovered Bandcamp URL.
 

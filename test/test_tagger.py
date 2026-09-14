@@ -830,6 +830,14 @@ def _embed_cover(path, data: bytes) -> None:
     audio.save()
 
 
+def _append_cover(path, data: bytes) -> None:
+    """Add a SECOND embedded picture behind the cover, as another tag editor
+    would (#489). The cover stays first, which is the one Harmonist reads."""
+    audio = MP4(path)
+    audio[ATOM_COVER] = [*audio[ATOM_COVER], MP4Cover(data, imageformat=MP4Cover.FORMAT_JPEG)]
+    audio.save()
+
+
 def test_tag_album_preserves_per_track_artwork(album_with_tracks, tmp_path):
     """DATA SAFETY: tracks with DIFFERENT embedded covers (per-track art, e.g. a
     compilation) are preserved — the album cover is NOT embedded over them."""
@@ -3172,6 +3180,32 @@ def test_undoing_a_taggings_additions_takes_them_off_again(
     assert artwork_store.path_for(artwork_store.digest(mine)) is not None
     # …and a second undo finds nothing left to do.
     assert _undo_latest(album_dir).changed == 0
+
+
+def test_undoing_an_addition_leaves_a_picture_added_since_alone(
+    album_with_tracks, tmp_path, monkeypatch
+):
+    """DATA SAFETY (#489): a track can carry more than one image. The undo takes
+    back off the one the change added — the cover Harmonist read, kept and
+    wrote — and leaves a back cover appended afterwards, which Harmonist never
+    saw, never kept, and could not put back."""
+    from harmonist import activity_store, artwork_store, cover_art
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(800, 800)
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)
+    tagger.tag_and_artwork(album_dir, _release_2_tracks())
+    filled = album_dir / "02 Track 2.m4a"
+    booklet = _sized_jpeg(200, 200) + b"_booklet"
+    _append_cover(filled, booklet)
+
+    outcome = _undo_latest(album_dir)
+
+    assert [bytes(c) for c in MP4(filled)[ATOM_COVER]] == [booklet]
+    assert outcome.stale == ()
 
 
 def test_one_artwork_action_undoes_its_additions_and_replacements_together(

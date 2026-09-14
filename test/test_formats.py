@@ -1518,3 +1518,124 @@ def test_an_unreadable_file_has_an_empty_owned_snapshot(tmp_path):
 
     assert tags.unreadable is True
     assert tags.owned == {}
+
+
+# ---------------------------------------------------------------------------
+# The pictures a file carries BESIDES its cover (#489)
+# ---------------------------------------------------------------------------
+
+
+def _png(marker: bytes) -> bytes:
+    """Distinguishable bytes that every format will store as a PNG."""
+    return b"\x89PNG\r\n\x1a\n" + marker
+
+
+def _track(tmp_path: Path, ext: str, fixture: str) -> Path:
+    dest = tmp_path / f"track{ext}"
+    shutil.copy(FIXTURES_DIR / fixture, dest)
+    return dest
+
+
+def _append_picture(path: Path, data: bytes) -> None:
+    """Append a SECOND embedded picture, as another tag editor would — a back
+    cover, a booklet page — leaving the front cover where it is."""
+    import base64
+
+    from mutagen.flac import FLAC, Picture
+    from mutagen.id3 import APIC, Encoding, PictureType
+    from mutagen.mp3 import MP3
+    from mutagen.mp4 import MP4Cover
+    from mutagen.oggopus import OggOpus
+
+    if path.suffix == ".m4a":
+        audio = MP4(path)
+        audio["covr"] = [*audio.get("covr", []), MP4Cover(data, imageformat=MP4Cover.FORMAT_PNG)]
+        audio.save()
+        return
+    if path.suffix == ".mp3":
+        mp3 = MP3(path)
+        if mp3.tags is None:
+            mp3.add_tags()
+        mp3.tags.add(
+            APIC(
+                encoding=Encoding.UTF8,
+                mime="image/png",
+                type=PictureType.COVER_BACK,
+                desc="back",
+                data=data,
+            )
+        )
+        mp3.save()
+        return
+    picture = Picture()
+    picture.type = PictureType.COVER_BACK
+    picture.mime = "image/png"
+    picture.data = data
+    if path.suffix == ".flac":
+        flac = FLAC(path)
+        flac.add_picture(picture)
+        flac.save()
+        return
+    ogg = OggOpus(path)
+    ogg["metadata_block_picture"] = [
+        *ogg.get("metadata_block_picture", []),
+        base64.b64encode(picture.write()).decode("ascii"),
+    ]
+    ogg.save()
+
+
+def _pictures(path: Path) -> list[bytes]:
+    """Every image the file carries, in order — not just the one `read_cover`
+    calls the cover."""
+    import base64
+
+    from mutagen.flac import FLAC, Picture
+    from mutagen.mp3 import MP3
+    from mutagen.oggopus import OggOpus
+
+    if path.suffix == ".m4a":
+        return [bytes(c) for c in MP4(path).get("covr", [])]
+    if path.suffix == ".mp3":
+        tags = MP3(path).tags
+        return [bytes(f.data) for f in (tags.getall("APIC") if tags else [])]
+    if path.suffix == ".flac":
+        return [bytes(p.data) for p in FLAC(path).pictures]
+    ogg = OggOpus(path)
+    return [
+        bytes(Picture(base64.b64decode(blob)).data)
+        for blob in ogg.get("metadata_block_picture", [])
+    ]
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_writing_the_cover_keeps_the_other_pictures(tmp_path, ext, fixture):
+    """DATA SAFETY (#489): a file may carry more than one image, and Harmonist
+    reads, backs up and replaces exactly one of them — the front cover. Writing
+    that one must not take a back cover or a booklet page with it, since neither
+    was kept anywhere and nothing would say they had gone."""
+    track = _track(tmp_path, ext, fixture)
+    booklet = _png(b"booklet")
+    formats.write_cover(track, _png(b"front"))
+    _append_picture(track, booklet)
+
+    formats.write_cover(track, _png(b"chosen"))
+
+    assert formats.read_cover(track) == (_png(b"chosen"), "image/png")
+    assert _pictures(track) == [_png(b"chosen"), booklet]
+
+
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+def test_taking_the_cover_off_keeps_the_other_pictures(tmp_path, ext, fixture):
+    """The undo of an addition (#471) takes off the image the change added —
+    the cover — and stops there. A picture appended since was never Harmonist's
+    to remove, and no backup of it exists to put it back."""
+    track = _track(tmp_path, ext, fixture)
+    booklet = _png(b"booklet")
+    formats.write_cover(track, _png(b"front"))
+    _append_picture(track, booklet)
+
+    formats.remove_cover(track)
+
+    assert _pictures(track) == [booklet]
+    # …and what remains is now what the file reads as its cover.
+    assert formats.read_cover(track) == (booklet, "image/png")

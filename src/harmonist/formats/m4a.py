@@ -562,20 +562,37 @@ def _cover_atom(cover: bytes) -> MP4Cover:
     return MP4Cover(cover, imageformat=fmt)
 
 
+def _set_front_cover(audio: MP4, cover: bytes) -> None:
+    """Put `cover` where the album's image goes, leaving the file's other
+    pictures where they are (#489).
+
+    A file can carry several — a back cover, a booklet page — and `_cover_of`
+    reads the FIRST as the album's. That one is the only image Harmonist
+    describes, keeps a copy of and replaces, so it is the only one a write may
+    touch: the rest were never backed up, and nothing would report them gone.
+    """
+    audio[ATOM_COVER] = [_cover_atom(cover), *audio.get(ATOM_COVER, [])[1:]]
+
+
 def write_cover(path: Path, cover: bytes) -> None:
     """Replace the embedded image, touching nothing else (#131's restore)."""
     audio = MP4(path)
-    audio[ATOM_COVER] = [_cover_atom(cover)]
+    _set_front_cover(audio, cover)
     audio.save()
 
 
 def remove_cover(path: Path) -> None:
     """Take the embedded image off, touching nothing else (#471's undo of an
-    addition)."""
+    addition) — and only that image, not the pictures behind it (#489)."""
     audio = MP4(path)
-    if ATOM_COVER in audio:
+    covers = audio.get(ATOM_COVER)
+    if not covers:
+        return
+    if rest := covers[1:]:
+        audio[ATOM_COVER] = rest
+    else:
         del audio[ATOM_COVER]
-        audio.save()
+    audio.save()
 
 
 def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any]:
@@ -667,7 +684,7 @@ def write_tags(path: Path, tagset: TagSet, cover: bytes | None) -> dict[str, Any
 
     # ---- Cover art ----
     if cover is not None:
-        audio[ATOM_COVER] = [_cover_atom(cover)]
+        _set_front_cover(audio, cover)
 
     # The legacy atom is cleared with the owned set above, not here.
     # ATOM_COMMENT is intentionally NOT touched.

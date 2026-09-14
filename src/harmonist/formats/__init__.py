@@ -173,6 +173,12 @@ def write_cover(path: Path, cover: bytes) -> None:
     tags as a side effect: the user is undoing an artwork change, and silently
     re-applying a TagSet at the same time would make the undo do more than it
     says.
+
+    **One image, not the file's whole collection** (#489). A track may carry a
+    back cover or a booklet page behind its front cover; `read_cover` describes
+    the first, the artwork store keeps the first, and this replaces the first.
+    The others are untouched — they are the user's, no backup holds them, and
+    an outcome that said "1 file changed" would not mention losing them.
     """
     mod = _module_for(path)
     if mod is None:
@@ -186,6 +192,10 @@ def remove_cover(path: Path) -> None:
     The undo of an ADDITION (#471): a track that had no image before a change
     gave it one goes back to having none. Separate from `write_tags` for the
     reason `write_cover` is — undoing artwork must not rewrite tags.
+
+    Takes off the image the change added and stops there: a picture appended
+    behind it since is left in place, for the reason `write_cover` leaves it
+    (#489).
     """
     mod = _module_for(path)
     if mod is None:

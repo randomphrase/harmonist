@@ -47,6 +47,9 @@ versions follow [semantic versioning](https://semver.org).
 - **Artwork is never replaced unless a copy of it was kept** — embedded images
   now get the protection folder covers had, and a full artwork store leaves the
   image in place rather than overwrite it (#470).
+- **A track's other pictures survive an artwork change** — a back cover or
+  booklet page behind the front cover is no longer deleted when Harmonist writes
+  the cover, or when Undo takes one back off (#489).
 - **History names `cover.jpg` instead of counting it as a track** (#469).
 - **A re-tag says what it did to your artwork** — how many files it wrote, and
   which it left alone and why. A re-tag whose artwork was skipped because the

@@ -24,8 +24,14 @@ def _open(path: Path) -> FLAC | None:
 
 
 def _set_cover(audio: FLAC, cover: bytes) -> None:
+    """Replace the first picture — the one Harmonist reads as the album's image
+    — and put the file's other pictures back as they were (#489). FLAC has no
+    way to replace one block in place, so the rest are re-added in order."""
+    rest = list(audio.pictures[1:])
     audio.clear_pictures()
     audio.add_picture(_vorbis.make_picture(cover))
+    for picture in rest:
+        audio.add_picture(picture)
 
 
 def describe(path: Path) -> str:

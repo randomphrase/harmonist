@@ -202,9 +202,16 @@ def make_picture(cover: bytes) -> Picture:
 
 def ogg_set_cover(audio: Any, cover: bytes) -> None:
     """Cover-setter for Ogg containers (Vorbis/Opus): a base64 FLAC
-    picture block in the METADATA_BLOCK_PICTURE comment."""
+    picture block in the METADATA_BLOCK_PICTURE comment.
+
+    The FIRST block only — the one `_cover_of` reads as the album's image, and
+    so the only one Harmonist describes, keeps a copy of and replaces. A further
+    picture the file carries stays where it is, since no backup holds it and
+    nothing would report it gone (#489).
+    """
     pic = make_picture(cover)
-    audio["metadata_block_picture"] = [base64.b64encode(pic.write()).decode("ascii")]
+    encoded = base64.b64encode(pic.write()).decode("ascii")
+    audio["metadata_block_picture"] = [encoded, *audio.get("metadata_block_picture", [])[1:]]
 
 
 class VorbisTagger:
@@ -428,16 +435,26 @@ class VorbisTagger:
     def remove_cover(self, path: Path) -> None:
         """Take the embedded image off, touching nothing else (#471's undo of an
         addition). Both places a Vorbis-family file can carry one: FLAC's native
-        picture blocks and the Ogg/Opus METADATA_BLOCK_PICTURE comment."""
+        picture blocks and the Ogg/Opus METADATA_BLOCK_PICTURE comment.
+
+        In both, only the FIRST — the image Harmonist read, kept and added. A
+        picture behind it stays: it was never backed up, so taking it off would
+        destroy the only copy (#489)."""
         audio = self._open(path)
         if audio is None:
             raise OSError(f"could not open {path} to remove its cover")
         changed = False
-        if getattr(audio, "pictures", None):
+        if pictures := list(getattr(audio, "pictures", None) or []):  # FLAC
             audio.clear_pictures()
+            for picture in pictures[1:]:
+                audio.add_picture(picture)
             changed = True
-        if audio.tags is not None and audio.tags.get("metadata_block_picture"):
-            del audio.tags["metadata_block_picture"]
+        encoded = audio.tags.get("metadata_block_picture") if audio.tags is not None else None
+        if encoded:  # Ogg/Opus
+            if rest := list(encoded[1:]):
+                audio.tags["metadata_block_picture"] = rest
+            else:
+                del audio.tags["metadata_block_picture"]
             changed = True
         if changed:
             audio.save()
