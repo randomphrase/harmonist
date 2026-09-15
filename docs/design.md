@@ -216,7 +216,7 @@ path:
   else here).
 
 All four leave a sidecar with a `store_url` and no release — **NEEDS_MBID**, in
-the inbox with the side-by-side and Confirm / Confirm as Incomplete on it. Worth
+the inbox with the side-by-side and Review and confirm release / Review incomplete release on it. Worth
 stating plainly, because it remains a real cost of the operation: an album that
 was COMPLETE can come back needing a click. The archive is what makes that
 recoverable rather than a loss.
@@ -477,7 +477,7 @@ considered and rejected for this reason.)
 `mb_match_candidate` (`unmatched_purchase=true`), and it **never touches the
 on-disk file tags**. So the album stays correctly tagged on disk; it just
 re-appears in the inbox as Needs MBID with its release pre-loaded as a read-only
-suggestion and a one-click Confirm.
+suggestion and a release confirmation review.
 
 **Known limitation (deferred).** Surrender can't tell a *machine-derived* tag
 from one the **user manually assigned** — both are cleared from the sidecar and
@@ -551,7 +551,7 @@ Every album in the music dir is in exactly one state, derived from the presence/
 |---|---|---|---|---|---|---|---|
 | absent | — | — | — | — | **New** | yes | "Reconcile from tags" / search-by-name / manual MBID form |
 | present | null | null | n/a | — | **Needs MBID** | yes | If `store_url`: "Open in Harmony" + "Recheck"; always: manual MBID form |
-| present | null | set | n/a | — | **Needs MBID** (with suggestion) | yes | Adaptive card: side-by-side files vs MB release (per-track green/amber length deltas) + "Confirm" / "Confirm as Incomplete" / "Dismiss suggestion", with the find/assign tools available under a disclosure. Sorted first in the group. |
+| present | null | set | n/a | — | **Needs MBID** (with suggestion) | yes | Adaptive card: side-by-side files vs MB release (per-track green/amber length deltas) + "Review and confirm release" / "Review incomplete release" / "Dismiss suggestion", with the find/assign tools available under a disclosure. Sorted first in the group. |
 | present | set | n/a | no | — | **Tagging** (transient) | yes (briefly) | spinner |
 | present, `store_url` is bandcamp, `bandcamp.item_id=None` | set | n/a | yes | — | **Needs Link** | yes | "Try a different URL" / "Mark purchased elsewhere" |
 | present | set | n/a | yes | equal | **Complete** | no | (hidden — visible in library) |
@@ -718,14 +718,14 @@ Notes:
   `mb_match_candidate` they pass, and that difference is the point: the pencil
   passes none, because re-offering a release the user just called wrong would
   undo their own judgement, while the undo passes the release it unlinked so
-  Confirm is the one-click way back.
+  release confirmation is the way back.
 
 ### Match confidence (when MB has the URL but the files might not match)
 
 A URL → MBID match from [MusicBrainz](https:://musicbrainz.org) is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
 
-- **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote: write `mb_release_id`, run tagger, transition to Tagging → Complete with no user intervention.
-- **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. The album stays in Needs MBID with the suggestion attached; its card surfaces a Picard-style side-by-side with green/amber per-track indicators and Confirm / Confirm as Incomplete / Dismiss suggestion buttons (find/assign tools remain available under a disclosure).
+- **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote an initial match: write `mb_release_id`, run tagger, transition to Tagging → Complete with no user intervention. If files already name a different release, manual assignment and Recheck instead retain a suggestion so the user reviews its artwork before reassignment (#483).
+- **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. The album stays in Needs MBID with the suggestion attached; its card surfaces a Picard-style side-by-side with green/amber per-track indicators and Review and confirm release / Review incomplete release / Dismiss suggestion buttons (find/assign tools remain available under a disclosure).
 - **No match:** file count differs from MB track count. Treated like Approximate from the user's perspective (suggestion shown, explicit Confirm required) but the side-by-side has to handle uneven rows.
 
 Track lengths compared are the per-release **track** lengths, not the recording lengths (which can differ by seconds across releases).
@@ -734,7 +734,9 @@ Which file is compared against which track is **not** positional — it goes thr
 
 When a store URL resolves to several MB releases, `match.match_releases` ranks them all and reports whether the ranking could actually separate them. **Exact is not enough to auto-tag on its own — the winner has to be unique.** Two editions of one release with the same tracklist and the same durations rank identically, and picking one is then picking whichever MusicBrainz listed first; the album is left as it is, with no tag write and no stashed suggestion (a suggestion names one release, which is the same coin toss), and Activity says several editions fit. *Look up releases at this URL* on the album's card lists them for the user to choose (#426).
 
-Confirm → promote candidate to `mb_release_id`, clear candidate, run tagger.
+**Review and confirm release** (or **Review incomplete release**) opens the same confirmation dialog from the inbox and the album page. It shows the selected release's tracklist, current artwork, and selected release's archive image independently of image size or the existing folder cover. A release-group fallback is labelled. Opening the dialog uses the shared caches; **Refresh preview** fetches both sources again. The archive image is included by default for a reassignment, or for additions on an initial tagging; initial replacements require opting in. Unticking keeps every existing image. Missing or unavailable archive artwork leaves tag confirmation available. Differing per-track images remain protected (#483).
+
+**Confirm release and apply changes** → fetch the release fresh, require it to match the reviewed release fingerprint, promote the candidate to `mb_release_id`, clear the candidate, and tag with the included artwork plan. A changed release requires another review before any write; a changed artwork plan withholds artwork while valid tags still apply. Tag and artwork outcomes are reported separately, using the existing retained-backup and Undo rules. An unreviewed legacy POST can write tags only. Exact initial auto-tagging retains its additions-only behavior.
 Dismiss suggestion → clear candidate; the album stays in Needs MBID so a different release can be assigned.
 
 Tracks where MB has no recorded length are shown as "unknown" (gray) and don't trigger downgrade on their own, but they don't get to vote for "exact" either — an album with all-unknown lengths and matching count is treated as Approximate.
@@ -1097,7 +1099,7 @@ Embedding a cover overwrites whatever image the track already carried, and that 
 
 **Content-addressed files, not database rows.** Cover art runs 200 KB–5 MB per track and is mostly identical between tracks of one album, so the natural handling is dedup by digest: an eight-track album usually costs one file, not eight. Keeping the bytes out of `activity.db` also keeps that store cheap to poll, since it is read on every feed refresh. The digest recorded by the tagging audit *is* the lookup key, so the store needs no index of its own.
 
-**Only what is about to be destroyed.** The copy is taken from the plan's *targets* — the files an action will really write — not from every file whose art differs from the winner: a tagging makes additions only, so an image it leaves in place is not being destroyed and has no business being backed up. `_keep_doomed_art` re-reads only those files, and an album already carrying the winner reads nothing at all.
+**Only what is about to be destroyed.** The copy is taken from the plan's *targets* — the files an action will really write — not from every file whose art differs from the winner. An action limited to additions leaves existing images in place and needs no backup for them; a reviewed combined action backs up the replacements the user included. `_keep_doomed_art` re-reads only those files, and an album already carrying the winner reads nothing at all.
 
 **Folder covers too.** A `cover.*` an action replaces is kept exactly as a track's embedded image is, and its undo is the same Artwork row in History.
 
@@ -1133,7 +1135,7 @@ The records above exist to be readable, but they were shaped to be *reversible*:
 
 When it does move, the sidecar goes with it: `mb_release_id` and `tagged_at` are cleared and the album derives as `NEEDS_MBID`. Leaving the sidecar naming a release the files no longer carry would derive as `TAGGING` (§3) — the transient spinner, with no action on it and no way out.
 
-**The release is kept as a confirmable suggestion**, not discarded: the Needs MBID card then offers Confirm & Tag, which is the one-click way back, with a note saying why the album is there. Undoing a *re-match* reverts the files to the older release, and that older release — not whichever one the sidecar was holding — is what gets suggested, because it is what the user asked to return to. The candidate carries no `track_comparisons`: building them needs an MB fetch, and an undo makes no network call. Confirming re-tags through the ordinary path, which rewrites the release's own totals into the files, so nothing here has to guess a track count.
+**The release is kept as a confirmable suggestion**, not discarded: the Needs MBID card then offers Review and confirm release, which opens the confirmation preview, with a note saying why the album is there. Undoing a *re-match* reverts the files to the older release, and that older release — not whichever one the sidecar was holding — is what gets suggested, because it is what the user asked to return to. The candidate carries no `track_comparisons`: building them needs an MB fetch, and an undo makes no network call. Confirming re-tags through the ordinary path, which rewrites the release's own totals into the files, so nothing here has to guess a track count.
 
 This is the same transition the "wrong match" pencil makes, and deliberately so: both go through `sidecar.unlink` (§3). It differs only in that the pencil leaves the on-disk tags alone and passes no candidate, since there the release was *wrong* rather than merely undone.
 
@@ -1141,7 +1143,7 @@ Artwork is not in the plan: it is not an owned tag, and it has its own store, it
 
 ### Cover art (mandatory)
 
-Plex with the MusicBrainz agent can fetch its own artwork from external sources, but **Navidrome does not** — it reads from embedded tags and `cover.jpg` only. Navidrome is the strict consumer; we design for it.
+Harmonist supplies local artwork for Plex and Navidrome without depending on a player's external lookup. [Navidrome's artwork resolution](https://www.navidrome.org/docs/usage/library/artwork/) can use `cover.*`, `folder.*`, `front.*`, embedded images, and an external fallback; local artwork is a Harmonist guarantee, not a limitation of Navidrome.
 
 **One plan decides every image an album carries** (`artwork.plan`, #469). It is built from descriptions — each track's embedded image, the folder cover, and the Cover Art Archive's candidate — and names every write that would put the winning image in place: the target, what it holds now (or that it holds nothing), and what it will hold. The album page draws its Artwork section from the plan; a tagging and the Apply artwork action execute it (`tagger.apply_artwork`, and the tag loop for gap fills). Nothing decides twice — the page used to carry its own copy of the size rule, and it drifted from the writer's.
 
@@ -1150,8 +1152,8 @@ Plex with the MusicBrainz agent can fetch its own artwork from external sources,
    **And it decides the FOLDER COVER only** (#479). A `cover.*` larger than the embedded art is a layout somebody chose, not a gap: one file costs a few megabytes and the same image inside twenty tracks costs twenty times that, so a library on lossy codecs sensibly keeps a high-resolution cover beside modest embedded images — and Harmonist finds albums already in that shape without anyone arranging it. So the tracks keep what they carry, and a bigger folder cover proposes nothing. What the tracks lack is still filled: from the album's **own** image where it has one, so the filled track matches its siblings rather than becoming the one that differs — which is why one action can write two images, and why the plan carries the folder cover's separately from the tracks'. Embedding the cover deliberately remains `overwrite_art`, or the explicit choice below.
 
    **Unless the user chooses otherwise** (#472). Size is a default, not a verdict: a 900px scan can be softer or worse cropped than a 500px one, and only a person looking at both can say. `plan(chosen=…)` takes that candidate as the winner however it measures — including over the folder cover, the one write the rule would otherwise refuse to make smaller. Choosing is a RENDER (`?use=…`): the section is drawn again with that image as the winner, writes nothing, and the Apply that follows carries the choice back with the fingerprint of what was shown. Per-track artwork is still protected, and identical bytes are still nothing to write.
-3. **Operations.** Each write is an **Addition** — an artless track, or a folder cover the album lacks — or a **Replacement**. A tagging may make additions only (#418); the Apply artwork action makes both. A missing folder cover is created from the winner, as `cover.jpg` or `cover.png` to match it, so an album whose tracks carry a 3000px image is not given a 1200px archive cover. A compilation's folder cover comes only from the archive: its first sleeve is not the album's cover.
-4. **Revalidation.** The page carries a fingerprint of what it showed, at the scope the control applies — the whole plan for **Apply updates** and for **Apply artwork**, the additions alone for the controls that only add (the partial-tag badge, a merge note's own button). The scope is declared with the fingerprint rather than inferred, because comparing one scope's digest against another mismatches every time and would withhold the artwork on every press (#482). The action rebuilds the plan from disk and proceeds only if it matches: Apply artwork otherwise writes nothing and redraws the section, and a re-tag writes its tags and no artwork, with a warning in the album's History. Each target is also re-read immediately before it is written, and one that no longer holds what the plan saw is left alone and reported. A tagging nobody previewed (exact-match auto-tagging, confirmation, recheck) carries no fingerprint and writes its plan's additions.
+3. **Operations.** Each write is an **Addition** — an artless track, or a folder cover the album lacks — or a **Replacement**. Unreviewed tagging may make additions only (#418); a reviewed confirmation, Apply updates, and Apply artwork may also make the replacements explicitly included in their previews (#483). A missing folder cover is created from the winner, as `cover.jpg` or `cover.png` to match it, so an album whose tracks carry a 3000px image is not given a 1200px archive cover. A compilation's folder cover comes only from the archive: its first sleeve is not the album's cover.
+4. **Revalidation.** The page carries a fingerprint of what it showed, at the scope the control applies — the whole plan for **Apply updates** and for **Apply artwork**, the additions alone for the controls that only add (the partial-tag badge, a merge note's own button). The scope is declared with the fingerprint rather than inferred, because comparing one scope's digest against another mismatches every time and would withhold the artwork on every press (#482). The action rebuilds the plan from disk and proceeds only if it matches: Apply artwork otherwise writes nothing and redraws the section, and a re-tag writes its tags and no artwork, with a warning in the album's History. Each target is also re-read immediately before it is written, and one that no longer holds what the plan saw is left alone and reported. A tagging nobody previewed (an exact initial match or an unreviewed recheck) carries no fingerprint and writes its plan's additions. Release confirmation carries the whole reviewed artwork plan, its inclusion choice, and a separate fingerprint of the selected MusicBrainz release (#483).
 5. **Records.** Every image written is recorded as an `artwork` before/after pair on a `tag.track` line — `[None, digest]` for an addition, including a created folder cover — and a folder cover also gets a `cover.write` audit line.
 
 **One image per file, not the file's whole collection** (#489). Every format can hold several pictures — a back cover, a booklet page — and Harmonist reads, measures, keeps a copy of and writes exactly one: the first, which is the album's cover. A write replaces that picture and an Undo takes it back off; the others stay where the user left them. They are nobody's backup and no outcome mentions them, so removing them would destroy the only copy of an image while reporting "1 file changed".
@@ -1842,10 +1844,10 @@ selection, vinyl-only edition where the digital MB release has bonus
 tracks, etc.). Without special handling these stall in `NEEDS_MBID`
 forever because `TagMismatchError` would block the tagger.
 
-**Handling:** the suggestion card (Needs MBID with a candidate) gains a
-button next to Confirm / Dismiss suggestion:
+**Handling:** the suggestion card (Needs MBID with a candidate) offers an
+incomplete release review when files are missing:
 
-- **Confirm as Incomplete** — runs the tagger in incomplete mode. The
+- **Review incomplete release** — opens the artwork confirmation preview; accepting it runs the tagger in incomplete mode. The
   tagging writes the release's own track/disc totals into every file it
   touches, so the album's state becomes `INCOMPLETE`, derived at scan time
   from those tags (§3). Nothing about the count is persisted separately.

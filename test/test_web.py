@@ -500,7 +500,7 @@ def test_needs_review_card_renders_side_by_side(client, cfg):
     assert "MusicBrainz suggests" in r.text
     assert "approximate" in r.text
     assert "Side A" in r.text
-    assert "Confirm" in r.text
+    assert "Review and confirm release" in r.text
     assert "Dismiss suggestion" in r.text
     # Re-query MB for the same release (after fixing it upstream)
     assert "Refresh from MB" in r.text
@@ -550,9 +550,9 @@ def test_mistag_card_renders_open_panel_with_sibling_explanation(client, cfg):
     assert "Note:" in r.text
     assert "file count 10 does not match MB track count 11" in r.text
     # File count (10) < track count (11): the only valid tag is incomplete, so
-    # that's the primary action — no misleading highlighted "Confirm & Tag".
-    assert "Confirm as Incomplete (10 of 11)" in r.text
-    assert "Confirm &amp; Tag" not in r.text
+    # that's the release review offered by the card.
+    assert "Review incomplete release (10 of 11)" in r.text
+    assert "/preview?incomplete=true" in r.text
 
 
 def test_mistag_renders_in_own_top_level_section(client, cfg):
@@ -3816,9 +3816,14 @@ def test_a_cover_created_by_a_first_tagging_reaches_the_albums_history(client, c
     # The archive has a cover for the release, and the album has no folder
     # cover — so the tagging creates one, under whatever the album is called
     # at the moment it starts.
-    monkeypatch.setattr(
-        "harmonist.cover_art.front_image",
-        lambda *a, **kw: cover_art.Front(data=b"COVERBYTES", mime="image/jpeg"),
+    image = _png(51)
+    cover_art.configure_cache(cfg.paths.config_dir / "caa")
+    cover_art.cache_image("rel-cover", image, "image/png")
+    activity_store.store_cover_art(
+        "rel-cover",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC), image_url="https://example.com/cover.png"
+        ),
     )
     assert not (d / "cover.jpg").exists()
 
@@ -3826,8 +3831,10 @@ def test_a_cover_created_by_a_first_tagging_reaches_the_albums_history(client, c
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    assert client.post(f"/confirm/{old_id}").status_code == 200
-    assert (d / "cover.jpg").read_bytes() == b"COVERBYTES"
+    fields = _confirmation_fields(client.get(f"/confirm/{old_id}/preview").text)
+    fields["include_artwork"] = "true"
+    assert client.post(f"/confirm/{old_id}", data=fields).status_code == 200
+    assert (d / "cover.png").read_bytes() == image
     new_id = _id_for(cfg, d)
     assert new_id != old_id, "the identity has to move, or this proves nothing"
 
@@ -5287,9 +5294,9 @@ def test_needs_review_card_offers_incomplete_when_file_count_short(client, cfg):
     )
     r = client.get("/tasks")
     # Button text appears only when there's at least one short album
-    assert "Confirm as Incomplete" in r.text
+    assert "Review incomplete release" in r.text
     # Count occurrences — exactly one (only on the short card, not the exact one)
-    assert r.text.count("Confirm as Incomplete") == 1
+    assert r.text.count("Review incomplete release") == 1
 
 
 def test_library_shows_partial_tag_badge(client, cfg):
@@ -10473,3 +10480,334 @@ def test_retag_excluding_artwork_never_prepares_or_fetches_a_cover(client, cfg, 
     r = client.post(f"/retag/{album_id}", data={"include_artwork": "false"})
     assert "Re-tagged" in r.text
     assert sc.read(d).tagged_at is not None
+
+
+@pytest.mark.parametrize("incomplete", [False, True])
+def test_confirmation_applies_the_reviewed_smaller_archive_image(
+    client, cfg, monkeypatch, incomplete
+):
+    import hashlib
+    import json
+
+    from harmonist import artwork, cover_art, formats, tagger
+
+    big, small = _png_sized(31, 800), _png_sized(32, 200)
+    d = _album_with_art(cfg, "ConfirmArt", covers=[big, big], folder=big)
+    release = _release_for_match("rel-selected-art", n_tracks=3 if incomplete else 2)
+    tagger.tag_album(d, _release_for_match("rel-old-art", n_tracks=2))
+    sc.write(
+        d,
+        Sidecar(
+            store_url="https://example.com/album",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id=release["id"],
+                confidence="approximate",
+                file_count=2,
+                track_count=3 if incomplete else 2,
+            ),
+        ),
+    )
+    cover_art.configure_cache(cfg.paths.config_dir / "caa")
+    cover_art.cache_image(release["id"], small, "image/png")
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", lambda mbid: release)
+    files = sorted(d.glob("*.m4a"))
+    plan = tagger.decide_artwork(
+        d,
+        files,
+        d / "cover.jpg",
+        archive=cover_art.Front(small, "image/png"),
+        chosen=artwork.Source.ARCHIVE,
+    )
+    aid = _id_for(cfg, d)
+    result = client.post(
+        f"/confirm/{aid}" + ("/incomplete" if incomplete else ""),
+        data={
+            "candidate_mbid": release["id"],
+            "release_fingerprint": hashlib.sha256(
+                json.dumps(release, sort_keys=True).encode()
+            ).hexdigest(),
+            "art_plan": plan.fingerprint(artwork.Scope.ALL),
+            "include_artwork": "true",
+        },
+    )
+    assert "Tagged" in result.text
+    assert formats.read_cover(files[0]) == (small, "image/png")
+    assert formats.read_cover(files[1]) == (small, "image/png")
+    assert (d / "cover.jpg").read_bytes() == small
+    assert sc.read(d).mb_release_id == release["id"]
+
+
+def _confirmation_setup(
+    cfg, monkeypatch, *, old_mbid="rel-old-confirm", archive_status="present", per_track=False
+):
+    from harmonist import cover_art, tagger
+
+    big, small = _png_sized(41, 800), _png_sized(42, 200)
+    d = _album_with_art(
+        cfg, "Confirmation", covers=[big, _png(43) if per_track else big], folder=big
+    )
+    release = _release_for_match("rel-new-confirm", n_tracks=2)
+    if old_mbid:
+        tagger.tag_album(d, _release_for_match(old_mbid, n_tracks=2))
+    sc.write(
+        d,
+        Sidecar(
+            store_url="https://example.com/album",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id=release["id"],
+                confidence="approximate",
+                file_count=2,
+                track_count=2,
+            ),
+        ),
+    )
+    cover_art.configure_cache(cfg.paths.config_dir / "caa")
+    calls = []
+
+    def fetch_release(mbid):
+        calls.append(("mb", mbid))
+        return release
+
+    def check_front(mbid, **kwargs):
+        calls.append(("caa", mbid))
+        if archive_status == "failed":
+            raise cover_art.CoverArtError("archive offline")
+        return activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://example.com/selected.png" if archive_status == "present" else None,
+            width=200,
+            height=200,
+            source="release-group",
+        )
+
+    def fetch_image(mbid, url):
+        calls.append(("image", mbid))
+        return cover_art.cache_image(mbid, small, "image/png")
+
+    def unreviewed(*args, **kwargs):
+        raise AssertionError("confirmation must use the reviewed candidate, not fetch another")
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fetch_release)
+    monkeypatch.setattr(cover_art, "check_front", check_front)
+    monkeypatch.setattr(cover_art, "fetch_image", fetch_image)
+    monkeypatch.setattr(cover_art, "front_image", unreviewed)
+    return d, release, big, small, calls
+
+
+def _confirmation_fields(body):
+    return dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', body))
+
+
+def test_confirmation_preview_is_read_only_and_uses_the_selected_release_cache(
+    client, cfg, monkeypatch
+):
+    d, release, _big, small, calls = _confirmation_setup(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+    preview = client.get(f"/confirm/{aid}/preview")
+    assert preview.status_code == 200
+    assert "Current artwork" in preview.text and "Artwork for selected release" in preview.text
+    assert "For the release group, not this edition" in preview.text
+    assert re.search(r'name="include_artwork" value="true" checked', preview.text)
+    assert "Replacement" in preview.text
+    from harmonist import images
+
+    assert client.get(f"/artwork/image/{aid}/{images.digest(small)}").content == small
+    assert client.get(f"/confirm/{aid}/preview").status_code == 200
+    assert calls == [("mb", release["id"]), ("caa", release["id"]), ("image", release["id"])]
+    assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+
+
+@pytest.mark.parametrize("included", [False, True])
+def test_confirmation_checkbox_controls_the_actual_write(client, cfg, monkeypatch, included):
+    from harmonist import formats
+
+    d, release, big, small, calls = _confirmation_setup(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    preview = client.get(f"/confirm/{aid}/preview")
+    data = _confirmation_fields(preview.text) | {"include_artwork": str(included).lower()}
+    result = client.post(f"/confirm/{aid}", data=data)
+    assert "Tagged" in result.text
+    assert (d / "cover.jpg").read_bytes() == (small if included else big)
+    for path in d.glob("*.m4a"):
+        assert formats.read_cover(path) == (small if included else big, "image/png")
+        assert formats.read_owned(path)["mb_album_id"] == release["id"]
+    assert calls.count(("mb", release["id"])) == 2
+    assert calls.count(("caa", release["id"])) == 1
+    assert calls.count(("image", release["id"])) == 1
+    # The excluded candidate is still available for the album-page override.
+    if not included:
+        assert "Use this artwork" in client.get(f"/album/{release['id']}/artwork").text
+
+
+@pytest.mark.parametrize("archive_status", ["absent", "failed"])
+def test_confirmation_without_a_candidate_still_tags_and_keeps_art(
+    client, cfg, monkeypatch, archive_status
+):
+    d, release, big, _small, _calls = _confirmation_setup(
+        cfg, monkeypatch, archive_status=archive_status
+    )
+    aid = _id_for(cfg, d)
+    preview = client.get(f"/confirm/{aid}/preview")
+    assert (
+        "could not be reached" if archive_status == "failed" else "No front cover"
+    ) in preview.text
+    fields = _confirmation_fields(preview.text)
+    assert fields["release_fingerprint"]
+    assert "Confirm release and apply changes</button>" in preview.text
+    result = client.post(f"/confirm/{aid}", data=fields)
+    assert "Tagged" in result.text
+    assert (d / "cover.jpg").read_bytes() == big
+    assert sc.read(d).mb_release_id == release["id"]
+
+
+def test_initial_confirmation_does_not_preselect_replacement(client, cfg, monkeypatch):
+    d, _release, _big, _small, _calls = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
+    preview = client.get(f"/confirm/{_id_for(cfg, d)}/preview")
+    assert 'name="include_artwork" value="true"' in preview.text
+    assert not re.search(r'name="include_artwork" value="true" checked', preview.text)
+
+
+def test_confirmation_preserves_per_track_artwork(client, cfg, monkeypatch):
+    from harmonist import formats
+
+    d, _release, _big, small, _calls = _confirmation_setup(cfg, monkeypatch, per_track=True)
+    aid = _id_for(cfg, d)
+    before = [formats.read_cover(p) for p in sorted(d.glob("*.m4a"))]
+    preview = client.get(f"/confirm/{aid}/preview")
+    assert "Differing per-track artwork is preserved" in preview.text
+    result = client.post(
+        f"/confirm/{aid}", data=_confirmation_fields(preview.text) | {"include_artwork": "true"}
+    )
+    assert "Tagged" in result.text
+    assert [formats.read_cover(p) for p in sorted(d.glob("*.m4a"))] == before
+    assert (d / "cover.jpg").read_bytes() == small
+
+
+def test_confirmation_refreshes_a_changed_release_before_any_writes(client, cfg, monkeypatch):
+    d, release, _big, _small, _calls = _confirmation_setup(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    preview = client.get(f"/confirm/{aid}/preview")
+    before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+    release["title"] = "Changed after review"
+    result = client.post(
+        f"/confirm/{aid}", data=_confirmation_fields(preview.text) | {"include_artwork": "true"}
+    )
+    assert "MusicBrainz changed since the preview" in result.text
+    assert "Changed after review" in result.text
+    assert result.headers["hx-retarget"] == "#modal"
+    assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+
+
+@pytest.mark.parametrize("changed", ["archive", "folder"])
+def test_confirmation_withholds_artwork_changed_since_review(client, cfg, monkeypatch, changed):
+    from harmonist import cover_art
+
+    d, release, big, _small, _calls = _confirmation_setup(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    preview = client.get(f"/confirm/{aid}/preview")
+    newer = _png_sized(44, 500)
+    if changed == "archive":
+        cover_art.cache_image(release["id"], newer, "image/png")
+    else:
+        (d / "cover.jpg").write_bytes(newer)
+    result = client.post(
+        f"/confirm/{aid}", data=_confirmation_fields(preview.text) | {"include_artwork": "true"}
+    )
+    assert "Tagged" in result.text and "artwork changed since the preview" in result.text
+    assert (d / "cover.jpg").read_bytes() == (newer if changed == "folder" else big)
+
+
+@pytest.mark.parametrize("entry", ["assign", "recheck"])
+def test_exact_reassignment_waits_for_artwork_review(client, cfg, monkeypatch, entry):
+    from harmonist import formats
+
+    d, release, big, _small, _calls = _confirmation_setup(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    if entry == "assign":
+        result = client.post(f"/manual/{aid}/assign", data={"mbid": release["id"]})
+    else:
+        monkeypatch.setattr(
+            "harmonist.mb_lookup.lookup_by_bandcamp_url", lambda url: [release["id"]]
+        )
+        result = client.post(f"/recheck/{aid}")
+    assert "Needs review" in result.text
+    assert sc.read(d).mb_match_candidate.mb_release_id == release["id"]
+    assert all(
+        formats.read_owned(path)["mb_album_id"] == "rel-old-confirm" for path in d.glob("*.m4a")
+    )
+    assert (d / "cover.jpg").read_bytes() == big
+
+
+def test_confirmation_refresh_asks_both_services_again(client, cfg, monkeypatch):
+    d, release, _, _, calls = _confirmation_setup(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    client.get(f"/confirm/{aid}/preview")
+    preview = client.get(f"/confirm/{aid}/preview?reread=true")
+    assert "MusicBrainz checked" in preview.text and "Refresh preview" in preview.text
+    assert calls.count(("mb", release["id"])) == 2
+    assert calls.count(("caa", release["id"])) == 2
+
+
+def test_confirmation_cannot_apply_a_replaced_suggestion(client, cfg, monkeypatch):
+    from dataclasses import replace
+
+    d, _, _, _, _ = _confirmation_setup(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    fields = _confirmation_fields(client.get(f"/confirm/{aid}/preview").text)
+    original = sc.read(d)
+    assert original is not None and original.mb_match_candidate is not None
+    sc.write(
+        d,
+        replace(
+            original,
+            mb_match_candidate=replace(
+                original.mb_match_candidate, mb_release_id="another-release"
+            ),
+        ),
+    )
+    before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+    result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
+    assert "The selected release changed" in result.text
+    assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+
+
+def test_repeating_confirmation_writes_nothing_twice(client, cfg, monkeypatch):
+    d, release, _, _, calls = _confirmation_setup(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    fields = _confirmation_fields(client.get(f"/confirm/{aid}/preview").text)
+    fields["include_artwork"] = "true"
+    assert "Tagged" in client.post(f"/confirm/{aid}", data=fields).text
+    before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+    history = activity_store.album_history(release["id"])
+    request_count = len(calls)
+    assert client.post(f"/confirm/{aid}", data=fields).status_code == 400
+    assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+    assert activity_store.album_history(release["id"]) == history
+    assert len(calls) == request_count
+
+
+@pytest.mark.parametrize("failure", ["backup", "write"])
+def test_confirmation_reports_artwork_failure_separately(client, cfg, monkeypatch, failure):
+    from harmonist import artwork_store, formats
+
+    d, release, big, _, _ = _confirmation_setup(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    fields = _confirmation_fields(client.get(f"/confirm/{aid}/preview").text)
+    if failure == "backup":
+        monkeypatch.setattr(artwork_store, "keep_all", lambda images: frozenset())
+    else:
+
+        def deny(*args, **kwargs):
+            raise PermissionError("cannot write embedded art")
+
+        monkeypatch.setattr(formats, "write_cover", deny)
+    result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
+    assert "Tagged" in result.text
+    assert (
+        "no backup could be kept" if failure == "backup" else "artwork could not be written"
+    ) in result.text
+    assert sc.read(d).tagged_at is not None
+    for path in d.glob("*.m4a"):
+        assert formats.read_owned(path)["mb_album_id"] == release["id"]
+        assert formats.read_cover(path) == (big, "image/png")

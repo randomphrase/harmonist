@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
 import json
 import logging
@@ -3142,6 +3143,14 @@ def _run_bandcamp_sync(
     )
 
 
+def _reassigns_release(files: Sequence[Path], mbid: str) -> bool:
+    """Existing release tags make this a reassignment, even after unlinking."""
+    return any(
+        current and current != mbid
+        for current in (formats.read_scan_fields(path).album_id for path in files)
+    )
+
+
 def _apply_best_match(
     album_path: Path, mbids: list[str], cfg: config_mod.Config, tagger: Tagger
 ) -> tuple[str, str]:
@@ -3174,7 +3183,9 @@ def _apply_best_match(
         )
         return "ambiguous", message
 
-    if candidate.confidence == "exact":
+    if candidate.confidence == "exact" and not _reassigns_release(
+        album_files.audio_files(album_path), candidate.mb_release_id
+    ):
         _tag_with_release(album_path, candidate.mb_release_id, cfg, tagger)
         return "tagged", "Match exact — files tagged."
 
@@ -3246,6 +3257,14 @@ def _record_merge(album_path: Path, old_mbid: str, new_mbid: str) -> None:
     )
 
 
+class _ConfirmationChanged(Exception):
+    """The selected release no longer describes the confirmation preview."""
+
+
+def _release_fingerprint(release: Release) -> str:
+    return hashlib.sha256(json.dumps(release, sort_keys=True).encode()).hexdigest()
+
+
 def _tag_with_release(
     album_path: Path,
     mbid: str,
@@ -3260,6 +3279,7 @@ def _tag_with_release(
     artwork_included: bool = True,
     scope: artwork.Scope | None = None,
     chosen: artwork.Source | None = None,
+    expected_release: str | None = None,
 ) -> tagger_mod.TaggingOutcome:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
@@ -3277,6 +3297,10 @@ def _tag_with_release(
     album page's artwork checkbox posts when unticked (#482). Distinct from a
     fingerprint that failed to match: that is a stale preview the user is owed a
     warning about, this is a choice they just made.
+
+    `expected_release` binds confirmation to the release shown in its review.
+    A fresh response that differs requires a new review before any writes. Its
+    artwork is already cached by the preview; do not fetch a different image.
 
     `scope` is how much of the plan to write, and must agree with the scope
     `expected_artwork` was taken at or the comparison mismatches on every press.
@@ -3304,6 +3328,10 @@ def _tag_with_release(
     # `mb_cache` rather than round it, so the stored row — the gardener's
     # baseline — is refreshed by the fetch that was happening anyway.
     release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH)
+    if expected_release is not None and _release_fingerprint(release) != expected_release:
+        raise _ConfirmationChanged(
+            "MusicBrainz changed since the preview. Review the release again."
+        )
     # MusicBrainz REDIRECTS a merged MBID, so the release that comes back can
     # carry a different id from the one asked for. That difference IS the merge
     # notification — cheap, exact, and the only one there is (#268). Everything
@@ -3335,7 +3363,7 @@ def _tag_with_release(
         # tagger's plan decides whether it wins (#469). An album whose folder
         # cover already exists weighs the archive only from the cache, which
         # the album page's own check fills.
-        if artwork_included and cover_path is None:
+        if artwork_included and cover_path is None and expected_release is None:
             archive = cover_art.front_image(release["id"], rg.get("id"))
     except cover_art.CoverArtError:
         # Tagging is the work; the cover is a side effect of it (#458). Design
@@ -5680,6 +5708,10 @@ def _register_routes(app: FastAPI) -> None:
         # the page talks to one host, so opening an album cannot tell the
         # Internet Archive which records this user owns.
         mbid = album.sidecar.mb_release_id if album.sidecar else None
+        if not mbid and album.sidecar and album.sidecar.mb_match_candidate:
+            selected = album.sidecar.mb_match_candidate.mb_release_id
+            release = mb_cache.stored_release(selected)
+            mbid = release["id"] if release else selected
         cached = cover_art.cached_image(mbid) if mbid else None
         if cached is not None:
             data = cached.read_bytes()
@@ -5805,15 +5837,18 @@ def _register_routes(app: FastAPI) -> None:
         candidate = ranking.best
         mbid = candidate.mb_release_id
 
+        auto_tag = candidate.confidence == "exact" and not _reassigns_release(
+            album_files.for_paths(album.folders), mbid
+        )
         # `replace`, not a fresh `Sidecar(...)` (#263).
         new_sc = replace(
             sc,
-            mb_release_id=mbid if candidate.confidence == "exact" else None,
-            mb_match_candidate=None if candidate.confidence == "exact" else candidate,
+            mb_release_id=mbid if auto_tag else None,
+            mb_match_candidate=None if auto_tag else candidate,
         )
         sidecar_mod.write(album.path, new_sc)
 
-        if candidate.confidence == "exact":
+        if auto_tag:
             try:
                 _tag_with_release(
                     album.path,
@@ -5838,57 +5873,194 @@ def _register_routes(app: FastAPI) -> None:
             album=album,
         )
 
-    @app.post("/confirm/{album_id}", response_class=HTMLResponse)
-    def confirm_match(request: Request, album_id: str) -> Response:
-        album = _find_album(request, album_id)
-        sc = album.sidecar
-        if sc is None or sc.mb_match_candidate is None:
+    def _confirmation_preview(
+        request: Request,
+        album_id: str,
+        *,
+        incomplete: bool = False,
+        on_album_page: bool = False,
+        error: str | None = None,
+        reread: bool = False,
+    ) -> Response:
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        candidate = album.sidecar.mb_match_candidate if album.sidecar else None
+        if candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
+        release = None
+        view = None
+        caa = None
+        archive_image = None
+        artwork_error = None
+        included = False
         try:
-            _tag_with_release(
-                album.path,
-                sc.mb_match_candidate.mb_release_id,
-                request.app.state.cfg,
-                request.app.state.tagger,
-                # Mis-tag confirm: adopt the owned edition's purchase URL so the
-                # album can link to that purchase on the next sync.
-                store_url_override=sc.mb_match_candidate.mistag_owned_url,
-                paths=album.folders,
+            release = mb_cache.fetch_release(
+                candidate.mb_release_id, max_age=mb_cache.FRESH if reread else None
             )
-        except Exception as e:
-            log.exception("tag failed", extra=_LOG_ONLY)
-            return _flash_response(
-                "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
+        except mb_lookup.ReleaseGoneError:
+            error = "This release is no longer on MusicBrainz. Close this review and choose another release."
+        except mb_lookup.MBError as e:
+            log.exception("could not load release confirmation", extra=_LOG_ONLY)
+            error = f"Could not read MusicBrainz: {e}"
+        if release is not None:
+            files = album_files.for_paths(album.folders)
+            tracks = [(path, formats.read_tags(path)) for path in files]
+            try:
+                group = (release.get("release-group") or {}).get("id")
+                caa = caa_cache.front(
+                    release["id"],
+                    release_group_mbid=group,
+                    max_age=caa_cache.FRESH if reread else None,
+                )
+                if caa.image_url and cover_art.cached_image(release["id"]) is None:
+                    cover_art.fetch_image(release["id"], caa.image_url)
+                archive_image = _archive_image(release["id"])
+                if caa.image_url and archive_image is None:
+                    artwork_error = (
+                        "The archive image could not be loaded. You can still confirm the tags."
+                    )
+            except cover_art.CoverArtError:
+                log.exception(
+                    "could not load artwork for release confirmation", extra={"album_id": album.id}
+                )
+                artwork_error = (
+                    "The Cover Art Archive could not be reached. You can still confirm the tags."
+                )
+            view = _artwork_view(
+                album, caa, archive_image, chosen=artwork.Source.ARCHIVE, tracks=tracks
             )
-        return _flash_response("Tagged", album=album)
+            reassignment = any(
+                tags.owned.get("mb_album_id") and tags.owned.get("mb_album_id") != release["id"]
+                for _, tags in tracks
+            )
+            included = bool(
+                archive_image and view.writes and (reassignment or view.operation == "addition")
+            )
+        response = _templates(request).TemplateResponse(
+            request,
+            "partials/_confirm_release.html",
+            _ctx(
+                request,
+                album=album,
+                candidate=candidate,
+                release=release,
+                release_fingerprint=_release_fingerprint(release) if release else "",
+                release_checked_at=mb_cache.fetched_at(candidate.mb_release_id),
+                selected_tracks=tagsets_for(release) if release else [],
+                artwork=view,
+                archive_image=archive_image,
+                caa=caa,
+                artwork_error=artwork_error,
+                included=included,
+                incomplete=incomplete,
+                on_album_page=on_album_page,
+                error=error,
+            ),
+        )
+        # A declined POST replaces the dialog with the newly reviewed proposal.
+        response.headers["HX-Retarget"] = "#modal"
+        response.headers["HX-Reswap"] = "innerHTML settle:0ms"
+        return response
 
+    @app.get("/confirm/{album_id}/preview", response_class=HTMLResponse)
+    def confirmation_preview(
+        request: Request,
+        album_id: str,
+        incomplete: bool = False,
+        on_album_page: bool = False,
+        reread: bool = False,
+    ) -> Response:
+        return _confirmation_preview(
+            request, album_id, incomplete=incomplete, on_album_page=on_album_page, reread=reread
+        )
+
+    @app.post("/confirm/{album_id}", response_class=HTMLResponse)
     @app.post("/confirm/{album_id}/incomplete", response_class=HTMLResponse)
-    def confirm_match_incomplete(request: Request, album_id: str) -> Response:
-        """Confirm-as-Incomplete: tag the album knowing on-disk file count
-        is less than the MB release's track count. Persists the expected
-        track count on the sidecar so the scanner can derive INCOMPLETE
-        (and auto-promote to COMPLETE if the user adds files later).
-        """
-        album = _find_album(request, album_id)
+    def confirm_match(
+        request: Request,
+        album_id: str,
+        candidate_mbid: str = Form(""),
+        release_fingerprint: str = Form(""),
+        art_plan: str = Form(""),
+        include_artwork: bool = Form(False),
+        on_album_page: bool = Form(False),
+    ) -> Response:
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
         sc = album.sidecar
         if sc is None or sc.mb_match_candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
+        incomplete = request.url.path.endswith("/incomplete")
         try:
-            _tag_with_release(
+            if candidate_mbid and candidate_mbid != sc.mb_match_candidate.mb_release_id:
+                raise _ConfirmationChanged(
+                    "The selected release changed. Review the new suggestion."
+                )
+            outcome = _tag_with_release(
                 album.path,
                 sc.mb_match_candidate.mb_release_id,
                 request.app.state.cfg,
                 request.app.state.tagger,
-                incomplete=True,
+                incomplete=incomplete,
                 store_url_override=sc.mb_match_candidate.mistag_owned_url,
                 paths=album.folders,
+                expected_release=release_fingerprint or None,
+                expected_artwork=art_plan or None,
+                artwork_included=include_artwork and bool(release_fingerprint and art_plan),
+                scope=artwork.Scope.ALL,
+                chosen=artwork.Source.ARCHIVE,
+            )
+        except _ConfirmationChanged as e:
+            return _confirmation_preview(
+                request, album_id, incomplete=incomplete, on_album_page=on_album_page, error=str(e)
             )
         except Exception as e:
-            log.exception("incomplete tag failed", extra=_LOG_ONLY)
+            # Per-album request boundary: retain the review and report the failure.
+            log.exception("confirmation tagging failed", extra=_LOG_ONLY)
+            if release_fingerprint:
+                return _confirmation_preview(
+                    request,
+                    album_id,
+                    incomplete=incomplete,
+                    on_album_page=on_album_page,
+                    error=f"Tagging failed: {e}",
+                )
             return _flash_response(
                 "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
-        return _flash_response("Tagged as incomplete", album=album)
+        details = []
+        if outcome.artwork_withheld:
+            details.append(
+                "artwork changed since the preview and was left alone; review it on the album page"
+            )
+        if outcome.artwork_unavailable:
+            details.append("could not prepare artwork; images left alone")
+        if outcome.artwork.changed:
+            details.append(f"artwork written to {outcome.artwork.changed} files")
+        if outcome.artwork.failed:
+            details.append("artwork could not be written: " + ", ".join(outcome.artwork.failed))
+        if outcome.artwork.unkept:
+            details.append(
+                "artwork not replaced, no backup could be kept: "
+                + ", ".join(outcome.artwork.unkept)
+            )
+        if outcome.artwork.stale:
+            details.append("artwork left alone, changed since: " + ", ".join(outcome.artwork.stale))
+        # Confirmation can change the album's canonical id. Make that identity
+        # visible before the dialog closes or redirects to its new album URL.
+        runner = request.app.state.scan_runner
+        if runner.is_engaged():
+            runner.refresh_now()
+        # As for re-tagging, the background scan still updates state counts.
+        response = _flash_response(
+            "Tagged as incomplete" if incomplete else "Tagged",
+            "; ".join(details) or None,
+            album=album,
+            extra_triggers={"confirmation-applied": True},
+        )
+        if on_album_page:
+            current_id = sidecar_mod.album_id_for(album.path)
+            assert current_id is not None  # successful tagging wrote a sidecar
+            response.headers["HX-Redirect"] = "/album/" + quote(current_id, safe="")
+        return response
 
     @app.post("/reject/{album_id}", response_class=HTMLResponse)
     def reject_match(request: Request, album_id: str) -> Response:

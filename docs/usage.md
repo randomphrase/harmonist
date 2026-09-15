@@ -77,8 +77,15 @@ leads with whichever fits:
 
 - *With a suggestion.* Harmonist found a candidate but isn't certain (usually the
   track lengths are outside tolerance). The card shows your files against the MB
-  release side by side, per track. **Confirm** tags the album from it;
-  **Confirm as Incomplete** accepts it when you knowingly have fewer tracks;
+  release side by side, per track. **Review and confirm release** opens a preview;
+  **Review incomplete release** does the same when you knowingly have fewer tracks.
+  The preview shows your current artwork beside the selected release's cover,
+  even if that cover is smaller. For a reassignment, using the selected cover is
+  checked by default; untick it to keep your images. **Confirm release and apply
+  changes** writes the tags and included artwork together. Differing per-track
+  images stay protected, and artwork failure does not discard valid tag updates.
+  A missing or unavailable archive cover still lets you confirm the tags. You
+  can choose artwork later from the album page.
   **Dismiss suggestion** leaves the album where it is.
 - *Without one.* Search by artist + title, or paste an MBID directly.
 - *Not in MusicBrainz yet.* Common for Bandcamp-only releases. **Open in Harmony**

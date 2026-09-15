@@ -1,0 +1,95 @@
+{% from 'macros.html' import artwork_chip %}
+<dialog class="bg-transparent p-0 m-auto max-w-3xl w-full"
+        aria-labelledby="confirm-release-title"
+        onclick="if (event.target === this) this.close()">
+    <div class="bg-white border border-line rounded-lg p-6 shadow-2xl space-y-4">
+        <div class="flex items-start justify-between gap-4">
+            <h2 id="confirm-release-title" class="text-xl font-bold">Confirm release and apply changes</h2>
+            <button type="button" onclick="harmonistCloseModal()" aria-label="Close confirmation"
+                    class="text-muted hover:text-ink text-2xl">&times;</button>
+        </div>
+        {% if error %}<p role="alert" class="text-sm text-amber-700">{{ error }}</p>{% endif %}
+        {% if release %}
+        <p class="text-sm">Apply tags from
+            <a href="https://musicbrainz.org/release/{{ release.id }}" target="_blank" rel="noopener"
+               class="text-mb-purple underline">{{ release.title }}</a>.
+            {% if incomplete %}Tag the files present as an incomplete album.{% endif %}
+        </p>
+        <div class="flex items-center gap-2 text-xs text-muted">
+            <span title="{{ release_checked_at }}">MusicBrainz checked {{ ago(release_checked_at) }}</span>
+            <button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}&amp;reread=true"
+                    hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
+                    class="text-mb-purple underline">Refresh preview</button>
+        </div>
+        <details class="text-sm">
+            <summary class="cursor-pointer">Selected release tracklist</summary>
+            <ol class="mt-2 space-y-1">
+                {% for track in selected_tracks %}
+                <li>{{ track.disc_num }}.{{ track.track_num }} — {{ track.title }}</li>
+                {% endfor %}
+            </ol>
+        </details>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <h3 class="text-sm font-bold mb-2">Current artwork</h3>
+                {% for row in artwork.images %}
+                <div class="flex items-center gap-2 mb-2">
+                    <img src="/artwork/image/{{ album.id }}/{{ row.image.digest }}"
+                         alt="Current artwork on {{ row.label }}" class="w-20 h-20 object-contain">
+                    <span class="text-xs">{{ row.label }}<br>{{ describe_image(row.image) }}</span>
+                </div>
+                {% else %}<p class="text-sm text-muted">No readable artwork.</p>{% endfor %}
+                {% if artwork.cover_unreadable %}<p class="text-sm text-amber-700">The folder cover could not be read. It will be left alone.</p>{% endif %}
+            </div>
+            <div>
+                <h3 class="text-sm font-bold mb-2">Artwork for selected release</h3>
+                {% if archive_image %}
+                <img src="/artwork/image/{{ album.id }}/{{ archive_image.digest }}"
+                     alt="Artwork for selected release" class="w-40 h-40 object-contain">
+                <p class="text-xs text-muted">{{ describe_image(archive_image) }}</p>
+                {% elif artwork_error %}<p class="text-sm text-amber-700">{{ artwork_error }}</p>
+                {% else %}<p class="text-sm text-muted">No front cover is available. Existing artwork will be kept.</p>{% endif %}
+                {% if caa and caa.from_release_group %}<p class="text-xs text-muted">For the release group, not this edition.</p>{% endif %}
+                {% if caa %}<p class="text-2xs text-muted" title="{{ caa.fetched_at }}">Archive checked {{ ago(caa.fetched_at) }}</p>{% endif %}
+            </div>
+        </div>
+        <form hx-post="/confirm/{{ album.id }}{% if incomplete %}/incomplete{% endif %}"
+              hx-target="#modal" hx-swap="none" hx-disabled-elt="find button"
+              hx-indicator="#confirm-progress"
+              hx-on::after-request="if (event.detail.successful &amp;&amp; (event.detail.xhr.getResponseHeader('HX-Trigger') || '').includes('confirmation-applied')) harmonistCloseModal()"
+              class="space-y-3">
+            <input type="hidden" name="candidate_mbid" value="{{ candidate.mb_release_id }}">
+            <input type="hidden" name="release_fingerprint" value="{{ release_fingerprint }}">
+            <input type="hidden" name="on_album_page" value="{{ 'true' if on_album_page else 'false' }}">
+            <input type="hidden" name="include_artwork" value="false">
+            {% if archive_image and artwork.writes %}
+            <input type="hidden" name="art_plan" value="{{ artwork.fingerprint }}">
+            <label class="flex items-center gap-2 text-sm font-bold">
+                <input type="checkbox" name="include_artwork" value="true"{% if included %} checked{% endif %}>
+                Use artwork from the selected release
+            </label>
+            <p class="text-xs text-muted">Untick to keep every existing image. If included:</p>
+            <ul class="text-sm space-y-1">
+                {% for row in artwork.rows if row.writes %}
+                <li>{{ artwork_chip('addition' if row.is_gap else 'replacement') }} {{ row.label }}</li>
+                {% endfor %}
+            </ul>
+            {% if artwork.plan.preserves_per_track_art %}
+            <p class="text-xs text-muted">Differing per-track artwork is preserved; choosing the album cover does not replace those images.</p>
+            {% endif %}
+            <p class="text-xs text-muted">Replacements require a retained backup. Artwork Undo is available while its backup is kept; tag Undo is separate.</p>
+            {% elif archive_image %}<p class="text-sm text-muted">No artwork writes are proposed; existing images will be kept.</p>{% endif %}
+            <div class="flex items-center gap-3">
+                <button type="submit" class="px-3 py-2 bg-accent text-white rounded text-sm font-bold"
+                        title="Apply this release's tags and the included artwork changes."
+                        aria-label="Confirm release and apply changes">Confirm release and apply changes</button>
+                <span id="confirm-progress" class="htmx-indicator text-sm text-muted">Applying…</span>
+            </div>
+        </form>
+        {% else %}
+        <button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+                hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
+                class="text-sm text-mb-purple underline">Try again</button>
+        {% endif %}
+    </div>
+</dialog>
