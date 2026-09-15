@@ -22,8 +22,26 @@
 
 /* An open assignment draft has its own review action. The ordinary confirm
  * button would recompute the automatic pairing and discard that draft. */
-.candidate-review:has(.assignment-editor form) .automatic-confirm {
+.candidate-review:has(.assignment-editor form) .automatic-confirm,
+.candidate-review:has(.assignment-editor form) .candidate-context {
     display: none;
+}
+
+.assignment-content .assignment-filename,
+.assignment-content:has(.assignment-filenames:checked) .assignment-title {
+    display: none;
+}
+.assignment-content:has(.assignment-filenames:checked) .assignment-filename {
+    display: inline;
+}
+.assignment-display-choice:has(input:checked) {
+    color: var(--color-ink);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+.assignment-display-choice:has(input:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
 }
 
 @theme {

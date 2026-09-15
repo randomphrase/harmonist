@@ -14,7 +14,7 @@
 {% if not fragment|default(false) %}<div id="assignments-{{ album.id }}-{{ candidate.mb_release_id }}" hx-preserve
      class="assignment-editor mb-3 space-y-2">
 {% endif %}
-<div class="assignment-content space-y-2">
+<div class="assignment-content space-y-3">
     {% if cancel %}
         {% if candidate.track_comparisons %}{% include 'partials/_track_comparison.html' %}{% endif %}
         <button hx-get="/assignments/{{ album.id }}?on_album_page={{ 'true' if on_album_page else 'false' }}"
@@ -23,8 +23,38 @@
     {% else %}
         {% if error %}<p role="alert" class="text-sm text-amber-700">{{ error }}</p>{% endif %}
         {% if panel %}
-        <p class="text-xs text-muted">Move files or MusicBrainz tracks to pair them. Numbers are the current disc.track numbers; ? means untagged. Moving a row changes no tags until you review and apply.</p>
-        <p class="text-2xs text-muted" title="{{ checked_at }}">MusicBrainz checked {{ ago(checked_at) }}</p>
+        {% set counts = namespace(unassigned=0, multidisc=false) %}
+        {% for disk, mb in panel.rows %}
+            {% if disk and not mb %}{% set counts.unassigned = counts.unassigned + 1 %}{% endif %}
+        {% endfor %}
+        {% for entry in panel.disk + panel.mb %}
+            {% if entry.number.split('.')[0] not in ['?', '1'] %}{% set counts.multidisc = true %}{% endif %}
+        {% endfor %}
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <p class="text-sm font-semibold">{{ panel.files|length }} files · {{ panel.mb|length }} MusicBrainz tracks · {{ counts.unassigned }} {{ 'file' if counts.unassigned == 1 else 'files' }} unassigned</p>
+            <div class="flex items-center gap-2 text-2xs">
+                <span class="text-muted uppercase tracking-widest">MB checked</span>
+                <span class="text-ink tabular-nums" title="MusicBrainz release last read {{ checked_at }}">{{ ago(checked_at) }}</span>
+                <button type="button" hx-get="/assignments/{{ album.id }}?reread=true&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+                        hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
+                        hx-indicator="#assignment-refreshing-{{ album.id }}"
+                        title="Read this release from MusicBrainz again and reset assignment changes"
+                        aria-label="Read this release from MusicBrainz again and reset assignment changes"
+                        class="mb-reread inline-flex items-center justify-center w-4 h-4 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 11-2.34-5.66"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20 3.5V9h-5.5"/>
+                    </svg>
+                </button>
+                <span id="assignment-refreshing-{{ album.id }}" class="mb-refreshing w-4 h-4 items-center justify-center text-muted" role="status">
+                    <svg class="animate-spin" viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path>
+                    </svg>
+                    <span class="sr-only">Reading this release from MusicBrainz again…</span>
+                </span>
+            </div>
+        </div>
         <form hx-post="/assignments/{{ album.id }}" hx-target="closest .assignment-content"
               hx-swap="outerHTML" hx-disabled-elt="find button" class="space-y-2">
             <input type="hidden" name="disk_order" value="{{ panel.draft.disk_order }}">
@@ -35,57 +65,100 @@
             <input type="hidden" name="incomplete" value="{{ 'true' if panel.files|length < panel.mb|length else 'false' }}">
             <div class="overflow-x-auto">
                 <table class="w-full min-w-[900px] text-xs">
-                    <thead><tr class="text-left border-b border-line">
-                        <th>On-disk track #</th><th>On disk</th><th>Length</th><th>Move file</th>
-                        <th>MB track #</th><th>MusicBrainz</th><th>Length</th><th>Move MB track</th><th>Δ</th>
-                    </tr></thead>
+                    <thead class="text-left">
+                        <tr><th scope="colgroup" colspan="3" class="p-2">On disk</th><th scope="colgroup" colspan="3" class="p-2 border-l border-line">MusicBrainz</th></tr>
+                        <tr class="text-muted border-b border-line">
+                            <th scope="col" class="p-2">Track</th><th scope="col" class="p-2">
+                                <div role="radiogroup" aria-label="On-disk track display" class="inline-flex items-center gap-2">
+                                    <label class="assignment-display-choice cursor-pointer">
+                                        <input type="radio" name="track_display" value="title" id="assignment-titles-{{ album.id }}" checked hx-preserve class="sr-only">
+                                        <span>Title</span>
+                                    </label>
+                                    <span aria-hidden="true" class="text-line">|</span>
+                                    <label class="assignment-display-choice cursor-pointer">
+                                        <input type="radio" name="track_display" value="filename" id="assignment-filenames-{{ album.id }}" hx-preserve class="assignment-filenames sr-only">
+                                        <span>Filename</span>
+                                    </label>
+                                </div>
+                            </th><th scope="col" class="p-2">Length</th>
+                            <th scope="col" class="p-2 border-l border-line">Track</th><th scope="col" class="p-2">Title</th><th scope="col" class="p-2">Length</th>
+                        </tr>
+                    </thead>
                     <tbody>
+                        {% set previous = namespace(disk='', mb='') %}
                         {% for disk, mb in panel.rows %}
                         {% set row = loop.index0 %}
-                        <tr class="border-b border-line" data-assignment-row="{{ row }}">
-                            <td class="p-2 font-mono">{{ disk.number if disk else '—' }}</td>
-                            <td class="p-2" title="{{ disk.path if disk else '' }}">
-                                {% if disk %}<span>{{ disk.title }}</span>
-                                {% if disk.title != disk.filename %}<div class="text-muted text-2xs">{{ disk.filename }}</div>{% endif %}
-                                {% else %}<span class="text-muted italic">Missing on disk</span>{% endif %}
-                            </td>
-                            <td class="p-2 font-mono">{{ duration(disk.length) if disk else '—' }}</td>
-                            <td class="p-2 whitespace-nowrap">{{ arrows('disk', row, panel.disk_order[row] if disk else 'gap-' ~ (panel.disk_order[:row]|select('none')|list|length), panel.rows|length) }}</td>
-                            <td class="p-2 font-mono">{{ mb.number if mb else '—' }}</td>
-                            <td class="p-2">{{ mb.title if mb else 'Unassigned' }}</td>
-                            <td class="p-2 font-mono">{{ duration(mb.length) if mb else '—' }}</td>
-                            <td class="p-2 whitespace-nowrap">{{ arrows('mb', row, panel.mb_order[row] if mb else 'gap-' ~ (panel.mb_order[:row]|select('none')|list|length), panel.rows|length) }}</td>
-                            <td class="p-2 font-mono">
-                                {% if disk and mb and disk.length is not none and mb.length is not none %}
-                                {% set delta = (disk.length - mb.length)|abs %}
-                                <span class="{{ 'text-amber-700 font-bold' if delta > 4000 else 'text-muted' }}">{{ (delta / 1000)|round|int }}s</span>
+                        {% set renumbered = disk and mb and (disk.number.split('.')[1] != mb.number.split('.')[1] or (disk.number.split('.')[0] != '?' and disk.number.split('.')[0] != mb.number.split('.')[0])) %}
+                        <tr class="border-b border-line {{ 'bg-amber-50' if (disk and not mb) or (mb and not disk) or renumbered else '' }}" data-assignment-row="{{ row }}">
+                            <td class="p-2 align-top">
+                                {% if disk %}
+                                    {% set disc = disk.number.split('.')[0] %}
+                                    {% if counts.multidisc and disc != previous.disk %}<div class="text-2xs text-muted whitespace-nowrap">Disc {{ disc if disc != '?' else 'unknown' }}</div>{% endif %}
+                                    {% set previous.disk = disc %}
+                                    <span class="font-mono" title="Current on-disk track number">{{ disk.number.split('.')[1] }}</span>
                                 {% else %}—{% endif %}
+                            </td>
+                            <td class="p-2 align-top">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        {% if disk %}<span class="assignment-title" title="{{ disk.path }}">{{ disk.title }}</span>
+                                        <span class="assignment-filename break-all" title="{{ disk.path }}">{{ disk.path }}</span>
+                                        {% else %}<span class="text-muted italic">Missing on disk</span>{% endif %}
+                                    </div>
+                                    <div class="whitespace-nowrap shrink-0">{{ arrows('disk', row, panel.disk_order[row] if disk else 'gap-' ~ (panel.disk_order[:row]|select('none')|list|length), panel.rows|length) }}</div>
+                                </div>
+                            </td>
+                            <td class="p-2 font-mono align-top">{{ duration(disk.length) if disk else '—' }}</td>
+                            <td class="p-2 align-top border-l border-line">
+                                {% if mb %}
+                                    {% set disc = mb.number.split('.')[0] %}
+                                    {% if counts.multidisc and disc != previous.mb %}<div class="text-2xs text-muted whitespace-nowrap">Disc {{ disc }}</div>{% endif %}
+                                    {% set previous.mb = disc %}
+                                    <span class="font-mono" title="MusicBrainz track number">{{ mb.number.split('.')[1] }}</span>
+                                    {% if renumbered %}<div class="text-2xs text-amber-700 whitespace-nowrap" aria-label="Track numbering changes from {{ disk.number }} to {{ mb.number }}">{{ disk.number if counts.multidisc else disk.number.split('.')[1] }} → {{ mb.number if counts.multidisc else mb.number.split('.')[1] }}</div>{% endif %}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="p-2 align-top">
+                                <div class="flex items-start justify-between gap-3">
+                                    <span class="{{ 'text-amber-700' if disk and not mb else '' }}">{{ mb.title if mb else 'Unassigned' if disk else '—' }}</span>
+                                    <div class="whitespace-nowrap shrink-0">{{ arrows('mb', row, panel.mb_order[row] if mb else 'gap-' ~ (panel.mb_order[:row]|select('none')|list|length), panel.rows|length) }}</div>
+                                </div>
+                            </td>
+                            <td class="p-2 font-mono align-top">
+                                {{ duration(mb.length) if mb else '—' }}
+                                {% if disk and mb and disk.length is not none and mb.length is not none %}
+                                    {% set delta = (disk.length - mb.length)|abs %}
+                                    {% if (delta / 1000)|round|int > 0 %}<div class="text-2xs whitespace-nowrap {{ 'text-amber-700 font-bold' if delta > 4000 else 'text-muted' }}">{{ (delta / 1000)|round|int }}s difference</div>{% endif %}
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-            <button type="button" hx-post="/confirm/{{ album.id }}/preview" hx-include="closest form"
-                    hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
-                    class="px-3 py-2 bg-accent text-white rounded text-xs font-bold">Review assigned tracks</button>
-            <button type="submit" name="move" value="release-only" class="text-xs text-mb-purple underline">Confirm release only — leave all tracks unassigned</button>
-            <button type="submit" name="move" value="add-gap"{% if panel.rows|length >= panel.disk|length + panel.mb|length + 1 %} disabled{% endif %} class="text-xs text-mb-purple underline disabled:opacity-30">Add a gap</button>
-            <p class="text-xs text-muted">Unassigned files receive only the album MBID. Their track titles, numbering, totals, and other metadata are preserved.</p>
+            <div class="flex flex-wrap items-center gap-4">
+                <button type="button" hx-post="/confirm/{{ album.id }}/preview" hx-include="closest form"
+                        hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
+                        class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Accept changes</button>
+                <button type="button" hx-get="/assignments/{{ album.id }}?on_album_page={{ 'true' if on_album_page else 'false' }}"
+                        hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
+                        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Reset</button>
+                <button type="button" hx-get="/assignments/{{ album.id }}?cancel=true&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+                        hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
+                        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Cancel</button>
+                <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}/open_edits" target="_blank" rel="noopener"
+                   class="ml-auto px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Open edits on MusicBrainz</a>
+            </div>
+            <p class="text-xs text-muted">Next: confirm tag and artwork updates before saving.</p>
         </form>
-        {% endif %}
+        {% else %}
         <div class="flex flex-wrap gap-3 text-xs">
             <button hx-get="/assignments/{{ album.id }}?reread=true&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
-                    hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
-                    class="text-mb-purple underline">Refresh MusicBrainz and reset</button>
-            <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}/open_edits" target="_blank" rel="noopener" class="text-mb-purple underline">Open edits on MusicBrainz</a>
-            <button hx-get="/assignments/{{ album.id }}?on_album_page={{ 'true' if on_album_page else 'false' }}"
-                    hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
-                    class="text-mb-purple underline">Reset assignments</button>
+                    hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this" class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded font-bold uppercase tracking-widest transition">Refresh MusicBrainz and reset</button>
             <button hx-get="/assignments/{{ album.id }}?cancel=true&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
-                    hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
-                    class="text-muted underline">Cancel assignment changes</button>
+                    hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this" class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded font-bold uppercase tracking-widest transition">Cancel</button>
         </div>
+        {% endif %}
     {% endif %}
 </div>
 {% if not fragment|default(false) %}</div>{% endif %}

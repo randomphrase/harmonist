@@ -742,7 +742,16 @@ Dismiss suggestion → clear candidate; the album stays in Needs MBID so a diffe
 **Explicit track assignments (#136).** Needs MBID offers an inline editor for
 the candidate's file/track comparison. Rows are pairs, not track numbers: either
 side can swap adjacent entries, including gaps, while separate on-disk and MB
-disc.track numbers remain attached to their entries. The automatic assignment
+track numbers remain attached to their entries, with explicit disc headings
+for multidisc albums. The editor leads with file/track/unassigned counts,
+highlights gaps and numbering changes, and offers a Title | Filename selector in
+the on-disk column heading (untitled files always fall back to filenames).
+Accept changes opens the final tag/artwork confirmation; Reset and Cancel sit
+nearby and Open edits sits at the right. Refresh/reset uses the album page's
+icon beside MB checked at the top right. Release-only confirmation belongs on
+the non-editing suggestion panel; it builds an explicit empty assignment for
+the same confirmation and write paths. Actions use standard button styling. The surrounding
+suggestion controls are hidden while a draft is open (#523). The automatic assignment
 initialises the editor; after that, the explicit mapping drives both the tag
 preview and the tagger, overriding even existing incorrect release-track IDs.
 Each file and MB track occurs exactly once in the draft. Explicit review may

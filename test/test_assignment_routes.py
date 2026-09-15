@@ -12,6 +12,20 @@ cfg = test_web.cfg
 client = test_web.client
 
 
+def test_release_only_preview_from_suggestion_requires_confirmation(client, cfg, monkeypatch):
+    d, _release, _big, _small, calls = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
+    files = album_files.audio_files(d)
+    before = [f.read_bytes() for f in files]
+    aid = _id_for(cfg, d)
+    preview = client.get(f"/confirm/{aid}/preview?release_only=true")
+    fields = _confirmation_fields(preview.text)
+    assert fields["disk_order"] == "0,1,-,-"
+    assert fields["mb_order"] == "-,-,0,1"
+    assert "Tracks unassigned" in preview.text
+    assert [f.read_bytes() for f in files] == before
+    assert [call for call in calls if call[0] == "mb"] == [("mb", "rel-new-confirm")]
+
+
 def test_assignment_review_writes_the_pairing_the_user_moved(client, cfg, monkeypatch):
     from harmonist import activity_store, sidecar
 
@@ -86,12 +100,12 @@ def test_untagged_editor_names_the_file_and_missing_numbers(client, cfg, monkeyp
         audio.save()
     editor = client.get(f"/assignments/{_id_for(cfg, d)}")
     assert editor.status_code == 200
-    assert "On-disk track #" in editor.text and "MB track #" in editor.text
-    assert "?.?" in editor.text
+    assert "On disk" in editor.text and "MusicBrainz" in editor.text
     for f in album_files.audio_files(d):
         assert f.name in editor.text
     rows = BeautifulSoup(editor.text, "html.parser").select("[data-assignment-row]")
     for row, path in zip(rows, album_files.audio_files(d), strict=True):
+        assert next(row.find_all("td")[0].stripped_strings) == "?"
         assert next(row.find_all("td")[1].stripped_strings) == path.name
     assert re.search(r'name="disk_order" value="0,1"', editor.text)
 
@@ -108,7 +122,7 @@ def test_extra_file_can_move_past_a_gap_but_cannot_be_silently_dropped(client, c
     moved = client.post(f"/assignments/{aid}", data=fields | {"move": "mb:1:up"})
     fields = _confirmation_fields(moved.text)
     assert fields["mb_order"] == "-,0"
-    assert "Review assigned tracks" in moved.text
+    assert "Accept changes" in moved.text
     preview = client.post(f"/confirm/{aid}/preview", data=fields)
     assert "unassigned file already has MusicBrainz track IDs" in preview.text
     attempted = client.post(f"/confirm/{aid}", data=_confirmation_fields(preview.text))
@@ -126,6 +140,34 @@ def test_arrow_requests_use_the_cache_and_never_fetch_artwork(client, cfg, monke
         )
         assert editor.status_code == 200
     assert calls == [("mb", "rel-new-confirm")]
+
+
+@pytest.mark.parametrize("disc", [1, 2])
+def test_editor_keeps_disc_context_and_number_changes_with_entries(client, cfg, monkeypatch, disc):
+    from bs4 import BeautifulSoup
+    from mutagen.mp4 import MP4
+
+    d, release, *_ = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
+    release["medium-list"][0]["position"] = str(disc)
+    for i, path in enumerate(album_files.audio_files(d), start=1):
+        audio = MP4(path)
+        audio["disk"] = [(disc, disc)]
+        audio["trkn"] = [(i, 2)]
+        audio.save()
+    aid = _id_for(cfg, d)
+    editor = client.get(f"/assignments/{aid}")
+    moved = client.post(
+        f"/assignments/{aid}",
+        data=_confirmation_fields(editor.text) | {"move": "disk:0:down"},
+    )
+    rows = BeautifulSoup(moved.text, "html.parser").select("[data-assignment-row]")
+    cells = rows[0].find_all("td", recursive=False)
+    assert cells[0].select_one("span").text.strip() == "2"
+    assert cells[3].select_one("span").text.strip() == "1"
+    assert f"Track numbering changes from {disc}.2 to {disc}.1" in str(cells[3])
+    headings = [div.text.strip() for div in cells[0].find_all("div")]
+    assert headings == (["Disc 2"] if disc == 2 else [])
+    assert "bg-amber-50" in rows[0]["class"]
 
 
 def test_no_match_candidate_has_an_actionable_description(client, cfg, monkeypatch):

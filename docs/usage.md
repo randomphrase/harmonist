@@ -89,28 +89,34 @@ leads with whichever fits:
   **Dismiss suggestion** leaves the album where it is.
   **Edit track assignments** lets you correct which file belongs to which
   MusicBrainz track. The arrows swap adjacent entries or missing-track gaps on
-  either side. **On-disk track #** and **MB track #** show each entry's current
-  disc.track numbers, not its row in the table; `?` means the file has no tag for
-  that number. Filenames appear alongside titles (or in their place for untagged
-  files), with the relative path available on hover.
-  **Review assigned tracks** previews the pairing and tag changes before you
-  apply them. Applying writes MusicBrainz's numbering and metadata without
-  renaming files; **Undo tag changes** in History reverses the tagging.
-  **Cancel assignment changes** discards the draft, and **Reset assignments**
+  either side. The **On disk** and **MusicBrainz** groups show each entry's
+  track number, title and length. Numbers belong to entries, not rows; `?`
+  means an untagged track number. Multidisc albums show disc headings on each
+  side. Unassigned entries and numbering changes are highlighted; equal
+  durations need no difference label. **Title | Filename** in the on-disk column
+  heading switches every row between titles and relative filenames; files
+  without titles use their filenames as the main label.
+  **Accept changes** accepts the pairing and opens the final tag/artwork
+  confirmation before anything is saved. Applying writes MusicBrainz's numbering
+  and metadata without renaming files; **Undo tag changes** in History reverses
+  the tagging.
+  **Cancel** discards the draft, and **Reset**
   starts again from the automatic pairing. A normal inbox refresh preserves the
   draft; leaving or reloading the page discards it. If files or MusicBrainz data
   change during review, review the assignments again before applying.
   Files may be left opposite a gap when MusicBrainz has no corresponding track.
   Those files receive only the album MBID; their titles, numbering, totals, and
-  other metadata stay as they are. **Confirm release only** prepares a review
-  with all files unassigned. Existing MB track IDs on an unassigned file must be
-  resolved first; the preview explains which file needs attention.
+  other metadata stay as they are. To confirm just the album identity, **Cancel**
+  the editor and choose **Confirm release only** on the suggestion panel. This
+  opens a confirmation with all files unassigned. Existing MB track IDs on an
+  unassigned file must be resolved first; the preview explains which file needs attention.
   The Library shows **Tracks unassigned**, with **Review assignments** on the
-  album page. **Refresh MusicBrainz and reset** loads the current tracklist;
+  album page. The refresh icon beside **MB checked** at the top right loads the
+  current tracklist and resets draft movements (ordinary Reset uses the cached tracklist);
   known release-track IDs remain paired, while unresolved files wait for your
   review. Imported albums with an album MBID but no track IDs use this review
   too. An album can have both unassigned files and missing tracks.
-  **Open edits on MusicBrainz** links to the release's edits; Harmonist does not
+  **Open edits on MusicBrainz**, at the right of the action row, links to the release's edits; Harmonist does not
   predict when an edit will be approved.
 - *Without one.* Search by artist + title, or paste an MBID directly.
 - *Not in MusicBrainz yet.* Common for Bandcamp-only releases. **Open in Harmony**

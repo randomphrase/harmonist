@@ -6018,6 +6018,7 @@ def _register_routes(app: FastAPI) -> None:
         reread: bool = False,
         assignment_draft: track_assignment.Draft | None = None,
         assignment_release: str = "",
+        release_only: bool = False,
     ) -> Response:
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         candidate = _assignment_candidate(album)
@@ -6044,13 +6045,19 @@ def _register_routes(app: FastAPI) -> None:
         if release is not None:
             files = album_files.for_paths(album.folders)
             tracks = [(path, formats.read_tags(path)) for path in files]
-            if assignment_draft is not None:
+            if assignment_draft is not None or release_only:
                 try:
-                    if _release_fingerprint(release) != assignment_release:
-                        raise track_assignment.AssignmentChanged(
-                            "MusicBrainz changed. Close this review and reset the assignments."
-                        )
-                    assignment_panel = track_assignment.panel(files, release, assignment_draft)
+                    if release_only:
+                        assignment_panel = track_assignment.panel(files, release)
+                        assignment_panel.move("release-only")
+                        assignment_draft = assignment_panel.draft
+                        assignment_release = _release_fingerprint(release)
+                    else:
+                        if _release_fingerprint(release) != assignment_release:
+                            raise track_assignment.AssignmentChanged(
+                                "MusicBrainz changed. Close this review and reset the assignments."
+                            )
+                        assignment_panel = track_assignment.panel(files, release, assignment_draft)
                     assignment_changes = tagger_mod.plan_album(
                         album.path,
                         release,
@@ -6118,6 +6125,7 @@ def _register_routes(app: FastAPI) -> None:
                 assignment_draft=assignment_draft,
                 assignment_changes=assignment_changes,
                 assignment_error=assignment_error,
+                release_only=release_only,
                 field_label=tag_history.label_for,
                 display_tag=tag_history.display,
             ),
@@ -6134,9 +6142,15 @@ def _register_routes(app: FastAPI) -> None:
         incomplete: bool = False,
         on_album_page: bool = False,
         reread: bool = False,
+        release_only: bool = False,
     ) -> Response:
         return _confirmation_preview(
-            request, album_id, incomplete=incomplete, on_album_page=on_album_page, reread=reread
+            request,
+            album_id,
+            incomplete=incomplete,
+            on_album_page=on_album_page,
+            reread=reread,
+            release_only=release_only,
         )
 
     @app.post("/confirm/{album_id}/preview", response_class=HTMLResponse)

@@ -19,6 +19,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- Track assignment review now emphasizes the mapping, with compact numbering, one filename toggle and consistent action buttons (#523).
 - **A `cover.jpg` larger than your embedded artwork is left alone** — one
   high-resolution file beside modest embedded images is a layout, not something
   to fix, so Harmonist no longer offers to write it into every track. **Use this

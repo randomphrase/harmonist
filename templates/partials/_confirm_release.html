@@ -134,7 +134,7 @@
             <button type="submit" class="text-sm text-mb-purple underline">Try again</button>
         </form>
         {% else %}
-        <button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+        <button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}&amp;release_only={{ 'true' if release_only else 'false' }}"
                 hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
                 class="text-sm text-mb-purple underline">Try again</button>
         {% endif %}

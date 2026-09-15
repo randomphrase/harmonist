@@ -128,7 +128,7 @@
     {# The mis-tag panel above already explains the suggestion; here just
        flag the technical track-fit notes (if any) as a warning. #}
     {% if candidate.notes %}
-    <div class="text-xs text-amber-700 mb-2 flex items-start gap-1.5">
+    <div class="candidate-context text-xs text-amber-700 mb-2 flex items-start gap-1.5">
         <svg width="14" height="14" class="w-3.5 h-3.5 mt-px shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
         </svg>
@@ -136,7 +136,7 @@
     </div>
     {% endif %}
     {% else %}
-    <div class="text-xs text-muted mb-2">
+    <div class="candidate-context text-xs text-muted mb-2">
         {% if candidate.confidence == 'no_match' %}
         This release doesn't match your files automatically. Review the track assignments below.
         {% else %}MusicBrainz suggests a release —
@@ -154,7 +154,7 @@
         {% include 'partials/_assignment_editor.html' %}
     {% endwith %}
 
-    <div class="flex gap-2 flex-wrap">
+    <div class="candidate-context flex gap-2 flex-wrap">
         {% if exact_count or incomplete_offered %}
         <button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete_offered else 'false' }}&amp;on_album_page={{ 'true' if on_album else 'false' }}"
                 hx-target="#modal" hx-swap="innerHTML settle:0ms"
@@ -165,9 +165,15 @@
         </button>
         {% else %}
         <span class="text-xs text-amber-700 self-center">
-            {{ candidate.file_count }} files exceed this release's {{ candidate.track_count }} tracks — choose a different release below.
+            Edit track assignments to review {{ candidate.file_count }} files against {{ candidate.track_count }} MusicBrainz tracks.
         </span>
         {% endif %}
+        <button hx-get="/confirm/{{ album.id }}/preview?release_only=true&amp;on_album_page={{ 'true' if on_album else 'false' }}"
+                hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
+                title="Confirm the album release while leaving all track assignments unresolved"
+                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+            Confirm release only
+        </button>
         {# Re-fetch this same release from MB and re-compare. Use after
            correcting the release on MusicBrainz — a now-fixed track
            length may turn an approximate match into an exact one. Works

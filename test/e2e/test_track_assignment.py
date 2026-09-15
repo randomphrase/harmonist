@@ -16,6 +16,43 @@ def _card(page, base):
     return card
 
 
+def test_column_display_toggle_survives_moves_and_reset(reset_demo_server):
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        card = _card(page, reset_demo_server)
+        card.get_by_role("button", name="Edit track assignments").click()
+        editor = card.locator(".assignment-editor")
+        filenames = editor.get_by_role("radio", name="Filename", exact=True)
+        pw.expect(editor.locator("[data-assignment-row] .assignment-title").first).to_be_visible()
+        pw.expect(
+            editor.locator("[data-assignment-row] .assignment-filename").first
+        ).not_to_be_visible()
+        filenames.focus()
+        filenames.press("Space")
+        pw.expect(
+            editor.locator("[data-assignment-row] .assignment-filename").first
+        ).to_be_visible()
+        pw.expect(
+            editor.locator("[data-assignment-row] .assignment-title").first
+        ).not_to_be_visible()
+        editor.get_by_role("button", name="Move on-disk entry down", exact=True).first.click()
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
+        pw.expect(filenames).to_be_checked()
+        pw.expect(
+            editor.locator("[data-assignment-row] .assignment-filename").first
+        ).to_be_visible()
+        editor.locator("label.assignment-display-choice", has_text="Title").click()
+        pw.expect(editor.locator("[data-assignment-row] .assignment-title").first).to_be_visible()
+        editor.get_by_role("button", name="Reset", exact=True).click()
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2")
+        editor.get_by_role("button", name="Cancel", exact=True).click()
+        pw.expect(
+            card.get_by_role("button", name="Review and confirm release", exact=True)
+        ).to_be_visible()
+        browser.close()
+
+
 def test_release_only_confirmation_can_be_reviewed_from_library(reset_demo_server):
     base = reset_demo_server
     with pw.sync_playwright() as playwright:
@@ -24,9 +61,11 @@ def test_release_only_confirmation_can_be_reviewed_from_library(reset_demo_serve
         card = _card(page, base)
         card.get_by_role("button", name="Edit track assignments").click()
         editor = card.locator(".assignment-editor")
-        editor.get_by_role("button", name="Confirm release only", exact=False).click()
-        pw.expect(editor.locator('[name="mb_order"]')).to_have_value("-,-,-,0,1,2")
-        editor.get_by_role("button", name="Review assigned tracks").click()
+        pw.expect(
+            card.get_by_role("button", name="Confirm release only", exact=True)
+        ).not_to_be_visible()
+        editor.get_by_role("button", name="Cancel", exact=True).click()
+        card.get_by_role("button", name="Confirm release only", exact=True).click()
         dialog = page.get_by_role("dialog")
         pw.expect(dialog).to_contain_text("Tracks unassigned")
         dialog.get_by_role("button", name="Confirm release and apply changes", exact=True).click()
@@ -41,7 +80,9 @@ def test_release_only_confirmation_can_be_reviewed_from_library(reset_demo_serve
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("-,-,-,0,1,2")
         dialog.get_by_role("button", name="Move on-disk entry up", exact=True).nth(3).click()
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("-,-,0,-,1,2")
-        dialog.get_by_role("button", name="Refresh MusicBrainz and reset").click()
+        dialog.get_by_role(
+            "button", name="Read this release from MusicBrainz again and reset assignment changes"
+        ).click()
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("-,-,-,0,1,2")
         browser.close()
 
@@ -67,7 +108,7 @@ def test_arrow_mapping_survives_refresh_review_and_apply(reset_demo_server):
         with page.expect_response(lambda r: "/tasks" in r.url):
             page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
-        editor.get_by_role("button", name="Review assigned tracks").click()
+        editor.get_by_role("button", name="Accept changes").click()
         dialog = page.get_by_role("dialog")
         pw.expect(dialog).to_be_visible()
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("1,0,2")
@@ -105,7 +146,7 @@ def test_gap_can_move_on_either_side_and_cancel_discards_the_draft(reset_demo_se
         pw.expect(editor.locator('[data-assignment-row="2"]')).to_contain_text("Missing on disk")
         editor.get_by_role("button", name="Move MusicBrainz entry up", exact=True).last.click()
         pw.expect(editor.locator('[name="mb_order"]')).to_have_value("0,1,3,2")
-        editor.get_by_role("button", name="Cancel assignment changes").click()
+        editor.get_by_role("button", name="Cancel").click()
         editor.get_by_role("button", name="Edit track assignments").click()
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2,-")
         pw.expect(editor.locator('[name="mb_order"]')).to_have_value("0,1,2,3")
