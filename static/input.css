@@ -20,12 +20,13 @@
 @source "../templates/**/*.html";
 @source "../src/harmonist/web/main.py";
 
-/* An open assignment draft has its own review action. The ordinary confirm
- * button would recompute the automatic pairing and discard that draft. */
-.candidate-review:has(.assignment-editor form) .automatic-confirm,
-.candidate-review:has(.assignment-editor form) .candidate-context {
-    display: none;
-}
+/* Keep numeric columns compact and both title columns equal, including when
+ * movement controls appear. Long names wrap instead of stretching the table. */
+.assignment-table { table-layout: fixed; min-width: 760px; }
+.assignment-number { width: 3.5rem; }
+.assignment-length { width: 8rem; }
+.assignment-table td { padding-top: .375rem; padding-bottom: .375rem; }
+.assignment-table .assignment-title { overflow-wrap: anywhere; }
 
 .assignment-content .assignment-filename,
 .assignment-content:has(.assignment-filenames:checked) .assignment-title {

@@ -12,6 +12,29 @@ cfg = test_web.cfg
 client = test_web.client
 
 
+def test_read_only_comparison_uses_the_editor_rows_without_network(client, cfg, monkeypatch):
+    from bs4 import BeautifulSoup
+
+    from harmonist import mb_cache
+
+    d, *_ = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
+    aid = _id_for(cfg, d)
+    # Seed the normal cache once; rendering either mode must not refresh it.
+    editor = client.get(f"/assignments/{aid}")
+    monkeypatch.setattr(mb_cache, "fetch_release", lambda *a, **k: pytest.fail("unexpected fetch"))
+    view = client.get(f"/assignments/{aid}?cancel=true")
+
+    def rows(html):
+        return [
+            row.get_text(" ", strip=True).replace("↑", "").replace("↓", "").split()
+            for row in BeautifulSoup(html, "html.parser").select("[data-assignment-row]")
+        ]
+
+    assert rows(view.text) == rows(editor.text)
+    assert len(rows(view.text)) == 2
+    assert not BeautifulSoup(view.text, "html.parser").select('button[name="move"]')
+
+
 def test_release_only_preview_from_suggestion_requires_confirmation(client, cfg, monkeypatch):
     d, _release, _big, _small, calls = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
     files = album_files.audio_files(d)
@@ -24,6 +47,64 @@ def test_release_only_preview_from_suggestion_requires_confirmation(client, cfg,
     assert "Tracks unassigned" in preview.text
     assert [f.read_bytes() for f in files] == before
     assert [call for call in calls if call[0] == "mb"] == [("mb", "rel-new-confirm")]
+
+
+def test_uncached_comparison_waits_for_explicit_refresh(client, cfg, monkeypatch):
+    from bs4 import BeautifulSoup
+
+    d, _release, _big, _small, calls = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
+    aid = _id_for(cfg, d)
+    page = client.get("/tasks")
+    loader = BeautifulSoup(page.text, "html.parser").select_one(
+        f'[hx-get="/assignments/{aid}?cancel=true&on_album_page=false"]'
+    )
+    assert loader is not None
+    view = client.get(loader["hx-get"])
+    assert "Track comparison is not cached" in view.text
+    assert calls == []
+    refresh = BeautifulSoup(view.text, "html.parser").select_one('[hx-get*="reread=true"]')
+    assert refresh is not None
+    loaded = client.get(refresh["hx-get"])
+    assert "2 files · 2 MusicBrainz tracks" in loaded.text
+    assert not BeautifulSoup(loaded.text, "html.parser").select('button[name="move"]')
+    assert calls == [("mb", "rel-new-confirm")]
+    # Explicit refresh must fetch even once the cache has been populated.
+    loaded = client.get(refresh["hx-get"])
+    assert "2 files · 2 MusicBrainz tracks" in loaded.text
+    assert calls == [("mb", "rel-new-confirm"), ("mb", "rel-new-confirm")]
+
+
+@pytest.mark.parametrize("tracks", [1, 2, 3])
+def test_read_only_confirmation_uses_current_counts_and_displayed_mapping(
+    client, cfg, monkeypatch, tracks
+):
+    from copy import deepcopy
+
+    from bs4 import BeautifulSoup
+
+    d, release, *_ = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
+    listing = release["medium-list"][0]["track-list"]
+    if tracks == 1:
+        listing.pop()
+    elif tracks == 3:
+        extra = deepcopy(listing[-1])
+        extra.update(id="extra-track", position="3", number="3")
+        listing.append(extra)
+    aid = _id_for(cfg, d)
+    view = client.get(f"/assignments/{aid}?cancel=true&reread=true")
+    assert f"2 files · {tracks} MusicBrainz tracks" in view.text
+    soup = BeautifulSoup(view.text, "html.parser")
+    confirm = soup.select_one(f'button[hx-post="/confirm/{aid}/preview"]')
+    assert confirm is not None and confirm.get_text(strip=True) == "Confirm release"
+    preview = client.post(f"/confirm/{aid}/preview", data=_confirmation_fields(view.text))
+    assert (
+        _confirmation_fields(preview.text)["disk_order"]
+        == _confirmation_fields(view.text)["disk_order"]
+    )
+    if tracks == 1:
+        assert "Unassigned files will receive the album's MusicBrainz ID" in preview.text
+        applied = client.post(f"/confirm/{aid}", data=_confirmation_fields(preview.text))
+        assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
 
 
 def test_assignment_review_writes_the_pairing_the_user_moved(client, cfg, monkeypatch):
@@ -181,8 +262,11 @@ def test_no_match_candidate_has_an_actionable_description(client, cfg, monkeypat
     sidecar.write(
         d, replace(sc, mb_match_candidate=replace(sc.mb_match_candidate, confidence="no_match"))
     )
-    body = client.get("/tasks").text
-    assert "Review the track assignments below" in body
+    aid = _id_for(cfg, d)
+    client.get(f"/assignments/{aid}")
+    body = client.get(f"/assignments/{aid}?cancel=true").text
+    assert "Edit track assignments</button>" in body
+    assert "2 files · 2 MusicBrainz tracks" in body
 
 
 def test_preview_retry_preserves_the_assignment_after_a_musicbrainz_failure(

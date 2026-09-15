@@ -5923,11 +5923,15 @@ def _register_routes(app: FastAPI) -> None:
         panel = None
         error = None
         checked_at = None
-        if not cancel:
+        # Opening the inbox may display many candidates. Only an explicit
+        # refresh (or entering an uncached editor) may spend an MB request.
+        release = mb_cache.stored_release(candidate.mb_release_id)
+        if release is not None or not cancel or reread:
             try:
-                release = mb_cache.fetch_release(
-                    candidate.mb_release_id, max_age=mb_cache.FRESH if reread else None
-                )
+                if reread or release is None:
+                    release = mb_cache.fetch_release(
+                        candidate.mb_release_id, max_age=mb_cache.FRESH if reread else None
+                    )
                 current = _release_fingerprint(release)
                 checked_at = mb_cache.fetched_at(candidate.mb_release_id)
                 if draft and current != release_fingerprint:
@@ -5953,6 +5957,8 @@ def _register_routes(app: FastAPI) -> None:
                 log.warning("could not build track assignments: %s", e, extra=_LOG_ONLY)
                 error = str(e)
                 panel = None
+        else:
+            error = "Track comparison is not cached. Read MusicBrainz to load it."
         return _templates(request).TemplateResponse(
             request,
             "partials/_assignment_dialog.html" if modal else "partials/_assignment_editor.html",

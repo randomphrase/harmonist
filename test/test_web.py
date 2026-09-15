@@ -497,13 +497,13 @@ def test_needs_review_card_renders_side_by_side(client, cfg):
     r = client.get("/tasks")
     # Merged into NEEDS_MBID: the card shows the suggestion side-by-side inline.
     assert ">MBID</abbr>" in r.text  # the "Needs MBID" header (MBID is an <abbr>)
-    assert "MusicBrainz suggests" in r.text
-    assert "approximate" in r.text
-    assert "Side A" in r.text
-    assert "Review and confirm release" in r.text
-    assert "Dismiss suggestion" in r.text
-    # Re-query MB for the same release (after fixing it upstream)
-    assert "Refresh from MB" in r.text
+    aid = _id_for(cfg, d)
+    assert f"/assignments/{aid}?cancel=true" in r.text
+    # The comparison loads separately, without a network request per card.
+    comparison = client.get(f"/assignments/{aid}?cancel=true")
+    assert "Track comparison is not cached" in comparison.text
+    assert "Dismiss suggestion" in comparison.text
+    assert "Edit track assignments" in comparison.text
 
 
 def test_mistag_card_renders_open_panel_with_sibling_explanation(client, cfg):
@@ -545,14 +545,9 @@ def test_mistag_card_renders_open_panel_with_sibling_explanation(client, cfg):
     assert ">Bandcamp</a>" in r.text
     # Disambiguation is rendered in parentheses, visually distinct (muted span).
     assert ">(24-bit)</span>" in r.text
-    # The track-count note stays in the match-quality box, NOT in the mis-tag
-    # prose, and is flagged with a "Note:" prefix.
-    assert "Note:" in r.text
-    assert "file count 10 does not match MB track count 11" in r.text
-    # File count (10) < track count (11): the only valid tag is incomplete, so
-    # that's the release review offered by the card.
-    assert "Review incomplete release (10 of 11)" in r.text
-    assert "/preview?incomplete=true" in r.text
+    # The separate comparison uses the same loader as an ordinary suggestion.
+    aid = _id_for(cfg, d)
+    assert f"/assignments/{aid}?cancel=true" in r.text
 
 
 def test_mistag_renders_in_own_top_level_section(client, cfg):
@@ -5266,43 +5261,6 @@ def test_confirm_incomplete_400_without_candidate(client, cfg):
     aid = _id_for(cfg, d)
     r = client.post(f"/confirm/{aid}/incomplete")
     assert r.status_code == 400
-
-
-def test_needs_review_card_offers_incomplete_when_file_count_short(client, cfg):
-    """The Confirm as Incomplete button appears on a suggestion card
-    where file_count < track_count — and not when they're equal.
-    """
-    d_short = _make_album(cfg, "ShortMatch")
-    sc.write(
-        d_short,
-        Sidecar(
-            store_url="https://x.bandcamp.com/album/short",
-            mb_match_candidate=MatchCandidate(
-                mb_release_id="rel-short",
-                confidence="approximate",
-                file_count=1,
-                track_count=3,
-            ),
-        ),
-    )
-    d_exact = _make_album(cfg, "ExactMatch")
-    sc.write(
-        d_exact,
-        Sidecar(
-            store_url="https://x.bandcamp.com/album/exact",
-            mb_match_candidate=MatchCandidate(
-                mb_release_id="rel-exact",
-                confidence="approximate",
-                file_count=1,
-                track_count=1,
-            ),
-        ),
-    )
-    r = client.get("/tasks")
-    # Button text appears only when there's at least one short album
-    assert "Review incomplete release" in r.text
-    # Count occurrences — exactly one (only on the short card, not the exact one)
-    assert r.text.count("Review incomplete release") == 1
 
 
 def test_library_shows_partial_tag_badge(client, cfg):

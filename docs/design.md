@@ -216,7 +216,7 @@ path:
   else here).
 
 All four leave a sidecar with a `store_url` and no release — **NEEDS_MBID**, in
-the inbox with the side-by-side and Review and confirm release / Review incomplete release on it. Worth
+the inbox with the side-by-side and Confirm release on it. Worth
 stating plainly, because it remains a real cost of the operation: an album that
 was COMPLETE can come back needing a click. The archive is what makes that
 recoverable rather than a loss.
@@ -551,7 +551,7 @@ Every album in the music dir is in exactly one state, derived from the presence/
 |---|---|---|---|---|---|---|---|
 | absent | — | — | — | — | **New** | yes | "Reconcile from tags" / search-by-name / manual MBID form |
 | present | null | null | n/a | — | **Needs MBID** | yes | If `store_url`: "Open in Harmony" + "Recheck"; always: manual MBID form |
-| present | null | set | n/a | — | **Needs MBID** (with suggestion) | yes | Adaptive card: side-by-side files vs MB release (per-track green/amber length deltas) + "Review and confirm release" / "Review incomplete release" / "Dismiss suggestion", with the find/assign tools available under a disclosure. Sorted first in the group. |
+| present | null | set | n/a | — | **Needs MBID** (with suggestion) | yes | Adaptive card: side-by-side files vs MB release (inline duration deltas) + "Confirm release" / "Dismiss suggestion", with the find/assign tools available under a disclosure. Sorted first in the group. |
 | present | set | n/a | no | — | **Tagging** (transient) | yes (briefly) | spinner |
 | present, `store_url` is bandcamp, `bandcamp.item_id=None` | set | n/a | yes | — | **Needs Link** | yes | "Try a different URL" / "Mark purchased elsewhere" |
 | present | set | n/a | yes | equal | **Complete** | no | (hidden — visible in library) |
@@ -725,7 +725,7 @@ Notes:
 A URL → MBID match from [MusicBrainz](https:://musicbrainz.org) is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
 
 - **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote an initial match: write `mb_release_id`, run tagger, transition to Tagging → Complete with no user intervention. If files already name a different release, manual assignment and Recheck instead retain a suggestion so the user reviews its artwork before reassignment (#483).
-- **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. The album stays in Needs MBID with the suggestion attached; its card surfaces a Picard-style side-by-side with green/amber per-track indicators and Review and confirm release / Review incomplete release / Dismiss suggestion buttons (find/assign tools remain available under a disclosure).
+- **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. The album stays in Needs MBID with the suggestion attached; its card surfaces a Picard-style side-by-side with inline duration deltas and Confirm release / Dismiss suggestion buttons (find/assign tools remain available under a disclosure).
 - **No match:** file count differs from MB track count. Treated like Approximate from the user's perspective (suggestion shown, explicit Confirm required) but the side-by-side has to handle uneven rows.
 
 Track lengths compared are the per-release **track** lengths, not the recording lengths (which can differ by seconds across releases).
@@ -734,7 +734,7 @@ Which file is compared against which track is **not** positional — it goes thr
 
 When a store URL resolves to several MB releases, `match.match_releases` ranks them all and reports whether the ranking could actually separate them. **Exact is not enough to auto-tag on its own — the winner has to be unique.** Two editions of one release with the same tracklist and the same durations rank identically, and picking one is then picking whichever MusicBrainz listed first; the album is left as it is, with no tag write and no stashed suggestion (a suggestion names one release, which is the same coin toss), and Activity says several editions fit. *Look up releases at this URL* on the album's card lists them for the user to choose (#426).
 
-**Review and confirm release** (or **Review incomplete release**) opens the same confirmation dialog from the inbox and the album page. It shows the selected release's tracklist, current artwork, and selected release's archive image independently of image size or the existing folder cover. A release-group fallback is labelled. Opening the dialog uses the shared caches; **Refresh preview** fetches both sources again. The archive image is included by default for a reassignment, or for additions on an initial tagging; initial replacements require opting in. Unticking keeps every existing image. Missing or unavailable archive artwork leaves tag confirmation available. Differing per-track images remain protected (#483).
+**Confirm release** opens the same confirmation dialog from the inbox and the album page. It shows the selected release's tracklist, current artwork, and selected release's archive image independently of image size or the existing folder cover. A release-group fallback is labelled. Opening the dialog uses the shared caches; refresh the comparison before opening a new preview to read MusicBrainz again. The archive image is included by default for a reassignment, or for additions on an initial tagging; initial replacements require opting in. Unticking keeps every existing image. Missing or unavailable archive artwork leaves tag confirmation available. Differing per-track images remain protected (#483).
 
 **Confirm release and apply changes** → fetch the release fresh, require it to match the reviewed release fingerprint, promote the candidate to `mb_release_id`, clear the candidate, and tag with the included artwork plan. A changed release requires another review before any write; a changed artwork plan withholds artwork while valid tags still apply. Tag and artwork outcomes are reported separately, using the existing retained-backup and Undo rules. An unreviewed legacy POST can write tags only. Exact initial auto-tagging retains its additions-only behavior.
 Dismiss suggestion → clear candidate; the album stays in Needs MBID so a different release can be assigned.
@@ -747,20 +747,27 @@ for multidisc albums. The editor leads with file/track/unassigned counts,
 highlights gaps and numbering changes, and offers a Title | Filename selector in
 the on-disk column heading (untitled files always fall back to filenames).
 Accept changes opens the final tag/artwork confirmation; Reset and Cancel sit
-nearby and Open edits sits at the right. Refresh/reset uses the album page's
-icon beside MB checked at the top right. Release-only confirmation belongs on
-the non-editing suggestion panel; it builds an explicit empty assignment for
-the same confirmation and write paths. Actions use standard button styling. The surrounding
-suggestion controls are hidden while a draft is open (#523). The automatic assignment
-initialises the editor; after that, the explicit mapping drives both the tag
+nearby and Edit on MusicBrainz sits at the right. Refresh/reset uses the album page's
+icon beside MB checked at the top right. The non-editing panel has one Confirm
+release action using the displayed pairing. The final preview explains any
+unassigned files in an informational warning; its normal confirmation action
+applies the reviewed pairings. Actions use standard
+button styling. Surrounding suggestion controls are hidden while a draft is open (#523). Viewing and editing
+share the same panel data and compact table, with purple MusicBrainz values and
+a hexagon group heading (#525). The initial card loads a preserved comparison
+fragment from stored release data without network requests, regardless of cache
+age; a missing cache is visible and offers an explicit read. Entering an uncached
+editor may fetch once, and explicit refresh always fetches fresh while preserving
+view/edit mode. Non-editing confirmation submits the displayed pairing through
+the same guarded preview. The automatic assignment initialises both views; after that, the explicit mapping drives both the tag
 preview and the tagger, overriding even existing incorrect release-track IDs.
 Each file and MB track occurs exactly once in the draft. Explicit review may
 leave files unassigned (#517): only paired files receive track metadata; every
 file receives the confirmed album MBID. Unassigned files retain all other tags,
 including their original numbering and totals. Existing track IDs on an
 unassigned file block confirmation with an explanation: pair the file correctly
-or remove those IDs in a tag editor before confirming. A release-only review
-leaves every file unassigned. No assignment or status flag is persisted.
+or remove those IDs in a tag editor before confirming. No assignment or status
+flag is persisted.
 
 The Library shows **Tracks unassigned**, derived from missing release-track IDs
 on confirmed files and refined against the release when it is assessed. This
@@ -1184,7 +1191,7 @@ The records above exist to be readable, but they were shaped to be *reversible*:
 
 When it does move, the sidecar goes with it: `mb_release_id` and `tagged_at` are cleared and the album derives as `NEEDS_MBID`. Leaving the sidecar naming a release the files no longer carry would derive as `TAGGING` (§3) — the transient spinner, with no action on it and no way out.
 
-**The release is kept as a confirmable suggestion**, not discarded: the Needs MBID card then offers Review and confirm release, which opens the confirmation preview, with a note saying why the album is there. Undoing a *re-match* reverts the files to the older release, and that older release — not whichever one the sidecar was holding — is what gets suggested, because it is what the user asked to return to. The candidate carries no `track_comparisons`: building them needs an MB fetch, and an undo makes no network call. Confirming re-tags through the ordinary path, which rewrites the release's own totals into the files, so nothing here has to guess a track count.
+**The release is kept as a confirmable suggestion**, not discarded: the Needs MBID card then offers Confirm release, which opens the confirmation preview, with a note saying why the album is there. Undoing a *re-match* reverts the files to the older release, and that older release — not whichever one the sidecar was holding — is what gets suggested, because it is what the user asked to return to. The candidate carries no `track_comparisons`: building them needs an MB fetch, and an undo makes no network call. Confirming re-tags through the ordinary path, which rewrites the release's own totals into the files, so nothing here has to guess a track count.
 
 This is the same transition the "wrong match" pencil makes, and deliberately so: both go through `sidecar.unlink` (§3). It differs only in that the pencil leaves the on-disk tags alone and passes no candidate, since there the release was *wrong* rather than merely undone.
 
@@ -1896,7 +1903,7 @@ forever because `TagMismatchError` would block the tagger.
 **Handling:** the suggestion card (Needs MBID with a candidate) offers an
 incomplete release review when files are missing:
 
-- **Review incomplete release** — opens the artwork confirmation preview; accepting it runs the tagger in incomplete mode. The
+- **Confirm release** — opens the artwork confirmation preview; accepting it runs the tagger in incomplete mode. The
   tagging writes the release's own track/disc totals into every file it
   touches, so the album's state becomes `INCOMPLETE`, derived at scan time
   from those tags (§3). Nothing about the count is persisted separately.

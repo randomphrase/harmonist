@@ -117,84 +117,12 @@
 {% endif %}
 
 {% if candidate and not is_surrender %}
-{# ---- (b) Match quality: how the suggested release lines up with the files
-     on disk. Independent of (a) — applies to any candidate, mis-tag or not.
-     Holds the Confirm action and the technical notes (file/track count).
-     Skipped for a surrender candidate (read-only — no Confirm). ---- #}
-{% set exact_count = candidate.file_count == candidate.track_count %}
-{% set incomplete_offered = candidate.file_count < candidate.track_count %}
 <div class="candidate-review rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
-    {% if is_mistag %}
-    {# The mis-tag panel above already explains the suggestion; here just
-       flag the technical track-fit notes (if any) as a warning. #}
-    {% if candidate.notes %}
-    <div class="candidate-context text-xs text-amber-700 mb-2 flex items-start gap-1.5">
-        <svg width="14" height="14" class="w-3.5 h-3.5 mt-px shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
-        </svg>
-        <span><span class="font-bold">Note:</span> {% for note in candidate.notes %}{{ note }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
-    </div>
-    {% endif %}
-    {% else %}
-    <div class="candidate-context text-xs text-muted mb-2">
-        {% if candidate.confidence == 'no_match' %}
-        This release doesn't match your files automatically. Review the track assignments below.
-        {% else %}MusicBrainz suggests a release —
-        <span class="font-bold text-amber-700">{{ candidate.confidence }}</span> match.
-        {% endif %}
-        {% for note in candidate.notes %}<span> · {{ note }}</span>{% endfor %}
-    </div>
-    {% endif %}
-
-    {# Only when there is something to compare. A candidate can legitimately
-       carry no per-track rows — an unlink after an undo (#158) suggests the
-       album's own release without an MB fetch to build them from — and the
-       table would otherwise render as a header with nothing under it. #}
-    {% with cancel=true, on_album_page=on_album %}
-        {% include 'partials/_assignment_editor.html' %}
-    {% endwith %}
-
-    <div class="candidate-context flex gap-2 flex-wrap">
-        {% if exact_count or incomplete_offered %}
-        <button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete_offered else 'false' }}&amp;on_album_page={{ 'true' if on_album else 'false' }}"
-                hx-target="#modal" hx-swap="innerHTML settle:0ms"
-                hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
-                class="automatic-confirm px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
-            {% if incomplete_offered %}Review incomplete release ({{ candidate.file_count }} of {{ candidate.track_count }})
-            {% else %}Review and confirm release{% endif %}
-        </button>
-        {% else %}
-        <span class="text-xs text-amber-700 self-center">
-            Edit track assignments to review {{ candidate.file_count }} files against {{ candidate.track_count }} MusicBrainz tracks.
-        </span>
-        {% endif %}
-        <button hx-get="/confirm/{{ album.id }}/preview?release_only=true&amp;on_album_page={{ 'true' if on_album else 'false' }}"
-                hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
-                title="Confirm the album release while leaving all track assignments unresolved"
-                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-            Confirm release only
-        </button>
-        {# Re-fetch this same release from MB and re-compare. Use after
-           correcting the release on MusicBrainz — a now-fixed track
-           length may turn an approximate match into an exact one. Works
-           whether or not there's a store URL (re-assigns the candidate
-           MBID rather than re-looking-up the URL). #}
-        <form hx-post="/manual/{{ album.id }}/assign" hx-swap="none" hx-disabled-elt="this"
-              hx-indicator="#tagging-{{ album.id }}" {{ reload_on_success(on_album) }}>
-            <input type="hidden" name="mbid" value="{{ candidate.mb_release_id }}">
-            <button type="submit"
-                    title="Re-fetch this release from MusicBrainz and re-compare — use after fixing the release on MB."
-                    class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-                Refresh from MB
-            </button>
-        </form>
-        <button hx-post="/reject/{{ album.id }}"
-                hx-swap="none" hx-disabled-elt="this"
-                {{ reload_on_success(on_album) }}
-                title="Clear this suggestion. The album stays here so you can assign a different release or recheck."
-                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-            Dismiss suggestion
-        </button>
+    <div id="assignments-{{ album.id }}-{{ candidate.mb_release_id }}" hx-preserve class="assignment-editor">
+        <div hx-get="/assignments/{{ album.id }}?cancel=true&amp;on_album_page={{ 'true' if on_album else 'false' }}"
+             hx-trigger="load" hx-swap="outerHTML" class="assignment-content">
+            <p role="status" class="text-xs text-muted">Loading track comparison…</p>
+        </div>
     </div>
 </div>
 {% endif %}

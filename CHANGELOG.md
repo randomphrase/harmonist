@@ -19,6 +19,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- Track comparison now uses the same compact layout when viewing and editing, with purple MusicBrainz values, inline duration deltas and one confirmation action with a clear explanation of unassigned files (#525).
+
 - Track assignment review now emphasizes the mapping, with compact numbering, one filename toggle and consistent action buttons (#523).
 - **A `cover.jpg` larger than your embedded artwork is left alone** — one
   high-resolution file beside modest embedded images is a layout, not something

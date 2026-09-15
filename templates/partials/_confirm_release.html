@@ -8,7 +8,7 @@
             <button type="button" onclick="harmonistCloseModal()" aria-label="Close confirmation"
                     class="text-muted hover:text-ink text-2xl">&times;</button>
         </div>
-        {% if error %}<p role="alert" class="text-sm text-amber-700">{{ error }}</p>{% endif %}
+        {% if error and not assignment_error %}<p role="alert" class="text-sm text-amber-700">{{ error }}</p>{% endif %}
         {% if release %}
         <p class="text-sm">Apply tags from
             <a href="https://musicbrainz.org/release/{{ release.id }}" target="_blank" rel="noopener"
@@ -22,7 +22,7 @@
                     class="text-mb-purple underline">Refresh preview</button>{% endif %}
         </div>
         {% if assignment_error %}
-        <p role="alert" class="text-sm text-amber-700">{{ assignment_error }} Close this review to edit or reset the assignments.</p>
+        <p role="alert" class="text-sm text-amber-700">{{ assignment_error }}</p>
         {% endif %}
         {% if assignment_panel %}
         <h3 class="text-sm font-bold">Reviewed track assignments</h3>
@@ -37,7 +37,6 @@
             </table>
         </div>
         <p class="text-xs text-muted">Applying writes MusicBrainz's numbering and metadata to each paired file. Filenames stay the same. Undo tag changes is available in History.</p>
-        {% if not assignment_panel.paired %}<p class="text-sm text-amber-700">Tracks unassigned: files without an MB track receive only the album MBID. Their track metadata stays as it is. Review assignments in the Library when the release tracklist is updated.</p>{% endif %}
         {% if assignment_changes %}
         <details class="text-xs"><summary class="cursor-pointer">Tag changes by file</summary>
             {% for path, fields in assignment_changes.items() %}
@@ -92,6 +91,12 @@
             <input type="hidden" name="release_fingerprint" value="{{ release_fingerprint }}">
             <input type="hidden" name="on_album_page" value="{{ 'true' if on_album_page else 'false' }}">
             <input type="hidden" name="include_artwork" value="false">
+            {% if assignment_panel and not assignment_panel.paired %}
+            <div class="rounded border border-amber-300 bg-amber-50 p-3 space-y-2">
+                <p class="text-sm font-bold text-amber-800">Tracks unassigned</p>
+                <p class="text-sm">Unassigned files will receive the album's MusicBrainz ID, but keep their current track metadata. You can finish their assignments later in the Library.</p>
+            </div>
+            {% endif %}
             {% if assignment_draft %}
             <input type="hidden" name="disk_order" value="{{ assignment_draft.disk_order }}">
             <input type="hidden" name="mb_order" value="{{ assignment_draft.mb_order }}">

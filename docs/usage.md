@@ -77,8 +77,8 @@ leads with whichever fits:
 
 - *With a suggestion.* Harmonist found a candidate but isn't certain (usually the
   track lengths are outside tolerance). The card shows your files against the MB
-  release side by side, per track. **Review and confirm release** opens a preview;
-  **Review incomplete release** does the same when you knowingly have fewer tracks.
+  release side by side, per track. **Confirm release** opens a preview of the displayed pairings,
+  including when files or MusicBrainz tracks are missing.
   The preview shows your current artwork beside the selected release's cover,
   even if that cover is smaller. For a reassignment, using the selected cover is
   checked by default; untick it to keep your images. **Confirm release and apply
@@ -87,28 +87,32 @@ leads with whichever fits:
   A missing or unavailable archive cover still lets you confirm the tags. You
   can choose artwork later from the album page.
   **Dismiss suggestion** leaves the album where it is.
-  **Edit track assignments** lets you correct which file belongs to which
+  Viewing and editing use the same compact comparison table. MusicBrainz
+  values are purple, with a hexagon beside the group heading. **MB checked**
+  at the top right shows the age of the comparison; its refresh button reads
+  MusicBrainz again. If no comparison is cached, load it with that explicit action.
+  **Edit track assignments** adds movement arrows to correct which file belongs to which
   MusicBrainz track. The arrows swap adjacent entries or missing-track gaps on
   either side. The **On disk** and **MusicBrainz** groups show each entry's
   track number, title and length. Numbers belong to entries, not rows; `?`
   means an untagged track number. Multidisc albums show disc headings on each
   side. Unassigned entries and numbering changes are highlighted; equal
-  durations need no difference label. **Title | Filename** in the on-disk column
+  durations need no difference label; other lengths show an inline Δ in seconds. **Title | Filename** in the on-disk column
   heading switches every row between titles and relative filenames; files
   without titles use their filenames as the main label.
   **Accept changes** accepts the pairing and opens the final tag/artwork
   confirmation before anything is saved. Applying writes MusicBrainz's numbering
   and metadata without renaming files; **Undo tag changes** in History reverses
   the tagging.
-  **Cancel** discards the draft, and **Reset**
+  **Cancel** discards the draft and returns to the non-editable table, and **Reset**
   starts again from the automatic pairing. A normal inbox refresh preserves the
   draft; leaving or reloading the page discards it. If files or MusicBrainz data
   change during review, review the assignments again before applying.
   Files may be left opposite a gap when MusicBrainz has no corresponding track.
   Those files receive only the album MBID; their titles, numbering, totals, and
-  other metadata stay as they are. To confirm just the album identity, **Cancel**
-  the editor and choose **Confirm release only** on the suggestion panel. This
-  opens a confirmation with all files unassigned. Existing MB track IDs on an
+  other metadata stay as they are. If any files will remain unassigned, the
+  confirmation explains what will stay unassigned. Confirm normally to apply
+  the displayed pairings. Existing MB track IDs on an
   unassigned file must be resolved first; the preview explains which file needs attention.
   The Library shows **Tracks unassigned**, with **Review assignments** on the
   album page. The refresh icon beside **MB checked** at the top right loads the
@@ -116,8 +120,7 @@ leads with whichever fits:
   known release-track IDs remain paired, while unresolved files wait for your
   review. Imported albums with an album MBID but no track IDs use this review
   too. An album can have both unassigned files and missing tracks.
-  **Open edits on MusicBrainz**, at the right of the action row, links to the release's edits; Harmonist does not
-  predict when an edit will be approved.
+  **Edit on MusicBrainz**, at the right of the action row, opens the release editor on MusicBrainz.
 - *Without one.* Search by artist + title, or paste an MBID directly.
 - *Not in MusicBrainz yet.* Common for Bandcamp-only releases. **Open in Harmony**
   seeds it to [Harmony](https://harmony.pulsewidth.org.uk) in a couple of clicks,

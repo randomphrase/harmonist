@@ -36,7 +36,7 @@ def test_confirmation_applies_only_included_artwork(reset_demo_server, on_album,
         aid = _suggest(page, base)
         page.goto(f"{base}/album/{aid}" if on_album else base)
         host = page.locator("main") if on_album else page.locator(f"#task-{aid}")
-        host.get_by_role("button", name="Review and confirm release", exact=True).click()
+        host.get_by_role("button", name="Confirm release", exact=True).click()
         dialog = page.get_by_role("dialog")
         pw.expect(dialog).to_be_visible()
         candidate = dialog.get_by_alt_text("Artwork for selected release")
@@ -86,18 +86,24 @@ def test_changed_confirmation_stays_open_for_review(reset_demo_server):
         aid = _suggest(page, base)
         page.goto(base)
         page.locator(f"#task-{aid}").get_by_role(
-            "button", name="Review and confirm release", exact=True
+            "button", name="Confirm release", exact=True
         ).click()
         dialog = page.get_by_role("dialog")
         pw.expect(dialog).to_be_visible()
-        # Submit an obsolete snapshot; the real server refreshes the preview.
+        # A stale explicit pairing must be reviewed again before it can be saved.
         dialog.locator('[name="release_fingerprint"]').evaluate("e => e.value = 'obsolete'")
         dialog.get_by_role("button", name="Confirm release and apply changes", exact=True).click()
-        pw.expect(page.get_by_role("alert")).to_contain_text(
-            "MusicBrainz changed since the preview"
-        )
+        pw.expect(dialog.get_by_role("alert")).to_contain_text("reset the assignments")
         pw.expect(dialog).to_be_visible()
         pw.expect(
             dialog.get_by_role("button", name="Confirm release and apply changes", exact=True)
+        ).to_be_disabled()
+        dialog.get_by_role("button", name="Close confirmation", exact=True).click()
+        card = page.locator(f"#task-{aid}")
+        card.get_by_role("button", name="Edit track assignments").click()
+        card.get_by_role("button", name="Reset", exact=True).click()
+        card.get_by_role("button", name="Accept changes", exact=True).click()
+        pw.expect(
+            dialog.get_by_role("button", name="Confirm release and apply changes")
         ).to_be_enabled()
         browser.close()
