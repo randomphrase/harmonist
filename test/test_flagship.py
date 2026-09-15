@@ -187,3 +187,44 @@ def test_flagship_mistag_surfaces_after_first_sync(demo_client, tmp_path):
     assert cand is not None
     assert cand.mistag_owned_url == "https://stillwater.bandcamp.com/album/fever-dog-live"
     assert cand.mb_release_id == "demo-rel-fever-live"  # re-tag target = the live edition
+
+
+def test_demo_redownload_tagging_has_one_album_wide_undo(demo_client, tmp_path, monkeypatch):
+    from harmonist import activity_store, formats, tag_history
+
+    monkeypatch.setattr(demo, "STEP_DELAY_SECONDS", 0)
+    music_dir = tmp_path / "music"
+    demo_client.post("/sync")
+    _wait_for_idle(demo_client)
+    original = _album_by_title(music_dir, "The Rural Juror (OST)")
+    other = _album_by_title(music_dir, "We Are Here To Make You Sad")
+    untouched = {p: formats.read_owned(p) for p in other.path.glob("*.m4a")}
+
+    response = demo_client.post(f"/library/{original.id}/redownload")
+    assert response.status_code == 200
+    _wait_for_idle(demo_client)
+    album = _album_by_title(music_dir, "The Rural Juror (OST)")
+    assert album.state == AlbumState.COMPLETE
+    files = sorted(album.path.glob("*.m4a"))
+    assert len(files) == 3
+
+    events = activity_store.album_history(album.id)
+    detail = activity_store.tag_changes_for([event.id for event in events])
+    groups = tag_history.group_records(events, detail)
+    assert len(groups) == 1
+    anchor, records = next(iter(groups.items()))
+    assert {record.file for record in records} == {p.name for p in files}
+    outcome = next(event for event in events if event.id == anchor)
+    assert outcome.source == "activity"
+    assert outcome.action_id is not None
+    download = next(event for event in events if event.message == "Downloaded from Bandcamp")
+    assert download.action_id != outcome.action_id
+    page = demo_client.get(f"/album/{album.id}")
+    assert page.status_code == 200
+    assert page.text.count('aria-label="Undo this tagging\'s tag changes"') == 1
+
+    response = demo_client.post(f"/tags/restore/{album.id}", data={"event_id": anchor})
+    assert response.status_code == 200
+    assert all(not formats.read_owned(p)["mb_album_id"] for p in files)
+    assert _album_by_title(music_dir, album.title).state == AlbumState.NEEDS_MBID
+    assert {p: formats.read_owned(p) for p in other.path.glob("*.m4a")} == untouched
