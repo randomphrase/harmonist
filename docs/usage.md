@@ -87,6 +87,22 @@ leads with whichever fits:
   A missing or unavailable archive cover still lets you confirm the tags. You
   can choose artwork later from the album page.
   **Dismiss suggestion** leaves the album where it is.
+  **Edit track assignments** lets you correct which file belongs to which
+  MusicBrainz track. The arrows swap adjacent entries or missing-track gaps on
+  either side. **On-disk track #** and **MB track #** show each entry's current
+  disc.track numbers, not its row in the table; `?` means the file has no tag for
+  that number. Filenames appear alongside titles (or in their place for untagged
+  files), with the relative path available on hover.
+  **Review assigned tracks** previews the pairing and tag changes before you
+  apply them. Applying writes MusicBrainz's numbering and metadata without
+  renaming files; **Undo tag changes** in History reverses the tagging.
+  **Cancel assignment changes** discards the draft, and **Reset assignments**
+  starts again from the automatic pairing. A normal inbox refresh preserves the
+  draft; leaving or reloading the page discards it. If files or MusicBrainz data
+  change during review, review the assignments again before applying.
+  Every on-disk file must still have a MusicBrainz counterpart to apply changes;
+  extra-file gaps can be arranged, but applying a partial assignment is not yet
+  supported.
 - *Without one.* Search by artist + title, or paste an MBID directly.
 - *Not in MusicBrainz yet.* Common for Bandcamp-only releases. **Open in Harmony**
   seeds it to [Harmony](https://harmony.pulsewidth.org.uk) in a couple of clicks,

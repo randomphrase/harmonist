@@ -17,10 +17,39 @@
         </p>
         <div class="flex items-center gap-2 text-xs text-muted">
             <span title="{{ release_checked_at }}">MusicBrainz checked {{ ago(release_checked_at) }}</span>
-            <button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}&amp;reread=true"
+            {% if not assignment_draft %}<button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}&amp;reread=true"
                     hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
-                    class="text-mb-purple underline">Refresh preview</button>
+                    class="text-mb-purple underline">Refresh preview</button>{% endif %}
         </div>
+        {% if assignment_error %}
+        <p role="alert" class="text-sm text-amber-700">{{ assignment_error }} Close this review to edit or reset the assignments.</p>
+        {% endif %}
+        {% if assignment_panel %}
+        <h3 class="text-sm font-bold">Reviewed track assignments</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+                <thead><tr class="text-left"><th>On-disk track #</th><th>File</th><th>MB track #</th><th>MusicBrainz</th></tr></thead>
+                <tbody>{% for disk, mb in assignment_panel.rows %}
+                    <tr><td class="py-1">{{ disk.number if disk else '—' }}</td>
+                        <td title="{{ disk.path if disk else '' }}">{{ disk.filename if disk else 'Missing on disk' }}</td>
+                        <td>{{ mb.number if mb else '—' }}</td><td>{{ mb.title if mb else 'Missing from MusicBrainz' }}</td></tr>
+                {% endfor %}</tbody>
+            </table>
+        </div>
+        <p class="text-xs text-muted">Applying writes MusicBrainz's numbering and metadata to each paired file. Filenames stay the same. Undo tag changes is available in History.</p>
+        {% if assignment_changes %}
+        <details class="text-xs"><summary class="cursor-pointer">Tag changes by file</summary>
+            {% for path, fields in assignment_changes.items() %}
+            <details class="mt-2"><summary class="font-bold cursor-pointer" title="{{ path }}">{{ path.name }}</summary>
+            <dl>{% for field, values in fields.items() %}
+                <dt class="font-semibold">{{ field_label(field) }}</dt>
+                <dd class="break-all">{{ display_tag(values[0]) or '—' }} → {{ display_tag(values[1]) or '—' }}</dd>
+            {% endfor %}</dl>
+            </details>
+            {% endfor %}
+        </details>
+        {% endif %}
+        {% endif %}
         <details class="text-sm">
             <summary class="cursor-pointer">Selected release tracklist</summary>
             <ol class="mt-2 space-y-1">
@@ -62,6 +91,11 @@
             <input type="hidden" name="release_fingerprint" value="{{ release_fingerprint }}">
             <input type="hidden" name="on_album_page" value="{{ 'true' if on_album_page else 'false' }}">
             <input type="hidden" name="include_artwork" value="false">
+            {% if assignment_draft %}
+            <input type="hidden" name="disk_order" value="{{ assignment_draft.disk_order }}">
+            <input type="hidden" name="mb_order" value="{{ assignment_draft.mb_order }}">
+            <input type="hidden" name="disk_fingerprint" value="{{ assignment_draft.disk_fingerprint }}">
+            {% endif %}
             {% if archive_image and artwork.writes %}
             <input type="hidden" name="art_plan" value="{{ artwork.fingerprint }}">
             <label class="flex items-center gap-2 text-sm font-bold">
@@ -80,16 +114,29 @@
             <p class="text-xs text-muted">Replacements require a retained backup. Artwork Undo is available while its backup is kept; tag Undo is separate.</p>
             {% elif archive_image %}<p class="text-sm text-muted">No artwork writes are proposed; existing images will be kept.</p>{% endif %}
             <div class="flex items-center gap-3">
-                <button type="submit" class="px-3 py-2 bg-accent text-white rounded text-sm font-bold"
+                <button type="submit"{% if assignment_error %} disabled{% endif %} class="px-3 py-2 bg-accent text-white rounded text-sm font-bold disabled:opacity-30"
                         title="Apply this release's tags and the included artwork changes."
                         aria-label="Confirm release and apply changes">Confirm release and apply changes</button>
                 <span id="confirm-progress" class="htmx-indicator text-sm text-muted">Applying…</span>
             </div>
         </form>
         {% else %}
+        {% if assignment_draft %}
+        <form hx-post="/confirm/{{ album.id }}/preview" hx-target="#modal"
+              hx-swap="innerHTML settle:0ms" hx-disabled-elt="find button">
+            <input type="hidden" name="disk_order" value="{{ assignment_draft.disk_order }}">
+            <input type="hidden" name="mb_order" value="{{ assignment_draft.mb_order }}">
+            <input type="hidden" name="disk_fingerprint" value="{{ assignment_draft.disk_fingerprint }}">
+            <input type="hidden" name="release_fingerprint" value="{{ release_fingerprint }}">
+            <input type="hidden" name="incomplete" value="{{ 'true' if incomplete else 'false' }}">
+            <input type="hidden" name="on_album_page" value="{{ 'true' if on_album_page else 'false' }}">
+            <button type="submit" class="text-sm text-mb-purple underline">Try again</button>
+        </form>
+        {% else %}
         <button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
                 hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
                 class="text-sm text-mb-purple underline">Try again</button>
+        {% endif %}
         {% endif %}
     </div>
 </dialog>

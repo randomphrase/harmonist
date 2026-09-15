@@ -140,6 +140,7 @@ class Tagger(Protocol):
         scope: artwork.Scope | None = None,
         artwork_included: bool = True,
         chosen: artwork.Source | None = None,
+        assignment: dict[Path, int] | None = None,
     ) -> TaggingOutcome: ...
 
 
@@ -162,6 +163,7 @@ class PicardCompatibleTagger:
         scope: artwork.Scope | None = None,
         artwork_included: bool = True,
         chosen: artwork.Source | None = None,
+        assignment: dict[Path, int] | None = None,
     ) -> TaggingOutcome:
         return tag_and_artwork(
             album_dir,
@@ -175,6 +177,7 @@ class PicardCompatibleTagger:
             scope=scope,
             artwork_included=artwork_included,
             chosen=chosen,
+            assignment=assignment,
         )
 
 
@@ -226,6 +229,7 @@ def _tag_files(
     *,
     incomplete: bool = False,
     files: list[Path] | None = None,
+    assignment: dict[Path, int] | None = None,
 ) -> tuple[int, bool]:
     """`tag_album`, reporting both halves a composed tagging needs: how many
     files the release covers, and whether any file was actually WRITTEN.
@@ -249,6 +253,7 @@ def _tag_files(
         # images: this function writes none (#481, and #448 for why that is
         # stated rather than implied by passing no cover path).
         artwork_in_scope=False,
+        assignment=assignment,
     )
     # Read before the loop, and before anything can move it: tagging drops a
     # sidecar's `temp_uid` for the MBID afterwards, which is why `album_history`
@@ -330,6 +335,7 @@ def plan_album(
     overwrite_art: bool = False,
     files: list[Path] | None = None,
     artwork: bool = True,
+    assignment: dict[Path, int] | None = None,
 ) -> AlbumPlan:
     """What `tag_album` would change here, computed without writing anything.
 
@@ -358,6 +364,7 @@ def plan_album(
         overwrite_art=overwrite_art,
         files=files,
         artwork_in_scope=artwork,
+        assignment=assignment,
     )
     changes: dict[Path, dict[str, list[Any]]] = {}
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
@@ -603,6 +610,7 @@ def _prepare(
     artwork_in_scope: bool = True,
     archive: cover_art.Front | None = None,
     expected_artwork: str | None = None,
+    assignment: dict[Path, int] | None = None,
 ) -> _Prepared:
     """Decide what a tagging of this album would consist of, reading no tags.
 
@@ -644,7 +652,21 @@ def _prepare(
     # names a video track's id is a file in the wrong place, and quietly
     # re-pointing it at an audio track would be the invention this ladder
     # exists to avoid.
-    pairs = _assign_files_to_tracks(files, flat_tracks)
+    if assignment is None:
+        pairs = _assign_files_to_tracks(files, flat_tracks)
+    else:
+        # Explicit review overrides even existing (incorrect) track IDs. Every
+        # file must have exactly one distinct, real target; never fill a gap by
+        # falling back to the automatic ladder (#136). Partial writes are #517.
+        if (
+            set(assignment) != set(files)
+            or len(set(assignment.values())) != len(files)
+            or any(type(s) is not int or not 0 <= s < len(flat_tracks) for s in assignment.values())
+        ):
+            raise ValueError("invalid track assignment: pair every file with a unique MB track")
+        pairs = [(f, flat_tracks[assignment[f]]) for f in files]
+        if any(t not in taggable for _, t in pairs):
+            raise ValueError("invalid track assignment: video tracks cannot be tagged")
 
     if archive is None and artwork_in_scope:
         archive = _archive_candidate(release)
@@ -1490,6 +1512,7 @@ def tag_and_artwork(
     scope: artwork.Scope | None = None,
     artwork_included: bool = True,
     chosen: artwork.Source | None = None,
+    assignment: dict[Path, int] | None = None,
 ) -> TaggingOutcome:
     """Tag the album, then write the artwork its plan calls for (#481).
 
@@ -1535,7 +1558,9 @@ def tag_and_artwork(
     was.
     """
     paths = files if files is not None else album_files.audio_files(album_dir)
-    tagged, wrote_something = _tag_files(album_dir, release, incomplete=incomplete, files=paths)
+    tagged, wrote_something = _tag_files(
+        album_dir, release, incomplete=incomplete, files=paths, assignment=assignment
+    )
 
     # EXCLUDED means there is no artwork half at all (#482) — not an empty
     # scope, because "none of them" is not a subset of a plan, it is the absence

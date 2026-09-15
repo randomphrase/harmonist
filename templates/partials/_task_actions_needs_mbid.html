@@ -123,7 +123,7 @@
      Skipped for a surrender candidate (read-only — no Confirm). ---- #}
 {% set exact_count = candidate.file_count == candidate.track_count %}
 {% set incomplete_offered = candidate.file_count < candidate.track_count %}
-<div class="rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
+<div class="candidate-review rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
     {% if is_mistag %}
     {# The mis-tag panel above already explains the suggestion; here just
        flag the technical track-fit notes (if any) as a warning. #}
@@ -137,8 +137,11 @@
     {% endif %}
     {% else %}
     <div class="text-xs text-muted mb-2">
-        MusicBrainz suggests a release —
+        {% if candidate.confidence == 'no_match' %}
+        This release doesn't match your files automatically. Review the track assignments below.
+        {% else %}MusicBrainz suggests a release —
         <span class="font-bold text-amber-700">{{ candidate.confidence }}</span> match.
+        {% endif %}
         {% for note in candidate.notes %}<span> · {{ note }}</span>{% endfor %}
     </div>
     {% endif %}
@@ -147,16 +150,16 @@
        carry no per-track rows — an unlink after an undo (#158) suggests the
        album's own release without an MB fetch to build them from — and the
        table would otherwise render as a header with nothing under it. #}
-    {% if candidate.track_comparisons %}
-    <div class="mb-3">{% include 'partials/_track_comparison.html' %}</div>
-    {% endif %}
+    {% with cancel=true, on_album_page=on_album %}
+        {% include 'partials/_assignment_editor.html' %}
+    {% endwith %}
 
     <div class="flex gap-2 flex-wrap">
         {% if exact_count or incomplete_offered %}
         <button hx-get="/confirm/{{ album.id }}/preview?incomplete={{ 'true' if incomplete_offered else 'false' }}&amp;on_album_page={{ 'true' if on_album else 'false' }}"
                 hx-target="#modal" hx-swap="innerHTML settle:0ms"
                 hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
-                class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+                class="automatic-confirm px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
             {% if incomplete_offered %}Review incomplete release ({{ candidate.file_count }} of {{ candidate.track_count }})
             {% else %}Review and confirm release{% endif %}
         </button>

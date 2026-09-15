@@ -57,6 +57,7 @@ from harmonist import (
     scanner,
     tag_history,
     timing,
+    track_assignment,
 )
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
@@ -3280,6 +3281,7 @@ def _tag_with_release(
     scope: artwork.Scope | None = None,
     chosen: artwork.Source | None = None,
     expected_release: str | None = None,
+    assignment_draft: track_assignment.Draft | None = None,
 ) -> tagger_mod.TaggingOutcome:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
@@ -3332,6 +3334,11 @@ def _tag_with_release(
         raise _ConfirmationChanged(
             "MusicBrainz changed since the preview. Review the release again."
         )
+    assignment = None
+    if assignment_draft is not None:
+        assignment = track_assignment.panel(
+            album_files.for_paths(paths or [album_path]), release, assignment_draft
+        ).mapping()
     # MusicBrainz REDIRECTS a merged MBID, so the release that comes back can
     # carry a different id from the one asked for. That difference IS the merge
     # notification — cheap, exact, and the only one there is (#268). Everything
@@ -3414,6 +3421,7 @@ def _tag_with_release(
         # The candidate the user chose, so the plan rebuilt at write time is the
         # one they were shown rather than the one the size rule prefers (#488).
         chosen=chosen,
+        assignment=assignment,
     )
 
     sc = sidecar_mod.read(album_path)
@@ -5873,6 +5881,89 @@ def _register_routes(app: FastAPI) -> None:
             album=album,
         )
 
+    def _assignment_editor(
+        request: Request,
+        album_id: str,
+        *,
+        draft: track_assignment.Draft | None = None,
+        release_fingerprint: str = "",
+        move: str = "",
+        on_album_page: bool = False,
+        cancel: bool = False,
+    ) -> Response:
+        album = _find_album(request, album_id)
+        candidate = album.sidecar.mb_match_candidate if album.sidecar else None
+        if candidate is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to assign")
+        panel = None
+        error = None
+        checked_at = None
+        if not cancel:
+            try:
+                release = mb_cache.fetch_release(candidate.mb_release_id)
+                current = _release_fingerprint(release)
+                checked_at = mb_cache.fetched_at(candidate.mb_release_id)
+                if draft and current != release_fingerprint:
+                    raise track_assignment.AssignmentChanged(
+                        "MusicBrainz changed. Reset assignments to review the current release."
+                    )
+                panel = track_assignment.panel(album_files.for_paths(album.folders), release, draft)
+                release_fingerprint = current
+                if move:
+                    panel.move(move)
+            except mb_lookup.ReleaseGoneError:
+                error = (
+                    "This release is no longer on MusicBrainz. Cancel and choose another release."
+                )
+            except (ValueError, OSError, mb_lookup.MBError) as e:
+                # A failed read is not an empty tracklist. Keep the failure
+                # visible and offer a fresh editor, never an automatic write.
+                log.warning("could not build track assignments: %s", e, extra=_LOG_ONLY)
+                error = str(e)
+                panel = None
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/_assignment_editor.html",
+            _ctx(
+                request,
+                album=album,
+                candidate=candidate,
+                panel=panel,
+                error=error,
+                release_fingerprint=release_fingerprint,
+                on_album_page=on_album_page,
+                cancel=cancel,
+                checked_at=checked_at,
+                fragment=True,
+            ),
+        )
+
+    @app.get("/assignments/{album_id}", response_class=HTMLResponse)
+    def assignment_editor(
+        request: Request, album_id: str, on_album_page: bool = False, cancel: bool = False
+    ) -> Response:
+        return _assignment_editor(request, album_id, on_album_page=on_album_page, cancel=cancel)
+
+    @app.post("/assignments/{album_id}", response_class=HTMLResponse)
+    def move_assignment(
+        request: Request,
+        album_id: str,
+        disk_order: str = Form(...),
+        mb_order: str = Form(...),
+        disk_fingerprint: str = Form(...),
+        release_fingerprint: str = Form(...),
+        move: str = Form(...),
+        on_album_page: bool = Form(False),
+    ) -> Response:
+        return _assignment_editor(
+            request,
+            album_id,
+            draft=track_assignment.Draft(disk_order, mb_order, disk_fingerprint),
+            release_fingerprint=release_fingerprint,
+            move=move,
+            on_album_page=on_album_page,
+        )
+
     def _confirmation_preview(
         request: Request,
         album_id: str,
@@ -5881,6 +5972,8 @@ def _register_routes(app: FastAPI) -> None:
         on_album_page: bool = False,
         error: str | None = None,
         reread: bool = False,
+        assignment_draft: track_assignment.Draft | None = None,
+        assignment_release: str = "",
     ) -> Response:
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         candidate = album.sidecar.mb_match_candidate if album.sidecar else None
@@ -5892,6 +5985,9 @@ def _register_routes(app: FastAPI) -> None:
         archive_image = None
         artwork_error = None
         included = False
+        assignment_panel = None
+        assignment_changes = None
+        assignment_error = None
         try:
             release = mb_cache.fetch_release(
                 candidate.mb_release_id, max_age=mb_cache.FRESH if reread else None
@@ -5904,6 +6000,24 @@ def _register_routes(app: FastAPI) -> None:
         if release is not None:
             files = album_files.for_paths(album.folders)
             tracks = [(path, formats.read_tags(path)) for path in files]
+            if assignment_draft is not None:
+                try:
+                    if _release_fingerprint(release) != assignment_release:
+                        raise track_assignment.AssignmentChanged(
+                            "MusicBrainz changed. Close this review and reset the assignments."
+                        )
+                    assignment_panel = track_assignment.panel(files, release, assignment_draft)
+                    assignment_changes = tagger_mod.plan_album(
+                        album.path,
+                        release,
+                        files=files,
+                        artwork=False,
+                        incomplete=incomplete,
+                        assignment=assignment_panel.mapping(),
+                    ).changes
+                except (ValueError, OSError, tagger_mod.TagMismatchError) as e:
+                    log.warning("could not review track assignments: %s", e, extra=_LOG_ONLY)
+                    assignment_error = str(e)
             try:
                 group = (release.get("release-group") or {}).get("id")
                 caa = caa_cache.front(
@@ -5943,7 +6057,9 @@ def _register_routes(app: FastAPI) -> None:
                 album=album,
                 candidate=candidate,
                 release=release,
-                release_fingerprint=_release_fingerprint(release) if release else "",
+                release_fingerprint=_release_fingerprint(release)
+                if release
+                else assignment_release,
                 release_checked_at=mb_cache.fetched_at(candidate.mb_release_id),
                 selected_tracks=tagsets_for(release) if release else [],
                 artwork=view,
@@ -5954,6 +6070,12 @@ def _register_routes(app: FastAPI) -> None:
                 incomplete=incomplete,
                 on_album_page=on_album_page,
                 error=error,
+                assignment_panel=assignment_panel,
+                assignment_draft=assignment_draft,
+                assignment_changes=assignment_changes,
+                assignment_error=assignment_error,
+                field_label=tag_history.label_for,
+                display_tag=tag_history.display,
             ),
         )
         # A declined POST replaces the dialog with the newly reviewed proposal.
@@ -5973,6 +6095,26 @@ def _register_routes(app: FastAPI) -> None:
             request, album_id, incomplete=incomplete, on_album_page=on_album_page, reread=reread
         )
 
+    @app.post("/confirm/{album_id}/preview", response_class=HTMLResponse)
+    def assignment_preview(
+        request: Request,
+        album_id: str,
+        disk_order: str = Form(...),
+        mb_order: str = Form(...),
+        disk_fingerprint: str = Form(...),
+        release_fingerprint: str = Form(...),
+        incomplete: bool = Form(False),
+        on_album_page: bool = Form(False),
+    ) -> Response:
+        return _confirmation_preview(
+            request,
+            album_id,
+            incomplete=incomplete,
+            on_album_page=on_album_page,
+            assignment_draft=track_assignment.Draft(disk_order, mb_order, disk_fingerprint),
+            assignment_release=release_fingerprint,
+        )
+
     @app.post("/confirm/{album_id}", response_class=HTMLResponse)
     @app.post("/confirm/{album_id}/incomplete", response_class=HTMLResponse)
     def confirm_match(
@@ -5983,12 +6125,20 @@ def _register_routes(app: FastAPI) -> None:
         art_plan: str = Form(""),
         include_artwork: bool = Form(False),
         on_album_page: bool = Form(False),
+        disk_order: str = Form(""),
+        mb_order: str = Form(""),
+        disk_fingerprint: str = Form(""),
     ) -> Response:
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         sc = album.sidecar
         if sc is None or sc.mb_match_candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
         incomplete = request.url.path.endswith("/incomplete")
+        draft = None
+        if disk_order or mb_order or disk_fingerprint:
+            if not all((disk_order, mb_order, disk_fingerprint, release_fingerprint)):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "incomplete assignment review")
+            draft = track_assignment.Draft(disk_order, mb_order, disk_fingerprint)
         try:
             if candidate_mbid and candidate_mbid != sc.mb_match_candidate.mb_release_id:
                 raise _ConfirmationChanged(
@@ -6007,10 +6157,17 @@ def _register_routes(app: FastAPI) -> None:
                 artwork_included=include_artwork and bool(release_fingerprint and art_plan),
                 scope=artwork.Scope.ALL,
                 chosen=artwork.Source.ARCHIVE,
+                assignment_draft=draft,
             )
-        except _ConfirmationChanged as e:
+        except (_ConfirmationChanged, track_assignment.AssignmentChanged) as e:
             return _confirmation_preview(
-                request, album_id, incomplete=incomplete, on_album_page=on_album_page, error=str(e)
+                request,
+                album_id,
+                incomplete=incomplete,
+                on_album_page=on_album_page,
+                error=str(e),
+                assignment_draft=draft,
+                assignment_release=release_fingerprint,
             )
         except Exception as e:
             # Per-album request boundary: retain the review and report the failure.
@@ -6022,6 +6179,8 @@ def _register_routes(app: FastAPI) -> None:
                     incomplete=incomplete,
                     on_album_page=on_album_page,
                     error=f"Tagging failed: {e}",
+                    assignment_draft=draft,
+                    assignment_release=release_fingerprint,
                 )
             return _flash_response(
                 "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album

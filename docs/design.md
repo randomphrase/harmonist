@@ -739,6 +739,25 @@ When a store URL resolves to several MB releases, `match.match_releases` ranks t
 **Confirm release and apply changes** → fetch the release fresh, require it to match the reviewed release fingerprint, promote the candidate to `mb_release_id`, clear the candidate, and tag with the included artwork plan. A changed release requires another review before any write; a changed artwork plan withholds artwork while valid tags still apply. Tag and artwork outcomes are reported separately, using the existing retained-backup and Undo rules. An unreviewed legacy POST can write tags only. Exact initial auto-tagging retains its additions-only behavior.
 Dismiss suggestion → clear candidate; the album stays in Needs MBID so a different release can be assigned.
 
+**Explicit track assignments (#136).** Needs MBID offers an inline editor for
+the candidate's file/track comparison. Rows are pairs, not track numbers: either
+side can swap adjacent entries, including gaps, while separate on-disk and MB
+disc.track numbers remain attached to their entries. The automatic assignment
+initialises the editor; after that, the explicit mapping drives both the tag
+preview and the tagger, overriding even existing incorrect release-track IDs.
+Each file and MB track occurs exactly once in the draft. Applying still requires
+every file to have a unique, taggable target and retains the count guards;
+partial assignment with extra files belongs to #517.
+
+The draft lives only in the page. An inbox refresh preserves it, but a changed
+candidate replaces it. Review binds the draft to the release fingerprint and a
+snapshot of file paths, file metadata and owned tags; confirmation fetches MB
+fresh and checks both before writing. Invalid or stale assignments never fall
+back to the automatic pairing. Corrective tagging uses the existing audit,
+tag-history and release-link undo paths. The written release-track IDs make
+subsequent automatic comparisons and re-tags retain the correction; there is no
+sidecar mapping or new stored state. Rename-aware undo remains #167.
+
 Tracks where MB has no recorded length are shown as "unknown" (gray) and don't trigger downgrade on their own, but they don't get to vote for "exact" either — an album with all-unknown lengths and matching count is treated as Approximate.
 
 ---

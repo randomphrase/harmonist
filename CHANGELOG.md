@@ -8,6 +8,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Needs MBID track assignments can be corrected with arrows before reviewing and applying tags, with filenames and separate on-disk/MusicBrainz numbering (#136).
 - Release confirmation now previews the selected cover and lets you apply it with the tags or keep your existing artwork (#483).
 - **Use this artwork** — take the Cover Art Archive's image whatever its size,
   once you have loaded it and looked: the section previews what applying it

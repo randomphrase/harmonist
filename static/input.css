@@ -20,6 +20,12 @@
 @source "../templates/**/*.html";
 @source "../src/harmonist/web/main.py";
 
+/* An open assignment draft has its own review action. The ordinary confirm
+ * button would recompute the automatic pairing and discard that draft. */
+.candidate-review:has(.assignment-editor form) .automatic-confirm {
+    display: none;
+}
+
 @theme {
   /* Badge colours — RESERVED for MB / Bandcamp branding so they pop against
      the accent-coloured chrome. Do NOT use these for general chrome (links,
