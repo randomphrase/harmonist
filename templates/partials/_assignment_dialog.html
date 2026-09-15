@@ -1,0 +1,10 @@
+<dialog class="bg-transparent p-0 m-auto max-w-6xl w-full" aria-labelledby="assignment-title"
+        onclick="if (event.target === this) this.close()">
+    <div class="bg-white border border-line rounded-lg p-6 shadow-2xl space-y-4">
+        <div class="flex justify-between items-center">
+            <h2 id="assignment-title" class="text-xl font-bold">Review assignments</h2>
+            <button type="button" onclick="harmonistCloseModal()" aria-label="Close assignments" class="text-2xl text-muted">&times;</button>
+        </div>
+        {% include 'partials/_assignment_editor.html' %}
+    </div>
+</dialog>

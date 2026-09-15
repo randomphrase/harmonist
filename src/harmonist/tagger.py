@@ -85,7 +85,7 @@ class TagMismatchError(Exception):
     the release lists MORE tracks than the album has files. That is the one
     direction a caller can resolve — by re-running in incomplete mode, which is
     the user's decision to make (#252) — while the other direction (extra files
-    on disk) is out of scope for the tagger in both modes (design §15.3).
+    on disk) requires an explicit assignment review (#517).
 
     The counts are attributes rather than only prose in the message because the
     web layer has to tell the two apart and name the numbers back to the user;
@@ -102,6 +102,18 @@ class TagMismatchError(Exception):
     def short(self) -> bool:
         """The album has fewer files than the release has tracks."""
         return self.files < self.tracks
+
+
+class TrackAssignmentRequired(TagMismatchError):
+    """A confirmed file has no unique track identity in the current release."""
+
+    def __init__(self, *, files: int, tracks: int, unassigned: int) -> None:
+        super().__init__(
+            "Review assignments before applying MusicBrainz track metadata.",
+            files=files,
+            tracks=tracks,
+        )
+        self.unassigned = unassigned
 
 
 @runtime_checkable
@@ -323,6 +335,23 @@ def _tag_files(
         if event_id is not None:
             _record_changes(event_id, naming, file_path, tagset, changes)
 
+    for path, target in prep.unassigned.items():
+        changes = owned.diff(formats.read_owned(path), target)
+        if not changes:
+            continue
+        before = formats.write_owned(path, target)
+        wrote_something = True
+        event_id = audit.record(
+            "tag.track", album_id=album_id, file=naming.name_of(path), assignment="unassigned"
+        )
+        if event_id is not None:
+            activity_store.record_tag_changes(
+                event_id,
+                file=naming.name_of(path),
+                changes=owned.diff(before, target),
+                position=_history_position(target),
+            )
+
     return len(prep.files), wrote_something
 
 
@@ -385,6 +414,9 @@ def plan_album(
             prep.accepted_countries,
         ):
             changes[file_path] = file_changes
+    for path, target in prep.unassigned.items():
+        if file_changes := owned.diff(formats.read_owned(path), target):
+            changes[path] = file_changes
     return AlbumPlan(changes=changes, preserves_per_track_art=prep.art.preserves_per_track_art)
 
 
@@ -506,6 +538,7 @@ class _Prepared:
 
     files: list[Path]
     pairs: list[tuple[Path, _FlatTrack]]
+    unassigned: dict[Path, dict[str, Any]]
     #: The album's artwork plan, whole. What this tagging writes of it is
     #: `art_targets` and `cover_change`.
     art: artwork.ArtworkPlan
@@ -612,7 +645,7 @@ def _prepare(
     expected_artwork: str | None = None,
     assignment: dict[Path, int] | None = None,
 ) -> _Prepared:
-    """Decide what a tagging of this album would consist of, reading no tags.
+    """Decide what a tagging of this album would consist of before writing.
 
     (It does read embedded artwork, when there is a candidate that might
     replace it — that is the only way to know whether replacing it would
@@ -632,14 +665,35 @@ def _prepare(
     # since corrected that most need the button.
     taggable = _taggable_tracks(release, flat_tracks)
 
-    if not incomplete and len(files) != len(taggable):
+    if assignment is None:
+        ids = [track.get("id") for _, _, track in flat_tracks]
+        tags = [formats.read_tags(path) for path in files]
+        disk_ids = [t.owned.get("mb_release_track_id") for t in tags]
+        if (
+            ids
+            and all(ids)
+            and any(
+                t.owned.get("mb_album_id") == release["id"]
+                and (not ref or ids.count(ref) != 1 or disk_ids.count(ref) != 1)
+                for t, ref in zip(tags, disk_ids, strict=True)
+            )
+        ):
+            raise TrackAssignmentRequired(
+                files=len(files),
+                tracks=len(taggable),
+                unassigned=sum(
+                    not ref or ids.count(ref) != 1 or disk_ids.count(ref) != 1 for ref in disk_ids
+                ),
+            )
+
+    if assignment is None and not incomplete and len(files) != len(taggable):
         raise TagMismatchError(
             f"album {album_dir.name!r}: {len(files)} audio files but MB release "
             f"has {len(taggable)} tracks",
             files=len(files),
             tracks=len(taggable),
         )
-    if len(files) > len(flat_tracks):
+    if assignment is None and len(files) > len(flat_tracks):
         raise TagMismatchError(
             f"album {album_dir.name!r}: {len(files)} files exceeds MB release "
             f"track count {len(flat_tracks)} — extra files on disk are out of "
@@ -653,20 +707,33 @@ def _prepare(
     # re-pointing it at an audio track would be the invention this ladder
     # exists to avoid.
     if assignment is None:
-        pairs = _assign_files_to_tracks(files, flat_tracks)
+        pairs = _assign_files_to_tracks(files, flat_tracks, [compare.identity_of(t) for t in tags])
     else:
-        # Explicit review overrides even existing (incorrect) track IDs. Every
-        # file must have exactly one distinct, real target; never fill a gap by
-        # falling back to the automatic ladder (#136). Partial writes are #517.
+        # Only explicitly paired files receive track metadata. Missing keys
+        # are intentional gaps, never invitations to the automatic ladder.
         if (
-            set(assignment) != set(files)
-            or len(set(assignment.values())) != len(files)
+            not set(assignment).issubset(files)
+            or len(set(assignment.values())) != len(assignment)
             or any(type(s) is not int or not 0 <= s < len(flat_tracks) for s in assignment.values())
         ):
-            raise ValueError("invalid track assignment: pair every file with a unique MB track")
-        pairs = [(f, flat_tracks[assignment[f]]) for f in files]
+            raise ValueError("invalid track assignment: paired files need unique MB tracks")
+        pairs = [(f, flat_tracks[assignment[f]]) for f in files if f in assignment]
         if any(t not in taggable for _, t in pairs):
             raise ValueError("invalid track assignment: video tracks cannot be tagged")
+
+    unassigned = {}
+    if assignment is not None:
+        for path in files:
+            if path in assignment:
+                continue
+            target = formats.read_owned(path)
+            if target.get(owned.Owned.MB_RELEASE_TRACK_ID) or target.get(owned.Owned.MB_TRACK_ID):
+                raise ValueError(
+                    f"{path.name}: unassigned file already has MusicBrainz track IDs. "
+                    "Pair it with the correct track, or remove conflicting track IDs before confirming."
+                )
+            target[owned.Owned.MB_ALBUM_ID] = release["id"]
+            unassigned[path] = target
 
     if archive is None and artwork_in_scope:
         archive = _archive_candidate(release)
@@ -731,6 +798,7 @@ def _prepare(
     return _Prepared(
         files=files,
         pairs=pairs,
+        unassigned=unassigned,
         art=art,
         cover=cover,
         folder_image=folder_image,
@@ -2014,6 +2082,7 @@ def _build_tagset(
 def _assign_files_to_tracks(
     files: list[Path],
     flat_tracks: list[_FlatTrack],
+    identities: Sequence[compare.TrackIdentity],
 ) -> list[tuple[Path, _FlatTrack]]:
     """Which MusicBrainz track each file is, for an album missing some of them.
 
@@ -2029,9 +2098,8 @@ def _assign_files_to_tracks(
     Fifteen right out of sixteen is the worst available outcome — nobody
     re-checks an album that looks mostly correct.
 
-    Costs one open per file, as reading their durations did.
+    Reuses the identities read for the confirmed-release guard.
     """
-    identities = [compare.identity_of(formats.read_tags(f)) for f in files]
     slots = compare.assign(identities, [_identity_of(t) for t in flat_tracks])
     # A file with no slot is not tagged at all. It can only happen with more
     # files than tracks, which the caller has already refused (§15.3) — but

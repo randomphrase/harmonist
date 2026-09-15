@@ -32,11 +32,12 @@
                 <tbody>{% for disk, mb in assignment_panel.rows %}
                     <tr><td class="py-1">{{ disk.number if disk else '—' }}</td>
                         <td title="{{ disk.path if disk else '' }}">{{ disk.filename if disk else 'Missing on disk' }}</td>
-                        <td>{{ mb.number if mb else '—' }}</td><td>{{ mb.title if mb else 'Missing from MusicBrainz' }}</td></tr>
+                        <td>{{ mb.number if mb else '—' }}</td><td>{{ mb.title if mb else 'Unassigned' }}</td></tr>
                 {% endfor %}</tbody>
             </table>
         </div>
         <p class="text-xs text-muted">Applying writes MusicBrainz's numbering and metadata to each paired file. Filenames stay the same. Undo tag changes is available in History.</p>
+        {% if not assignment_panel.paired %}<p class="text-sm text-amber-700">Tracks unassigned: files without an MB track receive only the album MBID. Their track metadata stays as it is. Review assignments in the Library when the release tracklist is updated.</p>{% endif %}
         {% if assignment_changes %}
         <details class="text-xs"><summary class="cursor-pointer">Tag changes by file</summary>
             {% for path, fields in assignment_changes.items() %}

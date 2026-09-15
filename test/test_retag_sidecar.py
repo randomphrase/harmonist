@@ -122,6 +122,7 @@ def _album(cfg, sidecar: Sidecar) -> Path:
         a["\xa9ART"] = ["Artist"]
         a["trkn"] = [(i, 2)]
         a["----:com.apple.iTunes:MusicBrainz Album Id"] = [MBID.encode()]
+        a["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [f"rt-{i}".encode()]
         a.save()
     sidecar_mod.write(d, sidecar)
     return d

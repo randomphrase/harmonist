@@ -38,7 +38,7 @@ def test_explicit_pairing_overrules_existing_ids_and_is_idempotent(album_with_tr
     assert not tagger.plan_album(album_with_tracks, release, artwork=False).changes
 
 
-@pytest.mark.parametrize("slots", [[0, 0], [0, 9], [0]])
+@pytest.mark.parametrize("slots", [[0, 0], [0, 9]])
 def test_invalid_explicit_pairing_writes_nothing(album_with_tracks, slots):
     album_with_tracks = album_with_tracks(2)
     files = album_files.audio_files(album_with_tracks)

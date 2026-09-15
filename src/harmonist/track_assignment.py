@@ -77,8 +77,6 @@ class Panel:
         return all(d is None or m is not None for d, m in zip(self.disk_order, self.mb_order))
 
     def mapping(self) -> dict[Path, int]:
-        if not self.paired:
-            raise ValueError("Pair every on-disk file with a MusicBrainz track before applying.")
         return {
             self.files[d]: m
             for d, m in zip(self.disk_order, self.mb_order, strict=True)
@@ -86,6 +84,16 @@ class Panel:
         }
 
     def move(self, move: str) -> None:
+        if move == "release-only":
+            self.disk_order = list(range(len(self.disk))) + [None] * len(self.mb)
+            self.mb_order = [None] * len(self.disk) + list(range(len(self.mb)))
+            return
+        if move == "add-gap":
+            if len(self.disk_order) >= len(self.disk) + len(self.mb) + 1:
+                raise ValueError("Every track already has room for a gap")
+            self.disk_order.append(None)
+            self.mb_order.append(None)
+            return
         side, index, direction = move.split(":")
         if side not in {"disk", "mb"} or direction not in {"up", "down"}:
             raise ValueError("invalid assignment move")
@@ -97,7 +105,9 @@ class Panel:
         order[i], order[j] = order[j], order[i]
 
 
-def panel(files: list[Path], release: Release, draft: Draft | None = None) -> Panel:
+def panel(
+    files: list[Path], release: Release, draft: Draft | None = None, *, confirmed: bool = False
+) -> Panel:
     tags = [formats.read_tags(f) for f in files]
     if any(t.unreadable for t in tags):
         raise OSError("A file could not be read. Repair it before editing assignments.")
@@ -130,20 +140,29 @@ def panel(files: list[Path], release: Release, draft: Draft | None = None) -> Pa
         Entry(t.title, _number(t.disc_num, t.track_num), length)
         for t, length in zip(mb_tags, lengths, strict=True)
     ]
-    rows = max(len(disk), len(mb))
     if draft is None:
         slots = compare.assign(
             [compare.identity_of(t) for t in tags],
             [compare.TrackIdentity.of_tagset(t) for t in mb_tags],
         )
+        if confirmed:
+            ids = [t.mb_release_track_id for t in mb_tags]
+            disk_ids = [t.owned.get("mb_release_track_id") for t in tags]
+            slots = [
+                ids.index(ref) if ref and ids.count(ref) == 1 and disk_ids.count(ref) == 1 else None
+                for ref in disk_ids
+            ]
         disk_order: list[int | None] = [None] * len(mb)
         for i, slot in enumerate(slots):
             if slot is not None:
                 disk_order[slot] = i
             else:
                 disk_order.append(i)
-        mb_order: list[int | None] = list(range(len(mb))) + [None] * (rows - len(mb))
+        mb_order: list[int | None] = list(range(len(mb))) + [None] * (len(disk_order) - len(mb))
     else:
+        rows = len(draft.disk_order.split(","))
+        if not max(len(disk), len(mb)) <= rows <= len(disk) + len(mb) + 1:
+            raise ValueError("invalid assignment row count")
         disk_order = _order(draft.disk_order, len(disk), rows)
         mb_order = _order(draft.mb_order, len(mb), rows)
     return Panel(files, disk, mb, disk_order, mb_order, fingerprint)

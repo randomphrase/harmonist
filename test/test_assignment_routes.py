@@ -108,9 +108,9 @@ def test_extra_file_can_move_past_a_gap_but_cannot_be_silently_dropped(client, c
     moved = client.post(f"/assignments/{aid}", data=fields | {"move": "mb:1:up"})
     fields = _confirmation_fields(moved.text)
     assert fields["mb_order"] == "-,0"
-    assert "cannot yet be tagged as a partial assignment" in moved.text
+    assert "Review assigned tracks" in moved.text
     preview = client.post(f"/confirm/{aid}/preview", data=fields)
-    assert "Pair every on-disk file" in preview.text
+    assert "unassigned file already has MusicBrainz track IDs" in preview.text
     attempted = client.post(f"/confirm/{aid}", data=_confirmation_fields(preview.text))
     assert "confirmation-applied" not in attempted.headers.get("HX-Trigger", "")
     assert [f.read_bytes() for f in files] == before

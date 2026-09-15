@@ -596,6 +596,15 @@ def build_album(
         cover_path=io.cover_path,
         inconsistent_tracks=inconsistent_tracks,
         partial_tag_count=_partial_tag_count(sidecar, fields),
+        unassigned_track_count=sum(
+            1
+            for f in fields
+            if sidecar
+            and sidecar.mb_release_id
+            and f.album_id == sidecar.mb_release_id
+            and not f.release_track_id
+            and not f.unreadable
+        ),
         audio_format=_audio_format(fields),
         audio_quality=_audio_quality(audio_files, fields),
         # A cover exists if there's a folder cover.* OR the first track has
@@ -681,6 +690,12 @@ def expected_tracks(
     and nine DVD ones, all on disk, reported as "missing 9 of 18". They are
     tracks for the purpose of "do you have this album", and for no other purpose.
     """
+    # Unassigned files keep their original totals, which may disagree with MB.
+    # Once there are known assignments in a confirmed album, only those files
+    # account for published track positions; extras cannot fill a missing slot.
+    album_ids = {f.album_id for f in fields}
+    if len(album_ids) == 1 and None not in album_ids and any(f.release_track_id for f in fields):
+        fields = [f for f in fields if f.release_track_id or f.unreadable]
     present = [f for f in [*fields, *video_fields] if not f.unreadable]
     if not present:
         return UNKNOWN_EXPECTED

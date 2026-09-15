@@ -35,7 +35,7 @@
                  {{ 'bg-surface text-muted border border-line' if _accepted else 'bg-amber-50 text-amber-700 border border-amber-300' }}"
           title="{% if album.expected_track_count %}The total comes from the files' own tags, written from MusicBrainz.{% elif album.absent_media %}That disc has no files at all, so nothing on disk records how many tracks it held — the Tracks section lists what MusicBrainz says is on it.{% else %}Fewer tracks on disk than this release has.{% endif %}{% if _accepted %} You've accepted this album as complete, so the Library's Incomplete filter skips it.{% endif %}">
         {% if album.expected_track_count %}
-        {{ album.track_count }} of {{ album.expected_track_count }} tracks on disk
+        {{ album.track_count - album.unassigned_track_count }} of {{ album.expected_track_count }} tracks {{ 'assigned' if album.unassigned_track_count else 'on disk' }}
         {% elif album.absent_media %}
         {{ missing_discs(album.absent_media, album.disc_total) }}
         {% else %}

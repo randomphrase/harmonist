@@ -16,6 +16,36 @@ def _card(page, base):
     return card
 
 
+def test_release_only_confirmation_can_be_reviewed_from_library(reset_demo_server):
+    base = reset_demo_server
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        card = _card(page, base)
+        card.get_by_role("button", name="Edit track assignments").click()
+        editor = card.locator(".assignment-editor")
+        editor.get_by_role("button", name="Confirm release only", exact=False).click()
+        pw.expect(editor.locator('[name="mb_order"]')).to_have_value("-,-,-,0,1,2")
+        editor.get_by_role("button", name="Review assigned tracks").click()
+        dialog = page.get_by_role("dialog")
+        pw.expect(dialog).to_contain_text("Tracks unassigned")
+        dialog.get_by_role("button", name="Confirm release and apply changes", exact=True).click()
+        pw.expect(dialog).not_to_be_visible()
+        page.goto(f"{base}/?tab=library")
+        tile = page.locator('a[href^="/album/"]').filter(has_text="Gimme Some Money").first
+        pw.expect(tile).to_contain_text("Tracks unassigned")
+        tile.click()
+        page.get_by_role("button", name="Review assignments", exact=True).click()
+        dialog = page.get_by_role("dialog")
+        pw.expect(dialog).to_be_visible()
+        pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("-,-,-,0,1,2")
+        dialog.get_by_role("button", name="Move on-disk entry up", exact=True).nth(3).click()
+        pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("-,-,0,-,1,2")
+        dialog.get_by_role("button", name="Refresh MusicBrainz and reset").click()
+        pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("-,-,-,0,1,2")
+        browser.close()
+
+
 def test_arrow_mapping_survives_refresh_review_and_apply(reset_demo_server):
     base = reset_demo_server
     with pw.sync_playwright() as playwright:

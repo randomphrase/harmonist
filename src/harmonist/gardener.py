@@ -250,7 +250,9 @@ def refresh_flag(album: Album, release: Release) -> Assessment:
     """
     try:
         plan = plan_for(album, release)
-    except tagger.TagMismatchError:
+    except tagger.TagMismatchError as e:
+        if isinstance(e, tagger.TrackAssignmentRequired):
+            album.unassigned_track_count = e.unassigned
         album.update_available = True
         album.update_significance = owned.Significance.STRUCTURE
         album.mb_version = release_version(release)
@@ -263,6 +265,7 @@ def refresh_flag(album: Album, release: Release) -> Assessment:
         log.exception("could not tell whether %s has a tag update available", album.path)
         return Assessment(plan=None, verdict=None)
     verdict = verdict_for(plan)
+    album.unassigned_track_count = 0
     album.update_available = verdict is not None
     album.update_significance = verdict
     album.mb_version = release_version(release)

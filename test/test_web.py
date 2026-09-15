@@ -1979,11 +1979,20 @@ def test_cover_returns_404_when_absent(client, cfg):
 # ---------- library ----------
 
 
-def _make_tagged_album(cfg, name: str, *, mbid: str, tagged_at, item_id: int | None = None) -> Path:
+def _make_tagged_album(
+    cfg,
+    name: str,
+    *,
+    mbid: str,
+    tagged_at,
+    item_id: int | None = None,
+    release_track_id: str = "rt-1",
+) -> Path:
     """Create a Done-state album with sidecar + matching MBID tag on the file."""
     d = _make_album(cfg, name)
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
+    audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [release_track_id.encode()]
     audio.save()
     from harmonist.models import BandcampInfo, Sidecar
 
@@ -4919,6 +4928,7 @@ def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg,
     from test.helpers import write_track_totals
 
     d = _make_album(cfg, "OverCounted", mbid="rel-1")  # 1 file, tagged rel-1
+    _set_owned_tag(d, "----:com.apple.iTunes:MusicBrainz Release Track Id", "rt-1")
     write_track_totals(d, track_total=2)  # MB wrongly said 2 → 1 file < 2 → INCOMPLETE
     sc.write(d, Sidecar(mb_release_id="rel-1", tagged_at=datetime.now(UTC)))
     before = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
@@ -6206,6 +6216,7 @@ def test_an_id_musicbrainz_cannot_name_stays_raw(client, cfg, monkeypatch):
     from harmonist import tagger as tagger_mod
 
     d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    _set_owned_tag(d, "----:com.apple.iTunes:MusicBrainz Release Track Id", "t1")
     tagger_mod.tag_album(d, _release_with_metadata())  # files now carry artist a1
     recredited = _release_with_metadata() | {
         "artist-credit": [{"artist": {"id": "a2", "name": "Someone Else"}}]
@@ -6316,6 +6327,7 @@ def test_a_second_release_country_is_not_reported_as_a_difference(client, cfg, m
 
     d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
     release = _three_country_release()
+    _set_owned_tag(d, "----:com.apple.iTunes:MusicBrainz Release Track Id", "t1")
     tagger_mod.tag_album(d, release)  # files now carry DE, MusicBrainz's first
     _set_owned_tag(d, ATOM_MB_ALBUM_COUNTRY, "GB")  # …as Picard would have
     monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", lambda mbid: release)
@@ -6335,6 +6347,7 @@ def test_a_country_the_release_never_names_is_still_a_difference(client, cfg, mo
 
     d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
     release = _three_country_release()
+    _set_owned_tag(d, "----:com.apple.iTunes:MusicBrainz Release Track Id", "t1")
     tagger_mod.tag_album(d, release)
     _set_owned_tag(d, ATOM_MB_ALBUM_COUNTRY, "JP")
     monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", lambda mbid: release)
@@ -6502,6 +6515,7 @@ def test_a_disc_subtitle_change_is_drawn_on_the_disc_heading(client, cfg, monkey
         audio = MP4(d / name)
         audio[ATOM_TITLE] = [title]
         audio[ATOM_MB_ALBUM_ID] = [b"rel-hybrid"]
+        audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [f"t{disc}".encode()]
         # One track per disc, stated on the file, so the heading's track count
         # agrees and the subtitle is the only thing left to report.
         audio["trkn"] = [(1, 1)]
@@ -6727,6 +6741,9 @@ def test_identifiers_start_revealed_when_they_are_the_only_difference(client, cf
         audio = MP4(d / name)
         audio[ATOM_TITLE] = [title]
         audio[ATOM_MB_ALBUM_ID] = [b"rel-isrc"]
+        audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [
+            b"t1" if "01" in name else b"t2"
+        ]
         audio["trkn"] = [(1 if "01" in name else 2, 2)]
         audio["----:com.apple.iTunes:ISRC"] = [isrc]
         audio.save()
@@ -6827,6 +6844,7 @@ def test_library_compare_flags_title_discrepancy(client, cfg, monkeypatch):
     d = _make_tagged_album(cfg, "Mismatch", mbid="rel-mm", tagged_at=datetime.now(UTC))
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_TITLE] = ["Ground Glass [w/ Foxes in Fiction]"]
+    audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [b"t1"]
     audio.save()
 
     def fake_release(mbid):

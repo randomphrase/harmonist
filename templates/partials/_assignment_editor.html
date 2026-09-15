@@ -52,7 +52,7 @@
                             <td class="p-2 font-mono">{{ duration(disk.length) if disk else '—' }}</td>
                             <td class="p-2 whitespace-nowrap">{{ arrows('disk', row, panel.disk_order[row] if disk else 'gap-' ~ (panel.disk_order[:row]|select('none')|list|length), panel.rows|length) }}</td>
                             <td class="p-2 font-mono">{{ mb.number if mb else '—' }}</td>
-                            <td class="p-2">{{ mb.title if mb else 'Missing from MusicBrainz' }}</td>
+                            <td class="p-2">{{ mb.title if mb else 'Unassigned' }}</td>
                             <td class="p-2 font-mono">{{ duration(mb.length) if mb else '—' }}</td>
                             <td class="p-2 whitespace-nowrap">{{ arrows('mb', row, panel.mb_order[row] if mb else 'gap-' ~ (panel.mb_order[:row]|select('none')|list|length), panel.rows|length) }}</td>
                             <td class="p-2 font-mono">
@@ -66,16 +66,19 @@
                     </tbody>
                 </table>
             </div>
-            {% if panel.paired %}
             <button type="button" hx-post="/confirm/{{ album.id }}/preview" hx-include="closest form"
                     hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
                     class="px-3 py-2 bg-accent text-white rounded text-xs font-bold">Review assigned tracks</button>
-            {% else %}
-            <p class="text-xs text-amber-700">Every on-disk file needs a MusicBrainz track before applying. Extra files can be arranged here, but cannot yet be tagged as a partial assignment.</p>
-            {% endif %}
+            <button type="submit" name="move" value="release-only" class="text-xs text-mb-purple underline">Confirm release only — leave all tracks unassigned</button>
+            <button type="submit" name="move" value="add-gap"{% if panel.rows|length >= panel.disk|length + panel.mb|length + 1 %} disabled{% endif %} class="text-xs text-mb-purple underline disabled:opacity-30">Add a gap</button>
+            <p class="text-xs text-muted">Unassigned files receive only the album MBID. Their track titles, numbering, totals, and other metadata are preserved.</p>
         </form>
         {% endif %}
-        <div class="flex gap-3 text-xs">
+        <div class="flex flex-wrap gap-3 text-xs">
+            <button hx-get="/assignments/{{ album.id }}?reread=true&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+                    hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
+                    class="text-mb-purple underline">Refresh MusicBrainz and reset</button>
+            <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}/open_edits" target="_blank" rel="noopener" class="text-mb-purple underline">Open edits on MusicBrainz</a>
             <button hx-get="/assignments/{{ album.id }}?on_album_page={{ 'true' if on_album_page else 'false' }}"
                     hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
                     class="text-mb-purple underline">Reset assignments</button>

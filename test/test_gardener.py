@@ -730,7 +730,6 @@ def test_identifiers_are_rendered_short_and_start_hidden(engaged, monkeypatch):
         for i, track in enumerate(medium["track-list"], start=1):
             track["recording"]["isrc-list"] = [f"GBAYE000012{i}"]
             track["recording"]["id"] = f"rec-moved-{i}"
-            track["id"] = f"rt-moved-{i}"
             track["artist-credit"] = [
                 {"artist": {"id": f"art-moved-{i}", "name": f"Someone Else {i}"}}
             ]

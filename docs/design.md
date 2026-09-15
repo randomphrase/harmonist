@@ -745,9 +745,28 @@ side can swap adjacent entries, including gaps, while separate on-disk and MB
 disc.track numbers remain attached to their entries. The automatic assignment
 initialises the editor; after that, the explicit mapping drives both the tag
 preview and the tagger, overriding even existing incorrect release-track IDs.
-Each file and MB track occurs exactly once in the draft. Applying still requires
-every file to have a unique, taggable target and retains the count guards;
-partial assignment with extra files belongs to #517.
+Each file and MB track occurs exactly once in the draft. Explicit review may
+leave files unassigned (#517): only paired files receive track metadata; every
+file receives the confirmed album MBID. Unassigned files retain all other tags,
+including their original numbering and totals. Existing track IDs on an
+unassigned file block confirmation with an explanation: pair the file correctly
+or remove those IDs in a tag editor before confirming. A release-only review
+leaves every file unassigned. No assignment or status flag is persisted.
+
+The Library shows **Tracks unassigned**, derived from missing release-track IDs
+on confirmed files and refined against the release when it is assessed. This
+includes imported albums carrying an album MBID without track IDs. **Review
+assignments** opens the editor on the album page. For confirmed releases the
+editor retains only unique matching release-track IDs; it does not infer the
+remaining pairs by position. Automatic tagging also refuses unresolved track
+identities, including IDs removed upstream. Refreshing MB resets the draft and
+offers the current tracklist for explicit review, without predicting whether
+or when an open edit will be accepted.
+
+When some files have known assignments, completeness uses their MB totals and
+positions rather than the unassigned files' original totals. An album may thus
+be both **Incomplete** and have **Tracks unassigned**. Existing purchase-link
+requirements still apply independently of assignment completeness.
 
 The draft lives only in the page. An inbox refresh preserves it, but a changed
 candidate replaces it. Review binds the draft to the release fingerprint and a
@@ -1900,8 +1919,8 @@ the higher total into the files and the album either stays `INCOMPLETE` (if
 the new count still exceeds what is on disk) or routes back through
 `NEEDS_MBID` (with a fresh suggestion) for re-confirmation.
 
-**Out of scope:** file_count > track_count (extra tracks on disk) — same
-class as inconsistent; user resolves externally.
+**Extra files:** explicit assignment review permits file_count > track_count
+(#517), preserving unassigned files' track metadata as described in §5.
 
 ### 13.4 Explicitly out of scope
 

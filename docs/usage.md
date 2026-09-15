@@ -100,9 +100,18 @@ leads with whichever fits:
   starts again from the automatic pairing. A normal inbox refresh preserves the
   draft; leaving or reloading the page discards it. If files or MusicBrainz data
   change during review, review the assignments again before applying.
-  Every on-disk file must still have a MusicBrainz counterpart to apply changes;
-  extra-file gaps can be arranged, but applying a partial assignment is not yet
-  supported.
+  Files may be left opposite a gap when MusicBrainz has no corresponding track.
+  Those files receive only the album MBID; their titles, numbering, totals, and
+  other metadata stay as they are. **Confirm release only** prepares a review
+  with all files unassigned. Existing MB track IDs on an unassigned file must be
+  resolved first; the preview explains which file needs attention.
+  The Library shows **Tracks unassigned**, with **Review assignments** on the
+  album page. **Refresh MusicBrainz and reset** loads the current tracklist;
+  known release-track IDs remain paired, while unresolved files wait for your
+  review. Imported albums with an album MBID but no track IDs use this review
+  too. An album can have both unassigned files and missing tracks.
+  **Open edits on MusicBrainz** links to the release's edits; Harmonist does not
+  predict when an edit will be approved.
 - *Without one.* Search by artist + title, or paste an MBID directly.
 - *Not in MusicBrainz yet.* Common for Bandcamp-only releases. **Open in Harmony**
   seeds it to [Harmony](https://harmony.pulsewidth.org.uk) in a couple of clicks,

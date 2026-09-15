@@ -2198,6 +2198,8 @@ def tracklist(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: Sequence[MBTrack],
     media: Sequence[Medium] = (),
+    *,
+    confirmed_mbid: str | None = None,
 ) -> TracklistComparison:
     """Compare an album's files, track by track, against its MusicBrainz release.
 
@@ -2214,7 +2216,7 @@ def tracklist(
     table gets cells that don't line up with its headings.
     """
     multi_disc = any((t.tags.disc_num or 1) > 1 for t in mb)
-    assigned, extras = _assign(tracks, mb)
+    assigned, extras = _assign(tracks, mb, confirmed_mbid=confirmed_mbid)
     # The disc comes from MusicBrainz, like the rows' own does, and NOT from the
     # file: a file that says disc 1 while its release track id places it on disc
     # 2 is exactly the case #232 exists for, and grouping it by what it claims
@@ -2506,6 +2508,8 @@ def _unique_slots(
 def _assign(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: Sequence[MBTrack],
+    *,
+    confirmed_mbid: str | None = None,
 ) -> tuple[dict[int, tuple[str, TrackTags]], list[tuple[str, TrackTags]]]:
     """Decide which file is which MusicBrainz track — see `assign`.
 
@@ -2515,6 +2519,17 @@ def _assign(
         [identity_of(t) for _, t in tracks],
         [TrackIdentity.of_tagset(t.tags) for t in mb],
     )
+    if confirmed_mbid:
+        ids = [t.tags.mb_release_track_id for t in mb]
+        disk_ids = [t.release_track_id for _, t in tracks]
+        for i, (_, tags) in enumerate(tracks):
+            if not tags.video and tags.owned.get("mb_album_id") == confirmed_mbid:
+                ref = tags.release_track_id
+                slots[i] = (
+                    ids.index(ref)
+                    if ref and ids.count(ref) == 1 and disk_ids.count(ref) == 1
+                    else None
+                )
     assigned: dict[int, tuple[str, TrackTags]] = {}
     leftover: list[tuple[str, TrackTags]] = []
     for entry, slot in zip(tracks, slots, strict=True):

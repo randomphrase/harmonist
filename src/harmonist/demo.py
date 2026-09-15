@@ -39,6 +39,8 @@ from .formats.m4a import (
     ATOM_ARTIST,
     ATOM_COMMENT,
     ATOM_MB_ALBUM_ID,
+    ATOM_MB_RELEASE_TRACK_ID,
+    ATOM_MB_TRACK_ID,
     ATOM_TITLE,
     ATOM_TRACK_NUM,
 )
@@ -1379,6 +1381,11 @@ def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
         only_tracks = spec.get("file_mbid_tracks")
         if (mbid := spec.get("file_mbid")) and (only_tracks is None or i in only_tracks):
             audio[ATOM_MB_ALBUM_ID] = [mbid.encode("utf-8")]
+            # Already-tagged demo albums carry the same track identities as
+            # their synthetic release. Missing IDs now deliberately mean an
+            # imported album needs assignment review (#517).
+            audio[ATOM_MB_RELEASE_TRACK_ID] = [_demo_mbid("rt", mbid, i).encode()]
+            audio[ATOM_MB_TRACK_ID] = [_demo_mbid("rec", mbid, i).encode()]
         if cmt := spec.get("file_comment"):
             audio[ATOM_COMMENT] = [cmt]
         # Tags that deliberately DISAGREE with the MusicBrainz release, so the
