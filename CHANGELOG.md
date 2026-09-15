@@ -56,6 +56,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Moving track assignments and opening their confirmation preview no longer trigger distracting library rescans (#527).
+- Proposed track-number changes now appear beneath the on-disk number they will replace (#528).
 - Tag undo can find renamed files by their recorded MusicBrainz IDs or track positions, refusing ambiguous matches (#167).
 - Artwork controls accept clicks immediately after a refresh, and late archive responses no longer erase a newer artwork choice (#477).
 - Unreadable artwork no longer blocks valid tag updates; the failure is reported and images are left alone, while tags-only requests skip artwork preparation (#511).

@@ -744,7 +744,8 @@ the candidate's file/track comparison. Rows are pairs, not track numbers: either
 side can swap adjacent entries, including gaps, while separate on-disk and MB
 track numbers remain attached to their entries, with explicit disc headings
 for multidisc albums. The editor leads with file/track/unassigned counts,
-highlights gaps and numbering changes, and offers a Title | Filename selector in
+highlights gaps and numbering changes (before → after beneath the on-disk
+number), and offers a Title | Filename selector in
 the on-disk column heading (untitled files always fall back to filenames).
 Accept changes opens the final tag/artwork confirmation; Reset and Cancel sit
 nearby and Edit on MusicBrainz sits at the right. Refresh/reset uses the album page's
@@ -759,7 +760,10 @@ fragment from stored release data without network requests, regardless of cache
 age; a missing cache is visible and offers an explicit read. Entering an uncached
 editor may fetch once, and explicit refresh always fetches fresh while preserving
 view/edit mode. Non-editing confirmation submits the displayed pairing through
-the same guarded preview. The automatic assignment initialises both views; after that, the explicit mapping drives both the tag
+the same guarded preview. Draft movement and preview POSTs opt out of the
+post-mutation rescan middleware, including rejected drafts; applying a
+confirmation still refreshes the Library (#527).
+The automatic assignment initialises both views; after that, the explicit mapping drives both the tag
 preview and the tagger, overriding even existing incorrect release-track IDs.
 Each file and MB track occurs exactly once in the draft. Explicit review may
 leave files unassigned (#517): only paired files receive track metadata; every

@@ -12,6 +12,37 @@ cfg = test_web.cfg
 client = test_web.client
 
 
+@pytest.mark.parametrize("action", ["move", "preview"])
+@pytest.mark.parametrize("stale", [False, True])
+def test_assignment_drafts_do_not_rescan_or_write_files(client, cfg, monkeypatch, action, stale):
+    from unittest.mock import Mock
+
+    root, *_ = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
+    aid = _id_for(cfg, root)
+    editor = client.get(f"/assignments/{aid}")
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    scan = Mock()
+    monkeypatch.setattr(client.app.state.scan_runner, "request_scan", scan)
+    fields = _confirmation_fields(editor.text)
+    if stale:
+        fields["disk_fingerprint"] = "obsolete"
+    if action == "move":
+        response = client.post(f"/assignments/{aid}", data=fields | {"move": "disk:0:down"})
+    else:
+        response = client.post(f"/confirm/{aid}/preview", data=fields)
+    assert response.status_code == 200
+    if stale:
+        assert "Files changed since the review" in response.text
+    elif action == "move":
+        assert _confirmation_fields(response.text)["disk_order"] == "1,0"
+    scan.assert_not_called()
+    assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+    if action == "preview" and not stale:
+        applied = client.post(f"/confirm/{aid}", data=_confirmation_fields(response.text))
+        assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
+        scan.assert_called_once()
+
+
 def test_read_only_comparison_uses_the_editor_rows_without_network(client, cfg, monkeypatch):
     from bs4 import BeautifulSoup
 
@@ -245,8 +276,11 @@ def test_editor_keeps_disc_context_and_number_changes_with_entries(client, cfg, 
     cells = rows[0].find_all("td", recursive=False)
     assert cells[0].select_one("span").text.strip() == "2"
     assert cells[3].select_one("span").text.strip() == "1"
-    assert f"Track numbering changes from {disc}.2 to {disc}.1" in str(cells[3])
-    headings = [div.text.strip() for div in cells[0].find_all("div")]
+    note = cells[0].select_one('[aria-label^="Track numbering changes"]')
+    assert note is not None
+    assert note["aria-label"] == f"Track numbering changes from {disc}.2 to {disc}.1"
+    assert note.get_text(strip=True) == ("2.2 → 2.1" if disc == 2 else "2 → 1")
+    headings = [div.text.strip() for div in cells[0].find_all("div") if div is not note]
     assert headings == (["Disc 2"] if disc == 2 else [])
     assert "bg-amber-50" in rows[0]["class"]
 

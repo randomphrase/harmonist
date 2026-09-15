@@ -6005,6 +6005,7 @@ def _register_routes(app: FastAPI) -> None:
         move: str = Form(...),
         on_album_page: bool = Form(False),
     ) -> Response:
+        request.state.skip_rescan = True  # page-local draft; no library mutation
         return _assignment_editor(
             request,
             album_id,
@@ -6170,6 +6171,7 @@ def _register_routes(app: FastAPI) -> None:
         incomplete: bool = Form(False),
         on_album_page: bool = Form(False),
     ) -> Response:
+        request.state.skip_rescan = True  # preview only; confirmation handles writes
         return _confirmation_preview(
             request,
             album_id,

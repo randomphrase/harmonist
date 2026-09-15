@@ -60,7 +60,7 @@
             <input type="hidden" name="incomplete" value="{{ 'true' if panel.files|length < panel.mb|length else 'false' }}">
             <div class="overflow-x-auto">
                 <table class="assignment-table w-full text-xs">
-                    <colgroup><col class="assignment-number"><col><col class="assignment-length"></colgroup>
+                    <colgroup><col class="assignment-number {{ 'assignment-number-multidisc' if counts.multidisc else '' }}"><col><col class="assignment-length"></colgroup>
                     <colgroup><col class="assignment-number"><col><col class="assignment-length"></colgroup>
                     <thead class="text-left">
                         <tr><th scope="colgroup" colspan="3" class="p-2">On disk</th><th scope="colgroup" colspan="3" class="p-2 border-l border-line text-mb-purple">MusicBrainz <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" class="inline" aria-hidden="true"><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></th></tr>
@@ -93,6 +93,7 @@
                                     {% if counts.multidisc and disc != previous.disk %}<div class="text-2xs text-muted whitespace-nowrap">Disc {{ disc if disc != '?' else 'unknown' }}</div>{% endif %}
                                     {% set previous.disk = disc %}
                                     <span class="font-mono" title="Current on-disk track number">{{ disk.number.split('.')[1] }}</span>
+                                    {% if renumbered %}<div class="text-2xs text-amber-700 whitespace-nowrap" aria-label="Track numbering changes from {{ disk.number }} to {{ mb.number }}">{{ disk.number if counts.multidisc else disk.number.split('.')[1] }} → {{ mb.number if counts.multidisc else mb.number.split('.')[1] }}</div>{% endif %}
                                 {% else %}—{% endif %}
                             </td>
                             <td class="p-2 align-top">
@@ -112,7 +113,6 @@
                                     {% if counts.multidisc and disc != previous.mb %}<div class="text-2xs text-muted whitespace-nowrap">Disc {{ disc }}</div>{% endif %}
                                     {% set previous.mb = disc %}
                                     <span class="font-mono" title="MusicBrainz track number">{{ mb.number.split('.')[1] }}</span>
-                                    {% if renumbered %}<div class="text-2xs text-amber-700 whitespace-nowrap" aria-label="Track numbering changes from {{ disk.number }} to {{ mb.number }}">{{ disk.number if counts.multidisc else disk.number.split('.')[1] }} → {{ mb.number if counts.multidisc else mb.number.split('.')[1] }}</div>{% endif %}
                                 {% else %}—{% endif %}
                             </td>
                             <td class="p-2 align-top text-mb-purple">

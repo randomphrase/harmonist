@@ -114,9 +114,23 @@ def test_arrow_mapping_survives_refresh_review_and_apply(reset_demo_server):
         card.get_by_role("button", name="Edit track assignments").click()
         editor = card.locator(".assignment-editor")
         down = editor.get_by_role("button", name="Move on-disk entry down", exact=True).first
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
+        scan_before = page.request.get(f"{base}/scan/status").json()
+        assert scan_before["state"] == "done"
+        # Status timestamps have second precision; a fast unwanted scan in the
+        # same second could otherwise leave an identical status response.
+        page.wait_for_function(
+            "finished => Date.now() >= Date.parse(finished) + 1100",
+            arg=scan_before["finished_at"],
+        )
         down.focus()
         down.press("Enter")
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
+        assert page.request.get(f"{base}/scan/status").json() == scan_before
+        row = editor.locator('[data-assignment-row="0"]')
+        note = row.locator("td").nth(0).locator('[aria-label^="Track numbering changes"]')
+        pw.expect(note).to_have_text("2 → 1")
+        assert note.evaluate("el => el.scrollWidth <= el.clientWidth")
         pw.expect(editor.locator(f'[id="move-{aid}-disk-0-down"]')).to_be_focused()
         pw.expect(
             card.get_by_role("button", name="Confirm release", exact=True)
@@ -129,6 +143,7 @@ def test_arrow_mapping_survives_refresh_review_and_apply(reset_demo_server):
         dialog = page.get_by_role("dialog")
         pw.expect(dialog).to_be_visible()
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("1,0,2")
+        assert page.request.get(f"{base}/scan/status").json() == scan_before
         with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}")) as applied:
             dialog.get_by_role(
                 "button", name="Confirm release and apply changes", exact=True

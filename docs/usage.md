@@ -96,7 +96,8 @@ leads with whichever fits:
   either side. The **On disk** and **MusicBrainz** groups show each entry's
   track number, title and length. Numbers belong to entries, not rows; `?`
   means an untagged track number. Multidisc albums show disc headings on each
-  side. Unassigned entries and numbering changes are highlighted; equal
+  side. Unassigned entries and numbering changes are highlighted; a numbering
+  change such as **6 → 5** appears beneath the current on-disk number. Equal
   durations need no difference label; other lengths show an inline Δ in seconds. **Title | Filename** in the on-disk column
   heading switches every row between titles and relative filenames; files
   without titles use their filenames as the main label.
@@ -106,7 +107,8 @@ leads with whichever fits:
   the tagging.
   **Cancel** discards the draft and returns to the non-editable table, and **Reset**
   starts again from the automatic pairing. A normal inbox refresh preserves the
-  draft; leaving or reloading the page discards it. If files or MusicBrainz data
+  draft; moving entries and opening a preview do not trigger a library rescan.
+  Leaving or reloading the page discards the draft. If files or MusicBrainz data
   change during review, review the assignments again before applying.
   Files may be left opposite a gap when MusicBrainz has no corresponding track.
   Those files receive only the album MBID; their titles, numbering, totals, and

@@ -24,6 +24,7 @@
  * movement controls appear. Long names wrap instead of stretching the table. */
 .assignment-table { table-layout: fixed; min-width: 760px; }
 .assignment-number { width: 3.5rem; }
+.assignment-number-multidisc { width: 6rem; }
 .assignment-length { width: 8rem; }
 .assignment-table td { padding-top: .375rem; padding-bottom: .375rem; }
 .assignment-table .assignment-title { overflow-wrap: anywhere; }
