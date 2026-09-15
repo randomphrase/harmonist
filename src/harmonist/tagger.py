@@ -1095,7 +1095,7 @@ class _IdentityRevert:
 
 
 def _identity_revert(
-    naming: album_files.Naming, files: Sequence[Path], plan: Sequence[tag_history.FileRevert]
+    current: dict[Path, dict[str, Any]], resolved: dict[Path, tag_history.FileRevert]
 ) -> _IdentityRevert | None:
     """What `mb_album_id` should become, or None to leave it alone entirely.
 
@@ -1121,32 +1121,88 @@ def _identity_revert(
     left on the rest — the split the all-or-nothing rule exists to prevent.
     """
     field = owned.Owned.MB_ALBUM_ID
-    # Keyed by file name, never by position: the plan's order and the
-    # directory's are both file order today, but pairing two lists that merely
-    # happen to agree is how the wrong track's id gets written.
-    changes = {item.file: item.fields[field] for item in plan if field in item.fields}
-    if not changes or len(changes) != len(plan):
+    # Use the same uniquely resolved files as the per-field undo, including
+    # renamed files. Never pair the history and directory by list order.
+    changes = {path: item.fields[field] for path, item in resolved.items() if field in item.fields}
+    if not changes or len(changes) != len(resolved):
         return None
     befores = {before for before, _after in changes.values()}
     if len(befores) != 1:
         return None
 
-    on_disk = {naming.name_of(p): p for p in files}
-    if set(on_disk) != set(changes):
+    if set(current) != set(changes):
         # Files have appeared or gone since. Any the plan doesn't name would
         # keep whatever id they carry, so moving the rest would split the
         # album's identity between two releases.
         return None
-    for name, path in on_disk.items():
-        try:
-            current = formats.read_owned(path)
-        except Exception as e:
-            raise RevertUnavailableError(f"could not read the tags on {name}: {e}") from e
-        if owned.values_differ(current.get(field), changes[name][1]):
+    for path, snapshot in current.items():
+        if owned.values_differ(snapshot.get(field), changes[path][1]):
             return None
 
     before = next(iter(befores))
     return _IdentityRevert(value=before if isinstance(before, str) and before else None)
+
+
+def _history_position(snapshot: dict[str, Any]) -> str | None:
+    """The tagged position, in the same notation used by tagging history."""
+    track = snapshot.get(owned.Owned.TRACK_NUM)
+    disc = snapshot.get(owned.Owned.DISC_NUM) or 1
+    total = snapshot.get(owned.Owned.DISC_TOTAL) or 1
+    if not isinstance(track, int) or track < 1:
+        return None
+    return f"{disc}-{track}" if total > 1 or disc > 1 else str(track)
+
+
+def _revert_file(
+    naming: album_files.Naming,
+    item: tag_history.FileRevert,
+    snapshots: dict[Path, dict[str, Any]],
+) -> Path:
+    """Find a history track within this album, refusing ambiguous evidence.
+
+    A missing identifier permits the next lookup; an ambiguous identifier does
+    not. Never break a tie using a weaker identifier or files already claimed
+    by other records. All lookups use the same pre-write snapshot.
+    """
+    if naming.matches(item.file):
+        return _file_named(naming, item.file, RevertUnavailableError)
+
+    def unique(matches: list[Path]) -> Path | None:
+        if len(matches) > 1:
+            raise RevertUnavailableError(f"{item.file}: ambiguous track identity in this album")
+        return matches[0] if matches else None
+
+    if item.track_ref:
+        found = unique(
+            [
+                p
+                for p, tags in snapshots.items()
+                if tags.get(owned.Owned.MB_RELEASE_TRACK_ID) == item.track_ref
+            ]
+        )
+        if found is not None:
+            return found
+    if item.position:
+        # A single-disc record's '1' and a later '1-1' name the same position.
+        position = item.position if "-" in item.position else f"1-{item.position}"
+        positions = {}
+        for path, tags in snapshots.items():
+            value = _history_position(tags)
+            if value is not None:
+                positions[path] = value if "-" in value else f"1-{value}"
+        matches = [p for p, value in positions.items() if value == position]
+        if item.rec_ref:
+            found = unique(
+                [p for p in matches if snapshots[p].get(owned.Owned.MB_TRACK_ID) == item.rec_ref]
+            )
+            if found is not None:
+                return found
+        found = unique(matches)
+        if found is not None:
+            return found
+    raise RevertUnavailableError(
+        f"{item.file} is no longer in this album; no unique track identity found"
+    )
 
 
 def _file_named(naming: album_files.Naming, name: str, error: type[Exception]) -> Path:
@@ -1242,14 +1298,26 @@ def revert_tags(
     targets: dict[Path, tuple[dict[str, Any], dict[str, Any]]] = {}
     restored: set[str] = set()
     stale: set[str] = set()
-    identity = _identity_revert(naming, album_all, plan)
-
-    for item in plan:
-        path = _file_named(naming, item.file, RevertUnavailableError)
+    snapshots = {}
+    for path in album_all:
         try:
-            current = formats.read_owned(path)
+            snapshots[path] = formats.read_owned(path)
         except Exception as e:
-            raise RevertUnavailableError(f"could not read the tags on {item.file}: {e}") from e
+            # File-format boundary: surface the failed read to the user before
+            # any writes; parser errors must never look like missing tags.
+            raise RevertUnavailableError(
+                f"could not read the tags on {naming.name_of(path)}: {e}"
+            ) from e
+    resolved: dict[Path, tag_history.FileRevert] = {}
+    for item in plan:
+        path = _revert_file(naming, item, snapshots)
+        if path in resolved:
+            raise RevertUnavailableError(f"{item.file}: two history records name the same file")
+        resolved[path] = item
+    identity = _identity_revert(snapshots, resolved)
+
+    for path, item in resolved.items():
+        current = snapshots[path]
 
         target = dict(current)
         for field, (before, after) in item.fields.items():
@@ -1305,7 +1373,12 @@ def revert_tags(
             changes = owned.diff(before, target)
             if changes:
                 activity_store.record_tag_changes(
-                    event_id, file=naming.name_of(path), changes=changes
+                    event_id,
+                    file=naming.name_of(path),
+                    changes=changes,
+                    track_ref=target.get(owned.Owned.MB_RELEASE_TRACK_ID),
+                    rec_ref=target.get(owned.Owned.MB_TRACK_ID),
+                    position=_history_position(target),
                 )
         files += 1
 

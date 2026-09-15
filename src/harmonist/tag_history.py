@@ -282,9 +282,8 @@ class FileRevert:
     file: str
     fields: dict[str, tuple[Any, Any]]
     #: The other three ways this record names its track (see the 5->6 migration).
-    #: Unused while files are found by name; they are what a rename-aware lookup
-    #: would fall back to, and they are recorded now because the table is
-    #: append-only and a row cannot gain a better identifier later.
+    #: Used when the filename is gone: release-track id, recording + position,
+    #: then position, each scoped to this album and required to be unique.
     track_ref: str | None = None
     rec_ref: str | None = None
     position: str | None = None

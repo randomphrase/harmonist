@@ -677,6 +677,9 @@ point:
   — and named in the outcome. An old row is safe to offer rather than a trap.
 - **Every file is read before any is written**, so a failure leaves the album as
   it was.
+- **Renamed files can still be found** using the recorded MusicBrainz track IDs
+  or disc/track position within the album. Missing or ambiguous matches refuse
+  the undo before any tags are written.
 - **Undoing the tagging that linked an album to MusicBrainz unlinks it too**, so
   your files and Harmonist's own record can't quietly disagree. The album returns
   to Needs MBID with that release kept as a one-click suggestion.

@@ -4283,14 +4283,10 @@ def test_undo_unlink_after_a_directory_rename_mints_the_new_paths_id(client, cfg
     assert any("Re-tagged" in m for m in messages)
 
 
-def test_undo_refuses_when_a_file_has_been_renamed(client, cfg):
-    """Records name their file, so renaming one puts it out of the undo's reach.
+def test_undo_refuses_renamed_file_without_recorded_identity(client, cfg):
+    """An older record with only a filename cannot identify a renamed file.
 
-    It refuses rather than doing part of the job: the album is left exactly as
-    it was, tags and link both. The record carries three other ways to name the
-    track (`track_ref`, `rec_ref`, `position`) that would find it anyway — that
-    lookup isn't built yet (#167), and until it is, a clear refusal is the right
-    failure.
+    Refuse before writing anything, preserving both the tags and release link.
     """
     from harmonist import formats
 
