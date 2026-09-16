@@ -16,7 +16,7 @@ Add a one-liner under `## [Unreleased]` when the change is **user-visible**:
 - A new feature or capability.
 - A change to existing behavior a user would notice (a default, a flow, wording,
   a state name).
-- A bug fix a user could have hit.
+- A bug fix a user could have hit **on the latest release** — see below.
 - A UI/UX change, a new or changed config option, or a change to how Harmonist is
   run/deployed.
 - Anything security-relevant.
@@ -26,6 +26,32 @@ test-only changes, CI/tooling, formatting, dependency bumps that don't change
 behavior, or internal docs (`docs/design.md`, `AGENTS.md`, planning notes). The
 test: *"would a user reading the release notes care?"* If no, skip it. If genuinely
 unsure, ask.
+
+### A bug that never shipped gets no entry
+
+**A fix for a bug that only ever existed in unreleased code is internal work**,
+however real the defect was. The broken version was never anybody's: an entry
+for it describes a repair to something no user has seen, and asks them to care
+about a week of this repo's internal history. The feature's own `### Added` /
+`### Changed` entry is the whole story, and it is already true.
+
+This is not a rare case. Building a feature — or reworking a representation, as
+#468 did to artwork — turns up defects in the new code, each of which correctly
+gets its own issue and its own fix. Every one of them is a bugfix commit, and
+none of them belongs in the notes. 1.17.0 drafted twenty-three `### Fixed`
+entries and shipped eight; the fifteen were bugs in controls that did not exist
+in 1.16.1.
+
+The issue says which — its **Since** line, per the `issue-first` skill. Where
+it says both (new code repeating an old limitation on a new path), **the entry
+covers only the released half**, which is usually narrower than the title: #489
+was filed as "preserve additional pictures when replacing **or undoing**
+artwork", but undoing an addition was new in that cycle, so the entry claims
+only what replacement had always got wrong.
+
+Decide it when you write the entry, not at release time — you know then. The
+release audit is a backstop for what slipped through, not the place this gets
+worked out from scratch.
 
 ## How to write it
 

@@ -133,7 +133,37 @@ For a **bug**:
 - **Symptom** — what the user observed (their words / a concrete repro).
 - **Root cause** — the actual defect in code, once known (`file:line`).
 - **Fix approach** — one or two lines on the intended change.
+- **Since** — **released** (a user on the latest tag can hit this) or
+  **unreleased** (it only exists in work since that tag, naming the issue or
+  commit that introduced it). See below.
 - Reference material if any (a MusicBrainz URL, a log excerpt).
+
+### Say whether the bug ever reached a user
+
+**Answer this while you are filing, not at release time.** You are looking at
+the defect and its history now; in six weeks someone rolling a changelog has
+only the issue, and reconstructing it means reading the tag's tree.
+
+The distinction is the changelog's: a fix for a bug that only ever existed in
+unreleased code is invisible to users — the broken version was never theirs, so
+the entry describes a repair to something they never saw. Those fixes get **no
+changelog entry**; the feature's own `### Added` / `### Changed` entry is the
+whole story, and it is already true. A fix for a bug reachable on the latest tag
+gets an entry, because someone out there is living with it.
+
+Most of a cycle's bugs on a feature built in that same cycle are unreleased —
+reworking a representation turns up defects in the rework. Don't assume it,
+though: a rework also exposes genuinely old ones, and an issue can be **both**,
+where the new code repeats an old limitation on a new path. Say which half is
+which — the released half is what earns the entry, and it is usually narrower
+than the issue title suggests.
+
+This repo's issues mostly record it already, just in prose and buried a
+paragraph down — "an inherited cache weakness, not a regression introduced by
+the shared-plan commits" (#510), "this predates the reviewed series" (#492),
+"the addition-Undo path is new in `30bd3de`, [but] replacement already has the
+related limitation ... that part predates the redesign" (#489). Put it on its
+own line so a release audit can read it instead of re-deriving it.
 
 For a **feature / change**: the motivation and the desired behavior. Keep it terse;
 link related issues.
@@ -163,6 +193,9 @@ gh issue create --repo randomphrase/harmonist \
 
 **Fix**
 ...
+
+**Since**
+Released — reachable on v1.16.1. / Unreleased — introduced by #468's rework in `963bf65`.
 EOF
 )"
 ```

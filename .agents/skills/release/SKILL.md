@@ -42,6 +42,41 @@ allowed exception to the changelog skill's "never invent entries at release
 time" — you are recovering an entry that should have existed, not writing notes
 retroactively.
 
+### The audit subtracts too: drop the bugs that never shipped
+
+The pass above asks what is missing. Ask the opposite of every `### Fixed`
+entry as well: **could a user running the previous tag have hit this?** If the
+bug only ever existed in code written during this cycle, the entry goes — see
+the changelog skill. Its feature's `### Added` / `### Changed` entry already
+says the thing works, which is all a user needs; the bullet underneath
+apologising for a week-old defect in it is this repo talking to itself.
+
+Expect this to cut deep on a cycle that reworked something. 1.17.0 reworked how
+artwork changes are represented (#468) and drafted twenty-three `### Fixed`
+entries; **eight** described a bug reachable on 1.16.1. The other fifteen were
+defects in controls — **Apply updates**, **Use this artwork**, the assignment
+editor — that 1.16.1 did not have. The section read as a catalogue of
+instability in a release whose actual story was two new capabilities.
+
+The cheap way to answer it is the issue's **Since** line (`issue-first`). Where
+there isn't one, the answer is usually still in the body a paragraph down, in
+prose — "an inherited cache weakness, not a regression", "this predates the
+reviewed series". Where it is genuinely absent, check the previous tag's tree
+for the surface: `git show vPREV:src/harmonist/tagger.py | grep -n 'def ...'`
+settles whether the code path the fix repairs was ever released.
+
+Two traps:
+
+- **A rework exposes old bugs as well as creating new ones.** Filed during the
+  same review, at the same commit, by the same person — and one of them is a
+  user's bug. #492 ("this predates the reviewed series") and #510 ("not a
+  regression") both surfaced in #468's review and both belong in the notes.
+- **An issue can be both**, where new code repeats an old limitation on a new
+  path. The entry then covers **only the released half**, which is narrower
+  than the issue title: #489 fixed dropped pictures on replacement *and* on
+  undoing an addition, but only replacement existed in 1.16.1, so only
+  replacement is claimed.
+
 ## 2. Sweep the docs for staleness
 
 A release is when someone new reads `README.md`, `docs/usage.md` and
@@ -215,6 +250,9 @@ Confirm from the workflow run, not the registry: reading published tags via
 ## Done when
 
 - [ ] every commit since the last tag is in the changelog or genuinely internal
+- [ ] **every `### Fixed` entry is a bug reachable on the previous tag** — a fix
+      for a defect that only ever existed in this cycle's code is internal, and
+      an entry covering both halves claims only the released one
 - [ ] `README.md`, `docs/usage.md` and `docs/design.md` describe what shipped
 - [ ] **every changelog bullet is its bold claim as a sentence**, plus a knob or
       an upgrade consequence where there is one — mechanism, bug history and
