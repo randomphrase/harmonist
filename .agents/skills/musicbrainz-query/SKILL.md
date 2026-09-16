@@ -1,6 +1,7 @@
 ---
 name: musicbrainz-query
-description: How Harmonist talks to MusicBrainz — which function to call, whether the answer may come from the cache, and what the payload can do to you. Consult BEFORE writing or moving any code that fetches from MusicBrainz, before adding an `includes` entry, and before deciding a stored answer is good enough. Every rule here is one a correct-looking call can break silently: the wrong function still returns the right data and merely costs a request that did not need spending, and a cached negative still parses.
+description: >-
+  How Harmonist talks to MusicBrainz — which function to call, whether the answer may come from the cache, and what the payload can do to you. Consult BEFORE writing or moving any code that fetches from MusicBrainz, before adding an `includes` entry, and before deciding a stored answer is good enough. Every rule here is one a correct-looking call can break silently: the wrong function still returns the right data and merely costs a request that did not need spending, and a cached negative still parses.
 ---
 
 # Querying MusicBrainz
@@ -22,6 +23,8 @@ and surviving the response.
 |---|---|---|
 | `mb_cache.fetch_release(mbid)` | by id | **yes** |
 | `mb_cache.fetch_release_urls(mbid)` | by id | **yes** (separate row — different `inc`) |
+| `mb_cache.stored_release(mbid)` | by id | stored snapshot only, **never fetches**, ignores TTL |
+| `mb_cache.stored_release_urls(mbid)` | by id | stored URLs only, **never fetches** |
 | `mb_lookup.lookup_by_bandcamp_url(url)` | URL → mbids | no, deliberately |
 | `mb_lookup.candidate_summaries_for_url(url)` | URL → summaries | no, deliberately |
 | `mb_lookup.browse_release_group_releases(rg)` | browse | no |
@@ -45,8 +48,8 @@ before it exists.
 
 `max_age=mb_cache.FRESH` forces a live fetch. Pass it when:
 
-- **you are about to write to the user's files.** Tagging from an hour-old
-  payload writes metadata Harmonist has already been told was superseded;
+- **you are about to write without an explicitly reviewed snapshot.** Automatic
+  tagging still needs a fresh answer; reviewed confirmation is the exception below;
 - **the user pressed something meaning "look again".** Recheck, the album page's
   re-read control. Serving those a stored answer makes the button a silent
   no-op with nothing on screen to say why;
@@ -58,6 +61,17 @@ before it exists.
   baseline*, not whether fresher data would be nicer.
 
 Everything that merely displays or compares may take the stored answer.
+
+**Continuing and applying an explicitly reviewed plan makes no network requests
+(#532).** `fetch_release()` may fetch when its TTL expires; it does not mean
+“use what the user saw.” Use `stored_release()` and validate the review's release
+fingerprint plus the local file/draft and included artwork fingerprints. Apply
+that exact server-side snapshot regardless of age. If it is missing or differs,
+return to review; never silently fetch, rematch or substitute another payload.
+The exception includes final confirmation writes, CAA/image access and incidental
+release-URL recovery. Explicit refresh, automatic unreviewed writes and background
+update checks retain their existing freshness policy. Test request counts with
+an expired TTL, not just a newly populated cache.
 
 **Force freshness by passing `FRESH`, never by reaching round the cache to
 `mb_lookup`.** Going through keeps the row refreshed by the fetch that was

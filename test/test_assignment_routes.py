@@ -75,6 +75,7 @@ def test_release_only_preview_from_suggestion_requires_confirmation(client, cfg,
     fields = _confirmation_fields(preview.text)
     assert fields["disk_order"] == "0,1,-,-"
     assert fields["mb_order"] == "-,-,0,1"
+    preview = client.post(f"/confirm/{aid}/preview", data=fields)
     assert "Tracks unassigned" in preview.text
     assert [f.read_bytes() for f in files] == before
     assert [call for call in calls if call[0] == "mb"] == [("mb", "rel-new-confirm")]
@@ -125,7 +126,7 @@ def test_read_only_confirmation_uses_current_counts_and_displayed_mapping(
     view = client.get(f"/assignments/{aid}?cancel=true&reread=true")
     assert f"2 files · {tracks} MusicBrainz tracks" in view.text
     soup = BeautifulSoup(view.text, "html.parser")
-    confirm = soup.select_one(f'button[hx-post="/confirm/{aid}/preview"]')
+    confirm = soup.select_one(f'button[hx-post="/confirm/{aid}/accept"]')
     assert confirm is not None and confirm.get_text(strip=True) == "Confirm release"
     preview = client.post(f"/confirm/{aid}/preview", data=_confirmation_fields(view.text))
     assert (
@@ -133,7 +134,7 @@ def test_read_only_confirmation_uses_current_counts_and_displayed_mapping(
         == _confirmation_fields(view.text)["disk_order"]
     )
     if tracks == 1:
-        assert "Unassigned files will receive the album's MusicBrainz ID" in preview.text
+        assert "These files will receive the album's MusicBrainz ID" in preview.text
         applied = client.post(f"/confirm/{aid}", data=_confirmation_fields(preview.text))
         assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
 
@@ -193,6 +194,9 @@ def test_assignment_confirmation_refuses_changed_inputs(client, cfg, monkeypatch
         files[0] = files[0].rename(d / "Renamed.m4a")
     else:
         release["medium-list"][0]["track-list"][0]["title"] = "Changed upstream"
+        from harmonist import mb_cache
+
+        mb_cache.fetch_release(release["id"], max_age=mb_cache.FRESH)
     before = [f.read_bytes() for f in files]
     result = client.post(f"/confirm/{aid}", data=_confirmation_fields(preview.text))
     assert "changed" in result.text.lower()

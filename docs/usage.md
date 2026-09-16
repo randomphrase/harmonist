@@ -77,15 +77,12 @@ leads with whichever fits:
 
 - *With a suggestion.* Harmonist found a candidate but isn't certain (usually the
   track lengths are outside tolerance). The card shows your files against the MB
-  release side by side, per track. **Confirm release** opens a preview of the displayed pairings,
-  including when files or MusicBrainz tracks are missing.
-  The preview shows your current artwork beside the selected release's cover,
-  even if that cover is smaller. For a reassignment, using the selected cover is
-  checked by default; untick it to keep your images. **Confirm release and apply
-  changes** writes the tags and included artwork together. Differing per-track
-  images stay protected, and artwork failure does not discard valid tag updates.
-  A missing or unavailable archive cover still lets you confirm the tags. You
-  can choose artwork later from the album page.
+  release side by side, per track. Inspect **Tag changes** and choose artwork
+  below the table before pressing **Confirm release**. Artwork loads separately;
+  you can apply tags while keeping your images even if the archive is slow or
+  unavailable. **Use artwork from the selected release** is optional and starts
+  unticked. Differing per-track images stay protected. You can also choose artwork
+  later from the album page.
   **Dismiss suggestion** leaves the album where it is.
   Viewing and editing use the same compact comparison table. MusicBrainz
   values are purple, with a hexagon beside the group heading. **MB checked**
@@ -101,23 +98,28 @@ leads with whichever fits:
   durations need no difference label; other lengths show an inline Δ in seconds. **Title | Filename** in the on-disk column
   heading switches every row between titles and relative filenames; files
   without titles use their filenames as the main label.
-  **Accept changes** accepts the pairing and opens the final tag/artwork
-  confirmation before anything is saved. Applying writes MusicBrainz's numbering
+  **Accept changes** applies the reviewed pairing. If files remain unassigned,
+  a small confirmation lists just those files. Included artwork replacements
+  show compact current/new images in the same dialog. Otherwise the changes
+  apply directly. Closing or choosing **Back** preserves your draft and artwork
+  choice. Applying writes MusicBrainz's numbering
   and metadata without renaming files; **Undo tag changes** in History reverses
   the tagging.
   **Cancel** discards the draft and returns to the non-editable table, and **Reset**
   starts again from the automatic pairing. A normal inbox refresh preserves the
   draft; moving entries and opening a preview do not trigger a library rescan.
-  Leaving or reloading the page discards the draft. If files or MusicBrainz data
-  change during review, review the assignments again before applying.
+  Leaving or reloading the page discards the draft. Confirmation and application
+  use the reviewed MusicBrainz snapshot without another network request, even
+  after its cache expires. Changed files, selected images or stored release data
+  require another review before applying; refresh explicitly to get newer data.
   Files may be left opposite a gap when MusicBrainz has no corresponding track.
   Those files receive only the album MBID; their titles, numbering, totals, and
   other metadata stay as they are. If any files will remain unassigned, the
   confirmation explains what will stay unassigned. Confirm normally to apply
   the displayed pairings. Existing MB track IDs on an
   unassigned file must be resolved first; the preview explains which file needs attention.
-  The Library shows **Tracks unassigned**, with **Review assignments** on the
-  album page. The refresh icon beside **MB checked** at the top right loads the
+  The Library shows **Tracks unassigned**. **Edit track assignments** is available
+  beside **Tracks** on the album page. The refresh icon beside **MB checked** at the top right loads the
   current tracklist and resets draft movements (ordinary Reset uses the cached tracklist);
   known release-track IDs remain paired, while unresolved files wait for your
   review. Imported albums with an album MBID but no track IDs use this review

@@ -3835,7 +3835,7 @@ def test_a_cover_created_by_a_first_tagging_reaches_the_albums_history(client, c
     monkeypatch.setattr(
         "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
     )
-    fields = _confirmation_fields(client.get(f"/confirm/{old_id}/preview").text)
+    _, _, fields = _review_with_artwork(client, old_id)
     fields["include_artwork"] = "true"
     assert client.post(f"/confirm/{old_id}", data=fields).status_code == 200
     assert (d / "cover.png").read_bytes() == image
@@ -10491,6 +10491,9 @@ def test_confirmation_applies_the_reviewed_smaller_archive_image(
         chosen=artwork.Source.ARCHIVE,
     )
     aid = _id_for(cfg, d)
+    from harmonist import mb_cache
+
+    mb_cache.fetch_release(release["id"])
     result = client.post(
         f"/confirm/{aid}" + ("/incomplete" if incomplete else ""),
         data={
@@ -10570,22 +10573,32 @@ def _confirmation_fields(body):
     return dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', body))
 
 
+def _review_with_artwork(client, aid, *, reread=False):
+    review = client.get(f"/confirm/{aid}/preview?reread={str(reread).lower()}")
+    fields = _confirmation_fields(review.text)
+    artwork = client.get(
+        f"/assignments/{aid}/artwork",
+        params={"release_fingerprint": fields["release_fingerprint"], "reread": reread},
+    )
+    assert review.status_code == artwork.status_code == 200
+    return review, artwork, fields | _confirmation_fields(artwork.text)
+
+
 def test_confirmation_preview_is_read_only_and_uses_the_selected_release_cache(
     client, cfg, monkeypatch
 ):
     d, release, _big, small, calls = _confirmation_setup(cfg, monkeypatch)
     aid = _id_for(cfg, d)
     before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
-    preview = client.get(f"/confirm/{aid}/preview")
-    assert preview.status_code == 200
-    assert "Current artwork" in preview.text and "Artwork for selected release" in preview.text
-    assert "For the release group, not this edition" in preview.text
-    assert re.search(r'name="include_artwork" value="true" checked', preview.text)
-    assert "Replacement" in preview.text
+    preview, artwork, _fields = _review_with_artwork(client, aid)
+    assert "Tag changes" in preview.text
+    assert "Current artwork" in artwork.text and "Artwork for selected release" in artwork.text
+    assert "For the release group, not this edition" in artwork.text
+    assert not re.search(r'name="include_artwork" value="true" checked', artwork.text)
     from harmonist import images
 
     assert client.get(f"/artwork/image/{aid}/{images.digest(small)}").content == small
-    assert client.get(f"/confirm/{aid}/preview").status_code == 200
+    _review_with_artwork(client, aid)
     assert calls == [("mb", release["id"]), ("caa", release["id"]), ("image", release["id"])]
     assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
 
@@ -10596,15 +10609,15 @@ def test_confirmation_checkbox_controls_the_actual_write(client, cfg, monkeypatc
 
     d, release, big, small, calls = _confirmation_setup(cfg, monkeypatch)
     aid = _id_for(cfg, d)
-    preview = client.get(f"/confirm/{aid}/preview")
-    data = _confirmation_fields(preview.text) | {"include_artwork": str(included).lower()}
+    _, _, fields = _review_with_artwork(client, aid)
+    data = fields | {"include_artwork": str(included).lower()}
     result = client.post(f"/confirm/{aid}", data=data)
     assert "Tagged" in result.text
     assert (d / "cover.jpg").read_bytes() == (small if included else big)
     for path in d.glob("*.m4a"):
         assert formats.read_cover(path) == (small if included else big, "image/png")
         assert formats.read_owned(path)["mb_album_id"] == release["id"]
-    assert calls.count(("mb", release["id"])) == 2
+    assert calls.count(("mb", release["id"])) == 1
     assert calls.count(("caa", release["id"])) == 1
     assert calls.count(("image", release["id"])) == 1
     # The excluded candidate is still available for the album-page override.
@@ -10620,13 +10633,12 @@ def test_confirmation_without_a_candidate_still_tags_and_keeps_art(
         cfg, monkeypatch, archive_status=archive_status
     )
     aid = _id_for(cfg, d)
-    preview = client.get(f"/confirm/{aid}/preview")
+    preview, artwork, fields = _review_with_artwork(client, aid)
     assert (
-        "could not be reached" if archive_status == "failed" else "No front cover"
-    ) in preview.text
-    fields = _confirmation_fields(preview.text)
+        "could not be loaded" if archive_status == "failed" else "No front cover"
+    ) in artwork.text
     assert fields["release_fingerprint"]
-    assert "Confirm release and apply changes</button>" in preview.text
+    assert "Accept changes</button>" in preview.text
     result = client.post(f"/confirm/{aid}", data=fields)
     assert "Tagged" in result.text
     assert (d / "cover.jpg").read_bytes() == big
@@ -10635,9 +10647,9 @@ def test_confirmation_without_a_candidate_still_tags_and_keeps_art(
 
 def test_initial_confirmation_does_not_preselect_replacement(client, cfg, monkeypatch):
     d, _release, _big, _small, _calls = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
-    preview = client.get(f"/confirm/{_id_for(cfg, d)}/preview")
-    assert 'name="include_artwork" value="true"' in preview.text
-    assert not re.search(r'name="include_artwork" value="true" checked', preview.text)
+    _, artwork, _ = _review_with_artwork(client, _id_for(cfg, d))
+    assert 'name="include_artwork" value="true"' in artwork.text
+    assert not re.search(r'name="include_artwork" value="true" checked', artwork.text)
 
 
 def test_confirmation_preserves_per_track_artwork(client, cfg, monkeypatch):
@@ -10646,28 +10658,28 @@ def test_confirmation_preserves_per_track_artwork(client, cfg, monkeypatch):
     d, _release, _big, small, _calls = _confirmation_setup(cfg, monkeypatch, per_track=True)
     aid = _id_for(cfg, d)
     before = [formats.read_cover(p) for p in sorted(d.glob("*.m4a"))]
-    preview = client.get(f"/confirm/{aid}/preview")
-    assert "Differing per-track artwork is preserved" in preview.text
-    result = client.post(
-        f"/confirm/{aid}", data=_confirmation_fields(preview.text) | {"include_artwork": "true"}
-    )
+    _, artwork, fields = _review_with_artwork(client, aid)
+    assert "Differing per-track artwork is preserved" in artwork.text
+    result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
     assert "Tagged" in result.text
     assert [formats.read_cover(p) for p in sorted(d.glob("*.m4a"))] == before
     assert (d / "cover.jpg").read_bytes() == small
 
 
-def test_confirmation_refreshes_a_changed_release_before_any_writes(client, cfg, monkeypatch):
+def test_confirmation_rejects_a_changed_stored_release_before_any_writes(client, cfg, monkeypatch):
+    from harmonist import mb_cache
+
     d, release, _big, _small, _calls = _confirmation_setup(cfg, monkeypatch)
     aid = _id_for(cfg, d)
     preview = client.get(f"/confirm/{aid}/preview")
     before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
     release["title"] = "Changed after review"
+    mb_cache.fetch_release(release["id"], max_age=mb_cache.FRESH)
     result = client.post(
         f"/confirm/{aid}", data=_confirmation_fields(preview.text) | {"include_artwork": "true"}
     )
     assert "MusicBrainz changed since the preview" in result.text
-    assert "Changed after review" in result.text
-    assert result.headers["hx-retarget"] == "#modal"
+    assert result.headers["hx-retarget"] == "#confirmation-modal"
     assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
 
 
@@ -10677,16 +10689,17 @@ def test_confirmation_withholds_artwork_changed_since_review(client, cfg, monkey
 
     d, release, big, _small, _calls = _confirmation_setup(cfg, monkeypatch)
     aid = _id_for(cfg, d)
-    preview = client.get(f"/confirm/{aid}/preview")
+    _, _, fields = _review_with_artwork(client, aid)
     newer = _png_sized(44, 500)
     if changed == "archive":
         cover_art.cache_image(release["id"], newer, "image/png")
     else:
         (d / "cover.jpg").write_bytes(newer)
-    result = client.post(
-        f"/confirm/{aid}", data=_confirmation_fields(preview.text) | {"include_artwork": "true"}
-    )
-    assert "Tagged" in result.text and "artwork changed since the preview" in result.text
+    before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+    result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
+    assert "Artwork changed" in result.text
+    assert "confirmation-applied" not in result.headers.get("HX-Trigger", "")
+    assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
     assert (d / "cover.jpg").read_bytes() == (newer if changed == "folder" else big)
 
 
@@ -10714,9 +10727,9 @@ def test_exact_reassignment_waits_for_artwork_review(client, cfg, monkeypatch, e
 def test_confirmation_refresh_asks_both_services_again(client, cfg, monkeypatch):
     d, release, _, _, calls = _confirmation_setup(cfg, monkeypatch)
     aid = _id_for(cfg, d)
-    client.get(f"/confirm/{aid}/preview")
-    preview = client.get(f"/confirm/{aid}/preview?reread=true")
-    assert "MusicBrainz checked" in preview.text and "Refresh preview" in preview.text
+    _review_with_artwork(client, aid)
+    preview, artwork, _ = _review_with_artwork(client, aid, reread=True)
+    assert "MB checked" in preview.text and "Archive checked" in artwork.text
     assert calls.count(("mb", release["id"])) == 2
     assert calls.count(("caa", release["id"])) == 2
 
@@ -10747,13 +10760,14 @@ def test_confirmation_cannot_apply_a_replaced_suggestion(client, cfg, monkeypatc
 def test_repeating_confirmation_writes_nothing_twice(client, cfg, monkeypatch):
     d, release, _, _, calls = _confirmation_setup(cfg, monkeypatch)
     aid = _id_for(cfg, d)
-    fields = _confirmation_fields(client.get(f"/confirm/{aid}/preview").text)
+    _, _, fields = _review_with_artwork(client, aid)
     fields["include_artwork"] = "true"
     assert "Tagged" in client.post(f"/confirm/{aid}", data=fields).text
     before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
     history = activity_store.album_history(release["id"])
     request_count = len(calls)
-    assert client.post(f"/confirm/{aid}", data=fields).status_code == 400
+    repeated = client.post(f"/confirm/{aid}", data=fields)
+    assert "confirmation-applied" not in repeated.headers.get("HX-Trigger", "")
     assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
     assert activity_store.album_history(release["id"]) == history
     assert len(calls) == request_count
@@ -10765,7 +10779,7 @@ def test_confirmation_reports_artwork_failure_separately(client, cfg, monkeypatc
 
     d, release, big, _, _ = _confirmation_setup(cfg, monkeypatch)
     aid = _id_for(cfg, d)
-    fields = _confirmation_fields(client.get(f"/confirm/{aid}/preview").text)
+    _, _, fields = _review_with_artwork(client, aid)
     if failure == "backup":
         monkeypatch.setattr(artwork_store, "keep_all", lambda images: frozenset())
     else:

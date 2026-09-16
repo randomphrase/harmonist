@@ -1,0 +1,42 @@
+<div class="space-y-3">
+    <div class="flex items-center justify-between gap-3">
+        <h3 class="text-sm font-bold">Artwork</h3>
+        <div class="flex items-center gap-2 text-xs text-muted">
+            {% if caa %}<span title="{{ caa.fetched_at }}">Archive checked {{ ago(caa.fetched_at) }}</span>{% endif %}
+            <button type="button" hx-get="/assignments/{{ album.id }}/artwork?release_fingerprint={{ release_fingerprint }}&amp;reread=true"
+                    hx-target="closest .assignment-artwork" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
+                    class="px-2 py-1 border border-line rounded font-bold">Refresh artwork</button>
+        </div>
+    </div>
+    {% if artwork_error %}<p role="alert" class="text-sm text-amber-700">{{ artwork_error }}</p>{% endif %}
+    {% if artwork %}
+    <div class="grid grid-cols-2 gap-4 text-xs">
+        <div class="space-y-2">
+            <h4 class="text-muted font-semibold">Current</h4>
+            {% for row in artwork.images %}
+            <div class="flex items-center gap-2">
+                <img src="/artwork/image/{{ album.id }}/{{ row.image.digest }}" alt="Current artwork: {{ row.label }}" class="w-16 h-16 object-contain">
+                <span>{{ row.label }}<br><span class="text-muted">{{ describe_image(row.image) }}</span></span>
+            </div>
+            {% else %}<p class="text-muted">No readable artwork.</p>{% endfor %}
+        </div>
+        <div class="space-y-2">
+            <h4 class="text-muted font-semibold">Selected release</h4>
+            {% if archive_image %}
+            <img src="/artwork/image/{{ album.id }}/{{ archive_image.digest }}" alt="Artwork for selected release" class="w-24 h-24 object-contain">
+            <p class="text-muted">{{ describe_image(archive_image) }}</p>
+            {% else %}<p class="text-muted">No front cover is available. Existing images will be kept.</p>{% endif %}
+            {% if caa and caa.from_release_group %}<p class="text-muted">For the release group, not this edition.</p>{% endif %}
+        </div>
+    </div>
+    {% if artwork.cover_unreadable %}<p class="text-xs text-amber-700">The folder cover could not be read. It will be left alone.</p>{% endif %}
+    {% if archive_image and artwork.writes %}
+    <input type="hidden" name="art_plan" value="{{ artwork.fingerprint }}">
+    <label class="flex items-center gap-2 text-sm font-semibold">
+        <input type="checkbox" name="include_artwork" value="true"> Use artwork from the selected release
+    </label>
+    <p class="text-xs text-muted">If selected: {{ artwork.summary }}. Leave unticked to keep your images.</p>
+    {% endif %}
+    {% if artwork.plan.preserves_per_track_art %}<p class="text-xs text-muted">Differing per-track artwork is preserved.</p>{% endif %}
+    {% endif %}
+</div>

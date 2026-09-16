@@ -3271,6 +3271,20 @@ def _release_fingerprint(release: Release) -> str:
     return hashlib.sha256(json.dumps(release, sort_keys=True).encode()).hexdigest()
 
 
+def _reviewed_release(mbid: str, fingerprint: str) -> Release:
+    """Resolve a reviewed snapshot locally; never substitute a different one."""
+    release = mb_cache.stored_release(mbid)
+    if release is None:
+        raise _ConfirmationChanged(
+            "The reviewed release is no longer available. Refresh MusicBrainz and review again."
+        )
+    if _release_fingerprint(release) != fingerprint:
+        raise _ConfirmationChanged(
+            "MusicBrainz changed since the preview. Refresh the comparison and review again."
+        )
+    return release
+
+
 def _tag_with_release(
     album_path: Path,
     mbid: str,
@@ -3305,9 +3319,10 @@ def _tag_with_release(
     fingerprint that failed to match: that is a stale preview the user is owed a
     warning about, this is a choice they just made.
 
-    `expected_release` binds confirmation to the release shown in its review.
-    A fresh response that differs requires a new review before any writes. Its
-    artwork is already cached by the preview; do not fetch a different image.
+    `expected_release` binds confirmation to the stored release shown in its
+    review (#532). Apply that snapshot without a request, whatever its age.
+    A missing or changed snapshot requires review before any writes. Artwork
+    is already cached by the review; do not fetch a different image.
 
     `scope` is how much of the plan to write, and must agree with the scope
     `expected_artwork` was taken at or the comparison mismatches on every press.
@@ -3329,16 +3344,12 @@ def _tag_with_release(
     `mistag_owned_url`) — otherwise the old (wrong-edition) URL matches no
     purchase and the album can never link, falling through to surrender.
     """
-    # FRESH, never cached (#127). This writes tags to the user's files, and
-    # doing that from an hour-old payload would put metadata on disk that
-    # Harmonist had already been told was superseded. It still goes through
-    # `mb_cache` rather than round it, so the stored row — the gardener's
-    # baseline — is refreshed by the fetch that was happening anyway.
-    release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH)
-    if expected_release is not None and _release_fingerprint(release) != expected_release:
-        raise _ConfirmationChanged(
-            "MusicBrainz changed since the preview. Review the release again."
-        )
+    # Reviewed actions apply what the user saw. Unreviewed tagging still asks
+    # fresh; the exception must not silently spread to automatic operations.
+    if expected_release is not None:
+        release = _reviewed_release(mbid, expected_release)
+    else:
+        release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH)
     assignment = None
     if assignment_draft is not None:
         assignment = track_assignment.panel(
@@ -3438,7 +3449,11 @@ def _tag_with_release(
         # all gated by ©cmt Bandcamp evidence. Best-effort — never blocks tagging.
         try:
             store_url = reconcile.store_url_for_tagging(
-                album_path, mbid, fetch_urls=mb_cache.fetch_release_urls
+                album_path,
+                mbid,
+                fetch_urls=mb_cache.stored_release_urls
+                if expected_release is not None
+                else mb_cache.fetch_release_urls,
             )
         except Exception:
             log.exception("store_url derivation during tagging failed")
@@ -5915,6 +5930,7 @@ def _register_routes(app: FastAPI) -> None:
         cancel: bool = False,
         reread: bool = False,
         modal: bool = False,
+        release_only: bool = False,
     ) -> Response:
         album = _find_album(request, album_id)
         candidate = _assignment_candidate(album)
@@ -5923,6 +5939,8 @@ def _register_routes(app: FastAPI) -> None:
         panel = None
         error = None
         checked_at = None
+        assignment_changes = None
+        assignment_error = None
         # Opening the inbox may display many candidates. Only an explicit
         # refresh (or entering an uncached editor) may spend an MB request.
         release = mb_cache.stored_release(candidate.mb_release_id)
@@ -5947,6 +5965,8 @@ def _register_routes(app: FastAPI) -> None:
                 release_fingerprint = current
                 if move:
                     panel.move(move)
+                if release_only:
+                    panel.move("release-only")
             except mb_lookup.ReleaseGoneError:
                 error = (
                     "This release is no longer on MusicBrainz. Cancel and choose another release."
@@ -5959,6 +5979,18 @@ def _register_routes(app: FastAPI) -> None:
                 panel = None
         else:
             error = "Track comparison is not cached. Read MusicBrainz to load it."
+        if panel is not None and release is not None:
+            try:
+                assignment_changes = tagger_mod.plan_album(
+                    album.path,
+                    release,
+                    files=panel.files,
+                    artwork=False,
+                    assignment=panel.mapping(),
+                ).changes
+            except (ValueError, OSError, tagger_mod.TagMismatchError) as e:
+                log.warning("could not preview assignment tags: %s", e, extra=_LOG_ONLY)
+                assignment_error = str(e)
         return _templates(request).TemplateResponse(
             request,
             "partials/_assignment_dialog.html" if modal else "partials/_assignment_editor.html",
@@ -5972,7 +6004,11 @@ def _register_routes(app: FastAPI) -> None:
                 on_album_page=on_album_page,
                 cancel=cancel,
                 checked_at=checked_at,
-                fragment=True,
+                fragment=not modal,
+                assignment_changes=assignment_changes,
+                assignment_error=assignment_error,
+                field_label=tag_history.label_for,
+                display_tag=tag_history.display,
             ),
         )
 
@@ -6015,6 +6051,53 @@ def _register_routes(app: FastAPI) -> None:
             on_album_page=on_album_page,
         )
 
+    @app.get("/assignments/{album_id}/artwork", response_class=HTMLResponse)
+    def assignment_artwork(
+        request: Request,
+        album_id: str,
+        release_fingerprint: str,
+        reread: bool = False,
+    ) -> Response:
+        """Load candidate artwork independently of the assignment/accept path."""
+        album = _find_album(request, album_id)
+        candidate = _assignment_candidate(album)
+        if candidate is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to review")
+        view = None
+        error = None
+        answer = None
+        archive_image = None
+        try:
+            release = _reviewed_release(candidate.mb_release_id, release_fingerprint)
+            answer = caa_cache.front(
+                release["id"],
+                release_group_mbid=(release.get("release-group") or {}).get("id"),
+                max_age=caa_cache.FRESH if reread else None,
+            )
+            if answer.image_url and (reread or cover_art.cached_image(release["id"]) is None):
+                cover_art.fetch_image(release["id"], answer.image_url)
+            archive_image = _archive_image(release["id"])
+            view = _artwork_view(album, answer, archive_image, chosen=artwork.Source.ARCHIVE)
+        except _ConfirmationChanged as e:
+            error = str(e)
+        except cover_art.CoverArtError:
+            log.exception("could not load assignment artwork", extra=_LOG_ONLY)
+            error = "Artwork could not be loaded. You can still apply tags and keep your images."
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/_assignment_artwork.html",
+            _ctx(
+                request,
+                album=album,
+                candidate=candidate,
+                release_fingerprint=release_fingerprint,
+                artwork=view,
+                archive_image=archive_image,
+                caa=answer,
+                artwork_error=error,
+            ),
+        )
+
     def _confirmation_preview(
         request: Request,
         album_id: str,
@@ -6022,90 +6105,74 @@ def _register_routes(app: FastAPI) -> None:
         incomplete: bool = False,
         on_album_page: bool = False,
         error: str | None = None,
-        reread: bool = False,
         assignment_draft: track_assignment.Draft | None = None,
         assignment_release: str = "",
-        release_only: bool = False,
+        include_artwork: bool = False,
+        art_plan: str = "",
+        apply_if_ready: bool = False,
     ) -> Response:
+        """Confirm only unresolved assignments and included artwork replacements.
+
+        This and the write both continue the stored review, without spending
+        any network requests. The original editor remains beneath this dialog.
+        """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         candidate = _assignment_candidate(album)
         if candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
         release = None
+        panel = None
         view = None
-        caa = None
-        archive_image = None
-        artwork_error = None
-        included = False
-        assignment_panel = None
-        assignment_changes = None
-        assignment_error = None
         try:
-            release = mb_cache.fetch_release(
-                candidate.mb_release_id, max_age=mb_cache.FRESH if reread else None
+            release = _reviewed_release(candidate.mb_release_id, assignment_release)
+            if assignment_draft is None:
+                raise _ConfirmationChanged("Review the track assignments before applying changes.")
+            panel = track_assignment.panel(
+                album_files.for_paths(album.folders), release, assignment_draft
             )
-        except mb_lookup.ReleaseGoneError:
-            error = "This release is no longer on MusicBrainz. Close this review and choose another release."
-        except mb_lookup.MBError as e:
-            log.exception("could not load release confirmation", extra=_LOG_ONLY)
-            error = f"Could not read MusicBrainz: {e}"
-        if release is not None:
-            files = album_files.for_paths(album.folders)
-            tracks = [(path, formats.read_tags(path)) for path in files]
-            if assignment_draft is not None or release_only:
-                try:
-                    if release_only:
-                        assignment_panel = track_assignment.panel(files, release)
-                        assignment_panel.move("release-only")
-                        assignment_draft = assignment_panel.draft
-                        assignment_release = _release_fingerprint(release)
-                    else:
-                        if _release_fingerprint(release) != assignment_release:
-                            raise track_assignment.AssignmentChanged(
-                                "MusicBrainz changed. Close this review and reset the assignments."
-                            )
-                        assignment_panel = track_assignment.panel(files, release, assignment_draft)
-                    assignment_changes = tagger_mod.plan_album(
-                        album.path,
-                        release,
-                        files=files,
-                        artwork=False,
-                        incomplete=incomplete,
-                        assignment=assignment_panel.mapping(),
-                    ).changes
-                except (ValueError, OSError, tagger_mod.TagMismatchError) as e:
-                    log.warning("could not review track assignments: %s", e, extra=_LOG_ONLY)
-                    assignment_error = str(e)
-            try:
-                group = (release.get("release-group") or {}).get("id")
-                caa = caa_cache.front(
-                    release["id"],
-                    release_group_mbid=group,
-                    max_age=caa_cache.FRESH if reread else None,
+            tagger_mod.plan_album(
+                album.path,
+                release,
+                files=panel.files,
+                artwork=False,
+                incomplete=incomplete,
+                assignment=panel.mapping(),
+            )
+            if include_artwork:
+                view = _artwork_view(
+                    album,
+                    caa_cache.stored(release["id"]),
+                    _archive_image(release["id"]),
+                    chosen=artwork.Source.ARCHIVE,
                 )
-                if caa.image_url and cover_art.cached_image(release["id"]) is None:
-                    cover_art.fetch_image(release["id"], caa.image_url)
-                archive_image = _archive_image(release["id"])
-                if caa.image_url and archive_image is None:
-                    artwork_error = (
-                        "The archive image could not be loaded. You can still confirm the tags."
+                if not art_plan or view.fingerprint != art_plan:
+                    raise _ConfirmationChanged(
+                        "Artwork changed since the review. Go back and review the artwork again."
                     )
-            except cover_art.CoverArtError:
-                log.exception(
-                    "could not load artwork for release confirmation", extra={"album_id": album.id}
-                )
-                artwork_error = (
-                    "The Cover Art Archive could not be reached. You can still confirm the tags."
-                )
-            view = _artwork_view(
-                album, caa, archive_image, chosen=artwork.Source.ARCHIVE, tracks=tracks
-            )
-            reassignment = any(
-                tags.owned.get("mb_album_id") and tags.owned.get("mb_album_id") != release["id"]
-                for _, tags in tracks
-            )
-            included = bool(
-                archive_image and view.writes and (reassignment or view.operation == "addition")
+        except (_ConfirmationChanged, ValueError, OSError, tagger_mod.TagMismatchError) as e:
+            log.warning("could not confirm reviewed changes: %s", e, extra=_LOG_ONLY)
+            error = error or str(e)
+        if (
+            apply_if_ready
+            and not error
+            and panel is not None
+            and panel.paired
+            and (view is None or view.operation != "replacement")
+        ):
+            assert assignment_draft is not None
+            request.state.skip_rescan = False  # this branch really writes
+            return confirm_match(
+                request,
+                album_id,
+                candidate_mbid=candidate.mb_release_id,
+                release_fingerprint=assignment_release,
+                art_plan=art_plan,
+                include_artwork=include_artwork,
+                on_album_page=on_album_page,
+                disk_order=assignment_draft.disk_order,
+                mb_order=assignment_draft.mb_order,
+                disk_fingerprint=assignment_draft.disk_fingerprint,
+                incomplete=incomplete,
             )
         response = _templates(request).TemplateResponse(
             request,
@@ -6115,30 +6182,18 @@ def _register_routes(app: FastAPI) -> None:
                 album=album,
                 candidate=candidate,
                 release=release,
-                release_fingerprint=_release_fingerprint(release)
-                if release
-                else assignment_release,
-                release_checked_at=mb_cache.fetched_at(candidate.mb_release_id),
-                selected_tracks=tagsets_for(release) if release else [],
+                release_fingerprint=assignment_release,
+                assignment_panel=panel,
+                assignment_draft=assignment_draft,
                 artwork=view,
-                archive_image=archive_image,
-                caa=caa,
-                artwork_error=artwork_error,
-                included=included,
+                included=include_artwork,
+                art_plan=art_plan,
                 incomplete=incomplete,
                 on_album_page=on_album_page,
                 error=error,
-                assignment_panel=assignment_panel,
-                assignment_draft=assignment_draft,
-                assignment_changes=assignment_changes,
-                assignment_error=assignment_error,
-                release_only=release_only,
-                field_label=tag_history.label_for,
-                display_tag=tag_history.display,
             ),
         )
-        # A declined POST replaces the dialog with the newly reviewed proposal.
-        response.headers["HX-Retarget"] = "#modal"
+        response.headers["HX-Retarget"] = "#confirmation-modal"
         response.headers["HX-Reswap"] = "innerHTML settle:0ms"
         return response
 
@@ -6151,15 +6206,18 @@ def _register_routes(app: FastAPI) -> None:
         reread: bool = False,
         release_only: bool = False,
     ) -> Response:
-        return _confirmation_preview(
+        # Legacy entry points open the full review on the page, not a second
+        # review disguised as a confirmation. Its artwork loads independently.
+        return _assignment_editor(
             request,
             album_id,
-            incomplete=incomplete,
             on_album_page=on_album_page,
             reread=reread,
             release_only=release_only,
+            modal=True,
         )
 
+    @app.post("/confirm/{album_id}/accept", response_class=HTMLResponse)
     @app.post("/confirm/{album_id}/preview", response_class=HTMLResponse)
     def assignment_preview(
         request: Request,
@@ -6170,6 +6228,8 @@ def _register_routes(app: FastAPI) -> None:
         release_fingerprint: str = Form(...),
         incomplete: bool = Form(False),
         on_album_page: bool = Form(False),
+        include_artwork: bool = Form(False),
+        art_plan: str = Form(""),
     ) -> Response:
         request.state.skip_rescan = True  # preview only; confirmation handles writes
         return _confirmation_preview(
@@ -6179,6 +6239,9 @@ def _register_routes(app: FastAPI) -> None:
             on_album_page=on_album_page,
             assignment_draft=track_assignment.Draft(disk_order, mb_order, disk_fingerprint),
             assignment_release=release_fingerprint,
+            include_artwork=include_artwork,
+            art_plan=art_plan,
+            apply_if_ready=request.url.path.endswith("/accept"),
         )
 
     @app.post("/confirm/{album_id}", response_class=HTMLResponse)
@@ -6194,6 +6257,7 @@ def _register_routes(app: FastAPI) -> None:
         disk_order: str = Form(""),
         mb_order: str = Form(""),
         disk_fingerprint: str = Form(""),
+        incomplete: bool = Form(False),
     ) -> Response:
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         sc = album.sidecar
@@ -6204,7 +6268,7 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "review assignments for the confirmed release"
             )
-        incomplete = request.url.path.endswith("/incomplete")
+        incomplete = incomplete or request.url.path.endswith("/incomplete")
         draft = None
         if disk_order or mb_order or disk_fingerprint:
             if not all((disk_order, mb_order, disk_fingerprint, release_fingerprint)):
@@ -6215,6 +6279,18 @@ def _register_routes(app: FastAPI) -> None:
                 raise _ConfirmationChanged(
                     "The selected release changed. Review the new suggestion."
                 )
+            if release_fingerprint and include_artwork:
+                reviewed = _reviewed_release(candidate.mb_release_id, release_fingerprint)
+                view = _artwork_view(
+                    album,
+                    caa_cache.stored(reviewed["id"]),
+                    _archive_image(reviewed["id"]),
+                    chosen=artwork.Source.ARCHIVE,
+                )
+                if not art_plan or view.fingerprint != art_plan:
+                    raise _ConfirmationChanged(
+                        "Artwork changed since the review. Go back and review the artwork again."
+                    )
             outcome = _tag_with_release(
                 album.path,
                 candidate.mb_release_id,
@@ -6239,6 +6315,8 @@ def _register_routes(app: FastAPI) -> None:
                 error=str(e),
                 assignment_draft=draft,
                 assignment_release=release_fingerprint,
+                include_artwork=include_artwork,
+                art_plan=art_plan,
             )
         except Exception as e:
             # Per-album request boundary: retain the review and report the failure.
@@ -6252,6 +6330,8 @@ def _register_routes(app: FastAPI) -> None:
                     error=f"Tagging failed: {e}",
                     assignment_draft=draft,
                     assignment_release=release_fingerprint,
+                    include_artwork=include_artwork,
+                    art_plan=art_plan,
                 )
             return _flash_response(
                 "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album

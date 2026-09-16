@@ -18,16 +18,17 @@ attribute, so a patched fetch is still what gets called.
 
 ## Who gets a cached answer and who does not
 
-The rule is one sentence: **reads that display or compare may be cached; writes
-and anything the user pressed to force a re-check fetch fresh.**
+Display/comparison reads may be cached. Explicit refresh and unreviewed writes
+fetch fresh; continuing or applying an explicitly reviewed snapshot never fetches.
 
 * the album page's disk-vs-MB comparison, the mis-tag sweep, candidate
   assessment — cached. All of them are looking at a release, not acting on it,
   and the sweep's cost is bounded by library size rather than by a user's
   selection, which is the review-gate's call-budget concern exactly.
-* `_tag_with_release` — **never cached.** It writes tags to the user's files.
-  Doing that from an hour-old payload would write metadata Harmonist had already
-  been told was superseded.
+* `_tag_with_release` — fresh for unreviewed writes. Reviewed confirmation uses
+  `stored_release` regardless of TTL and validates the supplied fingerprint.
+  A missing or changed stored snapshot requires another review, not a fetch or
+  substitution. The same applies to reviewed artwork and URL recovery (#532).
 * **Recheck** — never cached. The entire meaning of that button is "I just
   edited MusicBrainz"; serving it a stored answer would make it a no-op and the
   user would have no way to tell.
@@ -150,12 +151,10 @@ def fetch_release(mbid: str, *, max_age: timedelta | None = None) -> Release:
 def stored_release(mbid: str) -> Release | None:
     """What MusicBrainz last said about `mbid`, or None if we never asked.
 
-    **Reads the store and never the network**, whatever the row's age — the one
-    caller that wants that is #287's warm-up, which rebuilds the update-available
-    flags after a restart and must cost zero rate-limited requests. Age is
-    irrelevant to it: a stale row is still the last thing MusicBrainz said, which
-    is exactly the baseline the flag is derived against, and a fresher answer is
-    the background pass's job to go and get (#270).
+    **Reads the store and never the network**, whatever the row's age. Warm-up
+    rebuilds update findings from it (#287), comparisons render it immediately,
+    and reviewed confirmation validates and applies it without fetching (#532).
+    Background checks and explicit refresh are responsible for newer answers.
 
     Distinct from `fetch_release(max_age=...)`, which answers "give me a release"
     and will spend a request to do it. This answers "have we got one already",
@@ -199,6 +198,16 @@ def fetch_release_urls(mbid: str, *, max_age: timedelta | None = None) -> list[s
     # and a list of targets has already thrown away the relationship types.
     activity_store.store_release(mbid, inc, {"url-relation-list": [{"target": u} for u in urls]})
     return urls
+
+
+def stored_release_urls(mbid: str) -> list[str]:
+    """Known release URLs without a request, for applying a reviewed release.
+
+    No stored answer means no known URLs; tag-time recovery can still use the
+    file's own Bandcamp comment. Continuing a review must not fetch them.
+    """
+    cached = activity_store.cached_release(mbid, _key(mb_lookup.RELEASE_URL_INCLUDES))
+    return _urls_of(cached.payload) if cached is not None else []
 
 
 def _urls_of(payload: dict[str, Any]) -> list[str]:

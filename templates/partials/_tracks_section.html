@@ -12,6 +12,9 @@
          class="border border-line rounded-lg p-4 space-y-3">
     <div class="flex items-center justify-between gap-4">
         <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
+        <button type="button" hx-get="/assignments/{{ album.id }}?modal=true&amp;on_album_page=true"
+                hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
+                class="ml-auto px-3 py-1.5 bg-white hover:bg-surface text-muted hover:text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Edit track assignments</button>
         {% if tracklist.identifier_columns %}
         {# The identifier columns, and the control that reveals them (#319),
            moved up here in #328 to match History's "Show details" — under the

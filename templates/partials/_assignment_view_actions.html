@@ -1,7 +1,10 @@
 {% if panel %}
 {% if album.sidecar.mb_match_candidate %}
-<button type="button" hx-post="/confirm/{{ album.id }}/preview" hx-include="closest form"
-        hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
+<button type="button" hx-post="/confirm/{{ album.id }}/accept" hx-include="closest form"
+        {% if not on_album_page %}hx-sync="body:queue last"{% endif %}
+        hx-target="#confirmation-modal" hx-swap="none" hx-disabled-elt="this"
+        hx-indicator="#assignment-progress-{{ album.id }}"
+        hx-on::after-request="if (event.detail.successful &amp;&amp; (event.detail.xhr.getResponseHeader('HX-Trigger') || '').includes('confirmation-applied')) harmonistCloseConfirmation(true)"
         class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
     Confirm release
 </button>

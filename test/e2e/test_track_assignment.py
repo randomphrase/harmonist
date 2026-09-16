@@ -87,11 +87,13 @@ def test_partial_confirmation_can_be_applied_and_reviewed(reset_demo_server):
         card.get_by_role("button", name="Confirm release", exact=True).click()
         dialog = page.get_by_role("dialog")
         pw.expect(dialog).to_contain_text("Tracks unassigned")
-        dialog.get_by_role("button", name="Confirm release and apply changes", exact=True).click()
+        dialog.get_by_role("button", name="Confirm release", exact=True).click()
         pw.expect(dialog).not_to_be_visible()
         page.goto(f"{base}/album/demo-rel-folksmen")
         pw.expect(page.locator("main")).to_contain_text("Tracks unassigned")
-        page.get_by_role("button", name="Review assignments", exact=True).click()
+        page.locator("#album-tracks").get_by_role(
+            "button", name="Edit track assignments", exact=True
+        ).click()
         dialog = page.get_by_role("dialog")
         pw.expect(dialog).to_be_visible()
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,1,2")
@@ -139,18 +141,12 @@ def test_arrow_mapping_survives_refresh_review_and_apply(reset_demo_server):
         with page.expect_response(lambda r: "/tasks" in r.url):
             page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
-        editor.get_by_role("button", name="Accept changes").click()
-        dialog = page.get_by_role("dialog")
-        pw.expect(dialog).to_be_visible()
-        pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("1,0,2")
-        assert page.request.get(f"{base}/scan/status").json() == scan_before
-        with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}")) as applied:
-            dialog.get_by_role(
-                "button", name="Confirm release and apply changes", exact=True
-            ).click()
+        # A complete tags-only review applies directly from the visible editor.
+        with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+            editor.get_by_role("button", name="Accept changes").click()
         assert parse_qs(applied.value.request.post_data)["disk_order"] == ["1,0,2"]
         assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
-        pw.expect(dialog).not_to_be_visible()
+        pw.expect(page.get_by_role("dialog")).not_to_be_visible()
         browser.close()
 
 
@@ -182,4 +178,75 @@ def test_gap_can_move_on_either_side_and_cancel_discards_the_draft(reset_demo_se
         editor.get_by_role("button", name="Edit track assignments").click()
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2,-")
         pw.expect(editor.locator('[name="mb_order"]')).to_have_value("0,1,2,3")
+        browser.close()
+
+
+def test_closing_partial_confirmation_restores_accept_button(reset_demo_server):
+    base = reset_demo_server
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        card = _card(page, base)
+        aid = card.get_attribute("id").removeprefix("task-")
+        assert page.request.post(
+            f"{base}/manual/{aid}/assign",
+            headers={"HX-Request": "true"},
+            form={"mbid": "demo-rel-folksmen"},
+        ).ok
+        page.reload()
+        card = page.locator(f"#task-{aid}")
+        card.get_by_role("button", name="Edit track assignments").click()
+        editor = card.locator(".assignment-editor")
+        before = editor.locator('[name="disk_order"]').input_value()
+        accept = editor.get_by_role("button", name="Accept changes")
+
+        def poll_during_accept(route):
+            response = route.fetch()
+            # Queue the normal Inbox refresh while acceptance is in flight.
+            page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
+            page.wait_for_timeout(100)
+            pw.expect(editor.locator('[name="disk_order"]')).to_have_value(before)
+            route.fulfill(response=response)
+
+        page.route(f"**/confirm/{aid}/accept", poll_during_accept)
+        for dismissal in ("Close confirmation", "Back", "Escape", "backdrop"):
+            accept.click()
+            dialog = page.locator("#confirmation-modal dialog")
+            pw.expect(dialog).to_be_visible()
+            pw.expect(
+                dialog.get_by_role("region", name="Tracks unassigned").locator("li")
+            ).to_have_count(1)
+            if dismissal == "Escape":
+                page.keyboard.press("Escape")
+            elif dismissal == "backdrop":
+                page.mouse.click(5, 5)
+            else:
+                dialog.get_by_role("button", name=dismissal, exact=True).click()
+            pw.expect(dialog).not_to_be_visible()
+            pw.expect(accept).to_be_enabled()
+            pw.expect(accept).to_have_css("opacity", "1")
+            pw.expect(editor.locator('[name="disk_order"]')).to_have_value(before)
+        accept.click()
+        pw.expect(dialog).to_be_visible()
+        browser.close()
+
+
+def test_album_assignment_modal_survives_confirmation_back(reset_demo_server):
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{reset_demo_server}/album/demo-rel-dingoes")
+        page.locator("#album-tracks").get_by_role("button", name="Edit track assignments").click()
+        editor = page.locator("#modal dialog")
+        checkbox = editor.get_by_role("checkbox", name="Use artwork from the selected release")
+        checkbox.check()
+        before = editor.locator('[name="disk_order"]').input_value()
+        editor.get_by_role("button", name="Accept changes").click()
+        confirmation = page.locator("#confirmation-modal dialog")
+        pw.expect(confirmation).to_be_visible()
+        confirmation.get_by_role("button", name="Back", exact=True).click()
+        pw.expect(editor).to_be_visible()
+        pw.expect(checkbox).to_be_checked()
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value(before)
+        pw.expect(editor.get_by_role("button", name="Accept changes")).to_be_enabled()
         browser.close()

@@ -109,10 +109,14 @@ MB access is rate-limited (1 request/second) and bounded.
   it works perfectly, returns the right data, and quietly costs a request that
   did not need spending. Nothing fails, so nothing catches it but this question.
 - A caller that legitimately must not be served a stored answer — it writes
-  tags, or the user pressed it to force a re-check — passes
+  tags without an explicitly reviewed snapshot, or the user pressed it to force a re-check — passes
   `max_age=mb_cache.FRESH`; it does **not** reach round the cache to
   `mb_lookup`. Going through keeps the row (and so #32's change-detection
   baseline) refreshed by the fetch that was happening anyway.
+- Reviewed confirmation and its final write use the stored snapshot without
+  network requests, regardless of TTL (#532). Validate the review fingerprint
+  and local inputs; missing or changed data requires review, never a hidden
+  fetch or substitution. Check incidental URL/artwork paths too.
 - Count the requests in a test rather than reasoning about them. The request
   count *is* the feature, and it is the one thing an otherwise-correct cache
   can get wrong without any assertion noticing.

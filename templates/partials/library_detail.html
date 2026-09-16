@@ -128,12 +128,9 @@
                within a line or two of the actions at the panel's foot, which are
                what answers them. #}
             {% include 'partials/_completeness.html' %}
-            {% if album.sidecar and album.sidecar.mb_release_id %}
+            {% if album.sidecar and album.sidecar.mb_release_id and album.unassigned_track_count %}
             <div class="mt-2 flex items-center gap-3">
-                {% if album.unassigned_track_count %}<span class="px-2 py-1 text-xs font-bold rounded bg-amber-50 text-amber-700 border border-amber-300">Tracks unassigned · {{ album.unassigned_track_count }}</span>{% endif %}
-                <button hx-get="/assignments/{{ album.id }}?modal=true&amp;on_album_page=true"
-                        hx-target="#modal" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
-                        class="text-xs text-mb-purple underline">Review assignments</button>
+                <span class="px-2 py-1 text-xs font-bold rounded bg-amber-50 text-amber-700 border border-amber-300">Tracks unassigned · {{ album.unassigned_track_count }}</span>
             </div>
             {% endif %}
 
