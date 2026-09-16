@@ -68,8 +68,8 @@ puts the sandbox back to its original state.
 
 Config is read at startup from `harmonist.toml` in the config dir
 (`~/.config/harmonist/` by default, `/config` in Docker), overridable by
-`HARMONIST_*` environment variables. Most settings (download format, MB
-user-agent, cover-art size, download cap, log level) are editable live from the
+`HARMONIST_*` environment variables. Most settings (download format, download
+cap, MB user-agent, update checks, log level) are editable live from the
 **Settings** page; library/config paths require a restart.
 
 ```toml

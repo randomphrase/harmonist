@@ -6,118 +6,85 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-09-16
+
 ### Added
 
-- Release confirmation supports partial track assignments and release-only linking, with a Tracks unassigned warning and review action in the Library (#517).
-- Needs MBID track assignments can be corrected with arrows before reviewing and applying tags, with filenames and separate on-disk/MusicBrainz numbering (#136).
-- Release confirmation now previews the selected cover and lets you apply it with the tags or keep your existing artwork (#483).
+- **A release can be confirmed with only some tracks assigned** — the rest are
+  left alone, and the Library flags the album **Tracks unassigned** with a
+  review action beside it (#517).
+- **Track assignments can be corrected before any tags are written** — move a
+  file up or down the MusicBrainz tracklist on a Needs MBID album, with
+  filenames and the on-disk and MusicBrainz numbering shown apart (#136).
+- **Confirming a release previews the cover it would write**, and lets you take
+  it with the tags or keep the artwork you have (#483).
 - **Use this artwork** — take the Cover Art Archive's image whatever its size,
-  once you have loaded it and looked: the section previews what applying it
-  would do, and writes nothing until you apply (#472).
+  once you have loaded it and looked (#472).
 - **Artwork a change added can be undone** — History's Undo takes an image back
   off a track that had none, and removes a `cover.jpg` Harmonist created (#471).
 
 ### Changed
 
-- The Sync popover is now a single Link-only tickbox that **Sync Bandcamp** carries — its own submit button is gone, and the per-sync download cap has moved to Settings, where it also accepts **0** to pause downloads. The Bandcamp sync controls wear Bandcamp's teal (#399).
-
-- Track comparison now uses the same compact layout when viewing and editing, with purple MusicBrainz values, inline duration deltas and one confirmation action with a clear explanation of unassigned files (#525).
-
-- Track assignment review now emphasizes the mapping, with compact numbering, one filename toggle and consistent action buttons (#523).
+- **The Sync popover is a single Link-only tickbox** that **Sync Bandcamp**
+  carries. The per-sync download cap has moved to Settings, where it now also
+  accepts **0** to pause downloads (#399).
+- **One Apply updates action** on an album's page (was *Re-tag from MB*) applies
+  the tag changes and the artwork changes together, each still described in its
+  own terms. **Include artwork** beside it starts ticked every time the page is
+  drawn; untick it to take the tags alone (#482).
 - **A `cover.jpg` larger than your embedded artwork is left alone** — one
   high-resolution file beside modest embedded images is a layout, not something
-  to fix, so Harmonist no longer offers to write it into every track. **Use this
-  artwork** still does it deliberately (#479).
+  to fix. **Use this artwork** still writes it into the tracks deliberately
+  (#479).
 - **A missing `cover.jpg` is now a row in the Artwork section**, showing the
   image it will be created from, and **Apply artwork** (was *Update artwork*)
   creates it (#467, #469).
 - **A folder cover Harmonist creates is the largest image on offer** — your
-  album's own artwork now beats a smaller Cover Art Archive image (#469).
+  album's own artwork beats a smaller Cover Art Archive image (#469).
 - **Artwork changes are labelled Addition or Replacement**, and only a
   replacement asks you to confirm (#468).
-- **Re-tag and Apply artwork write only the artwork the page showed**; if it has
-  changed since, no artwork is written and the album page says so (#469).
-- **One Apply updates action** on an album's page (was *Re-tag from MB*) applies
-  the tag changes and the artwork changes together, each still described in its
-  own terms. **Include artwork** beside it starts ticked every time the page is
-  drawn; untick it to take the tags alone and leave the artwork on offer (#482).
+- **Apply updates and Apply artwork write only the artwork the page showed**; if
+  it has changed since, no artwork is written and the album page says so (#469).
+- **The tracklist reads the same whether you are viewing it or editing
+  assignments** — one compact layout, MusicBrainz values in purple, duration
+  differences inline (#525).
+- **Reviewing track assignments leads with the mapping** — compact numbering,
+  one toggle for filenames (#523).
 - **An album page reads your files once instead of twice** — the tag comparison
-  and the Artwork section are built from the same pass over the album, which
-  tells on a slow mount (#485).
+  and the Artwork section come from the same pass, which tells on a slow mount
+  (#485).
 
 ### Removed
 
 - **The Cover art size setting** — `[cover_art] size` and
   `HARMONIST_COVER_ART_SIZE` are no longer read, and Harmonist always uses the
-  Cover Art Archive's original image: the largest on offer, and the one the
-  album page measures. A `harmonist.toml` still naming `size` loads as before
-  and now **says so at startup** instead of ignoring it quietly. An install that
-  asked for smaller images should expect larger downloads, a larger cover-art
-  cache, and larger images embedded where Harmonist fills in or replaces artwork
-  (#469, #497).
+  Cover Art Archive's original image. A `harmonist.toml` still naming `size`
+  loads as before and now says so at startup. An install that asked for smaller
+  images should expect larger downloads, a larger cover-art cache, and larger
+  images embedded where Harmonist fills in or replaces artwork (#469, #497).
 
 ### Fixed
 
-- Album track assignments now edit inline without artwork controls; Cancel restores the track list and leaves editing available (#535).
-
-- Tracks unassigned uses the same compact artwork badge as Incomplete in the Library, with room for both statuses (#534).
-- Release confirmation focuses on unassigned files and selected artwork replacements, preserves the editor when closed, and applies reviewed data without refetching; artwork choices stay on the review page and album assignment editing moves beside Tracks (#532).
-- Moving track assignments and opening their confirmation preview no longer trigger distracting library rescans (#527).
-- Proposed track-number changes now appear beneath the on-disk number they will replace (#528).
-- Tag undo can find renamed files by their recorded MusicBrainz IDs or track positions, refusing ambiguous matches (#167).
-- Artwork controls accept clicks immediately after a refresh, and late archive responses no longer erase a newer artwork choice (#477).
-- Unreadable artwork no longer blocks valid tag updates; the failure is reported and images are left alone, while tags-only requests skip artwork preparation (#511).
-- Refreshing Cover Art Archive artwork now retires stale cached images, including when the replacement has a different format or no front cover remains (#510).
-- Apply updates keeps its artwork description and inclusion control current as candidates change, and preserves your inclusion choice across refreshes (#509).
-- Artwork Undo preserves additional FLAC pictures stored in comments when removing a native cover image (#508).
-- **A cover the archive keeps for the release group still says so when it's the
-  one coming in** — the note appeared while the image was merely a candidate and
-  vanished the moment it won or you chose it, which is when you're approving it.
-  A cover standing for every pressing no longer reads as verified artwork for
-  yours (#496).
-- **Artwork Undo is offered only when it can actually run** — on a change that
-  *added* images it was offered even with the artwork store switched off or
-  full, then refused when pressed. It also no longer claims it can itself be
-  undone, which was never true of artwork, and a successful Undo now appears in
-  that album's own History (#493).
-- **A re-tag that could not write one image says what it did do** — a file that
-  could not take its artwork (a full disk, a file another program has open)
-  reported **Re-tag failed** over an album whose tags had already been written.
-  The tags are now reported as written, the files that could not take their
-  image are named, and the rest of the album still gets its artwork (#494).
-- **One Apply updates button, whatever an album needs** — an album with artwork
-  changes alone offered **Apply artwork** instead, and an album with both
-  offered two primary buttons for one decision. Both findings are still
-  described separately, and artwork-only work no longer runs a re-tag to do it
-  (#491).
 - **Artwork is never replaced unless a copy of it was kept** — embedded images
   now get the protection folder covers had, and a full artwork store leaves the
-  image in place rather than overwrite it (#470).
-- **A track's other pictures survive an artwork change** — a back cover or
-  booklet page behind the front cover is no longer deleted when Harmonist writes
-  the cover, or when Undo takes one back off (#489).
-- **Apply updates writes the artwork the page is showing** — choosing **Use this
-  artwork**, an archive cover that loads late, or a MusicBrainz refresh landing
-  no longer leaves the button carrying an older plan, and the choice survives
-  accepting the short-tracklist offer. Pressing it after choosing a smaller
-  image wrote the larger one Harmonist would have picked (#488).
+  image in place (#470).
+- **A track's other pictures survive an artwork replacement** — a back cover or
+  booklet page behind the front cover is no longer discarded when Harmonist
+  writes the cover (#489).
+- **An unreadable image no longer blocks a valid tag update** — the tags are
+  written, the failure is reported, and the artwork is left alone (#511).
+- **Undo can find files that a tagging renamed**, by the MusicBrainz IDs or
+  track positions it recorded, and refuses rather than guess between two
+  candidates (#167).
 - **An album's last five artwork changes are five changes, not five files** —
-  one change across a ten-track album used up the whole allowance by itself, so
-  earlier changes to that album stopped being protected from the store's size
-  cap the moment it ran (#492).
-- **An album split across disc folders can't have its artwork written to the
-  wrong disc.** Both discs' `01.m4a` were the same name to the check that makes
-  sure a page's preview still describes what is about to be written, so a change
-  that had moved from one disc to the other passed it (#495).
-- **Use this artwork stays offered when the archive's image is upgrading only
-  your `cover.jpg`** — which is exactly when you might want it in the tracks
-  too. It disappeared in that case, so forcing the image into the tracks meant
-  applying the folder change first and coming back for the second half (#490).
+  one change across a ten-track album used up the whole allowance by itself
+  (#492).
+- **Refreshing Cover Art Archive artwork retires the cached image it replaces**,
+  including when the replacement is a different format or no front cover remains
+  (#510).
+- **Artwork controls accept a press made while the section is redrawing** — it
+  could previously be discarded with nothing to show for it (#477).
 - **History names `cover.jpg` instead of counting it as a track** (#469).
-- **A re-tag says what it did to your artwork** — how many files it wrote, and
-  which it left alone and why. A re-tag whose artwork was skipped because the
-  page had gone stale said only "Re-tagged", and the reason reached you only if
-  you went looking in the Activity feed (#482).
 
 ## [1.16.1] - 2026-09-10
 

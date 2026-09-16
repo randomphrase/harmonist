@@ -269,8 +269,8 @@ you tagged it — each with its count:
   Plex or Navidrome.
 - **Update available** — nothing is wrong with these. MusicBrainz has simply
   learned something since you tagged them: an ISRC filled in, a catalogue number
-  corrected, a release date fixed, a track retitled. Re-tag from the album's page
-  to take it, and the album drops off the list.
+  corrected, a release date fixed, a track retitled. **Apply updates** on the
+  album's page takes it, and the album drops off the list.
 
   The album's own page says *what* the update is. The Tags comparison covers
   every album-level tag Harmonist writes, and the tracklist grows a column for
@@ -774,8 +774,8 @@ What makes the record worth reading rather than just kept:
 ## Settings
 
 - **Bandcamp sync** — paste or upload the `cookies.txt` that lets the sync log in.
-- **Preferences** — download format, max downloads per sync, cover art size,
-  MusicBrainz user agent, log level. Saved to `harmonist.toml` and applied right
+- **Preferences** — download format, max downloads per sync, MusicBrainz user
+  agent, update checks, log level. Saved to `harmonist.toml` and applied right
   away; see [installation.md](installation.md#configuration) for the file itself.
 - **Won't download** — the purchases you've set aside, each with **Restore**.
 - **Kept artwork** — the images re-tags have overwritten, still recoverable:
