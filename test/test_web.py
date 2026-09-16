@@ -8109,7 +8109,7 @@ def test_a_deleted_release_settles_the_tracks_placeholder(client, cfg, monkeypat
 
     r = client.get(f"/library/{_id_for(cfg, d)}/compare")
 
-    assert 'id="album-tracks" hx-swap-oob="true"' in r.text, "the fourth destination"
+    assert 'id="album-track-view" hx-swap-oob="true"' in r.text, "the fourth destination"
     assert "Drifting Under Ice" in r.text, "the file-derived tracklist"
     assert "Not in MusicBrainz" not in r.text, "MB was never asked — that's not a finding"
 
@@ -8127,7 +8127,7 @@ def test_a_failed_mb_fetch_settles_the_tracks_placeholder_too(client, cfg, monke
 
     r = client.get(f"/library/{_id_for(cfg, d)}/compare")
 
-    assert 'id="album-tracks" hx-swap-oob="true"' in r.text
+    assert 'id="album-track-view" hx-swap-oob="true"' in r.text
     assert r.text.count("Couldn't fetch from MusicBrainz") == 2, "both halves settle"
     assert "reload" in r.text, "retryable, unlike a deleted release"
     assert "album-alert-" not in r.text, "no deleted-release banner for a transient failure"

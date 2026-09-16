@@ -94,7 +94,7 @@ def test_partial_confirmation_can_be_applied_and_reviewed(reset_demo_server):
         page.locator("#album-tracks").get_by_role(
             "button", name="Edit track assignments", exact=True
         ).click()
-        dialog = page.get_by_role("dialog")
+        dialog = page.locator("#album-track-editor")
         pw.expect(dialog).to_be_visible()
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,1,2")
         dialog.get_by_role("button", name="Move on-disk entry up", exact=True).last.click()
@@ -103,6 +103,16 @@ def test_partial_confirmation_can_be_applied_and_reviewed(reset_demo_server):
             "button", name="Read this release from MusicBrainz again and reset assignment changes"
         ).click()
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,1,2")
+        dialog.get_by_role("button", name="Accept changes").click()
+        confirmation = page.locator("#confirmation-modal dialog")
+        pw.expect(confirmation).to_be_visible()
+        confirmation.get_by_role("button", name="Back", exact=True).click()
+        pw.expect(confirmation).not_to_be_visible()
+        pw.expect(dialog.get_by_role("button", name="Accept changes")).to_be_enabled()
+        pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,1,2")
+        dialog.get_by_role("button", name="Cancel", exact=True).click()
+        pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
+        pw.expect(page.get_by_role("dialog")).not_to_be_visible()
         browser.close()
 
 
@@ -231,22 +241,54 @@ def test_closing_partial_confirmation_restores_accept_button(reset_demo_server):
         browser.close()
 
 
-def test_album_assignment_modal_survives_confirmation_back(reset_demo_server):
+def test_album_assignment_editor_cancels_inline_without_artwork(reset_demo_server):
     with pw.sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.goto(f"{reset_demo_server}/album/demo-rel-dingoes")
-        page.locator("#album-tracks").get_by_role("button", name="Edit track assignments").click()
-        editor = page.locator("#modal dialog")
-        checkbox = editor.get_by_role("checkbox", name="Use artwork from the selected release")
-        checkbox.check()
-        before = editor.locator('[name="disk_order"]').input_value()
-        editor.get_by_role("button", name="Accept changes").click()
-        confirmation = page.locator("#confirmation-modal dialog")
-        pw.expect(confirmation).to_be_visible()
-        confirmation.get_by_role("button", name="Back", exact=True).click()
+        tracks = page.locator("#album-tracks")
+        edit = tracks.get_by_role("button", name="Edit track assignments")
+        requests = []
+        page.on("request", lambda request: requests.append(request.url))
+        edit.click()
+        editor = tracks.locator(".assignment-content")
         pw.expect(editor).to_be_visible()
-        pw.expect(checkbox).to_be_checked()
-        pw.expect(editor.locator('[name="disk_order"]')).to_have_value(before)
-        pw.expect(editor.get_by_role("button", name="Accept changes")).to_be_enabled()
+        pw.expect(page.get_by_role("dialog")).not_to_be_visible()
+        pw.expect(tracks.locator(".tracklist")).not_to_be_visible()
+        original = editor.locator('[name="disk_order"]').input_value()
+        editor.get_by_role("button", name="Move on-disk entry down", exact=True).first.click()
+        pw.expect(editor.locator('[name="disk_order"]')).not_to_have_value(original)
+        draft = editor.locator('[name="disk_order"]').input_value()
+        # A late comparison must not replace an active draft.
+        with page.expect_response(lambda r: "/compare" in r.url):
+            page.evaluate("""htmx.ajax('GET', '/library/demo-rel-dingoes/compare',
+                {target: '#compare-demo-rel-dingoes', swap: 'innerHTML'})""")
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value(draft)
+        editor.get_by_role("button", name="Reset", exact=True).click()
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value(original)
+        editor.get_by_role("button", name="Cancel", exact=True).click()
+        pw.expect(tracks.locator(".tracklist")).to_be_visible()
+        pw.expect(editor).to_have_count(0)
+        pw.expect(edit).to_be_enabled()
+        pw.expect(edit).to_have_css("opacity", "1")
+        pw.expect(edit).to_be_focused()
+        edit.click()
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value(original)
+        # Also cancel without a comparison replacing the original trigger.
+        editor.get_by_role("button", name="Cancel", exact=True).click()
+        pw.expect(edit).to_be_enabled()
+        pw.expect(edit).to_have_css("opacity", "1")
+        pw.expect(edit).to_be_focused()
+        edit.click()
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value(original)
+        pw.expect(editor.get_by_role("checkbox", name="Use artwork")).to_have_count(0)
+        assert not any("/assignments/" in url and "/artwork" in url for url in requests)
+        editor.get_by_role("button", name="Move on-disk entry down", exact=True).first.click()
+        with page.expect_response(
+            lambda r: r.url.endswith("/confirm/demo-rel-dingoes/accept")
+        ) as applied:
+            editor.get_by_role("button", name="Accept changes").click()
+        assert parse_qs(applied.value.request.post_data)["include_artwork"] == ["false"]
+        pw.expect(edit).to_be_visible()
+        pw.expect(tracks.locator(".tracklist")).to_be_visible()
         browser.close()

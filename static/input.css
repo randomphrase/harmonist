@@ -23,6 +23,8 @@
 /* Keep numeric columns compact and both title columns equal, including when
  * movement controls appear. Long names wrap instead of stretching the table. */
 .assignment-table { table-layout: fixed; min-width: 760px; }
+#album-tracks:has(#album-track-editor .assignment-content) > .album-track-view,
+#album-track-editor:empty { display: none; }
 .assignment-number { width: 3.5rem; }
 .assignment-number-multidisc { width: 6rem; }
 .assignment-length { width: 8rem; }

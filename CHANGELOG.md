@@ -56,6 +56,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Album track assignments now edit inline without artwork controls; Cancel restores the track list and leaves editing available (#535).
+
+- Tracks unassigned uses the same compact artwork badge as Incomplete in the Library, with room for both statuses (#534).
 - Release confirmation focuses on unassigned files and selected artwork replacements, preserves the editor when closed, and applies reviewed data without refetching; artwork choices stay on the review page and album assignment editing moves beside Tracks (#532).
 - Moving track assignments and opening their confirmation preview no longer trigger distracting library rescans (#527).
 - Proposed track-number changes now appear beneath the on-disk number they will replace (#528).

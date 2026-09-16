@@ -13,13 +13,12 @@
    coming (#228). #}
 <p class="text-2xs text-red-700 mt-2">Couldn't fetch from MusicBrainz: {{ error }}</p>
 
-<section id="album-tracks" hx-swap-oob="true"
-         class="border border-line rounded-lg p-4 space-y-3">
+<div id="album-track-view" hx-swap-oob="true" class="album-track-view space-y-3">
     <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
     <p class="text-2xs text-red-700">
         Couldn't fetch from MusicBrainz — reload the page to try again.
     </p>
-</section>
+</div>
 
 {# …and the Artwork section, which this response is now the only thing that
    fills (#485). It renders in full even though the fetch failed, and that is

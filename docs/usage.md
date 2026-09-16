@@ -118,8 +118,11 @@ leads with whichever fits:
   confirmation explains what will stay unassigned. Confirm normally to apply
   the displayed pairings. Existing MB track IDs on an
   unassigned file must be resolved first; the preview explains which file needs attention.
-  The Library shows **Tracks unassigned**. **Edit track assignments** is available
-  beside **Tracks** on the album page. The refresh icon beside **MB checked** at the top right loads the
+  The Library shows **Tracks unassigned** as a compact badge at the lower left of
+  the artwork, alongside **Incomplete** when both apply. **Edit track assignments** is available
+  beside **Tracks** on the album page. It replaces the track list inline; **Cancel**
+  discards the draft and restores the list immediately. Artwork stays in its own
+  section. The refresh icon beside **MB checked** at the top right loads the
   current tracklist and resets draft movements (ordinary Reset uses the cached tracklist);
   known release-track IDs remain paired, while unresolved files wait for your
   review. Imported albums with an album MBID but no track IDs use this review

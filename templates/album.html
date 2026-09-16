@@ -141,8 +141,13 @@
     </section>
 
     <section id="album-tracks" class="border border-line rounded-lg p-4 space-y-3">
-        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
-        <p class="text-2xs text-muted italic">Checking tracks against MusicBrainz…</p>
+        <div id="album-track-view" class="album-track-view space-y-3">
+            <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
+            <p class="text-2xs text-muted italic">Checking tracks against MusicBrainz…</p>
+        </div>
+        {# Comparison updates replace only the view, leaving an active draft
+           untouched. Cancel reveals the latest view without a request. #}
+        <div id="album-track-editor" tabindex="-1" aria-label="Edit track assignments"></div>
     </section>
     {% endif %}
 

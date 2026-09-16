@@ -84,13 +84,13 @@ def test_partial_confirmation_and_review_after_mb_adds_track(client, cfg, monkey
     from bs4 import BeautifulSoup
 
     comparison = client.get(f"/library/{album.id}/compare")
-    tracks = BeautifulSoup(comparison.text, "html.parser").select_one("#album-tracks")
+    tracks = BeautifulSoup(comparison.text, "html.parser").select_one("#album-track-view")
     assert tracks.select_one(
-        f'button[hx-get="/assignments/{album.id}?modal=true&on_album_page=true"]'
+        f'button[hx-get="/assignments/{album.id}?album_tracks=true&on_album_page=true"]'
     )
 
     release["medium-list"][0]["track-list"].append(later)
-    editor = client.get(f"/assignments/{album.id}?reread=true&modal=true&on_album_page=true")
+    editor = client.get(f"/assignments/{album.id}?reread=true&album_tracks=true&on_album_page=true")
     fields = test_web._confirmation_fields(editor.text)
     assert fields["disk_order"] == "0,-,1", "only the known release-track ID is paired"
     assert fields["mb_order"] == "0,1,-"

@@ -1,0 +1,9 @@
+{% set cancel_class = 'px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition' %}
+{% if album_tracks %}
+<button type="button" class="{{ cancel_class }}"
+        onclick="document.getElementById('album-track-editor').replaceChildren(); document.querySelector('#album-tracks [aria-controls=album-track-editor]')?.focus()">Cancel</button>
+{% else %}
+<button type="button" class="{{ cancel_class }}"
+        hx-get="/assignments/{{ album.id }}?cancel=true&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+        hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this">Cancel</button>
+{% endif %}

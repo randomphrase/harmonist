@@ -776,8 +776,10 @@ flag is persisted.
 The Library shows **Tracks unassigned**, derived from missing release-track IDs
 on confirmed files and refined against the release when it is assessed. This
 includes imported albums carrying an album MBID without track IDs. **Edit track
-assignments** opens the editor beside the album page's Tracks heading, not in
-the identity header. For confirmed releases the
+assignments** beside the album page's Tracks heading swaps in the editor within
+that section. Cancel discards the draft locally and restores the track list;
+background comparisons update that list without replacing the active editor.
+Artwork remains in its own section (#535). For confirmed releases the
 editor retains only unique matching release-track IDs; it does not infer the
 remaining pairs by position. Automatic tagging also refuses unresolved track
 identities, including IDs removed upstream. Refreshing MB resets the draft and

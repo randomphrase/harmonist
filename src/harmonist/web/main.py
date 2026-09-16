@@ -5931,6 +5931,7 @@ def _register_routes(app: FastAPI) -> None:
         reread: bool = False,
         modal: bool = False,
         release_only: bool = False,
+        album_tracks: bool = False,
     ) -> Response:
         album = _find_album(request, album_id)
         candidate = _assignment_candidate(album)
@@ -6002,6 +6003,7 @@ def _register_routes(app: FastAPI) -> None:
                 error=error,
                 release_fingerprint=release_fingerprint,
                 on_album_page=on_album_page,
+                album_tracks=album_tracks,
                 cancel=cancel,
                 checked_at=checked_at,
                 fragment=not modal,
@@ -6020,6 +6022,7 @@ def _register_routes(app: FastAPI) -> None:
         cancel: bool = False,
         reread: bool = False,
         modal: bool = False,
+        album_tracks: bool = False,
     ) -> Response:
         return _assignment_editor(
             request,
@@ -6028,6 +6031,7 @@ def _register_routes(app: FastAPI) -> None:
             cancel=cancel,
             reread=reread,
             modal=modal,
+            album_tracks=album_tracks,
         )
 
     @app.post("/assignments/{album_id}", response_class=HTMLResponse)
@@ -6040,6 +6044,7 @@ def _register_routes(app: FastAPI) -> None:
         release_fingerprint: str = Form(...),
         move: str = Form(...),
         on_album_page: bool = Form(False),
+        album_tracks: bool = Form(False),
     ) -> Response:
         request.state.skip_rescan = True  # page-local draft; no library mutation
         return _assignment_editor(
@@ -6049,6 +6054,7 @@ def _register_routes(app: FastAPI) -> None:
             release_fingerprint=release_fingerprint,
             move=move,
             on_album_page=on_album_page,
+            album_tracks=album_tracks,
         )
 
     @app.get("/assignments/{album_id}/artwork", response_class=HTMLResponse)
