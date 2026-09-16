@@ -2411,6 +2411,23 @@ def identity_of(tags: TrackTags) -> TrackIdentity:
     return TrackIdentity(tags.release_track_id, tags.disc_num, tags.track_num)
 
 
+def is_unassigned(release_track_id: str | None, recording_id: str | None) -> bool:
+    """Whether a file on a confirmed album records no track decision at all (#538).
+
+    The release-track id is the decision Harmonist and Picard write. A recording
+    id is the decision every *other* tagger writes — XLD names the recording it
+    ripped and stops there — and it is still a file that knows which track it is,
+    so the ladder is entitled to place it.
+
+    Carrying neither is the only combination that means nobody ever said, and it
+    is exactly what a reviewed confirmation leaves behind: `tagger._prepare`
+    refuses to leave a file unassigned while it holds either id. That refusal is
+    what makes an absence here readable as a decision rather than as a gap in
+    somebody else's tags.
+    """
+    return not release_track_id and not recording_id
+
+
 def _by_release_track_id(identity: TrackIdentity) -> Hashable | None:
     return identity.release_track_id
 
@@ -2523,13 +2540,19 @@ def _assign(
         ids = [t.tags.mb_release_track_id for t in mb]
         disk_ids = [t.release_track_id for _, t in tracks]
         for i, (_, tags) in enumerate(tracks):
-            if not tags.video and tags.owned.get("mb_album_id") == confirmed_mbid:
-                ref = tags.release_track_id
+            if tags.video or tags.owned.get("mb_album_id") != confirmed_mbid:
+                continue
+            ref = tags.release_track_id
+            if ref:
                 slots[i] = (
-                    ids.index(ref)
-                    if ref and ids.count(ref) == 1 and disk_ids.count(ref) == 1
-                    else None
+                    ids.index(ref) if ids.count(ref) == 1 and disk_ids.count(ref) == 1 else None
                 )
+            elif is_unassigned(ref, tags.owned.get("mb_track_id")):
+                slots[i] = None
+            # Otherwise another tagger placed this file and said so with a
+            # recording id. The ladder has already read that placement, and
+            # overwriting it here is what made a correct rip render as two
+            # disjoint columns (#538).
     assigned: dict[int, tuple[str, TrackTags]] = {}
     leftover: list[tuple[str, TrackTags]] = []
     for entry, slot in zip(tracks, slots, strict=True):

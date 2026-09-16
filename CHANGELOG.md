@@ -6,6 +6,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An album tagged by another ripper is no longer reported as entirely
+  unassigned** — a CD ripped with the MusicBrainz release chosen in the ripper
+  (XLD writes a recording ID and no release-track ID) pairs with its tracks
+  again, instead of flagging **Tracks unassigned** on every file, showing the
+  track list as two disjoint columns, and refusing to re-tag (#538).
+
 ## [1.17.0] - 2026-09-16
 
 ### Added

@@ -773,15 +773,21 @@ unassigned file block confirmation with an explanation: pair the file correctly
 or remove those IDs in a tag editor before confirming. No assignment or status
 flag is persisted.
 
-The Library shows **Tracks unassigned**, derived from missing release-track IDs
-on confirmed files and refined against the release when it is assessed. This
-includes imported albums carrying an album MBID without track IDs. **Edit track
+The Library shows **Tracks unassigned**, derived from confirmed files that carry
+*neither* a release-track ID nor a recording ID, and refined against the release
+when it is assessed. Both IDs are read, because only their absence together means
+nobody ever said which track a file is: a reviewed confirmation refuses to leave
+a file unassigned while it holds either one, so a file holding neither is a
+recorded decision. An imported album carrying a recording ID per track — what
+rippers other than Picard write — is paired by the ladder and is not unassigned
+(#538). **Edit track
 assignments** beside the album page's Tracks heading swaps in the editor within
 that section. Cancel discards the draft locally and restores the track list;
 background comparisons update that list without replacing the active editor.
 Artwork remains in its own section (#535). For confirmed releases the
-editor retains only unique matching release-track IDs; it does not infer the
-remaining pairs by position. Automatic tagging also refuses unresolved track
+editor retains only unique matching release-track IDs and otherwise opens on the
+ladder's pairing; a file carrying neither ID is left unpaired rather than
+inferred by position. Automatic tagging also refuses unresolved track
 identities, including IDs removed upstream. Refreshing MB resets the draft and
 offers the current tracklist for explicit review, without predicting whether
 or when an open edit will be accepted.

@@ -217,6 +217,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         # untagged one (#112).
         return ScanFields(None, None, None, "MP3", unreadable=True)
     tags = audio.tags
+    ufid = tags.get(f"UFID:{UFID_OWNER}") if tags is not None else None
     return ScanFields(
         album_title=_text(tags, "TALB"),
         album_id=_txxx(tags, TXXX_ALBUM_ID),
@@ -229,6 +230,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         track_total=_total_int(_text(tags, "TRCK")),
         disc_total=_total_int(_text(tags, "TPOS")),
         release_track_id=_txxx(tags, TXXX_RELEASE_TRACK_ID),
+        recording_id=ufid.data.decode("ascii", "replace") if ufid is not None else None,
         quality=quality.read(audio.info, lossless=False),
     )
 

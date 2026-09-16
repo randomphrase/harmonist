@@ -292,6 +292,7 @@ class VorbisTagger:
             track_total=_first_int(first(KEY_TRACK_TOTAL)) or _total_int(first(KEY_TRACK_NUMBER)),
             disc_total=_first_int(first(KEY_DISC_TOTAL)) or _total_int(first(KEY_DISC_NUMBER)),
             release_track_id=first(KEY_RELEASE_TRACK_ID),
+            recording_id=first(KEY_TRACK_ID),
             quality=stream,
         )
 

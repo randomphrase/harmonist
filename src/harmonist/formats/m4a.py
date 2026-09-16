@@ -290,6 +290,7 @@ def read_scan_fields(path: Path) -> ScanFields:
         track_total=trkn[0][1] if trkn and trkn[0] and len(trkn[0]) > 1 else None,
         disc_total=disk[0][1] if disk and disk[0] and len(disk[0]) > 1 else None,
         release_track_id=_binary_atom_str(audio, ATOM_MB_RELEASE_TRACK_ID),
+        recording_id=_binary_atom_str(audio, ATOM_MB_TRACK_ID),
         # MP4 is the one container here that holds both a lossless and a lossy
         # codec, so what its `info` means depends on which. `MP4Info` reports
         # `bits_per_sample` for AAC too, and it describes the decoder's output

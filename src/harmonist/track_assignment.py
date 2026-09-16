@@ -148,10 +148,16 @@ def panel(
         if confirmed:
             ids = [t.mb_release_track_id for t in mb_tags]
             disk_ids = [t.owned.get("mb_release_track_id") for t in tags]
-            slots = [
-                ids.index(ref) if ref and ids.count(ref) == 1 and disk_ids.count(ref) == 1 else None
-                for ref in disk_ids
-            ]
+            for i, (tag, ref) in enumerate(zip(tags, disk_ids, strict=True)):
+                if ref:
+                    slots[i] = (
+                        ids.index(ref) if ids.count(ref) == 1 and disk_ids.count(ref) == 1 else None
+                    )
+                elif compare.is_unassigned(ref, tag.owned.get("mb_track_id")):
+                    slots[i] = None
+                # A recording id written by another tagger still names the track,
+                # so the editor opens on the pairing above rather than on nothing
+                # — hand-pairing thirty rows was never the escape hatch (#538).
         disk_order: list[int | None] = [None] * len(mb)
         for i, slot in enumerate(slots):
             if slot is not None:

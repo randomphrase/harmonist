@@ -64,6 +64,14 @@ class ScanFields(NamedTuple):
     # is asked of any directory that shares a release with another — which the
     # scan cannot know in advance.
     release_track_id: str | None = None
+    # This track's recording MBID (`MusicBrainz Track Id`), read here for one
+    # question: whether a file on a confirmed album was ever assigned to a track
+    # at all (#538). Rippers that aren't Picard — XLD among them — write this and
+    # no release-track id, and the scan has no MusicBrainz release to compare
+    # against, so the file's own tags are the only thing that can answer it. A
+    # file carrying neither id is the genuinely unassigned one; see
+    # `compare.is_unassigned`.
+    recording_id: str | None = None
     # What the audio stream itself is — sample rate, bit depth, bitrate (#130).
     # Read from the same handle as everything above, so it costs no extra open.
     #

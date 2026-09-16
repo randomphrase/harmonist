@@ -4,6 +4,7 @@ import pytest
 
 from harmonist import activity_store, album_files, formats, tag_history, tagger
 from test import test_web
+from test.helpers import write_ripper_tags, write_track_totals
 from test.test_tagger import _detail, _release_2_tracks
 
 cfg = test_web.cfg
@@ -140,3 +141,49 @@ def test_upstream_update_cannot_assign_gap_automatically(album_with_tracks, chan
     with pytest.raises(tagger.TrackAssignmentRequired):
         tagger.tag_album(root, release)
     assert [p.read_bytes() for p in files] == before
+
+
+def test_ripper_tags_without_release_track_ids_pair_instead_of_reading_unassigned(
+    album_with_tracks, tmp_path
+):
+    """A CD ripped with the MBID chosen in the ripper (#538).
+
+    XLD writes the album MBID and the recording MBID and stops there. Every file
+    names the track it is, so none of them is unassigned and a re-tag needs no
+    review — the recording id is the recorded decision.
+    """
+    from harmonist import scanner, sidecar
+    from harmonist.models import Sidecar
+
+    root = album_with_tracks(3)
+    files = album_files.audio_files(root)
+    release = test_web._release_for_match("rel-ripped", n_tracks=3)
+    write_track_totals(root, track_total=3)
+    write_ripper_tags(root, album_id=release["id"])
+    sidecar.write(root, Sidecar(mb_release_id=release["id"]))
+
+    album = next(a for a in scanner.scan(tmp_path) if a.path == root)
+    assert album.unassigned_track_count == 0
+
+    plan = tagger.plan_album(root, release, artwork=False)
+    assert [plan.changes[f]["mb_release_track_id"] for f in files] == [
+        [None, "rt-1"],
+        [None, "rt-2"],
+        [None, "rt-3"],
+    ]
+
+
+def test_editor_offers_a_pairing_for_ripper_tagged_files(album_with_tracks):
+    """The escape hatch must not be the only way through: a confirmed album whose
+    files carry recording ids opens already paired, not as two disjoint columns."""
+    from harmonist import track_assignment
+
+    root = album_with_tracks(3)
+    files = album_files.audio_files(root)
+    release = test_web._release_for_match("rel-ripped", n_tracks=3)
+    write_track_totals(root, track_total=3)
+    write_ripper_tags(root, album_id=release["id"])
+
+    panel = track_assignment.panel(files, release, confirmed=True)
+    assert panel.paired
+    assert panel.mapping() == {f: i for i, f in enumerate(files)}

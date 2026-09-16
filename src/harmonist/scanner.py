@@ -602,8 +602,8 @@ def build_album(
             if sidecar
             and sidecar.mb_release_id
             and f.album_id == sidecar.mb_release_id
-            and not f.release_track_id
             and not f.unreadable
+            and compare.is_unassigned(f.release_track_id, f.recording_id)
         ),
         audio_format=_audio_format(fields),
         audio_quality=_audio_quality(audio_files, fields),

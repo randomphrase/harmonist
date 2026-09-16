@@ -103,6 +103,32 @@ def test_skips_album_without_mbid_tag(tmp_path):
     assert not sc.has_sidecar(album_dir)
 
 
+def test_adopts_ripper_tagged_album_with_only_album_and_recording_ids(tmp_path):
+    """A CD ripped by XLD carries a subset of what Picard writes: the album MBID
+    and a recording MBID per track, no release-track ids and no store URL.
+
+    Adoption itself only ever needed the album MBID, so the half worth pinning is
+    what the scan *after* it says — those files name their tracks, so none of
+    them is unassigned (#538).
+    """
+    from harmonist import scanner
+    from test.helpers import write_ripper_tags, write_track_totals
+
+    album_dir = _make_album(tmp_path)
+    shutil.copy(SINE_M4A, album_dir / "02 Track.m4a")
+    write_track_totals(album_dir, track_total=2)
+    write_ripper_tags(album_dir, album_id="rel-ripped")
+
+    result = reconcile_album(album_dir, fetch_urls=_no_urls)
+    assert result is not None
+    assert result.mb_release_id == "rel-ripped"
+    assert result.store_url is None
+    assert result.tagged_at is not None
+
+    album = next(a for a in scanner.scan(tmp_path) if a.path == album_dir)
+    assert album.unassigned_track_count == 0
+
+
 # ---------- URL recovery for untagged (no-MBID) downloads ----------
 
 

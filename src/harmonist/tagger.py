@@ -669,12 +669,26 @@ def _prepare(
         ids = [track.get("id") for _, _, track in flat_tracks]
         tags = [formats.read_tags(path) for path in files]
         disk_ids = [t.owned.get("mb_release_track_id") for t in tags]
+
+        def needs_review(ref: str | None, recording: str | None) -> bool:
+            """Whether this file's track cannot be resolved without the user.
+
+            A release-track id that MusicBrainz no longer holds once, or that two
+            files claim, is unresolvable — and so is a file that names no track at
+            all. A file carrying only a recording id is neither: another tagger
+            placed it, `compare.assign` can read that placement, and demanding a
+            review for it is what made an ordinary CD rip un-retaggable (#538).
+            """
+            if ref:
+                return ids.count(ref) != 1 or disk_ids.count(ref) != 1
+            return compare.is_unassigned(ref, recording)
+
         if (
             ids
             and all(ids)
             and any(
                 t.owned.get("mb_album_id") == release["id"]
-                and (not ref or ids.count(ref) != 1 or disk_ids.count(ref) != 1)
+                and needs_review(ref, t.owned.get("mb_track_id"))
                 for t, ref in zip(tags, disk_ids, strict=True)
             )
         ):
@@ -682,7 +696,8 @@ def _prepare(
                 files=len(files),
                 tracks=len(taggable),
                 unassigned=sum(
-                    not ref or ids.count(ref) != 1 or disk_ids.count(ref) != 1 for ref in disk_ids
+                    needs_review(ref, t.owned.get("mb_track_id"))
+                    for t, ref in zip(tags, disk_ids, strict=True)
                 ),
             )
 
