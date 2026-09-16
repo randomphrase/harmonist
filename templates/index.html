@@ -253,35 +253,31 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // ----- Sync popover: link-only default + max-downloads greying -----
+    // ----- Sync popover: link-only default -----
     // Link-only's default is DERIVED from the live inbox (never persisted): ON
     // while there are on-disk albums to link (needs_sync) or potential downloads
     // to resolve. The /status poll refreshes it every tick, so it's correct even
     // right after startup/nuke — when the server render saw a still-empty
     // live_counts and drew it unchecked. A manual toggle wins until the popover
-    // closes, then it re-derives. Max-downloads greys out (and, being disabled,
-    // is left untouched) while link-only, since that run downloads nothing.
+    // closes, then it re-derives.
+    //
+    // `touched` also gates the hidden from_popover input the Sync button
+    // hx-includes: until the user has actually chosen, the sync posts neither
+    // field and the server auto-detects link-only from a fresh scan, which is
+    // what keeps an adoption sync from re-downloading albums already on disk.
     let syncLinkOnlyTouched = false;
-    function syncMaxDownloadsState() {
-        const cb = document.getElementById('sync-link-only');
-        const row = document.getElementById('sync-max-row');
-        const inp = document.getElementById('sync-max-downloads');
-        if (!cb || !row || !inp) return;
-        const off = cb.checked;
-        inp.disabled = off;
-        row.classList.toggle('opacity-40', off);
-        row.classList.toggle('pointer-events-none', off);
+    function syncSetTouched(touched) {
+        syncLinkOnlyTouched = touched;
+        const flag = document.getElementById('sync-from-popover');
+        if (flag) flag.disabled = !touched;
     }
     document.addEventListener('change', function (e) {
-        if (e.target && e.target.id === 'sync-link-only') {
-            syncLinkOnlyTouched = true;
-            syncMaxDownloadsState();
-        }
+        if (e.target && e.target.id === 'sync-link-only') syncSetTouched(true);
     });
     (function () {
         const ctl = document.getElementById('sync-control');
         if (!ctl) return;
-        const reset = function () { syncLinkOnlyTouched = false; };
+        const reset = function () { syncSetTouched(false); };
         ctl.addEventListener('mouseleave', reset);
         ctl.addEventListener('focusout', function (e) {
             if (!ctl.contains(e.relatedTarget)) reset();
@@ -346,7 +342,6 @@ document.addEventListener('DOMContentLoaded', function () {
             if (cb && !syncLinkOnlyTouched) {
                 cb.checked = data.counts.needs_sync > 0 || (data.pending || 0) > 0;
             }
-            syncMaxDownloadsState();
         }
 
         // A sync must not be kicked while either a sync OR a reconcile is in

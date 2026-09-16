@@ -63,6 +63,12 @@
      is translucent and the artwork bleeds through the badge (#293). Anything
      that tints on top of album art needs the flat value, not the alpha. */
   --color-mb-purple-soft: #F5E3EE;
+  /* The one exception to the "badges only" rule above: the Sync Bandcamp
+     control is Bandcamp's own action, so it wears teal rather than the general
+     accent (#399). Deliberately a TINT with dark teal text, not a solid teal
+     fill — at full strength it outshouted the orange chrome around it. */
+  --color-bc-teal-dark: #008985;   /* text on the tint */
+  --color-bc-teal-soft: #D9F1F0;   /* the tint itself */
 
   /* Primary accent — orange. Contrasts with the purple/teal badges. Hue-
      neutral token name so the colour can change without touching templates.

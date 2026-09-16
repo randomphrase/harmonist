@@ -84,10 +84,10 @@
 
         <label class="block">
             <span class="block text-xs font-bold text-ink mb-1">Max downloads per sync</span>
-            <input type="number" name="max_downloads_per_sync" min="1" required
+            <input type="number" name="max_downloads_per_sync" min="0" required
                    value="{{ cfg.bandcamp.max_downloads_per_sync }}"
                    class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-            <span class="block text-2xs text-muted mt-1">Safety cap — a sync refuses to run if it would download more than this.</span>
+            <span class="block text-2xs text-muted mt-1">Safety cap — new purchases past this many defer to the next sync. <span class="font-semibold">0</span> pauses downloads.</span>
         </label>
 
         <label class="block">

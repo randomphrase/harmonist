@@ -5567,8 +5567,8 @@ def test_settings_page_disables_the_global_sync_actions(client, cfg):
 
 
 def test_sync_popover_is_bound_to_the_sync_button(client, cfg):
-    """The popover's submit is a second sync trigger, so it must not open over
-    a disabled button. That binding is a CSS rule keyed on #sync-popover /
+    """The popover offers options for a sync, so it must not open over a button
+    that can't run one. That binding is a CSS rule keyed on #sync-popover /
     #sync-button, so all pytest can check is that the two hooks it needs are
     present — whether the popover actually stays shut is an e2e test (#110)."""
     cfg.cookies_file.write_text(
@@ -5628,6 +5628,26 @@ def test_settings_save_persists_and_applies_live(client, cfg):
     assert "alac" in toml
     assert "max_downloads_per_sync = 12" in toml
     assert 'level = "review"' in toml
+
+
+def test_settings_save_accepts_a_zero_download_cap(client, cfg):
+    """0 is a real setting, not a rejected one: it defers every new purchase, so
+    a sync still links and reconciles while downloading nothing. Settings is the
+    only way to reach it since the Sync popover lost its cap field (#399)."""
+    r = client.post(
+        "/settings",
+        data={
+            "download_format": "flac",
+            "max_downloads_per_sync": "0",
+            "user_agent": "Harmonist/0.1 ( x@y.z )",
+            "gardener_level": "off",
+            "log_level": "info",
+        },
+    )
+    assert r.status_code == 200
+    assert "Settings saved" in r.text
+    assert client.app.state.cfg.bandcamp.max_downloads_per_sync == 0
+    assert "max_downloads_per_sync = 0" in (cfg.paths.config_dir / "harmonist.toml").read_text()
 
 
 def test_settings_save_rejects_an_unknown_gardener_level(client, cfg):
@@ -7410,27 +7430,24 @@ def test_pending_section_open_by_default_with_summary(client):
     assert "· 2" in body  # the count
 
 
-# ---------- Sync popover (link-only override + max-downloads) ----------
+# ---------- Sync popover (link-only override) ----------
 
 
-def test_sync_popover_forces_link_only_and_persists_cap(client, monkeypatch):
-    """The popover posts from_popover + link_only + max_downloads → the runner gets
-    an explicit link-only override, and the per-sync cap persists to config."""
+def test_sync_popover_forces_link_only(client, monkeypatch):
+    """The popover posts from_popover + link_only → the runner gets an explicit
+    link-only override."""
     runner = client.app.state.sync_runner
     monkeypatch.setattr(runner, "start", lambda: None)  # don't spawn a real sync
-    r = client.post(
-        "/sync", data={"from_popover": "true", "link_only": "true", "max_downloads": "0"}
-    )
+    r = client.post("/sync", data={"from_popover": "true", "link_only": "true"})
     assert r.status_code == 200
     assert runner.link_only_override is True
-    assert client.app.state.cfg.bandcamp.max_downloads_per_sync == 0
 
 
 def test_sync_popover_unchecked_forces_download_mode(client, monkeypatch):
     """from_popover with the link-only checkbox absent → explicit False (not auto)."""
     runner = client.app.state.sync_runner
     monkeypatch.setattr(runner, "start", lambda: None)
-    r = client.post("/sync", data={"from_popover": "true", "max_downloads": "5"})
+    r = client.post("/sync", data={"from_popover": "true"})
     assert r.status_code == 200
     assert runner.link_only_override is False
 
@@ -7446,15 +7463,13 @@ def test_plain_sync_button_leaves_link_only_auto(client, monkeypatch):
 
 def test_sync_popover_exposes_ids_for_live_default_js(client, cfg):
     """The popover renders the ids the /status poll binds to — the JS derives the
-    link-only default from the live count and greys max-downloads. Guards the
-    contract so a template rename can't silently break the wiring."""
+    link-only default from the live count. Guards the contract so a template
+    rename can't silently break the wiring."""
     body = "# Netscape HTTP Cookie File\n.bandcamp.com\tTRUE\t/\tFALSE\t0\tident\tabc\n"
     client.post("/bandcamp/cookies", data={"cookies_text": body})
     home = client.get("/").text
     assert 'id="sync-control"' in home
     assert 'id="sync-link-only"' in home
-    assert 'id="sync-max-row"' in home
-    assert 'id="sync-max-downloads"' in home
 
 
 # ---------- ignores.txt: write region + the "Won't download" surface (#19/#77) ----------

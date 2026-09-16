@@ -526,9 +526,9 @@ def create_app(
             _resolve_by_store_url(album_dir, cfg, tagger)
 
         def runner_fn() -> Any:
-            # Read config FRESH each run (app.state.cfg, set just below) so Settings
-            # / Sync-popover changes — e.g. max-downloads — take effect without a
-            # restart, rather than using a value captured at create_app time.
+            # Read config FRESH each run (app.state.cfg, set just below) so a Settings
+            # change — e.g. max-downloads — takes effect without a restart, rather
+            # than using a value captured at create_app time.
             cfg = sync_runner.app.state.cfg
             # Albums waiting to link to a purchase (NEEDS_SYNC) usually need an
             # OLD purchase that an incremental sync wouldn't re-page — so the
@@ -1582,10 +1582,9 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
         "request": request,
         "cfg": cfg,
         "now": datetime.now(UTC),
-        # Sync-popover state (header renders on every page): the current per-sync
-        # cap, and whether link-only should default ON (unlinked albums or pending
-        # downloads exist → the user is mid-adoption).
-        "sync_max_downloads": cfg.bandcamp.max_downloads_per_sync,
+        # Sync-popover state (header renders on every page): whether link-only
+        # should default ON (unlinked albums or pending downloads exist → the
+        # user is mid-adoption).
         "sync_link_only_default": (
             live_counts.to_status()["needs_sync"] > 0 or pending_downloads.count() > 0
         ),
@@ -3056,19 +3055,6 @@ def _link_pending_to_album(album: Album, p: pending_downloads.PendingPurchase) -
         live_counts.move(album.state, AlbumState.COMPLETE)
 
 
-def _persist_max_downloads(request: Request, value: int) -> None:
-    """Update + persist the per-sync download cap (the SAME setting as the Settings
-    page — the Sync popover just exposes it inline). The runner reads app.state.cfg
-    fresh each sync, so it takes effect immediately."""
-    cfg: config_mod.Config = request.app.state.cfg
-    if value == cfg.bandcamp.max_downloads_per_sync:
-        return
-    new_bandcamp = cfg.bandcamp.model_copy(update={"max_downloads_per_sync": value})
-    new_cfg = cfg.model_copy(update={"bandcamp": new_bandcamp})
-    config_mod.write_settings(cfg.paths.config_dir, {"bandcamp.max_downloads_per_sync": value})
-    request.app.state.cfg = new_cfg
-
-
 def _inbox_albums(albums: list[Album]) -> list[Album]:
     """Albums that warrant attention in the inbox (terminal states excluded)."""
     return [a for a in albums if a.state not in _TERMINAL_STATES]
@@ -4133,7 +4119,6 @@ def _register_routes(app: FastAPI) -> None:
     def start_sync(
         request: Request,
         link_only: bool | None = Form(None),
-        max_downloads: int | None = Form(None),
         from_popover: bool = Form(False),
     ) -> Response:
         # Backstop the UI gating: don't kick a sync while a reconcile pass is
@@ -4161,13 +4146,15 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
                 status_code=status.HTTP_409_CONFLICT,
             )
-        # Sync-popover knobs. max-downloads persists (it's the same setting as the
-        # Settings page); link-only is a one-shot override for THIS sync.
-        if max_downloads is not None and max_downloads >= 0:
-            _persist_max_downloads(request, max_downloads)
+        # Sync-popover knob: link-only is a one-shot override for THIS sync (the
+        # download cap lives in Settings only — see #399).
         runner = request.app.state.sync_runner
-        # Only the popover sends an explicit link-only choice (its checkbox, present
-        # or absent). The plain Sync button sends nothing → None → auto-detect.
+        # `from_popover` — not the checkbox — is what makes the choice explicit.
+        # The Sync button hx-includes the popover's inputs either way, so a ticked
+        # checkbox rides along even when the user never opened it; the flag is
+        # enabled only once they actually touch the box. Without it → None →
+        # auto-detect from a fresh scan, which is the answer that protects an
+        # adoption sync from re-downloading a library already on disk.
         runner.link_only_override = bool(link_only) if from_popover else None
         try:
             runner.start()

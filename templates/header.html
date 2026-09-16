@@ -9,17 +9,19 @@
             <a href="/about" class="font-semibold text-muted hover:text-ink transition">About</a>
             <a href="/settings" id="settings-link" class="font-semibold text-muted hover:text-ink transition">Settings</a>
             {% if bandcamp_configured() %}
-            {# Sync control + a hover/focus popover exposing the two per-run knobs:
-               Link-only (adopt the on-disk library, download nothing) and the
-               per-sync download cap. The plain button syncs with auto-detected
-               defaults; the popover form forces an explicit choice. #}
+            {# Sync control + a hover/focus popover holding the per-run Link-only
+               knob (adopt the on-disk library, download nothing). The popover is
+               OPTIONS for the button, not a second trigger: the button is the one
+               thing that starts a sync, and hx-include carries the popover's
+               inputs with it. The download cap lives in Settings only (#399). #}
             <div id="sync-control" class="relative group">
                 <button id="sync-button"
                         hx-post="/sync"
                         hx-target="#sync-flash"
                         hx-swap="innerHTML"
+                        hx-include="#sync-popover input"
                         {% if globals_off_reason %}disabled title="{{ globals_off_reason }}"{% endif %}
-                        class="px-4 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
+                        class="px-4 py-1.5 bg-bc-teal-soft hover:bg-bc-teal/25 text-bc-teal-dark border border-bc-teal/30 rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
                     Sync Bandcamp
                 </button>
                 {# Positioned at top-full with a transparent pt-1 *bridge* (padding, not
@@ -31,32 +33,22 @@
                    can't open over a disabled button (#110). #}
                 <div id="sync-popover"
                      class="hidden group-hover:block group-focus-within:block absolute right-0 top-full pt-1 w-72 z-50 text-left cursor-default">
-                  <div class="bg-white border border-line rounded-lg shadow-lg p-3">
-                    <form hx-post="/sync" hx-target="#sync-flash" hx-swap="innerHTML" class="space-y-2.5 text-sm text-ink">
-                        <input type="hidden" name="from_popover" value="true">
-                        <label class="flex items-start gap-2 cursor-pointer">
-                            <input type="checkbox" id="sync-link-only" name="link_only" value="true" class="mt-0.5"
-                                   {% if sync_link_only_default %}checked{% endif %}>
-                            <span>
-                                <span class="font-semibold">Link-only</span>
-                                <span class="block text-2xs text-muted">Adopt your on-disk library — link albums to purchases, download nothing.</span>
-                            </span>
-                        </label>
-                        {# Greyed + disabled while Link-only is on (it downloads nothing, so the
-                           cap is moot). A disabled input isn't submitted, so the cap is left
-                           untouched — correct for a link-only run. Poll JS keeps this and the
-                           checkbox default in sync with the live count (see index.html). #}
-                        <label id="sync-max-row" class="flex items-center justify-between gap-2 transition">
-                            <span>Max downloads / sync</span>
-                            <input type="number" id="sync-max-downloads" name="max_downloads" min="0" value="{{ sync_max_downloads }}"
-                                   class="w-16 border border-line rounded px-1.5 py-0.5 text-right">
-                        </label>
-                        <button type="submit"
-                                class="w-full px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded font-bold text-xs uppercase tracking-widest transition">
-                            Sync with these options
-                        </button>
-                        <p class="text-2xs text-muted"><span class="font-semibold">0</span> = pause downloads.</p>
-                    </form>
+                  <div class="bg-white border border-line rounded-lg shadow-lg p-3 text-sm text-ink">
+                    {# `from_popover` starts DISABLED so an untouched popover sends
+                       nothing and the server keeps auto-detecting link-only from a
+                       fresh scan — the safer answer, and the one that protects an
+                       adoption sync from re-downloading a library already on disk.
+                       The poll JS enables it the moment the user actually chooses
+                       (see index.html), which is what makes the choice explicit. #}
+                    <input type="hidden" id="sync-from-popover" name="from_popover" value="true" disabled>
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="checkbox" id="sync-link-only" name="link_only" value="true" class="mt-0.5 accent-bc-teal"
+                               {% if sync_link_only_default %}checked{% endif %}>
+                        <span>
+                            <span class="font-semibold">Link-only</span>
+                            <span class="block text-2xs text-muted">Adopt your on-disk library — link albums to purchases, download nothing.</span>
+                        </span>
+                    </label>
                   </div>
                 </div>
             </div>
@@ -71,7 +63,7 @@
                     hx-target="#modal"
                     hx-swap="innerHTML"
                     {% if globals_off_reason %}disabled title="Use Set up in the Bandcamp sync section below."{% endif %}
-                    class="px-4 py-1.5 border border-accent text-accent hover:bg-accent-soft rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
+                    class="px-4 py-1.5 border border-bc-teal/30 text-bc-teal-dark hover:bg-bc-teal-soft rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
                 Set up Bandcamp sync
             </button>
             {% endif %}

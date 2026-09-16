@@ -19,6 +19,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- The Sync popover is now a single Link-only tickbox that **Sync Bandcamp** carries — its own submit button is gone, and the per-sync download cap has moved to Settings, where it also accepts **0** to pause downloads. The Bandcamp sync controls wear Bandcamp's teal (#399).
+
 - Track comparison now uses the same compact layout when viewing and editing, with purple MusicBrainz values, inline duration deltas and one confirmation action with a clear explanation of unassigned files (#525).
 
 - Track assignment review now emphasizes the mapping, with compact numbering, one filename toggle and consistent action buttons (#523).

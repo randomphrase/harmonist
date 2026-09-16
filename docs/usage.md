@@ -175,8 +175,8 @@ in the Library.
 ## Syncing
 
 **Sync** in the header pages your Bandcamp collection and reconciles it against
-what's on disk. The popover next to it carries the options — including the
-per-run download cap — and the status bar reports progress.
+what's on disk. The popover next to it carries a Link-only option, and the
+status bar reports progress. The per-sync download cap lives in Settings.
 
 A sync runs in one of two modes, and says which:
 
