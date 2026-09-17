@@ -818,17 +818,23 @@ one under **Settings → Tagging** and it applies from then on. One exists today
   aren't affected, which is nearly all of them.
 
 **What ticking one does not do is rewrite your library.** It changes what a
-*future* tagging writes. An album already on disk keeps the title it has, and
-picks the new spelling up the next time something else about it changes and it
-gets re-tagged anyway. Nothing appears in the Inbox, and nothing shows as having
-an update available, because Harmonist counts both spellings as correct on disk
-whichever one it would write itself — which is also why it has never reported
-your Picard-disambiguated titles as mismatches.
+*future* tagging writes. An album already on disk keeps the title it has until
+something re-tags it.
 
-The practical effect, then, is that albums arriving from a sync are spelled your
-way from the start, and a re-tag stops undoing the choice on the ones that
-already are. When a re-tag does change a title, it goes in the album's History
-like any other tag change, and **Undo** puts it back.
+**Nothing lands in the Inbox and nothing shows as having an update available.**
+Both spellings count as correct, so the Library leaves those albums alone —
+which matters on a library of thousands, where one setting could otherwise flag
+every album in it at once.
+
+**Each album offers the change on its own page**, though, so you can take it
+when you happen to be there: the Album row shows the old title against the new
+one, and **Apply updates** writes it. That goes in the album's History like any
+other tag change, and **Undo** puts it back.
+
+The practical effect is that albums arriving from a sync are spelled your way
+from the start, a re-tag stops undoing the choice on the ones that already are,
+and the rest come across one at a time as you visit them — or never, which is
+also fine.
 
 More transforms are a maybe rather than a promise: a transform can only exist
 where Harmonist can work the answer out *exactly* from the release it already

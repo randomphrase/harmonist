@@ -14,9 +14,11 @@ versions follow [semantic versioning](https://semver.org).
 - **Tag transforms** — Settings → Tagging can now match a choice you've made in
   Picard about what gets written. The first is **Add the release disambiguation
   to the album title**, so an album is tagged *Selected Ambient Works Volume II
-  (expanded edition)* rather than *…Volume II*. It ships off; ticking it changes
-  what future taggings write and rewrites nothing you already have, and a re-tag
-  stops stripping the spelling off the albums that carry it (#544).
+  (expanded edition)* rather than *…Volume II*. It ships off, and ticking it
+  rewrites nothing you already have: albums that would be spelled differently
+  say so on their own page, with **Apply updates** to take the change, and none
+  of them is marked as needing an update. Each transform shows an example of
+  what it does rather than describing it (#544, #547, #548).
 
 ### Changed
 

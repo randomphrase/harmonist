@@ -176,7 +176,7 @@
                 </span>
             </label>
 
-            {# ---- Tag transforms (#544) ----
+            {# ---- Tag transforms (#544, shown rather than described in #548) ----
                A checkbox each, where the folder-cover control above is a select,
                and the difference is deliberate: that setting is one question with
                a third answer already foreseen, and this is a LIST that grows
@@ -185,38 +185,55 @@
                the handler reads `transforms` with a default of `[]` rather than
                `Form(...)`.
 
-               The shared note is above the boxes, not repeated inside each: the
-               bounded effect is a property of what a transform IS, not of this
-               one, and the next entry would otherwise duplicate it. #}
-            <div class="space-y-2">
-                <span class="block text-xs font-bold text-ink">Tag transforms</span>
-                <p class="text-2xs text-muted">
-                    Named, exactly-checkable reshapings of what Harmonist writes — the ones
-                    Picard does through its options and tagger scripts. These change what a
-                    <span class="font-semibold">future</span> tagging writes: albums already on
-                    disk aren’t rewritten to pick one up, they gain it the next time something
-                    else about them changes. Both spellings count as correct on disk either way,
-                    so turning one on never marks your library as having updates to take.
-                </p>
+               Each transform SHOWS what it does, in a sample title that follows
+               the box. Six lines of prose explained one checkbox and would have
+               explained the next one twice as slowly; toggling the box is the
+               explanation, and a new transform costs one line rather than a
+               paragraph.
 
-                {% for value, label, note in [
+               Pure CSS — `group-has-[:checked]:` on a wrapper — so the checkbox
+               stays a plain native checkbox with no `hx-*` and no handler. There
+               is no event to sequence wrongly (web-ui rule 2a) and nothing to go
+               stale if the save fails, because the preview describes the CONTROL
+               rather than the saved config.
+
+               The example borrows the demo library's Stillwater release, a
+               made-up band from a film, so it cannot be misread as a claim about
+               a real release the reader might go and check. It is illustrative
+               only — the demo album itself is tagged to the STANDARD release,
+               which carries no disambiguation, so this is not a walkthrough of
+               anything demo mode will show. #}
+            <div class="space-y-3">
+                <div>
+                    <span class="block text-xs font-bold text-ink">Tag transforms</span>
+                    <p class="text-2xs text-muted">
+                        Match a choice you’ve made in Picard. Applies to future taggings —
+                        nothing you already have is rewritten; each album offers the change
+                        on its own page.
+                    </p>
+                </div>
+
+                {% for value, label, before, after in [
                     ('album_disambiguation',
                      'Add the release disambiguation to the album title',
-                     'MusicBrainz distinguishes two releases of the same name by a short comment —
-                      so <em>Selected Ambient Works Volume II</em> is written
-                      <em>Selected Ambient Works Volume II (expanded edition)</em>. Picard has an
-                      option for this, and it is the tagger script people most often write.
-                      Releases with no disambiguation are unaffected.')
+                     'Fever Dog', 'Fever Dog (Live at the Riot House)')
                 ] %}
-                <label class="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" name="transforms" value="{{ value }}"
-                           class="mt-1 cursor-pointer"
-                           {{ 'checked' if value in cfg.tagging.transforms }}>
-                    <span>
-                        <span class="block text-sm text-ink">{{ label }}</span>
-                        <span class="block text-2xs text-muted">{{ note|safe }}</span>
-                    </span>
-                </label>
+                <div class="group">
+                    <label class="flex items-center gap-2 cursor-pointer w-fit">
+                        <input type="checkbox" name="transforms" value="{{ value }}"
+                               class="cursor-pointer"
+                               {{ 'checked' if value in cfg.tagging.transforms }}>
+                        <span class="text-sm text-ink">{{ label }}</span>
+                    </label>
+                    <p class="ml-6 mt-1 text-2xs text-muted">
+                        <span class="font-mono">{{ before }}</span>
+                        <span class="hidden group-has-[:checked]:inline">
+                            <span class="sr-only"> becomes </span>
+                            <span aria-hidden="true" class="mx-1.5">→</span>
+                            <span class="font-mono font-semibold text-ink">{{ after }}</span>
+                        </span>
+                    </p>
+                </div>
                 {% endfor %}
             </div>
         </section>
