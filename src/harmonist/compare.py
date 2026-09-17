@@ -658,10 +658,12 @@ _ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = (
 )
 
 
-#: The two album fields with a second legitimate on-disk spelling — see
-#: `album_fields`. Named rather than inlined so the special cases are visible
-#: from the table above rather than buried in the loop.
-_ALIASED_FIELD = "album"
+#: The one album field with a second legitimate on-disk spelling the PANEL
+#: accepts — see `album_fields`. Named rather than inlined so the special case
+#: is visible from the table above rather than buried in the loop.
+#:
+#: The album title used to be a second entry here and is deliberately not any
+#: more (#547). See `album_fields` for why the two parted company.
 _MULTI_VALUED_FIELD = Owned.MB_ALBUM_COUNTRY.value
 
 #: The accepted-spellings container — see `compare_value`. Concrete types, never
@@ -669,19 +671,13 @@ _MULTI_VALUED_FIELD = Owned.MB_ALBUM_COUNTRY.value
 type _Accepted = frozenset[str] | tuple[str, ...]
 
 
-def _accepted(
-    disk_attr: str,
-    accepted_album_titles: _Accepted,
-    accepted_countries: _Accepted,
-) -> _Accepted:
+def _accepted(disk_attr: str, accepted_countries: _Accepted) -> _Accepted:
     """The other on-disk values that count as agreement on this row.
 
-    Empty for every row but two, and that is the point: a tolerance wide enough
+    Empty for every row but one, and that is the point: a tolerance wide enough
     to apply generally would stop the panel reporting real drift. See
-    `album_fields` for what makes each of the two legitimate.
+    `album_fields` for what makes this one legitimate.
     """
-    if disk_attr == _ALIASED_FIELD:
-        return accepted_album_titles
     if disk_attr == _MULTI_VALUED_FIELD:
         return accepted_countries
     return ()
@@ -787,7 +783,6 @@ def album_fields(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: TagSet | None,
     *,
-    accepted_album_titles: _Accepted = (),
     accepted_countries: _Accepted = (),
 ) -> tuple[FieldComparison, ...]:
     """Compare an album's per-track tags against what tagging would write.
@@ -801,24 +796,36 @@ def album_fields(
     against, which leaves every field ONLY_DISK rather than pretending MB
     disagrees.
 
-    `accepted_album_titles` is every album title that counts as agreement —
-    MusicBrainz's, plus Picard's disambiguated spelling of it where the release
-    carries a disambiguation (#283), from `transforms.accepted_album_titles`.
+    `accepted_countries` is every country that counts as agreement on the
+    Country row (#346): the ones the release names, from
+    `tagger.release_events`, of which MusicBrainz's scalar `country` is only the
+    first. Picard writes whichever one `preferred_release_countries` matches, so
+    a library tagged that way carries a code that is every bit as true of the
+    release. It is the only row with a legitimate second form.
 
-    A set rather than the single alias it started as, because since #544 the
-    disambiguated spelling may be the one `mb` itself holds — the user can turn
-    that transform on — which makes the PLAIN title the alias. Neither spelling
-    is privileged, so neither can be the one named.
+    **The Album row used to have one too, and no longer does** (#547). The two
+    cases looked identical and are not, and what separates them is whether the
+    user can do anything about it:
 
-    `accepted_countries` is the same idea on the Country row (#346): every
-    country the release names, from `tagger.release_events`, of which
-    MusicBrainz's scalar `country` is only the first. Picard writes whichever
-    one `preferred_release_countries` matches, and the page must agree with
-    `tagger.plan_album` about whether that is a difference — the page saying a
-    tag differs while the Library says the album is up to date is worse than
-    either answer alone.
+    * A second release country is unresolvable. Harmonist has no
+      `preferred_release_countries` setting, so reporting it would put a row on
+      the page that the reader can only silence by accepting MusicBrainz's
+      answer — noise, permanently, on every Picard-tagged multi-country album.
+    * A disambiguated album title is resolvable, since #544. Tick the transform
+      and the two spellings agree and the row goes quiet for the right reason;
+      leave it off and a re-tag really will rewrite the title, which is a thing
+      worth being told. Accepting it here told nobody, and — because
+      `compare.advisory` is what puts the **Apply updates** button on the page —
+      left the user with a change they wanted and no control that offered it.
 
-    Those two rows are the only ones with a legitimate second form.
+    That is also what makes this panel's question the honest one: not "do my
+    files match MusicBrainz" in the abstract, but "do my files match what
+    Harmonist would write from this release" (see `tagger.tagsets_for`). Under a
+    transform, a plain title does not.
+
+    The **flag** stays tolerant either way — `gardener._countable` skips both,
+    so neither is an update to take and neither reaches the Inbox. Panel and
+    flag answer different questions, which is the whole of #545's design.
     """
     unreadable = all(t.unreadable for _, t in tracks) if tracks else False
     out: list[FieldComparison] = []
@@ -840,7 +847,7 @@ def album_fields(
             disk=flag_consensus(values) if flag else consensus(values),
             mb=(FLAG_YES if mb_value is not None else FLAG_NO) if flag else mb_value,
             unreadable=unreadable,
-            also_matches=_accepted(disk_attr, accepted_album_titles, accepted_countries),
+            also_matches=_accepted(disk_attr, accepted_countries),
         )
         # Marked here rather than threaded through `compare_value`, because THIS
         # table is where the knowledge lives: a field is comparable iff it names

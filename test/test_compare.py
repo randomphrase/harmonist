@@ -1015,17 +1015,12 @@ def test_a_disk_only_tracklist_groups_by_the_files_own_discs():
     assert [g.medium.position for g in tl.discs] == [1, 2]
 
 
-# ---------- Picard's disambiguated album title (#283) ----------
+# ---------- the album title a transform would write (#283, #547) ----------
 
 
-def _album_row(disk_album: str, *, alias: str | None = None, **track_overrides):
+def _album_row(disk_album: str, **track_overrides):
     tags = TrackTags(album=disk_album, **track_overrides)
-    fields = album_fields(
-        [("1.flac", tags)],
-        _tagset(album="Obreel"),
-        accepted_album_titles=frozenset({"Obreel"} | ({alias} if alias else set())),
-    )
-    return {f.label: f for f in fields}
+    return {f.label: f for f in album_fields([("1.flac", tags)], _tagset(album="Obreel"))}
 
 
 def test_a_missing_secondary_release_type_is_reported_as_a_difference():
@@ -1052,56 +1047,27 @@ def test_a_missing_secondary_release_type_is_reported_as_a_difference():
     assert (row.disk, row.mb) == ("album", "album; live")
 
 
-def test_the_disambiguated_album_title_reads_as_a_match():
-    """Picard appends the release disambiguation to the album title when told to,
-    so `Obreel (expanded edition)` and `Obreel` are the same album by the user's
-    own setting — not a difference to report on every page view forever (#283).
+def test_an_album_title_that_is_not_the_one_tagging_would_write_is_a_difference():
+    """#547 reversed #283's answer here, and this is the reversal.
 
-    The row still reports what is really on disk. Normalising the displayed value
-    to MusicBrainz's spelling would make the panel claim the files say something
-    they don't, which is the one thing this table exists to be trusted about.
+    The panel's question is not "do my files match MusicBrainz" but "do my files
+    match what Harmonist would WRITE from this release" — `tagsets_for` says so.
+    Under `album_disambiguation` a plain title does not, and a re-tag will
+    rewrite it, so the row says so.
+
+    #283 accepted the disambiguated spelling here instead, which silenced the
+    row AND — because `advisory` is built from these rows — took the page's
+    **Apply updates** button with it, leaving a change the user wanted with no
+    control that offered it. The tolerance lives at the flag now, where it
+    stops the album becoming an update to take without hiding it.
     """
-    row = _album_row("Obreel (expanded edition)", alias="Obreel (expanded edition)")["Album"]
-
-    assert row.agreement is Agreement.MATCHES
-    assert row.disk == "Obreel (expanded edition)"
-
-
-def test_the_same_title_differs_when_the_release_has_no_disambiguation():
-    """The other half, and what makes the test above mean something: with no
-    disambiguation there is no second spelling to accept, so the identical disk
-    value is a genuine difference."""
     row = _album_row("Obreel (expanded edition)")["Album"]
 
     assert row.agreement is Agreement.DIFFERS
-
-
-def test_only_the_disambiguation_is_accepted_not_any_parenthetical():
-    """One exact string, never a pattern. `models.titles_match` would accept this
-    on the strength of the words alone, and it is right to where it is used —
-    inside an artist-scoped, uniqueness-guarded purchase match. Here the release
-    states its disambiguation exactly, so accepting more would be guessing an
-    identity that was available for free (review-gate item 2).
-    """
-    row = _album_row("Obreel (deluxe edition)", alias="Obreel (expanded edition)")["Album"]
-
-    assert row.agreement is Agreement.DIFFERS
-
-
-def test_the_alias_applies_to_the_album_row_alone():
-    """Scoped to the one field with a second legitimate spelling. Handed to every
-    row it would silently excuse a real difference anywhere the string happened
-    to collide — an album artist genuinely renamed to the album's own title is
-    daft, and is exactly the kind of thing a loose special case lets through.
-    """
-    rows = _album_row(
-        "Obreel (expanded edition)",
-        alias="Obreel (expanded edition)",
-        album_artist="Obreel (expanded edition)",
-    )
-
-    assert rows["Album"].agreement is Agreement.MATCHES
-    assert rows["Album artist"].agreement is Agreement.DIFFERS
+    # The row reports what is really on disk. Normalising the displayed value to
+    # MusicBrainz's spelling would make the panel claim the files say something
+    # they don't, which is the one thing this table exists to be trusted about.
+    assert row.disk == "Obreel (expanded edition)"
 
 
 def test_a_field_outside_the_old_nine_is_compared(tmp_path):

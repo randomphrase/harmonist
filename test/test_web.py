@@ -9107,42 +9107,62 @@ def test_an_incomplete_album_that_comes_back_just_as_short_keeps_its_tags(
     assert states[back] == AlbumState.INCOMPLETE  # short, and honest about it
 
 
-def test_the_album_page_does_not_report_a_disambiguated_title_as_a_difference(cfg):
-    """The wiring, which is the half a unit test can't see.
+def test_the_album_page_offers_the_title_a_transform_would_write(client, cfg, monkeypatch):
+    """#547, the whole bug, at the rung that can see it.
 
-    `compare.album_fields` takes the accepted spelling; something has to hand it
-    one, and forgetting to would leave the whole of #283 inert with every unit
-    test still green. This drives the real call the album page makes.
+    With `album_disambiguation` on and the plain title on disk, a re-tag writes
+    `Obreel (expanded edition)` — a change the user turned the setting on to
+    get. The page offered nothing: `compare.advisory` is built from the panel
+    rows, `_album_update.html` gates the finding block on it, and #283's
+    tolerance made the Album row read as a match. So the plan held the change,
+    the Library rightly ignored it, and no control on the page could apply it.
+
+    Three assertions because three things have to be simultaneously true, and
+    any two of them held before the fix:
+
+    1. the row reports the difference,
+    2. **Apply updates** is on the page,
+    3. the Library still does NOT flag the album — that is #545's invariant and
+       what keeps #32's first night quiet. A fix that got the button back by
+       counting the change as an update would pass 1 and 2 and be the Inbox
+       flood #283 was filed about.
     """
-    from harmonist.tagger import tag_album
-    from harmonist.web.main import _album_comparison
+    from harmonist import gardener
+    from harmonist import tagger as tagger_mod
 
-    release = {
-        "id": "rel-283",
-        "title": "Obreel",
-        "disambiguation": "expanded edition",
-        "artist-credit": [{"artist": {"id": "a1", "name": "Artist"}}],
-        "release-group": {"id": "rg-1", "primary-type": "Album"},
-        "medium-list": [
-            {
-                "position": "1",
-                "format": "Digital Media",
-                "track-list": [
-                    {"id": "t1", "title": "Track", "recording": {"id": "r1", "title": "Track"}}
-                ],
-            }
-        ],
-    }
-    d = _make_album(cfg, "Obreel")
-    tag_album(d, release)
-    audio = MP4(d / "01 Track.m4a")
-    audio[ATOM_ALBUM] = ["Obreel (expanded edition)"]  # what Picard's option writes
-    audio.save()
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    release = {**_release_with_metadata("rel-cmp"), "disambiguation": "expanded edition"}
+    _set_owned_tag(d, "----:com.apple.iTunes:MusicBrainz Release Track Id", "t1")
+    tagger_mod.tag_album(d, release)  # the plain title, as an install without it would
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", lambda mbid: release)
+    client.app.state.cfg.tagging.transforms = [TagTransform.ALBUM_DISAMBIGUATION]
 
-    comparison, _ = _album_comparison(d, release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
 
-    assert [f.label for f in comparison.differing] == []
-    assert {f.label: f.disk for f in comparison.fields}["Album"] == "Obreel (expanded edition)"
+    cell = re.search(r"<dt>Album</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert cell, "no Album row"
+    # The stacked pair, not the scalar arrow: `_value_pair.html` picks the layout
+    # by `kind`, and an album title is long text. Both spellings present is what
+    # says the row is a difference — a matching row renders one value.
+    assert "tag-pair" in cell.group(1), "the title change drawn as agreement"
+    # Not the whole title as one literal: `_field_value` wraps the changed run
+    # in an `<em>`, so the MusicBrainz side renders as
+    # `Obreel<em class="diff-run"> (expanded edition)</em>`. The suffix plus the
+    # MusicBrainz marker is the assertion that survives that.
+    assert "tag-fields__mb" in cell.group(1)
+    assert "(expanded edition)" in cell.group(1)
+    # `album-tag-apply` rather than the button's words: "Apply updates" is also
+    # the artwork note's label, and matching it would pass on a page carrying
+    # only that one. This class is unique to `_album_update.html`.
+    assert "album-tag-apply" in body, "no Apply updates control"
+    assert (
+        gardener.verdict_for(
+            tagger_mod.plan_album(
+                d, release, artwork=False, transforms=frozenset({TagTransform.ALBUM_DISAMBIGUATION})
+            )
+        )
+        is None
+    ), "offered on the page is not the same as needing an update"
 
 
 def test_the_album_panel_shows_the_title_the_transform_would_write(client, cfg, monkeypatch):

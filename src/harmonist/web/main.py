@@ -58,7 +58,6 @@ from harmonist import (
     tag_history,
     timing,
     track_assignment,
-    transforms,
 )
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
@@ -970,18 +969,13 @@ def _album_comparison(
             fields=compare.album_fields(
                 audio,
                 tagsets[0] if tagsets else None,
-                # Picard writes the release disambiguation into the album title
-                # when told to, and that is the same album — not a mismatch to
-                # report on every page view forever (#283). Both spellings are
-                # accepted whichever one the MusicBrainz column above is
-                # showing, which is the transform setting's doing (#544) and
-                # deliberately none of this row's business.
-                accepted_album_titles=transforms.accepted_album_titles(release),
-                # …and any country the release names is the country it came out
-                # in, whichever one Picard's `preferred_release_countries` put
-                # on the file (#346). The panel has to reach the same verdict as
-                # `plan_album`, or the page reports a difference the Library has
-                # already decided is not one.
+                # Any country the release names is the country it came out in,
+                # whichever one Picard's `preferred_release_countries` put on
+                # the file (#346) — and Harmonist offers no setting to pick
+                # between them, so reporting it would be a row the reader can
+                # only silence by giving in. The album title had this too and
+                # lost it in #547, because that one the user CAN resolve; see
+                # `compare.album_fields`.
                 accepted_countries=tagger_mod.release_countries(release),
             )
         ),
