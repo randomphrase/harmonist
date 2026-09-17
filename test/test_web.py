@@ -6563,10 +6563,11 @@ def test_a_second_release_country_is_not_reported_as_a_difference(client, cfg, m
     `preferred_release_countries` names, and all three are true of the release.
 
     The web rung rather than the tagger's, because the failure this guards is
-    the two surfaces disagreeing: `plan_album` accepting the value while the
-    panel still drew an arrow through it would leave the page reporting a
+    the two surfaces disagreeing: the Library offering no update while the panel
+    still drew an arrow through the value would leave the page reporting a
     difference the Library had already decided was not one.
     """
+    from harmonist import gardener
     from harmonist import tagger as tagger_mod
 
     d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
@@ -6581,7 +6582,11 @@ def test_a_second_release_country_is_not_reported_as_a_difference(client, cfg, m
     cell = re.search(r"<dt>Country</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
     assert cell, "no Country row"
     assert "tag-fields__arrow" not in cell.group(1), "GB vs DE drawn as a difference"
-    assert tagger_mod.plan_album(d, release).empty  # …and the two agree
+    # …and the Library agrees. On the flag rather than on `plan.empty`, since
+    # #545: the entry stays in the plan so a re-tag can record and undo the
+    # rewrite, and what the two surfaces have to agree about is whether this is
+    # an update to take — not whether a write would touch the field.
+    assert gardener.verdict_for(tagger_mod.plan_album(d, release)) is None
 
 
 def test_a_country_the_release_never_names_is_still_a_difference(client, cfg, monkeypatch):

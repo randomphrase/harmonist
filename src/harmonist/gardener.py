@@ -179,16 +179,26 @@ class Assessment:
 def _countable(plan: tagger.AlbumPlan) -> Iterator[tuple[str, Any, Any]]:
     """The entries of `plan` that count as an update, as `(field, before, after)`.
 
-    Not every entry does, since #337. A change that only ADDS a credit list
-    holding one name is one to make while tagging anyway and not a reason to
-    tag: `album_artist` beside it already says the same thing, and a player
-    without the list falls back to the phrase. `albumartists` is new in Picard
-    too, so no existing library carries it — left counted, one field put every
-    album in a real library into the Inbox.
+    Not every entry does, and there are two ways an entry can fail to.
 
-    Filtered HERE rather than in `owned.diff`, and that is the whole of the
-    design: `plan.changes` is also what the activity record and the undo are
-    built from, so a re-tag that fills the tag in must still say that it did.
+    **A credit list arriving with one name in it** (#337). That is a change to
+    make while tagging anyway and not a reason to tag: `album_artist` beside it
+    already says the same thing, and a player without the list falls back to the
+    phrase. `albumartists` is new in Picard too, so no existing library carries
+    it — left counted, one field put every album in a real library into the
+    Inbox.
+
+    **A second correct spelling of the album title or release country** (#283,
+    #346). The file carries `Obreel (expanded edition)` where MusicBrainz says
+    `Obreel`, or `DE` where the release's scalar `country` is `GB` — both true
+    of this release, both what Picard writes when told to. Left counted, EVERY
+    album in such a library is an update, permanently, and the first night of
+    #32 empties the whole library into the Inbox.
+
+    Filtered HERE rather than in `owned.diff` or `tagger._changes_for`, and that
+    is the whole of the design: `plan.changes` is also what the activity record
+    and the undo are built from, so a re-tag that rewrites the field must still
+    say that it did (#545 — it did not, and Undo could not put the title back).
     The album page keeps showing it as a pending change for the same reason —
     the page says what a re-tag would do, this says whether you need one.
 
@@ -198,6 +208,8 @@ def _countable(plan: tagger.AlbumPlan) -> Iterator[tuple[str, Any, Any]]:
     """
     for changes in plan.changes.values():
         for field, (before, after) in changes.items():
+            if plan.is_second_spelling(field, before):
+                continue
             if not owned.is_opportunistic(field, before, after):
                 yield field, before, after
 

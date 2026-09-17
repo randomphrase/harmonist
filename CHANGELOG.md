@@ -35,6 +35,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A re-tag that rewrites your album title or release country now says so, and
+  can be undone** — where a file carried a second spelling MusicBrainz also
+  accepts (Picard's disambiguated album title, or another of the release's
+  countries), a re-tag happening for some unrelated reason replaced it without
+  recording the change, so the album's History never mentioned it and Undo left
+  it behind. It is recorded and restorable now. Neither still counts as an
+  update available, which is unchanged (#545).
+
 - **An album tagged by another ripper is no longer reported as entirely
   unassigned** — a CD ripped with the MusicBrainz release chosen in the ripper
   (XLD writes a recording ID and no release-track ID) pairs with its tracks

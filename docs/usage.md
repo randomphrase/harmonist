@@ -827,7 +827,8 @@ your Picard-disambiguated titles as mismatches.
 
 The practical effect, then, is that albums arriving from a sync are spelled your
 way from the start, and a re-tag stops undoing the choice on the ones that
-already are.
+already are. When a re-tag does change a title, it goes in the album's History
+like any other tag change, and **Undo** puts it back.
 
 More transforms are a maybe rather than a promise: a transform can only exist
 where Harmonist can work the answer out *exactly* from the release it already

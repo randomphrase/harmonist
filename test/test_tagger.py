@@ -2013,23 +2013,35 @@ def _set_album_tag(album_dir, value: str) -> None:
         audio.save()
 
 
-def test_a_disambiguated_album_title_is_not_a_change(album_with_tracks):
+def test_a_disambiguated_album_title_is_not_an_update_to_take(album_with_tracks):
     """Picard can be told to append the release disambiguation to the album
     title, so a library tagged that way carries `Test Album (expanded edition)`
     where MusicBrainz's release title is `Test Album`.
 
-    That is the same album, by the user's own deliberate setting. Reported as a
-    change it would differ on every pass forever: #266's write-skip would never
-    fire on those albums, and #267 classifies `album` as IDENTITY, so #32's
-    nightly pass would put the whole library in the Inbox on its first night.
+    That is the same album, by the user's own deliberate setting. Counted as an
+    update it would be one on every pass forever, and #267 classifies `album`
+    as IDENTITY — so #32's nightly pass would put the whole library in the Inbox
+    on its first night.
+
+    Asserted on the FLAG, not on the plan, since #545. The entry stays in
+    `plan.changes` because a re-tag really does rewrite the field and the
+    history has to say so; what it must not do is ask the user to take it.
     """
+    from harmonist import gardener
+
     album_dir = album_with_tracks(2)
     rel = _release_2_tracks()
     rel["disambiguation"] = "expanded edition"
     tagger.tag_album(album_dir, rel)
     _set_album_tag(album_dir, "Test Album (expanded edition)")
 
-    assert tagger.plan_album(album_dir, rel).empty
+    plan = tagger.plan_album(album_dir, rel)
+
+    assert gardener.verdict_for(plan) is None
+    # …and the entry is still there, which is the half #545 added. Without it
+    # the assertion above passes for the wrong reason — an empty plan has no
+    # verdict either, and that is precisely the bug this pair replaced.
+    assert all("album" in c for c in plan.changes.values())
 
 
 def test_a_real_retitle_is_still_a_change(album_with_tracks):
@@ -2045,9 +2057,49 @@ def test_a_real_retitle_is_still_a_change(album_with_tracks):
     tagger.tag_album(album_dir, rel)
     _set_album_tag(album_dir, "Test Album (deluxe edition)")
 
+    from harmonist import gardener
+
     plan = tagger.plan_album(album_dir, rel)
-    assert not plan.empty
+    assert gardener.verdict_for(plan) is not None
     assert all("album" in c for c in plan.changes.values())
+
+
+def test_rewriting_a_second_spelling_is_recorded_and_can_be_undone(album_with_tracks, tmp_path):
+    """#545. The tolerance used to be applied by DELETING the entry from the
+    diff, and that diff is also the audit record and the undo plan — while
+    `write_tags` writes the whole `TagSet` and changes the value on disk
+    regardless. So a re-tag that happened for some other reason silently
+    replaced the user's album title and left no way back.
+
+    The re-tag here happens because the label arrived, which is what makes the
+    file get written at all. The title going with it is the part that used to
+    vanish.
+    """
+    from harmonist import activity_store
+
+    activity_store.init(tmp_path / "audit.db")
+    album_dir = album_with_tracks(2)
+    rel = _release_2_tracks()
+    rel["disambiguation"] = "expanded edition"
+    tagger.tag_album(album_dir, rel)
+    _set_album_tag(album_dir, "Test Album (expanded edition)")
+    activity_store.clear()
+    with_label = {**rel, "label-info-list": [{"label": {"name": "Dial Records"}}]}
+
+    tagger.tag_album(album_dir, with_label)
+
+    # It really was rewritten — the premise, and false before `write_tags`
+    # wrote the whole tagset it would be an odd thing to assert.
+    assert {MP4(f)[ATOM_ALBUM][0] for f in sorted(album_dir.glob("*.m4a"))} == {"Test Album"}
+    # …and the history says so, per file, both values.
+    assert all(
+        r.changes["album"] == ["Test Album (expanded edition)", "Test Album"] for r in _detail()
+    )
+    # …so the undo puts it back, which is the whole point of recording it.
+    tagger.revert_tags(album_dir, _plan())
+    assert {MP4(f)[ATOM_ALBUM][0] for f in sorted(album_dir.glob("*.m4a"))} == {
+        "Test Album (expanded edition)"
+    }
 
 
 def test_a_bracketed_suffix_is_a_change_when_the_release_has_no_disambiguation(album_with_tracks):
@@ -2061,12 +2113,14 @@ def test_a_bracketed_suffix_is_a_change_when_the_release_has_no_disambiguation(a
     tagger reaching for a looser rule: swap the exact comparison for
     `titles_match` and it fails.
     """
+    from harmonist import gardener
+
     album_dir = album_with_tracks(2)
     rel = _release_2_tracks()
     tagger.tag_album(album_dir, rel)
     _set_album_tag(album_dir, "Test Album (expanded edition)")
 
-    assert not tagger.plan_album(album_dir, rel).empty
+    assert gardener.verdict_for(tagger.plan_album(album_dir, rel)) is not None
 
 
 def test_mbid_names_pairs_every_id_the_panel_shows_with_its_name():
@@ -2277,17 +2331,24 @@ def test_a_second_release_country_is_not_a_change(album_with_tracks):
     `release_to_metadata`).
 
     Both are countries THIS release was issued in, so the file is not out of
-    date. Reported as a change it would differ on every pass forever — the #283
-    shape exactly: #266's write-skip could never fire on those albums, and
-    `mb_album_country` is ENRICHMENT, so #32's nightly pass would put every one
-    of them in the Inbox.
+    date. Counted as an update it would be one on every pass forever — the #283
+    shape exactly, and `mb_album_country` is ENRICHMENT, so #32's nightly pass
+    would put every one of them in the Inbox.
+
+    On the flag rather than the plan, and the entry still present, for the
+    reason the album-title pair above gives (#545).
     """
+    from harmonist import gardener
+
     album_dir = album_with_tracks(2)
     rel = _multi_country_2_tracks()
     tagger.tag_album(album_dir, rel)
     _set_country_tag(album_dir, "DE")
 
-    assert tagger.plan_album(album_dir, rel).empty
+    plan = tagger.plan_album(album_dir, rel)
+
+    assert gardener.verdict_for(plan) is None
+    assert all("mb_album_country" in c for c in plan.changes.values())
 
 
 def test_a_country_the_release_never_names_is_still_a_change(album_with_tracks):
@@ -2302,20 +2363,24 @@ def test_a_country_the_release_never_names_is_still_a_change(album_with_tracks):
     tagger.tag_album(album_dir, rel)
     _set_country_tag(album_dir, "US")
 
+    from harmonist import gardener
+
     plan = tagger.plan_album(album_dir, rel)
-    assert not plan.empty
+    assert gardener.verdict_for(plan) is not None
     assert all("mb_album_country" in c for c in plan.changes.values())
 
 
 def test_a_single_country_release_accepts_only_that_country(album_with_tracks):
     """With one release event there is no second country to accept, so a
     different code is just a wrong one — and this is the everyday album."""
+    from harmonist import gardener
+
     album_dir = album_with_tracks(2)
     rel = _release_2_tracks()  # country GB, no release events at all
     tagger.tag_album(album_dir, rel)
     _set_country_tag(album_dir, "DE")
 
-    assert not tagger.plan_album(album_dir, rel).empty
+    assert gardener.verdict_for(tagger.plan_album(album_dir, rel)) is not None
 
 
 # ---------- release events (#329) ----------

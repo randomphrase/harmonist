@@ -322,8 +322,6 @@ def _tag_files(
             file_path,
             prep.art.before,
             None,
-            prep.accepted_album_titles,
-            prep.accepted_countries,
         )
         if not changes and not formats.has_superseded_tags(file_path):
             # Nothing to write, so nothing is written. The file keeps its mtime
@@ -431,14 +429,17 @@ def plan_album(
             prep.art.winner.digest
             if prep.art.winner is not None and file_path in prep.art_targets
             else None,
-            prep.accepted_album_titles,
-            prep.accepted_countries,
         ):
             changes[file_path] = file_changes
     for path, target in prep.unassigned.items():
         if file_changes := owned.diff(formats.read_owned(path), target):
             changes[path] = file_changes
-    return AlbumPlan(changes=changes, preserves_per_track_art=prep.art.preserves_per_track_art)
+    return AlbumPlan(
+        changes=changes,
+        preserves_per_track_art=prep.art.preserves_per_track_art,
+        accepted_album_titles=prep.accepted_album_titles,
+        accepted_countries=prep.accepted_countries,
+    )
 
 
 @dataclass(frozen=True)
@@ -455,6 +456,12 @@ class AlbumPlan:
     nothing at all. It does NOT mean a tagging would touch nothing on disk —
     see `formats.has_superseded_tags` for the tags a write cleans up that no
     owned-field diff can see.
+
+    **Nor does a non-empty one mean there is an update to take.** Two kinds of
+    entry are written and recorded without being a reason to tag: a credit list
+    arriving with one name in it (#337) and a second correct spelling of the
+    album title or release country (#283, #346, #545). Both are filtered at the
+    flag, in `gardener._countable`, never out of this dict — see `_changes_for`.
     """
 
     changes: dict[Path, dict[str, list[Any]]]
@@ -464,6 +471,33 @@ class AlbumPlan:
     #: user expected didn't move (#260), and #272 needs it to stop announcing
     #: that decision on a pass that wrote nothing.
     preserves_per_track_art: bool
+    #: Every album title that is already correct for this release: MusicBrainz's
+    #: and Picard's disambiguated spelling of it (#283). Carried on the plan
+    #: because the flag has to ask — `gardener` holds a plan, not a release, and
+    #: what makes a second spelling legitimate is a fact about the release.
+    accepted_album_titles: frozenset[str] = frozenset()
+    #: …and every country the release names (#346). Same question, same reason.
+    accepted_countries: frozenset[str] = frozenset()
+
+    def is_second_spelling(self, field: str, before: object) -> bool:
+        """Whether this entry is a value that was already right, not an update.
+
+        The disk held one of the spellings this release legitimately has, and a
+        tagging is about to replace it with the one Harmonist writes. That is a
+        real write and a real record — it is simply not a reason to re-tag, and
+        not something to put in front of a user as an update available.
+
+        Exactly the two fields with a second legitimate form, and only on the
+        BEFORE value: an `after` that is not what the tagger would write cannot
+        occur, and asking about it would widen this past the two strings the
+        release states. `models.titles_match` would say yes to `(deluxe
+        edition)` here, which review-gate item 2 forbids.
+        """
+        if field == owned.Owned.ALBUM:
+            return before in self.accepted_album_titles
+        if field == owned.Owned.MB_ALBUM_COUNTRY:
+            return before in self.accepted_countries
+        return False
 
     @property
     def empty(self) -> bool:
@@ -870,8 +904,6 @@ def _changes_for(
     file_path: Path,
     art_before: Mapping[Path, str | None],
     art_after: str | None,
-    accepted_album_titles: frozenset[str] = frozenset(),
-    accepted_countries: frozenset[str] = frozenset(),
 ) -> dict[str, list[Any]]:
     """What tagging this one file to `tagset` would change, as `{field: [was, now]}`.
 
@@ -882,45 +914,20 @@ def _changes_for(
     history then said never happened.
 
     Only fields that actually changed appear — see `owned.diff`.
+
+    **Every change, including the ones that are not an update to take** (#545).
+    An album title or release country with a second legitimate spelling used to
+    be deleted here, and that silenced three readers where only two wanted it:
+    the write-skip and the update flag, yes — but also the audit record and the
+    undo plan, while `write_tags` put the new spelling on the file regardless,
+    because it writes the whole `TagSet` and not this diff. The record then said
+    a field had not moved that had.
+
+    The tolerance lives at the flag instead, in `gardener._countable`, exactly
+    where `owned.is_opportunistic` puts #337's. Its docstring is the rule: a
+    change that is not a reason to tag is still written, and still recorded.
     """
     changes = owned.diff(before, {f.value: getattr(tagset, f.value) for f in owned.Owned})
-
-    # An album title carrying the release disambiguation is not a change (#283).
-    # Dropped from the diff rather than smoothed over in `owned.diff`, which
-    # compares values and rightly knows nothing about MusicBrainz: what makes
-    # this second spelling legitimate is a fact about the release.
-    #
-    # `accepted_album_titles` is NOT conditioned on the user's transforms
-    # (#544), and that is what keeps the setting out of this function. Both
-    # spellings are accepted whichever one a write would emit, so turning the
-    # transform on cannot make a library of differences, `plan_album` reaches
-    # the same verdict under either setting, and the gardener — which has no
-    # config to read — is not silently answering a different question from the
-    # write. See `transforms.py` for the invariant this rests on.
-    #
-    # Only the diff is tolerant, still. A write that happens for some OTHER
-    # reason puts whichever spelling the transforms chose on the file, without a
-    # per-field record of having done so, because the change was dropped here.
-    album_change = changes.get(owned.Owned.ALBUM)
-    if album_change is not None and album_change[0] in accepted_album_titles:
-        del changes[owned.Owned.ALBUM]
-
-    # Nor is a release country the release actually names (#346). MusicBrainz
-    # collapses a release issued in several countries to one scalar `country`;
-    # Picard writes whichever of them `preferred_release_countries` matches
-    # (`picard/mbjson.py`, `release_to_metadata`), so a library tagged that way
-    # carries a different code that is every bit as true of the release.
-    #
-    # The same tolerance as the album title, for the same reason and with the
-    # same limit: THIS release's own release events, never "any country" — a
-    # code MusicBrainz does not list for it is genuinely stale, and accepting it
-    # would be inventing a fact the release states for free.
-    #
-    # Only the diff is tolerant. A write that happens for some other reason
-    # still puts MusicBrainz's `country` on the file.
-    country_change = changes.get(owned.Owned.MB_ALBUM_COUNTRY)
-    if country_change is not None and country_change[0] in accepted_countries:
-        del changes[owned.Owned.MB_ALBUM_COUNTRY]
 
     # Artwork rides alongside the owned fields but is not one of them: the
     # tagger, not `write_tags`, decides whether art is replaced or preserved,

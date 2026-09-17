@@ -16,7 +16,7 @@ import pytest
 from mutagen.mp4 import MP4
 
 from harmonist import formats as formats_mod
-from harmonist import tagger, transforms
+from harmonist import gardener, tagger, transforms
 from harmonist.formats import owned
 from harmonist.tagger import ATOM_ALBUM
 from harmonist.transforms import TagTransform
@@ -158,14 +158,21 @@ def test_a_tagging_without_the_transform_writes_musicbrainzs_title(tmp_path):
     assert _album_tags(album_dir) == {"Test Album"}
 
 
-def test_turning_the_transform_on_does_not_make_an_existing_library_differ(tmp_path):
-    """No churn, which is the whole reason this is affordable. A library tagged
-    with MusicBrainz's plain title reports NO album change once the transform is
-    on — so #266's write-skip still fires, #267's classifier sees nothing, and
-    #32's nightly pass does not put the library in the Inbox on its first night.
+def _album_fields(plan) -> set[str]:
+    return {f for c in plan.changes.values() for f in c}
 
-    That is #283's failure mode in reverse, and it is the one this feature could
-    plausibly have shipped.
+
+def test_turning_the_transform_on_is_not_an_update_to_take(tmp_path):
+    """No flood, which is the whole reason this is affordable. A library tagged
+    with MusicBrainz's plain title offers NO update once the transform is on, so
+    #32's nightly pass does not empty the library into the Inbox on its first
+    night. That is #283's failure mode in reverse, and it is the one this
+    feature could plausibly have shipped.
+
+    The entry is still in the plan, and that pair is the point (#545): a re-tag
+    that happens for some other reason really does rewrite the title, so the
+    history has to be able to say so and the undo has to be able to put it back.
+    Not an update, not invisible — two different questions.
     """
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
@@ -173,27 +180,29 @@ def test_turning_the_transform_on_does_not_make_an_existing_library_differ(tmp_p
 
     plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
 
-    assert owned.Owned.ALBUM not in {f for c in plan.changes.values() for f in c}
+    assert gardener.verdict_for(plan) is None
+    assert owned.Owned.ALBUM in _album_fields(plan)
 
 
-def test_and_nor_does_turning_it_off(tmp_path):
+def test_and_nor_is_turning_it_off(tmp_path):
     """The other direction, which is #283's own rule and must survive this
-    change: a library carrying Picard's disambiguated title is not a library of
-    differences to an install with the transform off."""
+    change: a library carrying Picard's disambiguated title offers an install
+    with the transform off nothing to take."""
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
     tagger.tag_album(album_dir, release, transforms=DISAMBIG)
 
     plan = tagger.plan_album(album_dir, release, artwork=False)
 
-    assert owned.Owned.ALBUM not in {f for c in plan.changes.values() for f in c}
+    assert gardener.verdict_for(plan) is None
+    assert owned.Owned.ALBUM in _album_fields(plan)
 
 
-def test_a_title_that_is_neither_accepted_spelling_is_still_a_change(tmp_path):
+def test_a_title_that_is_neither_accepted_spelling_is_an_update(tmp_path):
     """What stops the two tests above from passing for the wrong reason. The
-    tolerance is two exact strings, so a genuinely wrong album title is reported
-    under either setting — a tolerance that swallowed this would be a tagger
-    that had stopped comparing the field at all.
+    tolerance is two exact strings, so a genuinely wrong album title is still
+    offered under either setting — one that swallowed this would be a Library
+    that had stopped reporting retitles at all.
     """
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
@@ -205,7 +214,8 @@ def test_a_title_that_is_neither_accepted_spelling_is_still_a_change(tmp_path):
 
     plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
 
-    assert owned.Owned.ALBUM in {f for c in plan.changes.values() for f in c}
+    assert gardener.verdict_for(plan) is not None
+    assert owned.Owned.ALBUM in _album_fields(plan)
 
 
 @pytest.mark.parametrize("enabled", [frozenset(), DISAMBIG])
