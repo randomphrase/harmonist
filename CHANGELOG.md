@@ -6,6 +6,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **Mixed formats** — a Library filter for albums whose files don't all use the
+  same codec, such as one MP3 among the M4As (#316).
+
 ### Fixed
 
 - **An album tagged by another ripper is no longer reported as entirely

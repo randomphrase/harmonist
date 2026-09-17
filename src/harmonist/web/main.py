@@ -169,12 +169,18 @@ _INDEX_TABS = ("inbox", "library", "activity")
 #
 # The control asks TWO questions, not one.
 #
-# *What is broken?* — the first three, which pick out albums that are terminal but
+# *What is broken?* — the first four, which pick out albums that are terminal but
 # wrong. That is the Library's original problem: it is where a defect goes to be
 # forgotten. INCOMPLETE at least has a tile badge; a partially tagged album derives
 # COMPLETE (`_files_tagged_with` is an `any()`) and shows nothing but a 10-pixel
 # "8/10 tagged" line, and a coverless album shows nothing at all. Neither is
-# findable at library scale.
+# findable at library scale, and a mixed-codec album (#316) shows nothing either —
+# its one MP3 among the M4As is named on the album's own page and nowhere else.
+#
+# The mixed-format filter asks about the *codec disagreement*, not about the codec.
+# Which formats a library holds is a separate question — a facet of what is there
+# rather than a defect in it — and answering it here would put an open-ended set of
+# codec values in a control that exists to list work.
 #
 # *What has moved that I could take?* — `update-available` (#287), which is not the
 # same question and must not be read as one. An album whose release has grown an
@@ -210,7 +216,7 @@ def _library_filters(
     """The filter chips, in the order the control offers them.
 
     A function of this render's ignored updates rather than a constant, because
-    one of the four is: an album whose update the user has ignored (#271) is not
+    one of the five is: an album whose update the user has ignored (#271) is not
     listed as work until MusicBrainz moves the release again.
 
     Only the FILTER subtracts them. The tile keeps its Update badge, exactly as
@@ -222,6 +228,10 @@ def _library_filters(
         "incomplete": ("Incomplete", _is_actionable_incomplete),
         "partial": ("Partially tagged", lambda a: a.partial_tag_count is not None),
         "no-artwork": ("No artwork", lambda a: not a.has_cover),
+        "mixed-format": (
+            "Mixed formats",
+            lambda a: a.audio_format == scanner.MIXED_FORMAT,
+        ),
         "update-available": (
             "Update available",
             lambda a: a.update_available and not gardener.is_ignored(a, ignored),

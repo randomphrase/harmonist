@@ -733,16 +733,24 @@ def expected_tracks(
     return ExpectedTracks(total=total, complete=len(present) >= total, absent_media=absent)
 
 
+#: What `Album.audio_format` reads when the album's files don't agree on a codec.
+#: Both a display label and a sentinel — the Library's mixed-format filter (#316)
+#: asks the question by comparing against it, so it is named here rather than
+#: spelled out at the comparison, where a wording change would silently empty the
+#: filter instead of failing.
+MIXED_FORMAT = "Mixed"
+
+
 def _audio_format(fields: list[formats.ScanFields]) -> str | None:
     """Distinct codec label across the album's files. A single value when
-    consistent (the norm), "Mixed" when files differ."""
+    consistent (the norm), `MIXED_FORMAT` when files differ."""
     labels = {sf.codec for sf in fields}
     labels.discard(None)
     if not labels:
         return None
     if len(labels) == 1:
         return next(iter(labels))
-    return "Mixed"
+    return MIXED_FORMAT
 
 
 def _audio_quality(audio_files: list[Path], fields: list[formats.ScanFields]) -> str | None:

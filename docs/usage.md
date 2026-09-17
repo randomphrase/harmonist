@@ -267,6 +267,12 @@ you tagged it — each with its count:
   A half-finished tagging run, or Picard applied to part of a folder, leaves this.
 - **No artwork** — correctly tagged, fully linked, and still a grey square in
   Plex or Navidrome.
+- **Mixed formats** — the album's files don't all use the same codec: one MP3
+  among the M4As, a FLAC beside the ALACs. Usually a download that landed in two
+  goes, or a single track replaced from somewhere else. Nothing else about the
+  album is wrong, so the tile shows no badge — the only sign is that the album's
+  page reads *Mixed* where it would otherwise name the format, and that is no use
+  unless you already know which album to open.
 - **Update available** — nothing is wrong with these. MusicBrainz has simply
   learned something since you tagged them: an ISRC filled in, a catalogue number
   corrected, a release date fixed, a track retitled. **Apply updates** on the

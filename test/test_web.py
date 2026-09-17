@@ -2356,6 +2356,31 @@ def _make_partially_tagged_album(cfg, name, *, mbid, tagged_at) -> Path:
     return d
 
 
+def _make_mixed_format_album(cfg, name, *, mbid, tagged_at) -> Path:
+    """A tagged M4A album with one MP3 track mixed in (#316).
+
+    The MP3 carries the MB ids too, so the album is COMPLETE *and* fully tagged
+    — the codec disagreement is the only thing wrong with it, which is what
+    makes it invisible in the grid and the reason it needs a filter.
+    """
+    from mutagen.id3 import TXXX
+    from mutagen.mp3 import MP3
+
+    from harmonist.formats.mp3 import TXXX_ALBUM_ID, TXXX_RELEASE_TRACK_ID
+
+    d = _make_tagged_album(cfg, name, mbid=mbid, tagged_at=tagged_at)
+    f = d / "02 Track.mp3"
+    shutil.copy(FIXTURES_DIR / "sine.mp3", f)
+    audio = MP3(f)
+    if audio.tags is None:
+        audio.add_tags()
+    assert audio.tags is not None
+    audio.tags.add(TXXX(encoding=3, desc=TXXX_ALBUM_ID, text=[mbid]))
+    audio.tags.add(TXXX(encoding=3, desc=TXXX_RELEASE_TRACK_ID, text=["rt-2"]))
+    audio.save()
+    return d
+
+
 def _give_cover(album_dir: Path) -> Path:
     """A folder cover, so the album stops matching the No-artwork filter. The
     fixture audio carries no embedded art, so every test album lacks one until
@@ -2402,6 +2427,27 @@ def test_library_filter_finds_albums_with_no_artwork(client, cfg):
     body = client.get("/library?filter=no-artwork").text
     assert "Bare" in body
     assert "Pictured" not in body
+
+
+def test_library_filter_finds_albums_with_mixed_formats(client, cfg):
+    """An album that is part M4A and part MP3 (#316). Nothing else is wrong with
+    it — it is terminal and fully tagged — so the grid shows no badge and the
+    disagreement is only visible on the album's own page."""
+    from datetime import datetime
+
+    from harmonist import scanner
+
+    base = datetime.now(UTC)
+    _make_tagged_album(cfg, "Uniform", mbid="rel-uniform", tagged_at=base)
+    d = _make_mixed_format_album(cfg, "Patchwork", mbid="rel-patch", tagged_at=base)
+    # Preconditions, or the album would be caught by a filter that already
+    # exists and this one would look like it worked.
+    album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
+    assert album.state == "complete"
+    assert album.partial_tag_count is None
+    body = client.get("/library?filter=mixed-format").text
+    assert "Patchwork" in body
+    assert "Uniform" not in body
 
 
 def test_library_filter_counts_come_from_the_whole_library_not_the_page(client, cfg):
