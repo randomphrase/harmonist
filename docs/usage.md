@@ -793,10 +793,42 @@ What makes the record worth reading rather than just kept:
   nothing by going without — while the other setting makes every album lacking
   the file show as having an update available, which on an adopted library can be
   most of it. Either way, artwork already on disk is untouched, and a `cover.jpg`
-  that exists is still offered a better image when one turns up.
+  that exists is still offered a better image when one turns up. It also holds
+  the **tag transforms**, below.
 - **Won't download** — the purchases you've set aside, each with **Restore**.
 - **Kept artwork** — the images re-tags have overwritten, still recoverable:
   the last five changes per album, and how much room they take.
 - **Maintenance** — erase all `.harmonist.json` sidecars. Audio files aren't
   touched, but every match and sync link is removed; this is the uninstall step,
   not a routine one.
+
+### Tag transforms
+
+Harmonist writes what MusicBrainz says. Picard lets you bend that — through its
+options, and through tagger scripts — and if you've already made one of those
+choices for your library, a Harmonist re-tag would quietly undo it.
+
+**Tag transforms** are the named choices Harmonist can make the same way. Tick
+one under **Settings → Tagging** and it applies from then on. One exists today:
+
+- **Add the release disambiguation to the album title.** MusicBrainz tells two
+  releases of the same name apart with a short comment, and this writes it into
+  the album title — *Selected Ambient Works Volume II (expanded edition)* rather
+  than *Selected Ambient Works Volume II*. Releases without a disambiguation
+  aren't affected, which is nearly all of them.
+
+**What ticking one does not do is rewrite your library.** It changes what a
+*future* tagging writes. An album already on disk keeps the title it has, and
+picks the new spelling up the next time something else about it changes and it
+gets re-tagged anyway. Nothing appears in the Inbox, and nothing shows as having
+an update available, because Harmonist counts both spellings as correct on disk
+whichever one it would write itself — which is also why it has never reported
+your Picard-disambiguated titles as mismatches.
+
+The practical effect, then, is that albums arriving from a sync are spelled your
+way from the start, and a re-tag stops undoing the choice on the ones that
+already are.
+
+More transforms are a maybe rather than a promise: a transform can only exist
+where Harmonist can work the answer out *exactly* from the release it already
+holds, which rules out most of what a tagger script can express.

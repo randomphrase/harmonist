@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from .artwork import FolderCoverPolicy
+from .transforms import TagTransform
 
 log = logging.getLogger(__name__)
 
@@ -175,6 +176,24 @@ class TaggingConfig(BaseModel):
     #: Harmonist did that once without saying so.
     folder_cover: FolderCoverPolicy = FolderCoverPolicy.NEVER
 
+    #: Which named transforms a tagging applies to the values it writes (#544).
+    #:
+    #: A LIST of enabled names rather than a flag per transform, because the
+    #: axis this grows along is *more transforms* (#284's survey), not more
+    #: values per transform — the opposite of `folder_cover` above, whose third
+    #: value is already foreseen. A list also stays readable as the set grows,
+    #: and is the shape a sequence of scripts would take if the named registry
+    #: ever becomes one.
+    #:
+    #: **Empty by default**, so an install that says nothing writes exactly what
+    #: MusicBrainz says, as every version before this one did.
+    #:
+    #: Duplicates and order are immaterial today — each transform owns a
+    #: different field, and `transforms.py` is handed a set. Order becomes a
+    #: real question the first time two of them touch one field, and this is a
+    #: list so that it can be answered then without breaking a config file.
+    transforms: list[TagTransform] = Field(default_factory=list)
+
 
 class TestConfig(BaseModel):
     mode: TestMode = "fixture"
@@ -295,6 +314,13 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         # should stop the container with the permitted values in the message,
         # not silently pick one of them.
         tagging["folder_cover"] = v.strip()
+    if v := env.get("HARMONIST_TAGGING_TRANSFORMS"):
+        # Comma-separated, like HARMONIST_ALLOWED_HOSTS, and unvalidated for the
+        # reason above. An empty value is indistinguishable from an unset one
+        # here, so turning every transform back OFF from the environment means
+        # removing the variable rather than setting it empty — which is what a
+        # `if v :=` guard means for every setting in this function.
+        tagging["transforms"] = [t.strip() for t in v.split(",") if t.strip()]
     if v := env.get("HARMONIST_DEMO_MODE"):
         data["demo_mode"] = v.strip() not in ("", "0", "false", "False", "no")
     return data

@@ -671,7 +671,7 @@ type _Accepted = frozenset[str] | tuple[str, ...]
 
 def _accepted(
     disk_attr: str,
-    album_title_alias: str | None,
+    accepted_album_titles: _Accepted,
     accepted_countries: _Accepted,
 ) -> _Accepted:
     """The other on-disk values that count as agreement on this row.
@@ -681,7 +681,7 @@ def _accepted(
     `album_fields` for what makes each of the two legitimate.
     """
     if disk_attr == _ALIASED_FIELD:
-        return (album_title_alias,) if album_title_alias else ()
+        return accepted_album_titles
     if disk_attr == _MULTI_VALUED_FIELD:
         return accepted_countries
     return ()
@@ -787,7 +787,7 @@ def album_fields(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: TagSet | None,
     *,
-    album_title_alias: str | None = None,
+    accepted_album_titles: _Accepted = (),
     accepted_countries: _Accepted = (),
 ) -> tuple[FieldComparison, ...]:
     """Compare an album's per-track tags against what tagging would write.
@@ -801,9 +801,14 @@ def album_fields(
     against, which leaves every field ONLY_DISK rather than pretending MB
     disagrees.
 
-    `album_title_alias` is a second album title that counts as agreement —
-    Picard's disambiguated spelling, built by `models.title_with_disambiguation`
-    from the release the caller already holds (#283).
+    `accepted_album_titles` is every album title that counts as agreement —
+    MusicBrainz's, plus Picard's disambiguated spelling of it where the release
+    carries a disambiguation (#283), from `transforms.accepted_album_titles`.
+
+    A set rather than the single alias it started as, because since #544 the
+    disambiguated spelling may be the one `mb` itself holds — the user can turn
+    that transform on — which makes the PLAIN title the alias. Neither spelling
+    is privileged, so neither can be the one named.
 
     `accepted_countries` is the same idea on the Country row (#346): every
     country the release names, from `tagger.release_events`, of which
@@ -835,7 +840,7 @@ def album_fields(
             disk=flag_consensus(values) if flag else consensus(values),
             mb=(FLAG_YES if mb_value is not None else FLAG_NO) if flag else mb_value,
             unreadable=unreadable,
-            also_matches=_accepted(disk_attr, album_title_alias, accepted_countries),
+            also_matches=_accepted(disk_attr, accepted_album_titles, accepted_countries),
         )
         # Marked here rather than threaded through `compare_value`, because THIS
         # table is where the knowledge lives: a field is comparable iff it names

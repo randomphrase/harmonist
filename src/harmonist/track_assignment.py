@@ -123,7 +123,11 @@ def panel(
     ).hexdigest()
     if draft is not None and draft.disk_fingerprint != fingerprint:
         raise AssignmentChanged("Files changed since the review. Review the assignments again.")
-    mb_tags = tagger.tagsets_for(release)
+    # No transforms (#544): this panel reads the tagsets for TRACK titles and
+    # ids, to line files up against the tracklist. Every transform so far is
+    # album-scoped, and a user's album-title spelling has no bearing on which
+    # file is which track.
+    mb_tags = tagger.tagsets_for(release, frozenset())
     lengths = match.mb_track_lengths(release)
     root = Path(os.path.commonpath([f.parent for f in files])) if files else Path(".")
     disk = [

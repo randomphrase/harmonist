@@ -141,7 +141,7 @@
            are not about how Harmonist is CONFIGURED but about how opinionated it
            is allowed to be with files the user already has, and a reader deciding
            that needs the neighbours to compare against. #284's title transforms
-           are the next one to land here.
+           landed here in #544.
 
            One form, one Save, because there is one place these are written and
            a second button would imply two. #}
@@ -175,6 +175,50 @@
                     cover an album already has is still improved when a better image turns up.
                 </span>
             </label>
+
+            {# ---- Tag transforms (#544) ----
+               A checkbox each, where the folder-cover control above is a select,
+               and the difference is deliberate: that setting is one question with
+               a third answer already foreseen, and this is a LIST that grows
+               (#284). A checkbox is the native control for a persisted boolean
+               (web-ui rule 1), and an unticked one sends nothing — which is why
+               the handler reads `transforms` with a default of `[]` rather than
+               `Form(...)`.
+
+               The shared note is above the boxes, not repeated inside each: the
+               bounded effect is a property of what a transform IS, not of this
+               one, and the next entry would otherwise duplicate it. #}
+            <div class="space-y-2">
+                <span class="block text-xs font-bold text-ink">Tag transforms</span>
+                <p class="text-2xs text-muted">
+                    Named, exactly-checkable reshapings of what Harmonist writes — the ones
+                    Picard does through its options and tagger scripts. These change what a
+                    <span class="font-semibold">future</span> tagging writes: albums already on
+                    disk aren’t rewritten to pick one up, they gain it the next time something
+                    else about them changes. Both spellings count as correct on disk either way,
+                    so turning one on never marks your library as having updates to take.
+                </p>
+
+                {% for value, label, note in [
+                    ('album_disambiguation',
+                     'Add the release disambiguation to the album title',
+                     'MusicBrainz distinguishes two releases of the same name by a short comment —
+                      so <em>Selected Ambient Works Volume II</em> is written
+                      <em>Selected Ambient Works Volume II (expanded edition)</em>. Picard has an
+                      option for this, and it is the tagger script people most often write.
+                      Releases with no disambiguation are unaffected.')
+                ] %}
+                <label class="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" name="transforms" value="{{ value }}"
+                           class="mt-1 cursor-pointer"
+                           {{ 'checked' if value in cfg.tagging.transforms }}>
+                    <span>
+                        <span class="block text-sm text-ink">{{ label }}</span>
+                        <span class="block text-2xs text-muted">{{ note|safe }}</span>
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
         </section>
 
         <div>

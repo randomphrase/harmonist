@@ -98,6 +98,8 @@ level = "off"                     # "off" | "review" — background update check
 [tagging]
 folder_cover = "never"            # "never" | "if_missing" — create a missing
                                   # cover.jpg (also on the Settings page)
+transforms = []                   # named reshapings of what gets written, e.g.
+                                  # ["album_disambiguation"] (also in Settings)
 ```
 
 Harmonist watches the music dir and rescans when files change under it, but
@@ -173,6 +175,18 @@ Neither value touches artwork you already have. Existing `cover.*` files are
 left exactly where they are whichever way this is set, and one that exists is
 still offered an upgrade when a better image turns up — this governs only
 whether a missing one gets created.
+
+`[tagging] transforms` turns on **tag transforms** — named reshapings of what
+Harmonist writes, matching choices Picard offers through its options and tagger
+scripts. It ships empty, so nothing is reshaped. One transform exists today:
+
+| Name | What it writes |
+| --- | --- |
+| `album_disambiguation` | The release's disambiguation comment appended to the album title, so *Selected Ambient Works Volume II* becomes *Selected Ambient Works Volume II (expanded edition)*. Releases with no disambiguation are unaffected. |
+
+They are also on the **Settings** page, under **Tagging**, and take effect
+without a restart. See [the user guide](usage.md#tag-transforms) for what
+turning one on does and does not do to a library you already have.
 
 Bandcamp sync needs a `cookies.txt` (exported from a logged-in browser) — paste
 or upload it via the in-app **Set up Bandcamp sync** prompt.

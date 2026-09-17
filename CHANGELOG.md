@@ -11,6 +11,13 @@ versions follow [semantic versioning](https://semver.org).
 - **Mixed formats** — a Library filter for albums whose files don't all use the
   same codec, such as one MP3 among the M4As (#316).
 
+- **Tag transforms** — Settings → Tagging can now match a choice you've made in
+  Picard about what gets written. The first is **Add the release disambiguation
+  to the album title**, so an album is tagged *Selected Ambient Works Volume II
+  (expanded edition)* rather than *…Volume II*. It ships off; ticking it changes
+  what future taggings write and rewrites nothing you already have, and a re-tag
+  stops stripping the spelling off the albums that carry it (#544).
+
 ### Changed
 
 - **Creating a missing `cover.jpg` is now a setting, and it ships off** — a new

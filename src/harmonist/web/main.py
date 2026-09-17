@@ -58,6 +58,7 @@ from harmonist import (
     tag_history,
     timing,
     track_assignment,
+    transforms,
 )
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
@@ -74,11 +75,11 @@ from harmonist.models import (
     Release,
     Sidecar,
     store_name,
-    title_with_disambiguation,
     title_words,
     titles_match,
 )
 from harmonist.tagger import PicardCompatibleTagger, Tagger, tagsets_for
+from harmonist.transforms import TagTransform
 from harmonist.web import dir_watcher, periodic
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.scan_runner import ScanRunner
@@ -931,6 +932,7 @@ def _album_comparison(
     paths: Sequence[Path] | None = None,
     *,
     reads: tuple[_FileTags, _FileTags] | None = None,
+    enabled_transforms: frozenset[TagTransform] = frozenset(),
 ) -> tuple[compare.AlbumComparison, compare.TracklistComparison]:
     """Read the album's files and compare their tags to `release` (#106, #135).
 
@@ -953,7 +955,7 @@ def _album_comparison(
     again.
     """
     audio, video = _album_tracks(album_dir, paths, reads)
-    tagsets = tagsets_for(release)
+    tagsets = tagsets_for(release, enabled_transforms)
     mb_tracks = [
         compare.MBTrack(tags=ts, length_ms=length)
         for ts, length in zip(tagsets, match.mb_track_lengths(release), strict=True)
@@ -970,10 +972,11 @@ def _album_comparison(
                 tagsets[0] if tagsets else None,
                 # Picard writes the release disambiguation into the album title
                 # when told to, and that is the same album — not a mismatch to
-                # report on every page view forever (#283).
-                album_title_alias=title_with_disambiguation(
-                    release.get("title"), release.get("disambiguation")
-                ),
+                # report on every page view forever (#283). Both spellings are
+                # accepted whichever one the MusicBrainz column above is
+                # showing, which is the transform setting's doing (#544) and
+                # deliberately none of this row's business.
+                accepted_album_titles=transforms.accepted_album_titles(release),
                 # …and any country the release names is the country it came out
                 # in, whichever one Picard's `preferred_release_countries` put
                 # on the file (#346). The panel has to reach the same verdict as
@@ -2400,6 +2403,21 @@ def _folder_cover_policy(request: Request) -> artwork.FolderCoverPolicy:
     return cfg.tagging.folder_cover
 
 
+def _transforms(request: Request) -> frozenset[TagTransform]:
+    """The user's enabled `[tagging] transforms` as they stand right now (#544).
+
+    Read per request off `app.state.cfg` for the reason the folder-cover policy
+    above is: Settings replaces that object live, and the setting says it needs
+    no restart.
+
+    A frozenset, because order is not a fact the tagger should be able to read
+    off it while every transform owns a different field (`config.TaggingConfig`
+    keeps the list shape for the day one does not).
+    """
+    cfg: config_mod.Config = request.app.state.cfg
+    return frozenset(cfg.tagging.transforms)
+
+
 def _artwork_view(
     album: Album,
     caa: activity_store.CachedCoverArt | None = None,
@@ -3469,6 +3487,9 @@ def _tag_with_release(
         # The album page built its preview under this same policy, so the plan
         # rebuilt at write time is the one the fingerprint was taken of (#516).
         folder_cover=cfg.tagging.folder_cover,
+        # …and under these transforms, so the album title this writes is the one
+        # the page's MusicBrainz column showed (#544).
+        transforms=frozenset(cfg.tagging.transforms),
     )
 
     sc = sidecar_mod.read(album_path)
@@ -4003,6 +4024,12 @@ def _register_routes(app: FastAPI) -> None:
         user_agent: str = Form(...),
         gardener_level: str = Form(...),
         folder_cover: str = Form(...),
+        # A checkbox group, so an unticked box sends NOTHING — there is no
+        # "off" value to read, and the default has to be the empty list rather
+        # than `Form(...)`. That also makes clearing every transform a POST with
+        # no `transforms` key at all, which is what the browser sends and what
+        # this must therefore accept.
+        transforms: list[str] = Form(default=[]),
         log_level: str = Form(...),
     ) -> Response:
         cfg: config_mod.Config = request.app.state.cfg
@@ -4022,7 +4049,10 @@ def _register_routes(app: FastAPI) -> None:
                 {"level": gardener_level.strip()}
             )
             new_tagging = config_mod.TaggingConfig.model_validate(
-                {"folder_cover": folder_cover.strip()}
+                {
+                    "folder_cover": folder_cover.strip(),
+                    "transforms": [t.strip() for t in transforms if t.strip()],
+                }
             )
             new_cfg = cfg.model_copy(
                 update={
@@ -4049,6 +4079,10 @@ def _register_routes(app: FastAPI) -> None:
                 # parses, rather than relying on StrEnum's str-ness surviving
                 # tomlkit and every reader of the file after it.
                 "tagging.folder_cover": new_tagging.folder_cover.value,
+                # `.value` for the reason above — and a list even when empty, so
+                # turning the last transform off REWRITES the key rather than
+                # leaving the old one in the file to be read back at startup.
+                "tagging.transforms": [t.value for t in new_tagging.transforms],
                 "log_level": new_cfg.log_level,
             },
         )
@@ -4058,7 +4092,10 @@ def _register_routes(app: FastAPI) -> None:
         # running and reads the level off this config on its next tick (#312).
         # Nor does the folder-cover policy: every artwork plan reads it off
         # `app.state.cfg` as it is built, so the next album page drawn is
-        # already under the new one (#516).
+        # already under the new one (#516). The transforms are read the same way
+        # and are live in the same sense (#544) — but they change only what a
+        # LATER write emits, never what is already on disk, so nothing here
+        # rewrites anything and no rescan is owed.
         request.app.state.cfg = new_cfg
         mb_lookup.configure(new_cfg.musicbrainz.user_agent)
         activity.info("Settings updated")
@@ -4674,7 +4711,13 @@ def _register_routes(app: FastAPI) -> None:
         # every file again; it is rendered from here now, so a page view reads
         # the album once instead of twice.
         reads = _album_file_tags(album.path, album.folders)
-        comparison, tracks = _album_comparison(album.path, release, album.folders, reads=reads)
+        comparison, tracks = _album_comparison(
+            album.path,
+            release,
+            album.folders,
+            reads=reads,
+            enabled_transforms=_transforms(request),
+        )
         # Opening an album is a look at exactly the question the Library filter
         # asks, against a release already in hand — so answer it here too and
         # record it on the snapshot's Album (#287). That is what lets the filter
@@ -6054,6 +6097,9 @@ def _register_routes(app: FastAPI) -> None:
                     files=panel.files,
                     artwork=False,
                     assignment=panel.mapping(),
+                    # The preview is of what the apply will write, so it plans
+                    # under the same transforms the apply uses (#544).
+                    transforms=_transforms(request),
                 ).changes
             except (ValueError, OSError, tagger_mod.TagMismatchError) as e:
                 log.warning("could not preview assignment tags: %s", e, extra=_LOG_ONLY)
@@ -6215,6 +6261,7 @@ def _register_routes(app: FastAPI) -> None:
                 artwork=False,
                 incomplete=incomplete,
                 assignment=panel.mapping(),
+                transforms=_transforms(request),
             )
             if include_artwork:
                 view = _artwork_view(

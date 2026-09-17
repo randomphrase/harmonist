@@ -33,6 +33,7 @@ from . import (
     tag_history,
 )
 from . import sidecar as sidecar_mod
+from . import transforms as transforms_mod
 from .formats import TagSet, owned
 from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_ALBUM,
@@ -70,7 +71,8 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_TRACK_NUM,
     LEGACY_RELEASE_ID,
 )
-from .models import Release, Track, norm_title, title_with_disambiguation
+from .models import Release, Track, norm_title
+from .transforms import TagTransform
 
 log = logging.getLogger(__name__)
 
@@ -158,6 +160,7 @@ class Tagger(Protocol):
         chosen: artwork.Source | None = None,
         assignment: dict[Path, int] | None = None,
         folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
+        transforms: frozenset[TagTransform] = frozenset(),
     ) -> TaggingOutcome: ...
 
 
@@ -182,6 +185,7 @@ class PicardCompatibleTagger:
         chosen: artwork.Source | None = None,
         assignment: dict[Path, int] | None = None,
         folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
+        transforms: frozenset[TagTransform] = frozenset(),
     ) -> TaggingOutcome:
         return tag_and_artwork(
             album_dir,
@@ -197,6 +201,7 @@ class PicardCompatibleTagger:
             chosen=chosen,
             assignment=assignment,
             folder_cover=folder_cover,
+            transforms=transforms,
         )
 
 
@@ -206,6 +211,7 @@ def tag_album(
     *,
     incomplete: bool = False,
     files: list[Path] | None = None,
+    transforms: frozenset[TagTransform] = frozenset(),
 ) -> int:
     """Write tags to every supported audio file in `album_dir`. TAGS ONLY.
 
@@ -239,7 +245,9 @@ def tag_album(
 
     Returns the number of files tagged.
     """
-    return _tag_files(album_dir, release, incomplete=incomplete, files=files)[0]
+    return _tag_files(
+        album_dir, release, incomplete=incomplete, files=files, transforms=transforms
+    )[0]
 
 
 def _tag_files(
@@ -249,6 +257,7 @@ def _tag_files(
     incomplete: bool = False,
     files: list[Path] | None = None,
     assignment: dict[Path, int] | None = None,
+    transforms: frozenset[TagTransform] = frozenset(),
 ) -> tuple[int, bool]:
     """`tag_album`, reporting both halves a composed tagging needs: how many
     files the release covers, and whether any file was actually WRITTEN.
@@ -300,7 +309,9 @@ def _tag_files(
     naming = album_files.Naming(album_dir, prep.files)
     wrote_something = False
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
-        tagset = _build_tagset(release, medium, track_pos_in_medium, track, prep.media_total)
+        tagset = _build_tagset(
+            release, medium, track_pos_in_medium, track, prep.media_total, transforms
+        )
         before = formats.read_owned(file_path)
         # `cover=None` throughout: this writes tags, and leaves every file's
         # image exactly as it is (#481). `_changes_for` records no artwork
@@ -311,7 +322,7 @@ def _tag_files(
             file_path,
             prep.art.before,
             None,
-            prep.accepted_album_title,
+            prep.accepted_album_titles,
             prep.accepted_countries,
         )
         if not changes and not formats.has_superseded_tags(file_path):
@@ -372,6 +383,7 @@ def plan_album(
     files: list[Path] | None = None,
     artwork: bool = True,
     assignment: dict[Path, int] | None = None,
+    transforms: frozenset[TagTransform] = frozenset(),
 ) -> AlbumPlan:
     """What `tag_album` would change here, computed without writing anything.
 
@@ -404,7 +416,9 @@ def plan_album(
     )
     changes: dict[Path, dict[str, list[Any]]] = {}
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
-        tagset = _build_tagset(release, medium, track_pos_in_medium, track, prep.media_total)
+        tagset = _build_tagset(
+            release, medium, track_pos_in_medium, track, prep.media_total, transforms
+        )
         if file_changes := _changes_for(
             tagset,
             formats.read_owned(file_path),
@@ -417,7 +431,7 @@ def plan_album(
             prep.art.winner.digest
             if prep.art.winner is not None and file_path in prep.art_targets
             else None,
-            prep.accepted_album_title,
+            prep.accepted_album_titles,
             prep.accepted_countries,
         ):
             changes[file_path] = file_changes
@@ -555,11 +569,17 @@ class _Prepared:
     #: …and its digest, for the per-file records.
     art_after: str | None
     media_total: int
-    #: The one other album title that counts as already correct — Picard's
-    #: disambiguated spelling (#283). Album-constant, since every file's TagSet
-    #: carries the same `album`, so it is settled once here rather than rebuilt
-    #: per file.
-    accepted_album_title: str | None
+    #: Every album title that counts as already correct: MusicBrainz's, plus
+    #: Picard's disambiguated spelling of it where the release carries a
+    #: disambiguation (#283). A SET rather than the single alias this was, so
+    #: that it still says the same thing when a transform makes the
+    #: disambiguated spelling the one Harmonist itself writes (#544) — then the
+    #: plain title is the alias, and a scalar would have to know which way round
+    #: the setting is. It never does: the set is the same under either.
+    #:
+    #: Album-constant, since every file's TagSet carries the same `album`, so it
+    #: is settled once here rather than rebuilt per file.
+    accepted_album_titles: frozenset[str]
     #: Every release country that counts as already correct: the ones THIS
     #: release names. Picard writes whichever of them `preferred_release_
     #: countries` matches, so a library tagged that way carries a code that is
@@ -839,9 +859,7 @@ def _prepare(
         cover_change=cover_change,
         art_withheld=withheld,
         media_total=len(release.get("medium-list", [])) or 1,
-        accepted_album_title=title_with_disambiguation(
-            release.get("title"), release.get("disambiguation")
-        ),
+        accepted_album_titles=transforms_mod.accepted_album_titles(release),
         accepted_countries=release_countries(release),
     )
 
@@ -852,7 +870,7 @@ def _changes_for(
     file_path: Path,
     art_before: Mapping[Path, str | None],
     art_after: str | None,
-    accepted_album_title: str | None = None,
+    accepted_album_titles: frozenset[str] = frozenset(),
     accepted_countries: frozenset[str] = frozenset(),
 ) -> dict[str, list[Any]]:
     """What tagging this one file to `tagset` would change, as `{field: [was, now]}`.
@@ -872,16 +890,19 @@ def _changes_for(
     # compares values and rightly knows nothing about MusicBrainz: what makes
     # this second spelling legitimate is a fact about the release.
     #
-    # Only the diff is tolerant. A write that happens for some OTHER reason
-    # still puts MusicBrainz's plain title on the file — Harmonist writes what
-    # MusicBrainz says, and preserving a spelling it did not derive is the
-    # separate, configurable question this issue deliberately left alone.
+    # `accepted_album_titles` is NOT conditioned on the user's transforms
+    # (#544), and that is what keeps the setting out of this function. Both
+    # spellings are accepted whichever one a write would emit, so turning the
+    # transform on cannot make a library of differences, `plan_album` reaches
+    # the same verdict under either setting, and the gardener — which has no
+    # config to read — is not silently answering a different question from the
+    # write. See `transforms.py` for the invariant this rests on.
+    #
+    # Only the diff is tolerant, still. A write that happens for some OTHER
+    # reason puts whichever spelling the transforms chose on the file, without a
+    # per-field record of having done so, because the change was dropped here.
     album_change = changes.get(owned.Owned.ALBUM)
-    if (
-        album_change is not None
-        and accepted_album_title is not None
-        and album_change[0] == accepted_album_title
-    ):
+    if album_change is not None and album_change[0] in accepted_album_titles:
         del changes[owned.Owned.ALBUM]
 
     # Nor is a release country the release actually names (#346). MusicBrainz
@@ -1684,6 +1705,7 @@ def tag_and_artwork(
     chosen: artwork.Source | None = None,
     assignment: dict[Path, int] | None = None,
     folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
+    transforms: frozenset[TagTransform] = frozenset(),
 ) -> TaggingOutcome:
     """Tag the album, then write the artwork its plan calls for (#481).
 
@@ -1730,7 +1752,12 @@ def tag_and_artwork(
     """
     paths = files if files is not None else album_files.audio_files(album_dir)
     tagged, wrote_something = _tag_files(
-        album_dir, release, incomplete=incomplete, files=paths, assignment=assignment
+        album_dir,
+        release,
+        incomplete=incomplete,
+        files=paths,
+        assignment=assignment,
+        transforms=transforms,
     )
 
     # EXCLUDED means there is no artwork half at all (#482) — not an empty
@@ -2019,7 +2046,7 @@ def _write_image_at(path: Path, data: bytes) -> None:
     os.replace(tmp, path)
 
 
-def tagsets_for(release: Release) -> list[TagSet]:
+def tagsets_for(release: Release, transforms: frozenset[TagTransform]) -> list[TagSet]:
     """Every track's TagSet for `release`, in track order — what tagging WOULD
     write, without writing it.
 
@@ -2035,7 +2062,7 @@ def tagsets_for(release: Release) -> list[TagSet]:
     """
     media_total = len(release.get("medium-list", [])) or 1
     return [
-        _build_tagset(release, medium, pos, track, media_total)
+        _build_tagset(release, medium, pos, track, media_total, transforms)
         for medium, pos, track in _flatten_tracks(release)
     ]
 
@@ -2046,8 +2073,17 @@ def _build_tagset(
     track_pos: int,
     track: Track,
     media_total: int,
+    transforms: frozenset[TagTransform],
 ) -> TagSet:
-    """Translate one MB track within a release to a TagSet."""
+    """Translate one MB track within a release to a TagSet.
+
+    `transforms` is the user's enabled set (#544) and has NO DEFAULT on purpose,
+    for the reason `web/main.py`'s folder-cover seam has none: a call site that
+    forgot it would write MusicBrainz's spelling while the album page showed the
+    user's, and nothing in the suite would look wrong. Callers with no business
+    knowing the setting — `track_assignment`, which reads these tagsets for
+    track titles alone — pass `frozenset()` and say so.
+    """
     track_artist_credit = track.get("artist-credit") or release.get("artist-credit")
     labels, catalog_numbers = _label_info(release.get("label-info-list") or [])
     rg = release.get("release-group") or {}
@@ -2057,7 +2093,7 @@ def _build_tagset(
 
     return TagSet(
         mb_album_id=release["id"],
-        album=release.get("title", ""),
+        album=transforms_mod.album_title(release, transforms),
         album_artist=_artist_phrase(release.get("artist-credit")),
         title=_track_title(track),
         artist=_artist_phrase(track_artist_credit),

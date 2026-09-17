@@ -43,6 +43,7 @@ from harmonist.tagger import (
     ATOM_TITLE,
     ATOM_TRACK_NUM,
 )
+from harmonist.transforms import TagTransform
 from harmonist.web.main import create_app
 from test.helpers import keep_one
 
@@ -5807,6 +5808,92 @@ def test_settings_save_persists_and_applies_live(client, cfg):
     assert 'folder_cover = "if_missing"' in toml
 
 
+def test_settings_save_persists_the_enabled_tag_transforms(client, cfg):
+    """#544. A checkbox group, so the interesting half is what a POST that omits
+    the field means — see the test below."""
+    r = client.post(
+        "/settings",
+        data={
+            "download_format": "flac",
+            "max_downloads_per_sync": "5",
+            "user_agent": "Harmonist/0.1 ( x@y.z )",
+            "gardener_level": "off",
+            "folder_cover": "never",
+            "transforms": ["album_disambiguation"],
+            "log_level": "info",
+        },
+    )
+    assert r.status_code == 200
+    assert "Settings saved" in r.text
+    assert client.app.state.cfg.tagging.transforms == [TagTransform.ALBUM_DISAMBIGUATION]
+    # As the plain strings the loader parses, not a StrEnum's repr (#516's rule).
+    toml = (cfg.paths.config_dir / "harmonist.toml").read_text()
+    assert 'transforms = ["album_disambiguation"]' in toml
+
+
+def test_saving_with_no_transform_ticked_turns_them_all_off(client, cfg):
+    """An unticked checkbox sends NOTHING — there is no "off" value in the POST
+    — so a handler reading `transforms` as required would 422 the whole Settings
+    form the moment someone turned the last one off, and one that skipped the
+    key on absence would make turning one off impossible. Both are live risks of
+    the checkbox shape, and neither is visible from the template.
+    """
+    client.app.state.cfg.tagging.transforms = [TagTransform.ALBUM_DISAMBIGUATION]
+
+    r = client.post(
+        "/settings",
+        data={
+            "download_format": "flac",
+            "max_downloads_per_sync": "5",
+            "user_agent": "Harmonist/0.1 ( x@y.z )",
+            "gardener_level": "off",
+            "folder_cover": "never",
+            "log_level": "info",
+        },
+    )
+
+    assert r.status_code == 200
+    assert "Settings saved" in r.text
+    assert client.app.state.cfg.tagging.transforms == []
+    # Rewritten rather than left behind, or a restart would read the old set back.
+    assert "transforms = []" in (cfg.paths.config_dir / "harmonist.toml").read_text()
+
+
+def test_settings_save_rejects_an_unknown_transform(client, cfg):
+    """A hand-made POST naming a transform nobody wrote is a rejection, for the
+    reason an unknown gardener level is: silently dropping it would save a page
+    that says the transform is off while the user asked for it on."""
+    r = client.post(
+        "/settings",
+        data={
+            "download_format": "flac",
+            "max_downloads_per_sync": "5",
+            "user_agent": "Harmonist/0.1 ( x@y.z )",
+            "gardener_level": "off",
+            "folder_cover": "never",
+            "transforms": ["feat_artists_in_title"],  # not a thing
+            "log_level": "info",
+        },
+    )
+
+    assert r.status_code == 200
+    assert "Couldn't save" in r.text
+    assert client.app.state.cfg.tagging.transforms == []
+    assert not (cfg.paths.config_dir / "harmonist.toml").exists()
+
+
+def test_the_settings_page_offers_every_transform_there_is(client):
+    """The drift check. The labels are template copy — a new `TagTransform`
+    member is one `StrEnum` line away from existing in the config, in the tagger
+    and in `harmonist.toml` while being unreachable from the only place a user
+    would turn it on, and nothing else in the suite would notice.
+    """
+    html = client.get("/settings").text
+
+    for t in TagTransform:
+        assert f'name="transforms" value="{t.value}"' in html
+
+
 def test_settings_save_accepts_a_zero_download_cap(client, cfg):
     """0 is a real setting, not a rejected one: it defers every new purchase, so
     a sync still links and reconciles while downloading nothing. Settings is the
@@ -9051,6 +9138,48 @@ def test_the_album_page_does_not_report_a_disambiguated_title_as_a_difference(cf
 
     assert [f.label for f in comparison.differing] == []
     assert {f.label: f.disk for f in comparison.fields}["Album"] == "Obreel (expanded edition)"
+
+
+def test_the_album_panel_shows_the_title_the_transform_would_write(client, cfg, monkeypatch):
+    """The other end of the same wire (#544). The MusicBrainz column is what a
+    tagging WOULD write, so it has to follow the setting — a page showing the
+    plain title beside a Re-tag button that writes the disambiguated one is
+    lying about the button.
+
+    Driven through the ROUTE rather than through `_album_comparison`, because
+    the thing at risk is `_transforms(request)` being wired to it at all: the
+    helper takes a defaulted argument, so a caller that never passed one would
+    leave this inert with every unit test still green — the same failure the
+    test above exists for.
+    """
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release",
+        lambda mbid: {**_release_with_metadata(mbid), "disambiguation": "expanded edition"},
+    )
+    client.app.state.cfg.tagging.transforms = [TagTransform.ALBUM_DISAMBIGUATION]
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    cell = re.search(r"<dt>Album</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert cell, "no Album row"
+    assert "Obreel (expanded edition)" in cell.group(1)
+
+
+def test_the_album_panel_shows_musicbrainzs_title_without_the_transform(client, cfg, monkeypatch):
+    """The half that makes the test above mean something: the same release, the
+    same page, the setting off — and the plain title, which is the default every
+    install ships with."""
+    d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release",
+        lambda mbid: {**_release_with_metadata(mbid), "disambiguation": "expanded edition"},
+    )
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    cell = re.search(r"<dt>Album</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert cell and "(expanded edition)" not in cell.group(1)
 
 
 def test_a_stray_compilation_tag_reads_as_a_pending_no(client, cfg, monkeypatch):

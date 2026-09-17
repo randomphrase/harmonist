@@ -66,7 +66,7 @@ def test_demo_has_an_album_whose_tags_differ_from_musicbrainz(music_dir):
 
     tracks = [(f.name, formats.read_tags(f)) for f in sorted(album.path.glob("*.m4a"))]
     release = demo.MB_RELEASES["demo-rel-rural-juror"]
-    by_label = {f.label: f for f in album_fields(tracks, tagsets_for(release)[0])}
+    by_label = {f.label: f for f in album_fields(tracks, tagsets_for(release, frozenset())[0])}
 
     # A genuine two-sided difference, not merely a MusicBrainz-only addition.
     artist = by_label["Album artist"]

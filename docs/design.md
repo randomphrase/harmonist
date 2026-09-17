@@ -1097,7 +1097,7 @@ So both places that judge a disk title against MusicBrainz's accept it: `compare
 
 **Exactly one string, never a pattern.** `models.titles_match` would accept this pair too, and would accept `(deluxe edition)` and `(2019 remaster)` just as readily, since it judges on words alone. That latitude is earned where it is used, inside an artist-scoped and uniqueness-guarded purchase match. Here the release *states* its disambiguation, so accepting anything looser would be guessing an identity that was available for free — which review-gate item 2 forbids. Picard applies several other title transforms besides this one; recognising them is #284, and it is a survey of what is exactly checkable rather than a loosening of this rule.
 
-**Only the comparison is tolerant, not the write.** A re-tag that happens for some other reason still puts MusicBrainz's plain title on the file. Harmonist writes what MusicBrainz says; preserving a spelling it did not derive is a different question, and it is the one that needs a setting to match Picard's — deferred until someone wants it. The consequence is worth naming: on an album where nothing else has changed the disambiguated title survives indefinitely, and on one where something else has changed it does not.
+**Which spelling the write emits is the user's**, through the transform below (#544). With none enabled — the default — a re-tag that happens for some other reason puts MusicBrainz's plain title on the file.
 
 ### A release comes out in more than one country
 
@@ -1111,6 +1111,24 @@ The tag stays scalar and Harmonist keeps writing `release["country"]`. Picard's 
 **Only the comparison is tolerant, not the write** — the same sentence as the album title's, and the same consequence. A re-tag that happens for another reason puts MusicBrainz's `country` back on the file.
 
 Picard also lets the user *pick* a preferred country, which changes `releasecountry` and nothing else — `date` is `node['date']` regardless. Offering that setting is a separate question and is not answered here.
+
+### Tag transforms — letting the user pick which accepted spelling gets written
+
+The two sections above give the *comparison* a set of accepted spellings per field. A **transform** (`transforms.py`, #544) lets the user say which member of that set the *write* emits — the named, exactly-derivable equivalents of what Picard does through its options and tagger scripts. `[tagging] transforms` holds the enabled set; it ships **empty**, so an install that says nothing writes exactly what MusicBrainz says. One transform exists: `album_disambiguation`, which writes `Title (disambiguation)`.
+
+**The invariant, which is the whole design:** *a transform may only choose among spellings the comparison already accepts unconditionally.* It never narrows the accepted set, and the accepted set never depends on the enabled set — `transforms.accepted_album_titles` takes no enabled argument, and that absence is load-bearing. Three things follow, and they are why this costs so little:
+
+- **Turning one on does not rewrite a library.** The tagging diff compares the disk value against the accepted set, so a file holding the other spelling reports no change: the write-skip still fires, nothing lands in the Inbox, and #32's first night is uneventful. Without the invariant this would be #283's failure mode with the sign flipped — a whole library reported as differing over a setting nobody meant as a rewrite.
+- **The gardener reads no config.** `plan_album` reaches the same verdict under either setting, so the unattended pass is not silently answering a different question from the write. `gardener.plan_for` passes nothing and is right to.
+- **It stays idempotent.** A transform is a function of the release, never of the tag already on the file, so applying it twice is applying it once. A rule that read the existing tag would grow the title a little on every nightly pass.
+
+The visible effect is therefore bounded, and the Settings page says so out loud: a new album gets the preferred spelling, an album re-tagged for some other reason gains it, and albums sitting on disk are not rewritten to acquire it. For the disambiguation case that *is* the fix — the re-tag stops stripping a spelling the user chose deliberately.
+
+**What it costs.** The album title a write emits is no longer derivable from the release alone; it needs the release and the setting. Both halves therefore live in one module, because #283 has already paid once for a page and a tagger deriving "the same album" in two places. The seam is explicit for the same reason: `_build_tagset` takes the enabled set with **no default**, so a call site that forgot the user's setting is a type error rather than a page quietly disagreeing with the button drawn on it.
+
+**One known gap, inherited rather than introduced.** Because the album change is dropped from the diff, a write that happens for another reason changes the title on disk with no per-field record of having done so. That was already true in the other direction before transforms existed — MusicBrainz's title replacing Picard's — and closing it means writing back the spelling already on disk rather than generating one, which is a different rule and deliberately not attempted here.
+
+**Enlarging the set is #284**, and the filter is severe: a transform can exist only where the accepted spellings are derivable *exactly* from the release Harmonist already holds. Anything needing a guess is refused by review-gate item 2, whatever Picard does with it. The named registry is also the shape a subset of Picard's scripting language would plug into, each transform being one script — which is why it is a list of names rather than a flag per transform.
 
 ### How significant a change is, and whether it needs review
 
@@ -1259,6 +1277,8 @@ src/harmonist/
   mb_search.py          MB free-text search (manual-ingest path)
   match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
   compare.py            Field-by-field tag-vs-MB comparison primitives (Tags section + tracklist)
+  transforms.py         Named, user-enabled reshapings of what a tagging writes, and the
+                        accepted spellings they choose between (#544)
   tagger.py             Picard-compatible tag writer, the artwork plan's reader and executor, and undo (#157)
   artwork.py            The artwork plan — which image wins, and every write it takes (#469) — and the Artwork section's view of it
   cover_art.py          Cover Art Archive fetch + the candidate cache (writes nothing into an album)
@@ -1306,6 +1326,7 @@ Templates and static assets live at the **project root** (`/templates`,
 | `HARMONIST_TEST_MODE` | unset | unset |
 | `HARMONIST_LOG_LEVEL` | `info` | `info` |
 | `HARMONIST_TAGGING_FOLDER_COVER` | `never` | `never` |
+| `HARMONIST_TAGGING_TRANSFORMS` | unset | unset |
 | `PUID` / `PGID` | unset (root) | n/a |
 
 ### Config file (`${CONFIG_DIR}/harmonist.toml`, optional, env vars win)
@@ -1332,6 +1353,7 @@ level = "off"      # off | review  (#273 adds enrich); also editable in Settings
 
 [tagging]
 folder_cover = "never"   # never | if_missing; also editable in Settings
+transforms = []          # e.g. ["album_disambiguation"]; also editable in Settings
 
 [test]
 mode = "fixture"   # fixture | cassette | live

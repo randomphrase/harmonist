@@ -442,7 +442,7 @@ def test_a_tagged_album_compares_clean_against_the_release_it_was_tagged_from(tm
     assert tag_album(d, release) == 1
 
     tracks = [(f.name, formats.read_tags(f)) for f in sorted(d.glob("*.m4a"))]
-    fields = album_fields(tracks, tagsets_for(release)[0])
+    fields = album_fields(tracks, tagsets_for(release, frozenset())[0])
 
     differing = [f.label for f in fields if f.differs]
     assert differing == [], f"tagging then comparing reported a difference: {differing}"
@@ -463,7 +463,7 @@ def test_an_untagged_album_shows_musicbrainz_values_as_additions(tmp_path):
     shutil.copy(Path(__file__).parent / "fixtures" / "sine.m4a", d / "01 Track.m4a")
 
     tracks = [(f.name, formats.read_tags(f)) for f in sorted(d.glob("*.m4a"))]
-    by_label = {f.label: f for f in album_fields(tracks, tagsets_for(_release())[0])}
+    by_label = {f.label: f for f in album_fields(tracks, tagsets_for(_release(), frozenset())[0])}
 
     assert by_label["Label"].agreement is Agreement.ONLY_MB
     assert by_label["Label"].mb == "Dial Records"
@@ -482,7 +482,7 @@ def test_an_unreadable_track_does_not_report_its_tags_as_missing(tmp_path):
     (d / "01 Track.m4a").write_bytes(b"not audio at all")
 
     tracks = [(f.name, formats.read_tags(f)) for f in sorted(d.glob("*.m4a"))]
-    fields = album_fields(tracks, tagsets_for(_release())[0])
+    fields = album_fields(tracks, tagsets_for(_release(), frozenset())[0])
 
     assert all(f.agreement is Agreement.UNREADABLE for f in fields)
     assert not any(f.agreement is Agreement.ONLY_MB for f in fields)
@@ -1020,7 +1020,11 @@ def test_a_disk_only_tracklist_groups_by_the_files_own_discs():
 
 def _album_row(disk_album: str, *, alias: str | None = None, **track_overrides):
     tags = TrackTags(album=disk_album, **track_overrides)
-    fields = album_fields([("1.flac", tags)], _tagset(album="Obreel"), album_title_alias=alias)
+    fields = album_fields(
+        [("1.flac", tags)],
+        _tagset(album="Obreel"),
+        accepted_album_titles=frozenset({"Obreel"} | ({alias} if alias else set())),
+    )
     return {f.label: f for f in fields}
 
 
