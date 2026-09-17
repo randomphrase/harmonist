@@ -11,6 +11,12 @@ versions follow [semantic versioning](https://semver.org).
 - **Mixed formats** — a Library filter for albums whose files don't all use the
   same codec, such as one MP3 among the M4As (#316).
 
+### Changed
+
+- **The album page names the tracks whose format differs** — the Format row's
+  *Mixed* and *N tracks differ* now carry the same pill the tag comparison uses,
+  listing which files disagree and what each one is (#541).
+
 ### Fixed
 
 - **An album tagged by another ripper is no longer reported as entirely

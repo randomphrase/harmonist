@@ -8,8 +8,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:  # type-only: `compare` pulls the whole field table in at runtime
+    from .compare import Consensus
 
 # MusicBrainz JSON shapes. `musicbrainzngs` returns plain untyped dicts whose
 # schema varies with the `includes=` we request and is riddled with optional,
@@ -387,6 +390,14 @@ class Album:
     # two copies of an album are really the same. Carries its own outlier
     # clause when the album's files disagree; None when nothing could be read.
     audio_quality: str | None = None
+    # Which files are not like the others, and what they are instead (#541).
+    # The two labels above each answer for the ALBUM and cannot name a file:
+    # `audio_format` collapses to "Mixed", `audio_quality` to a majority. This
+    # keeps the per-file answer — codec and quality as ONE value, so a lone MP3
+    # among the ALACs is one finding rather than two — rolled up the way the tag
+    # comparison rolls up a field, so the album page renders the disagreement
+    # with the same pill. Scanner-derived; not persisted, like the two above.
+    format_consensus: Consensus | None = None
     # True if a cover is available — a folder cover.* OR embedded art in the
     # tracks. Drives whether the UI requests /cover (avoids 404 floods) and
     # lets /cover serve the embedded art without writing it to disk.

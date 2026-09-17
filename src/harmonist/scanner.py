@@ -607,6 +607,7 @@ def build_album(
         ),
         audio_format=_audio_format(fields),
         audio_quality=_audio_quality(audio_files, fields),
+        format_consensus=_format_consensus(audio_files, fields),
         # A cover exists if there's a folder cover.* OR the first track has
         # embedded art (album art is on every track; first is representative).
         has_cover=io.cover_path is not None or (bool(fields) and fields[0].has_cover),
@@ -760,11 +761,11 @@ def _audio_quality(audio_files: list[Path], fields: list[formats.ScanFields]) ->
     whether two copies of an album are the same files; "44.1 kHz · 16 bit"
     does.
 
-    Rolled up the way the tag comparison rolls up a field, and for the same
-    reason: an album that is half 16-bit and half 24-bit is worth knowing
-    about. `consensus` gives what most tracks say plus a count of the ones that
-    don't, so the row reads "44.1 kHz · 16 bit · 2 tracks differ" rather than
-    collapsing to "Mixed" and throwing away the answer.
+    What MOST tracks say, and only that. An album that is half 16-bit and half
+    24-bit is worth knowing about, but the count of the odd ones used to be
+    appended here — "44.1 kHz · 16 bit · 2 tracks differ" — which named a
+    disagreement the row could not then explain. That half is `format_consensus`
+    now (#541), and the page renders it as a pill that names the files.
 
     The codec is deliberately NOT part of the value compared here. A folder
     holding one ALAC and one FLAC track, both 44.1/16, is a mixed *codec* — the
@@ -772,14 +773,40 @@ def _audio_quality(audio_files: list[Path], fields: list[formats.ScanFields]) ->
     two disagreements for one fact would overstate it.
     """
     labels = [(p.name, sf.quality.label) for p, sf in zip(audio_files, fields, strict=True)]
-    agreed = compare.consensus(labels)
-    if agreed.value is None:
-        # No file reports anything — every one unreadable, or a format whose
-        # container records none of this.
-        return None
-    if agreed.is_unanimous:
-        return agreed.value
-    return f"{agreed.value} · {agreed.odd_summary}"
+    # No file reports anything — every one unreadable, or a format whose
+    # container records none of this — leaves `value` None, and the row is
+    # dropped rather than rendered empty.
+    return compare.consensus(labels).value
+
+
+def _format_consensus(
+    audio_files: list[Path], fields: list[formats.ScanFields]
+) -> compare.Consensus:
+    """Which files are not like the others, and what they are instead (#541).
+
+    `audio_format` and `audio_quality` beside this each answer for the ALBUM and
+    so cannot name a file: the first collapses to `MIXED_FORMAT` the moment two
+    codecs meet, the second reports a majority. The album page needs the file,
+    because "Mixed" prompts exactly one question and then declines to answer it.
+
+    ONE value per file, codec and quality together, rather than a consensus
+    each. A lone MP3 among the ALACs is almost always a different bitrate as
+    well as a different codec, and two pills each reporting "1 track differs"
+    about the same file say less than one pill naming it.
+
+    A file whose codec is unknown contributes the quality alone, and one that
+    reports neither contributes nothing — `consensus` counts it in `total` and
+    lists it as an outlier carrying no value, which is the honest reading: the
+    file is there and we cannot say what it is.
+    """
+    labels = [(p.name, _file_label(sf)) for p, sf in zip(audio_files, fields, strict=True)]
+    return compare.consensus(labels)
+
+
+def _file_label(sf: formats.ScanFields) -> str | None:
+    """One file's codec and quality as a single value, or None if it has neither."""
+    parts = [part for part in (sf.codec, sf.quality.label) if part]
+    return " · ".join(parts) if parts else None
 
 
 def _partial_tag_count(

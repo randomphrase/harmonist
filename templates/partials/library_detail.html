@@ -1,3 +1,4 @@
+{% from 'macros.html' import odd_tracks_pill %}
 {# The album panel on /album/<id>. Was also rendered into a dialog for the
    Library tile and the potential-download verify flow; both are ordinary links
    to the page now (#129), so every `full_page` branch this carried is gone. #}
@@ -234,7 +235,20 @@
                    merely noisy. The scanner assembles it. #}
                 {% if album.audio_format %}
                 <dt>Format</dt>
-                <dd>{{ album.audio_format }}{% if album.audio_quality %} <span class="text-muted">· {{ album.audio_quality }}</span>{% endif %}</dd>
+                {# The value states what the album IS; the pill beside it states
+                   where its files disagree and names them (#541). "Mixed" alone
+                   asked the reader a question — which track? — that nothing on
+                   the page could answer, and the quality's own "· 1 track
+                   differs" asked the same one. Both are that pill now, and it is
+                   the one the tag comparison uses, because it is the same
+                   question: your files against each other. #}
+                <dd>{{ album.audio_format }}{% if album.audio_quality %} <span class="text-muted">· {{ album.audio_quality }}</span>{% endif %}
+                    {# A fixed id, unlike the tag table's, which are derived from each
+                       field's label — one Format row per page. It has to stay out of
+                       that namespace all the same: two popovers sharing an id bind
+                       every opener to whichever came last. No tag label yields
+                       "album-format" (the nearest is Album, which yields "odd-album"). #}
+                    {{ odd_tracks_pill('Format', album.format_consensus, 'odd-album-format') }}</dd>
                 {% endif %}
             </dl>
             </div>{# /left of the row: badges, findings, and what the files are #}

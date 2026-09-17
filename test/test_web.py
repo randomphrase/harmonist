@@ -3020,6 +3020,44 @@ def test_album_page_format_row_says_what_the_format_actually_is(client, cfg):
     assert "44.1 kHz · 16 bit" in row.group(1)
 
 
+def test_album_page_format_row_names_the_file_that_differs(client, cfg):
+    """#541. "Mixed" said something in the folder was unlike the rest and then
+    declined to say which — the one question it prompts. The row now carries the
+    tag comparison's pill, and the popover names the file and what it is."""
+    import re
+    from datetime import datetime
+
+    d = _make_mixed_format_album(cfg, "Patchy", mbid="abc-123", tagged_at=datetime.now(UTC))
+    r = client.get(f"/album/{_id_for(cfg, d)}")
+    row = re.search(r"<dt>Format</dt>\s*<dd>(.*?)</dd>", r.text, re.DOTALL)
+    assert row is not None
+    assert "Mixed" in row.group(1)  # unchanged: the album-level answer
+    # The pill states the finding, and its popover answers "which one?".
+    assert "1 track differs" in row.group(1)
+    assert "02 Track.mp3" in row.group(1)
+    assert "MP3 · 44.1 kHz · 128 kbps CBR" in row.group(1)
+
+
+def test_album_page_format_row_has_no_pill_when_the_files_agree(client, cfg):
+    """The ordinary album. Asserted because the pill IS rendered on the same row
+    under different conditions, so its absence here is a live code path rather
+    than a pinned diff.
+
+    TWO tracks, and that is the whole test: a one-track album has nothing to
+    disagree with, so it renders no pill whatever the consensus says, and
+    asserting on it would pass with the condition inverted."""
+    import re
+    from datetime import datetime
+
+    d = _make_tagged_album(cfg, "Uniform", mbid="abc-124", tagged_at=datetime.now(UTC))
+    shutil.copy(d / "01 Track.m4a", d / "02 Track.m4a")
+    r = client.get(f"/album/{_id_for(cfg, d)}")
+    row = re.search(r"<dt>Format</dt>\s*<dd>(.*?)</dd>", r.text, re.DOTALL)
+    assert row is not None
+    assert "track differs" not in row.group(1)
+    assert "tag-fields__odd" not in row.group(1)
+
+
 def test_album_page_says_when_only_some_files_carry_the_mb_id(client, cfg):
     """#175: the Library tile has said "1/3 tagged" since #139, but the album page
     said nothing — and its Tracks section reports "All N tracks match MusicBrainz",

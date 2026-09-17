@@ -270,9 +270,10 @@ you tagged it — each with its count:
 - **Mixed formats** — the album's files don't all use the same codec: one MP3
   among the M4As, a FLAC beside the ALACs. Usually a download that landed in two
   goes, or a single track replaced from somewhere else. Nothing else about the
-  album is wrong, so the tile shows no badge — the only sign is that the album's
-  page reads *Mixed* where it would otherwise name the format, and that is no use
-  unless you already know which album to open.
+  album is wrong, so the tile shows no badge, which is what this filter is for.
+  The album's own page then names the odd file: its **Format** row reads *Mixed*,
+  and the pill beside it — *1 track differs* — opens a list of which tracks those
+  are and what each one actually is.
 - **Update available** — nothing is wrong with these. MusicBrainz has simply
   learned something since you tagged them: an ISRC filled in, a catalogue number
   corrected, a release date fixed, a track retitled. **Apply updates** on the

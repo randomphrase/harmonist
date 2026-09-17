@@ -674,7 +674,45 @@ def test_scanner_audio_quality_names_the_odd_tracks(tmp_path):
     shutil.copy(FIXTURES_DIR / "sine-hires.flac", d / "03 c.flac")
     album = scan(tmp_path)[0]
     assert album.audio_format == "FLAC"  # one codec throughout
-    assert album.audio_quality == "44.1 kHz · 16 bit · 1 track differs"
+    # The count moved to the pill the row now carries (#541), so the value is
+    # the value alone.
+    assert album.audio_quality == "44.1 kHz · 16 bit"
+    assert album.format_consensus is not None
+    assert album.format_consensus.outliers == (("03 c.flac", "FLAC · 48 kHz · 24 bit"),)
+
+
+def test_scanner_format_consensus_names_the_odd_file(tmp_path):
+    """ "Mixed" says something in the folder isn't like the rest and then won't
+    say what (#541). The consensus keeps the per-file answer, so the album page
+    can name the file and what it actually is."""
+    from harmonist.scanner import scan
+
+    d = _make_album(tmp_path, "sine.m4a", name="a")
+    shutil.copy(FIXTURES_DIR / "sine.m4a", d / "02 b.m4a")
+    shutil.copy(FIXTURES_DIR / "sine.mp3", d / "03 c.mp3")
+    album = scan(tmp_path)[0]
+    assert album.audio_format == "Mixed"  # unchanged: the header and #316 read it
+    c = album.format_consensus
+    assert c is not None
+    # Codec AND quality in one value, so the pill names the file once rather
+    # than twice for the same difference.
+    assert c.value == "ALAC · 44.1 kHz · 16 bit"
+    assert c.agreeing == 2
+    assert c.total == 3
+    assert c.outliers == (("03 c.mp3", "MP3 · 44.1 kHz · 128 kbps CBR"),)
+
+
+def test_scanner_format_consensus_is_unanimous_when_the_files_agree(tmp_path):
+    """The pill renders on `is_unanimous` being false, so the ordinary album
+    has to report true — not an empty consensus that happens to look like one."""
+    from harmonist.scanner import scan
+
+    d = _make_album(tmp_path, "sine.flac", name="a")
+    shutil.copy(FIXTURES_DIR / "sine.flac", d / "02 b.flac")
+    album = scan(tmp_path)[0]
+    assert album.format_consensus is not None
+    assert album.format_consensus.is_unanimous
+    assert album.format_consensus.outliers == ()
 
 
 def test_scanner_audio_quality_ignores_a_codec_difference_the_audio_doesnt_share(tmp_path):
