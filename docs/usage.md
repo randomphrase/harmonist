@@ -513,7 +513,9 @@ Some things it shows that are worth recognising:
 Where applying the artwork would alter a row, the section shows what it would
 become on the right, under **After Apply** — the picture itself, not a
 description of it. An album with no `cover.jpg` gets a row for the file it
-hasn't got: an empty frame, and beside it the image it would be created from.
+hasn't got: an empty frame, and beside it the image it would be created from —
+but only if you've asked for missing folder covers to be created, which is off
+by default. See **Settings → Tagging** below.
 
 **The largest image wins — for `cover.jpg`.** Between what your tracks carry,
 what `cover.jpg` holds, and what the Cover Art Archive has, the one with the
@@ -545,8 +547,8 @@ Each artwork change is labelled by what it does:
 Two actions write artwork, deliberately:
 
 - **A re-tag makes additions only.** A track carrying nothing gets the album's
-  best image and a missing `cover.jpg` is created beside the tracks; a track
-  that has an image keeps it.
+  best image, and — if **Settings → Tagging** says so — a missing `cover.jpg` is
+  created beside the tracks. A track that has an image keeps it.
 - **Apply artwork**, in this section, makes additions and replacements alike,
   and touches no tags at all. It asks first only when it would replace
   something.
@@ -784,6 +786,14 @@ What makes the record worth reading rather than just kept:
 - **Preferences** — download format, max downloads per sync, MusicBrainz user
   agent, update checks, log level. Saved to `harmonist.toml` and applied right
   away; see [installation.md](installation.md#configuration) for the file itself.
+- **Tagging** — how much Harmonist changes in files you already have. Today that
+  is **Missing folder cover**: whether an album without a `cover.jpg` gets one
+  created from its best image. It ships set to **Leave it**, because players read
+  the artwork embedded in your files first and an album that has that loses
+  nothing by going without — while the other setting makes every album lacking
+  the file show as having an update available, which on an adopted library can be
+  most of it. Either way, artwork already on disk is untouched, and a `cover.jpg`
+  that exists is still offered a better image when one turns up.
 - **Won't download** — the purchases you've set aside, each with **Restore**.
 - **Kept artwork** — the images re-tags have overwritten, still recoverable:
   the last five changes per album, and how much room they take.

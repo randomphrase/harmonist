@@ -11,6 +11,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from .artwork import FolderCoverPolicy
+
 log = logging.getLogger(__name__)
 
 TestMode = Literal["fixture", "cassette", "live"]
@@ -143,6 +145,37 @@ class GardenerConfig(BaseModel):
     level: GardenerLevel = "off"
 
 
+class TaggingConfig(BaseModel):
+    """What a tagging writes beyond the fields MusicBrainz dictates.
+
+    The home for the choices that are about HARMONIST'S HOUSE STYLE rather than
+    about the release: what it does with a `cover.*` the album has not got
+    today, and what it is willing to call a known-equivalent spelling of a title
+    tomorrow (#284). They sit together because they answer the same kind of
+    question — how opinionated the tagger is allowed to be about files the user
+    already has — and because a setting alone in a general "Preferences" list
+    gives a reader nothing to read it against.
+    """
+
+    #: Whether a tagging creates a `cover.jpg` / `cover.png` for an album that
+    #: has none (#516).
+    #:
+    #: **`never` by default**, which is a CHANGE from what Harmonist did before
+    #: this setting existed, and the change is the point. Dogfooding #468 on a
+    #: real library found three hundred albums presenting an outstanding update
+    #: whose entire content was a folder cover — every one of them already
+    #: carrying embedded artwork, every one of them the same non-finding. A
+    #: filter that lists most of the library lists nothing.
+    #:
+    #: Off rather than on because the cost of each direction is not symmetric.
+    #: Wrongly off is a file the user does not get and can have by changing one
+    #: setting, in a library that still plays correctly everywhere — embedded
+    #: art is what Plex and Navidrome read first. Wrongly on writes megabytes
+    #: into thousands of folders on somebody's NAS, and #457 exists because
+    #: Harmonist did that once without saying so.
+    folder_cover: FolderCoverPolicy = FolderCoverPolicy.NEVER
+
+
 class TestConfig(BaseModel):
     mode: TestMode = "fixture"
     unignore_item_ids: list[int] = Field(default_factory=list)
@@ -158,6 +191,7 @@ class Config(BaseModel):
     artwork_store: ArtworkStoreConfig = Field(default_factory=ArtworkStoreConfig)
     library: LibraryConfig = Field(default_factory=LibraryConfig)
     gardener: GardenerConfig = Field(default_factory=GardenerConfig)
+    tagging: TaggingConfig = Field(default_factory=TaggingConfig)
     test: TestConfig = Field(default_factory=TestConfig)
     log_level: str = "info"
     demo_mode: bool = False
@@ -221,6 +255,7 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     auth = data.setdefault("auth", {})
     library = data.setdefault("library", {})
     gardener = data.setdefault("gardener", {})
+    tagging = data.setdefault("tagging", {})
     test = data.setdefault("test", {})
 
     if v := env.get("HARMONIST_MUSIC_DIR"):
@@ -255,6 +290,11 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         # that starts cleanly and does nothing, with no way to tell from the
         # outside which of the two they got.
         gardener["level"] = v.strip()
+    if v := env.get("HARMONIST_TAGGING_FOLDER_COVER"):
+        # Unvalidated, for the reason the gardener level is (above): a typo
+        # should stop the container with the permitted values in the message,
+        # not silently pick one of them.
+        tagging["folder_cover"] = v.strip()
     if v := env.get("HARMONIST_DEMO_MODE"):
         data["demo_mode"] = v.strip() not in ("", "0", "false", "False", "no")
     return data

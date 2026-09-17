@@ -127,6 +127,10 @@ class Tagger(Protocol):
     `TaggingOutcome` reports the halves separately, because they are separately
     scoped and separately undoable.
 
+    Whether the folder cover is among the things it may create is the user's
+    `[tagging] folder_cover` policy (#516), handed in by the web layer — the
+    tagger reads no config of its own.
+
     Raises `TagMismatchError` when the file count and MB track count diverge
     (unless `incomplete=True`), before anything is written.
 
@@ -153,6 +157,7 @@ class Tagger(Protocol):
         artwork_included: bool = True,
         chosen: artwork.Source | None = None,
         assignment: dict[Path, int] | None = None,
+        folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
     ) -> TaggingOutcome: ...
 
 
@@ -176,6 +181,7 @@ class PicardCompatibleTagger:
         artwork_included: bool = True,
         chosen: artwork.Source | None = None,
         assignment: dict[Path, int] | None = None,
+        folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
     ) -> TaggingOutcome:
         return tag_and_artwork(
             album_dir,
@@ -190,6 +196,7 @@ class PicardCompatibleTagger:
             artwork_included=artwork_included,
             chosen=chosen,
             assignment=assignment,
+            folder_cover=folder_cover,
         )
 
 
@@ -582,6 +589,7 @@ def decide_artwork(
     overwrite_art: bool = False,
     consider: bool = True,
     chosen: artwork.Source | None = None,
+    folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
 ) -> artwork.ArtworkPlan:
     """The album's artwork plan, read from its files (#418, #469).
 
@@ -612,6 +620,11 @@ def decide_artwork(
     prefers, which still matches its own fingerprint and so writes a different
     image from the one the page showed — silently, and only when the user had
     overridden the rule.
+
+    `folder_cover` is the user's policy on creating one the album has not got
+    (#516), and it rides here for the reason `chosen` does: the plan is rebuilt
+    at write time, so a caller that dropped it would rebuild the plan the
+    default prefers and write a `cover.jpg` the page never offered.
     """
     if not consider:
         return artwork.ArtworkPlan(album_dir=album_dir)
@@ -629,6 +642,7 @@ def decide_artwork(
         formats.EmbeddedArt.of(archive.data, archive.mime) if archive is not None else None,
         overwrite_art=overwrite_art,
         chosen=chosen,
+        folder_cover=folder_cover,
     )
 
 
@@ -1669,6 +1683,7 @@ def tag_and_artwork(
     artwork_included: bool = True,
     chosen: artwork.Source | None = None,
     assignment: dict[Path, int] | None = None,
+    folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
 ) -> TaggingOutcome:
     """Tag the album, then write the artwork its plan calls for (#481).
 
@@ -1747,6 +1762,7 @@ def tag_and_artwork(
             archive=archive,
             overwrite_art=overwrite_art,
             chosen=chosen,
+            folder_cover=folder_cover,
         )
     except OSError:
         # An unreadable image is not an absent one. Refuse the entire artwork

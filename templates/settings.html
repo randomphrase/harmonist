@@ -62,80 +62,122 @@
     {# hx-boost: submit via HTMX so the CSRF middleware's required HX-Request
        header is sent (a plain form POST omits it → 403). The handler returns
        the full settings page; the boosted body-swap re-renders it in place. #}
-    <form method="post" action="/settings" hx-boost="true"
-          class="border border-line rounded-lg p-4 space-y-4">
+    <form method="post" action="/settings" hx-boost="true" class="space-y-6">
+        <section class="border border-line rounded-lg p-4 space-y-4">
+            <div>
+                <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Preferences</h2>
+                <p class="text-2xs text-muted">Saved to <code>harmonist.toml</code> and applied right away.</p>
+            </div>
+
+            <label class="block">
+                <span class="block text-xs font-bold text-ink mb-1">Download format</span>
+                <select name="download_format"
+                        class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+                    {% set fmts = ['flac', 'alac', 'mp3-320', 'mp3-v0', 'aac-hi', 'vorbis', 'wav', 'aiff'] %}
+                    {% if cfg.bandcamp.download_format not in fmts %}<option selected>{{ cfg.bandcamp.download_format }}</option>{% endif %}
+                    {% for f in fmts %}
+                    <option value="{{ f }}" {{ 'selected' if f == cfg.bandcamp.download_format }}>{{ f }}</option>
+                    {% endfor %}
+                </select>
+                <span class="block text-2xs text-muted mt-1">The audio format requested from Bandcamp at download time.</span>
+            </label>
+
+            <label class="block">
+                <span class="block text-xs font-bold text-ink mb-1">Max downloads per sync</span>
+                <input type="number" name="max_downloads_per_sync" min="0" required
+                       value="{{ cfg.bandcamp.max_downloads_per_sync }}"
+                       class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+                <span class="block text-2xs text-muted mt-1">Safety cap — new purchases past this many defer to the next sync. <span class="font-semibold">0</span> pauses downloads.</span>
+            </label>
+
+            <label class="block">
+                <span class="block text-xs font-bold text-ink mb-1">MusicBrainz user agent</span>
+                <input type="text" name="user_agent" required
+                       value="{{ cfg.musicbrainz.user_agent }}"
+                       class="w-full bg-white border border-line rounded px-3 py-1.5 text-xs font-mono text-ink focus:border-accent outline-none">
+                <span class="block text-2xs text-muted mt-1">Sent with every MusicBrainz request. Form: <code>Name/Version ( contact )</code>.</span>
+            </label>
+
+            {# ---- The gardener's trust level (#312) ----
+               Both values here are read-only passes: `off` looks at nothing and
+               `review` looks but never writes to a file, which is what makes this an
+               ordinary form field rather than something that needs a confirmation.
+               #273's `enrich` writes unattended and will need more friction. #}
+            <label class="block">
+                <span class="block text-xs font-bold text-ink mb-1">Background update checks</span>
+                <select name="gardener_level"
+                        class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+                    {% for value, label in [('off', 'Off — an album is checked when you open it'),
+                                            ('review', 'Look and report — never writes to your files')] %}
+                    <option value="{{ value }}" {{ 'selected' if value == cfg.gardener.level }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <span class="block text-2xs text-muted mt-1">
+                    Asks MusicBrainz about roughly a hundred albums an hour while nothing
+                    else is running, so every album comes round about weekly, and flags
+                    what has moved under the Library's <span class="font-bold">Update available</span> filter.
+                </span>
+            </label>
+
+            {# Why the button is inert is said in the note beside it rather than in a
+               `title` on it: a tooltip is invisible on a touch device, unreliable on
+               a disabled button, and — being the only other name source — takes over
+               the button's own label in the accessibility tree. #}
+            {% include 'partials/_update_check.html' %}
+
+            <label class="block">
+                <span class="block text-xs font-bold text-ink mb-1">Log level</span>
+                <select name="log_level"
+                        class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+                    {% for lvl in ['debug', 'info', 'warning', 'error'] %}
+                    <option value="{{ lvl }}" {{ 'selected' if lvl == cfg.log_level }}>{{ lvl }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </section>
+
+        {# ---- Tagging (#516) ----
+           Its own section rather than a sixth row of Preferences: these settings
+           are not about how Harmonist is CONFIGURED but about how opinionated it
+           is allowed to be with files the user already has, and a reader deciding
+           that needs the neighbours to compare against. #284's title transforms
+           are the next one to land here.
+
+           One form, one Save, because there is one place these are written and
+           a second button would imply two. #}
+        <section class="border border-line rounded-lg p-4 space-y-4">
+            <div>
+                <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tagging</h2>
+                <p class="text-2xs text-muted">How much Harmonist changes in files you already have.</p>
+            </div>
+
+            {# A named policy rather than a checkbox, matching the gardener
+               control above and for the same reason: a third value (creating
+               the file ALWAYS, keeping it in step with the winning image) is
+               already foreseen, and a checkbox would have to become a select
+               to take it. #}
+            <label class="block">
+                <span class="block text-xs font-bold text-ink mb-1">Missing folder cover</span>
+                <select name="folder_cover"
+                        class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
+                    {% for value, label in [('never', "Leave it — albums without one stay without one"),
+                                            ('if_missing', 'Create it from the album’s best artwork')] %}
+                    <option value="{{ value }}" {{ 'selected' if value == cfg.tagging.folder_cover }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <span class="block text-2xs text-muted mt-1">
+                    A <code>cover.jpg</code> beside the tracks, for players that prefer one.
+                    Most read the artwork embedded in the files first, so an album that has
+                    that already loses nothing by going without — and while this is on,
+                    <span class="font-semibold">every album that hasn’t got one shows as
+                    having an update available</span>, which on an adopted library can be most
+                    of it. Artwork already on disk is never touched either way, and a folder
+                    cover an album already has is still improved when a better image turns up.
+                </span>
+            </label>
+        </section>
+
         <div>
-            <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Preferences</h2>
-            <p class="text-2xs text-muted">Saved to <code>harmonist.toml</code> and applied right away.</p>
-        </div>
-
-        <label class="block">
-            <span class="block text-xs font-bold text-ink mb-1">Download format</span>
-            <select name="download_format"
-                    class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-                {% set fmts = ['flac', 'alac', 'mp3-320', 'mp3-v0', 'aac-hi', 'vorbis', 'wav', 'aiff'] %}
-                {% if cfg.bandcamp.download_format not in fmts %}<option selected>{{ cfg.bandcamp.download_format }}</option>{% endif %}
-                {% for f in fmts %}
-                <option value="{{ f }}" {{ 'selected' if f == cfg.bandcamp.download_format }}>{{ f }}</option>
-                {% endfor %}
-            </select>
-            <span class="block text-2xs text-muted mt-1">The audio format requested from Bandcamp at download time.</span>
-        </label>
-
-        <label class="block">
-            <span class="block text-xs font-bold text-ink mb-1">Max downloads per sync</span>
-            <input type="number" name="max_downloads_per_sync" min="0" required
-                   value="{{ cfg.bandcamp.max_downloads_per_sync }}"
-                   class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-            <span class="block text-2xs text-muted mt-1">Safety cap — new purchases past this many defer to the next sync. <span class="font-semibold">0</span> pauses downloads.</span>
-        </label>
-
-        <label class="block">
-            <span class="block text-xs font-bold text-ink mb-1">MusicBrainz user agent</span>
-            <input type="text" name="user_agent" required
-                   value="{{ cfg.musicbrainz.user_agent }}"
-                   class="w-full bg-white border border-line rounded px-3 py-1.5 text-xs font-mono text-ink focus:border-accent outline-none">
-            <span class="block text-2xs text-muted mt-1">Sent with every MusicBrainz request. Form: <code>Name/Version ( contact )</code>.</span>
-        </label>
-
-        {# ---- The gardener's trust level (#312) ----
-           Both values here are read-only passes: `off` looks at nothing and
-           `review` looks but never writes to a file, which is what makes this an
-           ordinary form field rather than something that needs a confirmation.
-           #273's `enrich` writes unattended and will need more friction. #}
-        <label class="block">
-            <span class="block text-xs font-bold text-ink mb-1">Background update checks</span>
-            <select name="gardener_level"
-                    class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-                {% for value, label in [('off', 'Off — an album is checked when you open it'),
-                                        ('review', 'Look and report — never writes to your files')] %}
-                <option value="{{ value }}" {{ 'selected' if value == cfg.gardener.level }}>{{ label }}</option>
-                {% endfor %}
-            </select>
-            <span class="block text-2xs text-muted mt-1">
-                Asks MusicBrainz about roughly a hundred albums an hour while nothing
-                else is running, so every album comes round about weekly, and flags
-                what has moved under the Library's <span class="font-bold">Update available</span> filter.
-            </span>
-        </label>
-
-        {# Why the button is inert is said in the note beside it rather than in a
-           `title` on it: a tooltip is invisible on a touch device, unreliable on
-           a disabled button, and — being the only other name source — takes over
-           the button's own label in the accessibility tree. #}
-        {% include 'partials/_update_check.html' %}
-
-        <label class="block">
-            <span class="block text-xs font-bold text-ink mb-1">Log level</span>
-            <select name="log_level"
-                    class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-                {% for lvl in ['debug', 'info', 'warning', 'error'] %}
-                <option value="{{ lvl }}" {{ 'selected' if lvl == cfg.log_level }}>{{ lvl }}</option>
-                {% endfor %}
-            </select>
-        </label>
-
-        <div class="pt-2">
             <button type="submit"
                     class="px-4 py-2 bg-accent hover:bg-accent-dark text-white rounded font-semibold text-sm transition">
                 Save settings

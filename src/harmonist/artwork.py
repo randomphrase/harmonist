@@ -141,6 +141,34 @@ class Source(StrEnum):
     ARCHIVE = "archive"
 
 
+class FolderCoverPolicy(StrEnum):
+    """Whether a plan may create a `cover.*` the album has not got (#516).
+
+    A NAMED policy rather than a boolean, for the reason `GardenerConfig.level`
+    is one: a third value is already foreseen — creating the folder cover
+    ALWAYS, keeping it in step with the winning image rather than only filling
+    its absence — and a `create_folder_cover = true` that later has to become
+    `folder_cover = "always"` breaks a config file on somebody's NAS during an
+    upgrade for no reason but our convenience. Two values are also two
+    different questions once written down, where a bare `True` says only that
+    something is on.
+
+    Ordered by how much the plan writes: `NEVER` proposes nothing, `IF_MISSING`
+    creates the file when the album lacks one.
+
+    It governs CREATION alone. A folder cover that already exists is weighed by
+    the size rule under either value, and neither value touches one — turning
+    the policy down removes a proposal, never a file.
+    """
+
+    #: A missing folder cover is not a gap to close. Albums that have no
+    #: `cover.*` are left without one, and nothing proposes creating it.
+    NEVER = "never"
+    #: The album has no `cover.*`, so the plan creates one from the winner
+    #: (#457). What Harmonist did unconditionally before this was a setting.
+    IF_MISSING = "if_missing"
+
+
 class Scope(StrEnum):
     """Which of a plan's changes an action may make.
 
@@ -302,6 +330,7 @@ def plan(
     overwrite_art: bool = False,
     cover_unreadable: bool = False,
     chosen: Source | None = None,
+    folder_cover: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
 ) -> ArtworkPlan:
     """Which image wins, and every write it takes for it to be everywhere.
 
@@ -333,6 +362,18 @@ def plan(
     ladder of its own, so an album with a 3000px image in its tracks is no longer
     given a 1200px `cover.jpg` it then offers to replace.
 
+    `folder_cover` decides whether that target exists at all (#516). Under
+    `NEVER` no plan built here ever names a `cover.*` the album has not got, so
+    the album page proposes nothing, the additions fingerprint covers nothing,
+    and a tagging writes nothing — one answer rather than four places agreeing
+    to hide the same row. A library whose albums carry embedded art and no
+    `cover.jpg` is otherwise three hundred outstanding updates that are all the
+    same update.
+
+    It reaches only the CREATION. A folder cover that exists is weighed by the
+    size rule either way, so turning the policy down never leaves an album's
+    other artwork unimproved, and never touches a file.
+
     Per-track artwork is user data and nothing overwrites it. The one write
     such an album can still receive is a folder cover it lacks, and only from
     the archive — a compilation's first sleeve is not the album's cover.
@@ -357,6 +398,13 @@ def plan(
         # folder cover — that carrier is not one of them — and replacing the
         # sleeves themselves needs `overwrite_art`, which is its own decision.
         candidate = picked if picked is not None else (archive if cover is None else None)
+        # With no folder cover to write to, that carrier IS the whole plan —
+        # the sleeves are protected and nothing else can take an image. So a
+        # policy that will not create one leaves nothing to do, and saying so
+        # here rather than dropping the change below keeps the view from
+        # naming a winner that reaches no target (#516).
+        if cover is None and folder_cover is FolderCoverPolicy.NEVER:
+            candidate = None
         if candidate is not None:
             return _plan_for(
                 album_dir,
@@ -366,11 +414,12 @@ def plan(
                 Source.ARCHIVE,
                 before=before,
                 preserves=True,
+                folder=folder_cover,
             )
         return ArtworkPlan(album_dir=album_dir, before=before, preserves_per_track_art=True)
 
     if picked is not None:
-        return _plan_for(album_dir, before, cover, picked, Source.ARCHIVE)
+        return _plan_for(album_dir, before, cover, picked, Source.ARCHIVE, folder=folder_cover)
 
     own = next((art for _, art in tracks if art is not None), None)
 
@@ -405,6 +454,7 @@ def plan(
         track_source,
         cover_image=cover_image,
         cover_source=cover_source,
+        folder=folder_cover,
     )
 
 
@@ -419,6 +469,7 @@ def _plan_for(
     preserves: bool = False,
     cover_image: EmbeddedArt | None = None,
     cover_source: Source | None = None,
+    folder: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
 ) -> ArtworkPlan:
     """Every write that puts `winner` on `targets`, and `cover_image` on the
     folder cover.
@@ -431,20 +482,33 @@ def _plan_for(
     """
     for_cover = cover_image if cover_image is not None else winner
     for_cover_source = cover_source if cover_image is not None else source
+    # No folder cover, and none coming: the album has no such carrier, so it has
+    # no incoming image either (#516). Left as the winner it would say the
+    # archive was supplying a `cover.jpg` that is not going to exist —
+    # `archive_on_cover` reads exactly this, and the section draws its candidate
+    # row off that answer.
+    no_cover = cover is None and folder is FolderCoverPolicy.NEVER
     changes = [
         Change(target=path, before=digest, after=winner.digest)
         for path, digest in targets.items()
         if digest != winner.digest
     ]
     if cover is None:
-        changes.append(
-            Change(
-                target=album_dir / cover_name_for(for_cover.mime),
-                before=None,
-                after=for_cover.digest,
-                folder_cover=True,
+        # The one place a folder cover is created, so the one place the policy
+        # has to hold (#516). Dropped from the plan rather than filtered out of
+        # a scope afterwards: the fingerprint, the row, the summary and the
+        # write are all read off `changes`, and a change that is going to be
+        # ignored by every one of them is a change that should never have been
+        # named.
+        if folder is not FolderCoverPolicy.NEVER:
+            changes.append(
+                Change(
+                    target=album_dir / cover_name_for(for_cover.mime),
+                    before=None,
+                    after=for_cover.digest,
+                    folder_cover=True,
+                )
             )
-        )
     elif cover.image.digest != for_cover.digest:
         changes.append(
             Change(
@@ -459,8 +523,8 @@ def _plan_for(
         before=before if before is not None else targets,
         winner=winner,
         source=source,
-        cover_image=for_cover,
-        cover_source=for_cover_source,
+        cover_image=None if no_cover else for_cover,
+        cover_source=None if no_cover else for_cover_source,
         changes=tuple(changes),
         preserves_per_track_art=preserves,
     )
@@ -1015,6 +1079,7 @@ def summarise(
     *,
     cover_unreadable: bool = False,
     chosen: Source | None = None,
+    folder_cover: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
 ) -> ArtworkView:
     """Everything the section shows, from tags already read and a folder cover.
 
@@ -1032,6 +1097,11 @@ def summarise(
     (#472). Honoured only where the image is actually in hand, and recorded on
     the view as such: a section that said it was showing a chosen image it had
     not got would be describing a write nobody could make.
+
+    `folder_cover` is the user's policy on creating one the album lacks (#516).
+    It is handed to the PLAN rather than applied to the rows, so the section
+    never draws a row for a file the action would not write — the coupling #467
+    went to some trouble to establish in the other direction.
     """
     readable = [(path, t) for path, t in tracks if not t.unreadable]
     taken = chosen if chosen is Source.ARCHIVE and archive is not None else None
@@ -1042,6 +1112,7 @@ def summarise(
         archive,
         cover_unreadable=cover_unreadable,
         chosen=taken,
+        folder_cover=folder_cover,
     )
     written = {c.target for c in the_plan.changes}
     cover_change = the_plan.cover_change(Scope.ALL)
@@ -1148,13 +1219,13 @@ def summarise(
     # tracks carry, and a reader deciding what applying would do needs to see it
     # beside the rest rather than only as something arriving from outside.
     if cover is not None and (cover.image.digest not in by_digest or cover_change is not None):
-        folder_cover: FolderCover = cover
+        existing: FolderCover = cover
         rows.append(
             row(
-                folder_cover.image,
+                existing.image,
                 (),
-                cover_written(folder_cover.image.digest),
-                on_cover=folder_cover.name,
+                cover_written(existing.image.digest),
+                on_cover=existing.name,
                 folder=True,
             )
         )

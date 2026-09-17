@@ -1222,6 +1222,8 @@ Harmonist supplies local artwork for Plex and Navidrome without depending on a p
 
    **Unless the user chooses otherwise** (#472). Size is a default, not a verdict: a 900px scan can be softer or worse cropped than a 500px one, and only a person looking at both can say. `plan(chosen=…)` takes that candidate as the winner however it measures — including over the folder cover, the one write the rule would otherwise refuse to make smaller. Choosing is a RENDER (`?use=…`): the section is drawn again with that image as the winner, writes nothing, and the Apply that follows carries the choice back with the fingerprint of what was shown. Per-track artwork is still protected, and identical bytes are still nothing to write.
 3. **Operations.** Each write is an **Addition** — an artless track, or a folder cover the album lacks — or a **Replacement**. Unreviewed tagging may make additions only (#418); a reviewed confirmation, Apply updates, and Apply artwork may also make the replacements explicitly included in their previews (#483). A missing folder cover is created from the winner, as `cover.jpg` or `cover.png` to match it, so an album whose tracks carry a 3000px image is not given a 1200px archive cover. A compilation's folder cover comes only from the archive: its first sleeve is not the album's cover.
+
+   **Creating one is the user's setting, and it ships off** (`[tagging] folder_cover`, #516). `never` — the default — means no plan built anywhere names a `cover.*` the album has not got: the album page proposes nothing, the additions fingerprint covers nothing, and a tagging writes nothing. `if_missing` is what Harmonist did unconditionally before the setting existed. The policy is handed to `artwork.plan`, not applied to the rows or the scope afterwards, so there is one answer rather than four surfaces agreeing to hide the same row. It governs CREATION only: a folder cover that exists is weighed by the size rule under either value, and neither value touches a file. Default off because the two mistakes do not cost the same — an album without the file still plays correctly everywhere, since Plex and Navidrome read embedded art first, while the other direction writes megabytes into thousands of folders and (the #468 dogfood finding) presents three hundred albums as having an outstanding update whose entire content is the same missing file.
 4. **Revalidation.** The page carries a fingerprint of what it showed, at the scope the control applies — the whole plan for **Apply updates** and for **Apply artwork**, the additions alone for the controls that only add (the partial-tag badge, a merge note's own button). The scope is declared with the fingerprint rather than inferred, because comparing one scope's digest against another mismatches every time and would withhold the artwork on every press (#482). The action rebuilds the plan from disk and proceeds only if it matches: Apply artwork otherwise writes nothing and redraws the section, and a re-tag writes its tags and no artwork, with a warning in the album's History. Each target is also re-read immediately before it is written, and one that no longer holds what the plan saw is left alone and reported. A tagging nobody previewed (an exact initial match or an unreviewed recheck) carries no fingerprint and writes its plan's additions. Release confirmation carries the whole reviewed artwork plan, its inclusion choice, and a separate fingerprint of the selected MusicBrainz release (#483).
 5. **Records.** Every image written is recorded as an `artwork` before/after pair on a `tag.track` line — `[None, digest]` for an addition, including a created folder cover — and a folder cover also gets a `cover.write` audit line.
 
@@ -1303,6 +1305,7 @@ Templates and static assets live at the **project root** (`/templates`,
 | `HARMONIST_MAX_DOWNLOADS_PER_SYNC` | `5` | `5` |
 | `HARMONIST_TEST_MODE` | unset | unset |
 | `HARMONIST_LOG_LEVEL` | `info` | `info` |
+| `HARMONIST_TAGGING_FOLDER_COVER` | `never` | `never` |
 | `PUID` / `PGID` | unset (root) | n/a |
 
 ### Config file (`${CONFIG_DIR}/harmonist.toml`, optional, env vars win)
@@ -1326,6 +1329,9 @@ port = 8000
 
 [gardener]
 level = "off"      # off | review  (#273 adds enrich); also editable in Settings
+
+[tagging]
+folder_cover = "never"   # never | if_missing; also editable in Settings
 
 [test]
 mode = "fixture"   # fixture | cassette | live

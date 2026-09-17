@@ -189,10 +189,24 @@ def summarise(
     *,
     cover_unreadable: bool = False,
     chosen: artwork.Source | None = None,
+    folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
 ) -> artwork.ArtworkView:
-    """`artwork.summarise` for an album at `ALBUM`."""
+    """`artwork.summarise` for an album at `ALBUM`.
+
+    `folder_cover` defaults to `IF_MISSING` — what Harmonist did before the
+    policy existed, and what every test written before it asserts. The SHIPPED
+    default is `NEVER` (#516); `TestTheFolderCoverPolicy` is where that lives,
+    and `test_web` is where the config default is checked end to end.
+    """
     return artwork.summarise(
-        ALBUM, tracks, cover, caa, archive, cover_unreadable=cover_unreadable, chosen=chosen
+        ALBUM,
+        tracks,
+        cover,
+        caa,
+        archive,
+        cover_unreadable=cover_unreadable,
+        chosen=chosen,
+        folder_cover=folder_cover,
     )
 
 
@@ -864,6 +878,95 @@ class TestTheFolderCoverThatWillBeCreated:
         assert view.writes is True
         assert view.operation is artwork.Operation.ADDITION
         assert view.summary == "There is no cover.png."
+
+
+class TestTheFolderCoverPolicy:
+    """#516: whether a missing `cover.*` is a gap to close is the user's call.
+
+    The dogfood finding behind it: a real library came out of #468 with three
+    hundred albums presenting an outstanding update whose entire content was a
+    folder cover they had never had, every one of them already carrying embedded
+    artwork. Under `NEVER` none of that is proposed — and the assertions here are
+    on the PLAN, not on the rows, because the plan is what the fingerprint, the
+    summary, the button and the writer all read.
+    """
+
+    NEVER = artwork.FolderCoverPolicy.NEVER
+    Answer = TestCoverArtArchiveNote._Answer
+
+    def test_no_cover_is_planned_for_an_album_that_has_none(self) -> None:
+        mine = art_of(1)
+        plan = artwork.plan(ALBUM, [(ALBUM / "1.m4a", mine)], None, folder_cover=self.NEVER)
+
+        assert plan.cover_change(artwork.Scope.ALL) is None
+        assert plan.changes == ()
+
+    def test_the_section_offers_nothing_and_says_nothing(self) -> None:
+        """The row, the summary and the button all go together — they are read
+        off the same plan, so hiding one and leaving another is not a shape this
+        can take."""
+        view = summarise(album(art_of(1)), None, self.Answer(art=True), folder_cover=self.NEVER)
+
+        assert next((r for r in view.rows if r.creates), None) is None
+        assert view.writes is False
+        assert view.operation is None
+
+    def test_the_archive_is_not_advertised_as_coming_to_a_file_that_is_not(self) -> None:
+        """`archive_on_cover` is what the candidate row reads to say the image
+        is already on its way. With no cover coming it is on its way nowhere,
+        and saying otherwise describes a write nobody can make."""
+        archive = art_of(2, width=3000, height=3000)
+        view = summarise(
+            album(art_of(1)),
+            None,
+            self.Answer(art=True),
+            archive=archive,
+            folder_cover=self.NEVER,
+        )
+
+        assert view.archive_on_cover is False
+        assert view.plan is not None
+        assert view.plan.cover_image is None
+
+    def test_an_explicit_choice_does_not_reach_round_it(self) -> None:
+        """**Use this artwork** overrides the SIZE RULE (#472), not the user's
+        policy. On a compilation with no folder cover the sleeves are protected
+        and the cover is the only target there is, so the choice has nowhere to
+        land — and the escape hatch is the setting, not a second one here."""
+        view = summarise(
+            album(art_of(1), art_of(2)),
+            None,
+            self.Answer(art=True),
+            archive=art_of(3, width=3000, height=3000),
+            chosen=artwork.Source.ARCHIVE,
+            folder_cover=self.NEVER,
+        )
+
+        assert view.writes is False
+        assert view.plan is not None
+        assert view.plan.preserves_per_track_art is True
+
+    def test_a_cover_the_album_already_has_is_still_improved(self) -> None:
+        """The policy governs CREATION. An album that has the file is weighed by
+        the size rule exactly as before — turning the policy down must not
+        quietly stop the rest of an album's artwork being offered."""
+        big = art_of(1, width=3000, height=3000)
+        view = summarise(
+            album(big, big), cover_of(art_of(2, width=300, height=300)), folder_cover=self.NEVER
+        )
+
+        assert view.writes is True
+        assert view.operation is artwork.Operation.REPLACEMENT
+
+    def test_a_track_with_no_image_is_still_filled(self) -> None:
+        """The other half of "other changes continue to be offered normally":
+        a gap is a gap whether or not the album has a folder cover."""
+        mine = art_of(1)
+        view = summarise(album(mine, None), None, folder_cover=self.NEVER)
+
+        gap = next(r for r in view.rows if r.is_gap)
+        assert gap.written_image == mine
+        assert view.writes is True
 
 
 class TestPlan:

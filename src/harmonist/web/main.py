@@ -2387,11 +2387,25 @@ def _chosen(use: str) -> artwork.Source | None:
     return artwork.Source.ARCHIVE if use == "archive" else None
 
 
+def _folder_cover_policy(request: Request) -> artwork.FolderCoverPolicy:
+    """The user's `[tagging] folder_cover` as it stands right now (#516).
+
+    Read off `app.state.cfg` per request rather than closed over from
+    `create_app`'s argument, because Settings replaces that object live: a
+    closure would keep proposing (or refusing) folder covers by whatever the
+    policy was when the process started, and the setting advertises itself as
+    applying without a restart.
+    """
+    cfg: config_mod.Config = request.app.state.cfg
+    return cfg.tagging.folder_cover
+
+
 def _artwork_view(
     album: Album,
     caa: activity_store.CachedCoverArt | None = None,
     archive: formats.EmbeddedArt | None = None,
     *,
+    folder_cover: artwork.FolderCoverPolicy,
     chosen: artwork.Source | None = None,
     tracks: _FileTags | None = None,
 ) -> artwork.ArtworkView:
@@ -2407,6 +2421,13 @@ def _artwork_view(
     block on any open and the image is inside it, so `read_tags` has already
     pulled these bytes off disk and `TrackTags.art` is what it noticed about them.
     The one genuinely new read is the folder cover, once.
+
+    `folder_cover` has NO DEFAULT on purpose (#516). It is the seam between the
+    user's setting and a pure function that cannot read it, and the failure it
+    guards against is silent: a call site that forgot it would draw a proposal
+    to create a `cover.jpg` the user has asked Harmonist not to create, and the
+    page would look entirely correct. There are a dozen call sites here; mypy
+    is what makes that a dozen errors rather than a dozen chances.
     """
     # Paths as well as tags: the view's plan names its targets by path, exactly
     # as the tagger's does, so the fingerprint a re-tag carries back means the
@@ -2427,7 +2448,9 @@ def _artwork_view(
         ):
             tracks = [(f, formats.read_tags(f)) for f in files]
     if album.cover_path is None or not album.cover_path.exists():
-        return artwork.summarise(album.path, tracks, None, caa, archive, chosen=chosen)
+        return artwork.summarise(
+            album.path, tracks, None, caa, archive, chosen=chosen, folder_cover=folder_cover
+        )
     try:
         data = album.cover_path.read_bytes()
     except OSError:
@@ -2437,7 +2460,14 @@ def _artwork_view(
         # view says so and its plan writes nothing rather than guessing.
         log.exception("could not read the folder cover for %s", album.path)
         return artwork.summarise(
-            album.path, tracks, None, caa, archive, cover_unreadable=True, chosen=chosen
+            album.path,
+            tracks,
+            None,
+            caa,
+            archive,
+            cover_unreadable=True,
+            chosen=chosen,
+            folder_cover=folder_cover,
         )
     mime = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
     cover = artwork.FolderCover(
@@ -2445,7 +2475,9 @@ def _artwork_view(
         image=formats.EmbeddedArt.of(data, mime),
         path=album.cover_path,
     )
-    return artwork.summarise(album.path, tracks, cover, caa, archive, chosen=chosen)
+    return artwork.summarise(
+        album.path, tracks, cover, caa, archive, chosen=chosen, folder_cover=folder_cover
+    )
 
 
 def _albums(request: Request) -> list[Album]:
@@ -3434,6 +3466,9 @@ def _tag_with_release(
         # one they were shown rather than the one the size rule prefers (#488).
         chosen=chosen,
         assignment=assignment,
+        # The album page built its preview under this same policy, so the plan
+        # rebuilt at write time is the one the fingerprint was taken of (#516).
+        folder_cover=cfg.tagging.folder_cover,
     )
 
     sc = sidecar_mod.read(album_path)
@@ -3967,6 +4002,7 @@ def _register_routes(app: FastAPI) -> None:
         max_downloads_per_sync: int = Form(...),
         user_agent: str = Form(...),
         gardener_level: str = Form(...),
+        folder_cover: str = Form(...),
         log_level: str = Form(...),
     ) -> Response:
         cfg: config_mod.Config = request.app.state.cfg
@@ -3985,11 +4021,15 @@ def _register_routes(app: FastAPI) -> None:
             new_gardener = config_mod.GardenerConfig.model_validate(
                 {"level": gardener_level.strip()}
             )
+            new_tagging = config_mod.TaggingConfig.model_validate(
+                {"folder_cover": folder_cover.strip()}
+            )
             new_cfg = cfg.model_copy(
                 update={
                     "bandcamp": new_bandcamp,
                     "musicbrainz": new_mb,
                     "gardener": new_gardener,
+                    "tagging": new_tagging,
                     "log_level": log_level.strip().lower(),
                 }
             )
@@ -4005,6 +4045,10 @@ def _register_routes(app: FastAPI) -> None:
                 "bandcamp.max_downloads_per_sync": new_bandcamp.max_downloads_per_sync,
                 "musicbrainz.user_agent": new_mb.user_agent,
                 "gardener.level": new_gardener.level,
+                # `.value` so the file holds the plain string the loader
+                # parses, rather than relying on StrEnum's str-ness surviving
+                # tomlkit and every reader of the file after it.
+                "tagging.folder_cover": new_tagging.folder_cover.value,
                 "log_level": new_cfg.log_level,
             },
         )
@@ -4012,6 +4056,9 @@ def _register_routes(app: FastAPI) -> None:
         # MB user-agent is applied at startup, so re-configure it now too.
         # The gardener's level needs nothing further: its timer is always
         # running and reads the level off this config on its next tick (#312).
+        # Nor does the folder-cover policy: every artwork plan reads it off
+        # `app.state.cfg` as it is built, so the next album page drawn is
+        # already under the new one (#516).
         request.app.state.cfg = new_cfg
         mb_lookup.configure(new_cfg.musicbrainz.user_agent)
         activity.info("Settings updated")
@@ -4526,7 +4573,9 @@ def _register_routes(app: FastAPI) -> None:
                     # album, and a deleted release is no reason to stop showing
                     # the user their own artwork — the same argument #228 makes
                     # for still showing them their own tags.
-                    artwork=_artwork_view(album, tracks=gone_reads[0]),
+                    artwork=_artwork_view(
+                        album, tracks=gone_reads[0], folder_cover=_folder_cover_policy(request)
+                    ),
                     # …and the archive is still asked (#436). It is keyed by the
                     # MBID, not by whether MusicBrainz still serves the release —
                     # a deleted release can have a cover in the archive, and this
@@ -4576,7 +4625,7 @@ def _register_routes(app: FastAPI) -> None:
                     #
                     # Its own pass over the files — this branch made none, and
                     # there is no comparison here to share one with.
-                    artwork=_artwork_view(album),
+                    artwork=_artwork_view(album, folder_cover=_folder_cover_policy(request)),
                     # …and the archive is still asked (#436): a different
                     # service, and MusicBrainz being unreachable is no reason to
                     # stop asking it. The section armed this when it fetched
@@ -4661,7 +4710,13 @@ def _register_routes(app: FastAPI) -> None:
         artwork_view = (
             None
             if asking
-            else _artwork_view(album, caa_answer, _archive_image(mbid), tracks=reads[0])
+            else _artwork_view(
+                album,
+                caa_answer,
+                _archive_image(mbid),
+                tracks=reads[0],
+                folder_cover=_folder_cover_policy(request),
+            )
         )
         ctx = _ctx(
             request,
@@ -5456,14 +5511,18 @@ def _register_routes(app: FastAPI) -> None:
         asking = check or reread
         if asking and mbid is not None:
             _check_cover_art(
-                mbid, _artwork_view(album), max_age=caa_cache.FRESH if reread else None
+                mbid,
+                _artwork_view(album, folder_cover=_folder_cover_policy(request)),
+                max_age=caa_cache.FRESH if reread else None,
             )
         caa = caa_cache.stored(mbid) if mbid else None
         archive = _archive_image(mbid)
         ctx = _ctx(
             request,
             album=album,
-            artwork=_artwork_view(album, caa, archive, chosen=_chosen(use)),
+            artwork=_artwork_view(
+                album, caa, archive, chosen=_chosen(use), folder_cover=_folder_cover_policy(request)
+            ),
             # Asked for an image that is not here — the cache dropped it, or it
             # was never loaded. Said rather than quietly showing the ordinary
             # plan instead, which would be the unannounced fallback #472 forbids.
@@ -5584,7 +5643,13 @@ def _register_routes(app: FastAPI) -> None:
         mbid = album.sidecar.mb_release_id if album.sidecar else None
         caa = caa_cache.stored(mbid) if mbid else None
         chosen = _chosen(use)
-        view = _artwork_view(album, caa, _archive_image(mbid), chosen=chosen)
+        view = _artwork_view(
+            album,
+            caa,
+            _archive_image(mbid),
+            chosen=chosen,
+            folder_cover=_folder_cover_policy(request),
+        )
 
         def section(*, changed_since: bool = False) -> Response:
             # Re-read from disk: the files may just have changed, and the
@@ -5596,7 +5661,9 @@ def _register_routes(app: FastAPI) -> None:
                 _ctx(
                     request,
                     album=fresh,
-                    artwork=_artwork_view(fresh, caa, _archive_image(mbid)),
+                    artwork=_artwork_view(
+                        fresh, caa, _archive_image(mbid), folder_cover=_folder_cover_policy(request)
+                    ),
                     artwork_changed_since=changed_since,
                     # Stated rather than left undefined: writing artwork changes
                     # what the album carries, not what the archive holds, so this
@@ -5698,7 +5765,9 @@ def _register_routes(app: FastAPI) -> None:
             _ctx(
                 request,
                 album=album,
-                artwork=_artwork_view(album, answer, _archive_image(mbid)),
+                artwork=_artwork_view(
+                    album, answer, _archive_image(mbid), folder_cover=_folder_cover_policy(request)
+                ),
                 # Nothing was asked of the archive's LISTING, so its timestamp
                 # has not moved and this response has no reason to send anyone
                 # back to ask (#436).
@@ -6080,7 +6149,13 @@ def _register_routes(app: FastAPI) -> None:
             if answer.image_url and (reread or cover_art.cached_image(release["id"]) is None):
                 cover_art.fetch_image(release["id"], answer.image_url)
             archive_image = _archive_image(release["id"])
-            view = _artwork_view(album, answer, archive_image, chosen=artwork.Source.ARCHIVE)
+            view = _artwork_view(
+                album,
+                answer,
+                archive_image,
+                chosen=artwork.Source.ARCHIVE,
+                folder_cover=_folder_cover_policy(request),
+            )
         except _ConfirmationChanged as e:
             error = str(e)
         except cover_art.CoverArtError:
@@ -6147,6 +6222,7 @@ def _register_routes(app: FastAPI) -> None:
                     caa_cache.stored(release["id"]),
                     _archive_image(release["id"]),
                     chosen=artwork.Source.ARCHIVE,
+                    folder_cover=_folder_cover_policy(request),
                 )
                 if not art_plan or view.fingerprint != art_plan:
                     raise _ConfirmationChanged(
@@ -6289,6 +6365,7 @@ def _register_routes(app: FastAPI) -> None:
                     caa_cache.stored(reviewed["id"]),
                     _archive_image(reviewed["id"]),
                     chosen=artwork.Source.ARCHIVE,
+                    folder_cover=_folder_cover_policy(request),
                 )
                 if not art_plan or view.fingerprint != art_plan:
                     raise _ConfirmationChanged(

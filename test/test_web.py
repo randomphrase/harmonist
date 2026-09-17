@@ -22,7 +22,7 @@ import pytest
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
-from harmonist import activity, activity_store, mb_lookup
+from harmonist import activity, activity_store, artwork, mb_lookup
 from harmonist import sidecar as sc
 from harmonist.activity_store import Level, Source
 from harmonist.config import (
@@ -3885,9 +3885,14 @@ def test_a_cover_created_by_a_first_tagging_reaches_the_albums_history(client, c
     The identity genuinely moves here — asserted, because a fixture whose id
     never changed would pass this with the fix reverted, which is exactly how
     #65's first regression test managed to prove nothing.
+
+    Creating the folder cover is opted into (#516): the setting ships `never`,
+    and this test is about where the record of a created cover LANDS, not about
+    whether one is created.
     """
     from harmonist import cover_art
 
+    client.app.state.cfg.tagging.folder_cover = artwork.FolderCoverPolicy.IF_MISSING
     d = _make_album(cfg, "CoverThenTag")
     sc.write(
         d,
@@ -3928,6 +3933,90 @@ def test_a_cover_created_by_a_first_tagging_reaches_the_albums_history(client, c
 
     history = [e.message for e in activity_store.album_history(new_id)]
     assert [m for m in history if m.startswith("cover.write")], history
+
+
+def test_a_tagging_creates_no_folder_cover_under_the_shipped_default(client, cfg, monkeypatch):
+    """#516, through the whole stack and on the DEFAULT config.
+
+    The same album and the same confirmation as the test above, with the one
+    difference being the setting nobody touched — which is the point: the
+    policy is read off `app.state.cfg` at the moment the plan is built, and a
+    seam that dropped it would write this file while every test of `artwork.plan`
+    stayed green. `cover.png` not existing is the whole assertion.
+
+    The album is still TAGGED. The dogfood complaint was that a missing folder
+    cover made an album look like outstanding work, not that such albums should
+    stop being taggable.
+    """
+    from harmonist import cover_art
+
+    assert cfg.tagging.folder_cover is artwork.FolderCoverPolicy.NEVER, "the shipped default"
+
+    d = _make_album(cfg, "NoCoverWanted")
+    sc.write(
+        d,
+        Sidecar(
+            store_url="https://x.bandcamp.com/album/no-cover-wanted",
+            mb_match_candidate=MatchCandidate(
+                mb_release_id="rel-nocover", confidence="exact", file_count=1, track_count=1
+            ),
+        ),
+    )
+    album_id = _id_for(cfg, d)
+    activity_store.clear()
+
+    # The archive HAS a cover for this release, so the only thing standing
+    # between it and the folder is the setting.
+    cover_art.configure_cache(cfg.paths.config_dir / "caa")
+    cover_art.cache_image("rel-nocover", _png(51), "image/png")
+    activity_store.store_cover_art(
+        "rel-nocover",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC), image_url="https://example.com/cover.png"
+        ),
+    )
+
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=1)
+    )
+    _, _, fields = _review_with_artwork(client, album_id)
+    fields["include_artwork"] = "true"
+    assert client.post(f"/confirm/{album_id}", data=fields).status_code == 200
+
+    assert not (d / "cover.png").exists()
+    assert not (d / "cover.jpg").exists()
+    new_id = _id_for(cfg, d)
+    assert sc.read(d).mb_release_id == "rel-nocover", "tagged all the same"
+    history = [e.message for e in activity_store.album_history(new_id)]
+    assert not [m for m in history if m.startswith("cover.write")], history
+
+
+def test_the_album_page_stops_offering_a_folder_cover_when_the_setting_is_turned_down(
+    client, cfg, monkeypatch
+):
+    """The setting says it applies without a restart, so the next page drawn has
+    to be under the new policy — the album page reads it per request rather than
+    off the config `create_app` was handed (#516)."""
+    from harmonist import cover_art
+
+    client.app.state.cfg.tagging.folder_cover = artwork.FolderCoverPolicy.IF_MISSING
+    d = _make_album(cfg, "CoverOffered")
+    sc.write(d, Sidecar(store_url="https://x.bandcamp.com/album/co", mb_release_id="rel-offered"))
+    album_id = _id_for(cfg, d)
+    cover_art.configure_cache(cfg.paths.config_dir / "caa")
+    cover_art.cache_image("rel-offered", _png(52), "image/png")
+    activity_store.store_cover_art(
+        "rel-offered",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC), image_url="https://example.com/cover.png"
+        ),
+    )
+
+    offered = client.get(f"/album/{album_id}/artwork").text
+    assert "cover.png" in offered
+
+    client.app.state.cfg.tagging.folder_cover = artwork.FolderCoverPolicy.NEVER
+    assert "cover.png" not in client.get(f"/album/{album_id}/artwork").text
 
 
 def test_album_page_shows_history_from_before_the_album_was_re_identified(client, cfg):
@@ -5696,6 +5785,7 @@ def test_settings_save_persists_and_applies_live(client, cfg):
             "max_downloads_per_sync": "12",
             "user_agent": "Harmonist/9.9 ( me@example.com )",
             "gardener_level": "review",
+            "folder_cover": "if_missing",
             "log_level": "warning",
         },
     )
@@ -5706,12 +5796,15 @@ def test_settings_save_persists_and_applies_live(client, cfg):
     assert live.bandcamp.download_format == "alac"
     assert live.bandcamp.max_downloads_per_sync == 12
     assert live.gardener.level == "review"
+    assert live.tagging.folder_cover is artwork.FolderCoverPolicy.IF_MISSING
     assert live.log_level == "warning"
     # Persisted to harmonist.toml (round-trips on next load)
     toml = (cfg.paths.config_dir / "harmonist.toml").read_text()
     assert "alac" in toml
     assert "max_downloads_per_sync = 12" in toml
     assert 'level = "review"' in toml
+    # As the plain string the loader parses, not a StrEnum's repr (#516).
+    assert 'folder_cover = "if_missing"' in toml
 
 
 def test_settings_save_accepts_a_zero_download_cap(client, cfg):
@@ -5725,6 +5818,7 @@ def test_settings_save_accepts_a_zero_download_cap(client, cfg):
             "max_downloads_per_sync": "0",
             "user_agent": "Harmonist/0.1 ( x@y.z )",
             "gardener_level": "off",
+            "folder_cover": "never",
             "log_level": "info",
         },
     )
@@ -5746,6 +5840,7 @@ def test_settings_save_rejects_an_unknown_gardener_level(client, cfg):
             "max_downloads_per_sync": "5",
             "user_agent": "Harmonist/0.1 ( x@y.z )",
             "gardener_level": "enrich",  # #273's level, not implemented yet
+            "folder_cover": "never",
             "log_level": "info",
         },
     )
@@ -9121,7 +9216,12 @@ def test_artwork_section_shows_the_folder_cover_it_would_create(client, cfg):
     It is a ROW now (#467): an empty frame for the file that is not there, and
     beside it the image that will be. And the section's own button creates it
     (#469), so the button is offered — it used to be withheld because it could
-    not make the file its row would have promised."""
+    not make the file its row would have promised.
+
+    Creating one is opted into since #516; this is about what the section SAYS
+    when it is going to happen, so the setting is turned up rather than the
+    assertions being turned down."""
+    client.app.state.cfg.tagging.folder_cover = artwork.FolderCoverPolicy.IF_MISSING
     art = _png(1)
     d = _album_with_art(cfg, "NoFolderCover", covers=[art, art])  # no `folder=`
 
@@ -9332,18 +9432,31 @@ def _release_backed_album_with_art(cfg, name: str, mbid: str, **kw) -> Path:
     return d
 
 
-def test_the_page_and_the_tagger_fingerprint_one_plan_alike(client, cfg):
+@pytest.mark.parametrize(
+    "policy",
+    [artwork.FolderCoverPolicy.NEVER, artwork.FolderCoverPolicy.IF_MISSING],
+)
+def test_the_page_and_the_tagger_fingerprint_one_plan_alike(client, cfg, policy):
     """Re-tag carries the page's fingerprint back, and the tagger compares it
     with its own. The two must spell one plan identically — read through the
     album on one side and through the file list on the other — or every re-tag
-    pressed from a page would withhold its artwork."""
-    from harmonist import artwork, tagger
+    pressed from a page would withhold its artwork.
 
+    Under BOTH folder-cover policies (#516), because the policy is now one of
+    the plan's inputs and the two sides read it from different places: the page
+    off `app.state.cfg`, the write off whatever `_tag_with_release` hands the
+    tagger. A seam that dropped it on one side would produce two fingerprints
+    that differ only on this album's missing `cover.png` — a mismatch on every
+    press, blamed on a page that had not changed.
+    """
+    from harmonist import tagger
+
+    client.app.state.cfg.tagging.folder_cover = policy
     d = _album_with_art(cfg, "Agreed", covers=[_png(1), None])
 
     html = client.get(f"/album/{_id_for(cfg, d)}/artwork").text
 
-    plan = tagger.decide_artwork(d, sorted(d.glob("*.m4a")), None)
+    plan = tagger.decide_artwork(d, sorted(d.glob("*.m4a")), None, folder_cover=policy)
     assert _form_value(html, "art_plan") == plan.fingerprint(artwork.Scope.ADDITIONS)
     assert _form_value(html, "plan") == plan.fingerprint(artwork.Scope.ALL)
 
@@ -9479,8 +9592,12 @@ def test_retag_with_artwork_excluded_tags_and_leaves_every_image_alone(client, c
 
 
 def test_retag_writes_the_artwork_the_page_showed(client, cfg, monkeypatch):
+    """Two targets here — the track that had none and the folder cover the album
+    lacked — so the setting is turned up (#516); the count is what this is
+    about."""
     from harmonist import formats
 
+    client.app.state.cfg.tagging.folder_cover = artwork.FolderCoverPolicy.IF_MISSING
     art = _png(1)
     d = _release_backed_album_with_art(cfg, "Shown", "rel-shown", covers=[art, None])
     monkeypatch.setattr(
@@ -9533,6 +9650,7 @@ def test_apply_artwork_writes_only_what_the_page_showed(client, cfg):
     fingerprint the page really showed writes exactly that."""
     from harmonist import formats
 
+    client.app.state.cfg.tagging.folder_cover = artwork.FolderCoverPolicy.IF_MISSING
     art = _png(1)
     d = _album_with_art(cfg, "Button", covers=[art, None])
     aid = _id_for(cfg, d)
@@ -9810,6 +9928,7 @@ def test_history_offers_undo_for_artwork_a_change_added(client, cfg):
 
     from harmonist import formats
 
+    client.app.state.cfg.tagging.folder_cover = artwork.FolderCoverPolicy.IF_MISSING
     art = _png(1)
     d = _album_with_art(cfg, "Added", covers=[art, None])
     aid = _id_for(cfg, d)

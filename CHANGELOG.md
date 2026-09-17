@@ -13,6 +13,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **Creating a missing `cover.jpg` is now a setting, and it ships off** — a new
+  **Tagging** section in Settings decides whether an album without a folder
+  cover gets one created from its best image. Previously every such album showed
+  as having an update available, which on an adopted library can be most of it;
+  artwork already on disk is untouched either way, and an existing `cover.jpg`
+  is still offered a better image when one turns up. Set
+  `[tagging] folder_cover = "if_missing"` (or pick it in Settings) for the old
+  behaviour (#516).
+
 - **The album page names the tracks whose format differs** — the Format row's
   *Mixed* and *N tracks differ* now carry the same pill the tag comparison uses,
   listing which files disagree and what each one is (#541).

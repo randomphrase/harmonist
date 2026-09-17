@@ -94,6 +94,10 @@ watch_settle_seconds = 5          # quiet time before a watched change rescans
 [gardener]
 level = "off"                     # "off" | "review" — background update checks
                                   # (also on the Settings page)
+
+[tagging]
+folder_cover = "never"            # "never" | "if_missing" — create a missing
+                                  # cover.jpg (also on the Settings page)
 ```
 
 Harmonist watches the music dir and rescans when files change under it, but
@@ -149,6 +153,26 @@ effect there without a restart — this is the setting most likely to be changed
 after install, since it ships off and its whole point is turning it on once you
 trust it. The first pass is otherwise up to an hour away, so the control has a
 **Check now** beside it that runs one straight away.
+
+`[tagging] folder_cover` decides whether Harmonist creates a `cover.jpg` (or
+`cover.png`) for an album that hasn't got one. It ships **`never`**; set it to
+`if_missing` — or pick **Create it from the album's best artwork** under
+**Settings → Tagging** — to have one written from whichever image wins for that
+album.
+
+It ships off because a folder cover is rarely the thing standing between you and
+working artwork: Plex and Navidrome both read the image embedded in the files
+first, and most libraries have that. What the file does cost is noise — while
+the setting is on, **every album without a `cover.jpg` shows as having an update
+available**, which on a library adopted from elsewhere can be nearly all of it,
+and an update filter that lists everything lists nothing. Turning it on writes a
+few megabytes into each of those folders, so it is a decision worth making
+deliberately rather than one to inherit from an upgrade.
+
+Neither value touches artwork you already have. Existing `cover.*` files are
+left exactly where they are whichever way this is set, and one that exists is
+still offered an upgrade when a better image turns up — this governs only
+whether a missing one gets created.
 
 Bandcamp sync needs a `cookies.txt` (exported from a logged-in browser) — paste
 or upload it via the in-app **Set up Bandcamp sync** prompt.
