@@ -17,7 +17,47 @@
 
    Expects `value`, `mb`, `runs`, `mb_runs`, `kind`, `entity` and `credit` from an
    enclosing {% with %}, plus `why` for the hexagon. #}
-{% if kind == 'scalar' %}
+{% if mb is none %}
+{# A REMOVAL: MusicBrainz holds nothing, and a re-tag takes what the files carry
+   away (#552). Drawn here rather than by each caller, for the reason the rest of
+   this partial exists — the band under the tracklist had its own copy and the
+   album panel had none at all, so the same pending change was a marked removal
+   on one half of the page and an unmarked plain line on the other. The panel's
+   half is what #552 is about: it counted the row and drew it as a match.
+
+   Always inline, whatever the `kind`. "removed" is one short word, and stacking
+   it under a long value would put the two halves of a change on separate lines
+   to no purpose — the stacked layout below exists so two comparable READINGS
+   share a left edge, and "removed" is not a reading.
+
+   Said as a removal rather than as an empty value, because "not set" elsewhere
+   means the opposite — nobody has one, and that is agreement — and the two must
+   not read alike (#373). The word and its tooltip are what carry this to a
+   reader who sees no colour at all. #}
+<span>{% with runs = none, value = value, entity = entity, credit = credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
+<span class="tag-fields__arrow" aria-label="becomes">→</span>
+{# "removed" is MusicBrainz's side of the arrow, so it wears MusicBrainz's voice
+   — the purple and the hexagon `_mb_value` gives every other value on that side
+   (#552). It is not a fact about the file; it is what MusicBrainz makes of the
+   file, and the removal happens precisely BECAUSE MusicBrainz is canonical and
+   holds no value here. Drawn in ink it read as the page's own editorial.
+
+   Bold on top of that, which no other MusicBrainz value gets, because this one
+   is a deletion: the rest of the right-hand column proposes writing something,
+   and this proposes taking something away.
+
+   `entity` and `credit` are deliberately NOT passed down. They describe the
+   FIELD's values, and this side no longer holds one — an id row would otherwise
+   send the word "removed" through `_field_value`'s id branch and render it as a
+   link to musicbrainz.org/artist/removed. #}
+<span class="tag-fields__removed">
+    {%- with value = "removed", runs = none, entity = none, credit = false,
+            why = "MusicBrainz has no value for this, so a re-tag would remove it from your files" -%}
+    {% include 'partials/_mb_value.html' %}
+    {%- endwith -%}
+</span>
+
+{% elif kind == 'scalar' %}
 {# Short values sit inline — an arrow reads correctly when MusicBrainz is simply
    more precise (a bare year against a full date). #}
 <span>{% with runs = runs, value = value, entity = entity, credit = credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>

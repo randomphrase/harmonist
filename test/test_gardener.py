@@ -681,7 +681,7 @@ def test_a_tag_a_re_tag_would_drop_does_not_read_as_one_nobody_has(engaged, monk
     body = client.get(f"/library/{runner.albums()[0].id}/compare").text
     band = body[body.index("track-foot") :]
 
-    assert 'class="track-foot__removed"' in band, "a re-tag would take this away"
+    assert 'class="tag-fields__removed"' in band, "a re-tag would take this away"
     assert 'class="track-foot__absent">not set' in band, "and this is agreement about nothing"
 
 

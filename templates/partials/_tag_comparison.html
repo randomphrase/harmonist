@@ -33,7 +33,16 @@
 
         {% elif f.agreement == 'only_mb' %}
         {# An addition, not a conflict: there is nothing of yours to disagree
-           with, so it gets a lone MusicBrainz line and nothing struck through. #}
+           with, so it gets a lone MusicBrainz line and nothing struck through.
+
+           No empty before-state, though #552 briefly gave it one. `— → Demo
+           Records` is three glyphs of scaffolding to say what the reader can
+           already see — the row holds one value, in MusicBrainz's purple, under
+           MusicBrainz's hexagon, and nothing of theirs is beside it. A REMOVAL
+           earns its arrow because the user's own value is genuinely there to
+           show and genuinely about to go; an addition has nothing to put on the
+           left, and drawing a dash for it turned a panel of additions into a
+           column of arrows pointing out of nowhere. #}
         {% with value = f.mb, runs = none, entity = f.entity, credit = f.credit, why = "Not in your files — this is MusicBrainz's value" %}
         {% include 'partials/_mb_value.html' %}
         {% endwith %}
@@ -45,6 +54,36 @@
         {% with value = f.disk, mb = f.mb, runs = f.disk_runs, mb_runs = f.mb_runs,
                 kind = f.kind, entity = f.entity, credit = f.credit,
                 why = "MusicBrainz's value" %}
+        {% include 'partials/_value_pair.html' %}
+        {% endwith %}
+
+        {% elif comparison.mb_available and f.comparable and f.agreement == 'only_disk' %}
+        {# A pending REMOVAL (#552). MusicBrainz has a counterpart for this field
+           and simply no value, so a re-tag deletes the tag the files carry —
+           which is a finding, and has been since #340 taught `differs` to tell
+           this apart from a field MusicBrainz was never asked about.
+
+           It had no branch. It fell into the plain line below and was drawn
+           exactly like a tag that matches, so the panel counted a difference it
+           never showed: "2 of 18 tags differ" over one visible mark, and an
+           Update available flag whose entire content was a deletion the page
+           never named. #340 taught the model and the tracklist band this and
+           left the panel behind.
+
+           Through `_value_pair`, which since #552 owns the removal too, so this
+           and the band under the tracklist cannot drift apart again (#386).
+
+           **`mb_available` is load-bearing here, not belt-and-braces.**
+           `comparable` is a property of the FIELD — `bool(mb_attr)` in
+           `album_fields` — not of the fetch, so on the disk-only view (#228,
+           where MusicBrainz has deleted the release) every field with an MB
+           attribute is comparable AND `only_disk`. Without this clause that page
+           would tell a user whose release has just vanished that a re-tag is
+           about to delete all eighteen of their tags, which is false and is the
+           page they are already alarmed on. `_release_gone.html` includes this
+           very partial, so the case is one include away, not hypothetical. #}
+        {% with value = f.disk, mb = none, runs = none, mb_runs = none,
+                kind = f.kind, entity = f.entity, credit = f.credit %}
         {% include 'partials/_value_pair.html' %}
         {% endwith %}
 

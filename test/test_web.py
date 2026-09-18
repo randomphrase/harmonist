@@ -37,6 +37,7 @@ from harmonist.models import BandcampInfo, MatchCandidate, Sidecar, TrackCompari
 from harmonist.tagger import (
     ATOM_ALBUM,
     ATOM_ARTIST,
+    ATOM_BARCODE,
     ATOM_COMMENT,
     ATOM_MB_ALBUM_COUNTRY,
     ATOM_MB_ALBUM_ID,
@@ -6419,6 +6420,81 @@ def test_a_length_difference_is_stated_but_never_offered_as_a_change(client, cfg
     assert re.search(rf"<td[^>]*track-diff__advisory\"[^>]*{note}[^>]*>\s*3:07", body)
 
 
+def test_a_tag_the_re_tag_would_delete_says_so(client, cfg, monkeypatch):
+    """#552. MusicBrainz has a counterpart for the field and simply no value, so
+    a re-tag REMOVES what the files carry. That is a finding (#340) — the panel
+    counts it and `owned.diff` puts it in the plan, which is what raises the
+    album's Update available flag.
+
+    It was drawn as a plain line, identical to a tag that matches, because
+    ONLY_DISK fell into the panel's catch-all `{% elif f.disk %}` branch. The
+    page said "2 of 18 tags differ" over one visible mark and flagged an update
+    whose entire content it never showed.
+
+    The real case, values and all: 9980's files carry the 2012 CD's barcode
+    while naming the 2012 digital release, which has none. A synthetic value
+    would test the same branch, but this is the shape the bug was found in and
+    it says why the case is ordinary rather than exotic.
+    """
+    d = _make_tagged_album(cfg, "Stale", mbid="rel-stale", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_BARCODE] = [b"3760180501052"]
+    audio.save()
+
+    def fake_release(mbid):
+        # No `barcode` key at all, which is what a digital release looks like.
+        return {
+            "id": mbid,
+            "title": "Stale",
+            "medium-list": [{"position": "1", "track-list": [{"id": "rt-1", "title": "Track 1"}]}],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    # The value is still stated — it is the user's, and the page must not quietly
+    # drop the tag it is about to say goodbye to.
+    assert "3760180501052" in body
+    # ...and it is marked as going. Matched inside the Barcode row's own <dd>, so
+    # the mark is pinned to this field rather than found anywhere in the markup:
+    # "removed" is a word the tracklist band also emits.
+    row = re.search(r"<dt>Barcode</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert row, body
+    assert "3760180501052" in row.group(1)
+    assert "tag-fields__removed" in row.group(1)
+
+
+def test_a_tag_musicbrainz_never_had_a_counterpart_for_stays_quiet(client, cfg, monkeypatch):
+    """The other half of #340's distinction, and the reason this cannot simply
+    mark every ONLY_DISK row.
+
+    Genre has no MusicBrainz attribute behind it at all (`comparable=False`), so
+    nothing about it is pending and a re-tag preserves it. Marking it as a
+    removal would tell the user their genre is about to be deleted, which is
+    false — and would put every adopted album in the Inbox over a tag Harmonist
+    never touches.
+    """
+    d = _make_tagged_album(cfg, "Genred", mbid="rel-genre", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio["\xa9gen"] = ["Ambient"]
+    audio.save()
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Genred",
+            "medium-list": [{"position": "1", "track-list": [{"id": "rt-1", "title": "Track 1"}]}],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    row = re.search(r"<dt>Genre</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert row, body
+    assert "Ambient" in row.group(1)
+    assert "tag-fields__removed" not in row.group(1)
+
+
 def test_library_compare_escapes_mb_error_text(client, cfg, monkeypatch):
     """#142: the compare panel's fetch-failure fragment escapes the MB message."""
     d = _make_tagged_album(cfg, "Hostile", mbid="rel-hostile", tagged_at=datetime.now(UTC))
@@ -8376,6 +8452,35 @@ def test_album_page_explains_a_deleted_release_instead_of_showing_a_404(client, 
     assert "It was deleted there" in r.text, "the page says what happened"
     assert "No comparison" in r.text, "and each panel says it wasn't able to compare"
     assert "404" not in r.text
+
+
+def test_a_deleted_release_does_not_claim_a_re_tag_will_empty_your_tags(client, cfg, monkeypatch):
+    """The trap #552's fix walks straight into if it keys on `comparable` alone.
+
+    `album_fields` sets `comparable=bool(mb_attr)` — a property of the FIELD, not
+    of the fetch — so with no release to compare against, EVERY field with a
+    MusicBrainz counterpart is comparable and `ONLY_DISK`: exactly the shape that
+    now draws a pending removal. Marking them would tell a user whose release has
+    just vanished that a re-tag is about to delete all eighteen of their tags.
+
+    False, and told on the page they are already alarmed on — `_release_gone.html`
+    includes the same panel, so this is one include away rather than theoretical.
+    The album's own values must still be SHOWN: they are the evidence for finding
+    the replacement release, which is the whole point of #228's view.
+    """
+    d = _make_tagged_album(cfg, "Gone", mbid="rel-gone", tagged_at=datetime.now(UTC))
+    # An album tag of its own, or the row this asserts on is empty for a reason
+    # that has nothing to do with the deletion and the assertion proves nothing.
+    audio = MP4(d / "01 Track.m4a")
+    audio[ATOM_ALBUM] = ["Voices From the Lake"]
+    audio.save()
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", _gone)
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    assert "tag-fields__removed" not in body
+    row = re.search(r"<dt>Album</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
+    assert row and "Voices From the Lake" in row.group(1), "the files' own tags still show"
 
 
 def test_a_deleted_release_raises_a_banner_with_a_way_out(client, cfg, monkeypatch):

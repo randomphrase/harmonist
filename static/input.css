@@ -837,8 +837,21 @@ button[disabled],
    italic, which on this same <dl> means "nobody has one, and that is agreement"
    (#373). The page's own ink rather than purple: purple means a MusicBrainz
    reading, and a removal has none to print. The word and its tooltip are what
-   carry it to a reader who sees no colour at all. */
-.track-foot__removed { font-weight: 600; }
+   carry it to a reader who sees no colour at all.
+
+   In the `tag-fields__` namespace since #552, because it is no longer the
+   tracklist band's: `_value_pair` draws every pending removal on the page, in
+   the album panel as well as here, and a class named after one of the two
+   surfaces would be the same drift in the stylesheet that #552 was in the
+   markup. `tag-fields__arrow` beside it was always shared this way.
+
+   It is now a WRAPPER around `_mb_value`, not a value of its own: the word sits
+   on MusicBrainz's side of the arrow and wears MusicBrainz's purple and hexagon,
+   because the removal is a consequence of MusicBrainz being canonical and
+   holding no value here. All this class adds is the weight, which marks it out
+   from the additions beside it -- they propose writing something, this proposes
+   taking something away. */
+.tag-fields__removed { font-weight: 600; }
 
 .track-diff__absent,
 .track-diff__unreadable { font-style: italic; }

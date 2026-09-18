@@ -22,6 +22,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **A tag a re-tag would delete now says so** — when MusicBrainz holds no value
+  for a field your files carry, the album's Tags panel reads
+  *"3760180501052 → removed"* instead of drawing the tag as though it matched.
+  The difference was always counted, and was behind an **Update available** flag
+  whose content the page never showed (#552).
+
 - **A track length that differs is no longer a finding** — nothing writes a
   duration into a file, so a re-tag could never clear one, and an album whose
   only difference was its lengths sat behind a MusicBrainz warning and an

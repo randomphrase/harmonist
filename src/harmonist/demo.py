@@ -37,6 +37,7 @@ from . import sidecar as sidecar_mod
 from .formats.m4a import (
     ATOM_ALBUM,
     ATOM_ARTIST,
+    ATOM_BARCODE,
     ATOM_COMMENT,
     ATOM_MB_ALBUM_ID,
     ATOM_MB_RELEASE_TRACK_ID,
@@ -423,6 +424,18 @@ LIBRARY: list[dict[str, Any]] = [
         "tracks": ["Shout", "Shama Lama Ding Dong"],
         "cover": None,
         "file_mbid": "demo-rel-otis-day",
+        # A tag a re-tag would REMOVE (#552), which is the one kind of pending
+        # change the demo could not produce. Every other `file_tags` entry here
+        # makes MusicBrainz and the files disagree about a value; this makes the
+        # files carry one MusicBrainz has no counterpart value for at all, so the
+        # panel draws "3760180501052 → removed" rather than a plain line.
+        #
+        # A barcode, because that is the real case: a digital release has none,
+        # and files tagged against the CD edition at some point keep the CD's.
+        # The album is otherwise unremarkable, deliberately — the length skew
+        # lives on Mouse Rat, and one album wearing two unrelated oddities makes
+        # neither of them legible.
+        "file_tags": {ATOM_BARCODE: b"3760180501052"},
         "sidecar": {
             "store_url": "https://otisday.bandcamp.com/album/shout",
             "bandcamp_item_id": 1008,

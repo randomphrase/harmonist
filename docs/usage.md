@@ -464,6 +464,15 @@ it. On a single-artist album where every track agrees, an Artist column would be
 one name repeated all the way down, so it isn't drawn; on a compilation, or an
 album with a guest on track 6, it is.
 
+A tag MusicBrainz has no value for is a change too, in the other direction: a
+re-tag removes it, because MusicBrainz is canonical and a tag it does not carry
+is one your files should not keep either. The row says *"3760180501052 →
+removed"* rather than drawing the tag as though it agreed — a barcode from the
+CD edition on files tagged to the digital one is the usual way this happens. The
+word wears MusicBrainz's hexagon like any other value on that side of an arrow,
+because the removal is what MusicBrainz makes of your files rather than something
+Harmonist decided.
+
 Those single lines sit in a band under the table, headed *"The same on every
 track"*, with their values laid out like the album's own tags — so a tag
 Harmonist looked at never reads like one it ignored. The band carries what

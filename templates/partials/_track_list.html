@@ -391,18 +391,22 @@
                "not set" below means the opposite — nobody has one — and the two
                must not read alike.
 
-               Its own class, because for one release of #360 they DID (#373):
-               both branches printed `track-foot__absent`, so "a re-tag drops
-               this" and "nobody has one, and that is agreement" were the same
-               muted italic three lines apart in the same <dl>. #}
-            <span>{% with runs = none, value = f.value, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
-            <span class="tag-fields__arrow" aria-label="becomes">→</span>
-            <span class="track-foot__removed"
-                  title="A re-tag would remove this tag from every track">removed</span>
+               Drawn by `_value_pair` since #552, which is where the markup and
+               the reasoning now live. This branch had the page's ONLY rendering
+               of a pending removal, and the album panel above — the same fact,
+               about album-level tags — had none at all and drew one as a plain
+               matching line. A second copy is how that happened; one renderer is
+               #386's answer to it, and the same answer this arrived at from the
+               other direction. #}
+            {% with value = f.value, mb = none, runs = none, mb_runs = none,
+                    kind = f.kind, entity = f.entity, credit = f.credit %}
+            {% include 'partials/_value_pair.html' %}
+            {% endwith %}
 
             {% else %}
             {# An addition: MusicBrainz has this and no file carries it, so there
-               is no "before" to put an arrow after.
+               is no "before" to put an arrow after — and #552 confirmed there is
+               no use in inventing one.
 
                Through `_mb_value`, the partial that carries the hexagon, rather
                than colouring the value purple here (#373). Purple alone said
