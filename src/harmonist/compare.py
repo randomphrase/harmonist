@@ -939,6 +939,15 @@ class AlbumComparison:
         note — it carries the hexagon — and since #328 joined this to the
         tracklist's clause in one line, saying it in both said it twice.
 
+        It DOES say "album tags", and that word is the whole of #553 (#328 is
+        why it has to be here rather than in the template). Beside the
+        tracklist's clause this read "2 of 18 tags differ · All 9 tracks match",
+        which contrasts tags with tracks — and they are not opposites, because a
+        track's rows are tags too. The distinction the reader needs is SCOPE:
+        these belong to the album, those belong to each track. One word makes
+        the line say that, and it is the same word the section heading above the
+        panel now uses.
+
         Counted over `comparable` on BOTH sides. It used to say "All 9 fields
         match MusicBrainz" for an album whose genre and comment MusicBrainz had
         never been asked about — and, with unreadable files, could reach
@@ -952,10 +961,10 @@ class AlbumComparison:
         fields = self.comparable
         n = len([f for f in fields if f.differs])
         if not fields:
-            return "No tags to compare"
+            return "No album tags to compare"
         if n == 0:
-            return f"All {len(fields)} tags match"
-        return f"{n} of {len(fields)} tags differ"
+            return f"All {len(fields)} album tags match"
+        return f"{n} of {len(fields)} album tags differ"
 
 
 # ---------------------------------------------------------------------------

@@ -635,7 +635,7 @@ Picard states its album, disc, position and length in the same atoms as the
 audio beside it. Their fields come back `ONLY_DISK`: nothing about a video is
 compared against MusicBrainz, because Harmonist can never write it and the
 findings would be ones no re-tag could settle. The track count, the album-level
-Tags panel and the tagger all still see audio only, for the same reason.
+Album panel and the tagger all still see audio only, for the same reason.
 
 There is no `incomplete` flag and no stored count. `sidecar.track_count_expected`
 held this number from v1.0.0 to v1.9.0 and was retired in #195: it duplicated
@@ -1138,7 +1138,7 @@ The visible effect is therefore bounded, and the Settings page says so out loud:
 
 So the entry stays, and `gardener._countable` skips it when asked whether there is an update to take — the same place and the same reasoning as `owned.is_opportunistic` (#337), whose docstring states the rule: *a change that is not a reason to tag is still written, and still recorded.* `AlbumPlan` carries the accepted spellings so the flag can ask, because the gardener holds a plan rather than a release.
 
-Each surface then says its own true thing: the **Library** offers no update, the album page's **Tags panel** shows a match, and **History and Undo** carry the change, because a change is what it was.
+Each surface then says its own true thing: the **Library** offers no update, the album page's **Album panel** shows a match, and **History and Undo** carry the change, because a change is what it was.
 
 **Enlarging the set is #284**, and the filter is severe: a transform can exist only where the accepted spellings are derivable *exactly* from the release Harmonist already holds. Anything needing a guess is refused by review-gate item 2, whatever Picard does with it. The named registry is also the shape a subset of Picard's scripting language would plug into, each transform being one script — which is why it is a list of names rather than a flag per transform.
 
@@ -1288,7 +1288,7 @@ src/harmonist/
   mb_cache.py           TTL cache over mb_lookup's by-id fetches, in activity.db (#127)
   mb_search.py          MB free-text search (manual-ingest path)
   match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
-  compare.py            Field-by-field tag-vs-MB comparison primitives (Tags section + tracklist)
+  compare.py            Field-by-field tag-vs-MB comparison primitives (Album section + tracklist)
   transforms.py         Named, user-enabled reshapings of what a tagging writes, and the
                         accepted spellings they choose between (#544)
   tagger.py             Picard-compatible tag writer, the artwork plan's reader and executor, and undo (#157)

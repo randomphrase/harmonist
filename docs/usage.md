@@ -384,7 +384,7 @@ isn't offered a re-tag, because there is nothing to re-tag it from.
 
 <!-- screenshot: docs/screenshots/album-tags.png -->
 
-**Tags** compares your files against MusicBrainz field by field and shows **only
+**Album** compares your files against MusicBrainz field by field and shows **only
 what differs**, with small changes marked inside the value — so a pipe-joined
 artist credit against MusicBrainz's join phrase, or a bare year against a full
 date, is visible at a glance rather than needing a character-by-character read.

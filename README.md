@@ -158,7 +158,7 @@ couldn't tell you" are different claims and only one of them is ever a guess.
 
 Recording a change is half the promise; being able to take it back is the other
 half. Every tagging is stored field by field — the value before and the value
-after, for each file — so an album's **Tags** section shows what differs from
+after, for each file — so an album's **Album** section shows what differs from
 MusicBrainz, its **History** shows what each tagging actually changed, and
 **Undo tag changes** puts those values back.
 

@@ -308,7 +308,7 @@ def test_summary_counts_only_real_findings():
     # Three in the denominator, not four: MusicBrainz was never asked about the
     # comment, so counting it in a sentence about matching MusicBrainz claims a
     # check that didn't happen (#164).
-    assert album.summary == "2 of 3 tags differ"
+    assert album.summary == "2 of 3 album tags differ"
 
 
 def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
@@ -362,7 +362,7 @@ def test_unreadable_files_cannot_push_the_count_past_the_total():
     total = len([f for f in ALBUM_FIELDS if f is not Owned.MB_ALBUM_ID])
     n = len([f for f in album.comparable if f.differs])
     assert n <= len(album.comparable)
-    assert album.summary == f"{total} of {total} tags differ"
+    assert album.summary == f"{total} of {total} album tags differ"
 
 
 # ---------- what the consensus pill says (#164) ----------
@@ -491,8 +491,8 @@ def test_an_unreadable_track_does_not_report_its_tags_as_missing(tmp_path):
 
 def test_summary_when_everything_matches():
     fields = (compare_field("Album", disk=consensus([("1.flac", "Obreel")]), mb="Obreel"),)
-    assert AlbumComparison(fields=fields).summary == "All 1 tags match"
-    assert AlbumComparison().summary == "No tags to compare"
+    assert AlbumComparison(fields=fields).summary == "All 1 album tags match"
+    assert AlbumComparison().summary == "No album tags to compare"
 
 
 # ---------- the tracklist (#135) ----------
@@ -969,7 +969,7 @@ def test_a_note_with_nothing_to_act_on_is_advisory():
     agree with the sentence it will be drawn behind."""
     album, tracks = _matching_album(), _matching_tracks()
 
-    assert headline(album, tracks) == "All 2 tags match · The track matches"
+    assert headline(album, tracks) == "All 2 album tags match · The track matches"
     assert advisory(album, tracks)
 
 
@@ -1111,7 +1111,7 @@ def test_an_album_with_no_comparable_tags_is_not_advisory():
         )
     )
 
-    assert album.summary == "No tags to compare"
+    assert album.summary == "No album tags to compare"
     assert not advisory(album, _matching_tracks())
 
 

@@ -6420,6 +6420,32 @@ def test_a_length_difference_is_stated_but_never_offered_as_a_change(client, cfg
     assert re.search(rf"<td[^>]*track-diff__advisory\"[^>]*{note}[^>]*>\s*3:07", body)
 
 
+def test_the_page_names_its_two_sections_by_scope(client, cfg, monkeypatch):
+    """#553. The headings and the note have to use one vocabulary, because they
+    are one statement in two places — which is the same rule #373 wrote for the
+    note and the table it sits over.
+
+    "Tags" over a section whose neighbour is "Tracks" contrasts tags with
+    tracks, and they are not opposites: a track's rows are tags too. What
+    separates them is SCOPE, and both halves say so now.
+
+    Asserted together in one test on purpose. Either half alone can be renamed
+    without anything going red, and the pair drifting apart is the defect.
+    """
+    d = _make_tagged_album(cfg, "Scoped", mbid="rel-scope", tagged_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
+    )
+    aid = _id_for(cfg, d)
+
+    page = client.get(f"/album/{aid}").text
+    note = client.get(f"/library/{aid}/compare").text
+
+    assert re.search(r"<h2[^>]*>Album</h2>", page)
+    assert re.search(r"<h2[^>]*>Tracks</h2>", note), "the pair, not just one of them"
+    assert "album tags" in note
+
+
 def test_a_tag_the_re_tag_would_delete_says_so(client, cfg, monkeypatch):
     """#552. MusicBrainz has a counterpart for the field and simply no value, so
     a re-tag REMOVES what the files carry. That is a finding (#340) — the panel

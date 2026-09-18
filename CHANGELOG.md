@@ -22,6 +22,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **The album page says "Album" where it used to say "Tags"** — and its note
+  reads *"2 of 18 album tags differ"* rather than *"2 of 18 tags differ"*. The
+  section below is **Tracks**, whose rows are tags as well, so contrasting
+  *tags* with *tracks* named the wrong distinction: what separates the two is
+  scope, not kind (#553).
+
 - **A tag a re-tag would delete now says so** — when MusicBrainz holds no value
   for a field your files carry, the album's Tags panel reads
   *"3760180501052 → removed"* instead of drawing the tag as though it matched.

@@ -131,7 +131,14 @@
        careless against a 1-req/sec budget. #}
     {% if album.sidecar and album.sidecar.mb_release_id %}
     <section id="album-tags" class="border border-line rounded-lg p-4 space-y-3">
-        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tags</h2>
+        {# "Album", not "Tags" (#553). The section below this one is Tracks, and
+           its rows are tags as well — so a heading of "Tags" over this one told
+           the reader the lower section was about something else. The pair names
+           SCOPE now: what belongs to the album, and what belongs to each track.
+
+           The element's `id` stays `album-tags`: it is the target of an
+           out-of-band swap and a DOM contract, not a label. #}
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Album</h2>
         {# Titled rather than anonymous: its two neighbours are, and an untitled
            box between them reads as belonging to whichever one it touches. #}
         <div id="compare-{{ album.id }}"
