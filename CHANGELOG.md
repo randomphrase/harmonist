@@ -6,71 +6,41 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-09-18
+
 ### Added
 
 - **Mixed formats** — a Library filter for albums whose files don't all use the
-  same codec, such as one MP3 among the M4As (#316).
+  same codec (#316).
 
 - **Tag transforms** — Settings → Tagging can now match a choice you've made in
   Picard about what gets written. The first is **Add the release disambiguation
-  to the album title**, so an album is tagged *Selected Ambient Works Volume II
-  (expanded edition)* rather than *…Volume II*. It ships off, and ticking it
-  rewrites nothing you already have: albums that would be spelled differently
-  say so on their own page, with **Apply updates** to take the change, and none
-  of them is marked as needing an update. Each transform shows an example of
-  what it does rather than describing it (#544, #547, #548).
+  to the album title**, and it ships off (#544, #547, #548).
 
 ### Changed
 
-- **The album page says "Album" where it used to say "Tags"** — and its note
-  reads *"2 of 18 album tags differ"* rather than *"2 of 18 tags differ"*. The
-  section below is **Tracks**, whose rows are tags as well, so contrasting
-  *tags* with *tracks* named the wrong distinction: what separates the two is
-  scope, not kind (#553).
+- **Creating a missing `cover.jpg` is now a setting, and it ships off** — set
+  `[tagging] folder_cover = "if_missing"`, or tick it under Settings → Tagging,
+  for the old behaviour (#516).
 
-- **A tag a re-tag would delete now says so** — when MusicBrainz holds no value
-  for a field your files carry, the album's Tags panel reads
-  *"3760180501052 → removed"* instead of drawing the tag as though it matched.
-  The difference was always counted, and was behind an **Update available** flag
-  whose content the page never showed (#552).
+- **A tag a re-tag would delete now says "→ removed"**, instead of being drawn
+  as a match (#552).
 
-- **A track length that differs is no longer a finding** — nothing writes a
-  duration into a file, so a re-tag could never clear one, and an album whose
-  only difference was its lengths sat behind a MusicBrainz warning and an
-  **Apply updates** button that moved none of them. The lengths are still shown,
-  in a MusicBrainz column of their own beside your files', and hovering one says
-  what the two real remedies are: your files are a different master, or
-  MusicBrainz has the release's lengths wrong. Matching is unchanged — lengths
-  still rank candidate releases and still decide an approximate match (#550).
+- **A track length that differs is no longer a finding**, though the lengths are
+  still shown (#550).
 
-- **Creating a missing `cover.jpg` is now a setting, and it ships off** — a new
-  **Tagging** section in Settings decides whether an album without a folder
-  cover gets one created from its best image. Previously every such album showed
-  as having an update available, which on an adopted library can be most of it;
-  artwork already on disk is untouched either way, and an existing `cover.jpg`
-  is still offered a better image when one turns up. Set
-  `[tagging] folder_cover = "if_missing"` (or pick it in Settings) for the old
-  behaviour (#516).
+- **The album page's tag comparison is headed "Album" rather than "Tags"**, and
+  the section below it **Tracks** (#553).
 
-- **The album page names the tracks whose format differs** — the Format row's
-  *Mixed* and *N tracks differ* now carry the same pill the tag comparison uses,
-  listing which files disagree and what each one is (#541).
+- **The album page names the tracks whose format differs** (#541).
 
 ### Fixed
 
-- **A re-tag that rewrites your album title or release country now says so, and
-  can be undone** — where a file carried a second spelling MusicBrainz also
-  accepts (Picard's disambiguated album title, or another of the release's
-  countries), a re-tag happening for some unrelated reason replaced it without
-  recording the change, so the album's History never mentioned it and Undo left
-  it behind. It is recorded and restorable now. Neither still counts as an
-  update available, which is unchanged (#545).
+- **An album tagged by a ripper other than Picard pairs with its tracks again**
+  (#538).
 
-- **An album tagged by another ripper is no longer reported as entirely
-  unassigned** — a CD ripped with the MusicBrainz release chosen in the ripper
-  (XLD writes a recording ID and no release-track ID) pairs with its tracks
-  again, instead of flagging **Tracks unassigned** on every file, showing the
-  track list as two disjoint columns, and refusing to re-tag (#538).
+- **A re-tag that rewrites your album title or release country now shows in
+  History, and Undo puts it back** (#545).
 
 ## [1.17.0] - 2026-09-16
 
