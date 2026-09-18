@@ -242,9 +242,20 @@ class FieldComparison:
     def differs(self) -> bool:
         """Whether this row is something the user should look at.
 
-        ONLY_DISK is a finding when the field is COMPARABLE, and silent when it
-        is not (#340). The two cases look identical in the agreement alone, and
-        `comparable` is the only thing that tells them apart:
+        **An uncomparable field is never a finding, whatever its agreement**
+        (#550). What `comparable` stands for throughout is "a field Harmonist
+        writes from MusicBrainz", and a field it does not write has no action
+        behind it — so a difference in one can be stated, but never asked about.
+        Length is the field that makes this bite: nothing writes a duration into
+        a file, so eight rows of length differences were eight findings with no
+        way out, under an **Apply updates** button whose re-tag moved not one of
+        them. See `advisory` for what the page does with them instead.
+
+        The rule below is the same rule read the other way round, and the one
+        this used to be: ONLY_DISK is a finding when the field is COMPARABLE and
+        silent when it is not (#340). The two cases look identical in the
+        agreement alone, and `comparable` is the only thing that tells them
+        apart:
 
         * MusicBrainz has no counterpart for the field — `genre`, and the
           recovered Bandcamp URL in `comment`. Nothing is pending; a re-tag
@@ -258,13 +269,33 @@ class FieldComparison:
           flagged for two others, because `owned.diff` counts `'X' -> None` and
           this did not.
         """
+        if not self.comparable:
+            return False
         if self.agreement is Agreement.ONLY_DISK:
-            return self.comparable
+            return True
         return self.agreement in (
             Agreement.DIFFERS,
             Agreement.ONLY_MB,
             Agreement.UNREADABLE,
         )
+
+    @property
+    def advisory(self) -> bool:
+        """A real difference that no action can clear — shown, never marked.
+
+        The other half of `differs` for an uncomparable field: MusicBrainz holds
+        a value, it disagrees with the file's, and neither a re-tag nor anything
+        else on the page will reconcile them. Length is the only field that
+        reaches this today, and it is worth showing — a whole release skewed one
+        way says "a different master than MusicBrainz describes", which is
+        evidence the user deserves even though it is not a task.
+
+        Scoped to DIFFERS deliberately, rather than to "uncomparable and has an
+        `mb`". An UNREADABLE row's fields all carry MusicBrainz's values and all
+        belong on its MusicBrainz line, including its length; excusing them here
+        would blank a cell that is the only thing that line has to say.
+        """
+        return self.agreement is Agreement.DIFFERS and not self.comparable
 
 
 def consensus(values: Sequence[tuple[str, str | None]]) -> Consensus:
@@ -1391,6 +1422,37 @@ class TracklistComparison:
         return not any(g.heading and g.heading.differs for g in self.discs)
 
     @property
+    def length_note(self) -> str | None:
+        """What the MusicBrainz length column says on hover (#550), or None.
+
+        It names the count, says why the page offers nothing for what those
+        figures show, and names the two remedies that exist — both of which live
+        outside the re-tag path: a different master, or MusicBrainz being wrong.
+        That is the question the column raises the moment it appears, and it is
+        answered at the column rather than anywhere else on the page.
+
+        Deliberately NOT a clause of `summary`, and so never part of `headline`:
+        that note sits in the finding band beside **Apply updates**, and a length
+        stated there would be read as something that button acts on.
+
+        Composed here rather than in the template for the reason `headline` is:
+        the wording of a sentence belongs in one place. It is one sentence-pair
+        and no markup, because a `title` can hold neither a line break nor a
+        link — it went under the table as a paragraph first, where at the width
+        prose wants it wrapped to three short lines and read as a warning notice
+        rather than as a footnote.
+        """
+        n = sum(1 for t in self.tracks if any(f.advisory for f in t.fields))
+        if not n:
+            return None
+        count = "One track is" if n == 1 else f"{n} tracks are"
+        return (
+            f"{count} a different length to MusicBrainz. A length isn't a tag, so no"
+            " re-tag can change one: either your files are a different master, or"
+            " MusicBrainz's lengths for this release are wrong and want correcting there."
+        )
+
+    @property
     def summary(self) -> str:
         """The TRACKS clause of the MusicBrainz note (#328) — see `headline`.
 
@@ -1736,6 +1798,16 @@ class TrackColumn:
     #: exempt from `MAX_EARNED_COLUMNS`: a column nobody sees by default must not
     #: spend one of the three slots the readable tags are competing for.
     identifier: bool = False
+    #: A column of figures, right-aligned on tabular numerals. Carried here
+    #: rather than inferred from the column's POSITION, which is what the table
+    #: used to do — `#` first, Length last — and which silently left-aligned a
+    #: column of lengths the moment #550 put a second one after it.
+    numeric: bool = False
+    #: A column that states something no action on this page can change, and is
+    #: drawn muted and unmarked for it (#550). MusicBrainz's length is the only
+    #: one: nothing writes a duration into a file, so its column is evidence
+    #: beside the file's own figure rather than a change waiting to be applied.
+    advisory: bool = False
 
 
 @dataclass(frozen=True)
@@ -2335,12 +2407,24 @@ def tracklist(
                 video=tags.video,
             )
         )
+    # MusicBrainz's lengths earn a column, or there isn't one (#550). Decided
+    # here rather than in `_choose_columns` with the tag columns because the
+    # answer is not a property of the tags: it is whether any PAIRING ended up
+    # outside LENGTH_TOLERANCE_MS, which only exists once the rows are built.
+    #
+    # Appended to every row, never to some of them — a row short of a cell is a
+    # row whose values slide left under the wrong headings, which is the whole
+    # reason `_track_fields` emits the full set whatever the row's state.
+    columns = _columns(kept, multi_disc, absorbed)
+    if any(f.advisory for r in rows for f in r.fields):
+        columns = (*columns, MB_LENGTH_COLUMN)
+        rows = [replace(r, fields=(*r.fields, _mb_length_cell(r.fields))) for r in rows]
     return TracklistComparison(
         tracks=tuple(
             replace(r, mb_only_identifiers=_only_identifiers(r.fields, kept)) for r in rows
         ),
         media=tuple(media),
-        columns=_columns(kept, multi_disc, absorbed),
+        columns=columns,
         collapsed=collapsed,
         headings=headings,
     )
@@ -2596,8 +2680,18 @@ def _columns(
         ),
         # Not a tag: nothing writes a length to a file, so it accounts for no
         # owned field and can never take one out of the re-tag box.
-        TrackColumn("Length"),
+        TrackColumn("Length", numeric=True),
     )
+
+
+#: MusicBrainz's lengths, as a column of their own — EARNED, like the tag columns
+#: (#550), and appended by `tracklist` only where some row has one to show.
+#:
+#: A column rather than a second value inside the Length cell, which is where
+#: this started: a cell carrying "0:01  MB 0:13" pushes its own figure left by
+#: however wide MusicBrainz's is, so a table of them has its lengths stepping in
+#: and out and nothing lines up. Two columns is what a table is for.
+MB_LENGTH_COLUMN = TrackColumn("MusicBrainz", numeric=True, advisory=True)
 
 
 def _track_fields(
@@ -2695,12 +2789,42 @@ def _length_field(disk_ms: int | None, mb_ms: int | None, *, unreadable: bool) -
     # `comparable` is really standing in for throughout is "a field Harmonist
     # writes from MusicBrainz", which everywhere else it names exactly.
     #
-    # A length that genuinely DIFFERS is untouched: that lands in DIFFERS, which
-    # does not consult this flag.
+    # Since #550 the flag also carries a length that genuinely DIFFERS: that is
+    # `FieldComparison.advisory`, stated on the row and counted as nothing. A
+    # length is the one difference on this page no action can clear, so it is
+    # the one difference that must not be raised as a finding.
     return replace(
         compare_value(
             "Length", kind=Kind.SCALAR, disk=_mmss(disk_ms), mb=_mmss(mb_ms), unreadable=unreadable
         ),
+        comparable=False,
+    )
+
+
+def _mb_length_cell(fields: Sequence[FieldComparison]) -> FieldComparison:
+    """One row's cell under `MB_LENGTH_COLUMN` (#550).
+
+    Filled only where the row's length is `advisory` — a difference MusicBrainz
+    and the files genuinely disagree about. Blank everywhere else, including the
+    rows that agree: the table's standing rule is that a cell saying the same
+    thing as the one beside it stays empty, and a full column of repeated
+    figures would bury the two rows that have something to say.
+
+    MusicBrainz's reading goes in `disk`, which is the slot the table prints on
+    a row's own line, because this column HAS no second side — the whole column
+    is MusicBrainz's, and its heading says so. Pairing it against the file's
+    length again would put the same disagreement on the page twice.
+
+    MATCHES and `comparable=False` together are the module's way of saying "this
+    cell compares nothing": it can never be a finding, never join an update plan,
+    and never appear on the MusicBrainz line below the row.
+    """
+    length = next((f for f in fields if f.label == "Length"), None)
+    return FieldComparison(
+        MB_LENGTH_COLUMN.label,
+        Kind.SCALAR,
+        Agreement.MATCHES,
+        disk=length.mb if length and length.advisory else None,
         comparable=False,
     )
 

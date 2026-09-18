@@ -23,6 +23,7 @@ from harmonist.compare import (
     Kind,
     MBTrack,
     Medium,
+    TracklistComparison,
     TrackState,
     advisory,
     album_fields,
@@ -744,6 +745,120 @@ def test_a_length_musicbrainz_does_not_know_is_not_a_difference_either():
     (length,) = [f for f in tl.tracks[0].fields if f.label == "Length"]
     assert length.agreement is Agreement.ONLY_DISK
     assert not tl.differing
+
+
+def _skewed(n: int = 9, *, skew_from: int = 2) -> TracklistComparison:
+    """The #550 album: every track but the first longer than MusicBrainz says.
+
+    Nine tracks, eight of them 12 seconds over — the consistent one-sided skew of
+    a release entered from a different master, which is what makes every one of
+    them unfixable. Deliberately more than one row: the bug is that eight rows
+    of unclearable findings dominate the page, and a one-row fixture would let a
+    fix that only handles the singular case pass.
+    """
+    files = [
+        _file(i, f"Track {i}", length=180_000 + (0 if i < skew_from else 12_000), track_total=n)
+        for i in range(1, n + 1)
+    ]
+    return tracklist(
+        files, [_mb_track(i, f"Track {i}", length=180_000, total=n) for i in range(1, n + 1)]
+    )
+
+
+def test_a_track_whose_only_difference_is_its_length_is_not_a_finding():
+    """#550. A length is not a tag: nothing Harmonist writes can change one, so a
+    row that differs in nothing else has no action behind it.
+
+    Counting them was what put the album's page behind an orange hexagon reading
+    "8 of 9 tracks differ" over an **Apply updates** button whose re-tag moves
+    not one of those numbers — the only finding on this page that no action on
+    it can ever clear.
+    """
+    tl = _skewed()
+    row = tl.tracks[1]
+
+    assert not row.differs
+    assert not row.shows_mb  # no purple line, and so no hexagon
+    assert not tl.differing
+    assert tl.clean
+    assert tl.summary == "All 9 tracks match"
+
+
+def test_the_length_is_still_shown_against_musicbrainz_though():
+    """Quieting the finding must not delete the evidence. A consistent skew says
+    "a different master than MusicBrainz describes", and that is worth reading —
+    it is simply not worth a hexagon."""
+    (length,) = [f for f in _skewed().tracks[1].fields if f.label == "Length"]
+
+    assert length.agreement is Agreement.DIFFERS
+    assert (length.disk, length.mb) == ("3:12", "3:00")
+    assert length.advisory
+
+
+def test_musicbrainz_lengths_earn_a_column_of_their_own():
+    """A COLUMN, not a second value squeezed into the Length cell.
+
+    Two figures in one cell push the file's own left by however wide
+    MusicBrainz's is, so a table of them has its lengths stepping in and out and
+    nothing lines up — which is what a column exists to fix. Both are `numeric`,
+    which is what right-aligns them against each other now that Length is no
+    longer the last column and can't be found by position.
+    """
+    tl = _skewed()
+
+    assert [c.label for c in tl.columns][-2:] == ["Length", "MusicBrainz"]
+    assert all(c.numeric for c in tl.columns[-2:])
+    assert tl.columns[-1].advisory and not tl.columns[-2].advisory
+    # Every row carries a cell for it, including the one whose length agrees —
+    # a row short of a cell slides its values under the wrong headings.
+    assert all([f.label for f in t.fields] == [c.label for c in tl.columns] for t in tl.tracks)
+    mb_cells = [t.fields[-1].disk for t in tl.tracks]
+    assert mb_cells == [None] + ["3:00"] * 8  # blank where the two agree
+    # Never a finding and never on the MusicBrainz line: the column IS
+    # MusicBrainz's, and repeating it there would state one disagreement twice.
+    assert not any(t.fields[-1].differs or t.fields[-1].advisory for t in tl.tracks)
+
+
+def test_no_column_when_every_length_agrees():
+    """Earned, like the tag columns. An album MusicBrainz has right — or has no
+    lengths for at all — gets no second column of blanks."""
+    agreeing = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall")])
+    unknown = tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall", length=None)])
+
+    assert [c.label for c in agreeing.columns][-1] == "Length"
+    assert [c.label for c in unknown.columns][-1] == "Length"
+
+
+def test_the_page_says_once_why_a_length_cannot_be_re_tagged():
+    """Neutral rows alone would leave the reader with the same unexplained
+    numbers #550 was filed about. The note names the count and the two real
+    remedies, under the table rather than per row."""
+    note = _skewed().length_note
+
+    assert note is not None
+    assert note.startswith("8 tracks are a different length")
+    assert "isn't a tag" in note
+    assert _skewed(skew_from=9).length_note.startswith("One track is a different length")
+    assert tracklist([_file(1, "Nightcall")], [_mb_track(1, "Nightcall")]).length_note is None
+
+
+def test_a_row_that_differs_for_another_reason_still_does():
+    """The exclusion is scoped to the LENGTH, not to the row carrying one. A
+    track whose title MusicBrainz spells differently is a finding whether or not
+    its length also drifts — and a fix that excused the whole row would hide a
+    re-taggable change behind an unfixable one."""
+    tl = tracklist(
+        [_file(1, "Nightcall", length=240_000)],
+        [_mb_track(1, "Night Call", length=180_000, total=_TRACK_TOTAL)],
+    )
+    (row,) = [t for t in tl.tracks if t.state is TrackState.PRESENT]
+
+    assert row.differs and row.shows_mb
+    assert [f.label for f in row.fields if f.differs] == ["Title"]
+    # The length rides along on that row, and it is still advisory there: the
+    # MusicBrainz line states pending changes, and a length is never one.
+    (length,) = [f for f in row.fields if f.label == "Length"]
+    assert length.advisory
 
 
 # ---------- unreadable files (#112, #126) ----------

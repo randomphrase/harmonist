@@ -730,6 +730,17 @@ MB_RELEASES: dict[str, Release] = {
         "Mouse Rat",
         "The Awesome Album",
         ["5000 Candles in the Wind", "The Pit", "Sex Hair"],
+        # The album whose LENGTHS disagree and whose tags don't (#550). Two of
+        # three tracks are seconds longer on disk than MusicBrainz says — the
+        # one-sided skew of a release entered from a different master, which is
+        # the commonest shape of this and the one nothing can fix: a length is
+        # not a tag, so no re-tag moves it.
+        #
+        # On a COMPLETE, otherwise-clean album deliberately. The point to see is
+        # a page with no finding band and no **Apply updates** at all, stating
+        # the two lengths side by side and saying underneath why it offers
+        # nothing — which is unreachable on an album that has a real finding too.
+        lengths_ms=[1000, 13_000, 9_500],
     ),
     "demo-rel-blues-brothers": _release(
         "demo-rel-blues-brothers",

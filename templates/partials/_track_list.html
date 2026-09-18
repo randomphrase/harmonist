@@ -55,7 +55,8 @@
         <thead>
             <tr>
                 {% for col in tracklist.columns %}
-                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}{{ ' track-diff__id' if col.identifier }}">{{ col.label }}</th>
+                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}"{#
+                    #}{% if col.advisory and tracklist.length_note %} title="{{ tracklist.length_note }}"{% endif %}>{{ col.label }}</th>
                 {% endfor %}
             </tr>
         </thead>
@@ -151,7 +152,8 @@
             {% if not group.absent %}
             <tr class="track-diff__disc-cols">
                 {% for col in tracklist.columns %}
-                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}{{ ' track-diff__id' if col.identifier }}">{{ col.label }}</th>
+                <th scope="col" class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}"{#
+                    #}{% if col.advisory and tracklist.length_note %} title="{{ tracklist.length_note }}"{% endif %}>{{ col.label }}</th>
                 {% endfor %}
             </tr>
             {% endif %}
@@ -189,7 +191,16 @@
             {% if t.state == 'present' or t.state == 'extra' %}
             <tr>
                 {% for f in t.fields %}
-                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}{{ ' track-diff__id' if tracklist.columns[loop.index0].identifier }}">
+                {%- set col = tracklist.columns[loop.index0] -%}
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}"{#
+                    The explanation is on the FIGURE as well as on the heading.
+                    The heading alone was where this started and it is the wrong
+                    target: the numbers are what raise the question, they are
+                    where the reader's pointer already is, and a heading four
+                    rows up is not somewhere anyone thinks to hover. Only on a
+                    cell that HAS a figure — an empty cell explaining itself is a
+                    tooltip about nothing.
+                #}{% if col.advisory and f.disk and tracklist.length_note %} title="{{ tracklist.length_note }}"{% endif %}>
                     {#- A video track (#226). Shown like any other present track,
                         because it IS present — but marked, because it is the one
                         row a re-tag will never touch, and a track that silently
@@ -215,8 +226,13 @@
                         joined by MusicBrainz's own " feat. ". `_diff_runs` is
                         still what an ordinary tag reaches — it is the fallback
                         inside `_field_value`, so nothing about the marking of a
-                        differing run changes. -#}
-                    {%- with runs = f.disk_runs, value = f.disk, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
+                        differing run changes.
+
+                        An advisory difference passes NO runs (#550). Marking
+                        "3:12" against "3:00" character by character emphasises
+                        two digits, which says a length is a typo — when what it
+                        actually says is that this is a different master. -#}
+                    {%- with runs = none if f.advisory else f.disk_runs, value = f.disk, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
                     {%- endif -%}
                 </td>
                 {% endfor %}
@@ -282,13 +298,19 @@
                 a difference whose cells are not on screen. -#}
             <tr class="track-diff__mb{{ ' track-diff__id' if t.mb_only_identifiers }}">
                 {% for f in t.fields %}
-                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if loop.last else '') }}{{ ' track-diff__id' if tracklist.columns[loop.index0].identifier }}">
+                {%- set col = tracklist.columns[loop.index0] -%}
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}">
                     {%- if loop.first -%}
                     <span class="mb-mark" role="img" aria-label="MusicBrainz" title="MusicBrainz's values for this track"><svg
                         viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"
                         ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span>
                     {%- endif -%}
-                    {%- if f.agreement in ('differs', 'only_mb', 'unreadable') and f.mb -%}
+                    {#- `not f.advisory`: an unclearable difference is stated in
+                        its own cell above (#550), and this line states what a
+                        re-tag would write. Drawing it in both places would put
+                        MusicBrainz's length twice on one row, once as a fact and
+                        once as a pending change it can never be. -#}
+                    {%- if f.agreement in ('differs', 'only_mb', 'unreadable') and f.mb and not f.advisory -%}
                     {%- with runs = f.mb_runs, value = f.mb, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
                     {%- endif -%}
                 </td>

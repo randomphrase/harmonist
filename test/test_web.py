@@ -6365,6 +6365,60 @@ def test_library_compare_renders_the_tracklist(client, cfg, monkeypatch):
     assert "Track 1" in r.text  # MusicBrainz's title for the one track
 
 
+def test_a_length_difference_is_stated_but_never_offered_as_a_change(client, cfg, monkeypatch):
+    """#550, at the rung that renders it.
+
+    `test_compare` owns the half that decides a length is not a finding. This is
+    the table's half: the two lengths sit on ONE line, and the MusicBrainz line
+    beneath — which lists what a re-tag would write — carries nothing, because a
+    length is never something it would write.
+
+    The count is the assertion, not the presence. The behaviour being replaced
+    drew MusicBrainz's length on that purple line under a hexagon, so a test that
+    merely looked for "3:07" somewhere would have passed on the bug.
+    """
+    d = _make_tagged_album(cfg, "Skewed", mbid="rel-skew", tagged_at=datetime.now(UTC))
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Skewed",
+            "medium-list": [
+                {
+                    "position": "1",
+                    # Minutes away from the fixture's own second-long audio, so
+                    # this is unambiguously outside LENGTH_TOLERANCE_MS rather
+                    # than near it.
+                    # The release-track id the fixture's file already carries,
+                    # so the two are PAIRED — an unpaired file is a missing track
+                    # beside an extra one, which has no length to compare at all.
+                    "track-list": [{"id": "rt-1", "title": "Track 1", "length": "187000"}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    # The column earns its place and carries MusicBrainz's figure...
+    assert ">MusicBrainz</th>" in body
+    # ...once. The behaviour being replaced put it on the purple line under a
+    # hexagon, so a second copy here means the row is still stating it as a
+    # pending change.
+    assert body.count("3:07") == 1
+    # The heading explains itself on hover, and so does the FIGURE — the numbers
+    # are what raise the question and where the reader's pointer already is, and
+    # a heading several rows up is not somewhere anyone thinks to hover.
+    #
+    # Matched as whole elements rather than as a loose substring, so each
+    # sentence is pinned to the element that carries it: the note is one string
+    # that would otherwise be "found" anywhere in the markup and prove nothing
+    # about where it is.
+    note = r'title="One track is a different length[^"]*"'
+    assert re.search(rf"<th[^>]*track-diff__advisory\"[^>]*{note}[^>]*>MusicBrainz</th>", body)
+    assert re.search(rf"<td[^>]*track-diff__advisory\"[^>]*{note}[^>]*>\s*3:07", body)
+
+
 def test_library_compare_escapes_mb_error_text(client, cfg, monkeypatch):
     """#142: the compare panel's fetch-failure fragment escapes the MB message."""
     d = _make_tagged_album(cfg, "Hostile", mbid="rel-hostile", tagged_at=datetime.now(UTC))

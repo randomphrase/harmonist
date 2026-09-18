@@ -605,6 +605,12 @@ button[disabled],
   white-space: nowrap;
 }
 .track-diff__num { width: 1%; }
+/* Shrink-to-fit, the same trick the number column uses, so the free width all
+   goes to Title. Without it the table shares the slack out between the value
+   columns and the two length columns drift apart — the file's figure stranded
+   mid-table with MusicBrainz's at the right margin, which is the one comparison
+   this pair exists to make easy (#550). Side by side they are a glance. */
+.track-diff__len { width: 1%; }
 /* The video mark (#226). Muted and small: it qualifies the row rather than
    flagging it — the track is present and fine, it is simply one Harmonist reads
    and never writes. Sits in the number cell so a DVD's worth of them lines up
@@ -627,6 +633,27 @@ button[disabled],
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
   text-decoration-color: color-mix(in srgb, var(--color-ink) 40%, transparent);
+}
+/* MusicBrainz's lengths, in the column of their own they earn when the two sides
+   disagree (#550). Muted, and deliberately NOT purple: purple belongs to the
+   line below a row, which lists what a re-tag would write, and a length is never
+   that — nothing writes a duration into a file. So this is the one difference
+   the table draws as a plain fact, in a column its own heading names.
+
+   It carries `track-diff__len` too, from `TrackColumn.numeric`, which is what
+   right-aligns both columns of figures against each other. */
+.track-diff .track-diff__advisory { color: var(--color-muted); }
+/* The heading and the figures both answer "then how do I fix this?" on hover,
+   and say so the way the page's other explain-on-hover marks do — `cursor:
+   help`, plus a dotted underline on the heading, because a tooltip nothing
+   points at is a tooltip nobody opens. The figures take the cursor alone: nine
+   dotted-underlined numbers down a column would read as nine errors. */
+.track-diff td.track-diff__advisory { cursor: help; }
+.track-diff th.track-diff__advisory {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--color-muted) 55%, transparent);
 }
 .track-diff__mb td { color: var(--color-mb-purple); }
 .track-diff__mb .diff-run {

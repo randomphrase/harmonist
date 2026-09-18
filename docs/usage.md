@@ -441,6 +441,19 @@ dashed ring beside its number — so a half-ripped disc reads as a column of the
 rather than as a stack of separate notices. A disc you never ripped at all carries
 the same ring on its heading, and its tracks are one press away underneath.
 
+A length that differs is the one thing here Harmonist offers nothing for, and it
+says so rather than flagging it. Nothing writes a duration into a file, so no
+re-tag can change one — an album whose only difference is its lengths is not
+treated as having anything to apply. Where your files and MusicBrainz disagree by
+more than four seconds, MusicBrainz's lengths appear in a column of their own
+beside yours, muted; hovering either the heading or one of those figures says
+what the two remedies are, both outside Harmonist. Either your files are a different master from the one
+MusicBrainz describes — common for a Bandcamp download of an album whose audio
+was later replaced — or MusicBrainz has this release's lengths wrong, and the
+correction is an edit there. Lengths still do their other job untouched: they
+rank candidate releases when Harmonist is looking for a match, and they are what
+makes a match *approximate* rather than exact.
+
 Its columns fit the album rather than being fixed. Number, title and length are
 always there; beyond those, a per-track tag gets a column when it can answer
 *which track* — it differs from MusicBrainz on some tracks and not others (or

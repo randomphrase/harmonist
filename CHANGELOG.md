@@ -22,6 +22,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **A track length that differs is no longer a finding** — nothing writes a
+  duration into a file, so a re-tag could never clear one, and an album whose
+  only difference was its lengths sat behind a MusicBrainz warning and an
+  **Apply updates** button that moved none of them. The lengths are still shown,
+  in a MusicBrainz column of their own beside your files', and hovering one says
+  what the two real remedies are: your files are a different master, or
+  MusicBrainz has the release's lengths wrong. Matching is unchanged — lengths
+  still rank candidate releases and still decide an approximate match (#550).
+
 - **Creating a missing `cover.jpg` is now a setting, and it ships off** — a new
   **Tagging** section in Settings decides whether an album without a folder
   cover gets one created from its best image. Previously every such album showed
