@@ -179,3 +179,110 @@ def test_every_row_knows_its_disc():
 
     assert {row.disc for row in t.tracks} == {1, 2}
     assert all(r.state is TrackState.MISSING for r in t.tracks if r.disc == 1)
+
+
+def _extra(n: int, disc: int, title: str, subtitle: str | None = None, media: str | None = None):
+    """A file on a disc the release doesn't have (#402).
+
+    Nothing pairs it with a MusicBrainz track — no release track id, and a disc
+    number no medium answers to — so it lands in `extras`, and its own tags are
+    the only account of which disc it is on.
+    """
+    return (
+        f"{disc}-{n:02d}.m4a",
+        TrackTags(
+            title=title,
+            album="A",
+            artist="X",
+            disc_num=disc,
+            track_num=n,
+            media=media,
+            duration_ms=200_000,
+            owned={
+                "title": title,
+                "album": "A",
+                "artist": "X",
+                "album_artist": "X",
+                "disc_num": disc,
+                "track_num": n,
+                "disc_subtitle": subtitle,
+                "media": media,
+            },
+        ),
+    )
+
+
+def _drift():
+    """The DRIFT case: a two-disc release plus a Blu-ray ripped separately.
+
+    MusicBrainz's release is the digital download, and it has no Blu-ray — so
+    disc 3 here is a disc the release does not have, described by nothing but
+    the files that claim it.
+    """
+    mb = [_mb(1, i, f"Dust {i}", 2) for i in (1, 2)] + [_mb(2, i, f"Rust {i}", 2) for i in (1, 2)]
+    files = [_file(i, 1, f"Dust {i}", 2, media="Digital Media") for i in (1, 2)]
+    files += [_file(i, 2, f"Rust {i}", 2, media="Digital Media") for i in (1, 2)]
+    files += [_extra(i, 3, f"Trailer {i}", subtitle="Blu-ray", media="Blu-ray") for i in (1, 2)]
+    return files, mb
+
+
+def test_a_disc_the_release_does_not_have_gets_its_own_group():
+    """It used to fall through to disc 1, which read as though Ep1 Dust were
+    fifteen tracks long with a video trailer in the middle of it (#402)."""
+    files, mb = _drift()
+    t = compare.tracklist(files, mb, [Medium(1, "Ep1 Dust"), Medium(2, "Ep2 Rust")])
+
+    assert [g.medium.position for g in t.discs] == [1, 2, 3]
+    assert [len(g.tracks) for g in t.discs] == [2, 2, 2]
+    assert all(r.state is TrackState.EXTRA for r in t.discs[2].tracks)
+
+
+def test_that_disc_is_named_and_described_by_the_files():
+    """MusicBrainz has nothing to say about it, and the files do: they carry a
+    disc subtitle and a media, which is exactly what a heading states."""
+    files, mb = _drift()
+    t = compare.tracklist(files, mb, [Medium(1, "Ep1 Dust"), Medium(2, "Ep2 Rust")])
+
+    assert t.discs[2].medium.label == "Disc 3 — Blu-ray"
+    assert t.discs[2].summary == "Blu-ray, 2 tracks"
+
+
+def test_that_disc_is_marked_as_the_one_musicbrainz_does_not_have():
+    files, mb = _drift()
+    t = compare.tracklist(files, mb, [Medium(1, "Ep1 Dust"), Medium(2, "Ep2 Rust")])
+
+    assert [g.unknown for g in t.discs] == [False, False, True]
+
+
+def test_the_files_only_name_a_disc_they_all_agree_about():
+    """#112's rule, one surface along: two files disagreeing about what disc 3
+    is called is not a name, and inventing one from the first file would report
+    a tag the other file contradicts."""
+    files, mb = _drift()
+    files[-1] = _extra(2, 3, "Trailer 2", subtitle="Bonus", media="Blu-ray")
+    t = compare.tracklist(files, mb, [Medium(1, "Ep1 Dust"), Medium(2, "Ep2 Rust")])
+
+    assert t.discs[2].medium.label == "Disc 3"
+    assert t.discs[2].summary == "Blu-ray, 2 tracks"
+
+
+def test_a_bonus_track_stays_on_the_disc_it_says_it_is_on():
+    """The ordinary extra — a hidden track on a disc the release DOES have.
+    It joins that disc's group and is not marked as a disc MusicBrainz lacks."""
+    files, mb = _drift()
+    files.append(_extra(3, 2, "Hidden", media="Digital Media"))
+    t = compare.tracklist(files, mb, [Medium(1, "Ep1 Dust"), Medium(2, "Ep2 Rust")])
+
+    assert [len(g.tracks) for g in t.discs] == [2, 3, 2]
+    assert [g.unknown for g in t.discs] == [False, False, True]
+
+
+def test_no_disc_is_unknown_when_the_caller_gave_no_media():
+    """A caller with no media to give leaves the discs grouped and unnamed — it
+    has said nothing about which discs the release has, so nothing here may
+    claim the release is missing one."""
+    files, mb = _drift()
+    t = compare.tracklist(files, mb)
+
+    assert [g.medium.position for g in t.discs] == [1, 2, 3]
+    assert not any(g.unknown for g in t.discs)

@@ -135,12 +135,30 @@
                     </span>
                     {% else %}
                     {# Nothing to compare against: a disc nobody ripped, one
-                       Harmonist couldn't read, or the disk-only view (#228). The
-                       heading is then MusicBrainz's description of the disc and
-                       makes no claim about the files — which is why the
-                       medium-derived tags keep their ordinary columns here. #}
+                       Harmonist couldn't read, the disk-only view (#228), or a
+                       disc the release doesn't have (#402). The heading is then
+                       ONE side's description of the disc — MusicBrainz's for the
+                       first three, the files' own for the last, which is the one
+                       case where MusicBrainz has nothing to say — and it makes no
+                       claim about the other, which is why the medium-derived tags
+                       keep their ordinary columns here. #}
                     {{ group.medium.label }}
                     <span class="track-diff__disc-meta">{{ group.summary }}</span>
+                    {%- if group.unknown %}
+                    {# The mirror of the "not in your files" mark above, and the
+                       reason this disc has a heading at all (#402): its rows each
+                       say "Not in MusicBrainz", and until now they said it under
+                       another disc's name.
+
+                       In WORDS, where the absent disc uses a glyph, because the
+                       rows below say it in words too — the mark up there carries
+                       a fact the text beside it doesn't state, and this one
+                       doesn't have to. A second meta span rather than a longer
+                       `summary`: the `::before` bullet separates them, and the
+                       disc's shape and the release's silence about it are two
+                       facts, not one string. #}
+                    <span class="track-diff__disc-meta">Not in MusicBrainz</span>
+                    {%- endif %}
                     {% endif %}
                 </th>
             </tr>

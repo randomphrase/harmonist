@@ -33,6 +33,7 @@ from harmonist.config import (
     ServerConfig,
     TestConfig,
 )
+from harmonist.formats.m4a import ATOM_DISC_SUBTITLE, ATOM_MEDIA
 from harmonist.models import BandcampInfo, MatchCandidate, Sidecar, TrackComparison
 from harmonist.tagger import (
     ATOM_ALBUM,
@@ -7123,6 +7124,71 @@ def test_a_missing_track_and_a_missing_disc_are_both_marked(client, cfg, monkeyp
     assert "None of this disc's 2 tracks are in your files" in body
     # And the headline says it in words, for the reader who never reaches either.
     assert "Disc 2 not in your files" in body
+
+
+def test_a_disc_the_release_does_not_have_gets_its_own_heading(client, cfg, monkeypatch):
+    """#402, end to end.
+
+    *DRIFT Series 1 — Complete* is one folder holding two releases' worth of
+    discs: eight from a Bandcamp download MusicBrainz knows, and a Blu-ray ripped
+    separately that it doesn't. The Blu-ray's rows were right — numbered `9-1`,
+    each marked *Not in MusicBrainz* — and they were drawn under **Disc 1**'s
+    heading, so that disc read as fifteen tracks long with a trailer in the
+    middle of it. The same shape here, two discs and a Blu-ray rather than eight.
+
+    The web rung, not the pure one: `compare` can say the group exists and is
+    named, and stayed green throughout while the template drew the heading only
+    for a disc MusicBrainz described. Whether a heading reaches the page at all
+    is decided by the markup.
+    """
+    d = _make_tagged_album(cfg, "Drift", mbid="rel-drift", tagged_at=datetime.now(UTC))
+    for name in ("02 Track.m4a", "09 Trailer.m4a"):
+        shutil.copy(SINE_M4A, d / name)
+    for name, disc, track, title in (
+        ("01 Track.m4a", 1, 1, "Dust"),
+        ("02 Track.m4a", 2, 1, "Rust"),
+        ("09 Trailer.m4a", 3, 1, "Trailer"),
+    ):
+        audio = MP4(d / name)
+        audio[ATOM_TITLE] = [title]
+        audio[ATOM_MB_ALBUM_ID] = [b"rel-drift"]
+        audio["trkn"] = [(track, 1)]
+        audio["disk"] = [(disc, 3)]
+        audio.save()
+    # The Blu-ray's own tags, which are the only account of what disc 3 is: no
+    # release track id pairs it with anything, and no medium answers to 3.
+    blu = MP4(d / "09 Trailer.m4a")
+    blu[ATOM_DISC_SUBTITLE] = [b"Ep9 Kitesurf"]
+    blu[ATOM_MEDIA] = [b"Blu-ray"]
+    blu.save()
+
+    def fake_release(mbid):
+        return {
+            "id": mbid,
+            "title": "Drift",
+            "medium-list": [
+                {
+                    "position": str(pos),
+                    "format": "Digital Media",
+                    "track-list": [{"id": f"t{pos}", "title": title, "length": "1000"}],
+                }
+                for pos, title in ((1, "Dust"), (2, "Rust"))
+            ],
+        }
+
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    # Its own heading, named by the files and placed after the two discs the
+    # release does have.
+    headings = re.findall(r'class="track-diff__disc-head">(.*?)</th>', body, re.DOTALL)
+    assert len(headings) == 3, "one per disc, the release's two and the Blu-ray"
+    assert "Disc 3 — Ep9 Kitesurf" in headings[2]
+    # Said the way its rows say it, and beside what the files make it out to be.
+    assert "Blu-ray, 1 track" in headings[2]
+    assert "Not in MusicBrainz" in headings[2]
+    # And the claim is only made about the disc that earned it.
+    assert not any("Not in MusicBrainz" in h for h in headings[:2])
 
 
 def test_identifiers_start_revealed_when_they_are_the_only_difference(client, cfg, monkeypatch):

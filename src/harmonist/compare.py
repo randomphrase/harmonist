@@ -1216,6 +1216,20 @@ class DiscGroup:
     #: has no opinion at all (#228), and every single-disc album, which draws no
     #: heading to roll anything up into.
     heading: DiscHeading | None = None
+    #: The release has no such disc (#402) — every row here is a file whose disc
+    #: number no medium answers to, and `medium` is what the FILES say it is
+    #: rather than MusicBrainz's description of it.
+    #:
+    #: The exact mirror of `absent`, and the heading states it the way the rows
+    #: below already do: "Not in MusicBrainz". Without it the disc had no
+    #: heading of its own at all — its rows fell into whichever group came first
+    #: and read as part of that disc, so a Blu-ray ripped into a folder of
+    #: digital-download discs made *Ep1 Dust* fifteen tracks long.
+    #:
+    #: A disc, not a defect. Assembling one album out of two releases is #403;
+    #: this says only that the release does not have this disc, which is a fact
+    #: about the release and not a claim about the files.
+    unknown: bool = False
 
     @property
     def absent(self) -> bool:
@@ -1243,6 +1257,18 @@ class TracklistComparison:
     #: The release's media, in position order. Empty for a caller that has none
     #: to give, in which case `discs` falls back to what the tracks say.
     media: tuple[Medium, ...] = field(default_factory=tuple)
+    #: The discs the FILES claim and the release does not have (#402), described
+    #: from those files — MusicBrainz has nothing to describe them with.
+    #:
+    #: Kept apart from `media` rather than appended to it, because `media` is
+    #: what the RELEASE has and one list holding both could not tell a reader
+    #: which of its entries came from where. `discs` marks a group built from
+    #: one of these `unknown`, which is the whole difference.
+    #:
+    #: Empty whenever `media` is, and that is not an omission: a caller with no
+    #: media to give has said nothing about which discs the release has, so
+    #: nothing here may conclude it is missing one.
+    extra_media: tuple[Medium, ...] = field(default_factory=tuple)
     # `mb_available` lived here, the tracklist half of the same flag the album
     # panel carries (#228). It went in #328, when its last two readers did: the
     # summary's "no comparison" branch (moved to `headline`, which asks the album
@@ -1380,14 +1406,26 @@ class TracklistComparison:
         A single-disc album comes back as ONE group, and the template renders no
         heading for it — nearly every album is one disc, and a heading above the
         only disc is noise.
+
+        A disc the release does not have is still a disc (#402), so it gets a
+        group of its own here — in position order with the rest, described by
+        `extra_media`, and marked `unknown`. It used to get none: grouping is by
+        `ComparedTrack.disc`, an extra file carried the default 1, and a
+        separately ripped Blu-ray was filed under disc 1's name.
         """
         by_position: dict[int, list[ComparedTrack]] = {}
         for t in self.tracks:
             by_position.setdefault(t.disc, []).append(t)
         known = {m.position: m for m in self.media}
+        unknown = {m.position: m for m in self.extra_media}
         headings = {h.position: h for h in self.headings}
         return tuple(
-            DiscGroup(known.get(pos, Medium(position=pos)), tuple(rows), headings.get(pos))
+            DiscGroup(
+                known.get(pos) or unknown.get(pos) or Medium(position=pos),
+                tuple(rows),
+                headings.get(pos),
+                unknown=pos in unknown,
+            )
             for pos, rows in sorted(by_position.items())
         )
 
@@ -2287,6 +2325,48 @@ def _disc_headings(
     return tuple(out)
 
 
+def _extra_media(
+    extras: Sequence[tuple[str, TrackTags]], media: Sequence[Medium]
+) -> tuple[Medium, ...]:
+    """The discs the files claim and the release doesn't have, named (#402).
+
+    A `Medium` per such disc, built out of the files on it, so the heading above
+    it reads the way every other disc's does: "Disc 9 — Ep9 Kitesurf", with the
+    format and the track count beside it. The alternative was a bare "Disc 9"
+    over rows the user's own tagger had named — a disc the page knows the name
+    of and declines to say.
+
+    **Only where `media` says something.** Empty media is a caller that has not
+    told us which discs the release has — `disk_tracklist`'s view, and any
+    lookup that came back without them — and concluding from silence that the
+    release lacks disc 2 would mark every disc of every such album.
+
+    A field is taken only where the disc's readable files AGREE on it, which is
+    #112's rule applied one surface along: two files disagreeing about what disc
+    9 is called have not named it, and picking the first file's answer would
+    print a name the file beside it contradicts. Unreadable files abstain rather
+    than dissent — they carry no tags because nobody could look, which is not
+    the same as carrying none.
+    """
+    if not media:
+        return ()
+    known = {m.position: m for m in media}
+    by_disc: dict[int, list[TrackTags]] = {}
+    for _, tags in extras:
+        position = tags.disc_num or 1
+        if position not in known:
+            by_disc.setdefault(position, []).append(tags)
+
+    def agreed(tagsets: Sequence[TrackTags], field_: Owned) -> str | None:
+        readings = {_disk_value(t, field_.value) for t in tagsets if not t.unreadable}
+        return readings.pop() if len(readings) == 1 else None
+
+    return tuple(
+        Medium(position, agreed(tagsets, Owned.DISC_SUBTITLE), agreed(tagsets, Owned.MEDIA))
+        for position, tagsets in sorted(by_disc.items())
+    )
+
+
 def tracklist(
     tracks: Sequence[tuple[str, TrackTags]],
     mb: Sequence[MBTrack],
@@ -2302,14 +2382,30 @@ def tracklist(
 
     `media` describes the release's discs, so the result can be grouped by disc
     and each one named (#216). Optional: without it the discs are still grouped,
-    from what the tracks themselves say, just unnamed.
+    from what the tracks themselves say, just unnamed — and nothing is marked as
+    a disc the release lacks, because a caller that named no media has not said
+    which discs the release has (#402).
 
     The columns are decided FIRST, from the pairings, and every row is then built
     to them (#309) — rather than each row deciding for itself, which is how a
     table gets cells that don't line up with its headings.
     """
-    multi_disc = any((t.tags.disc_num or 1) > 1 for t in mb)
     assigned, extras = _assign(tracks, mb, confirmed_mbid=confirmed_mbid)
+    # The EXTRAS count towards this too (#402). A disc the release doesn't have
+    # is one only its files know about, so a release with a single medium plus a
+    # separately ripped Blu-ray still shows two discs — and "2-1" is what a row
+    # on the second one has to read, or the table numbers it as though the first
+    # disc ran on.
+    #
+    # Only the extras, never every file: a file that says disc 1 while its
+    # release track id places it on disc 2 is #232's case, and letting what it
+    # CLAIMS decide the album's shape is the mistake that issue exists to stop.
+    # An extra has no release track id to be measured against, so its own tags
+    # are not a claim contradicted by anything — they are the only account there
+    # is.
+    multi_disc = any((t.tags.disc_num or 1) > 1 for t in mb) or any(
+        (tags.disc_num or 1) > 1 for _, tags in extras
+    )
     # The disc comes from MusicBrainz, like the rows' own does, and NOT from the
     # file: a file that says disc 1 while its release track id places it on disc
     # 2 is exactly the case #232 exists for, and grouping it by what it claims
@@ -2413,6 +2509,14 @@ def tracklist(
                     unreadable=tags.unreadable,
                 ),
                 file_name=name,
+                # From the FILE, which is the one row where that is right (#402).
+                # Every other row takes its disc from MusicBrainz because a file
+                # can be wrong about which track it is; this one has no
+                # MusicBrainz track to be wrong against, so its own tag is the
+                # only thing that says which disc it belongs to. Left at the
+                # default it said "disc 1" about every one of them, and a
+                # separately ripped disc 9 was drawn under disc 1's heading.
+                disc=tags.disc_num or 1,
                 video=tags.video,
             )
         )
@@ -2433,6 +2537,7 @@ def tracklist(
             replace(r, mb_only_identifiers=_only_identifiers(r.fields, kept)) for r in rows
         ),
         media=tuple(media),
+        extra_media=_extra_media(extras, media),
         columns=columns,
         collapsed=collapsed,
         headings=headings,

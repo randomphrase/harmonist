@@ -498,6 +498,12 @@ those tags behave like any other; and a disc whose own files disagree with each
 other keeps its columns, because the heading can only state a value the whole disc
 shares.
 
+A disc your files carry and the release doesn't — a Blu-ray ripped separately
+into a folder whose other discs came from a download — gets a heading of its own
+as well, marked *Not in MusicBrainz*. MusicBrainz has nothing to describe it
+with, so the heading is what your own files say: the disc subtitle they carry,
+the medium, and how many tracks of it you have.
+
 MusicBrainz ids and ISRCs are identifiers rather than anything to read, which is
 why they start hidden — and the control names what is behind it rather than
 counting it. They are still links, and an id with no name is shortened to its first few characters with

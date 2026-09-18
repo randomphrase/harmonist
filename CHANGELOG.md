@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A disc MusicBrainz doesn't have now gets its own heading on the album page**,
+  named from your files, instead of being listed under another disc's name
+  (#402).
+
 ## [1.18.0] - 2026-09-18
 
 ### Added
