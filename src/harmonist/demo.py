@@ -235,6 +235,10 @@ LIBRARY: list[dict[str, Any]] = [
             "Closing Credits (Urinal Gerber)",
         ],
         "cover": "cover-5.jpg",
+        # …and the last track carries a cover of its own, which is what the
+        # tracklist's artwork mark points at (#404). A compilation is where that
+        # legitimately happens, and this is the demo's compilation.
+        "art": "odd",
         "file_mbid": "demo-rel-rural-juror",
         # The "tags have drifted from MusicBrainz" album. Every difference here
         # is one a real Bandcamp download actually produces, and each exercises a
@@ -1472,6 +1476,11 @@ def _embed_art(album_dir: Path, spec: dict[str, Any], cover_name: str | None) ->
                 rewrite is a no-op and the case looks harmless.
     - "mixed" — a different image per track, as a compilation legitimately has.
                 Preserved by the tagger, so nothing is offered to overwrite it.
+    - "odd"   — the folder cover everywhere but the LAST track, which carries one
+                of its own. What the tracklist's artwork mark is for (#404): the
+                album has a prevailing image and one track that is not it. "mixed"
+                cannot show that mark, because an album of distinct covers has no
+                prevailing image to be the odd one out against.
     """
     shape = spec.get("art")
     if shape == "none":
@@ -1502,6 +1511,8 @@ def _embed_art(album_dir: Path, spec: dict[str, Any], cover_name: str | None) ->
             source = others[0]
         elif shape == "mixed":
             source = others[i % len(others)]
+        elif shape == "odd" and i == len(files) - 1:
+            source = others[0]
         formats.write_cover(path, source.read_bytes())
 
 

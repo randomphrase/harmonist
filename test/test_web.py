@@ -9585,6 +9585,89 @@ def test_artwork_section_renders_without_a_musicbrainz_release(client, cfg):
     assert "All 2 tracks" in r.text
 
 
+def _linked_album_with_art(cfg, name: str, *, mbid: str, covers: list[bytes | None]):
+    """`_album_with_art` with a MusicBrainz release behind it, so the page renders
+    the tracklist and the Artwork section together (#404)."""
+    from harmonist.models import Sidecar
+
+    d = _album_with_art(cfg, name, covers=covers)
+    for i, f in enumerate(sorted(d.glob("*.m4a")), start=1):
+        audio = MP4(f)
+        audio[ATOM_MB_ALBUM_ID] = [mbid.encode()]
+        audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [f"rt-{i}".encode()]
+        audio[ATOM_TITLE] = [f"Song {i}"]
+        audio.save()
+    sc.write(d, Sidecar(mb_release_id=mbid, tagged_at=datetime.now(UTC)))
+    return d
+
+
+def _release_of(mbid: str, tracks: int):
+    def fake_release(asked):
+        return {
+            "id": asked,
+            "title": "Marked",
+            "medium-list": [
+                {
+                    "position": "1",
+                    "track-list": [
+                        {"id": f"rt-{i}", "title": f"Song {i}", "length": "1000"}
+                        for i in range(1, tracks + 1)
+                    ],
+                }
+            ],
+        }
+
+    return fake_release
+
+
+def test_an_odd_tracks_artwork_mark_links_to_the_row_that_shows_it(client, cfg, monkeypatch):
+    """#404: the tracklist says WHICH track, the Artwork section shows the image.
+
+    The link is what joins them, and the failure it can have is pointing at an id
+    nothing renders — so the target is looked up in the response rather than
+    matched against its own spelling. Both halves come from one render (#485),
+    which is what lets this be a plain fragment link.
+    """
+    prevailing, odd = _png(1), _png(2)
+    d = _linked_album_with_art(
+        cfg, "Marked", mbid="rel-marked", covers=[prevailing, prevailing, odd, None]
+    )
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", _release_of("rel-marked", 4))
+
+    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
+
+    # Two marks: the track with its own image, and the track with none. The two
+    # that carry the album's own artwork are not marked — a mark on every row
+    # would say nothing about which track to look at.
+    targets = re.findall(r'class="track-diff__art" href="#([^"]+)"', body)
+    assert len(targets) == 2, targets
+    for anchor in targets:
+        assert f'id="{anchor}"' in body, f"nothing on the page answers to {anchor}"
+    # In the number cell, the slot the video and missing marks use (#226, #326).
+    assert re.search(r'class="track-diff__num">\s*<a class="track-diff__art"', body)
+
+
+def test_a_musicbrainz_reread_keeps_the_artwork_marks(client, cfg, monkeypatch):
+    """The marks ride on the tracklist's rows rather than on the artwork view,
+    and this is why (#404): a re-read re-renders the table and deliberately does
+    NOT re-send the Artwork section (#485, #477). Marks taken from the view would
+    disappear off the table while the section they point at stayed on the page.
+    """
+    prevailing, odd = _png(1), _png(2)
+    d = _linked_album_with_art(
+        cfg, "Reread", mbid="rel-reread", covers=[prevailing, prevailing, odd]
+    )
+    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", _release_of("rel-reread", 3))
+    album_id = _id_for(cfg, d)
+
+    body = client.get(f"/library/{album_id}/compare?reread=1").text
+
+    assert 'class="track-diff__art"' in body
+    # …and the section really is absent from this response, or the test above
+    # would be proving this one as well.
+    assert '<div class="art-row"' not in body
+
+
 def test_artwork_section_names_the_tracks_missing_art(client, cfg):
     """The remedy is per file, so the gap row names files rather than counting."""
     art = _png(1)

@@ -412,6 +412,100 @@ class TestHeadingCount:
         assert summarise(album(None, None), None).count is None
 
 
+class TestTrackMarks:
+    """Which tracks the tracklist marks, and which Artwork row it sends them to.
+
+    The anchors are asserted against `ArtRow.anchor` rather than against their
+    own spelling, because that is the failure this pair can actually have: a mark
+    linking to an id the section does not render. Both halves would be
+    individually correct, and a test of either one alone would pass.
+    """
+
+    def named(self, *art: EmbeddedArt | None) -> list[tuple[str, TrackTags]]:
+        """`album()` as `compare` speaks it — `(file_name, tags)`."""
+        return [(path.name, tags) for path, tags in album(*art)]
+
+    def row_for(self, view: artwork.ArtworkView, file_name: str) -> artwork.ArtRow:
+        return next(r for r in view.rows if any(t.name == file_name for t in r.tracks))
+
+    def test_a_track_carrying_its_own_image_points_at_the_row_showing_it(self) -> None:
+        one, two = art_of(1), art_of(2)
+        tracks = self.named(one, one, two)
+
+        marks = artwork.marks(tracks)
+
+        assert list(marks) == ["03 Track.m4a"]
+        assert marks["03 Track.m4a"].mark is artwork.ArtMark.OWN
+        view = summarise(album(one, one, two), None)
+        assert marks["03 Track.m4a"].anchor == self.row_for(view, "03 Track.m4a").anchor
+
+    def test_a_track_with_no_image_points_at_the_gap_row(self) -> None:
+        """The case with an obvious remedy, and the one the Library's artwork
+        chip cannot see — it reads the folder cover, or track 1."""
+        one = art_of(1)
+        marks = artwork.marks(self.named(one, one, None))
+
+        assert marks["03 Track.m4a"].mark is artwork.ArtMark.GAP
+        view = summarise(album(one, one, None), None)
+        assert marks["03 Track.m4a"].anchor == self.row_for(view, "03 Track.m4a").anchor
+
+    def test_the_albums_own_image_is_not_marked(self) -> None:
+        one = art_of(1)
+        assert artwork.marks(self.named(one, one, art_of(2))).keys() == {"03 Track.m4a"}
+
+    def test_no_prevailing_image_marks_nothing(self) -> None:
+        """A compilation of distinct covers is correct, and marking all twelve
+        says nothing about which track to look at — the same bar a tracklist
+        column has to clear (#309)."""
+        assert artwork.marks(self.named(art_of(1), art_of(2), art_of(3))) == {}
+
+    def test_an_even_split_has_no_prevailing_image_either(self) -> None:
+        """Neither half is "the album's artwork", so neither differs from it."""
+        one, two = art_of(1), art_of(2)
+        assert artwork.marks(self.named(one, one, two, two)) == {}
+
+    def test_gaps_are_marked_where_no_image_prevails(self) -> None:
+        """Independent findings: that nothing prevails says which tracks are
+        unlike the others, and a missing image is a gap whatever its siblings
+        carry."""
+        marks = artwork.marks(self.named(art_of(1), art_of(2), None))
+
+        assert list(marks) == ["03 Track.m4a"]
+        assert marks["03 Track.m4a"].mark is artwork.ArtMark.GAP
+
+    def test_an_album_with_no_artwork_at_all_is_not_marked(self) -> None:
+        """A fact about the album, which the Artwork section states in one row.
+        Marked against every track it names no track in particular."""
+        assert artwork.marks(self.named(None, None, None)) == {}
+
+    def test_an_unreadable_file_has_no_artwork_answer(self) -> None:
+        """#112's third state: Harmonist could not look, which is not the same as
+        looking and finding nothing — and it votes for nothing either, so it
+        cannot deny the rest of the album a prevailing image."""
+        one = art_of(1)
+        tracks = self.named(one, one, art_of(2))
+        tracks.append(("04 Track.m4a", TrackTags(unreadable=True)))
+
+        marks = artwork.marks(tracks)
+
+        assert "04 Track.m4a" not in marks
+        assert marks["03 Track.m4a"].mark is artwork.ArtMark.OWN
+
+    def test_the_folder_covers_own_row_keeps_an_id_of_its_own(self) -> None:
+        """A cover carrying the tracks' own picture gets a second row the moment
+        something is coming to it (#479, #276) — and one page cannot hold two
+        elements with one id."""
+        mine = art_of(1, width=600, height=600)
+        view = summarise(
+            album(mine, mine), cover_of(mine), archive=art_of(2, width=1400, height=1400)
+        )
+
+        tracks_row, cover_row = view.rows
+        assert cover_row.image == tracks_row.image
+        assert cover_row.anchor != tracks_row.anchor
+        assert len({r.anchor for r in view.rows}) == len(view.rows)
+
+
 class TestLargerLocalImageWins:
     """The page must reach the same verdict as `tagger._prepare` (#410)."""
 

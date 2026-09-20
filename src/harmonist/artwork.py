@@ -30,6 +30,7 @@ write there. Neither is derived from the other.
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -620,6 +621,90 @@ class ArchiveRow:
         return self.image is None and self.placeholder != "none"
 
 
+#: The id of the Artwork row for tracks carrying no image at all.
+GAP_ANCHOR = "art-row-none"
+
+
+def row_anchor(digest: str | None) -> str:
+    """The id of the Artwork row showing this image, or `GAP_ANCHOR` for none.
+
+    ONE definition of the spelling, because two things agree on it across two
+    files: the section renders the id and the tracklist's mark links to it
+    (#404). A second spelling would be a link to nowhere — and a test of either
+    side on its own would pass, since both halves would be individually correct.
+    """
+    return f"art-row-{digest[:12]}" if digest else GAP_ANCHOR
+
+
+class ArtMark(StrEnum):
+    """Why one track's artwork is worth pointing at from the tracklist (#404)."""
+
+    #: Carries an image other than the one the rest of the album carries.
+    OWN = "own"
+    #: Carries no embedded image at all, on an album where other tracks do.
+    GAP = "gap"
+
+
+@dataclass(frozen=True)
+class TrackMark:
+    """A tracklist row's artwork mark, and the Artwork row it points at.
+
+    The anchor travels WITH the mark rather than being rebuilt beside it, so a
+    row can only ever link to a target `row_anchor` also named.
+    """
+
+    mark: ArtMark
+    anchor: str
+
+
+def marks(tracks: Sequence[tuple[str, TrackTags]]) -> dict[str, TrackMark]:
+    """Which tracks' artwork the tracklist should point at, by file name (#404).
+
+    `tracks` is the album's AUDIO as `compare` speaks it — `(file_name, tags)`,
+    the names the tracklist's rows carry, so the caller does not have to join two
+    different spellings of one path. Video takes no part: Harmonist never writes
+    a video's tags and the artwork plan never targets one, so a `.m4v` has no
+    artwork answer to point at. Neither does an unreadable file, which is #112's
+    third state and says so in its own row.
+
+    Two marks, and both mean "this track is not like the rest of the album":
+
+    * **GAP** — no embedded image, on an album where something else has one. The
+      case with an obvious remedy, and the one the Library's `has_cover` chip
+      cannot see, since that is the folder cover or track 1.
+    * **OWN** — an image other than the album's PREVAILING one: the digest a
+      strict majority of the arted tracks share. Without a majority there is no
+      "the album's artwork" to differ from — a compilation of twelve distinct
+      covers is correct, and a mark on all twelve of them says nothing. Same rule
+      the tracklist's columns are held to (#309): a mark earns its place by
+      answering *which track*, or it is noise on every row.
+
+    An album where NO track has an image gets no marks at all. That every track
+    lacks one is a fact about the album, which the Artwork section states in a
+    single row; repeating it against all twelve names no track in particular.
+
+    Not read off `ArtworkView.rows`, though it is the same grouping by digest,
+    and deliberately: the rows are built from the artwork PLAN, which a
+    MusicBrainz re-read does not rebuild (#485) while it does re-render the
+    tracklist. Marks derived from the view would vanish on a re-read, which reads
+    as a bug and is invisible to a test that renders the page once. What must not
+    drift between the two — the anchor — is `row_anchor`, shared.
+    """
+    readable = [(name, t) for name, t in tracks if not t.unreadable]
+    counted = Counter(t.art.digest for _, t in readable if t.art is not None)
+    if not counted:
+        return {}
+    top, carried = counted.most_common(1)[0]
+    prevailing = top if carried * 2 > sum(counted.values()) else None
+    found: dict[str, TrackMark] = {}
+    for name, tags in readable:
+        if tags.art is None:
+            found[name] = TrackMark(ArtMark.GAP, GAP_ANCHOR)
+        elif prevailing is not None and tags.art.digest != prevailing:
+            found[name] = TrackMark(ArtMark.OWN, row_anchor(tags.art.digest))
+    return found
+
+
 @dataclass(frozen=True)
 class ArtRow:
     """One distinct image, and everything carrying it.
@@ -674,6 +759,20 @@ class ArtRow:
     @property
     def is_gap(self) -> bool:
         return self.image is None
+
+    @property
+    def anchor(self) -> str:
+        """The id a tracklist mark links to (#404).
+
+        The folder cover's OWN row takes an id of its own rather than its image's:
+        when the cover is about to diverge from the tracks it gets a second row
+        carrying the same picture as theirs (#479), and one page cannot hold two
+        elements with one id. No mark points here — the cover is not a track — so
+        the id is the section's alone, and it stays distinct.
+        """
+        if self.creates or (self.on_cover is not None and not self.tracks):
+            return "art-row-cover"
+        return row_anchor(self.image.digest if self.image else None)
 
     @property
     def writes(self) -> bool:

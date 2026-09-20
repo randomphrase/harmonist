@@ -122,7 +122,10 @@
     {% endif %}
 
     {% for r in artwork.rows %}
-    <div class="art-row">
+    {# The row's id is what the tracklist's artwork marks link to (#404), and it
+       comes off the model — `ArtRow.anchor`, the same `row_anchor` the marks are
+       built with — so a mark can only ever point at an id this loop renders. #}
+    <div class="art-row" id="{{ r.anchor }}">
         <div class="art-row__side">
         {{ image_cell(r.image, album.id, r.label) }}
         <div class="art-row__facts">

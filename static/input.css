@@ -769,6 +769,31 @@ button[disabled],
   color: var(--color-muted);
   vertical-align: baseline;
 }
+/* The artwork mark (#404), in the same number-cell slot and the same muted voice
+   as the video and missing marks. A LINK, so it takes the pointer a link has —
+   but none of a link's colour or underline: it is a mark that happens to be
+   clickable, and colouring it would make "this track has its own cover" read as
+   a finding, when a compilation with four covers is simply correct. */
+.track-diff__art {
+  display: inline-flex;
+  align-items: center;
+  margin-right: .3rem;
+  color: var(--color-muted);
+  vertical-align: -1px;
+  text-decoration: none;
+}
+.track-diff__art:hover,
+.track-diff__art:focus-visible { color: var(--color-accent); }
+
+/* Where the mark lands. The row is already there and already correct — the tint
+   is only for the second or two it takes to see WHICH row answered, which a
+   fragment jump on a long section does not make obvious by itself. `:target`
+   rather than a class flip, so nothing has to clean it up afterwards. */
+.art-row:target {
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+  padding-left: .7rem;
+}
 .track-diff__disc-list {
   margin: .35rem 0 0 1.1rem;
   list-style: decimal;

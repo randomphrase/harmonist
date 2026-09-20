@@ -40,6 +40,11 @@ from typing import TYPE_CHECKING
 from .formats.owned import ALBUM_FIELDS, LABELS, TRACK_FIELDS, Owned
 
 if TYPE_CHECKING:  # `types` stays type-only: importing it at runtime pulls mutagen in
+    # `artwork` is type-only for the same reason, one module further out: it
+    # imports `formats`, and nothing here opens a file or parses a tag. The mark
+    # is decided there — an artwork fact, rendered in the tracklist (#404) — and
+    # only travels through here on the row it belongs to.
+    from .artwork import TrackMark
     from .formats.types import TagSet, TrackTags
 
     #: One present, readable track as the column rules see it (#309): the file's
@@ -1036,6 +1041,15 @@ class ComparedTrack:
     #: never takes part in anything — no comparison, no change when the album
     #: is re-tagged — and leaves the user to wonder which of those is a bug.
     video: bool = False
+    #: This track's artwork, when it is not the album's (#404): its own image, or
+    #: none at all. A pointer into the Artwork section below rather than a
+    #: comparison — MusicBrainz has no opinion on which image a file carries, so
+    #: this is never a difference and never takes the purple.
+    #:
+    #: On the ROW rather than looked up beside the table, because the tracklist is
+    #: re-rendered by responses that build no artwork view at all (#485) and a
+    #: mark that came from the view would disappear on a MusicBrainz re-read.
+    art: TrackMark | None = None
     #: Whether every difference on this row is in an identifier column, and so
     #: hidden until the reader asks for it (#319).
     #:
@@ -2373,6 +2387,7 @@ def tracklist(
     media: Sequence[Medium] = (),
     *,
     confirmed_mbid: str | None = None,
+    art: Mapping[str, TrackMark] = {},
 ) -> TracklistComparison:
     """Compare an album's files, track by track, against its MusicBrainz release.
 
@@ -2389,6 +2404,13 @@ def tracklist(
     The columns are decided FIRST, from the pairings, and every row is then built
     to them (#309) — rather than each row deciding for itself, which is how a
     table gets cells that don't line up with its headings.
+
+    `art` is `artwork.marks` by file name (#404), stamped onto the rows it names.
+    Decided there and passed in, because this module opens no files: a mark is a
+    fact about the image inside one, and the only thing the tracklist does with it
+    is point at the section that shows it. Empty by default — a caller with no
+    artwork answer marks nothing, which is exactly right for one that never read
+    the files' images.
     """
     assigned, extras = _assign(tracks, mb, confirmed_mbid=confirmed_mbid)
     # The EXTRAS count towards this too (#402). A disc the release doesn't have
@@ -2534,7 +2556,17 @@ def tracklist(
         rows = [replace(r, fields=(*r.fields, _mb_length_cell(r.fields))) for r in rows]
     return TracklistComparison(
         tracks=tuple(
-            replace(r, mb_only_identifiers=_only_identifiers(r.fields, kept)) for r in rows
+            replace(
+                r,
+                mb_only_identifiers=_only_identifiers(r.fields, kept),
+                # By name, so a row with no file — a track MusicBrainz lists that
+                # nobody ripped — can't be given one (#404). `marks` holds only
+                # readable audio, which is what leaves an unreadable file unmarked
+                # as well: it has no artwork answer, and saying it has no artwork
+                # would be #112's mistake in a new place.
+                art=art.get(r.file_name or ""),
+            )
+            for r in rows
         ),
         media=tuple(media),
         extra_media=_extra_media(extras, media),
@@ -2544,7 +2576,9 @@ def tracklist(
     )
 
 
-def disk_tracklist(tracks: Sequence[tuple[str, TrackTags]]) -> TracklistComparison:
+def disk_tracklist(
+    tracks: Sequence[tuple[str, TrackTags]], *, art: Mapping[str, TrackMark] = {}
+) -> TracklistComparison:
     """The album's own tracks, with no MusicBrainz release to compare them to.
 
     For a release MusicBrainz has DELETED (#228). The tracks never depended on
@@ -2579,6 +2613,10 @@ def disk_tracklist(tracks: Sequence[tuple[str, TrackTags]]) -> TracklistComparis
             file_name=name,
             disc=tags.disc_num or 1,
             video=tags.video,
+            # Marked here too (#404). A deleted release takes MusicBrainz away;
+            # the images in the user's own files are untouched, and this view
+            # exists precisely to show what those files say.
+            art=art.get(name),
         )
         for name, tags in tracks
     ]

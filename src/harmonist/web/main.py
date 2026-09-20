@@ -984,6 +984,11 @@ def _album_comparison(
             mb_tracks,
             _media_of(release),
             confirmed_mbid=release["id"],
+            # Which tracks carry artwork of their own, or none (#404) — off the
+            # AUDIO only, since Harmonist never writes a video's tags and the
+            # artwork plan never targets one. Costs no read: the images came off
+            # disk with the tags, in the pass above.
+            art=artwork.marks(audio),
         ),
     )
 
@@ -1009,7 +1014,10 @@ def _album_disk_view(
     audio, video = _album_tracks(album_dir, paths, reads)
     return (
         compare.AlbumComparison(fields=compare.album_fields(audio, None), mb_available=False),
-        compare.disk_tracklist(_in_track_order(audio + video)),
+        # Marked here too (#404): the release is gone, the artwork in the user's
+        # own files is not, and this page renders the Artwork section for exactly
+        # that reason (#485).
+        compare.disk_tracklist(_in_track_order(audio + video), art=artwork.marks(audio)),
     )
 
 

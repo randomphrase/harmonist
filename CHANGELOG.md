@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **The tracklist now marks a track whose artwork isn't the album's** — one that
+  carries a cover of its own, or none at all — and the mark links down to the row
+  in the Artwork section that shows it (#404).
+
 ### Fixed
 
 - **A disc MusicBrainz doesn't have now gets its own heading on the album page**,
