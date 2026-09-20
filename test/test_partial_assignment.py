@@ -93,8 +93,8 @@ def test_partial_confirmation_and_review_after_mb_adds_track(client, cfg, monkey
     release["medium-list"][0]["track-list"].append(later)
     editor = client.get(f"/assignments/{album.id}?reread=true&album_tracks=true&on_album_page=true")
     fields = test_web._confirmation_fields(editor.text)
-    assert fields["disk_order"] == "0,-,1", "only the known release-track ID is paired"
-    assert fields["mb_order"] == "0,1,-"
+    assert fields["disk_order"] == "0,1", "the sole remaining file is proposed for review"
+    assert fields["mb_order"] == "0,1"
     assert [call for call in calls if call[0] == "mb"] == [("mb", release["id"])] * 2
     from harmonist import compare
     from harmonist.web.main import _album_comparison
@@ -103,10 +103,8 @@ def test_partial_confirmation_and_review_after_mb_adds_track(client, cfg, monkey
     assert [track.state for track in comparison.tracks].count(compare.TrackState.MISSING) == 1
     assert [track.state for track in comparison.tracks].count(compare.TrackState.EXTRA) == 1
     assert formats.read_owned(files[1]) == untouched | {"mb_album_id": release["id"]}
-    moved = client.post(f"/assignments/{album.id}", data=fields | {"move": "disk:2:up"})
-    preview = client.post(
-        f"/confirm/{album.id}/preview", data=test_web._confirmation_fields(moved.text)
-    )
+    assert "Proposed assignment" in editor.text
+    preview = client.post(f"/confirm/{album.id}/preview", data=fields)
     result = client.post(f"/confirm/{album.id}", data=test_web._confirmation_fields(preview.text))
     assert "confirmation-applied" in result.headers.get("HX-Trigger", "")
     assert formats.read_owned(files[1])["mb_release_track_id"] == later["id"]

@@ -21,7 +21,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, Protocol
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlencode
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -3315,22 +3315,40 @@ class _ConfirmationChanged(Exception):
     """The selected release no longer describes the confirmation preview."""
 
 
-def _release_fingerprint(release: Release) -> str:
-    return hashlib.sha256(json.dumps(release, sort_keys=True).encode()).hexdigest()
+def _release_fingerprint(release: Release, requested_mbid: str) -> str:
+    # Bind the selected candidate to the canonical snapshot. A merge stores
+    # only the surviving ID; continuing review must find that same row locally.
+    digest = hashlib.sha256(
+        json.dumps([requested_mbid, release], sort_keys=True).encode()
+    ).hexdigest()
+    return f"{release['id']}:{digest}"
 
 
 def _reviewed_release(mbid: str, fingerprint: str) -> Release:
     """Resolve a reviewed snapshot locally; never substitute a different one."""
-    release = mb_cache.stored_release(mbid)
+    canonical, separator, _ = fingerprint.partition(":")
+    release = mb_cache.stored_release(canonical) if separator else None
     if release is None:
         raise _ConfirmationChanged(
             "The reviewed release is no longer available. Refresh MusicBrainz and review again."
         )
-    if _release_fingerprint(release) != fingerprint:
+    if _release_fingerprint(release, mbid) != fingerprint:
         raise _ConfirmationChanged(
             "MusicBrainz changed since the preview. Refresh the comparison and review again."
         )
     return release
+
+
+def _album_location(request: Request, album_id: str, *, edit_assignments: bool = False) -> str:
+    """Keep the Library return context when review replaces the album page."""
+    query = request.headers.get("HX-Current-URL", "").partition("?")[2].split("#", 1)[0]
+    context = {k: v for k, v in parse_qsl(query) if k in {"from_page", "from_filter", "from_q"}}
+    if edit_assignments:
+        context["edit_assignments"] = "true"
+    location = "/album/" + quote(album_id, safe="")
+    if context:
+        location += "?" + urlencode(context)
+    return location + ("#album-tracks" if edit_assignments else "")
 
 
 def _tag_with_release(
@@ -3403,6 +3421,17 @@ def _tag_with_release(
         assignment = track_assignment.panel(
             album_files.for_paths(paths or [album_path]), release, assignment_draft
         ).mapping()
+    else:
+        # Refuse before artwork lookup or any write, including callers that
+        # supply their own Tagger. The tagger itself enforces the same guard.
+        files = album_files.for_paths(paths or [album_path])
+        review = tagger_mod.assignment_review(release, [formats.read_tags(f) for f in files])
+        if review.required:
+            raise tagger_mod.TrackAssignmentRequired(
+                files=len(files),
+                tracks=len(match.mb_track_lengths(release)),
+                unassigned=review.unassigned,
+            )
     # MusicBrainz REDIRECTS a merged MBID, so the release that comes back can
     # carry a different id from the one asked for. That difference IS the merge
     # notification — cheap, exact, and the only one there is (#268). Everything
@@ -4372,6 +4401,7 @@ def _register_routes(app: FastAPI) -> None:
         from_page: int = 1,
         from_filter: str | None = None,
         from_q: str | None = None,
+        edit_assignments: bool = False,
     ) -> Response:
         """The standalone album page (#103) — full tracklist plus the album's
         history, neither of which fits a viewport-constrained dialog.
@@ -4481,6 +4511,7 @@ def _register_routes(app: FastAPI) -> None:
             from_filter=_library_filter(from_filter),
             from_q=_library_search(from_q),
         )
+        ctx["edit_assignments"] = edit_assignments
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 
     @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
@@ -4731,6 +4762,7 @@ def _register_routes(app: FastAPI) -> None:
         # on a page the user asked for and is exactly why the Library's own
         # render cannot do this for every tile.
         plan = gardener.refresh_flag(album, release).plan
+        assignment_review = tagger_mod.assignment_review(release, [t for _, t in reads[0]])
         # The artwork half of the page's findings, from the pass made above
         # rather than from one of its own (#485).
         #
@@ -4780,6 +4812,7 @@ def _register_routes(app: FastAPI) -> None:
             update_ignored=gardener.is_ignored(album, _ignored_updates()),
             comparison=comparison,
             tracklist=tracks,
+            assignment_review=assignment_review,
             absent_media=_absent_media_summary(album, release),
             shape_mismatch=_shape_mismatch(album, release),
             # What the note beside the hexagon reports — now a real timestamp
@@ -5066,9 +5099,12 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
                 album=album,
             )
-        except tagger_mod.TrackAssignmentRequired as e:
-            return _flash_response(
-                "Tracks unassigned", str(e), level=Level.WARNING, tasks_changed=False, album=album
+        except tagger_mod.TrackAssignmentRequired:
+            # A stale/general Apply entry point must arrive at the same editor
+            # as Review assignments. Nothing was written; don't trigger a scan.
+            request.state.skip_rescan = True
+            return Response(
+                headers={"HX-Redirect": _album_location(request, album.id, edit_assignments=True)}
             )
         except tagger_mod.TagMismatchError as e:
             if not e.short:
@@ -6058,12 +6094,14 @@ def _register_routes(app: FastAPI) -> None:
         release = mb_cache.stored_release(candidate.mb_release_id)
         if release is not None or not cancel or reread:
             try:
-                if reread or release is None:
+                if draft:
+                    release = _reviewed_release(candidate.mb_release_id, release_fingerprint)
+                elif reread or release is None:
                     release = mb_cache.fetch_release(
                         candidate.mb_release_id, max_age=mb_cache.FRESH if reread else None
                     )
-                current = _release_fingerprint(release)
-                checked_at = mb_cache.fetched_at(candidate.mb_release_id)
+                current = _release_fingerprint(release, candidate.mb_release_id)
+                checked_at = mb_cache.fetched_at(release["id"])
                 if draft and current != release_fingerprint:
                     raise track_assignment.AssignmentChanged(
                         "MusicBrainz changed. Reset assignments to review the current release."
@@ -6072,7 +6110,12 @@ def _register_routes(app: FastAPI) -> None:
                     album_files.for_paths(album.folders),
                     release,
                     draft,
-                    confirmed=bool(album.sidecar and album.sidecar.mb_release_id == release["id"]),
+                    # A merged release still reviews the confirmed album; its
+                    # returned ID differs, but that cannot permit positional
+                    # guesses for the old track identities.
+                    confirmed=bool(
+                        album.sidecar and album.sidecar.mb_release_id == candidate.mb_release_id
+                    ),
                 )
                 release_fingerprint = current
                 if move:
@@ -6083,7 +6126,7 @@ def _register_routes(app: FastAPI) -> None:
                 error = (
                     "This release is no longer on MusicBrainz. Cancel and choose another release."
                 )
-            except (ValueError, OSError, mb_lookup.MBError) as e:
+            except (_ConfirmationChanged, ValueError, OSError, mb_lookup.MBError) as e:
                 # A failed read is not an empty tracklist. Keep the failure
                 # visible and offer a fresh editor, never an automatic write.
                 log.warning("could not build track assignments: %s", e, extra=_LOG_ONLY)
@@ -6498,7 +6541,7 @@ def _register_routes(app: FastAPI) -> None:
         if on_album_page:
             current_id = sidecar_mod.album_id_for(album.path)
             assert current_id is not None  # successful tagging wrote a sidecar
-            response.headers["HX-Redirect"] = "/album/" + quote(current_id, safe="")
+            response.headers["HX-Redirect"] = _album_location(request, current_id)
         return response
 
     @app.post("/reject/{album_id}", response_class=HTMLResponse)

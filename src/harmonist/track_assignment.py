@@ -8,7 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import compare, formats, match, tagger
+from . import compare, formats, match, mb_lookup, tagger, track_structure
 from .models import Release
 
 
@@ -60,6 +60,17 @@ class Panel:
     disk_order: list[int | None]
     mb_order: list[int | None]
     disk_fingerprint: str
+    known_slots: tuple[int | None, ...] | None = None
+
+    @property
+    def proposed(self) -> frozenset[tuple[int, int]]:
+        if self.known_slots is None:
+            return frozenset()
+        return frozenset(
+            (d, m)
+            for d, m in zip(self.disk_order, self.mb_order, strict=True)
+            if d is not None and m is not None and self.known_slots[d] != m
+        )
 
     @property
     def draft(self) -> Draft:
@@ -144,24 +155,17 @@ def panel(
         Entry(t.title, _number(t.disc_num, t.track_num), length)
         for t, length in zip(mb_tags, lengths, strict=True)
     ]
+    video = set(mb_lookup.video_media_of(release))
+    eligible = {i for i, t in enumerate(mb_tags) if t.disc_num not in video}
+    known = track_structure.pairs(tags, mb_tags, eligible)
     if draft is None:
         slots = compare.assign(
             [compare.identity_of(t) for t in tags],
             [compare.TrackIdentity.of_tagset(t) for t in mb_tags],
         )
         if confirmed:
-            ids = [t.mb_release_track_id for t in mb_tags]
-            disk_ids = [t.owned.get("mb_release_track_id") for t in tags]
-            for i, (tag, ref) in enumerate(zip(tags, disk_ids, strict=True)):
-                if ref:
-                    slots[i] = (
-                        ids.index(ref) if ids.count(ref) == 1 and disk_ids.count(ref) == 1 else None
-                    )
-                elif compare.is_unassigned(ref, tag.owned.get("mb_track_id")):
-                    slots[i] = None
-                # A recording id written by another tagger still names the track,
-                # so the editor opens on the pairing above rather than on nothing
-                # — hand-pairing thirty rows was never the escape hatch (#538).
+            proposal = track_structure.pairs(tags, mb_tags, eligible, propose=True)
+            slots = list(proposal.slots)
         disk_order: list[int | None] = [None] * len(mb)
         for i, slot in enumerate(slots):
             if slot is not None:
@@ -175,4 +179,6 @@ def panel(
             raise ValueError("invalid assignment row count")
         disk_order = _order(draft.disk_order, len(disk), rows)
         mb_order = _order(draft.mb_order, len(mb), rows)
-    return Panel(files, disk, mb, disk_order, mb_order, fingerprint)
+    return Panel(
+        files, disk, mb, disk_order, mb_order, fingerprint, known.slots if confirmed else None
+    )

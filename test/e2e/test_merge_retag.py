@@ -48,7 +48,14 @@ def test_re_tagging_a_merged_release_leaves_the_browser_on_the_surviving_one(
         # page can know at render time — so the note is what says it has arrived.
         page.wait_for_selector("text=merged this release", timeout=20_000)
 
-        page.get_by_role("button", name="Apply updates").first.click()
+        page.get_by_role("button", name="Review assignments").click()
+        editor = page.locator("#album-track-editor")
+        # This demo merge replaces both release-track IDs. Conflicting IDs
+        # cannot be guessed into place; the user explicitly pairs each file.
+        for token, order in [(0, "-,0,-,1"), (0, "0,-,-,1"), (1, "0,-,1,-"), (1, "0,1,-,-")]:
+            editor.locator(f"#move-{MERGED_AWAY}-disk-{token}-up").click()
+            playwright_sync.expect(editor.locator('[name="disk_order"]')).to_have_value(order)
+        editor.get_by_role("button", name="Accept changes").click()
 
         # The address the album now lives at, not the one it was opened at.
         #

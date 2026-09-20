@@ -154,7 +154,9 @@
         </div>
         {# Comparison updates replace only the view, leaving an active draft
            untouched. Cancel reveals the latest view without a request. #}
-        <div id="album-track-editor" tabindex="-1" aria-label="Edit track assignments"></div>
+        <div id="album-track-editor" tabindex="-1" aria-label="Edit track assignments"
+             {% if edit_assignments %}hx-get="/assignments/{{ album.id }}?album_tracks=true&amp;on_album_page=true"
+             hx-trigger="load" hx-swap="innerHTML settle:0ms"{% endif %}></div>
     </section>
     {% endif %}
 

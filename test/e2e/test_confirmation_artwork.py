@@ -124,7 +124,9 @@ def test_changed_confirmation_stays_open_for_review(reset_demo_server):
         editor = card.locator(".assignment-editor")
         pw.expect(editor.get_by_role("button", name="Accept changes")).to_be_visible()
         # A stale explicit pairing must be reviewed again before it can be saved.
-        editor.locator('[name="release_fingerprint"]').evaluate("e => e.value = 'obsolete'")
+        editor.locator('[name="release_fingerprint"]').evaluate(
+            "e => e.value = e.value.split(':')[0] + ':obsolete'"
+        )
         editor.get_by_role("button", name="Accept changes").click()
         dialog = page.locator("#confirmation-modal dialog")
         pw.expect(dialog.get_by_role("alert")).to_contain_text("Refresh the comparison")

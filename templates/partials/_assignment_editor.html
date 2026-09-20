@@ -120,7 +120,10 @@
                             </td>
                             <td class="p-2 align-top text-mb-purple">
                                 <div class="flex items-start justify-between gap-3">
-                                    <span class="{{ 'text-amber-700' if disk and not mb else '' }}">{{ mb.title if mb else 'Unassigned' if disk else '—' }}</span>
+                                    <div>
+                                        <span class="{{ 'text-amber-700' if disk and not mb else '' }}">{{ mb.title if mb else 'Unassigned' if disk else '—' }}</span>
+                                        {% if (panel.disk_order[row], panel.mb_order[row]) in panel.proposed %}<div class="text-2xs text-amber-700" data-proposed-pair>Proposed assignment</div>{% endif %}
+                                    </div>
                                     {% if not cancel %}<div class="whitespace-nowrap shrink-0">{{ arrows('mb', row, panel.mb_order[row] if mb else 'gap-' ~ (panel.mb_order[:row]|select('none')|list|length), panel.rows|length) }}</div>{% endif %}
                                 </div>
                             </td>

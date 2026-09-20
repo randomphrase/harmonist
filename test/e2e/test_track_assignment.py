@@ -292,3 +292,47 @@ def test_album_assignment_editor_cancels_inline_without_artwork(reset_demo_serve
         pw.expect(edit).to_be_visible()
         pw.expect(tracks.locator(".tracklist")).to_be_visible()
         browser.close()
+
+
+def test_unassigned_files_are_proposed_and_remain_editable_until_acceptance(reset_demo_server):
+    """The real editor labels proposals and lets the user alter them before writing."""
+    from bs4 import BeautifulSoup
+
+    base = reset_demo_server
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        card = _card(page, base)
+        aid = card.get_attribute("id").removeprefix("task-")
+        # Seed a release-only confirmation through the real guarded API. The
+        # three files retain their numbers and receive no track identities.
+        initial = page.request.get(f"{base}/confirm/{aid}/preview?release_only=true")
+        fields = {
+            item["name"]: item.get("value", "")
+            for item in BeautifulSoup(initial.text(), "html.parser").select(
+                "input[type=hidden][name]"
+            )
+        }
+        accepted = page.request.post(
+            f"{base}/confirm/{aid}", headers={"HX-Request": "true"}, form=fields
+        )
+        assert accepted.ok
+        page.goto(f"{base}/album/{fields['candidate_mbid']}")
+        page.get_by_role("button", name="Review assignments", exact=True).click()
+        editor = page.locator("#album-track-editor")
+        pw.expect(editor.locator("[data-proposed-pair]")).to_have_count(3)
+        pw.expect(editor.locator("[name=disk_order]")).to_have_value("0,1,2")
+        editor.get_by_role("button", name="Move on-disk entry down", exact=True).first.click()
+        pw.expect(editor.locator("[name=disk_order]")).to_have_value("1,0,2")
+        pw.expect(editor.locator("[data-proposed-pair]")).to_have_count(3)
+        editor.get_by_role("button", name="Cancel", exact=True).click()
+        page.get_by_role("button", name="Review assignments", exact=True).click()
+        pw.expect(editor.locator("[name=disk_order]")).to_have_value("0,1,2")
+        editor.get_by_role("button", name="Accept changes").click()
+        pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
+        pw.expect(page.get_by_role("button", name="Review assignments", exact=True)).to_have_count(
+            0
+        )
+        page.get_by_role("button", name="Edit track assignments", exact=True).click()
+        pw.expect(editor.locator("[data-proposed-pair]")).to_have_count(0)
+        browser.close()

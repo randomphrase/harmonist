@@ -31,6 +31,7 @@ from . import (
     images,
     mb_lookup,
     tag_history,
+    track_structure,
 )
 from . import sidecar as sidecar_mod
 from . import transforms as transforms_mod
@@ -107,7 +108,7 @@ class TagMismatchError(Exception):
 
 
 class TrackAssignmentRequired(TagMismatchError):
-    """A confirmed file has no unique track identity in the current release."""
+    """A confirmed tracklist changed or contains unresolved track identities."""
 
     def __init__(self, *, files: int, tracks: int, unassigned: int) -> None:
         super().__init__(
@@ -116,6 +117,16 @@ class TrackAssignmentRequired(TagMismatchError):
             tracks=tracks,
         )
         self.unassigned = unassigned
+
+
+def assignment_review(
+    release: Release, tags: Sequence[formats.TrackTags]
+) -> track_structure.Review:
+    """The shared structural guard, using only the release and tags already read."""
+    targets = tagsets_for(release, frozenset())
+    video = set(mb_lookup.video_media_of(release))
+    eligible = {i for i, t in enumerate(targets) if t.disc_num not in video}
+    return track_structure.review(tags, targets, eligible, release["id"])
 
 
 @runtime_checkable
@@ -734,39 +745,11 @@ def _prepare(
     taggable = _taggable_tracks(release, flat_tracks)
 
     if assignment is None:
-        ids = [track.get("id") for _, _, track in flat_tracks]
         tags = [formats.read_tags(path) for path in files]
-        disk_ids = [t.owned.get("mb_release_track_id") for t in tags]
-
-        def needs_review(ref: str | None, recording: str | None) -> bool:
-            """Whether this file's track cannot be resolved without the user.
-
-            A release-track id that MusicBrainz no longer holds once, or that two
-            files claim, is unresolvable — and so is a file that names no track at
-            all. A file carrying only a recording id is neither: another tagger
-            placed it, `compare.assign` can read that placement, and demanding a
-            review for it is what made an ordinary CD rip un-retaggable (#538).
-            """
-            if ref:
-                return ids.count(ref) != 1 or disk_ids.count(ref) != 1
-            return compare.is_unassigned(ref, recording)
-
-        if (
-            ids
-            and all(ids)
-            and any(
-                t.owned.get("mb_album_id") == release["id"]
-                and needs_review(ref, t.owned.get("mb_track_id"))
-                for t, ref in zip(tags, disk_ids, strict=True)
-            )
-        ):
+        review = assignment_review(release, tags)
+        if review.required:
             raise TrackAssignmentRequired(
-                files=len(files),
-                tracks=len(taggable),
-                unassigned=sum(
-                    needs_review(ref, t.owned.get("mb_track_id"))
-                    for t, ref in zip(tags, disk_ids, strict=True)
-                ),
+                files=len(files), tracks=len(taggable), unassigned=review.unassigned
             )
 
     if assignment is None and not incomplete and len(files) != len(taggable):

@@ -180,12 +180,12 @@ class Significance(StrEnum):
     #: didn't have, a date narrowed from a year to a day. Nothing about what the
     #: album is, or how it is laid out, moves.
     ENRICHMENT = "enrichment"
-    #: How the album is laid out: track and disc numbers and totals. The album is
-    #: still the same album; which track is which has changed.
-    STRUCTURE = "structure"
     #: What the album or one of its tracks IS — its name, its artist, or any of
     #: the MusicBrainz ids that say which entity it points at.
     IDENTITY = "identity"
+    #: How the album is laid out: track identities, numbers and totals. A changed
+    #: tracklist can call the release match itself into question.
+    STRUCTURE = "structure"
 
 
 #: What kind of change each owned field's entry in a tagging diff represents.
@@ -280,8 +280,8 @@ SIGNIFICANCE: dict[str, Significance] = {
 ORDER: tuple[Significance, ...] = (
     Significance.COSMETIC,
     Significance.ENRICHMENT,
-    Significance.STRUCTURE,
     Significance.IDENTITY,
+    Significance.STRUCTURE,
 )
 
 

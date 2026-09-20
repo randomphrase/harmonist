@@ -124,8 +124,13 @@ leads with whichever fits:
   discards the draft and restores the list immediately. Artwork stays in its own
   section. The refresh icon beside **MB checked** at the top right loads the
   current tracklist and resets draft movements (ordinary Reset uses the cached tracklist);
-  known release-track IDs remain paired, while unresolved files wait for your
-  review. Imported albums with an album MBID but no track IDs use this review
+  known track IDs remain paired. Files without track IDs can be proposed for
+  remaining MB tracks by unique disc/track numbers, or when only one file and
+  one track remain; these pairs are marked **Proposed assignment**. Ambiguous
+  entries stay as gaps. When MusicBrainz changes the tracklist, **Review assignments**
+  becomes the primary tag action. Inspect or adjust the mapping, then accept it;
+  Cancel leaves the update available. Ordinary metadata updates and already-missing
+  tracks keep their existing behavior. Imported albums with an album MBID but no track IDs use this review
   too. An album can have both unassigned files and missing tracks.
   **Edit on MusicBrainz**, at the right of the action row, opens the release editor on MusicBrainz.
 - *Without one.* Search by artist + title, or paste an MBID directly.
@@ -405,8 +410,10 @@ means a newer one is on its way, and **Apply updates** is held until it lands,
 since the release it would write from may not be the one you are looking at. The
 album panel's **Checked** date says when it was last read — "20 minutes ago" —
 with a refresh button beside it if you've just edited MusicBrainz and want to see
-the edit now. Re-tagging and **Recheck** always go to MusicBrainz itself, so an
-action never runs on a cached answer.
+the edit now. Unreviewed re-tagging and **Recheck** fetch a fresh MusicBrainz
+answer. Accepting reviewed assignments instead uses the exact release snapshot
+shown in the editor, with no further query. If that snapshot or your files have
+changed, Harmonist asks you to review again.
 
 **Tracks** compares the tracklist, flagging tracks that are missing, unreadable,
 or absent from MusicBrainz. Video files are listed as present and marked *video*;
@@ -418,7 +425,10 @@ When there is something to report, the whole comparison is summed up once, in a
 section of its own directly under the album panel: a hexagon, a line saying how
 much of the tags and the tracklist differ, and a chip saying how far the change
 reaches — *Enrichment* for a catalogue number MusicBrainz has filled in,
-*Identity* for a release that has been merged into another. **Apply updates**
+*Identity* for a release that has been merged into another, and *Structure* for
+changed track identities, numbering or counts. Structure takes precedence over
+Identity. Structural changes offer **Review assignments**, opening the inline
+editor; artwork keeps its separate action. For other tag changes, **Apply updates**
 sits on that line, at the end of it, because it is the answer to that sentence.
 Artwork that could be better is a second finding in the same section, described
 separately — *Addition* where there is no image yet, *Replacement* where there

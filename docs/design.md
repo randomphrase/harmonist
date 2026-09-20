@@ -789,9 +789,8 @@ assignments** beside the album page's Tracks heading swaps in the editor within
 that section. Cancel discards the draft locally and restores the track list;
 background comparisons update that list without replacing the active editor.
 Artwork remains in its own section (#535). For confirmed releases the
-editor retains only unique matching release-track IDs and otherwise opens on the
-ladder's pairing; a file carrying neither ID is left unpaired rather than
-inferred by position. Automatic tagging also refuses unresolved track
+editor retains unique track identities and offers the constrained proposals
+below for files carrying neither ID. Automatic tagging also refuses unresolved track
 identities, including IDs removed upstream. Refreshing MB resets the draft and
 offers the current tracklist for explicit review, without predicting whether
 or when an open edit will be accepted.
@@ -801,10 +800,33 @@ positions rather than the unassigned files' original totals. An album may thus
 be both **Incomplete** and have **Tracks unassigned**. Existing purchase-link
 requirements still apply independently of assignment completeness.
 
+**Changed tracklists require assignment review (#530).** Compare current taggable
+tracks with the identities, positions and totals retained on disk, never just
+with the previous cache payload. Additions/removals, count changes, reorders and
+unresolved track IDs make **Review assignments** the album's primary tag action.
+The shared tagging guard enforces this for every unreviewed entry point,
+including the incomplete override. Existing incomplete albums are not new
+structural changes merely because files are missing; unsupported media are
+excluded and a disc subtitle alone remains an ordinary metadata update.
+
+The editor first retains unique release-track IDs, then recording IDs for
+ripper-tagged files when they identify one remaining track (or one exact numbered
+occurrence of a repeated recording). Those pairs leave the candidate pool. Only
+files carrying neither ID are eligible for unique disc/track-number proposals
+against remaining MB tracks, followed by a sole remaining file/track pair.
+Conflicting file IDs, missing or duplicate MB IDs and ambiguous leftovers stay
+as gaps. Proposed or manually changed pairs are
+labelled **Proposed assignment**; acceptance uses the existing reviewed snapshot,
+fingerprint checks and tag history/undo, with no network or writes while moving
+a draft. Artwork remains a separate album-page action. Review eligibility is
+recomputed after restart or refresh; no status or mapping is persisted.
+
 The draft lives only in the page. An inbox refresh preserves it, but a changed
 candidate replaces it. Review binds the draft to the release fingerprint and a
 snapshot of file paths, file metadata and owned tags; confirmation checks both
-locally before writing, without fetching MB again. Invalid or stale assignments never fall
+locally before writing, without fetching MB again. The release token binds the
+requested candidate to the canonical snapshot, so a merged release's review
+continues from the surviving ID's cache row. Invalid or stale assignments never fall
 back to the automatic pairing. Corrective tagging uses the existing audit,
 tag-history and release-link undo paths. The written release-track IDs make
 subsequent automatic comparisons and re-tags retain the correction; there is no
@@ -1150,8 +1172,8 @@ The levels, ordered by how much of the album they call into question:
 
 - **Cosmetic** — whitespace, casing or typography only; the same value spelled differently. Never declared for a field, only ever reached at runtime (see below).
 - **Enrichment** — MusicBrainz filling in or correcting a detail: `album_artist_sort`, `artist_sort`, `mb_album_status`, `mb_album_country`, `date`, `original_date`, `script`, `label`, `catalog_number`, `barcode`, `asin`, `disc_subtitle`, `media`, `isrcs`.
-- **Structure** — the same album, laid out differently: `track_num`, `track_total`, `disc_num`, `disc_total`.
 - **Identity** — what the album or one of its tracks *is*: `album`, `album_artist`, `album_artists`, `artist`, `artists`, `title`, `mb_album_type`, and every MusicBrainz id.
+- **Structure** — layout changes: `track_num`, `track_total`, `disc_num`, `disc_total`. Structure has the highest review priority because the layout is evidence of the release identity (#530).
 **Artwork is not on this scale** (#469). The scale says how far a *metadata* change reaches, which says nothing about a picture. An image write is described by its **operation** instead (`artwork.Operation`): an **Addition** where the target held no image, a **Replacement** where it did — which is also whether there is anything for an Undo to put back. A plan doing both summarises as a Replacement. `significance_of` refuses the `artwork` key rather than rank it, so no trust setting over tag levels can come to authorise an image, and the gardener's diff never carries one (`plan_for` passes `artwork=False`).
 
 `SIGNIFICANCE` lives beside `SCOPE` in `owned.py` and is keyed exactly as a tagging diff keys its owned fields. A totality test over that vocabulary is the point of the placement: **a field added to `Owned` later cannot slip through unclassified**, because the test fails until someone places it. The cost of forgetting `SCOPE` is a mis-rendered history row; the cost of forgetting this is a change whose significance nothing can state, in the table a trust setting is read through.
@@ -1289,6 +1311,8 @@ src/harmonist/
   mb_search.py          MB free-text search (manual-ingest path)
   match.py              Disk-vs-MB comparison (assess_match): confidence + per-track deltas
   compare.py            Field-by-field tag-vs-MB comparison primitives (Album section + tracklist)
+  track_structure.py    Derived structural review and constrained assignment proposals; no I/O
+  track_assignment.py   Reviewable file/track pairs, draft moves and file fingerprints
   transforms.py         Named, user-enabled reshapings of what a tagging writes, and the
                         accepted spellings they choose between (#544)
   tagger.py             Picard-compatible tag writer, the artwork plan's reader and executor, and undo (#157)

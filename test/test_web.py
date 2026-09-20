@@ -3533,139 +3533,48 @@ def test_retag_still_refuses_an_unconfirmed_short_album(client, cfg, monkeypatch
     assert after is not None and after.tagged_at == tagged, "the files were left alone"
 
 
-def test_retag_offers_incomplete_when_mb_has_grown_tracks(client, cfg, monkeypatch):
-    """#252: the album's files agree among themselves that it is complete — one
-    of one — so it derives COMPLETE and `incomplete=False` goes to the tagger.
-    MusicBrainz has since gained tracks, so the guard refuses against the *new*
-    count and re-tagging was impossible for exactly the album a MusicBrainz
-    correction has touched.
-
-    The answer is the two counts and a control that resolves them, not a stack
-    trace. The control rides back out of band into the album page's alert slot."""
-    import json
-
+@pytest.mark.parametrize(
+    "request_data",
+    [
+        {},
+        {"accept_short": "true"},
+        {"include_artwork": "false"},
+        {"art_plan": "a" * 64, "artwork_scope": "all", "include_artwork": "true", "use": "archive"},
+    ],
+)
+def test_grown_tracklist_routes_every_apply_choice_into_review(
+    client, cfg, monkeypatch, request_data
+):
+    """Count/metadata changes cannot be accepted through an artwork or shortfall override."""
+    from harmonist import album_files
     from test.helpers import write_track_totals
 
     tagged = datetime(2026, 1, 1, tzinfo=UTC)
     d = _make_tagged_album(cfg, "Grown", mbid="rel-grown", tagged_at=tagged)
-    write_track_totals(d, track_total=1)  # one file, and the file says 1 of 1
-    monkeypatch.setattr(
-        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
-    )
-    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+    write_track_totals(d, track_total=1)
+    calls = []
+
+    def fetch(mbid):
+        calls.append(mbid)
+        return _release_for_match(mbid, n_tracks=3)
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fetch)
+
+    def no_artwork(*args, **kwargs):
+        raise AssertionError("refused update fetched artwork")
+
+    monkeypatch.setattr("harmonist.cover_art.front_image", no_artwork)
     aid = _id_for(cfg, d)
-
-    r = client.post(f"/retag/{aid}")
+    files = album_files.audio_files(d)
+    before = [f.read_bytes() for f in files]
+    r = client.post(f"/retag/{aid}", data=request_data)
     assert r.status_code == 200
-    assert "Re-tag failed" not in r.text
-    # Both counts, said in the flash rather than left to the panel.
-    payload = json.loads(r.headers["HX-Trigger"])["harmonist-status"]
-    assert payload["level"] == "warning"
-    assert "3 there, 1 here" in payload["details"]
-    # The way out is one click from where the problem appeared.
-    assert f'id="album-alert-{aid}"' in r.text
-    assert 'hx-swap-oob="true"' in r.text
-    assert f'hx-post="/retag/{aid}"' in r.text
-    assert "accept_short" in r.text
-    # Nothing was written: the guard still holds until the user says so.
-    after = sc.read(d)
-    assert after is not None and after.tagged_at == tagged
-
-
-def test_the_short_offer_carries_the_artwork_choice_back(client, cfg, monkeypatch):
-    """The offer is a fresh POST, so every decision the refused press carried has
-    to ride back out with it (#482).
-
-    `include_artwork` defaults to True at the endpoint — right for every caller
-    that never had a checkbox, and wrong for exactly this path: unticking
-    artwork, meeting the guard, then accepting the offer would have the
-    exclusion undone by the user's own second press, writing images they had
-    just declined.
-    """
-    from test.helpers import write_track_totals
-
-    d = _make_tagged_album(cfg, "GrownExcluded", mbid="rel-grown-x", tagged_at=datetime.now(UTC))
-    write_track_totals(d, track_total=1)
-    monkeypatch.setattr(
-        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
-    )
-    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
-
-    excluded = client.post(f"/retag/{_id_for(cfg, d)}", data={"include_artwork": "false"})
-    included = client.post(f"/retag/{_id_for(cfg, d)}")
-
-    # The choice is on the wire of the button the offer draws, both ways round —
-    # asserted as a pair, because a hard-coded value would satisfy either alone.
-    assert '"include_artwork": "false"' in excluded.text
-    assert '"include_artwork": "true"' in included.text
-
-
-def test_the_short_offer_carries_the_reviewed_artwork_plan_back(client, cfg, monkeypatch):
-    """…and the rest of the artwork request with it (#488).
-
-    `include_artwork` was the only half that rode back out. The fingerprint, the
-    scope it was taken at and the image the user had chosen were dropped, so
-    accepting the offer re-tagged at the endpoint's defaults: additions only,
-    against no reviewed plan, with the chosen image forgotten. The second press
-    wrote a different action from the one the first had been refused.
-    """
-    from test.helpers import write_track_totals
-
-    d = _make_tagged_album(cfg, "GrownChosen", mbid="rel-grown-c", tagged_at=datetime.now(UTC))
-    write_track_totals(d, track_total=1)
-    monkeypatch.setattr(
-        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
-    )
-    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
-
-    r = client.post(
-        f"/retag/{_id_for(cfg, d)}",
-        data={
-            "art_plan": "a" * 64,
-            "artwork_scope": "all",
-            "include_artwork": "true",
-            "use": "archive",
-        },
-    )
-
-    assert f'"art_plan": "{"a" * 64}"' in r.text
-    assert '"artwork_scope": "all"' in r.text
-    assert '"use": "archive"' in r.text
-
-
-def test_retag_as_incomplete_takes_the_grown_releases_tags(client, cfg, monkeypatch):
-    """The other half of #252: pressing the offered control re-runs the same
-    re-tag with the shortfall accepted. The files take the release's current
-    tags — including its higher total — so the album then derives INCOMPLETE
-    (design §13.3), which is the true thing to say about it."""
-    from harmonist import scanner
-    from harmonist.models import AlbumState
-    from test.helpers import write_track_totals
-
-    d = _make_tagged_album(cfg, "Grown", mbid="rel-grown", tagged_at=datetime.now(UTC))
-    write_track_totals(d, track_total=1)
-    monkeypatch.setattr(
-        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_for_match(mbid, n_tracks=3)
-    )
-    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
-
-    r = client.post(f"/retag/{_id_for(cfg, d)}", data={"accept_short": "true"})
-    assert r.status_code == 200
-    assert "Re-tagged" in r.text
-    album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
-    assert album.state == AlbumState.INCOMPLETE
-    assert album.expected_track_count == 3
-    # ...and the entry says so, rather than leaving the new badge to be found.
-    assert "now listed as incomplete" in r.text
-
-    # Idempotent, and nothing had to be persisted to make it so: the decision
-    # lives in the totals the re-tag wrote, so the album now derives INCOMPLETE
-    # and a PLAIN re-tag (no `accept_short`) goes through on its own.
-    again = client.post(f"/retag/{_id_for(cfg, d)}")
-    assert "Re-tagged" in again.text
-    assert "Re-tag failed" not in again.text
-    still = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
-    assert (still.state, still.expected_track_count) == (AlbumState.INCOMPLETE, 3)
+    assert r.headers["HX-Redirect"] == f"/album/{aid}?edit_assignments=true#album-tracks"
+    editor = client.get(f"/assignments/{aid}?album_tracks=true&on_album_page=true")
+    assert "Accept changes" in editor.text
+    assert calls == ["rel-grown"], "entering the editor reuses the refused update's release"
+    assert [f.read_bytes() for f in files] == before
+    assert sc.read(d).tagged_at == tagged
 
 
 def test_retag_reports_extra_files_as_a_failure_with_no_way_out(client, cfg, monkeypatch):
@@ -5093,7 +5002,7 @@ def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg,
     """When MB over-counts (e.g. a phantom album-mix track) an album lands as a
     spurious INCOMPLETE. After the user fixes MB upstream, Re-tag from MB writes
     the corrected release's totals into the files and the state self-corrects to
-    COMPLETE — no explicit override needed."""
+    COMPLETE after the user reviews the corrected tracklist."""
     from harmonist import scanner
     from harmonist.models import AlbumState
     from test.helpers import write_track_totals
@@ -5114,6 +5023,11 @@ def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg,
 
     r = client.post(f"/retag/{_id_for(cfg, d)}")
     assert r.status_code == 200
+    aid = _id_for(cfg, d)
+    assert "edit_assignments=true" in r.headers["HX-Redirect"]
+    editor = client.get(f"/assignments/{aid}?album_tracks=true&on_album_page=true")
+    accepted = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(editor.text))
+    assert "confirmation-applied" in accepted.headers.get("HX-Trigger", "")
 
     after = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
     assert after.expected_track_count == 1, "the re-tag rewrote the total into the file"
@@ -7034,6 +6948,9 @@ def test_an_album_with_nothing_to_act_on_gets_no_note_at_all(client, cfg, monkey
     album_id = _id_for(cfg, d)
     env = client.app.state.templates.env
     monkeypatch.setitem(env.globals, "advisory", lambda album, tracks: True)
+    from harmonist.track_structure import Review
+
+    monkeypatch.setattr("harmonist.web.main.tagger_mod.assignment_review", lambda *args: Review())
 
     body = client.get(f"/library/{album_id}/compare").text
 
@@ -11164,9 +11081,6 @@ def test_retag_excluding_artwork_never_prepares_or_fetches_a_cover(client, cfg, 
 def test_confirmation_applies_the_reviewed_smaller_archive_image(
     client, cfg, monkeypatch, incomplete
 ):
-    import hashlib
-    import json
-
     from harmonist import artwork, cover_art, formats, tagger
 
     big, small = _png_sized(31, 800), _png_sized(32, 200)
@@ -11200,13 +11114,12 @@ def test_confirmation_applies_the_reviewed_smaller_archive_image(
     from harmonist import mb_cache
 
     mb_cache.fetch_release(release["id"])
+    editor = client.get(f"/assignments/{aid}")
     result = client.post(
         f"/confirm/{aid}" + ("/incomplete" if incomplete else ""),
         data={
+            **_confirmation_fields(editor.text),
             "candidate_mbid": release["id"],
-            "release_fingerprint": hashlib.sha256(
-                json.dumps(release, sort_keys=True).encode()
-            ).hexdigest(),
             "art_plan": plan.fingerprint(artwork.Scope.ALL),
             "include_artwork": "true",
         },

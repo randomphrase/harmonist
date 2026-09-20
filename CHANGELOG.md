@@ -8,6 +8,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Changed MusicBrainz tracklists now require assignment review, retaining known track identities and proposing unambiguous matches for unassigned files; Structure takes the highest review priority (#530).
+
 - **The tracklist now marks a track whose artwork isn't the album's** — one that
   carries a cover of its own, or none at all — and the mark links down to the row
   in the Artwork section that shows it (#404).

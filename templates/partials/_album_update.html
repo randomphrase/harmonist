@@ -4,16 +4,24 @@
    source can refresh without replacing the other's answer. CSS shows the artwork-only
    primary action only when this combined action is absent. #}
 <div id="album-update-{{ album.id }}" hx-swap-oob="true">
-    {% if not advisory(comparison, tracklist) %}
+    {% set review_tracks = assignment_review and assignment_review.required %}
+    {% if review_tracks or not advisory(comparison, tracklist) %}
     <div class="album-finding">
         <span class="album-update__key">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
                 <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
             </svg>
         </span>
-        <h2 class="album-update__legend">{{ headline(comparison, tracklist) }}</h2>
+        <h2 class="album-update__legend">{{ headline(comparison, tracklist) }}{% if review_tracks %}<span class="block text-xs font-normal text-muted">{{ assignment_review.reasons|join(' ') }}</span>{% endif %}</h2>
         {% if album.update_significance %}{{ severity_chip(album.update_significance) }}{% endif %}
         {% if comparison.mb_available and album.sidecar and album.sidecar.mb_release_id %}
+        {% if review_tracks %}
+        <button type="button" class="album-finding__act"
+                hx-get="/assignments/{{ album.id }}?album_tracks=true&amp;on_album_page=true"
+                hx-target="#album-track-editor" hx-swap="innerHTML settle:0ms"
+                hx-disabled-elt="this" hx-indicator="#album-track-loading"
+                hx-on::after-request="if (event.detail.successful) { const editor = document.getElementById('album-track-editor'); editor.focus(); editor.scrollIntoView({block: 'start'}); }">Review assignments</button>
+        {% else %}
         <form hx-post="/retag/{{ album.id }}"
               hx-swap="none" hx-disabled-elt="find button"
               hx-include=".apply-art-{{ album.id }}, #include-artwork-{{ album.id }}"
@@ -25,6 +33,7 @@
                 Apply updates
             </button>
         </form>
+        {% endif %}
         {% endif %}
     </div>
     {% endif %}
