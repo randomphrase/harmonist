@@ -104,7 +104,7 @@
         AlbumState.NEEDS_MBID: 'partials/_task_actions_needs_mbid.html',
         AlbumState.NEEDS_SYNC: 'partials/_task_actions_needs_sync.html',
     } %}
-    {% if album.state in _inbox_actions %}
+    {% if album.state in _inbox_actions and (album.state != AlbumState.NEEDS_SYNC or (surrender_suggestions | default({})).get(album.id)) %}
     <section id="album-inbox-actions"
              class="border border-line rounded-lg p-4 space-y-3">
         <h2 class="text-sm font-bold text-ink uppercase tracking-widest">

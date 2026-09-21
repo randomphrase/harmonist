@@ -1,0 +1,10 @@
+{% from 'macros.html' import reload_on_success %}
+<button type="button" hx-post="/unconfirmed/{{ album.id }}/manual"
+        hx-swap="none" hx-disabled-elt="this"
+        {{ reload_on_success(on_album_page | default(false)) }}
+        hx-confirm="Mark this album as purchased elsewhere? This clears its Bandcamp link. Your album and files are kept."
+        title="Mark purchased elsewhere — clear the Bandcamp link; keep the album and files"
+        aria-label="Mark purchased elsewhere"
+        class="inline-flex items-center justify-center w-5 h-5 rounded-full text-muted hover:text-bc-teal hover:bg-bc-teal/10 transition">
+    <span aria-hidden="true">×</span>
+</button>

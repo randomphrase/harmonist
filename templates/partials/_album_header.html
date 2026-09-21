@@ -51,7 +51,7 @@
     </div>
     {% if _lk_mbid or _lk_store %}
     <div class="flex-shrink-0">
-        {% with mb_release_id=_lk_mbid, store_url=_lk_store, store_private=_lk_private %}
+        {% with mb_release_id=_lk_mbid, store_url=_lk_store, store_private=_lk_private, needs_link_actions=(album.state == AlbumState.NEEDS_SYNC) %}
             {% include 'partials/_links.html' %}
         {% endwith %}
     </div>

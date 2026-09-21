@@ -16,6 +16,10 @@ versions follow [semantic versioning](https://semver.org).
   carries a cover of its own, or none at all — and the mark links down to the row
   in the Artwork section that shows it (#404).
 
+### Changed
+
+- Needs Linking cards now have clearer sync guidance and badge-adjacent release correction and purchased-elsewhere controls, also available on album pages (#565).
+
 ### Fixed
 
 - Albums without a store URL now lead directly with the MusicBrainz search controls, without redundant instructions (#564).

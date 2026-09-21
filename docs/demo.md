@@ -68,7 +68,7 @@ recipes below.
 
 Reset the established demo. Select **FLAC** as the download format.
 
-1. Show **Wyld Stallion** under Needs Link and **Mouse Rat** already in the
+1. Show **Wyld Stallion** under Needs Linking and **Mouse Rat** already in the
    Library as MP3s. Their different store evidence is deliberate.
 2. Press **Sync**. The first pass runs link-only: Wyld Stallion links
    automatically, and existing audio files remain unchanged.

@@ -149,10 +149,13 @@ leads with whichever fits:
   then **Recheck** picks it up — so every gap you hit makes MusicBrainz better for
   the next person.
 
-**Needs Link** — tagged from MusicBrainz, but not yet tied to the Bandcamp
-purchase it came from. **Sync** links these; that's the common case. If a sync
-can't find the purchase, use **Try a different URL** or **Mark purchased
-elsewhere**.
+**Needs Linking** — tagged from MusicBrainz, but not yet tied to the Bandcamp
+purchase it came from. **Sync Bandcamp** links these; that's the common case. If a sync
+can't find the purchase, the **× beside Bandcamp** marks it as purchased
+elsewhere, keeping the album and files. If the MusicBrainz release is wrong, use
+the **pencil beside MusicBrainz** to return to Needs MBID and search by artist
+and album title. Current file tags stay untouched until you confirm a replacement.
+These controls are also available on the album page.
 
 **Files that describe a different release.** If your tags say the album is a
 single disc while the MusicBrainz release it's matched to has three, the album's
@@ -392,8 +395,9 @@ moment ago, is already there. That matters here more than anywhere else, because
 this is the page where you decide whether to re-tag.
 
 An album still in the Inbox has a page too, and it carries that album's Inbox
-actions under the panel: search or assign a release for a New or Needs MBID
-album, accept a surrender, mark a Needs Link album as purchased elsewhere. What
+actions: search or assign a release for a New or Needs MBID album, accept a
+surrender, or use the badge controls to correct a release or mark a Needs Linking
+album as purchased elsewhere. What
 you're offered follows the album — an album with no MusicBrainz release yet
 isn't offered a re-tag, because there is nothing to re-tag it from.
 

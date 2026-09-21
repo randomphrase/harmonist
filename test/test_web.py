@@ -338,11 +338,11 @@ def test_tasks_state_group_omitted_when_empty(client, cfg):
     # to the NEEDS_MBID header (the New header now also mentions MBID).
     assert "No confirmed MusicBrainz release" not in r.text
     assert "Needs Review" not in r.text
-    assert "Needs Link" not in r.text
+    assert "Needs Linking" not in r.text
 
 
 def test_tasks_needs_sync_section_advises_sync(client, cfg):
-    """The Needs Link group instructions point the user to click Sync."""
+    """The Needs Linking group names the Sync Bandcamp action."""
     d = _make_album(cfg, "UB")
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-a"]
@@ -357,10 +357,10 @@ def test_tasks_needs_sync_section_advises_sync(client, cfg):
         ),
     )
     r = client.get("/tasks")
-    assert "Needs Link" in r.text
+    assert "Needs Linking" in r.text
     # Instruction points at the (header) Sync button — there's no inline
     # bulk-sync button; the header Sync popover is the single entry point.
-    assert "Click Sync" in r.text
+    assert "Sync Bandcamp to link these albums." in r.text
     assert "Sync to link" not in r.text
 
 
@@ -595,7 +595,7 @@ def test_mistag_renders_in_own_top_level_section(client, cfg):
 def test_surrender_card_renders_readonly_with_tools(client, cfg):
     """A surrender candidate (unmatched_purchase, no matching download) leads with
     'Move to Library' + the withdrawn-release explanation, and offers the 'wrong
-    release?' escape hatch — but NO Confirm & Tag (that would loop to Needs Link)."""
+    release?' escape hatch — but NO Confirm & Tag (that would loop to Needs Linking)."""
     d = _make_album(cfg, "Surrendered")
     sc.write(
         d,
@@ -733,11 +733,10 @@ def test_needs_sync_card_renders(client, cfg):
         ),
     )
     r = client.get("/tasks")
-    assert "Needs Link" in r.text
+    assert "Needs Linking" in r.text
     assert "Mark purchased elsewhere" in r.text
     assert 'hx-post="/unconfirmed/' in r.text
-    # URL input is pre-filled with the existing URL (not just a placeholder)
-    assert 'value="https://x.bandcamp.com/album/y"' in r.text
+    assert 'href="https://x.bandcamp.com/album/y"' in r.text
 
 
 # ---------- action endpoints ----------
@@ -886,7 +885,7 @@ def test_tasks_shows_live_reconcile_counts(client, cfg):
     # comes from /status `counts`, tested separately).
     assert ">60</span> need attention" in r.text
     assert ">5</span> New" in r.text  # the building split
-    assert ">55</span> Needs Link" in r.text
+    assert ">55</span> Needs Linking" in r.text
     assert ">78</span> to Library" in r.text
     assert "143 / 346" not in r.text  # progress lives in the status bar
     assert "Fresh" not in r.text  # frozen card list not rendered
@@ -954,7 +953,7 @@ def test_tasks_new_group_shows_cards_when_idle(client, cfg):
 
 def test_tasks_no_group_cards_while_reconciling(client, cfg):
     """No group cards render during reconcile (the panel replaces them) — e.g.
-    the Needs Link card's actions are gone."""
+    the Needs Linking card's actions are gone."""
     _needs_sync_album(cfg, "Linkme", "rel-q")
     client.app.state.reconcile_runner._status.state = "running"
     r = client.get("/tasks")
@@ -964,7 +963,7 @@ def test_tasks_no_group_cards_while_reconciling(client, cfg):
 
 
 def test_tasks_needs_sync_card_shown_when_idle(client, cfg):
-    """Sanity counterpart: idle → the Needs Link card renders normally."""
+    """Sanity counterpart: idle → the Needs Linking card renders normally."""
     _needs_sync_album(cfg, "Linkme2", "rel-r")
     r = client.get("/tasks")
     assert r.status_code == 200
@@ -1391,7 +1390,7 @@ def test_link_unmatched_by_release_urls_links_via_alternate_slug(cfg):
         ],
     )
     linked = sc.read(d)
-    assert linked.bandcamp.item_id == 555  # Needs Link → Library
+    assert linked.bandcamp.item_id == 555  # Needs Linking → Library
     assert linked.mb_release_id == "rel-x"  # tag preserved
     assert linked.store_url == "https://yann.bandcamp.com/album/idleness-2"  # purchase URL adopted
 
@@ -1412,7 +1411,7 @@ def test_link_unmatched_by_release_urls_no_match_leaves_album(cfg):
             "https://x.bandcamp.com/album/solo-2",
         ],
     )
-    r = sc.read(d)  # still Needs Link: no item_id, store_url not adopted
+    r = sc.read(d)  # still Needs Linking: no item_id, store_url not adopted
     assert r.bandcamp is None or r.bandcamp.item_id is None
     assert r.store_url == "https://label.bandcamp.com/album/solo"
 
@@ -1819,7 +1818,7 @@ def _state_of(cfg, album_dir):
 
 def test_manual_assign_derives_store_url_from_embedded_comment(client, cfg, monkeypatch):
     """A manual download with a precise /album/ URL in ©cmt → store_url recorded
-    from the comment (no MB url-rel lookup) → album lands in Needs Link."""
+    from the comment (no MB url-rel lookup) → album lands in Needs Linking."""
     from harmonist.models import AlbumState
 
     d = _make_album(cfg, "EmbeddedURL", comment="https://artist.bandcamp.com/album/x")
@@ -3144,7 +3143,7 @@ def test_unlink_wrong_match_forgets_url_and_stays_in_library(client, cfg):
     assert loaded.store_url is None  # URL forgotten
     assert loaded.bandcamp is None
     assert loaded.mb_release_id == "rel-w"  # still correctly tagged
-    # Stays in the Library (not Needs Link), and no sync will re-link it: with no
+    # Stays in the Library (not Needs Linking), and no sync will re-link it: with no
     # store_url it's invisible to both the slug matcher and adoption.
     assert next(a for a in scan(cfg.paths.music_dir) if a.path == d).state == AlbumState.COMPLETE
     by_slug, slugless, _ = survey_album_links(cfg.paths.music_dir)
@@ -8734,7 +8733,7 @@ def test_redownload_unignores_the_purchase_in_bandcampsyncs_own_region(client, c
 def test_redownload_approves_the_download_so_a_link_only_sync_still_fetches_it(
     client, cfg, quiet_sync
 ):
-    """While any album is Needs Link the sync runs link-only and downloads
+    """While any album is Needs Linking the sync runs link-only and downloads
     nothing — except items the user explicitly asked for, which is this."""
     from harmonist import pending_downloads
 

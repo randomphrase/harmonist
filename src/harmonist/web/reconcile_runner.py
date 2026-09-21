@@ -318,7 +318,7 @@ def reconcile_pending_orphans(
             # Record the resulting transition in the Activity feed (and server log).
             # Reconcile writes a sidecar; the scanner derives the state, but we know
             # the outcome here from the sidecar shape:
-            #   MBID + store_url  → Needs Link   (tagged Bandcamp album)
+            #   MBID + store_url  → Needs Linking   (tagged Bandcamp album)
             #   MBID, no store_url→ Library      (tagged, non-Bandcamp)
             #   store_url, no MBID→ Needs MBID   (recovered URL on an untagged album)
             #   None              → stays New    (nothing to reconcile)
@@ -330,7 +330,7 @@ def reconcile_pending_orphans(
                 log.debug("%s: nothing to reconcile (no MBID or Bandcamp URL)", label)
             elif album.state == AlbumState.TAGGING:
                 # The sidecar adopted the file tags (external Picard re-tag). The new
-                # state (Library / Needs Link) settles on the post-reconcile rescan.
+                # state (Library / Needs Linking) settles on the post-reconcile rescan.
                 adopted += 1
                 # Id read back from disk AFTER reconcile_album wrote the sidecar —
                 # it just moved the album's identity, so a pre-write id is dead (#65).
@@ -343,7 +343,7 @@ def reconcile_pending_orphans(
                 reconciled_bandcamp += 1
                 live_counts.move(AlbumState.NEW, AlbumState.NEEDS_SYNC)
                 activity.record(
-                    "New → Needs Link (reconciled from tags)",
+                    "New → Needs Linking (reconciled from tags)",
                     album_id=sidecar.album_id_for(album.path),
                     album_label=feed_label,
                 )
@@ -376,7 +376,7 @@ def reconcile_pending_orphans(
     adopted_note = f", {adopted} re-tag(s) adopted" if adopted else ""
     activity.record(
         f"Reconcile done: {reconciled_bandcamp + reconciled_manual + recovered_url} reconciled "
-        f"({reconciled_bandcamp} → Needs Link, {reconciled_manual} → Library, "
+        f"({reconciled_bandcamp} → Needs Linking, {reconciled_manual} → Library, "
         f"{recovered_url} → Needs MBID){adopted_note}, {skipped} unchanged, {errors} failed"
     )
     return {
