@@ -27,6 +27,73 @@ def _suggest(page, base):
 
 
 @pytest.mark.parametrize("on_album", [False, True])
+def test_review_artwork_inspection_and_refresh_preserve_draft(reset_demo_server, on_album):
+    base = reset_demo_server
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        aid = _suggest(page, base)
+        page.goto(f"{base}/album/{aid}" if on_album else base)
+        # The editor's host differs between the Inbox and album page.
+        review = (page.locator("main") if on_album else page.locator(f"#task-{aid}")).locator(
+            ".assignment-editor"
+        )
+        artwork = review.locator(".assignment-artwork")
+        pw.expect(artwork.get_by_alt_text("Artwork for selected release")).to_be_visible()
+        thumbs = artwork.locator("button[popovertarget]")
+        assert thumbs.count() >= 2, "current and selected artwork must both open full size"
+        sizes = []
+        for thumb in thumbs.all():
+            target = thumb.get_attribute("popovertarget")
+            full = page.locator(f'[id="{target}"]')
+            pw.expect(full).to_have_count(1)
+            pw.expect(full.locator("img")).to_have_attribute(
+                "src", thumb.locator("img").get_attribute("src")
+            )
+            sizes.append(thumb.evaluate("e => [e.offsetWidth, e.offsetHeight]"))
+            pw.expect(thumb.locator("img")).to_have_css("object-fit", "contain")
+            thumb.click()
+            pw.expect(full).to_be_visible()
+            assert full.evaluate("e => e.matches(':popover-open')")
+            page.keyboard.press("Escape")
+            pw.expect(full).not_to_be_visible()
+        assert all(size == sizes[0] for size in sizes)
+        # Other Inbox cards may show the same image: each target still belongs
+        # to exactly one view, even when several buttons share it.
+        for target in page.locator("button[popovertarget]").evaluate_all(
+            "els => els.map(e => e.getAttribute('popovertarget'))"
+        ):
+            pw.expect(page.locator(f'[id="{target}"]')).to_have_count(1)
+
+        checkbox = artwork.get_by_role("checkbox", name="Use artwork from the selected release")
+        checkbox.check()
+        review.get_by_role("button", name="Edit track assignments").click()
+        review.get_by_role("button", name="Move on-disk entry down", exact=True).first.click()
+        pw.expect(review.locator('[name="disk_order"]')).to_have_value("1,0,2")
+        fingerprint = review.locator('[name="release_fingerprint"]').input_value()
+        timestamp = artwork.locator('[title^="Cover Art Archive last asked"]')
+        pw.expect(timestamp).to_be_visible()
+        # Distinguish the replaced date from a stale date surviving the swap.
+        timestamp.evaluate("e => e.textContent = 'previous check'")
+        with page.expect_response(
+            lambda r: f"/assignments/{aid}/artwork?" in r.url and "reread" in r.url
+        ) as refreshed:
+            artwork.get_by_role(
+                "button", name="Ask the Cover Art Archive about this release again"
+            ).click()
+        assert refreshed.value.ok
+        assert parse_qs(refreshed.value.url.split("?", 1)[1])["release_fingerprint"] == [
+            fingerprint
+        ]
+        pw.expect(timestamp).to_have_text("just now")
+        pw.expect(artwork).to_contain_text("CAA checked")
+        pw.expect(checkbox).to_be_checked()
+        pw.expect(review.locator('[name="disk_order"]')).to_have_value("1,0,2")
+        pw.expect(review.get_by_role("button", name="Accept changes", exact=True)).to_be_visible()
+        browser.close()
+
+
+@pytest.mark.parametrize("on_album", [False, True])
 @pytest.mark.parametrize("included", [False, True])
 def test_confirmation_applies_only_included_artwork(reset_demo_server, on_album, included):
     base = reset_demo_server

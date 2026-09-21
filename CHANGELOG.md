@@ -18,6 +18,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Release-review artwork now has equally sized previews, full-size inspection, and the album page's CAA refresh control, preserving review choices when refreshed (#559).
+
 - Demo re-download tagging now appears as one album-wide History action with one Undo, matching Apply updates (#450).
 
 - **A disc MusicBrainz doesn't have now gets its own heading on the album page**,

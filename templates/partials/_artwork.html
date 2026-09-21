@@ -1,3 +1,4 @@
+{% from 'partials/_artwork_images.html' import thumbnail, full_size with context %}
 {% from 'macros.html' import artwork_chip %}
 {# What artwork this album carries, and what applying it would do (#155).
 
@@ -101,12 +102,7 @@
        appears on the incoming side of every replaced row and one id may exist
        only once on a page. #}
     {% if image %}
-    <button type="button"
-            class="art-row__art"
-            popovertarget="art-{{ image.digest[:12] }}"
-            aria-label="View {{ who }} full size">
-        <img src="/artwork/image/{{ album_id }}/{{ image.digest }}" alt="" loading="lazy">
-    </button>
+    {{ thumbnail(image, album_id, who) }}
     {% else %}
     <span class="art-row__art art-row__art--none" aria-hidden="true">none</span>
     {% endif %}
@@ -243,13 +239,7 @@
                two states are not buttons, because there is nothing to fetch and
                because the picture is already here. #}
             {% if artwork.archive_row.image %}
-            <button type="button"
-                    class="art-row__art"
-                    popovertarget="art-{{ artwork.archive_row.image.digest[:12] }}"
-                    aria-label="View the Cover Art Archive's cover full size">
-                <img src="/artwork/image/{{ album.id }}/{{ artwork.archive_row.image.digest }}"
-                     alt="" loading="lazy">
-            </button>
+            {{ thumbnail(artwork.archive_row.image, album.id, "the Cover Art Archive's cover") }}
             {% elif artwork.archive_row.loadable %}
             {# `hx-disabled-elt` because this is a real download of up to five
                megabytes from a service that answers slowly, and a second press
@@ -332,10 +322,7 @@
    placement (web-ui rule 1), and it is the same element the odd-tracks pill
    already uses on this page. #}
 {% for image, who in artwork.distinct %}
-<div id="art-{{ image.digest[:12] }}" popover class="art-full">
-    <img src="/artwork/image/{{ album.id }}/{{ image.digest }}" alt="{{ who }}">
-    <p class="art-full__meta">{{ who }} — {{ describe_image(image) }}</p>
-</div>
+{{ full_size(image, album.id, who) }}
 {% endfor %}
 
 {% if artwork.unreadable %}

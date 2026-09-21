@@ -11348,7 +11348,7 @@ def test_confirmation_refresh_asks_both_services_again(client, cfg, monkeypatch)
     aid = _id_for(cfg, d)
     _review_with_artwork(client, aid)
     preview, artwork, _ = _review_with_artwork(client, aid, reread=True)
-    assert "MB checked" in preview.text and "Archive checked" in artwork.text
+    assert "MB checked" in preview.text and "CAA checked" in artwork.text
     assert calls.count(("mb", release["id"])) == 2
     assert calls.count(("caa", release["id"])) == 2
 
