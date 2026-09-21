@@ -62,6 +62,10 @@ async def watch_music_dir(
         # Small awatch debounce so the settle timer closely tracks real activity;
         # the user-facing quiescence delay is `settle_seconds`, enforced below.
         async for _changes in awatch(music_dir, stop_event=stop_event, debounce=200):
+            # The demo keeps its history inside its resettable sandbox. Reading
+            # an album can update that database; it is not a music-file change.
+            if all(Path(path).name.startswith(".demo-activity.db") for _, path in _changes):
+                continue
             log.debug("Change detected; restarting %.0fs settle timer", settle_seconds)
             if pending is not None:
                 pending.cancel()

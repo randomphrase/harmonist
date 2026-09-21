@@ -4,10 +4,9 @@ Uses demo mode to make external services deterministic. Exercises:
 
   1. POST /sync starts the background runner.
   2. Polls /sync/status until state returns to idle.
-  3. New album appears in /tasks at Needs MBID.
-  4. POST /recheck/{id} → lookup_by_bandcamp_url + fetch_release + assess +
-     auto-tag (because demo data is configured for exact match).
-  5. Album transitions to Done; file tags include the full Picard MBID atom
+  3. The real post-download callback identifies and tags the new album.
+  4. POST /recheck/{id} safely repeats that reconciliation.
+  5. Album stays Done; file tags include the full Picard MBID atom
      set; sidecar persists `mb_release_id` + `tagged_at`.
 
 This is the test that asserts "the headline workflow works end-to-end". A
@@ -34,6 +33,13 @@ from harmonist.config import (
 from harmonist.models import AlbumState
 from harmonist.tagger import ATOM_MB_ALBUM_ID, ATOM_MB_RELEASE_GROUP_ID, ATOM_MB_TRACK_ID
 from harmonist.web.main import create_app
+
+
+@pytest.fixture(autouse=True)
+def recovery_catalogue(monkeypatch):
+    from test.demo_recovery import install
+
+    install(monkeypatch)
 
 
 @pytest.fixture(autouse=True)
@@ -102,9 +108,9 @@ def test_flagship_sync_then_recheck_then_done(demo_client, tmp_path):
 
     # A full sync fetches the owned-but-not-on-disk purchases; CB4 lands new.
     new_album = _album_by_title(music_dir, "Straight Outta Lowcash")
-    assert new_album.state == AlbumState.NEEDS_MBID
+    assert new_album.state == AlbumState.COMPLETE
     assert new_album.sidecar.store_url == "https://cb4.bandcamp.com/album/straight-outta-lowcash"
-    assert new_album.sidecar.mb_release_id is None
+    assert new_album.sidecar.mb_release_id == "demo-rel-cb4"
 
     # --- 2. Click Recheck on the new album ---
     r = demo_client.post(f"/recheck/{new_album.id}")

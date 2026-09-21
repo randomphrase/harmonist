@@ -7,9 +7,10 @@ workflow — the state machine's exact derivation rules, the sidecar schema, the
 tagging contract — that's **[design.md](design.md)**, which is written for people
 changing the code.
 
-Everything here can be tried without touching your own music: start Harmonist in
-[demo mode](installation.md#demo-mode) and the sample library covers every state
-described below.
+Try the main workflows without touching your own music: start Harmonist in
+[demo mode](installation.md#demo-mode). The [demonstration recipes](demo.md)
+cover library adoption, Bandcamp sync, and reviewing and undoing metadata and
+artwork updates in a small representative collection.
 
 ## The shape of the app
 

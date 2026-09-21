@@ -208,7 +208,7 @@ def test_full_sync_downloads_unmatched_purchases(music_dir):
     after = {a.path.name for a in scanner.scan(music_dir)}
     assert "Straight Outta Lowcash" in after  # CB4 downloaded
     assert "Nagelbett" in after  # Autobahn downloaded
-    assert demo.pending_downloads.count() == 0  # nothing left pending
+    assert demo.pending_downloads.count() == 1  # existing Mouse Rat copy still needs linking
 
 
 def test_approved_potential_download_fetches_on_next_link_only_sync(music_dir):
@@ -523,3 +523,10 @@ def test_demo_mode_patches_every_musicbrainz_entry_point():
 
     unpatched = {n for n in network if getattr(mb_lookup, n).__module__ == mb_lookup.__name__}
     assert not unpatched, f"demo mode leaves these talking to the real MusicBrainz: {unpatched}"
+
+
+@pytest.fixture(autouse=True)
+def recovery_catalogue(monkeypatch):
+    from test.demo_recovery import install
+
+    install(monkeypatch)

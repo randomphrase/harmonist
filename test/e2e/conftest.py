@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
@@ -64,7 +65,20 @@ def reset_demo_server(demo_server: str) -> str:
     return demo_server
 
 
-def _run_demo_server(root: Path, *, config_toml: str | None = None) -> Iterator[str]:
+@pytest.fixture(scope="module")
+def public_demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, Path]]:
+    """Exercise the recording catalogue through the ordinary application entry point."""
+    root = tmp_path_factory.mktemp("e2e-public")
+    for base in _run_demo_server(root, app_module="harmonist.web.main:app"):
+        yield base, root / "harmonist-demo"
+
+
+def _run_demo_server(
+    root: Path,
+    *,
+    config_toml: str | None = None,
+    app_module: str = "test.e2e.demo_app:app",
+) -> Iterator[str]:
     """The body of the server fixtures, so one that needs a differently
     CONFIGURED server can have it without copying the launcher.
 
@@ -76,6 +90,7 @@ def _run_demo_server(root: Path, *, config_toml: str | None = None) -> Iterator[
     port = _free_port()
     env = os.environ | {
         "HARMONIST_DEMO_MODE": "1",
+        "HARMONIST_DEMO_DELAY": "0",
         "HARMONIST_MUSIC_DIR": str(root / "music"),
         "HARMONIST_CONFIG_DIR": str(root / "config"),
         # Demo music AND artwork caches live under gettempdir(), independently
@@ -88,7 +103,7 @@ def _run_demo_server(root: Path, *, config_toml: str | None = None) -> Iterator[
     if config_toml is not None:
         (root / "config" / "harmonist.toml").write_text(config_toml, encoding="utf-8")
     proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "harmonist.web.main:app", "--port", str(port)],
+        [sys.executable, "-m", "uvicorn", app_module, "--port", str(port)],
         env=env,
         cwd=Path(__file__).resolve().parents[2],
     )
@@ -118,8 +133,18 @@ def _reset_demo_library(base: str) -> None:
     req = urllib.request.Request(
         f"{base}/demo/reset", method="POST", headers={"HX-Request": "true"}
     )
-    with urllib.request.urlopen(req, timeout=30):
-        pass
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            with urllib.request.urlopen(req, timeout=30):
+                break
+        except urllib.error.HTTPError as error:
+            # Startup reconciliation may still own the library. Reset explicitly
+            # refuses that race; retry only its busy response, with a deadline.
+            if error.code != 409 or time.monotonic() >= deadline:
+                raise
+            error.close()
+            time.sleep(0.1)
     # The reset kicks a rescan; the Library is empty until it lands.
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:

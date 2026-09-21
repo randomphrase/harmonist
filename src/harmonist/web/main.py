@@ -478,21 +478,25 @@ def create_app(
             cfg.paths.music_dir,
         )
         demo.install()
-        demo.ensure_seeded(cfg.paths.music_dir)
+        demo.ensure_seeded(cfg.paths.music_dir, persistent_history=True)
 
         def demo_resolve_after_download(album_dir: Path) -> None:
             # The demo twin of `resolve_after_download` below. MB is monkey-patched
             # by demo.install(), so this reaches the mocked catalogue rather than
             # the network — but it is otherwise the same code, which is the point:
             # a re-download's tagging is what the demo is there to show.
-            _resolve_by_store_url(album_dir, cfg, tagger)
+            _resolve_by_store_url(album_dir, sync_runner.app.state.cfg, tagger)
 
         def runner_fn() -> Any:
+            cfg = sync_runner.app.state.cfg
             # Same link-only rule as the real runner: the popover override wins,
             # else auto-detect (any Needs-Link album or pending potential-download).
             override = sync_runner.link_only_override
             sync_runner.link_only_override = None
-            auto = live_counts.to_status()["needs_sync"] > 0 or pending_downloads.count() > 0
+            auto = (
+                any(a.state == AlbumState.NEEDS_SYNC for a in scan_runner.scan_now())
+                or pending_downloads.count() > 0
+            )
             link_only = override if override is not None else auto
             activity.info(
                 "Sync started (link-only) — downloads are paused this sync."
@@ -502,11 +506,11 @@ def create_app(
             result = demo.run_demo_sync(
                 cfg.paths.music_dir,
                 link_only=link_only,
+                download_format=cfg.bandcamp.download_format,
+                max_downloads_per_sync=cfg.bandcamp.max_downloads_per_sync,
                 ignores_file=cfg.ignores_file,
                 progress_callback=sync_runner.set_current_item,
-                # Re-downloads (#132) go through the REAL post-download resolve,
-                # so the demo exercises the carry-through rather than staging its
-                # outcome. See run_demo_sync for why only they do.
+                # Use the real matching/tagging path for fresh and replacement downloads.
                 post_download_callback=demo_resolve_after_download,
             )
             # Run the REAL post-sync mis-tag detection (like the non-demo runner),
@@ -893,8 +897,23 @@ def _register_demo_routes(app: FastAPI) -> None:
 
     @app.post("/demo/reset", response_class=HTMLResponse)
     def demo_reset(request: Request) -> Response:
+        if (
+            request.app.state.sync_runner.is_running
+            or request.app.state.reconcile_runner.is_running
+            or request.app.state.scan_runner.status()["state"] == "scanning"
+            or _update_check_lock.locked()
+        ):
+            return _flash_response(
+                "Demo is busy",
+                "Wait for the current operation before resetting.",
+                level=Level.WARNING,
+                tasks_changed=False,
+                status_code=409,
+            )
         try:
-            demo.reset(request.app.state.cfg.paths.music_dir)
+            demo.reset(request.app.state.cfg.paths.music_dir, persistent_history=True)
+            request.app.state.forgotten_paths.clear()
+            request.app.state.scan_runner.reset_and_rescan()
         except RuntimeError as e:
             return _flash_response(
                 "Demo reset failed", str(e), level=Level.ERROR, tasks_changed=False, status_code=400

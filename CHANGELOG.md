@@ -8,6 +8,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Demo mode now offers a representative mixed-format library, working purchase and artwork workflows, persistent example history, and recording recipes (#558).
+
 - Changed MusicBrainz tracklists now require assignment review, retaining known track identities and proposing unambiguous matches for unassigned files; Structure takes the highest review priority (#530).
 
 - **The tracklist now marks a track whose artwork isn't the album's** — one that

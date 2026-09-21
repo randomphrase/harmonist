@@ -1,14 +1,20 @@
 # Harmonist
 
-**A self-hosted music tagger that turns your Bandcamp purchases into an organized
-library, with metadata from [MusicBrainz](https://musicbrainz.org).**
+**A self-hosted metadata librarian that tends your existing music collection,
+with canonical release metadata from [MusicBrainz](https://musicbrainz.org).**
 
-Complete [Picard](https://picard.musicbrainz.org)-compatible tags and cover art,
-ready for Plex and Navidrome — and it **asks before it guesses**, so nothing
-gets mislabeled.
+Adopt a library collected over years, find outdated or missing tags and artwork,
+preview improvements, and inspect or undo changes. Harmonist writes
+[Picard](https://picard.musicbrainz.org)-compatible tags, works with your existing
+folders, and **asks before it guesses**. It also syncs your Bandcamp purchases.
 
 ## What it does
 
+- **Adopt and maintain an existing library**, including non-Bandcamp albums,
+  mixed audio formats, and releases split across disc folders. MusicBrainz
+  supplies release metadata; your personal genre tags and comments are preserved.
+- **Find metadata improvements** with optional background checks, preview the
+  changes, and apply the updates you choose. Inspect and update artwork separately.
 - **Sync** your Bandcamp library (via [bandcampsync](https://github.com/meeb/bandcampsync)),
   capturing each album's store URL — and **re-download** any album later to upgrade
   its files or pick up tracks the artist has added, with the old copy zipped aside.
@@ -44,6 +50,10 @@ and no real network traffic:
 HARMONIST_DEMO_MODE=1 uvicorn harmonist.web.main:app --reload
 ```
 
+[Three focused walkthroughs](docs/demo.md): adopt an existing library, link and
+sync Bandcamp purchases (including MP3-to-FLAC re-download), and review/apply/undo
+tag and artwork updates.
+
 ## Quickstart
 
 ```yaml
@@ -76,33 +86,32 @@ shares, running from source, configuration — are in
 
 ## Where Harmonist fits
 
-Harmonist sits between your **purchases** (Bandcamp) and your **media server**
-(Plex, Navidrome) — it automates the *tagging* step for music you already own.
-It's deliberately narrow, and complements rather than replaces the usual tools.
+Harmonist maintains the metadata of music you already own, whether it came from
+a CD rip, Bandcamp, or another store. It recognises existing MusicBrainz tags,
+finds improvements, and lets you review and apply them from a self-hosted web UI.
+Optional background checks look and report; applying those updates is currently
+a user decision.
 
-The basic idea: because your music comes from a Bandcamp purchase, Harmonist
-already knows the release's store URL — and MusicBrainz records Bandcamp URLs as
-release relationships. So instead of fuzzy-matching on file tags or acoustic
-fingerprints and hoping for the best, Harmonist can look up the exact
-MusicBrainz release directly from the URL. Matching becomes a lookup, not a
-guess — which is why it can generally run unattended and only escalate genuine
-ambiguity to the review inbox. When MusicBrainz doesn't know about the release
-yet (common for newly-released Bandcamp-only material), that's not a dead end:
-the inbox flags it, and you seed it via
-[Harmony](https://harmony.pulsewidth.org.uk) in a couple of clicks — so every
-gap you hit makes MusicBrainz better for the next person.
+MusicBrainz is the canonical source for release metadata: Harmonist is not a
+generic tag editor and keeps no private overrides of that metadata. A directory
+must not mix albums, but one release can span several folders. Existing personal
+tags outside Harmonist's ownership, including genre and comments, are preserved.
+
+For Bandcamp purchases, the store URL provides another route to identifying the
+release through MusicBrainz relationships. Confident matches can be tagged after
+download automatically; ambiguous ones go to the Inbox. A release missing from
+MusicBrainz can be seeded through [Harmony](https://harmony.pulsewidth.org.uk).
 
 - **[MusicBrainz Picard](https://picard.musicbrainz.org)** is the gold-standard
   *manual* desktop tagger — you cluster and match files by hand. Harmonist
-  automates that for the Bandcamp→library flow and writes the **same
+  maintains an identified library and writes the **same
   Picard-compatible tags**, so your files stay fully Picard-editable. Reach for
-  Picard on a gnarly one-off; let Harmonist handle the routine purchases.
+  Picard for manual matching and editing; use Harmonist for ongoing maintenance
+  and routine purchase ingestion.
 - **[Lidarr](https://lidarr.audio)** (the *arr suite) is a broad collection
   manager — it monitors artists and pulls releases from various indexers to
-  grow a library. Harmonist is narrower and purchase-oriented: it syncs and
-  tags the music you've **bought on Bandcamp** (with other stores possibly to
-  follow). Lidarr automates *growing* a collection; Harmonist focuses on
-  cleanly tagging what you've purchased.
+  grow a library. Harmonist focuses on maintaining the music already in your
+  collection and syncing your Bandcamp purchases.
 - **[beets](https://beets.io)** is a powerful CLI library manager and
   autotagger, and **[beetcamp](https://github.com/snejus/beetcamp)** extends it
   by using *Bandcamp itself* as a metadata source. That's a great combination —
@@ -111,7 +120,7 @@ gap you hit makes MusicBrainz better for the next person.
   purchase's store URL directly to its MusicBrainz release, so you get canonical
   release IDs, community-curated metadata, and files that stay consistent with
   the rest of a Picard-tagged library. Harmonist also trades the command line
-  for a self-hosted web UI built around the purchase flow, and keeps a human in
+  for a self-hosted web UI built around library maintenance, and keeps a human in
   the loop — it asks before it guesses rather than auto-applying a best
   match. If you already live in beets, bandcampsync + beets + beetcamp is a
   solid pipeline; Harmonist is the integrated, review-first alternative.
@@ -124,10 +133,6 @@ gap you hit makes MusicBrainz better for the next person.
   covers the same ground as a standalone CLI. All of these get your purchases
   onto disk; none of them tag. Harmonist adds the MusicBrainz matching, the
   review inbox, and the Picard-compatible tagging on top.
-
-In short: if you buy music on Bandcamp and want it correctly tagged and dropped
-into Plex or Navidrome without hand-tagging every album, that's the gap
-Harmonist fills.
 
 ## Nothing happens silently
 

@@ -59,10 +59,11 @@ traffic, and your real `music_dir` is never touched:
 HARMONIST_DEMO_MODE=1 uvicorn harmonist.web.main:app --reload
 ```
 
-The sample library covers every album state, including a mis-tag and an album
-with no cover art, so the flows in [usage.md](usage.md) can be tried end to end
-before you point Harmonist at anything you care about. A **Reset Demo** button
-puts the sandbox back to its original state.
+The small sample library mixes FLAC, MP3, and M4A files, healthy albums, and
+focused metadata/artwork improvements. Try adoption, Bandcamp purchase linking,
+new downloads, an MP3-to-FLAC re-download, and reviewing/undoing changes.
+A **Reset Demo** button restores the sandbox and its prior activity.
+See the [demonstration recipes](demo.md) for repeatable walkthroughs and pacing.
 
 ## Configuration
 

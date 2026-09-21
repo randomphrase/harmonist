@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from harmonist import cover_art, mb_lookup, mb_search
+from harmonist import cover_art, formats, mb_lookup, mb_search
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -17,6 +17,7 @@ SINE_M4A = FIXTURES_DIR / "sine.m4a"
 # implementations. Snapshotting at test-start instead is fragile: a leak from a
 # prior test would be captured and faithfully "restored", perpetuating it.
 _PRISTINE_GLOBALS = {
+    (formats, "write_tags"): formats.write_tags,
     (mb_lookup, "fetch_release"): mb_lookup.fetch_release,
     (mb_lookup, "fetch_release_urls"): mb_lookup.fetch_release_urls,
     (mb_lookup, "lookup_by_bandcamp_url"): mb_lookup.lookup_by_bandcamp_url,
@@ -98,3 +99,8 @@ def reset_redownloads():
 
     yield
     redownloads.reset()
+
+
+@pytest.fixture(autouse=True)
+def no_demo_pacing(monkeypatch):
+    monkeypatch.setenv("HARMONIST_DEMO_DELAY", "0")

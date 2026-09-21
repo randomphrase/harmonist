@@ -225,11 +225,11 @@ class Config(BaseModel):
         REAL config dir (only the music dir is sandboxed), so writing there
         would deposit demo images among the user's genuine ones. Sandboxed
         rather than disabled, because a demo that can't exercise the flow is
-        exactly the demo that stops catching bugs in it. Beside the sandboxed
-        library rather than inside it — the images are not music.
+        exactly the demo that stops catching bugs in it. Inside the marked
+        sandbox so Reset Demo also clears kept artwork and archive candidates.
         """
         if self.demo_mode:
-            return self.paths.music_dir.parent / "harmonist-demo-artwork"
+            return self.paths.music_dir / ".demo-artwork"
         return self.paths.config_dir / "artwork"
 
     @property
