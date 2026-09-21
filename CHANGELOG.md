@@ -18,6 +18,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Albums without a store URL now lead directly with the MusicBrainz search controls, without redundant instructions (#564).
+
 - Suggested releases now keep their MusicBrainz link inside the review panel, with paired Confirm/Dismiss suggestion actions, counts in the table headings, and separate track-editing controls that return to review before confirmation (#562).
 
 - Release-review artwork now has equally sized previews, full-size inspection, and the album page's CAA refresh control, preserving review choices when refreshed (#559).
