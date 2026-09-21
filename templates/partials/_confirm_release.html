@@ -58,7 +58,6 @@
             <div class="flex flex-wrap items-center gap-2">
                 <button type="button" onclick="harmonistCloseConfirmation()" class="px-3 py-2 border border-line rounded text-sm font-bold">Back</button>
                 {% if not error %}<button type="submit" class="px-3 py-2 bg-accent text-white rounded text-sm font-bold">{{ 'Confirm suggestion' if album.sidecar and album.sidecar.mb_match_candidate else 'Confirm release' }}</button>{% endif %}
-                {% if assignment_panel and not assignment_panel.paired %}<a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}/edit" target="_blank" rel="noopener" class="ml-auto px-3 py-2 border border-line rounded text-sm font-bold">Edit on MusicBrainz ↗</a>{% endif %}
             </div>
             <span id="confirm-progress" class="htmx-indicator text-sm text-muted" role="status">Applying changes…</span>
         </form>

@@ -6090,6 +6090,7 @@ def _register_routes(app: FastAPI) -> None:
         album_id: str,
         *,
         draft: track_assignment.Draft | None = None,
+        review_draft: track_assignment.Draft | None = None,
         release_fingerprint: str = "",
         move: str = "",
         on_album_page: bool = False,
@@ -6185,6 +6186,7 @@ def _register_routes(app: FastAPI) -> None:
                 fragment=not modal,
                 assignment_changes=assignment_changes,
                 assignment_error=assignment_error,
+                review_draft=review_draft,
                 field_label=tag_history.label_for,
                 display_tag=tag_history.display,
             ),
@@ -6218,15 +6220,34 @@ def _register_routes(app: FastAPI) -> None:
         mb_order: str = Form(...),
         disk_fingerprint: str = Form(...),
         release_fingerprint: str = Form(...),
-        move: str = Form(...),
+        move: str = Form(""),
+        assignment_action: Literal["edit", "review", "cancel", "reset"] | None = Form(None),
+        review_disk_order: str = Form(""),
+        review_mb_order: str = Form(""),
+        review_disk_fingerprint: str = Form(""),
         on_album_page: bool = Form(False),
         album_tracks: bool = Form(False),
     ) -> Response:
         request.state.skip_rescan = True  # page-local draft; no library mutation
+        draft = track_assignment.Draft(disk_order, mb_order, disk_fingerprint)
+        baseline = (
+            track_assignment.Draft(review_disk_order, review_mb_order, review_disk_fingerprint)
+            if review_disk_fingerprint
+            else draft
+        )
+        # Cancel returns to the last accepted page-local pairing, not a fresh
+        # automatic match. None of these controls persists a decision.
+        editor_draft: track_assignment.Draft | None = draft
+        if assignment_action == "reset":
+            editor_draft = None
+        elif assignment_action == "cancel":
+            editor_draft = baseline
         return _assignment_editor(
             request,
             album_id,
-            draft=track_assignment.Draft(disk_order, mb_order, disk_fingerprint),
+            draft=editor_draft,
+            review_draft=None if assignment_action in {"review", "cancel"} else baseline,
+            cancel=assignment_action in {"review", "cancel"},
             release_fingerprint=release_fingerprint,
             move=move,
             on_album_page=on_album_page,

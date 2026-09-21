@@ -12,7 +12,7 @@ cfg = test_web.cfg
 client = test_web.client
 
 
-@pytest.mark.parametrize("action", ["move", "preview"])
+@pytest.mark.parametrize("action", ["move", "preview", "review"])
 @pytest.mark.parametrize("stale", [False, True])
 def test_assignment_drafts_do_not_rescan_or_write_files(client, cfg, monkeypatch, action, stale):
     from unittest.mock import Mock
@@ -20,6 +20,9 @@ def test_assignment_drafts_do_not_rescan_or_write_files(client, cfg, monkeypatch
     root, *_ = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
     aid = _id_for(cfg, root)
     editor = client.get(f"/assignments/{aid}")
+    from harmonist import mb_cache
+
+    monkeypatch.setattr(mb_cache, "fetch_release", lambda *a, **k: pytest.fail("unexpected fetch"))
     before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
     scan = Mock()
     monkeypatch.setattr(client.app.state.scan_runner, "request_scan", scan)
@@ -28,6 +31,8 @@ def test_assignment_drafts_do_not_rescan_or_write_files(client, cfg, monkeypatch
         fields["disk_fingerprint"] = "obsolete"
     if action == "move":
         response = client.post(f"/assignments/{aid}", data=fields | {"move": "disk:0:down"})
+    elif action == "review":
+        response = client.post(f"/assignments/{aid}", data=fields | {"assignment_action": "review"})
     else:
         response = client.post(f"/confirm/{aid}/preview", data=fields)
     assert response.status_code == 200
@@ -35,6 +40,12 @@ def test_assignment_drafts_do_not_rescan_or_write_files(client, cfg, monkeypatch
         assert "Files changed since the review" in response.text
     elif action == "move":
         assert _confirmation_fields(response.text)["disk_order"] == "1,0"
+    elif action == "review":
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        confirm = soup.select_one(f'button[hx-post="/confirm/{aid}/accept"]')
+        assert confirm is not None and not confirm.has_attr("disabled")
     scan.assert_not_called()
     assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
     if action == "preview" and not stale:

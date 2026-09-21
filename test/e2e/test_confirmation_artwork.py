@@ -190,11 +190,13 @@ def test_changed_confirmation_stays_open_for_review(reset_demo_server):
         card.get_by_role("button", name="Edit track assignments").click()
         editor = card.locator(".assignment-editor")
         pw.expect(editor.get_by_role("button", name="Accept changes")).to_be_visible()
+        editor.get_by_role("button", name="Accept changes").click()
+        pw.expect(editor.get_by_role("button", name="Edit track assignments")).to_be_visible()
         # A stale explicit pairing must be reviewed again before it can be saved.
         editor.locator('[name="release_fingerprint"]').evaluate(
             "e => e.value = e.value.split(':')[0] + ':obsolete'"
         )
-        editor.get_by_role("button", name="Accept changes").click()
+        editor.get_by_role("button", name="Confirm suggestion").click()
         dialog = page.locator("#confirmation-modal dialog")
         pw.expect(dialog.get_by_role("alert")).to_contain_text("Refresh the comparison")
         pw.expect(dialog).to_be_visible()
@@ -202,9 +204,11 @@ def test_changed_confirmation_stays_open_for_review(reset_demo_server):
             dialog.get_by_role("button", name="Confirm suggestion", exact=True)
         ).to_have_count(0)
         dialog.get_by_role("button", name="Close confirmation", exact=True).click()
-        card.get_by_role("button", name="Reset", exact=True).click()
+        card.get_by_role(
+            "button", name="Read this release from MusicBrainz again and reset assignment changes"
+        ).click()
         pw.expect(editor.locator('[name="release_fingerprint"]')).not_to_have_value("obsolete")
         with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
-            card.get_by_role("button", name="Accept changes", exact=True).click()
+            card.get_by_role("button", name="Confirm suggestion", exact=True).click()
         assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
         browser.close()

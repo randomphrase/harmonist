@@ -105,14 +105,18 @@ leads with whichever fits:
   durations need no difference label; other lengths show an inline Δ in seconds. **Title | Filename** in the on-disk column
   heading switches every row between titles and relative filenames; files
   without titles use their filenames as the main label.
-  **Accept changes** applies the reviewed pairing. If files remain unassigned,
+  **Accept changes**, **Reset**, and **Cancel** sit directly beneath the track table.
+  **Accept changes** keeps the pairing in this page and returns to review without
+  writing tags. **Confirm suggestion** and **Dismiss suggestion** stay below artwork,
+  disabled while editing. **Confirm suggestion** applies the reviewed pairing and
+  selected artwork. If files remain unassigned,
   a small confirmation lists just those files. Included artwork replacements
   show compact current/new images in the same dialog. Otherwise the changes
   apply directly. Closing or choosing **Back** preserves your draft and artwork
   choice. Applying writes MusicBrainz's numbering
   and metadata without renaming files; **Undo tag changes** in History reverses
   the tagging.
-  **Cancel** discards the draft and returns to the non-editable table, and **Reset**
+  **Cancel** restores the pairing from before this edit and returns to review; **Reset**
   starts again from the automatic pairing. A normal inbox refresh preserves the
   draft; moving entries and opening a preview do not trigger a library rescan.
   Leaving or reloading the page discards the draft. Confirmation and application
@@ -139,7 +143,6 @@ leads with whichever fits:
   Cancel leaves the update available. Ordinary metadata updates and already-missing
   tracks keep their existing behavior. Imported albums with an album MBID but no track IDs use this review
   too. An album can have both unassigned files and missing tracks.
-  **Edit on MusicBrainz**, at the right of the action row, opens the release editor on MusicBrainz.
 - *Without one.* Search by artist + title, or paste an MBID directly.
 - *Not in MusicBrainz yet.* Common for Bandcamp-only releases. **Open in Harmony**
   seeds it to [Harmony](https://harmony.pulsewidth.org.uk) in a couple of clicks,

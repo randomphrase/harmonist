@@ -62,6 +62,18 @@ def test_suggested_release_link_follows_review_and_confirmation(reset_demo_serve
         }""")
         edit.click()
         pw.expect(review.get_by_role("button", name="Accept changes")).to_be_visible()
+        accept = review.get_by_role("button", name="Accept changes", exact=True)
+        confirm = review.get_by_role("button", name="Confirm suggestion", exact=True)
+        dismiss = review.get_by_role("button", name="Dismiss suggestion", exact=True)
+        artwork = review.locator(".assignment-artwork")
+        table_box = review.locator("table").bounding_box()
+        assert table_box["y"] + table_box["height"] <= accept.bounding_box()["y"]
+        assert accept.bounding_box()["y"] < artwork.bounding_box()["y"]
+        for action in (confirm, dismiss):
+            pw.expect(action).to_be_visible()
+            pw.expect(action).to_be_disabled()
+            art_box = artwork.bounding_box()
+            assert action.bounding_box()["y"] >= art_box["y"] + art_box["height"]
         pw.expect(link).to_be_visible()
         # Colspan content can change subpixel table rounding between modes.
         assert columns.evaluate_all(
@@ -69,6 +81,8 @@ def test_suggested_release_link_follows_review_and_confirmation(reset_demo_serve
         ) == pytest.approx(positions, abs=1)
         review.get_by_role("button", name="Cancel", exact=True).click()
         pw.expect(edit).to_be_visible()
+        pw.expect(confirm).to_be_enabled()
+        pw.expect(dismiss).to_be_enabled()
         pw.expect(link).to_be_visible()
 
         # Replace the candidate through the application's normal assignment path.
@@ -236,14 +250,23 @@ def test_arrow_mapping_survives_refresh_review_and_apply(reset_demo_server):
         pw.expect(editor.locator(f'[id="move-{aid}-disk-0-down"]')).to_be_focused()
         pw.expect(
             card.get_by_role("button", name="Confirm suggestion", exact=True)
-        ).not_to_be_visible()
+        ).to_be_disabled()
         # A normal inbox poll must not reset a corrected draft.
         with page.expect_response(lambda r: "/tasks" in r.url):
             page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
-        # A complete tags-only review applies directly from the visible editor.
+        editor.get_by_role("button", name="Accept changes").click()
+        pw.expect(editor.get_by_role("button", name="Confirm suggestion")).to_be_enabled()
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
+        # Reopening preserves the accepted mapping; cancel restores it after edits.
+        editor.get_by_role("button", name="Edit track assignments").click()
+        editor.get_by_role("button", name="Move on-disk entry down", exact=True).first.click()
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2")
+        editor.get_by_role("button", name="Cancel", exact=True).click()
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
+        # Only final confirmation writes the accepted pairing.
         with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
-            editor.get_by_role("button", name="Accept changes").click()
+            editor.get_by_role("button", name="Confirm suggestion").click()
         assert parse_qs(applied.value.request.post_data)["disk_order"] == ["1,0,2"]
         assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
         pw.expect(page.get_by_role("dialog")).not_to_be_visible()
@@ -298,7 +321,8 @@ def test_closing_partial_confirmation_restores_accept_button(reset_demo_server):
         card.get_by_role("button", name="Edit track assignments").click()
         editor = card.locator(".assignment-editor")
         before = editor.locator('[name="disk_order"]').input_value()
-        accept = editor.get_by_role("button", name="Accept changes")
+        editor.get_by_role("button", name="Accept changes").click()
+        accept = editor.get_by_role("button", name="Confirm suggestion", exact=True)
 
         def poll_during_accept(route):
             response = route.fetch()

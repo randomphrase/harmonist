@@ -752,13 +752,17 @@ the unassigned-file count only when nonzero. The editor
 highlights gaps and numbering changes (before → after beneath the on-disk
 number), and offers a Title | Filename selector in
 the on-disk column heading (untitled files always fall back to filenames).
-Accept changes applies the review, with the focused confirmation above when needed; Reset and Cancel sit
-nearby and Edit on MusicBrainz sits at the right. Refresh/reset uses the album page's
+For suggestions, Accept changes returns the page-local pairing to review without
+writing tags or artwork. Accept changes, Reset and Cancel sit directly beneath
+the track table. Reopening preserves the accepted pairing; Cancel restores the
+pairing from before that edit. Confirm suggestion applies the review, with the
+focused confirmation above when needed. The release badge links to MusicBrainz. Refresh/reset uses the album page's
 icon beside MB checked at the top right. The non-editing panel has one Confirm
 suggestion action using the displayed pairing. The final preview explains any
 unassigned files in an informational warning; its normal confirmation action
 applies the reviewed pairings. Actions use standard
-button styling. Surrounding suggestion controls are hidden while a draft is open (#523). Viewing and editing
+button styling. Confirm/Dismiss suggestion remain below artwork but are disabled
+while a draft is open (#562). Viewing and editing
 share the same panel data and compact table, with purple MusicBrainz values and
 a hexagon group heading (#525). The proposed release badge lives in the
 **Suggested match:** heading, while the album header names only confirmed
@@ -793,7 +797,8 @@ rippers other than Picard write — is paired by the ladder and is not unassigne
 assignments** beside the album page's Tracks heading swaps in the editor within
 that section. Cancel discards the draft locally and restores the track list;
 background comparisons update that list without replacing the active editor.
-Artwork remains in its own section (#535). For confirmed releases the
+Artwork remains in its own section (#535). Accept changes in this confirmed-album
+editor still applies the reviewed track changes directly. For confirmed releases the
 editor retains unique track identities and offers the constrained proposals
 below for files carrying neither ID. Automatic tagging also refuses unresolved track
 identities, including IDs removed upstream. Refreshing MB resets the draft and

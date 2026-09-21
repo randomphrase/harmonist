@@ -18,7 +18,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
-- Suggested releases now keep their MusicBrainz link inside the review panel, with paired Confirm/Dismiss suggestion actions, counts in the table headings, and track-assignment editing highlighted for unassigned files (#562).
+- Suggested releases now keep their MusicBrainz link inside the review panel, with paired Confirm/Dismiss suggestion actions, counts in the table headings, and separate track-editing controls that return to review before confirmation (#562).
 
 - Release-review artwork now has equally sized previews, full-size inspection, and the album page's CAA refresh control, preserving review choices when refreshed (#559).
 

@@ -2,6 +2,8 @@
 {% if album_tracks %}
 <button type="button" class="{{ cancel_class }}"
         onclick="document.getElementById('album-track-editor').replaceChildren(); document.querySelector('#album-tracks [aria-controls=album-track-editor]')?.focus()">Cancel</button>
+{% elif panel and has_suggestion %}
+<button type="submit" name="assignment_action" value="cancel" class="{{ cancel_class }}">Cancel</button>
 {% else %}
 <button type="button" class="{{ cancel_class }}"
         hx-get="/assignments/{{ album.id }}?cancel=true&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"

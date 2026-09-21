@@ -46,6 +46,12 @@
             <input type="hidden" name="disk_order" value="{{ panel.draft.disk_order }}">
             <input type="hidden" name="mb_order" value="{{ panel.draft.mb_order }}">
             <input type="hidden" name="disk_fingerprint" value="{{ panel.draft.disk_fingerprint }}">
+            {% if has_suggestion %}
+            {% set baseline = review_draft or panel.draft %}
+            <input type="hidden" name="review_disk_order" value="{{ baseline.disk_order }}">
+            <input type="hidden" name="review_mb_order" value="{{ baseline.mb_order }}">
+            <input type="hidden" name="review_disk_fingerprint" value="{{ baseline.disk_fingerprint }}">
+            {% endif %}
             <input type="hidden" name="release_fingerprint" value="{{ release_fingerprint }}">
             <input type="hidden" name="candidate_mbid" value="{{ candidate.mb_release_id }}">
             <input type="hidden" name="album_tracks" value="{{ 'true' if album_tracks else 'false' }}">
@@ -145,6 +151,27 @@
                     </tbody>
                 </table>
             </div>
+            {% if not cancel %}
+            <div class="flex flex-wrap items-center gap-4">
+                {% if has_suggestion %}
+                <button type="submit" name="assignment_action" value="review"
+                        class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Accept changes</button>
+                <button type="submit" name="assignment_action" value="reset"
+                        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Reset</button>
+                {% else %}
+                <button type="button" hx-post="/confirm/{{ album.id }}/accept" hx-include="closest form"
+                        {% if not on_album_page %}hx-sync="body:queue last"{% endif %}
+                        hx-target="#confirmation-modal" hx-swap="none" hx-disabled-elt="this"
+                        hx-indicator="#assignment-progress-{{ album.id }}"
+                        hx-on::after-request="if (event.detail.successful &amp;&amp; (event.detail.xhr.getResponseHeader('HX-Trigger') || '').includes('confirmation-applied')) harmonistCloseConfirmation(true)"
+                        class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Accept changes</button>
+                <button type="button" hx-get="/assignments/{{ album.id }}?album_tracks={{ 'true' if album_tracks else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+                        hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
+                        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Reset</button>
+                {% endif %}
+                {% include 'partials/_assignment_cancel.html' %}
+            </div>
+            {% endif %}
             {% if assignment_error %}<p role="alert" class="text-sm text-amber-700">{{ assignment_error }}</p>{% endif %}
             {% if assignment_changes %}
             <details class="text-xs py-2"><summary class="cursor-pointer font-semibold">Tag changes</summary>
@@ -167,22 +194,9 @@
             </div>
             {% endif %}
             <div class="flex flex-wrap items-center gap-4">
-                {% if cancel %}
+                {% with actions_disabled=not cancel %}
                     {% include 'partials/_assignment_view_actions.html' %}
-                {% else %}
-                <button type="button" hx-post="/confirm/{{ album.id }}/accept" hx-include="closest form"
-                        {% if not on_album_page %}hx-sync="body:queue last"{% endif %}
-                        hx-target="#confirmation-modal" hx-swap="none" hx-disabled-elt="this"
-                        hx-indicator="#assignment-progress-{{ album.id }}"
-                        hx-on::after-request="if (event.detail.successful &amp;&amp; (event.detail.xhr.getResponseHeader('HX-Trigger') || '').includes('confirmation-applied')) harmonistCloseConfirmation(true)"
-                        class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Accept changes</button>
-                <button type="button" hx-get="/assignments/{{ album.id }}?album_tracks={{ 'true' if album_tracks else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
-                        hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
-                        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Reset</button>
-                {% include 'partials/_assignment_cancel.html' %}
-                {% endif %}
-                <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}/edit" target="_blank" rel="noopener"
-                   class="ml-auto px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Edit on MusicBrainz ↗</a>
+                {% endwith %}
             </div>
             <span id="assignment-progress-{{ album.id }}" class="htmx-indicator text-xs text-muted" role="status">Applying reviewed changes…</span>
         </form>
