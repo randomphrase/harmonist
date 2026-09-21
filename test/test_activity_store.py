@@ -1211,3 +1211,89 @@ def test_migrates_a_v9_database_in_place_keeping_its_answers(tmp_path):
     assert (got.width, got.etag) == (500, '"e"')
     assert got.source is None
     assert got.from_release_group is False  # NULL reads as the release's
+
+
+@pytest.mark.parametrize("replace", ["file", "memory"])
+@pytest.mark.parametrize("operation", ["append", "store_release", "recent", "cached_release"])
+def test_queued_operation_uses_replacement_connection(tmp_path, monkeypatch, replace, operation):
+    """A caller waiting for the store lock must not retain the retired DB."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    queued = threading.Event()
+    resume = threading.Event()
+    lock = activity_store._LOCK
+
+    class GateLock:
+        def __enter__(self):
+            if threading.current_thread().name.startswith("queued-store"):
+                queued.set()
+                assert resume.wait(5)
+            lock.acquire()
+
+        def __exit__(self, *args):
+            lock.release()
+
+    monkeypatch.setattr(activity_store, "_LOCK", GateLock())
+    payload = {"id": "release"}
+
+    def run():
+        if operation == "append":
+            return activity_store.append(message="queued", level=Level.INFO, source=Source.ACTIVITY)
+        if operation == "store_release":
+            return activity_store.store_release("release", "urls", payload)
+        if operation == "recent":
+            return [e.message for e in activity_store.recent()]
+        return activity_store.cached_release("release", "urls")
+
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="queued-store") as pool:
+        future = pool.submit(run)
+        try:
+            assert queued.wait(5)
+            if replace == "file":
+                activity_store.init(tmp_path / "replacement.db")
+            else:
+                activity_store.init_memory()
+            activity_store.append(message="replacement", level=Level.INFO, source=Source.ACTIVITY)
+            activity_store.store_release("release", "urls", {"id": "before"})
+        finally:
+            resume.set()
+        result = future.result(timeout=5)
+    if operation == "append":
+        assert result is not None
+        assert [e.message for e in activity_store.recent()] == ["queued", "replacement"]
+    elif operation == "store_release":
+        # The write must succeed, not just leave the row seeded above unchanged.
+        assert activity_store.cached_release("release", "urls").payload == payload
+    elif operation == "recent":
+        assert result == ["replacement"]
+    else:
+        assert result is not None
+        assert result.payload == {"id": "before"}
+
+
+@pytest.mark.parametrize("replace", ["file", "memory"])
+def test_connection_close_excludes_other_store_operations(tmp_path, monkeypatch, replace):
+    """Closing a retired connection belongs to the same critical section."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    close = activity_store._close_quietly
+    acquired = []
+
+    def probe_lock():
+        available = activity_store._LOCK.acquire(blocking=False)
+        if available:
+            activity_store._LOCK.release()
+        return available
+
+    def observed_close(conn):
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            acquired.append(pool.submit(probe_lock).result(timeout=5))
+        close(conn)
+
+    monkeypatch.setattr(activity_store, "_close_quietly", observed_close)
+    if replace == "file":
+        activity_store.init(tmp_path / "replacement.db")
+    else:
+        activity_store.init_memory()
+    assert acquired == [False], "another operation could enter while close was running"

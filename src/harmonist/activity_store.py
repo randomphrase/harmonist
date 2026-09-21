@@ -463,7 +463,7 @@ def init_memory() -> None:
     conn = _open(":memory:")
     with _LOCK:
         old, _conn = _conn, conn
-    _close_quietly(old)
+        _close_quietly(old)
 
 
 def _close_quietly(conn: sqlite3.Connection | None) -> None:
@@ -495,10 +495,11 @@ def init(db_path: Path | str) -> None:
         conn = _open(":memory:")
     with _LOCK:
         old, _conn = _conn, conn
-    _close_quietly(old)
+        _close_quietly(old)
 
 
 def _ensure() -> sqlite3.Connection:
+    """Return the shared connection; caller must hold _LOCK through its use."""
     global _conn
     if _conn is None:
         # No app has initialised a file-backed store — fall back to an ephemeral
@@ -533,8 +534,8 @@ def append(
         return None
     ts = datetime.now(UTC).isoformat()
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             cur = conn.execute(
                 "INSERT INTO events "
                 "(ts, level, source, message, album_id, album_label, action_id) "
@@ -603,8 +604,8 @@ def record_tag_changes(
     if not changes:
         return
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             conn.execute(
                 "INSERT INTO tag_changes "
                 "(event_id, file, track_ref, rec_ref, position, changes) "
@@ -640,8 +641,8 @@ def tag_changes_for(event_ids: Sequence[int]) -> dict[int, TagChanges]:
     placeholders = ",".join("?" * len(event_ids))
     out: dict[int, TagChanges] = {}
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             rows = conn.execute(
                 "SELECT event_id, file, track_ref, rec_ref, position, changes "
                 f"FROM tag_changes WHERE event_id IN ({placeholders})",
@@ -697,8 +698,8 @@ def recent(
     args.append(limit)
     args.append(max(0, offset))
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             rows = conn.execute(q, args).fetchall()
     except sqlite3.Error as exc:
         log.exception(
@@ -722,8 +723,8 @@ def version() -> str:
     the same class of lie as returning an empty list (error-handling skill §1).
     """
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             row = conn.execute("SELECT MAX(id), COUNT(*) FROM events").fetchone()
     except sqlite3.Error as exc:
         log.exception("activity_store version() failed", extra=_QUIET_MIRROR)
@@ -787,8 +788,8 @@ def artwork_backups() -> list[ArtworkBackup]:
     were written with, so a re-identification cannot orphan them.
     """
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             rows = conn.execute(
                 "SELECT e.album_id, c.event_id, e.action_id, c.changes "
                 "FROM tag_changes c JOIN events e ON e.id = c.event_id "
@@ -872,8 +873,8 @@ def cached_cover_art(mbid: str) -> CachedCoverArt | None:
     would turn a degraded cache into a broken album page.
     """
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             row = conn.execute(
                 "SELECT fetched_at, etag, image_url, width, height, length, mime, source "
                 "FROM caa_cache WHERE mbid = ?",
@@ -900,8 +901,8 @@ def cached_cover_art(mbid: str) -> CachedCoverArt | None:
 def store_cover_art(mbid: str, answer: CachedCoverArt) -> None:
     """Remember what the archive said. REPLACEs, so re-asking overwrites."""
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             conn.execute(
                 "INSERT OR REPLACE INTO caa_cache "
                 "(mbid, fetched_at, etag, image_url, width, height, length, mime, source) "
@@ -942,8 +943,8 @@ def already_discovered(album_ids: list[str]) -> set[str]:
         "AND source = ? AND message LIKE ?"
     )
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             rows = conn.execute(
                 q, [*album_ids, Source.AUDIT.value, f"{DISCOVERY_EVENT} %"]
             ).fetchall()
@@ -969,8 +970,8 @@ def audit_by_action(action_ids: list[str]) -> dict[str, list[StoredEvent]]:
         f"FROM events WHERE source = ? AND action_id IN ({placeholders}) ORDER BY id"
     )
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             rows = conn.execute(q, [Source.AUDIT.value, *action_ids]).fetchall()
     except sqlite3.Error as exc:
         log.exception("activity_store audit_by_action() failed", extra=_QUIET_MIRROR)
@@ -1007,8 +1008,8 @@ def audit_without_action(since: datetime, limit: int = 200) -> list[StoredEvent]
         "ORDER BY id DESC LIMIT ?"
     )
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             rows = conn.execute(q, (Source.AUDIT.value, since.isoformat(), limit)).fetchall()
     except sqlite3.Error as exc:
         log.exception("activity_store audit_without_action() failed", extra=_QUIET_MIRROR)
@@ -1031,8 +1032,8 @@ def record_alias(old_id: str, new_id: str) -> None:
         return
     ts = datetime.now(UTC).isoformat()
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             conn.execute(
                 "INSERT OR REPLACE INTO album_aliases (old_id, new_id, ts) VALUES (?, ?, ?)",
                 (old_id, new_id, ts),
@@ -1069,8 +1070,8 @@ def resolve_alias(album_id: str, *, max_hops: int = 20) -> str | None:
     seen = {album_id}
     current = album_id
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             for _ in range(max_hops):
                 row = conn.execute(
                     "SELECT new_id FROM album_aliases WHERE old_id = ?", (current,)
@@ -1120,8 +1121,8 @@ def album_history(
     # trying to find out what it did. Raised as StoreUnavailableError so the route
     # can say "history unavailable" instead. See the error-handling skill §1.
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             rows = conn.execute(q, [*ids, limit, max(0, offset)]).fetchall()
     except sqlite3.Error as exc:
         log.exception("activity_store album_history(%s) failed", album_id, extra=_QUIET_MIRROR)
@@ -1148,8 +1149,8 @@ def _alias_ancestors(album_id: str, *, max_hops: int = 20) -> list[str]:
     # code discarded the ids it HAD already walked on the way out. Propagate to
     # album_history's caller instead. See the error-handling skill §1.
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             for _ in range(max_hops):
                 if not frontier:
                     break
@@ -1193,8 +1194,8 @@ def cached_release(mbid: str, inc: str) -> CachedRelease | None:
     at full price, which is the thing this table exists to stop.
     """
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             row = conn.execute(
                 "SELECT payload, fetched_at FROM mb_release_cache WHERE mbid = ? AND inc = ?",
                 (mbid, inc),
@@ -1250,8 +1251,8 @@ def store_release(mbid: str, inc: str, payload: Mapping[str, Any]) -> None:
         )
         return
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             conn.execute(
                 "INSERT OR REPLACE INTO mb_release_cache (mbid, inc, fetched_at, payload) "
                 "VALUES (?, ?, ?, ?)",
@@ -1289,8 +1290,8 @@ def release_fetch_times(inc: str) -> dict[str, datetime]:
     library every night is exactly the budget leak the cache exists to stop.
     """
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             rows = conn.execute(
                 "SELECT mbid, fetched_at FROM mb_release_cache WHERE inc = ?", (inc,)
             ).fetchall()
@@ -1362,8 +1363,8 @@ def ignore_update(album_id: str, *, release_version: str) -> None:
     stay put has no way to find out why.
     """
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             conn.execute(
                 "INSERT OR REPLACE INTO gardener_ignores "
                 "(album_id, release_version, ignored_at) VALUES (?, ?, ?)",
@@ -1390,8 +1391,8 @@ def unignore_update(album_id: str) -> bool:
     cannot vouch for.
     """
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             cur = conn.execute("DELETE FROM gardener_ignores WHERE album_id = ?", (album_id,))
             conn.commit()
             return cur.rowcount > 0
@@ -1417,8 +1418,8 @@ def ignored_updates() -> dict[str, IgnoredUpdate]:
     while a missing album is not.
     """
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             rows = conn.execute(
                 "SELECT album_id, release_version, ignored_at FROM gardener_ignores"
             ).fetchall()
@@ -1474,8 +1475,8 @@ def clear() -> None:
     re-seed, on a different one.
     """
     try:
-        conn = _ensure()
         with _LOCK:
+            conn = _ensure()
             conn.execute("DELETE FROM tag_changes")
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM album_aliases")

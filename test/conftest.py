@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import shutil
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -104,3 +106,40 @@ def reset_redownloads():
 @pytest.fixture(autouse=True)
 def no_demo_pacing(monkeypatch):
     monkeypatch.setenv("HARMONIST_DEMO_DELAY", "0")
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Join request-spawned workers BEFORE any fixture restores shared globals.
+
+    Bare TestClients do not run lifespan shutdown, and daemon workers can still
+    be recording history when the next test replaces SQLite. A fixture cannot
+    guarantee this ordering against every module's fixtures; the outer teardown
+    hook can. Re-snapshot because a worker can start another worker as it ends.
+    """
+    # These are one-shot workers. Scan executor threads are long-lived and
+    # must not be joined here merely because their name starts with harmonist.
+    worker_names = {
+        "harmonist-reconcile",
+        "harmonist-sync",
+        "harmonist-update-check",
+        "harmonist-flag-warmup",
+    }
+    deadline = time.monotonic() + 10
+    pending = []
+    while True:
+        pending = [
+            thread
+            for thread in threading.enumerate()
+            if thread.name in worker_names and thread.is_alive()
+        ]
+        if not pending or time.monotonic() >= deadline:
+            break
+        for thread in pending:
+            thread.join(timeout=max(0, deadline - time.monotonic()))
+    # Always let pytest release fixtures, including when a stuck worker is
+    # reported. A timeout must fail the test rather than silently leak work.
+    result = yield
+    if pending:
+        pytest.fail("Background workers did not stop: " + ", ".join(t.name for t in pending))
+    return result
