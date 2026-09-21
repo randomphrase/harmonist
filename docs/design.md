@@ -747,7 +747,8 @@ Dismiss suggestion → clear candidate; the album stays in Needs MBID so a diffe
 the candidate's file/track comparison. Rows are pairs, not track numbers: either
 side can swap adjacent entries, including gaps, while separate on-disk and MB
 track numbers remain attached to their entries, with explicit disc headings
-for multidisc albums. The editor leads with file/track/unassigned counts,
+for multidisc albums. The table headings include file/track counts and show
+the unassigned-file count only when nonzero. The editor
 highlights gaps and numbering changes (before → after beneath the on-disk
 number), and offers a Title | Filename selector in
 the on-disk column heading (untitled files always fall back to filenames).
@@ -762,7 +763,7 @@ share the same panel data and compact table, with purple MusicBrainz values and
 a hexagon group heading (#525). The proposed release badge lives in the
 **Suggested match:** heading, while the album header names only confirmed
 identity (#562). **MB checked** sits at the top right; **Edit track assignments**
-sits below it opposite the counts, highlighted when files are unassigned.
+sits at the right of the table's group-heading row, highlighted when files are unassigned.
 **CAA checked** stays with Artwork. The initial card loads a preserved comparison
 fragment from stored release data without network requests, regardless of cache
 age; a missing cache is visible and offers an explicit read. Entering an uncached

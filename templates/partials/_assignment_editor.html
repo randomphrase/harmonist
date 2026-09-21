@@ -41,10 +41,6 @@
         {% for entry in panel.disk + panel.mb %}
             {% if entry.number.split('.')[0] not in ['?', '1'] %}{% set counts.multidisc = true %}{% endif %}
         {% endfor %}
-        <div class="flex flex-wrap items-baseline justify-between gap-2">
-            <p class="text-sm font-semibold">{{ panel.files|length }} files · {{ panel.mb|length }} MusicBrainz tracks · {{ counts.unassigned }} {{ 'file' if counts.unassigned == 1 else 'files' }} unassigned</p>
-            {% if cancel %}{% include 'partials/_assignment_edit_button.html' %}{% endif %}
-        </div>
         <form hx-post="/assignments/{{ album.id }}" hx-target="closest .assignment-content"
               hx-swap="outerHTML" hx-disabled-elt="find button" class="space-y-2">
             <input type="hidden" name="disk_order" value="{{ panel.draft.disk_order }}">
@@ -61,7 +57,22 @@
                     <colgroup><col class="assignment-number {{ 'assignment-number-multidisc' if counts.multidisc else '' }}"><col><col class="assignment-length"></colgroup>
                     <colgroup><col class="assignment-number"><col><col class="assignment-length"></colgroup>
                     <thead class="text-left">
-                        <tr><th scope="colgroup" colspan="3" class="p-2">On disk</th><th scope="colgroup" colspan="3" class="p-2 border-l border-line text-mb-purple">MusicBrainz <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" class="inline" aria-hidden="true"><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></th></tr>
+                        <tr>
+                            <th scope="colgroup" colspan="3" class="p-2 align-middle">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <span>On disk · {{ panel.files|length }} {{ 'file' if panel.files|length == 1 else 'files' }}</span>
+                                    {% if counts.unassigned %}
+                                    <span class="px-2 py-1 rounded text-xs text-amber-700 bg-amber-50 border border-amber-300">{{ counts.unassigned }} {{ 'file' if counts.unassigned == 1 else 'files' }} unassigned</span>
+                                    {% endif %}
+                                </div>
+                            </th>
+                            <th scope="colgroup" colspan="3" class="p-2 align-middle border-l border-line text-mb-purple">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <span>MusicBrainz <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" class="inline" aria-hidden="true"><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg> · {{ panel.mb|length }} {{ 'track' if panel.mb|length == 1 else 'tracks' }}</span>
+                                    {% if cancel %}{% include 'partials/_assignment_edit_button.html' %}{% endif %}
+                                </div>
+                            </th>
+                        </tr>
                         <tr class="text-muted border-b border-line">
                             <th scope="col" class="p-2">Track</th><th scope="col" class="p-2">
                                 <div role="radiogroup" aria-label="On-disk track display" class="inline-flex items-center gap-2">

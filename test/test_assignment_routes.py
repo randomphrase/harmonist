@@ -102,12 +102,12 @@ def test_uncached_comparison_waits_for_explicit_refresh(client, cfg, monkeypatch
     refresh = BeautifulSoup(view.text, "html.parser").select_one('[hx-get*="reread=true"]')
     assert refresh is not None
     loaded = client.get(refresh["hx-get"])
-    assert "2 files · 2 MusicBrainz tracks" in loaded.text
+    assert "On disk · 2 files" in loaded.text and "· 2 tracks" in loaded.text
     assert not BeautifulSoup(loaded.text, "html.parser").select('button[name="move"]')
     assert calls == [("mb", "rel-new-confirm")]
     # Explicit refresh must fetch even once the cache has been populated.
     loaded = client.get(refresh["hx-get"])
-    assert "2 files · 2 MusicBrainz tracks" in loaded.text
+    assert "On disk · 2 files" in loaded.text and "· 2 tracks" in loaded.text
     assert calls == [("mb", "rel-new-confirm"), ("mb", "rel-new-confirm")]
 
 
@@ -129,7 +129,8 @@ def test_read_only_confirmation_uses_current_counts_and_displayed_mapping(
         listing.append(extra)
     aid = _id_for(cfg, d)
     view = client.get(f"/assignments/{aid}?cancel=true&reread=true")
-    assert f"2 files · {tracks} MusicBrainz tracks" in view.text
+    assert "On disk · 2 files" in view.text
+    assert f"· {tracks} {'track' if tracks == 1 else 'tracks'}" in view.text
     soup = BeautifulSoup(view.text, "html.parser")
     confirm = soup.select_one(f'button[hx-post="/confirm/{aid}/accept"]')
     assert confirm is not None and confirm.get_text(strip=True) == "Confirm suggestion"
@@ -309,7 +310,7 @@ def test_no_match_candidate_has_an_actionable_description(client, cfg, monkeypat
     client.get(f"/assignments/{aid}")
     body = client.get(f"/assignments/{aid}?cancel=true").text
     assert "Edit track assignments</button>" in body
-    assert "2 files · 2 MusicBrainz tracks" in body
+    assert "On disk · 2 files" in body and "· 2 tracks" in body
 
 
 def test_preview_retry_preserves_the_assignment_after_a_musicbrainz_failure(

@@ -41,11 +41,16 @@ def test_suggested_release_link_follows_review_and_confirmation(reset_demo_serve
         pw.expect(edit).to_be_visible()
         pw.expect(edit).not_to_have_class(re.compile("bg-amber-50"))
         checked = review.get_by_text("MB checked", exact=True)
-        counts = review.get_by_text(
-            "3 files · 3 MusicBrainz tracks · 0 files unassigned", exact=True
-        )
+        groups = review.locator('th[scope="colgroup"]')
+        pw.expect(groups.nth(0)).to_contain_text("On disk · 3 files")
+        pw.expect(groups.nth(1)).to_contain_text("MusicBrainz")
+        pw.expect(groups.nth(1)).to_contain_text("3 tracks")
+        pw.expect(groups.get_by_text(re.compile(r"file.*unassigned"))).to_have_count(0)
+        pw.expect(
+            groups.nth(1).get_by_role("button", name="Edit track assignments")
+        ).to_be_visible()
         assert checked.bounding_box()["y"] < edit.bounding_box()["y"]
-        assert abs(counts.bounding_box()["y"] - edit.bounding_box()["y"]) < 12
+        assert abs(groups.nth(0).bounding_box()["y"] - edit.bounding_box()["y"]) < 12
         pw.expect(review.locator(".assignment-artwork")).to_contain_text("CAA checked")
         columns = review.locator("thead tr").last.locator("th")
         positions = columns.evaluate_all("els => els.map(e => e.getBoundingClientRect().x)")
@@ -58,7 +63,10 @@ def test_suggested_release_link_follows_review_and_confirmation(reset_demo_serve
         edit.click()
         pw.expect(review.get_by_role("button", name="Accept changes")).to_be_visible()
         pw.expect(link).to_be_visible()
-        assert columns.evaluate_all("els => els.map(e => e.getBoundingClientRect().x)") == positions
+        # Colspan content can change subpixel table rounding between modes.
+        assert columns.evaluate_all(
+            "els => els.map(e => e.getBoundingClientRect().x)"
+        ) == pytest.approx(positions, abs=1)
         review.get_by_role("button", name="Cancel", exact=True).click()
         pw.expect(edit).to_be_visible()
         pw.expect(link).to_be_visible()
@@ -74,6 +82,7 @@ def test_suggested_release_link_follows_review_and_confirmation(reset_demo_serve
             "href", "https://musicbrainz.org/release/demo-rel-folksmen"
         )
         pw.expect(edit).to_have_class(re.compile("bg-amber-50"))
+        pw.expect(groups.nth(0)).to_contain_text("1 file unassigned")
         review.get_by_role("button", name="Dismiss suggestion", exact=True).click()
         pw.expect(review).to_have_count(0)
         pw.expect(
@@ -138,9 +147,9 @@ def test_column_display_toggle_survives_moves_and_reset(reset_demo_server):
         editor.get_by_role("button", name="Edit track assignments").click()
         pw.expect(editor.get_by_role("button", name="Accept changes")).to_be_visible()
         pw.expect(filenames).to_be_checked()
-        assert (
-            columns.evaluate_all("els => els.map(el => el.getBoundingClientRect().x)") == positions
-        )
+        assert columns.evaluate_all(
+            "els => els.map(el => el.getBoundingClientRect().x)"
+        ) == pytest.approx(positions, abs=1)
         editor.get_by_role("button", name="Cancel", exact=True).click()
         editor.get_by_role(
             "button", name="Read this release from MusicBrainz again and reset assignment changes"

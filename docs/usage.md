@@ -91,8 +91,10 @@ leads with whichever fits:
   values are purple, with a hexagon beside the group heading. **MB checked**
   at the top right shows the age of the comparison; its refresh button reads
   MusicBrainz again. If no comparison is cached, load it with that explicit action.
-  **Edit track assignments**, opposite the file counts and beneath **MB checked**,
-  is highlighted when files are unassigned. It adds movement arrows to correct which file belongs to which
+  File and track counts appear in the **On disk** and **MusicBrainz** table headings.
+  **Edit track assignments** sits at the right of that row and is highlighted when
+  files are unassigned; their count appears beside **On disk** only when nonzero.
+  It adds movement arrows to correct which file belongs to which
   MusicBrainz track. **CAA checked** and its refresh control stay with Artwork.
   The arrows swap adjacent entries or missing-track gaps on
   either side. The **On disk** and **MusicBrainz** groups show each entry's
