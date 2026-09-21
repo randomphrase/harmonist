@@ -125,16 +125,16 @@ def test_confirmation_applies_only_included_artwork(reset_demo_server, on_album,
         review.get_by_role("button", name="Cancel", exact=True).click()
         pw.expect(checkbox).to_be_checked(checked=included)
         if included:
-            review.get_by_role("button", name="Confirm release", exact=True).click()
+            review.get_by_role("button", name="Confirm suggestion", exact=True).click()
             dialog = page.locator("#confirmation-modal dialog")
             pw.expect(dialog.get_by_role("region", name="Artwork replacement")).to_be_visible()
             with page.expect_response(lambda r: r.url.endswith("/confirm/" + aid)) as confirmed:
-                dialog.get_by_role("button", name="Confirm release", exact=True).click()
+                dialog.get_by_role("button", name="Confirm suggestion", exact=True).click()
         else:
             with page.expect_response(
                 lambda r: r.url.endswith(f"/confirm/{aid}/accept")
             ) as confirmed:
-                review.get_by_role("button", name="Confirm release", exact=True).click()
+                review.get_by_role("button", name="Confirm suggestion", exact=True).click()
         assert (
             parse_qs(confirmed.value.request.post_data)["include_artwork"][-1]
             == str(included).lower()
@@ -170,7 +170,7 @@ def test_pending_artwork_does_not_block_tags_only_acceptance(reset_demo_server):
         review = page.locator(f"#task-{aid} .assignment-editor")
         pw.expect(review).to_contain_text("Loading artwork")
         with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
-            review.get_by_role("button", name="Confirm release", exact=True).click()
+            review.get_by_role("button", name="Confirm suggestion", exact=True).click()
         assert pending
         assert parse_qs(applied.value.request.post_data)["include_artwork"] == ["false"]
         assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
@@ -198,7 +198,9 @@ def test_changed_confirmation_stays_open_for_review(reset_demo_server):
         dialog = page.locator("#confirmation-modal dialog")
         pw.expect(dialog.get_by_role("alert")).to_contain_text("Refresh the comparison")
         pw.expect(dialog).to_be_visible()
-        pw.expect(dialog.get_by_role("button", name="Confirm release", exact=True)).to_have_count(0)
+        pw.expect(
+            dialog.get_by_role("button", name="Confirm suggestion", exact=True)
+        ).to_have_count(0)
         dialog.get_by_role("button", name="Close confirmation", exact=True).click()
         card.get_by_role("button", name="Reset", exact=True).click()
         pw.expect(editor.locator('[name="release_fingerprint"]')).not_to_have_value("obsolete")

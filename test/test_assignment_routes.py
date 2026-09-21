@@ -93,6 +93,11 @@ def test_uncached_comparison_waits_for_explicit_refresh(client, cfg, monkeypatch
     assert loader is not None
     view = client.get(loader["hx-get"])
     assert "Track comparison is not cached" in view.text
+    heading = BeautifulSoup(view.text, "html.parser").find("h3")
+    assert heading is not None and "Suggested match:" in heading.text
+    link = heading.find("a")
+    assert link is not None
+    assert link["href"] == "https://musicbrainz.org/release/rel-new-confirm"
     assert calls == []
     refresh = BeautifulSoup(view.text, "html.parser").select_one('[hx-get*="reread=true"]')
     assert refresh is not None
@@ -127,7 +132,7 @@ def test_read_only_confirmation_uses_current_counts_and_displayed_mapping(
     assert f"2 files · {tracks} MusicBrainz tracks" in view.text
     soup = BeautifulSoup(view.text, "html.parser")
     confirm = soup.select_one(f'button[hx-post="/confirm/{aid}/accept"]')
-    assert confirm is not None and confirm.get_text(strip=True) == "Confirm release"
+    assert confirm is not None and confirm.get_text(strip=True) == "Confirm suggestion"
     preview = client.post(f"/confirm/{aid}/preview", data=_confirmation_fields(view.text))
     assert (
         _confirmation_fields(preview.text)["disk_order"]

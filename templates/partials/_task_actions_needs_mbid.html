@@ -41,21 +41,21 @@
             {% if candidate.mistag_tagged_mbid and candidate.mistag_tagged_label %}
             <a href="https://musicbrainz.org/release/{{ candidate.mistag_tagged_mbid }}"
                target="_blank" rel="noopener"
-               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_tagged_label, candidate.mistag_tagged_disambig) }}</a>,
+               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_tagged_label, candidate.mistag_tagged_disambig) }} ↗</a>,
             {% else %}
             a different release,
             {% endif %}
             but you purchased
             <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}"
                target="_blank" rel="noopener"
-               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_owned_label, candidate.mistag_owned_disambig) }}</a>
+               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_owned_label, candidate.mistag_owned_disambig) }} ↗</a>
             on <a href="{{ candidate.mistag_owned_url }}" target="_blank" rel="noopener"
-               class="text-bc-teal hover:underline">Bandcamp</a>.
+               class="text-bc-teal hover:underline">Bandcamp ↗</a>.
             These are sibling releases in the same
             {% if candidate.mistag_release_group_mbid %}
             <a href="https://musicbrainz.org/release-group/{{ candidate.mistag_release_group_mbid }}"
                target="_blank" rel="noopener"
-               class="text-mb-purple hover:underline">MusicBrainz release group</a>.
+               class="text-mb-purple hover:underline">MusicBrainz release group ↗</a>.
             {% else %}
             MusicBrainz release group.
             {% endif %}
@@ -66,6 +66,12 @@
 {% endif %}
 
 {% if is_surrender %}
+<p class="flex flex-wrap items-center gap-2 text-sm mb-3">
+    Tagged release:
+    {% with mb_release_id=candidate.mb_release_id %}
+        {% include 'partials/_mb_release_link.html' %}
+    {% endwith %}
+</p>
 {% set sugg = (surrender_suggestions | default({})).get(album.id) %}
 {% if sugg %}
 {# ---- A potential download matches this album (artist + subsequence title):

@@ -1,6 +1,7 @@
 """Arrows, draft preservation and confirmation must work in a real browser."""
 
 import os
+import re
 from urllib.parse import parse_qs
 
 import pytest
@@ -14,6 +15,86 @@ def _card(page, base):
     card = page.locator('div[id^="task-"].relative').filter(has_text="Gimme Some Money")
     pw.expect(card).to_have_count(1)
     return card
+
+
+@pytest.mark.parametrize("on_album", [False, True])
+def test_suggested_release_link_follows_review_and_confirmation(reset_demo_server, on_album):
+    base = reset_demo_server
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 1000})
+        card = _card(page, base)
+        aid = card.get_attribute("id").removeprefix("task-")
+        if on_album:
+            page.goto(f"{base}/album/{aid}")
+        host = page.locator("main") if on_album else page.locator(f"#task-{aid}")
+        review = host.locator(".assignment-editor")
+        heading = review.get_by_role("heading", name=re.compile("Suggested match:"))
+        link = heading.get_by_role("link", name="MusicBrainz ↗", exact=True)
+        pw.expect(link).to_have_attribute(
+            "href", "https://musicbrainz.org/release/demo-rel-thamesmen"
+        )
+        pw.expect(
+            host.locator('a[href="https://musicbrainz.org/release/demo-rel-thamesmen"]')
+        ).to_have_count(1)
+        edit = review.get_by_role("button", name="Edit track assignments", exact=True)
+        pw.expect(edit).to_be_visible()
+        pw.expect(edit).not_to_have_class(re.compile("bg-amber-50"))
+        checked = review.get_by_text("MB checked", exact=True)
+        counts = review.get_by_text(
+            "3 files · 3 MusicBrainz tracks · 0 files unassigned", exact=True
+        )
+        assert checked.bounding_box()["y"] < edit.bounding_box()["y"]
+        assert abs(counts.bounding_box()["y"] - edit.bounding_box()["y"]) < 12
+        pw.expect(review.locator(".assignment-artwork")).to_contain_text("CAA checked")
+        columns = review.locator("thead tr").last.locator("th")
+        positions = columns.evaluate_all("els => els.map(e => e.getBoundingClientRect().x)")
+        delta = review.locator('[title="Duration difference"]').first
+        assert delta.evaluate("""e => {
+            const r = document.createRange();
+            r.selectNodeContents(e.parentElement.firstChild);
+            return Math.abs(r.getBoundingClientRect().y - e.getBoundingClientRect().y) < 5;
+        }""")
+        edit.click()
+        pw.expect(review.get_by_role("button", name="Accept changes")).to_be_visible()
+        pw.expect(link).to_be_visible()
+        assert columns.evaluate_all("els => els.map(e => e.getBoundingClientRect().x)") == positions
+        review.get_by_role("button", name="Cancel", exact=True).click()
+        pw.expect(edit).to_be_visible()
+        pw.expect(link).to_be_visible()
+
+        # Replace the candidate through the application's normal assignment path.
+        assert page.request.post(
+            f"{base}/manual/{aid}/assign",
+            headers={"HX-Request": "true"},
+            form={"mbid": "demo-rel-folksmen"},
+        ).ok
+        page.reload()
+        pw.expect(link).to_have_attribute(
+            "href", "https://musicbrainz.org/release/demo-rel-folksmen"
+        )
+        pw.expect(edit).to_have_class(re.compile("bg-amber-50"))
+        review.get_by_role("button", name="Dismiss suggestion", exact=True).click()
+        pw.expect(review).to_have_count(0)
+        pw.expect(
+            host.locator('a[href="https://musicbrainz.org/release/demo-rel-folksmen"]')
+        ).to_have_count(0)
+        assert page.request.post(
+            f"{base}/manual/{aid}/assign",
+            headers={"HX-Request": "true"},
+            form={"mbid": "demo-rel-folksmen"},
+        ).ok
+        page.reload()
+        review.get_by_role("button", name="Confirm suggestion", exact=True).click()
+        dialog = page.get_by_role("dialog")
+        pw.expect(dialog).to_contain_text("Tracks unassigned")
+        dialog.get_by_role("button", name="Confirm suggestion", exact=True).click()
+        pw.expect(dialog).not_to_be_visible()
+        page.goto(f"{base}/album/demo-rel-folksmen")
+        pw.expect(
+            page.locator("main").get_by_role("link", name="MusicBrainz ↗", exact=True)
+        ).to_have_attribute("href", "https://musicbrainz.org/release/demo-rel-folksmen")
+        browser.close()
 
 
 def test_column_display_toggle_survives_moves_and_reset(reset_demo_server):
@@ -47,7 +128,7 @@ def test_column_display_toggle_survives_moves_and_reset(reset_demo_server):
         editor.get_by_role("button", name="Reset", exact=True).click()
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2")
         editor.get_by_role("button", name="Cancel", exact=True).click()
-        pw.expect(card.get_by_role("button", name="Confirm release", exact=True)).to_be_visible()
+        pw.expect(card.get_by_role("button", name="Confirm suggestion", exact=True)).to_be_visible()
         # Read-only mode keeps the same table geometry and display preference.
         columns = editor.locator("thead tr").last.locator("th")
         positions = columns.evaluate_all("els => els.map(el => el.getBoundingClientRect().x)")
@@ -84,10 +165,10 @@ def test_partial_confirmation_can_be_applied_and_reviewed(reset_demo_server):
         ).ok
         page.reload()
         card = page.locator(f"#task-{aid}")
-        card.get_by_role("button", name="Confirm release", exact=True).click()
+        card.get_by_role("button", name="Confirm suggestion", exact=True).click()
         dialog = page.get_by_role("dialog")
         pw.expect(dialog).to_contain_text("Tracks unassigned")
-        dialog.get_by_role("button", name="Confirm release", exact=True).click()
+        dialog.get_by_role("button", name="Confirm suggestion", exact=True).click()
         pw.expect(dialog).not_to_be_visible()
         page.goto(f"{base}/album/demo-rel-folksmen")
         pw.expect(page.locator("main")).to_contain_text("Tracks unassigned")
@@ -145,7 +226,7 @@ def test_arrow_mapping_survives_refresh_review_and_apply(reset_demo_server):
         assert note.evaluate("el => el.scrollWidth <= el.clientWidth")
         pw.expect(editor.locator(f'[id="move-{aid}-disk-0-down"]')).to_be_focused()
         pw.expect(
-            card.get_by_role("button", name="Confirm release", exact=True)
+            card.get_by_role("button", name="Confirm suggestion", exact=True)
         ).not_to_be_visible()
         # A normal inbox poll must not reset a corrected draft.
         with page.expect_response(lambda r: "/tasks" in r.url):

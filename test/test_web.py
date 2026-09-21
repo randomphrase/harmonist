@@ -544,8 +544,8 @@ def test_mistag_card_renders_open_panel_with_sibling_explanation(client, cfg):
     assert "https://musicbrainz.org/release/rel-wrong" in r.text
     assert "https://musicbrainz.org/release/rel-correct" in r.text
     assert "https://musicbrainz.org/release-group/rg-life" in r.text
-    # The store URL is hidden behind the word "Bandcamp", not shown raw.
-    assert ">Bandcamp</a>" in r.text
+    # The store URL uses the store label and consistent external-link arrow.
+    assert ">Bandcamp ↗</a>" in r.text
     # Disambiguation is rendered in parentheses, visually distinct (muted span).
     assert ">(24-bit)</span>" in r.text
     # The separate comparison uses the same loader as an ordinary suggestion.

@@ -79,7 +79,9 @@ leads with whichever fits:
 - *With a suggestion.* Harmonist found a candidate but isn't certain (usually the
   track lengths are outside tolerance). The card shows your files against the MB
   release side by side, per track. Inspect **Tag changes** and choose artwork
-  below the table before pressing **Confirm release**. Artwork loads separately;
+  below the table before pressing **Confirm suggestion**. The **Suggested match:**
+  heading contains the proposed release's **MusicBrainz ↗** badge; the album's
+  identity badges show only confirmed releases. Artwork loads separately;
   you can apply tags while keeping your images even if the archive is slow or
   unavailable. **Use artwork from the selected release** is optional and starts
   unticked. Differing per-track images stay protected. You can also choose artwork
@@ -89,8 +91,10 @@ leads with whichever fits:
   values are purple, with a hexagon beside the group heading. **MB checked**
   at the top right shows the age of the comparison; its refresh button reads
   MusicBrainz again. If no comparison is cached, load it with that explicit action.
-  **Edit track assignments** adds movement arrows to correct which file belongs to which
-  MusicBrainz track. The arrows swap adjacent entries or missing-track gaps on
+  **Edit track assignments**, opposite the file counts and beneath **MB checked**,
+  is highlighted when files are unassigned. It adds movement arrows to correct which file belongs to which
+  MusicBrainz track. **CAA checked** and its refresh control stay with Artwork.
+  The arrows swap adjacent entries or missing-track gaps on
   either side. The **On disk** and **MusicBrainz** groups show each entry's
   track number, title and length. Numbers belong to entries, not rows; `?`
   means an untagged track number. Multidisc albums show disc headings on each

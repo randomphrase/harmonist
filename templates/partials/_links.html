@@ -10,15 +10,7 @@
 {% if mb_release_id or store_url %}
 <div class="flex gap-2 items-center flex-wrap justify-end">
     {% if mb_release_id %}
-    <a href="https://musicbrainz.org/release/{{ mb_release_id }}"
-       target="_blank" rel="noopener"
-       title="View on MusicBrainz · {{ mb_release_id }}"
-       class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-mb-purple/10 text-mb-purple border border-mb-purple/40 hover:bg-mb-purple/20 hover:border-mb-purple transition">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--color-mb-orange)" aria-hidden="true">
-            <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
-        </svg>
-        MusicBrainz
-    </a>
+    {% include 'partials/_mb_release_link.html' %}
     {% endif %}
     {% if store_url %}
     <a href="{{ store_url }}"
@@ -34,7 +26,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
         </svg>
         {% endif %}
-        {% if _store == 'bandcamp' %}Bandcamp{% elif _store %}{{ _store|title }}{% else %}Store{% endif %}{% if _private %} (private){% endif %}
+        {% if _store == 'bandcamp' %}Bandcamp{% elif _store %}{{ _store|title }}{% else %}Store{% endif %}{% if _private %} (private){% endif %} ↗
     </a>
     {% endif %}
 </div>

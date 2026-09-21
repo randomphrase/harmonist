@@ -3,15 +3,11 @@
 {% set has_store_url = sc and sc.store_url %}
 <div id="task-{{ album.id }}" class="relative p-4 rounded-lg bg-white border {% if candidate %}border-amber-300{% elif has_store_url %}border-bc-teal/40{% else %}border-line{% endif %}">
     {% include 'partials/_tagging_overlay.html' %}
-    {# Header shows the MB + store badges top-right. Before confirmation the MB
-       badge should point at the *candidate* release, so override mb_release_id
-       (store_url defaults from the sidecar inside the header). #}
-    {% with mb_release_id=(candidate.mb_release_id if candidate else None) %}
-        {% include 'partials/_album_header.html' %}
-    {% endwith %}
+    {# The header names confirmed identity only; the proposal owns its link. #}
+    {% include 'partials/_album_header.html' %}
     {# Everything below the header is its own partial because the album page
        renders the same decisions (#150). The card keeps only what is about
        being a card: the border that reflects how far along the match is, the
-       tagging overlay, and the header's candidate-aware badge. #}
+       tagging overlay, and the album header. #}
     {% include 'partials/_task_actions_needs_mbid.html' %}
 </div>

@@ -1,7 +1,7 @@
 {# Album header: cover + title/artist/path on the left, MB/store link badges
    top-right. Badges default to the album's sidecar values; a caller can
    override by wrapping the include in {% with mb_release_id=..., store_url=... %}
-   (the Needs MBID card passes the *candidate* MBID before it's confirmed).
+   Candidate release links belong inside the proposal, not this header.
    State identity lives on the inbox section header, not a per-card pill. #}
 {% set _lk_mbid = mb_release_id if mb_release_id is defined else (album.sidecar.mb_release_id if album.sidecar else None) %}
 {% set _lk_store = store_url if store_url is defined else (album.sidecar.store_url if album.sidecar else None) %}

@@ -74,7 +74,7 @@ def test_partial_confirmation_lists_only_unassigned_files(client, cfg, monkeypat
     dialog = BeautifulSoup(confirmation.text, "html.parser")
     items = dialog.select('section[aria-label="Tracks unassigned"] li')
     assert len(items) == 1 and unassigned_title in items[0].text
-    assert dialog.select_one('a[href$="/edit"]').text == "Edit on MusicBrainz"
+    assert dialog.select_one('a[href$="/edit"]').text == "Edit on MusicBrainz ↗"
     assert calls == []
 
 

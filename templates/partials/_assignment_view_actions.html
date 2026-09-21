@@ -6,13 +6,10 @@
         hx-indicator="#assignment-progress-{{ album.id }}"
         hx-on::after-request="if (event.detail.successful &amp;&amp; (event.detail.xhr.getResponseHeader('HX-Trigger') || '').includes('confirmation-applied')) harmonistCloseConfirmation(true)"
         class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
-    Confirm release
+    Confirm suggestion
 </button>
 {% endif %}
 {% endif %}
-<button type="button" hx-get="/assignments/{{ album.id }}?on_album_page={{ 'true' if on_album_page else 'false' }}"
-        hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
-        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Edit track assignments</button>
 {% if album.sidecar.mb_match_candidate %}
 <button type="button" hx-post="/reject/{{ album.id }}" hx-swap="none" hx-disabled-elt="this"
         {{ reload_on_success(on_album_page) }}

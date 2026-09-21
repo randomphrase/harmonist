@@ -1,0 +1,22 @@
+<div class="flex items-center gap-2 text-2xs">
+    <span class="text-muted uppercase tracking-widest">MB checked</span>
+    <span class="text-ink tabular-nums" title="MusicBrainz release last read {{ checked_at }}">{{ ago(checked_at) }}</span>
+    <button type="button" hx-get="/assignments/{{ album.id }}?reread=true&amp;cancel={{ 'true' if cancel else 'false' }}&amp;album_tracks={{ 'true' if album_tracks else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+            hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
+            hx-indicator="#assignment-refreshing-{{ album.id }}"
+            title="Read this release from MusicBrainz again and reset assignment changes"
+            aria-label="Read this release from MusicBrainz again and reset assignment changes"
+            class="mb-reread inline-flex items-center justify-center w-4 h-4 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 11-2.34-5.66"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20 3.5V9h-5.5"/>
+        </svg>
+    </button>
+    <span id="assignment-refreshing-{{ album.id }}" class="mb-refreshing w-4 h-4 items-center justify-center text-muted" role="status">
+        <svg class="animate-spin" viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path>
+        </svg>
+        <span class="sr-only">Reading this release from MusicBrainz again…</span>
+    </span>
+</div>

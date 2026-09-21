@@ -18,6 +18,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Suggested releases now keep their MusicBrainz link inside the review panel, with paired Confirm/Dismiss suggestion actions and track-assignment editing highlighted for unassigned files (#562).
+
 - Release-review artwork now has equally sized previews, full-size inspection, and the album page's CAA refresh control, preserving review choices when refreshed (#559).
 
 - Demo re-download tagging now appears as one album-wide History action with one Undo, matching Apply updates (#450).
