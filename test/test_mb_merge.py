@@ -186,6 +186,36 @@ def test_a_merge_says_so_in_the_albums_history_naming_both_releases(client, cfg,
     assert [m for m in feed if "merged" in m.lower()], feed
 
 
+def test_the_merge_entry_names_the_album_the_way_the_tagging_beside_it_does(
+    client, cfg, monkeypatch
+):
+    """One press writes two feed entries — the tagging and the merge — and the
+    feed's album column is a LINK. Two labels for one album on two adjacent rows
+    read as two albums, which is the one thing that column exists to prevent.
+
+    Every other writer freezes `models.Album.label`, "Artist — Title". This one
+    froze the album's FOLDER name, which the fixture keeps deliberately distinct
+    from both halves: the directory is `Album`, the release is `Test Album` by
+    `Artist`, so neither label can be mistaken for the other.
+
+    Asserted as a pair as well as a value. The defect is that the two DISAGREE,
+    and a bare folder name looks perfectly reasonable read on its own — which is
+    why it survived from v1.12.0 to here.
+    """
+    d = _album(cfg)
+    _redirects_to(monkeypatch, NEW_MBID)
+
+    client.post(f"/retag/{_scanned(cfg, d).id}")
+
+    entries = activity_store.recent(50, source=activity_store.Source.ACTIVITY)
+    merge = next(e for e in entries if "merged" in e.message.lower())
+    others = [e for e in entries if e is not merge and e.album_label]
+    assert merge.album_label == "Artist — Test Album", [(e.message, e.album_label) for e in entries]
+    assert {e.album_label for e in others} == {merge.album_label}, [
+        (e.message, e.album_label) for e in entries
+    ]
+
+
 def test_a_merge_links_the_old_id_to_the_new_one(client, cfg, monkeypatch):
     """Everything recorded under the old id — the album's whole history, and any
     deep link already written into the feed — is orphaned without the alias."""

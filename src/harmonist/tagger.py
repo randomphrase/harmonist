@@ -1765,7 +1765,7 @@ def tag_and_artwork(
     # Tags are already validated and written. Attribute any artwork failure to
     # the album after that write, and let the caller finish its bookkeeping.
     album_id = sidecar_mod.album_id_for(album_dir)
-    label = _album_label(release, album_dir)
+    label = album_label(release, album_dir)
     # `chosen` rides along with the fingerprint, never instead of it (#488): the
     # plan is rebuilt here, so a choice the page made must be made again or the
     # rebuilt plan is a different one — matching its own fingerprint, and writing
@@ -2569,7 +2569,7 @@ def _artist_ids(artist_credit: list[Any] | None) -> list[str]:
     ]
 
 
-def _album_label(release: dict[str, Any], album_dir: Path) -> str:
+def album_label(release: dict[str, Any], album_dir: Path) -> str:
     """The album's display name for an activity entry — "Artist — Title".
 
     Taken from the release being tagged rather than the sidecar, because that is
@@ -2578,6 +2578,13 @@ def _album_label(release: dict[str, Any], album_dir: Path) -> str:
     release names neither, so an entry is never labelled with an empty string —
     the feed hides the album column entirely when the label is blank, which would
     lose the attribution this exists to add.
+
+    PUBLIC because a tagging's outcome is not the only entry it writes (#571).
+    A merge is named by its own entry, from `web/main._record_merge`, and that
+    one had built its label out of the folder name — so one press put two rows in
+    the feed naming the same album two different ways, each row's name a link.
+    The label has to come from one place if they are to agree, and this is the
+    place that already had the release in hand.
     """
     label = f"{_artist_phrase(release.get('artist-credit'))} — {release.get('title') or ''}"
     return label.strip(" —") or album_dir.name

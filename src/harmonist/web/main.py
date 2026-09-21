@@ -3294,7 +3294,7 @@ def _claim_pending_by_store_url(store_url: str | None) -> None:
             pending_downloads.remove(p.item_id)
 
 
-def _record_merge(album_path: Path, old_mbid: str, new_mbid: str) -> None:
+def _record_merge(album_path: Path, old_mbid: str, new_mbid: str, label: str) -> None:
     """Say that MusicBrainz merged one release into another (#268).
 
     Called AFTER the sidecar write, for two reasons. The album's id has just
@@ -3313,6 +3313,14 @@ def _record_merge(album_path: Path, old_mbid: str, new_mbid: str) -> None:
     the outcome in the user's language, and the audit line is the pair of ids —
     which is forensics, and doesn't belong in prose the feed renders next to an
     album name it already shows in its own column.
+
+    `label` is passed IN rather than built here, and it is the same string the
+    tagging's own entry carries — `tagger.album_label`, off the release this
+    press wrote (#571). It used to be `album_path.name`, which is the album's
+    FOLDER: one press then wrote two adjacent feed rows about one album, naming
+    it "Artist — Title" on the tagging and the bare directory on the merge, with
+    both names rendered as links. Deriving it here from the path again is how
+    that comes back, so the caller hands over the name it has already settled on.
     """
     album_id = sidecar_mod.album_id_for(album_path)
     audit.record(
@@ -3326,7 +3334,7 @@ def _record_merge(album_path: Path, old_mbid: str, new_mbid: str) -> None:
         "MusicBrainz merged the release this album named into another one — "
         "it now follows the surviving release",
         album_id=album_id,
-        album_label=album_path.name,
+        album_label=label,
     )
 
 
@@ -3592,7 +3600,7 @@ def _tag_with_release(
     activity_store.unignore_update(mbid)
     if mbid != requested_mbid:
         activity_store.unignore_update(requested_mbid)
-        _record_merge(album_path, requested_mbid, mbid)
+        _record_merge(album_path, requested_mbid, mbid, tagger_mod.album_label(release, album_path))
     _claim_pending_by_store_url(store_url)
     return outcome
 

@@ -24,6 +24,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Activity entries for a MusicBrainz merge now name the album as "Artist — Title", matching the tagging entry beside them instead of showing the bare folder name (#571).
+
 - Replacing the activity database now waits for active operations, preventing intermittent crashes and lost history or cache writes (#569).
 
 - Albums without a store URL now lead directly with the MusicBrainz search controls, without redundant instructions (#564).
