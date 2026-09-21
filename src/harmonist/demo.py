@@ -45,6 +45,8 @@ from . import (
     formats,
     id_registry,
     images,
+    mb_cache,
+    mb_lookup,
     pending_downloads,
     redownloads,
 )
@@ -475,7 +477,7 @@ def data_version() -> str:
     """
     payload = json.dumps(
         [
-            2,
+            3,
             os.environ.get("HARMONIST_DEMO_ADOPTION", "0"),
             LIBRARY,
             PENDING_PURCHASES,
@@ -513,6 +515,15 @@ def seed(music_dir: Path, *, persistent_history: bool = False) -> None:
         token = _SEEDING.set(True)
         try:
             _materialise(music_dir, spec)
+            candidate = (spec.get("sidecar") or {}).get("mb_match_candidate")
+            if candidate:
+                # This fixture represents a lookup already performed. Preserve
+                # its full answer as well as the sidecar suggestion, so ordinary
+                # read-only review can display it without a network request.
+                release = fetch_release(candidate["mb_release_id"])
+                activity_store.store_release(
+                    str(release["id"]), mb_cache._key(mb_lookup.RELEASE_INCLUDES), release
+                )
         finally:
             _SEEDING.reset(token)
     (music_dir / DEMO_MARKER).write_text(

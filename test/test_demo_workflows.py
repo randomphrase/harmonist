@@ -194,6 +194,29 @@ def wait_sync(client):
     pytest.fail("sync did not finish")
 
 
+def test_seeded_suggestion_is_reviewable_after_seed_reset_and_restart(client, monkeypatch):
+    from bs4 import BeautifulSoup
+
+    from harmonist import mb_lookup
+
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: pytest.fail("display fetched MusicBrainz")
+    )
+    root = client.app.state.cfg.paths.music_dir
+    for step in ("seed", "reset", "restart"):
+        if step == "reset":
+            demo.reset(root, persistent_history=True)
+        elif step == "restart":
+            activity_store.init_memory()
+            demo.ensure_seeded(root, persistent_history=True)
+        album = albums(root)["Gimme Some Money"]
+        response = client.get(f"/assignments/{album.id}?cancel=true&on_album_page=true")
+        assert response.status_code == 200
+        panel = BeautifulSoup(response.text, "html.parser")
+        assert len(panel.select("[data-assignment-row]")) == 3, step
+        assert panel.select_one('button[hx-post^="/confirm/"]') is not None
+
+
 def test_link_existing_download_new_and_upgrade_mp3_to_flac(client):
     root = client.app.state.cfg.paths.music_dir
     original = {p.relative_to(root): p.read_bytes() for p in audio_files(root)}
