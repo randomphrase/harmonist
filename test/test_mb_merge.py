@@ -16,6 +16,7 @@ settled, and its History has to say why its identity moved.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -255,19 +256,52 @@ def _compare(client, cfg, album_dir: Path, *, reread: bool = False) -> str:
     return r.text
 
 
-def test_a_merge_is_stated_on_the_album_panel_naming_the_surviving_release(
-    client, cfg, monkeypatch
-):
-    """The album's identity has moved, and the panel's MusicBrainz badge is the
-    thing whose meaning changed — so that is where it is said, in the album's own
-    terms and with the release MusicBrainz now serves linked by name."""
+def test_a_merge_is_stated_as_a_finding_naming_the_surviving_release(client, cfg, monkeypatch):
+    """The album's identity has moved, and what the reader does about it is
+    re-tag — so it is said as one of the album's findings, in the album's own
+    terms, with the release MusicBrainz now serves linked by name and the remedy
+    named as what it is (#566).
+
+    `album-finding` is the class the tag and artwork findings carry, and it is
+    the whole of what gives this one their line, their glyph placement and their
+    button treatment; asserting the sentence alone would pass on the tinted
+    badge beside the identity row that this replaced.
+    """
     d = _album(cfg)
     _redirects_to(monkeypatch, NEW_MBID)
 
     html = _compare(client, cfg, d)
 
+    assert "Re-tag from merged release" in html, html
     assert "merged this release" in html, html
     assert f"https://musicbrainz.org/release/{NEW_MBID}" in html, html
+    assert re.search(r'<div id="album-merged-[^"]*"[^>]*>\s*<div class="album-finding">', html), (
+        html
+    )
+
+
+def test_the_merge_finding_is_rendered_among_the_findings_not_beside_the_badges(client, cfg):
+    """WHERE it lands, which is the one thing only the page can answer: the
+    /compare response above carries the finding on its own and is swapped into
+    whatever slot the page laid down for it.
+
+    A merge is a finding with a re-tag for a remedy, so its slot belongs in the
+    section holding the album's other findings and their remedies — not in the
+    identity column, where it read as a fourth kind of badge and its button
+    ("Point these files at it") sat a section away from every other re-tag on the
+    page (#566). Empty at page build, so this is about position and nothing else.
+
+    Counted as well as located: the swap targets by id, so two slots would give
+    the page a finding that lands in one of them and a dead div in the other.
+    """
+    album_id = _scanned(cfg, _album(cfg)).id
+
+    body = client.get(f"/album/{album_id}").text
+
+    findings = re.search(r'<section class="album-findings".*?</section>', body, re.DOTALL)
+    assert findings, body
+    assert f'id="album-merged-{album_id}"' in findings.group(0), findings.group(0)
+    assert body.count(f'id="album-merged-{album_id}"') == 1, body
 
 
 def test_a_merge_is_not_also_listed_as_a_pending_tag_change(client, cfg, monkeypatch):
@@ -320,6 +354,9 @@ def test_a_merge_alone_still_offers_the_re_tag_that_resolves_it(client, cfg, mon
 
     assert "merged this release" in html, html
     assert html.count(f'hx-post="/retag/{_scanned(cfg, d).id}"') == 1, html
+    # And it says what pressing it does to the files: re-tag them. "Point these
+    # files at it" named neither the operation nor its target (#566).
+    assert "Re-tag files" in html, html
 
 
 def test_a_merge_arriving_with_a_tag_update_is_answered_by_one_button(client, cfg, monkeypatch):

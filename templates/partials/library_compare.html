@@ -24,9 +24,9 @@
 {% endif %}
 {% include 'partials/_tag_comparison.html' %}
 
-{# Out-of-band: htmx swaps these into the page's Tracks section, the album
-   panel's note, the panel's "Checked" date and its merge note. One request,
-   five destinations.
+{# Out-of-band: htmx swaps these into the page's Tracks section, its Artwork
+   section, the Findings section's tag finding, merge finding and answers row,
+   and the panel's "Checked" date. One request, every destination on the page.
 
    The Checked line is rendered at page build too, from the same cache row, so
    this is not what puts it on the page — it is what keeps it true when the
@@ -45,9 +45,11 @@
    by whoever renders the finding above it. #}
 {% with oob = true %}{% include 'partials/_update_ignore.html' %}{% endwith %}
 {% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
-{# …and the panel's merge note (#361), which this fetch is the only thing that
-   can discover: a merged MBID redirects, so the difference between the id asked
-   for and the id that came back is the whole of the evidence. #}
+{# …and the merge finding (#361), which this fetch is the only thing that can
+   discover: a merged MBID redirects, so the difference between the id asked for
+   and the id that came back is the whole of the evidence. It sits with the
+   findings above rather than up beside the badges (#566) — its remedy is a
+   re-tag, like theirs. #}
 {% with oob = true %}{% include 'partials/_mb_merged.html' %}{% endwith %}
 
 {# The part of a waiting re-tag that has nowhere else on this page to appear
@@ -77,7 +79,7 @@
    only one that made this box load-bearing. Its comparison row went in #298
    because the fetch is made BY that id and the panel already links it, so a
    merge that moved the id fell through to here — an identity change filed among
-   leftover tags. It is stated beside the badge now (`_mb_merged.html`).
+   leftover tags. It is a finding of its own now (`_mb_merged.html`).
 
    What is left is ONE case, and the heading names it rather than calling it
    "other": a per-track field that earned a column and lost to

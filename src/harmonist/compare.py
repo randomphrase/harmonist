@@ -603,8 +603,8 @@ def _rows(fields: Sequence[Owned]) -> tuple[tuple[str, str, str | None, Kind], .
 #:
 #: The case it can differ in is a MusicBrainz merge: the fetch redirects and
 #: returns a different `id` than the one asked for. That is real, and it is not
-#: dropped — it is said beside the badge, as an album-level note about the
-#: identity rather than a row among the tags (#361, `_mb_merged.html`), which is
+#: dropped — it is said as a finding of its own, an album-level statement about
+#: the identity rather than a row among the tags (#361, `_mb_merged.html`), which is
 #: also why `PANEL_FIELDS` names this field even though no row derives it. #268
 #: owns the merge itself.
 #:
@@ -1670,7 +1670,7 @@ def advisory(album: AlbumComparison, tracks: TracklistComparison) -> bool:
 #: `MB_ALBUM_ID` is named by hand, and is the one member that has to be: it has
 #: no row in `_ALBUM_FIELDS` to be derived from (`_NOT_COMPARED` took it out in
 #: #298), and the surface that replaced the row is prose rather than a table —
-#: `_mb_merged.html`, beside the badge whose meaning the merge changed. The
+#: `_mb_merged.html`, a finding of the album's own, carrying a re-tag. The
 #: name is here rather than the whole of `_NOT_COMPARED` because membership of
 #: that set is only a statement that the panel does not COMPARE a field; a
 #: second field joining it would need a surface of its own before it belonged

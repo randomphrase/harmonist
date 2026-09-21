@@ -65,6 +65,15 @@
        "not yet"; a "Checking…" line between the panel and the Tags section would
        read as the album's state. #}
     <section class="album-findings" id="album-findings-{{ album.id }}">
+        {# Whether MusicBrainz has merged this album's release into another one
+           (#361), filled by /compare out of band. First of the findings because
+           it is about the album's IDENTITY, and the two below it are about the
+           tags and the artwork that identity resolves to.
+
+           Rendered here at page build so the swap has a target, and empty until
+           that fetch lands: the redirect that reveals a merge costs an MB call,
+           so the page cannot know at render time. #}
+        {% include 'partials/_mb_merged.html' %}
         <div id="album-update-{{ album.id }}"></div>
         <div id="album-artwork-note-{{ album.id }}"></div>
         {# Page-local choice, outside both sources' swaps (#509). CSS exposes it

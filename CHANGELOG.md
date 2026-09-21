@@ -18,6 +18,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- A MusicBrainz merge is now one of the album's findings rather than a warning beside its badges, named as the re-tag it is and linking the surviving release (#566).
+
 - Needs Linking cards now have clearer sync guidance and badge-adjacent release correction and purchased-elsewhere controls, also available on album pages (#565).
 
 ### Fixed

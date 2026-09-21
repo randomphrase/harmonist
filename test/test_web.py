@@ -6684,8 +6684,8 @@ def test_the_release_row_is_gone_from_the_comparison(client, cfg, monkeypatch):
 
     That case is a MusicBrainz merge, where the fetch redirects and returns a
     different id than the one asked for. It is not lost, and since #361 it is
-    not a row anywhere either: the panel says it in prose, beside the badge
-    whose meaning it changes. The box is scoped by `compare.PANEL_FIELDS`, which
+    not a row anywhere either: the page says it in prose, as a finding of the
+    album's own (#566). The box is scoped by `compare.PANEL_FIELDS`, which
     names `mb_album_id` for that reason — take it out and this row comes back,
     which is what the second half here would see.
     """
@@ -6709,8 +6709,8 @@ def test_the_release_row_is_gone_from_the_comparison(client, cfg, monkeypatch):
 
     body = client.get(f"/library/{_id_for(cfg, merged)}/compare").text
     assert "<dt>MusicBrainz release</dt>" not in body
-    # Said once, where it belongs: the note names the merge and links the release
-    # MusicBrainz now serves. `test_mb_merge.py` owns the rest of what it says.
+    # Said once, where it belongs: the finding names the merge and links the
+    # release MusicBrainz now serves. `test_mb_merge.py` owns the rest of it.
     assert "merged this release" in body
     assert "https://musicbrainz.org/release/rel-survivor" in body
 
