@@ -134,8 +134,7 @@ For a **bug**:
 - **Root cause** — the actual defect in code, once known (`file:line`).
 - **Fix approach** — one or two lines on the intended change.
 - **Since** — **released** (a user on the latest tag can hit this) or
-  **unreleased** (it only exists in work since that tag, naming the issue or
-  commit that introduced it). See below.
+  **unreleased** (it only exists in work since that tag). See below.
 - Reference material if any (a MusicBrainz URL, a log excerpt).
 
 ### Say whether the bug ever reached a user
@@ -143,6 +142,15 @@ For a **bug**:
 **Answer this while you are filing, not at release time.** You are looking at
 the defect and its history now; in six weeks someone rolling a changelog has
 only the issue, and reconstructing it means reading the tag's tree.
+
+**It is one question with two answers, against one tag: is the defect in the
+latest release, or only in work since it?** `git describe --tags --abbrev=0`
+names the tag, and `git show <tag>:<file>` or `git grep <pattern> <tag>` settles
+it in a single look. Do NOT go and find *which* release introduced it —
+`git tag --contains`, bisecting, walking `git log -S` back through the history.
+Nothing downstream wants that: the changelog only asks whether an entry is owed,
+and "reachable on the latest tag" already answers it. The archaeology costs
+minutes and buys a version number no one reads.
 
 The distinction is the changelog's: a fix for a bug that only ever existed in
 unreleased code is invisible to users — the broken version was never theirs, so
@@ -195,7 +203,7 @@ gh issue create --repo randomphrase/harmonist \
 ...
 
 **Since**
-Released — reachable on v1.16.1. / Unreleased — introduced by #468's rework in `963bf65`.
+Released — reachable on the latest tag. / Unreleased — only in work since it, from #468's rework.
 EOF
 )"
 ```
