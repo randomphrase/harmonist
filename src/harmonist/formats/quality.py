@@ -22,6 +22,9 @@ rather than at the point of display:
   omitted rather than shown as unknown.
 - **Only MP3 reports a bitrate mode.** For a VBR file it matters more than the
   number beside it, which is an average.
+- **Some bitrates are an average, not a setting** — MP3 VBR/ABR, Opus, AAC.
+  Two tracks from one encode report different numbers, so files are compared
+  on `AudioQuality.key`, which leaves that number out (#582).
 """
 
 from __future__ import annotations
@@ -31,6 +34,8 @@ from statistics import fmean
 from typing import Any, NamedTuple
 
 from mutagen.mp3 import BitrateMode
+from mutagen.mp4 import MP4Info
+from mutagen.oggopus import OggOpusInfo
 
 
 class AudioQuality(NamedTuple):
@@ -45,6 +50,9 @@ class AudioQuality(NamedTuple):
     bitrate: int | None = None
     #: "CBR" / "VBR" / "ABR". MP3 only, and only when mutagen could tell.
     bitrate_mode: str | None = None
+    #: Whether `bitrate` is an average of what this file's audio needed rather
+    #: than a setting the encode shared (#582) — see `key`.
+    bitrate_varies: bool = False
 
     @property
     def label(self) -> str | None:
@@ -54,16 +62,19 @@ class AudioQuality(NamedTuple):
 
     @property
     def key(self) -> str | None:
-        """What two files are compared on (#582): the label, except that a VBR
-        or ABR bitrate is left out — "44.1 kHz · VBR".
+        """What two files are compared on (#582): the label, except that a
+        bitrate which varies track to track is left out — "44.1 kHz · VBR".
 
         A CBR bitrate is a setting, so two tracks from one encode share it and a
         different number is a different encode. A VBR bitrate is an average of
         what that track's audio needed, so two tracks from one V0 encode almost
         never share one, and comparing it reports every VBR album as mixed. The
-        mode is kept, because CBR beside VBR IS a different encode.
+        mode is kept, because CBR beside VBR IS a different encode. A file with
+        no mode gets a placeholder in its place instead, so an Opus file, which
+        has no sample rate either, still has a key and doesn't count as a file
+        we couldn't read. Keys are only compared, never shown.
         """
-        return self._describe(exact=self.bitrate_mode not in _VARYING)
+        return self._describe(exact=not self.bitrate_varies)
 
     def _describe(self, *, exact: bool) -> str | None:
         parts: list[str] = []
@@ -71,8 +82,8 @@ class AudioQuality(NamedTuple):
             parts.append(f"{_trim(self.sample_rate / 1000)} kHz")
         if self.bit_depth:
             parts.append(f"{self.bit_depth} bit")
-        elif self.bitrate and not exact and self.bitrate_mode:
-            parts.append(self.bitrate_mode)
+        elif self.bitrate and not exact:
+            parts.append(self.bitrate_mode or "varying bitrate")
         elif self.bitrate:
             rate = f"{round(self.bitrate / 1000)} kbps"
             parts.append(f"{rate} {self.bitrate_mode}" if self.bitrate_mode else rate)
@@ -83,9 +94,9 @@ def average(qualities: Sequence[AudioQuality]) -> AudioQuality:
     """One quality standing for several files that share a `key`: the first,
     with its bitrate replaced by the mean of all of theirs.
 
-    For CBR files the bitrates are identical and this changes nothing. For VBR
-    it is the number that tells a V0 album from a V2 one, which `key` had to
-    leave out. A plain mean over tracks, not weighted by duration: it's a
+    Where the bitrate is a setting, every file has the same one and this
+    changes nothing. Where it varies, the mean is what tells a V0 album from a
+    V2 one, and `key` had to leave it out. A plain mean over tracks, not weighted by duration: it's a
     summary for display, and a long track nudging it by a few kbps changes
     nothing a reader would act on.
     """
@@ -107,11 +118,13 @@ def read(info: Any, *, lossless: bool) -> AudioQuality:
     classes carry different subsets of these — `OggOpusInfo` has no
     `sample_rate`, and only `MPEGInfo` has a `bitrate_mode`.
     """
+    mode = _mode(getattr(info, "bitrate_mode", None))
     return AudioQuality(
         sample_rate=getattr(info, "sample_rate", None),
         bit_depth=getattr(info, "bits_per_sample", None) if lossless else None,
         bitrate=None if lossless else getattr(info, "bitrate", None),
-        bitrate_mode=_mode(getattr(info, "bitrate_mode", None)),
+        bitrate_mode=mode,
+        bitrate_varies=mode in _VARYING or isinstance(info, _AVERAGED),
     )
 
 
@@ -129,10 +142,19 @@ _MODES = {
 }
 
 
-#: The modes whose bitrate is an outcome of the audio rather than a setting.
-#: Only what the file declares: Opus and VBR AAC vary just as much, but they
-#: report no mode, and no mode isn't evidence that the bitrate varies.
+#: The MP3 modes whose bitrate is an outcome of the audio rather than a setting.
 _VARYING = frozenset({"VBR", "ABR"})
+
+#: The formats whose bitrate mutagen reports as the file's own average, with no
+#: mode to say whether it was a setting. Opus divides the file's size by its
+#: length, and MP4 reads the encoder's average from the `esds` box, so two
+#: tracks from one VBR encode report different numbers. Treating them as
+#: varying means a CBR AAC album with one odd track at another bitrate isn't
+#: flagged, because nothing in the file says it was CBR (#582).
+#:
+#: Vorbis is NOT here: mutagen reports the nominal bitrate from its header,
+#: which the quality setting fixes, so tracks from one encode agree on it.
+_AVERAGED = (MP4Info, OggOpusInfo)
 
 
 def _mode(mode: Any) -> str | None:
