@@ -814,7 +814,11 @@ requirements still apply independently of assignment completeness.
 **Changed tracklists require assignment review (#530).** Compare current taggable
 tracks with the identities, positions and totals retained on disk, never just
 with the previous cache payload. Additions/removals, count changes, reorders and
-unresolved track IDs make **Review assignments** the album's primary tag action.
+unresolved track IDs open the inline assignment editor automatically once the
+comparison has a current release (#576). The finding says **Track assignments need
+review**, suppressing downstream tag-difference counts. Comparison refreshes retain
+an active draft, and Cancel keeps the editor closed for the rest of that page visit;
+**Review assignments** can reopen it. Ordinary metadata updates keep the track view.
 The shared tagging guard enforces this for every unreviewed entry point,
 including the incomplete override. Existing incomplete albums are not new
 structural changes merely because files are missing; unsupported media are

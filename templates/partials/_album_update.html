@@ -12,14 +12,16 @@
                 <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
             </svg>
         </span>
-        <h2 class="album-update__legend">{{ headline(comparison, tracklist) }}{% if review_tracks %}<span class="block text-xs font-normal text-muted">{{ assignment_review.reasons|join(' ') }}</span>{% endif %}</h2>
+        <h2 class="album-update__legend">{% if review_tracks %}Track assignments need review{% else %}{{ headline(comparison, tracklist) }}{% endif %}</h2>
         {% if album.update_significance %}{{ severity_chip(album.update_significance) }}{% endif %}
         {% if comparison.mb_available and album.sidecar and album.sidecar.mb_release_id %}
         {% if review_tracks %}
         <button type="button" class="album-finding__act"
                 hx-get="/assignments/{{ album.id }}?album_tracks=true&amp;on_album_page=true"
                 hx-target="#album-track-editor" hx-swap="innerHTML settle:0ms"
+                hx-sync="#album-track-editor:drop"
                 hx-disabled-elt="this" hx-indicator="#album-track-loading"
+                hx-on::before-request="const editor = document.getElementById('album-track-editor'); if (editor.querySelector('.assignment-content')) { event.preventDefault(); editor.focus(); editor.scrollIntoView({block: 'start'}); }"
                 hx-on::after-request="if (event.detail.successful) { const editor = document.getElementById('album-track-editor'); editor.focus(); editor.scrollIntoView({block: 'start'}); }">Review assignments</button>
         {% else %}
         <form hx-post="/retag/{{ album.id }}"

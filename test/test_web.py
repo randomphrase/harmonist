@@ -6379,6 +6379,9 @@ def test_the_page_names_its_two_sections_by_scope(client, cfg, monkeypatch):
     without anything going red, and the pair drifting apart is the defect.
     """
     d = _make_tagged_album(cfg, "Scoped", mbid="rel-scope", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [b"t1"]
+    audio.save()
     monkeypatch.setattr(
         "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
     )
@@ -6512,6 +6515,9 @@ def test_album_page_compares_tags_field_by_field(client, cfg, monkeypatch):
     """#106: the album panel shows each field against what tagging would write.
     Absent-on-disk fields render as MusicBrainz values, not as conflicts."""
     d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
+    audio = MP4(d / "01 Track.m4a")
+    audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [b"t1"]
+    audio.save()
     monkeypatch.setattr(
         "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
     )
@@ -6927,6 +6933,7 @@ def test_one_musicbrainz_finding_lands_in_the_update_section(client, cfg, monkey
     d = _make_tagged_album(cfg, "Noted", mbid="rel-noted", tagged_at=datetime.now(UTC))
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_TITLE] = ["Ground Glass"]
+    audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [b"t1"]
     audio.save()
 
     def fake_release(mbid):
@@ -7036,6 +7043,7 @@ def test_a_missing_track_and_a_missing_disc_are_both_marked(client, cfg, monkeyp
     d = _make_tagged_album(cfg, "Halfrip", mbid="rel-halfrip", tagged_at=datetime.now(UTC))
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_TITLE] = ["Song 1"]
+    audio["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [b"t11"]
     audio["trkn"] = [(1, 2)]
     audio["disk"] = [(1, 2)]
     audio.save()

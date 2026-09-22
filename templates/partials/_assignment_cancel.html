@@ -1,7 +1,7 @@
 {% set cancel_class = 'px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition' %}
 {% if album_tracks %}
 <button type="button" class="{{ cancel_class }}"
-        onclick="document.getElementById('album-track-editor').replaceChildren(); document.querySelector('#album-tracks [aria-controls=album-track-editor]')?.focus()">Cancel</button>
+        onclick="const editor = document.getElementById('album-track-editor'); editor.dataset.reviewOpened = 'true'; editor.replaceChildren(); document.querySelector('#album-tracks [aria-controls=album-track-editor]')?.focus()">Cancel</button>
 {% elif panel and has_suggestion %}
 <button type="submit" name="assignment_action" value="cancel" class="{{ cancel_class }}">Cancel</button>
 {% else %}

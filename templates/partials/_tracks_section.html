@@ -12,10 +12,17 @@
 <div id="album-track-view" hx-swap-oob="true" class="album-track-view space-y-3">
     <div class="flex items-center justify-between gap-4">
         <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
+        {# A required review opens from the comparison, once its refresh finishes.
+           The mounted editor remembers opening for this page visit, so replacing
+           this view cannot reset a draft or undo Cancel. Manual clicks still work.
+           The assignments endpoint uses the release this comparison just cached. #}
         <button type="button" hx-get="/assignments/{{ album.id }}?album_tracks=true&amp;on_album_page=true"
+                {% if assignment_review and assignment_review.required and not refreshing %}hx-trigger="click, load"{% endif %}
                 hx-target="#album-track-editor" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
+                hx-sync="#album-track-editor:drop"
                 hx-indicator="#album-track-loading" aria-controls="album-track-editor"
-                hx-on::after-request="if (event.detail.successful) document.getElementById('album-track-editor').focus()"
+                hx-on::before-request="const editor = document.getElementById('album-track-editor'); const automatic = event.detail.requestConfig.triggeringEvent?.type !== 'click'; const opened = editor.dataset.reviewOpened || editor.childElementCount; editor.dataset.reviewOpened = 'true'; if (automatic &amp;&amp; opened) event.preventDefault()"
+                hx-on::after-request="if (event.detail.successful &amp;&amp; event.detail.requestConfig.triggeringEvent?.type === 'click') document.getElementById('album-track-editor').focus()"
                 class="ml-auto px-3 py-1.5 bg-white hover:bg-surface text-muted hover:text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Edit track assignments</button>
         <span id="album-track-loading" class="htmx-indicator text-xs text-muted" role="status">Loading assignments…</span>
         {% if tracklist.identifier_columns %}

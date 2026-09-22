@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Required track-assignment reviews open automatically with proposed pairings and a concise finding instead of tag-difference counts (#576).
+
 ## [1.19.0] - 2026-09-21
 
 ### Added

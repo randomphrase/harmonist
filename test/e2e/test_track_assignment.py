@@ -432,13 +432,24 @@ def test_unassigned_files_are_proposed_and_remain_editable_until_acceptance(rese
         )
         assert accepted.ok
         page.goto(f"{base}/album/{fields['candidate_mbid']}")
-        page.get_by_role("button", name="Review assignments", exact=True).click()
         editor = page.locator("#album-track-editor")
         pw.expect(editor.locator("[data-proposed-pair]")).to_have_count(3)
         pw.expect(editor.locator("[name=disk_order]")).to_have_value("0,1,2")
         editor.get_by_role("button", name="Move on-disk entry down", exact=True).first.click()
         pw.expect(editor.locator("[name=disk_order]")).to_have_value("1,0,2")
         pw.expect(editor.locator("[data-proposed-pair]")).to_have_count(3)
+        # The finding takes us to the open review without resetting its draft.
+        page.get_by_role("button", name="Review assignments", exact=True).click()
+        pw.expect(editor).to_be_focused()
+        pw.expect(editor.locator("[name=disk_order]")).to_have_value("1,0,2")
+        # Refreshing the comparison preserves a draft already being edited.
+        with page.expect_response(lambda r: "/compare" in r.url):
+            page.evaluate(
+                """id => htmx.ajax('GET', '/library/' + id + '/compare',
+                {target: '#compare-' + id, swap: 'innerHTML'})""",
+                fields["candidate_mbid"],
+            )
+        pw.expect(editor.locator("[name=disk_order]")).to_have_value("1,0,2")
         editor.get_by_role("button", name="Cancel", exact=True).click()
         page.get_by_role("button", name="Review assignments", exact=True).click()
         pw.expect(editor.locator("[name=disk_order]")).to_have_value("0,1,2")

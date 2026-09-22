@@ -138,8 +138,8 @@ leads with whichever fits:
   known track IDs remain paired. Files without track IDs can be proposed for
   remaining MB tracks by unique disc/track numbers, or when only one file and
   one track remain; these pairs are marked **Proposed assignment**. Ambiguous
-  entries stay as gaps. When MusicBrainz changes the tracklist, **Review assignments**
-  becomes the primary tag action. Inspect or adjust the mapping, then accept it;
+  entries stay as gaps. When MusicBrainz changes the tracklist, the assignment editor
+  opens automatically with the proposed mapping. Inspect or adjust it, then accept it;
   Cancel leaves the update available. Ordinary metadata updates and already-missing
   tracks keep their existing behavior. Imported albums with an album MBID but no track IDs use this review
   too. An album can have both unassigned files and missing tracks.
@@ -441,8 +441,10 @@ much of the tags and the tracklist differ, and a chip saying how far the change
 reaches — *Enrichment* for a catalogue number MusicBrainz has filled in,
 *Identity* for a release that has been merged into another, and *Structure* for
 changed track identities, numbering or counts. Structure takes precedence over
-Identity. Structural changes offer **Review assignments**, opening the inline
-editor; artwork keeps its separate action. For other tag changes, **Apply updates**
+Identity. When track assignments need review, the inline editor opens automatically
+and the finding says **Track assignments need review**, without counting tag differences.
+**Cancel** restores the ordinary track view; **Review assignments** reopens the editor.
+Artwork keeps its separate action. For other tag changes, **Apply updates**
 sits on that line, at the end of it, because it is the answer to that sentence.
 Artwork that could be better is a second finding in the same section, described
 separately — *Addition* where there is no image yet, *Replacement* where there

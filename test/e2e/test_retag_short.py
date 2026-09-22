@@ -18,16 +18,24 @@ def test_changed_track_count_opens_review_and_cancel_preserves_finding(reset_dem
         page = browser.new_page()
         page.goto(f"{reset_demo_server}/album/{ALBUM_ID}")
         finding = page.locator(f"#album-update-{ALBUM_ID}")
-        pw.expect(finding).to_contain_text("2 → 4")
+        pw.expect(finding.locator("h2")).to_have_text("Track assignments need review")
         pw.expect(finding.get_by_role("button", name="Apply updates")).to_have_count(0)
         review = finding.get_by_role("button", name="Review assignments")
-        review.click()
         editor = page.locator("#album-track-editor")
         pw.expect(editor.locator("[data-assignment-row]")).to_have_count(4)
         pw.expect(editor.get_by_role("checkbox", name="Use artwork")).to_have_count(0)
         pw.expect(page.get_by_role("dialog")).not_to_be_visible()
         editor.get_by_role("button", name="Cancel", exact=True).click()
         pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
+        # A comparison refresh must respect Cancel instead of opening again.
+        with page.expect_response(lambda r: "/compare" in r.url):
+            page.evaluate(
+                """id => htmx.ajax('GET', '/library/' + id + '/compare',
+                {target: '#compare-' + id, swap: 'innerHTML'})""",
+                ALBUM_ID,
+            )
+        pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
+        pw.expect(editor.locator(".assignment-content")).to_have_count(0)
         pw.expect(review).to_be_enabled()
         review.click()
         with page.expect_response(
