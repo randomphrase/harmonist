@@ -1064,8 +1064,11 @@ dialog::backdrop {
    same size starting at the same top, which puts their bottom borders on one
    edge without either block knowing about the other.
 
-   Unsplit it is the stack it was, and the gap reproduces the `space-y-3` the
-   section applied to the two blocks before this wrapper came between them. */
+   Unsplit it is the stack it was, and the gap is its own: the section's
+   `space-y-3` reaches these blocks only when the section fetches itself, and
+   not on the /compare path, where the out-of-band wrapper survives in the DOM
+   and leaves `space-y-3` one child to space. Setting it here makes the two
+   blocks sit the same distance apart however the section arrived. */
 .art-compare { display: flex; flex-direction: column; gap: .75rem; }
 
 @media (min-width: 64rem) {
@@ -1092,7 +1095,10 @@ dialog::backdrop {
     grid-template-columns: 6.5rem minmax(0, 1fr);
   }
   .art-compare--split .art-rows--muted .art-rows__head > :first-child { display: none; }
-  .art-compare--split .art-rows--muted .art-rows__head > :last-child { grid-column: 1 / span 2; }
+  .art-compare--split .art-rows--muted .art-rows__head > :last-child {
+    grid-column: 1 / span 2;
+    margin-left: 0;
+  }
   .art-compare--split .art-rows--muted .art-row__side--after > * { margin-left: 0; }
   .art-compare--split .art-rows--muted .art-row__side--after > :first-child { grid-column: 1; }
 }
@@ -1106,7 +1112,11 @@ dialog::backdrop {
   column-gap: .85rem;
 }
 .art-rows__head span:nth-child(1) { grid-column: 1 / span 2; }
-.art-rows__head span:nth-child(2) { grid-column: 3 / span 2; }
+/* …and the same 1.6rem the incoming half's cells carry, or the label sits a
+   gutter to the left of the column it names. It went unnoticed while that half
+   was the only one offset; #447 put a third heading beside it that lines up
+   exactly, which is what made this one look wrong. */
+.art-rows__head span:nth-child(2) { grid-column: 3 / span 2; margin-left: 1.6rem; }
 .art-rows__head {
   padding-bottom: .4rem;
   border-bottom: 1px solid var(--color-line);
@@ -1232,8 +1242,12 @@ dialog::backdrop {
 /* A candidate that exists and is not going to be used (#433): the Cover Art
    Archive's cover when it is not the winner. Greyed as a whole, so it reads as
    an also-ran beside the rows above rather than as something pending. */
-.art-rows--muted { opacity: .62; }
-.art-rows--muted .art-row { border-bottom: 0; }
+/* The candidate is muted; its HEADING is not. Opacity on the block dimmed the
+   column label too, which left "Also considered" reading as a lesser thing than
+   "Now" and "After Apply" beside it — and a heading is a label, not a candidate.
+   It has to move rather than be turned back up: opacity makes a stacking
+   context, so nothing inside a faded box can be less faded than the box. */
+.art-rows--muted .art-row { opacity: .62; border-bottom: 0; }
 
 /* It sits in the INCOMING column with nothing beside it (#441), and `display:
    contents` on the side means its cells flow into the grid themselves — with no
