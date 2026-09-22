@@ -5531,6 +5531,38 @@ def test_audit_detail_hangs_off_its_entry_and_only_when_asked(client, cfg):
     assert on.count("sidecar.update") == 1  # once, under its entry — not twice
 
 
+def test_an_action_with_two_entries_shows_its_detail_under_one_of_them(client, cfg):
+    """One action can write two activity entries: a re-tag that follows a
+    MusicBrainz merge reports the tagging AND names the merge, which
+    docs/design.md §5 requires to be said separately. The feed looked its detail
+    up by `action_id` alone, so both entries matched and every audit row was
+    printed twice — one press, reported once and evidenced twice (#572).
+
+    The rule is `tag_history.group_records`': an action's records hang off its
+    user-facing outcome, which is its first activity entry in feed order. Both
+    halves are asserted, because each passes on its own for the wrong reason —
+    a count of 1 is also what rendering the detail under the WRONG entry gives,
+    and the ordering check alone would pass while a second copy sat below.
+    """
+    from harmonist import activity, activity_store, audit
+
+    activity_store.clear()
+    with activity_store.action():
+        # Written in the order the real path writes them: `_record_merge` runs
+        # before the response that reports the tagging, so the outcome is the
+        # NEWER row and leads the page.
+        audit.record("sidecar.update", album_id="rel-1", mbid="old->new")
+        activity.record("MusicBrainz merged the release", album_id="rel-1", album_label="An Album")
+        activity.record("Re-tagged", album_id="rel-1", album_label="An Album")
+
+    body = client.get("/activity?audit=1").text
+
+    assert body.count("sidecar.update") == 1, body
+    assert (
+        body.index("Re-tagged") < body.index("sidecar.update") < body.index("merged the release")
+    ), body
+
+
 def test_audit_rows_outside_an_action_still_appear(client, cfg):
     """They have no entry to hang off, so grouping alone would hide them.
 

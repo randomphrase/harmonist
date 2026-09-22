@@ -1132,12 +1132,46 @@ def _merge_unscoped_audit(events: list[activity.Event], since: datetime) -> list
             album_label=r.album_label,
             action_id=r.action_id,
             source=r.source,
+            id=r.id,
         )
         for r in activity_store.audit_without_action(since)
     ]
     if not unscoped:
         return events
     return sorted([*events, *unscoped], key=lambda e: e.ts, reverse=True)
+
+
+def _detail_by_anchor(
+    events: Sequence[activity.Event],
+    by_action: Mapping[str, list[activity_store.StoredEvent]],
+) -> dict[int, list[activity_store.StoredEvent]]:
+    """An action's audit rows, re-keyed from its action to the ONE entry that
+    should carry them (#572).
+
+    The feed used to look detail up by `action_id` straight from the template,
+    which quietly assumed one activity entry per action. A re-tag that follows a
+    MusicBrainz merge breaks that: it reports the tagging and names the merge,
+    two entries §5 requires to be said separately, and both matched — so every
+    audit row of the press was printed twice, under each of them.
+
+    The anchor is the action's **user-facing outcome**: its first activity entry
+    in feed order, which is newest-first, so it is the row the action finished
+    by writing. That is `tag_history.group_records`' rule verbatim, and it is
+    the same rule deliberately — the album page hangs a tagging's field-change
+    summary off that entry, and two surfaces disagreeing about which row an
+    action's records belong to is worse than either choice.
+
+    Audit rows carry their own `action_id` but are never anchors: they are what
+    is being hung, and `source` is what tells them apart. An entry with no id
+    cannot anchor anything, which costs nothing — `recent()` always sets one.
+    """
+    anchors: dict[str, int] = {}
+    for e in events:
+        if e.action_id and e.source is activity_store.Source.ACTIVITY and e.id is not None:
+            anchors.setdefault(e.action_id, e.id)
+    return {
+        anchor: rows for action_id, anchor in anchors.items() if (rows := by_action.get(action_id))
+    }
 
 
 def _missing_discs(absent: frozenset[int], disc_total: int | None) -> str:
@@ -3965,7 +3999,7 @@ def _register_routes(app: FastAPI) -> None:
         # empty page is exactly how a broken store would go unnoticed for weeks
         # (#104). Caught rather than raised so the poll doesn't 500 on a loop.
         events: list[activity.Event] = []
-        audit_detail: dict[str, list[activity_store.StoredEvent]] = {}
+        audit_detail: dict[int, list[activity_store.StoredEvent]] = {}
         has_more = False
         store_unavailable = False
         try:
@@ -3985,8 +4019,9 @@ def _register_routes(app: FastAPI) -> None:
                 # The audit records behind each entry, fetched for the whole page
                 # in ONE grouped query (#84) — per-entry lookups would be an N+1
                 # across the page, re-polled every couple of seconds.
-                audit_detail = activity_store.audit_by_action(
-                    [e.action_id for e in events if e.action_id]
+                audit_detail = _detail_by_anchor(
+                    events,
+                    activity_store.audit_by_action([e.action_id for e in events if e.action_id]),
                 )
                 # Rows written outside any action have no entry to sit under, so
                 # they get rows of their own — otherwise the UI would never show

@@ -39,6 +39,13 @@ class Event:
     # rows: the feed renders those differently (technical, monospace) because
     # they're raw forensics rather than a user-facing outcome.
     source: Source = Source.ACTIVITY
+    # The store row this came from, carried so a reader can key something to
+    # THIS entry rather than to the action it belongs to (#572). The feed hangs
+    # an action's audit detail off one chosen entry, and an action may write
+    # several; `action_id` cannot tell them apart, which is how the detail came
+    # to be printed under every one of them. `None` only for an Event built by
+    # hand — everything `recent()` returns carries it.
+    id: int | None = None
 
 
 log = logging.getLogger(__name__)
@@ -110,6 +117,7 @@ def recent(limit: int = 100, *, offset: int = 0, include_audit: bool = False) ->
             album_label=e.album_label,
             action_id=e.action_id,
             source=e.source,
+            id=e.id,
         )
         for e in activity_store.recent(limit, source=source, offset=offset)
     ]

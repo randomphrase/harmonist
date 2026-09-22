@@ -50,7 +50,11 @@
 {% endif %}
 
     {% for e in events %}
-    {% set detail = audit_detail.get(e.action_id) if (audit_detail and e.action_id) else None %}
+    {# Keyed by THIS row, not by its action (#572). An action may write several
+       activity entries — a re-tag following a merge writes two — and keying by
+       `action_id` printed the whole group under every one of them. `main._detail_by_anchor`
+       picks the one entry that carries them. #}
+    {% set detail = audit_detail.get(e.id) if (audit_detail and e.id is not none) else None %}
     <li class="px-3 py-2 text-sm">
     <div class="flex items-center gap-3">
         <time class="flex-shrink-0 font-mono text-2xs text-muted tabular-nums self-center"
