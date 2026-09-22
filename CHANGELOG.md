@@ -15,6 +15,12 @@ versions follow [semantic versioning](https://semver.org).
   write, instead of trailing below them — on a wide enough window, and only
   where there is something to write (#447).
 
+### Fixed
+
+- **The Cover Art Archive's candidate no longer breaks apart on a narrow
+  window**, with its frame against the right edge and the facts that belong
+  beside it wrapped onto a line of their own (#577).
+
 ## [1.19.0] - 2026-09-21
 
 ### Added

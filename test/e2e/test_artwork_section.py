@@ -135,3 +135,61 @@ def test_the_archive_is_asked_without_anyone_pressing_anything(demo_server: str)
         assert "not yet" not in dates.inner_text()
 
         browser.close()
+
+
+def test_the_archives_candidate_is_one_row_on_a_narrow_window(demo_server: str) -> None:
+    """The archive's frame and the facts beside it stay one row below 56rem
+    (#577).
+
+    Only a browser can see this, and the reason is worth stating: the markup was
+    always right and the stylesheet always *said* the right thing. Below 56rem
+    the row is a two-column grid, and the narrow block resets the frame's
+    `grid-column: 3` — which places it in the incoming half of the wide
+    four-column grid — back to `auto`. But the two selectors are identical, so a
+    media query gives the reset no extra weight and the unconditional rule won
+    on source order at every width. `grid-column: 3` against two columns makes an
+    *implicit* third, so the frame went hard against the right edge while its
+    facts, flowing on through `display: contents`, wrapped to a row of their own
+    back at the left. A picture of a broken image beside an unrelated caption.
+
+    Asserted geometrically rather than on a class, because the defect is
+    entirely in where the boxes land: every class involved was already correct.
+
+    The module's album: whether anything is being written makes no difference
+    down here, since #447's third column needs more width than this and the
+    archive is the trailing block either way.
+    """
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        # Narrower than the 56rem the stylesheet collapses at, at the default
+        # 16px root — 760px is comfortably inside it.
+        page = browser.new_page(viewport={"width": 760, "height": 1400})
+
+        page.goto(f"{demo_server}/album/{ALBUM_ID}")
+        # The archive's block arrives with the out-of-band check, not with the
+        # section, so this waits for the answer rather than for the section.
+        page.wait_for_selector("#album-artwork .art-rows--muted")
+
+        block = page.locator("#album-artwork .art-rows--muted")
+        # Whichever of the three states the frame is in: a form to fetch the
+        # picture, a placeholder, or the picture itself.
+        frame = block.locator(".art-row__load, .art-row__art").first
+        facts = block.locator(".art-row__facts").first
+
+        f = frame.bounding_box()
+        t = facts.bounding_box()
+        assert f and t
+
+        # Beside, not above: the frame ends before its facts begin…
+        assert f["x"] + f["width"] <= t["x"], "the archive's facts are not beside its frame"
+        # …and the two overlap vertically, which is what "one row" means. With
+        # the bug they shared no horizontal band at all.
+        assert min(f["y"] + f["height"], t["y"] + t["height"]) > max(f["y"], t["y"]), (
+            "the archive's frame and its facts are on separate rows"
+        )
+        # And the pair sits at the block's left edge rather than out in a column
+        # that the two-column grid has no room for.
+        b = block.bounding_box()
+        assert b and f["x"] - b["x"] < 32, "the archive's frame is not at the block's left edge"
+
+        browser.close()

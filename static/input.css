@@ -1138,17 +1138,6 @@ dialog::backdrop {
   color: color-mix(in srgb, var(--color-mb-purple) 78%, var(--color-muted));
 }
 
-@media (max-width: 56rem) {
-  .art-rows__head { display: none; }
-  .art-row { grid-template-columns: 6.5rem minmax(0, 1fr); row-gap: .7rem; }
-  .art-row__side--after > * { margin-left: 0; }
-  .art-row__side--after > .art-row__art { margin-left: 1.5rem; }
-  /* There is no third column to place anything in down here — the grid is two
-     wide and the headings are hidden, so the also-ran block is simply the last
-     row rather than a column of its own (#441). */
-  .art-rows--muted .art-row__side--after > :first-child { grid-column: auto; }
-}
-
 .art-row__art {
   display: block;
   width: 6.5rem;
@@ -1251,6 +1240,33 @@ dialog::backdrop {
    left half to precede them they would land in column 1, back among the images
    the album actually has. Placing the first cell is enough; the facts follow it. */
 .art-rows--muted .art-row__side--after > :first-child { grid-column: 3; }
+
+/* The narrow layout, and it has to be LAST (#577).
+
+   Every rule in here overrides one of the rules above with a selector of the
+   same shape, so it wins on source order and nothing else — a media query adds
+   no specificity. Sitting above `grid-column: 3` it lost to it at every width,
+   which put the archive's frame in an implicit THIRD column of a two-column
+   grid, hard against the right edge, with its facts wrapped onto a row of their
+   own back at the left. It read as a broken image beside an unrelated caption.
+
+   So: two columns, no headings to label them, and the also-ran block is simply
+   the last row rather than a column of its own — there is nowhere else for it
+   to go down here, and #447's third column needs more width than this. */
+@media (max-width: 56rem) {
+  .art-rows__head { display: none; }
+  .art-row { grid-template-columns: 6.5rem minmax(0, 1fr); row-gap: .7rem; }
+  .art-row__side--after > * { margin-left: 0; }
+  .art-row__side--after > .art-row__art { margin-left: 1.5rem; }
+  .art-rows--muted .art-row__side--after > :first-child { grid-column: auto; }
+  /* …except the also-ran's frame, which is flush. That indent offsets an
+     incoming image from the album's own image on the SAME row; this block has
+     no row above it to offset from, and the indent only landed on it at all
+     when the frame was a plain span — a loadable cover's frame is a `<form>`
+     (#448), which is not `.art-row__art` and so sat 1.5rem to its left. One
+     block, one left edge, whichever of the three states it is in. */
+  .art-rows--muted .art-row__side--after > .art-row__art { margin-left: 0; }
+}
 
 /* The frame is a form when it is the way to fetch the picture (#448). The form
    IS the grid cell — deliberately not `display: contents`, which was the first
