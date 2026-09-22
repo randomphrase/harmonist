@@ -9,6 +9,7 @@ versions follow [semantic versioning](https://semver.org).
 ### Changed
 
 - Required track-assignment reviews open automatically with proposed pairings and a concise finding instead of tag-difference counts (#576).
+- A VBR MP3 album's tracks are no longer reported as differing in format just because each has its own average bitrate. The Format row now shows the album's mean bitrate (#582).
 
 - **The Cover Art Archive's candidate now gets a column of its own** in an
   album's Artwork section, beside what the album has and what a re-tag would

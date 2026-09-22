@@ -715,6 +715,39 @@ def test_scanner_format_consensus_is_unanimous_when_the_files_agree(tmp_path):
     assert album.format_consensus.outliers == ()
 
 
+def test_scanner_format_consensus_does_not_count_vbr_bitrates_as_a_difference(tmp_path):
+    """A VBR file's bitrate is an average of what its audio needed, not a
+    setting, so two tracks from one V0 encode almost never share one (#582).
+    Comparing it flagged every VBR album as mixed. The row still carries a
+    number, the mean across the tracks, because that's what tells V0 from V2."""
+    from harmonist.scanner import scan
+
+    d = _make_album(tmp_path, "sine-vbr.mp3", name="a")  # 108 kbps
+    shutil.copy(FIXTURES_DIR / "noise-vbr.mp3", d / "02 b.mp3")  # 154 kbps
+    album = scan(tmp_path)[0]
+    c = album.format_consensus
+    assert c is not None
+    assert c.is_unanimous
+    assert c.value == "MP3 · 44.1 kHz · 131 kbps VBR"
+    assert album.audio_quality == "44.1 kHz · 131 kbps VBR"
+
+
+def test_scanner_format_consensus_still_names_a_cbr_file_among_vbr(tmp_path):
+    """Leaving out the VBR bitrate mustn't hide a real difference. A CBR track
+    among V0 ones is a different encode, and the outlier shows its own
+    full label."""
+    from harmonist.scanner import scan
+
+    d = _make_album(tmp_path, "sine-vbr.mp3", name="a")
+    shutil.copy(FIXTURES_DIR / "noise-vbr.mp3", d / "02 b.mp3")
+    shutil.copy(FIXTURES_DIR / "sine.mp3", d / "03 c.mp3")  # 128 kbps CBR
+    c = scan(tmp_path)[0].format_consensus
+    assert c is not None
+    assert c.value == "MP3 · 44.1 kHz · 131 kbps VBR"
+    assert (c.agreeing, c.total) == (2, 3)
+    assert c.outliers == (("03 c.mp3", "MP3 · 44.1 kHz · 128 kbps CBR"),)
+
+
 def test_scanner_audio_quality_ignores_a_codec_difference_the_audio_doesnt_share(tmp_path):
     """An ALAC track beside a FLAC one is a mixed CODEC, which the label
     already says. Both are 44.1/16, so the audio is uniform and reporting a

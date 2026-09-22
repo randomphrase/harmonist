@@ -17,6 +17,7 @@ from stat import S_ISREG
 from typing import NamedTuple
 
 from . import album_files, compare, formats, id_registry
+from .formats import quality
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecarError, UnsupportedSchemaVersionError
 from .sidecar import read as read_sidecar
@@ -772,11 +773,10 @@ def _audio_quality(audio_files: list[Path], fields: list[formats.ScanFields]) ->
     label beside this already says so — but its audio is uniform, and reporting
     two disagreements for one fact would overstate it.
     """
-    labels = [(p.name, sf.quality.label) for p, sf in zip(audio_files, fields, strict=True)]
     # No file reports anything — every one unreadable, or a format whose
     # container records none of this — leaves `value` None, and the row is
     # dropped rather than rendered empty.
-    return compare.consensus(labels).value
+    return _quality_consensus(audio_files, fields, with_codec=False).value
 
 
 def _format_consensus(
@@ -799,14 +799,39 @@ def _format_consensus(
     lists it as an outlier carrying no value, which is the honest reading: the
     file is there and we cannot say what it is.
     """
-    labels = [(p.name, _file_label(sf)) for p, sf in zip(audio_files, fields, strict=True)]
-    return compare.consensus(labels)
+    return _quality_consensus(audio_files, fields, with_codec=True)
 
 
-def _file_label(sf: formats.ScanFields) -> str | None:
-    """One file's codec and quality as a single value, or None if it has neither."""
-    parts = [part for part in (sf.codec, sf.quality.label) if part]
-    return " · ".join(parts) if parts else None
+def _quality_consensus(
+    audio_files: list[Path], fields: list[formats.ScanFields], *, with_codec: bool
+) -> compare.Consensus:
+    """The consensus behind both `_audio_quality` and `_format_consensus`.
+
+    Files are compared on `AudioQuality.key`, which leaves out a VBR bitrate
+    that differs on every track (#582). What gets SHOWN is the label: the
+    majority's with its bitrate averaged, and each outlier's own in full, since
+    a file named as different should say exactly what it is.
+    """
+
+    def label(sf: formats.ScanFields, text: str | None) -> str | None:
+        parts = [part for part in (sf.codec if with_codec else None, text) if part]
+        return " · ".join(parts) if parts else None
+
+    pairs = list(zip(audio_files, fields, strict=True))
+    keys = [(p.name, label(sf, sf.quality.key)) for p, sf in pairs]
+    c = compare.consensus(keys)
+    if c.value is None:
+        return c
+    agreeing = [sf for (_, key), sf in zip(keys, fields, strict=True) if key == c.value]
+    return replace(
+        c,
+        value=label(agreeing[0], quality.average([sf.quality for sf in agreeing]).label),
+        outliers=tuple(
+            (p.name, label(sf, sf.quality.label))
+            for (p, sf), (_, key) in zip(pairs, keys, strict=True)
+            if key != c.value
+        ),
+    )
 
 
 def _partial_tag_count(

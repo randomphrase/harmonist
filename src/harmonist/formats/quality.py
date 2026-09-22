@@ -26,6 +26,8 @@ rather than at the point of display:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from statistics import fmean
 from typing import Any, NamedTuple
 
 from mutagen.mp3 import BitrateMode
@@ -48,15 +50,48 @@ class AudioQuality(NamedTuple):
     def label(self) -> str | None:
         """Human summary — "44.1 kHz · 16 bit", "44.1 kHz · 320 kbps CBR" — or
         None when the format gave us nothing to say."""
+        return self._describe(exact=True)
+
+    @property
+    def key(self) -> str | None:
+        """What two files are compared on (#582): the label, except that a VBR
+        or ABR bitrate is left out — "44.1 kHz · VBR".
+
+        A CBR bitrate is a setting, so two tracks from one encode share it and a
+        different number is a different encode. A VBR bitrate is an average of
+        what that track's audio needed, so two tracks from one V0 encode almost
+        never share one, and comparing it reports every VBR album as mixed. The
+        mode is kept, because CBR beside VBR IS a different encode.
+        """
+        return self._describe(exact=self.bitrate_mode not in _VARYING)
+
+    def _describe(self, *, exact: bool) -> str | None:
         parts: list[str] = []
         if self.sample_rate:
             parts.append(f"{_trim(self.sample_rate / 1000)} kHz")
         if self.bit_depth:
             parts.append(f"{self.bit_depth} bit")
+        elif self.bitrate and not exact and self.bitrate_mode:
+            parts.append(self.bitrate_mode)
         elif self.bitrate:
             rate = f"{round(self.bitrate / 1000)} kbps"
             parts.append(f"{rate} {self.bitrate_mode}" if self.bitrate_mode else rate)
         return " · ".join(parts) or None
+
+
+def average(qualities: Sequence[AudioQuality]) -> AudioQuality:
+    """One quality standing for several files that share a `key`: the first,
+    with its bitrate replaced by the mean of all of theirs.
+
+    For CBR files the bitrates are identical and this changes nothing. For VBR
+    it is the number that tells a V0 album from a V2 one, which `key` had to
+    leave out. A plain mean over tracks, not weighted by duration: it's a
+    summary for display, and a long track nudging it by a few kbps changes
+    nothing a reader would act on.
+    """
+    first = qualities[0]
+    rates = [q.bitrate for q in qualities if q.bitrate]
+    return first._replace(bitrate=round(fmean(rates))) if rates else first
 
 
 def _trim(khz: float) -> str:
@@ -92,6 +127,12 @@ _MODES = {
     BitrateMode.VBR: "VBR",
     BitrateMode.ABR: "ABR",
 }
+
+
+#: The modes whose bitrate is an outcome of the audio rather than a setting.
+#: Only what the file declares: Opus and VBR AAC vary just as much, but they
+#: report no mode, and no mode isn't evidence that the bitrate varies.
+_VARYING = frozenset({"VBR", "ABR"})
 
 
 def _mode(mode: Any) -> str | None:
