@@ -6,41 +6,60 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-09-21
+
 ### Added
 
-- Demo mode now offers a representative mixed-format library, working purchase and artwork workflows, persistent example history, and recording recipes (#558).
-
-- Changed MusicBrainz tracklists now require assignment review, retaining known track identities and proposing unambiguous matches for unassigned files; Structure takes the highest review priority (#530).
+- **Demo mode is now a well-kept example library** rather than a set of recovery
+  cases — mixed formats, working purchase and artwork workflows, and a history
+  that survives a restart. An existing demo library resets itself on upgrade
+  (#558).
 
 - **The tracklist now marks a track whose artwork isn't the album's** — one that
-  carries a cover of its own, or none at all — and the mark links down to the row
-  in the Artwork section that shows it (#404).
+  carries a cover of its own, or none at all — and the mark links down to the
+  row in the Artwork section that shows it (#404).
 
 ### Changed
 
-- A MusicBrainz merge is now one of the album's findings rather than a warning beside its badges, named as the re-tag it is and linking the surviving release (#566).
+- **A tracklist MusicBrainz has changed now goes through assignment review**
+  before any tags are written; Harmonist keeps the tracks it can still identify
+  and proposes the rest (#530).
 
-- Needs Linking cards now have clearer sync guidance and badge-adjacent release correction and purchased-elsewhere controls, also available on album pages (#565).
+- **Needs Link is now called Needs Linking**, and the controls for correcting
+  its release or marking it purchased elsewhere sit beside the album's badges,
+  on the album page as well as the inbox (#565).
+
+- **A MusicBrainz merge is now one of the album's findings**, named as the
+  re-tag it is and linking the surviving release, rather than a warning beside
+  the badges (#566).
+
+- **A suggested release's MusicBrainz link now sits inside the review panel**,
+  where it can't be read as the album's confirmed identity (#562).
+
+- **Editing track assignments during a suggestion returns you to the review**
+  instead of writing tags (#562).
+
+- **An album with no store URL now opens straight into the MusicBrainz search
+  controls** (#564).
 
 ### Fixed
 
-- The Activity feed no longer repeats an action's audit records under each of its entries, so a re-tag that followed a MusicBrainz merge lists what it changed once (#572).
+- **A disc MusicBrainz doesn't have now gets a heading of its own**, named from
+  your files, instead of being listed under another disc's name (#402).
 
-- Activity entries for a MusicBrainz merge now name the album as "Artist — Title", matching the tagging entry beside them instead of showing the bare folder name (#571).
+- **Artwork in the release review now behaves like the album page's** —
+  equally sized previews you can open full size, and the same CAA refresh
+  (#559).
 
-- Replacing the activity database now waits for active operations, preventing intermittent crashes and lost history or cache writes (#569).
+- **The Activity feed no longer lists an action's changes twice** (#572).
 
-- Albums without a store URL now lead directly with the MusicBrainz search controls, without redundant instructions (#564).
+- **A merge's Activity entry now names its album "Artist — Title"**, like every
+  other entry beside it (#571).
 
-- Suggested releases now keep their MusicBrainz link inside the review panel, with paired Confirm/Dismiss suggestion actions, counts in the table headings, and separate track-editing controls that return to review before confirmation (#562).
+- **Demo tagging after a download is one History action with one Undo** (#450).
 
-- Release-review artwork now has equally sized previews, full-size inspection, and the album page's CAA refresh control, preserving review choices when refreshed (#559).
-
-- Demo re-download tagging now appears as one album-wide History action with one Undo, matching Apply updates (#450).
-
-- **A disc MusicBrainz doesn't have now gets its own heading on the album page**,
-  named from your files, instead of being listed under another disc's name
-  (#402).
+- **Resetting the demo no longer risks a crash or a dropped history entry**
+  (#569).
 
 ## [1.18.0] - 2026-09-18
 

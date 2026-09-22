@@ -528,6 +528,11 @@ as well, marked *Not in MusicBrainz*. MusicBrainz has nothing to describe it
 with, so the heading is what your own files say: the disc subtitle they carry,
 the medium, and how many tracks of it you have.
 
+A track whose artwork isn't the album's is marked in the list — one carrying a
+cover of its own, or none at all. The mark is a link: follow it and the Artwork
+section below opens on the row that shows the image, which is where anything can
+actually be done about it.
+
 MusicBrainz ids and ISRCs are identifiers rather than anything to read, which is
 why they start hidden — and the control names what is behind it rather than
 counting it. They are still links, and an id with no name is shortened to its first few characters with
