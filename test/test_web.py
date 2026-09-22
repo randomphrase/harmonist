@@ -10618,6 +10618,46 @@ def test_a_losing_archive_cover_sits_in_the_incoming_column(client, cfg):
     # `test_a_winning_archive_cover_is_marked_as_the_one_being_written`.
     assert "mb-mark" not in muted
     assert "art-row__facts--mb" not in muted
+    # …and no third column, because there is no middle one to make the
+    # comparison three-way: this album is not being written to, so "what a
+    # re-tag would do" has nothing to say and the archive's block trails the
+    # rows as it always has (#447).
+    assert "art-compare--split" not in rendered
+
+
+def test_the_archive_gets_a_column_when_there_is_something_to_compare(client, cfg):
+    """Three things are being weighed — what the album has, what a re-tag would
+    write, and what the archive holds — so the third is a column beside the
+    other two rather than a stub below them (#447).
+
+    Only when the middle column exists. `.art-compare--split` is what the
+    stylesheet hangs the three-column grid off; the arrangement itself lives in
+    a media query and is the browser's business, not this rung's.
+    """
+    from test.test_artwork import png_bytes
+
+    d = _make_tagged_album(cfg, "Threeway", mbid="rel-three", tagged_at=datetime.now(UTC))
+    # The track carries no art and the folder cover does — so applying writes,
+    # and the section has an "After Apply" column to put it in.
+    (d / "cover.jpg").write_bytes(png_bytes(1400, 1400))
+    # …while the archive's is smaller, which makes it an also-ran rather than
+    # the winner: the one case where all three columns have something in them.
+    activity_store.store_cover_art(
+        "rel-three",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-three/1.jpg",
+            width=10,
+            height=10,
+            mime="image/png",
+        ),
+    )
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+
+    assert "After Apply" in rendered  # the middle column is there…
+    assert "art-rows--muted" in rendered  # …and so is the archive's candidate
+    assert "art-compare--split" in rendered
 
 
 def test_a_winning_archive_cover_is_marked_as_the_one_being_written(client, cfg):

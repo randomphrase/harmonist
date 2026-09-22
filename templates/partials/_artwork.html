@@ -108,6 +108,17 @@
     {% endif %}
 {% endmacro %}
 
+{# The three things a reader is weighing are what the album HAS, what a re-tag
+   would WRITE, and what the archive HOLDS (#447). The first two are this
+   block's own columns; the third is the block after it, and this wrapper is
+   what stands them side by side — a column each, headings level, rather than
+   the third stranded low and to the right under rows it is a peer of.
+
+   Side by side ONLY when there is something in the middle column. An album
+   where nothing would be written has no three-way comparison to draw, and the
+   archive's block is fine trailing the rows there. The wrapper is emitted
+   either way, so the two blocks keep one spacing rule between them. #}
+<div class="art-compare{% if artwork.writes and artwork.archive_row %} art-compare--split{% endif %}">
 {% if artwork.rows %}
 <div class="art-rows">
     {% if artwork.writes %}
@@ -209,6 +220,13 @@
    tense on purpose: it says the thing was weighed and lost, which is also why
    there is no picture to show.
 
+   And a column of its own beside the rows, where there is a middle column to
+   make the comparison three-way and the width to draw it (#447). It is a peer
+   of the rows, not a postscript to them — see `.art-compare` above. Below that
+   width it is the trailing block it has always been, so BOTH arrangements are
+   live and this markup has to serve each: the empty heading span and the
+   `grid-column: 3` are the narrow one's, and the wide one overrides them.
+
    …except when it is partly coming (#490). An archive cover can be the best
    image for `cover.jpg` while the tracks keep their own, and the row is then
    here to offer it to the tracks as well — so it is not an also-ran and must not
@@ -218,9 +236,10 @@
 {% if artwork.archive_row %}
 <div class="art-rows art-rows--muted">
     <div class="art-rows__head">
-        {# Empty, and not omitted: the heading row is a grid, and the first span
-           is what holds the album's own column open so the second lands over
-           the incoming one. #}
+        {# Empty, and not omitted: while this block trails the rows, the heading
+           row is their grid and the first span is what holds the album's own
+           column open so the second lands over the incoming one. In a column of
+           its own there is nothing to hold open, and it is hidden (#447). #}
         <span></span>
         <span>{{ "Also available" if artwork.archive_row.also_coming else "Also considered" }}</span>
     </div>
@@ -283,6 +302,7 @@
     </div>
 </div>
 {% endif %}
+</div>
 
 {# The action, when there is something for it to do (#418). Beside the images
    rather than up with Re-tag, so what is being accepted is on screen — and

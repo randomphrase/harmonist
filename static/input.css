@@ -1052,6 +1052,51 @@ dialog::backdrop {
    --------------------------------------------------------------------------- */
 .art-rows { display: flex; flex-direction: column; }
 
+/* The three-way comparison (#447): what the album HAS, what a re-tag would
+   WRITE, and what the archive HOLDS. The first two are the rows' own columns.
+   The third cannot be — `.art-rows` is a flex column and each `.art-row` is its
+   own grid, so there is no grid spanning the rows for a cell to line up in —
+   and it used to be a postscript under them, a lone box low and to the right
+   beneath rows it is a peer of.
+
+   So the archive gets a column of THIS box instead. The two blocks line up on
+   the one thing that has to line up: their headings, each a single line of the
+   same size starting at the same top, which puts their bottom borders on one
+   edge without either block knowing about the other.
+
+   Unsplit it is the stack it was, and the gap reproduces the `space-y-3` the
+   section applied to the two blocks before this wrapper came between them. */
+.art-compare { display: flex; flex-direction: column; gap: .75rem; }
+
+@media (min-width: 64rem) {
+  /* Split only where three images and three sets of facts fit. The archive's
+     column is capped rather than sized to its content: "for the release group,
+     not this edition" is the widest thing it can say, and letting that set the
+     track would take a third of the section for an aside. That one wraps; the
+     cap is set so the SIZE line does not, since a measurement broken across two
+     lines is the thing a reader is here to compare. */
+  .art-compare--split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
+    column-gap: 1.6rem;
+    align-items: start;
+  }
+
+  /* In its own column the archive is a two-track grid of its own — image, then
+     facts. The empty heading span and the `grid-column: 3` below are both about
+     sitting INSIDE the rows' four-track grid, in the incoming half with the
+     album's own half held open to its left (#441). Here there is no left half
+     to step over, so the span goes and the placement is reset. */
+  .art-compare--split .art-rows--muted .art-rows__head,
+  .art-compare--split .art-rows--muted .art-row {
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+  }
+  .art-compare--split .art-rows--muted .art-rows__head > :first-child { display: none; }
+  .art-compare--split .art-rows--muted .art-rows__head > :last-child { grid-column: 1 / span 2; }
+  .art-compare--split .art-rows--muted .art-row__side--after > * { margin-left: 0; }
+  .art-compare--split .art-rows--muted .art-row__side--after > :first-child { grid-column: 1; }
+}
+
 /* What the row is now, and what a re-tag would make it (#413). The second half
    is empty on a row that changes nothing, which is most of them. */
 .art-rows__head,

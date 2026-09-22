@@ -6,7 +6,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+
 - Required track-assignment reviews open automatically with proposed pairings and a concise finding instead of tag-difference counts (#576).
+
+- **The Cover Art Archive's candidate now gets a column of its own** in an
+  album's Artwork section, beside what the album has and what a re-tag would
+  write, instead of trailing below them — on a wide enough window, and only
+  where there is something to write (#447).
 
 ## [1.19.0] - 2026-09-21
 
