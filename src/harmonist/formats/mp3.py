@@ -220,6 +220,7 @@ def read_scan_fields(path: Path) -> ScanFields:
     ufid = tags.get(f"UFID:{UFID_OWNER}") if tags is not None else None
     return ScanFields(
         album_title=_text(tags, "TALB"),
+        comment=_comment_text(tags),
         album_id=_txxx(tags, TXXX_ALBUM_ID),
         artist=_text(tags, "TPE1"),
         codec="MP3",

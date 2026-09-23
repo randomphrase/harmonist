@@ -281,6 +281,7 @@ def read_scan_fields(path: Path) -> ScanFields:
     codec = _codec_label(audio)
     return ScanFields(
         album_title=_text_atom(audio, ATOM_ALBUM),
+        comment=_text_atom(audio, ATOM_COMMENT),
         album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),
         artist=_text_atom(audio, ATOM_ARTIST),
         codec=codec,

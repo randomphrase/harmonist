@@ -38,6 +38,7 @@ RELEASE_INCLUDES = (
     "labels",
     "media",
     "isrcs",
+    "url-rels",
 )
 RELEASE_URL_INCLUDES = ("url-rels",)
 

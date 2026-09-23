@@ -16,7 +16,7 @@ from pathlib import Path
 from stat import S_ISREG
 from typing import NamedTuple
 
-from . import album_files, compare, formats, id_registry
+from . import album_files, compare, contributions, formats, id_registry, url_recovery
 from .formats import quality
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecarError, UnsupportedSchemaVersionError
@@ -261,6 +261,7 @@ def resolve_dir(
     try:
         io = read_album_io(album_dir, audio_files, video_files, reuse)
         album = build_album(album_dir, audio_files, io, _written_at(signature))
+        contributions.warm(album)
     except (InvalidSidecarError, UnsupportedSchemaVersionError) as e:
         _warn_once(album_dir, signature, "skipping %s: %s", e)
         return None
@@ -436,7 +437,18 @@ def _combine(mbid: str, group: list[ScannedDir]) -> Album:
         video_fields=tuple(f for e in ordered for f in e.io.video_fields),
     )
     written = [e.album.files_written_at for e in group if e.album.files_written_at]
-    return build_album(primary.album.path, files, io, max(written) if written else None)
+    album = build_album(primary.album.path, files, io, max(written) if written else None)
+    observations = [
+        e.album.contribution_observation
+        for e in group
+        if e.album.contribution_observation is not None
+    ]
+    album.contribution_observation = max(
+        observations,
+        key=lambda o: o.checked_at or datetime.min.replace(tzinfo=UTC),
+        default=None,
+    )
+    return album
 
 
 def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
@@ -464,6 +476,9 @@ def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
         store_url=next((s.store_url for s in present if s.store_url), None),
         bandcamp=next((s.bandcamp for s in present if s.bandcamp), None),
         downloaded_at=min((s.downloaded_at for s in present if s.downloaded_at), default=None),
+        # Do not turn one downloaded part into provenance for an adopted part.
+        bandcamp_downloaded=bool(sidecars)
+        and all(s is not None and s.bandcamp_downloaded for s in sidecars),
         added_at=min((s.added_at for s in present if s.added_at), default=None),
         mb_release_id=mbid,
         # Dropped deliberately, and named so rather than omitted: exactly one of
@@ -594,6 +609,11 @@ def build_album(
         track_count=len(audio_files),
         state=state,
         sidecar=sidecar,
+        bandcamp_comment_urls=tuple(
+            sorted(
+                {url for f in fields if (url := url_recovery.extract_bandcamp_url(f.comment or ""))}
+            )
+        ),
         cover_path=io.cover_path,
         inconsistent_tracks=inconsistent_tracks,
         partial_tag_count=_partial_tag_count(sidecar, fields),

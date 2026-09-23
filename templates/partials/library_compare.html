@@ -23,6 +23,7 @@
 </p>
 {% endif %}
 {% include 'partials/_tag_comparison.html' %}
+{% with oob = true %}{% include 'partials/_contributions.html' %}{% endwith %}
 
 {# Out-of-band: htmx swaps these into the page's Tracks section, its Artwork
    section, the Findings section's tag finding, merge finding and answers row,
@@ -151,6 +152,7 @@
 {% if refreshing %}
 <div id="compare-refresh-{{ album.id }}"
      hx-get="/library/{{ album.id }}/compare?check=1" hx-trigger="load"
+     hx-sync="#compare-{{ album.id }}:queue last"
      hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"
      hx-indicator="#mb-refreshing-{{ album.id }}"
      hx-disabled-elt="#compare-refresh-{{ album.id }}, #retag-btn-{{ album.id }}, #album-update-ignore-{{ album.id }} input"></div>

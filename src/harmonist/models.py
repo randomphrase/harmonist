@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 if TYPE_CHECKING:  # type-only: `compare` pulls the whole field table in at runtime
     from .compare import Consensus
+    from .contributions import Observation
 
 # MusicBrainz JSON shapes. `musicbrainzngs` returns plain untyped dicts whose
 # schema varies with the `includes=` we request and is riddled with optional,
@@ -297,6 +298,9 @@ class Sidecar:
     store_url: str | None = None
     bandcamp: BandcampInfo | None = None
     downloaded_at: datetime | None = None
+    # Recorded only after Harmonist actually downloads these files. Linking an
+    # adopted album also sets downloaded_at, so that timestamp is not provenance.
+    bandcamp_downloaded: bool = False
     added_at: datetime | None = None
     mb_release_id: str | None = None
     temp_uid: str | None = None
@@ -482,6 +486,10 @@ class Album:
     # muted is a string compare rather than a database read and a hash, which at
     # Library scale is the difference between free and unusable.
     mb_version: str | None = None
+    # File evidence from the scan, never inferred from purchase ownership or MB.
+    bandcamp_comment_urls: tuple[str, ...] = ()
+    # Rebuilt from the durable MB cache; conclusions are derived per local copy.
+    contribution_observation: Observation | None = None
 
     @property
     def shared_history_ids(self) -> tuple[str, ...]:

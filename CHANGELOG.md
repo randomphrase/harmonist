@@ -6,6 +6,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- An MB contributions filter gathers Bandcamp downloads with possible media mismatches or missing store URLs, with Harmony links and read-only rechecks (#10).
+
 ### Changed
 
 - Required track-assignment reviews open automatically with proposed pairings and a concise finding instead of tag-difference counts (#576).

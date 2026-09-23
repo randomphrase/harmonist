@@ -40,6 +40,7 @@ from harmonist import (
     audit,
     caa_cache,
     compare,
+    contributions,
     cover_art,
     formats,
     gardener,
@@ -235,6 +236,10 @@ def _library_filters(
         "update-available": (
             "Update available",
             lambda a: a.update_available and not gardener.is_ignored(a, ignored),
+        ),
+        "mb-contributions": (
+            "MB contributions",
+            lambda a: contributions.assess(a).has_findings,
         ),
     }
 
@@ -1570,6 +1575,7 @@ def _library_page_vars(
     # After the search, before the filter: the All chip's number, and the
     # denominator every other chip is a subset of.
     total_matched = len(done)
+    contribution_checks = [c for a in done if (c := contributions.assess(a)).eligible]
     # The options the control offers, each with the count it would yield. Counted
     # off the same `done` list the grid pages, so a count can never describe a
     # different population than selecting it would show. Computed on every render,
@@ -1622,6 +1628,8 @@ def _library_page_vars(
         # says, and what the chips beside it are subsets of. Equal to `total_done`
         # when nothing is being searched for (#180).
         "total_matched": total_matched,
+        "contribution_total": len(contribution_checks),
+        "contribution_unchecked": sum(c.unchecked for c in contribution_checks),
         # How many albums the CURRENT view holds: the same number when nothing is
         # filtered, the matching subset when something is. Only the pager reads it.
         "total_shown": len(done),
@@ -4493,6 +4501,7 @@ def _register_routes(app: FastAPI) -> None:
         scan happened to see, which on a network mount could be startup.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
+        contributions.warm(album)
         # The tracklist and actions don't depend on the store, so a broken store
         # must not take the whole page down — but the history section has to say
         # it couldn't read rather than fall through to "Nothing recorded for this
@@ -4525,6 +4534,7 @@ def _register_routes(app: FastAPI) -> None:
             folders=_album_folders(album, request.app.state.cfg.paths.music_dir),
             history=history,
             history_unavailable=history_unavailable,
+            contribution=contributions.assess(album),
             tag_changes=tag_changes,
             restorable=restorable,
             revertable=revertable,
@@ -4575,6 +4585,39 @@ def _register_routes(app: FastAPI) -> None:
         )
         ctx["edit_assignments"] = edit_assignments
         return _templates(request).TemplateResponse(request, "album.html", ctx)
+
+    @app.post("/library/{album_id}/contributions/check", response_class=HTMLResponse)
+    def check_contributions(request: Request, album_id: str) -> Response:
+        """One explicit, fresh, read-only check; never retag or change identity."""
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        contributions.warm(album)
+        error = None
+        if contributions.assess(album).eligible:
+            assert album.sidecar is not None and album.sidecar.mb_release_id is not None
+            try:
+                release = mb_cache.fetch_release(
+                    album.sidecar.mb_release_id, max_age=mb_cache.FRESH
+                )
+            except mb_lookup.ReleaseGoneError:
+                error = "MusicBrainz no longer has this release. Review its match."
+            except mb_lookup.MBError as exc:
+                error = f"Could not check MusicBrainz: {exc}. The previous observation is retained."
+            else:
+                if release["id"] != album.sidecar.mb_release_id:
+                    error = "MusicBrainz merged this release. Refresh the album comparison to review it."
+                else:
+                    contributions.observe(album, release, mb_cache.fetched_at(str(release["id"])))
+        request.state.skip_rescan = True
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/_contributions.html",
+            _ctx(
+                request,
+                album=album,
+                contribution=contributions.assess(album),
+                contribution_error=error,
+            ),
+        )
 
     @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
     def library_compare(
@@ -4872,6 +4915,7 @@ def _register_routes(app: FastAPI) -> None:
             # the thing an ignore is compared against. Reading it before would
             # ask whether the ignore holds for the payload we had a moment ago.
             update_ignored=gardener.is_ignored(album, _ignored_updates()),
+            contribution=contributions.assess(album),
             comparison=comparison,
             tracklist=tracks,
             assignment_review=assignment_review,

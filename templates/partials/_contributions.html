@@ -1,0 +1,48 @@
+<div id="album-contributions-{{ album.id }}"{% if oob | default(false) %} hx-swap-oob="true"{% endif %}>
+{% if contribution is defined and contribution.eligible %}
+<section class="border border-line rounded-lg p-4 space-y-3" aria-label="MusicBrainz contributions">
+    <h2 class="text-sm font-bold text-ink">Contribute to MusicBrainz</h2>
+    <p class="text-xs text-muted">Optional improvements to the release database. These checks do not change your files or match.</p>
+    {% if contribution_error | default(none) %}
+    <p role="alert" class="text-xs text-amber-700">{{ contribution_error }}</p>
+    {% endif %}
+    {% if contribution.media_mismatch %}
+    <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These files have Bandcamp download evidence, but MusicBrainz lists {{ contribution.observation.formats | join(' + ') }}. Review the digital edition and its mix before adding a release.</p>
+    {% elif contribution.observation and contribution.media_mismatch is none %}
+    <p class="text-sm text-muted">MusicBrainz has not specified all medium formats. The media check is incomplete.</p>
+    {% endif %}
+    {% if contribution.missing_url %}
+    <p class="text-sm text-ink"><strong>Store URL missing from MusicBrainz.</strong> The checked release does not link to this download's URL. An existing digital edition may only need its relationship added.</p>
+    {% endif %}
+    {% if contribution.private %}
+    <p class="text-xs text-muted">Private Bandcamp download: its mix may differ from the public edition. Search MusicBrainz manually; do not publish its private URL.</p>
+    {% elif not contribution.store_url %}
+    <p class="text-xs text-muted">No unambiguous album or track URL is known. The store URL check is incomplete.</p>
+    {% endif %}
+    {% if contribution.observation %}
+    <p class="text-xs text-muted">{% if contribution.observation.checked_at %}MB contribution check: {{ ago(contribution.observation.checked_at) }}.{% else %}Observation time unavailable.{% endif %}
+        {% if contribution.media_mismatch is sameas false and contribution.missing_url is sameas false %}Digital Media and store URL agree.{% endif %}
+    </p>
+    {% else %}
+    <p class="text-xs text-muted">Not checked against a stored MusicBrainz release yet.</p>
+    {% endif %}
+    <div class="flex flex-wrap items-center gap-3 text-xs">
+        <button hx-post="/library/{{ album.id }}/contributions/check"
+                hx-sync="#compare-{{ album.id }}:queue last"
+                hx-target="#album-contributions-{{ album.id }}" hx-swap="outerHTML"
+                hx-disabled-elt="this" hx-indicator="#contribution-checking-{{ album.id }}"
+                class="px-3 py-1 rounded border border-line hover:border-accent font-bold">
+            Check MusicBrainz again
+        </button>
+        <span id="contribution-checking-{{ album.id }}" class="htmx-indicator text-muted">Checking…</span>
+        <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}" target="_blank" rel="noopener" class="text-accent">Review current MB release ↗</a>
+        {% if not contribution.private and contribution.store_url and (contribution.media_mismatch or contribution.missing_url) %}
+        <a href="{{ harmony_base }}/release?url={{ contribution.store_url | urlencode }}" target="_blank" rel="noopener" class="text-accent">Open in Harmony ↗</a>
+        {% endif %}
+    </div>
+    {% if contribution.media_mismatch or contribution.missing_url %}
+    <p class="text-xs text-muted">Check for an existing digital release first. To choose a different match, use the pencil beside the MusicBrainz badge above. Other editions you own can stay in your library.</p>
+    {% endif %}
+</section>
+{% endif %}
+</div>

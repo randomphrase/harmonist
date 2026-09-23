@@ -266,6 +266,8 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
     the user can't easily undo":
 
       * identity — MBID / Bandcamp item_id / store_url
+      * `bandcamp_downloaded` — actual download provenance, which enables
+        contribution checks independently of purchase linkage or file comments.
       * `video_media` — which media are video-only, so an album missing just
         those derives COMPLETE rather than INCOMPLETE. Reclassifies the album.
       * `tracks_unavailable` — accepting an incomplete album as finished. Takes
@@ -296,6 +298,7 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
             mbid=new.mb_release_id,
             item_id=new_item,
             store_url=new.store_url,
+            bandcamp_downloaded=new.bandcamp_downloaded,
         )
         return
     old_item = old.bandcamp.item_id if old.bandcamp else None
@@ -308,6 +311,8 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
         changes["item_id"] = f"{old_item}->{new_item}"
     if old.store_url != new.store_url:
         changes["store_url"] = f"{old.store_url}->{new.store_url}"
+    if old.bandcamp_downloaded != new.bandcamp_downloaded:
+        changes["bandcamp_downloaded"] = f"{old.bandcamp_downloaded}->{new.bandcamp_downloaded}"
     if old.purchase_unavailable != new.purchase_unavailable:
         changes["purchase_unavailable"] = f"{old.purchase_unavailable}->{new.purchase_unavailable}"
     if old.tracks_unavailable != new.tracks_unavailable:
@@ -375,6 +380,8 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
             d["bandcamp"] = bd
     if s.downloaded_at:
         d["downloaded_at"] = _iso(s.downloaded_at)
+    if s.bandcamp_downloaded:
+        d["bandcamp_downloaded"] = True
     if s.added_at:
         d["added_at"] = _iso(s.added_at)
     if s.mb_release_id:
@@ -526,6 +533,7 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
         store_url=d.get("store_url"),
         bandcamp=bandcamp,
         downloaded_at=_parse_iso(d.get("downloaded_at")),
+        bandcamp_downloaded=bool(d.get("bandcamp_downloaded", False)),
         added_at=_parse_iso(d.get("added_at")),
         mb_release_id=mb_release_id,
         temp_uid=temp_uid,

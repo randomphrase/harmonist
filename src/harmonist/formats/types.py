@@ -80,6 +80,7 @@ class ScanFields(NamedTuple):
     # comparison is fetched. Empty for a file that wouldn't open, like every
     # other field on an unreadable one.
     quality: AudioQuality = AudioQuality()
+    comment: str | None = None
 
 
 @dataclass

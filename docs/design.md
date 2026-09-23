@@ -864,6 +864,7 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
     "band_id": 12345
   },
   "downloaded_at": "2026-05-05T12:34:56Z",
+  "bandcamp_downloaded": true,
   "mb_release_id": "abc-123-...",
   "tagged_at": "2026-05-05T13:00:02Z",
   "notes": null
@@ -872,6 +873,14 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
 
 **Field rules:**
 
+- `bandcamp_downloaded` (optional, bool, omitted when false) records that
+  Harmonist actually downloaded these files. It is set only after a successful
+  download, never when linking an existing album, and is audited. Unlike the
+  legacy `downloaded_at` timestamp, it proves download provenance independently
+  of comment tags and custom-domain URLs. Old sidecars remain unknown; no
+  timestamp-based backfill. A merged multi-folder view requires the observation
+  on all its parts. This field enables the contribution checks below and does
+  not change album state.
 - `schema_version` is mandatory; the loader rejects unknown versions for now.
 - `store_url` (optional) is the canonical purchase URL from any store
   Harmony accepts (Bandcamp, Beatport, Discogs, etc.). Absence means
@@ -950,6 +959,45 @@ data are deliberately NOT persisted: rate limiting is process-wide
 (see `MB_RATE_LIMIT_SECONDS` in `web/reconcile_runner.py`), and audit
 history belongs in server logs. Speculative "might be useful later"
 fields don't go here.
+
+### MusicBrainz contributions (#10)
+
+Contribution checks use one optional **MB contributions** Library filter
+(either finding qualifies) and an album-page section,
+separate from tag-update findings and their Ignore state. Eligibility requires
+a confirmed MBID plus actual download provenance (`bandcamp_downloaded`) or a
+Bandcamp URL in the files' comments. The scanner reads those comments through
+its existing single-open format readers; purchase ownership or a URL recovered
+from MusicBrainz alone cannot qualify a CD rip.
+
+`contributions.assess` derives independent possible-media-mismatch and
+missing-store-URL results from each local copy's evidence and an MB observation.
+Non-digital media, including mixed editions, invite review. Unspecified media
+remain unknown. URL equality retains the host and album/track path, normalizing
+scheme, trailing slash and tracking parameters. A precise file-comment URL wins
+over an MB-derived sidecar URL; conflicting precise comments remain unresolved.
+An actual Harmonist download uses its captured store URL, including custom
+domains. Root URLs prove likely provenance but cannot establish release identity.
+
+The full MB fetch includes `url-rels` alongside media. Its durable cache row and
+fetch timestamp are the observation; no persisted conclusion or duplicate MB
+sidecar payload is added. The includes key excludes older incomplete snapshots.
+Scanning restores observations from that cache, and the gardener updates them
+even when tag-relevant data is unchanged. Library predicates do no I/O.
+Unchecked/incomplete coverage is counted explicitly. A fresh check spends one
+release request and changes no tags, sidecars or match; failed checks retain
+dated evidence and explain the failure. URL-only changes do not unmute ignored
+tag updates or require another tag plan. Album comparison and contribution
+refresh requests share an HTMX synchronization group.
+
+Private downloads can still warrant media review, but their URLs are not
+missing-link contribution opportunities and are never sent to Harmony. The
+public edition may have a different mix. A release group is context, not local
+identity: original/reissue and physical/digital editions remain distinct, as do
+multiple local copies temporarily carrying the same approximate MBID. This
+feature leaves matching and purchase linking unchanged. The existing explicit
+rematch control provides the path to choosing a different edition; it clears
+the association for that copy while retaining file tags until confirmation.
 
 ### Caching MusicBrainz releases
 

@@ -867,7 +867,14 @@ def fetch_release(mbid: str) -> Release:
         from .mb_lookup import ReleaseGoneError
 
         raise ReleaseGoneError(f"demo: no MB release for {mbid}")
-    return MB_RELEASES[mbid]
+    return {
+        **MB_RELEASES[mbid],
+        "url-relation-list": [
+            {"target": url, "type": "purchase for download"}
+            for url, related in URL_RELS.items()
+            if related == mbid
+        ],
+    }
 
 
 def fetch_release_urls(mbid: str) -> list[str]:

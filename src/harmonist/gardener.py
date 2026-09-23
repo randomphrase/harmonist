@@ -66,7 +66,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import activity, activity_store, album_files, formats, mb_cache, mb_lookup, tagger
+from . import (
+    activity,
+    activity_store,
+    album_files,
+    contributions,
+    formats,
+    mb_cache,
+    mb_lookup,
+    tagger,
+)
 from .formats import owned
 from .models import Album, AlbumState, Release
 
@@ -260,6 +269,7 @@ def refresh_flag(album: Album, release: Release) -> Assessment:
     `ScanRunner.albums()` hands out the live snapshot, so this is the same
     object the grid will render.
     """
+    contributions.observe(album, release, mb_cache.fetched_at(str(release["id"])))
     try:
         plan = plan_for(album, release)
     except tagger.TagMismatchError as e:
@@ -658,6 +668,9 @@ def sweep(
                 _consecutive_failures,
             )
         _consecutive_failures = 0
+        # URL-only edits can settle contributions without changing any tag.
+        for album in group:
+            contributions.observe(album, release, mb_cache.fetched_at(str(release["id"])))
         if before is not None and _same_release(before, release):
             continue  # MusicBrainz has said nothing new; read no files
         examined += len(group)
@@ -818,10 +831,13 @@ def _last_look(mbid: str, times: dict[str, datetime]) -> datetime | None:
 
 
 def _same_release(before: Release, after: Release) -> bool:
-    """Whether MusicBrainz has anything to say that it had not already said.
+    """Whether MusicBrainz has new tag-relevant data.
 
-    Compared as the JSON the store would write rather than as dicts, because
-    that is precisely the question — *would re-storing this change the row?* —
+    URL relationships are excluded: contributions have already consumed those
+    observations before this early exit, and URL edits cannot change a tag.
+
+    Compared as canonical JSON rather than as dicts, because the question is
+    whether any tag-relevant part of the stored payload changed —
     and it is immune to the one way a dict comparison here can lie. A payload
     that has round-tripped through `json.dumps` has had any tuple flattened to a
     list, so a fresh payload carrying one would compare unequal to its own
@@ -834,7 +850,7 @@ def _same_release(before: Release, after: Release) -> bool:
     silently skips an album that might have an update outstanding.
     """
     try:
-        return _canonical(before) == _canonical(after)
+        return _canonical(_tag_payload(before)) == _canonical(_tag_payload(after))
     except (TypeError, ValueError):
         log.warning(
             "update check: could not compare release payloads; reading the files instead",
@@ -855,8 +871,16 @@ def _canonical(release: Release) -> str:
     return json.dumps(release, sort_keys=True)
 
 
+def _tag_payload(release: Release) -> Release:
+    """URL relationships do not change tags or unmute an ignored tag update."""
+    return {key: value for key, value in release.items() if key != "url-relation-list"}
+
+
 def release_version(release: Release) -> str | None:
-    """A short, stable name for exactly this version of a release payload.
+    """A short, stable name for the tag-relevant release payload.
+
+    URL relationships belong to contribution checks and cannot unmute an
+    ignored tag update. All other fields retain the existing version contract.
 
     What a finding is judged against (#271), and the whole of how suppression
     stays honest: a dismissal remembers the version the user declined, so it
@@ -879,7 +903,7 @@ def release_version(release: Release) -> str | None:
     finding, since it could never be retired or re-raised correctly.
     """
     try:
-        return hashlib.sha256(_canonical(release).encode()).hexdigest()[:16]
+        return hashlib.sha256(_canonical(_tag_payload(release)).encode()).hexdigest()[:16]
     except (TypeError, ValueError):
         log.warning(
             "update check: could not name this version of a release payload",

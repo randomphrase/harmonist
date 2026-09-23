@@ -139,7 +139,9 @@ def test_read_scan_fields_matches_individual_reads(tmp_path, ext, fixture):
     tag_album(d, _release_one_track())
     f = next(d.glob(f"*{ext}"))
 
+    _seed_comment(f, "Visit https://artist.bandcamp.com/album/record")
     sf = formats.read_scan_fields(f)
+    assert sf.comment == "Visit https://artist.bandcamp.com/album/record"
     assert sf.album_id == formats.read_album_id(f) == "rel-fmt-1"
     assert sf.album_title == formats.read_album_title(f) == "Format Album"
     assert sf.artist == formats.read_artist(f) == "Format Artist"

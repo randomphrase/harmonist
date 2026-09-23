@@ -164,6 +164,15 @@ def stored_release(mbid: str) -> Release | None:
     return cached.payload if cached is not None else None
 
 
+def stored_release_snapshot(mbid: str) -> activity_store.CachedRelease | None:
+    """A stored payload and its observation time from the same database read.
+
+    Contribution warm-up needs both; two separate reads can pair a payload with
+    the timestamp of a concurrent refresh, as well as parsing it twice per album.
+    """
+    return activity_store.cached_release(mbid, _key(mb_lookup.RELEASE_INCLUDES))
+
+
 def due(mbid: str) -> bool:
     """Whether this release is worth asking MusicBrainz about again.
 

@@ -70,6 +70,7 @@
     <dd class="col-start-3 flex items-center">
         <button type="button"
                 hx-get="/library/{{ album.id }}/compare?reread=1"
+                hx-sync="#compare-{{ album.id }}:queue last"
                 hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"
                 hx-disabled-elt="this"
                 title="Read this release from MusicBrainz again"

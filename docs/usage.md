@@ -57,6 +57,35 @@ It works best on a library that's already in reasonable shape. Harmonist assumes
    *potential download* to Match / Download / skip.
 3. Once everything's linked, later syncs fetch genuinely new purchases as normal.
 
+## Contributing missing release information
+
+The Library's **MB contributions** filter collects albums with either
+a possible media mismatch or a missing store URL on MusicBrainz. It uses evidence
+that your files are Bandcamp downloads: a Bandcamp URL in their comments, or an
+actual download recorded by Harmonist. Owning a Bandcamp purchase alone does not qualify a CD rip.
+Older downloads without either kind of evidence are not assumed to qualify.
+
+Open an album's **Contribute to MusicBrainz** section to see the evidence and when
+it was checked. **Check MusicBrainz again** makes a fresh, read-only check; it does
+not tag files or change the match. Checks also run with background update checks
+when enabled in Settings. Separate coverage counts identify downloads without a
+complete assessment, including unknown medium formats or an ambiguous store URL.
+Unchecked albums are not counted as clean or added to the contribution filter
+without a finding.
+
+A missing URL may mean an existing digital release only needs its relationship
+added. A physical-media match may mean the appropriate digital edition is missing
+or your files are matched to the wrong edition. Review the current MB release and
+its other editions first; **Open in Harmony** can import a missing public digital
+release. After an edit lands on MusicBrainz, check again to clear the finding. To
+choose a different match, use the pencil beside the MusicBrainz badge; the existing
+rematch workflow returns this album to Needs MBID while keeping its file tags
+until you confirm a replacement. Other copies and editions remain separate.
+
+Private downloads may contain a different mix from the public edition. They can
+still warrant media review, but Harmonist does not suggest publishing their
+private URLs or importing them through Harmony. Search MusicBrainz manually.
+
 ## The Inbox
 
 Every album is in exactly one state, **derived** from what's on disk each time

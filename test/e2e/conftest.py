@@ -58,6 +58,14 @@ def stale_cache_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str
     )
 
 
+@pytest.fixture(scope="module")
+def contribution_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    yield from _run_demo_server(
+        tmp_path_factory.mktemp("e2e-contributions"),
+        app_module="test.e2e.contribution_app:app",
+    )
+
+
 @pytest.fixture
 def reset_demo_server(demo_server: str) -> str:
     """Start each mutating scenario from the same on-disk demo library."""

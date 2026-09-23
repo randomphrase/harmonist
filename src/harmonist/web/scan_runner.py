@@ -33,7 +33,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from harmonist import activity, activity_store, audit, library_index, live_counts, scanner
+from harmonist import (
+    activity,
+    activity_store,
+    audit,
+    contributions,
+    library_index,
+    live_counts,
+    scanner,
+)
 from harmonist.models import Album
 
 log = logging.getLogger(__name__)
@@ -273,6 +281,21 @@ class ScanRunner:
         is served from the mtime cache as the very same `Album` object, and list
         equality short-circuits on identity per element."""
         results = scanner.merge_by_identity(scanned)
+        # Multi-folder albums are rebuilt from cached parts, whose observations
+        # can predate a check on the combined album. Carry the freshest RELEASE
+        # evidence; provenance and conclusions still belong to each local copy.
+        observations: dict[str, contributions.Observation] = {}
+        floor = datetime.min.replace(tzinfo=UTC)
+        for album in [*self._albums, *results]:
+            observed = album.contribution_observation
+            if observed is None:
+                continue
+            previous = observations.get(observed.mbid)
+            if previous is None or (observed.checked_at or floor) > (previous.checked_at or floor):
+                observations[observed.mbid] = observed
+        for album in results:
+            mbid = album.sidecar.mb_release_id if album.sidecar else None
+            album.contribution_observation = observations.get(mbid) if mbid else None
         changed = results != self._albums
         self._scanned = scanned
         self._albums = results

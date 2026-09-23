@@ -168,12 +168,17 @@ def construct_bandcamp_url(item: Any) -> str | None:
     return None
 
 
-def write_sidecar_for_item(item: Any, album_dir: Path, *, prefer_item_url: bool = False) -> bool:
+def write_sidecar_for_item(
+    item: Any, album_dir: Path, *, prefer_item_url: bool = False, downloaded: bool = False
+) -> bool:
     """Write or update the sidecar for a Bandcamp item at album_dir.
 
     If a sidecar already exists (typical after reconciliation has run), fills
     in the missing `bandcamp.item_id` / `band_id`. Otherwise creates a fresh
     sidecar for a brand-new download.
+
+    `downloaded` records file provenance and is true only after the parent
+    downloader succeeds. Linking an existing album must leave it false.
 
     `prefer_item_url`: normally we keep an existing sidecar's `store_url`
     (it's the canonical MB-derived URL). But when we matched the item to this
@@ -216,6 +221,7 @@ def write_sidecar_for_item(item: Any, album_dir: Path, *, prefer_item_url: bool 
             store_url=url if prefer_item_url else (existing.store_url or url),
             bandcamp=merged_bandcamp,
             downloaded_at=existing.downloaded_at or datetime.now(UTC),
+            bandcamp_downloaded=existing.bandcamp_downloaded or downloaded,
         )
         sidecar_mod.write(album_dir, merged)
         return True
@@ -224,6 +230,7 @@ def write_sidecar_for_item(item: Any, album_dir: Path, *, prefer_item_url: bool 
         store_url=url,
         bandcamp=BandcampInfo(item_id=item_id, band_id=band_id, is_private=is_private),
         downloaded_at=datetime.now(UTC),
+        bandcamp_downloaded=downloaded,
     )
     sidecar_mod.write(album_dir, sc)
     return True
@@ -1040,7 +1047,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 path=local_path,
             )
             try:
-                write_sidecar_for_item(item, local_path)
+                write_sidecar_for_item(item, local_path, downloaded=True)
             except Exception as e:
                 log.warning(
                     "post-download sidecar write failed for item %s: %s",

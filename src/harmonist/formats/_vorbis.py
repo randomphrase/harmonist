@@ -281,6 +281,7 @@ class VorbisTagger:
 
         return ScanFields(
             album_title=first(KEY_ALBUM),
+            comment=first(KEY_COMMENT),
             album_id=first(KEY_ALBUM_ID),
             artist=first(KEY_ARTIST),
             codec=codec,
