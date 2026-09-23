@@ -24,12 +24,12 @@
         {% for edition in editions %}
             {% set suggested = suggested_edition and edition.id == suggested_edition.id %}
             <tr class="border-t border-line {% if suggested %}bg-amber-50/40{% else %}hover:bg-surface{% endif %}"{% if suggested %} aria-label="Suggested digital release"{% endif %}>
-                <td class="p-2">{% if suggested %}<span class="block text-amber-700 font-bold">Suggested</span>{% endif %}<a href="https://musicbrainz.org/release/{{ edition.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline font-bold">{{ release_name(edition.title, edition.disambiguation) }} ↗</a>{% if edition.label %}<div class="text-muted">{{ edition.label }}{% if edition.catalog_number %} · {{ edition.catalog_number }}{% endif %}</div>{% endif %}</td>
+                <td class="p-2"><a href="https://musicbrainz.org/release/{{ edition.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline font-bold">{{ release_name(edition.title, edition.disambiguation) }} ↗</a>{% if edition.label %}<div class="text-muted">{{ edition.label }}{% if edition.catalog_number %} · {{ edition.catalog_number }}{% endif %}</div>{% endif %}</td>
                 <td class="p-2 whitespace-nowrap">{{ edition.media }}</td>
                 <td class="p-2 {% if edition.track_count != album.track_count %}text-amber-700{% endif %}">{{ edition.track_count or '?' }}</td>
                 <td class="p-2">{{ edition.date or '?' }} · {{ edition.country or '?' }}</td>
                 <td class="p-2">{{ 'Same URL' if edition.store_linked is sameas true else 'Not linked' if edition.store_linked is sameas false else 'Private download' if contribution.private else 'Unknown' }}</td>
-                <td class="p-2">{{ use_edition(edition) }}</td>
+                <td class="p-2 text-center">{% if suggested %}<span class="block mb-1 text-amber-700 font-bold">Suggested</span>{% endif %}{{ use_edition(edition) }}</td>
             </tr>
         {% endfor %}
         </tbody>
@@ -43,7 +43,7 @@
     {% endif %}
     {% if not contribution.private and contribution.store_url %}
         {% if editions %}
-<details><summary class="cursor-pointer text-xs text-muted hover:text-ink">None of these is the right edition?</summary><div class="mt-2">{{ harmony() }}</div></details>
+<details><summary class="cursor-pointer text-xs text-muted hover:text-ink">Add a missing digital edition</summary><div class="mt-2">{{ harmony() }}</div></details>
         {% elif not editions_truncated and not editions_unknown %}
 {{ harmony() }}
         {% endif %}

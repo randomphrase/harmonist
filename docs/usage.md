@@ -78,12 +78,14 @@ added. A physical-media match may mean the appropriate digital edition is missin
 or your files are matched to the wrong edition. Resolve the media mismatch first:
 digital editions from the same release group appear automatically in a scrolling
 table with media, disambiguation, track count and release details. A single
-edition with the same store URL and track count is highlighted as **Suggested**.
+edition with the same store URL and track count is highlighted as **Suggested**
+above its **Use** button.
 **Use** on any row opens the usual track and artwork review.
 Confirming tags this copy; cancelling leaves its current release intact.
-If no edition fits, **Add digital release with Harmony** imports the public
-download. Large groups and unspecified media are marked incomplete; a failed
-request never counts as absence.
+If no edition fits, expand **Add a missing digital edition** for the Harmony
+import link. A complete search with no digital editions shows the link directly.
+Large groups and unspecified media are marked incomplete; a failed request never
+counts as absence.
 
 Once the correct digital release is tagged, a missing store link is the next
 contribution. **Edit store link on MusicBrainz** opens that release's editor;

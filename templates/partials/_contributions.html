@@ -3,7 +3,7 @@
 <section class="border border-line rounded-lg p-4 space-y-3" aria-label="MusicBrainz contributions">
     <h2 class="text-sm font-bold text-ink uppercase tracking-widest">MB contributions</h2>
     {% if contribution.media_mismatch %}
-    <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> Bandcamp download matched to {{ contribution.observation.formats | join(' + ') }}.</p>
+    <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These files are a Bandcamp download, but the matched MusicBrainz release is listed as {{ contribution.observation.formats | join(' + ') }}. A digital edition may be a better match.</p>
     {% elif contribution.observation and contribution.media_mismatch is none %}
     <p class="text-sm text-muted">MusicBrainz has not specified all medium formats. The media check is incomplete.</p>
     {% elif contribution.missing_url %}
