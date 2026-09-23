@@ -1,34 +1,64 @@
+{% from 'macros.html' import release_name %}
+{% macro use_edition(edition, label='Use') %}
+<button type="button" hx-get="/assignments/{{ album.id }}?replacement={{ (album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode }}&amp;modal=true&amp;cancel=true&amp;on_album_page=true"
+        hx-target="#modal" hx-swap="innerHTML" hx-disabled-elt="this"
+        hx-indicator="#edition-reviewing-{{ album.id }}"
+        class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">{{ label }}</button>
+{% endmacro %}
+{% macro harmony() %}
+<p class="text-xs text-muted mb-2">Only import this URL if it is the public release page for this edition.</p>
+<a href="{{ harmony_base }}/release?url={{ contribution.store_url|urlencode }}" target="_blank" rel="noopener"
+   class="inline-flex px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Add digital release with Harmony ↗</a>
+{% endmacro %}
+<div class="space-y-3">
 {% if editions_error %}
-<p role="alert" class="text-amber-700">{{ editions_error }}. Try Find digital editions again.</p>
+<p role="alert" class="text-amber-700">{{ editions_error }} Try Find digital editions again.</p>
 {% else %}
+    {% if suggested_edition %}
+<div class="rounded-lg border border-amber-200 bg-amber-50/40 p-3 flex flex-wrap items-center justify-between gap-3" aria-label="Suggested digital release">
+    <div>
+        <p class="text-sm font-bold">Suggested match: <a href="https://musicbrainz.org/release/{{ suggested_edition.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">{{ release_name(suggested_edition.title, suggested_edition.disambiguation) }} ↗</a></p>
+        <p class="text-xs text-muted">{{ suggested_edition.media }} · {{ suggested_edition.track_count }} tracks · Same store URL</p>
+    </div>
+    {{ use_edition(suggested_edition, 'Review suggestion') }}
+</div>
+<details><summary class="cursor-pointer text-xs text-muted hover:text-ink">Other digital editions</summary>
+    {% endif %}
     {% if editions %}
-<ul class="space-y-3">
+<div class="max-h-64 overflow-auto border border-line rounded" tabindex="0" role="region" aria-label="Digital editions">
+    <table class="w-full text-xs text-left">
+        <thead class="bg-surface text-muted sticky top-0"><tr>
+            <th class="p-2">Release</th><th class="p-2">Media</th><th class="p-2">Tracks</th><th class="p-2">Date / country</th><th class="p-2">Store URL</th><th class="p-2"><span class="sr-only">Choose</span></th>
+        </tr></thead>
+        <tbody>
         {% for edition in editions %}
-    <li>
-        <a href="https://musicbrainz.org/release/{{ edition.id }}" target="_blank" rel="noopener" class="text-accent font-bold">Review {{ edition.title or 'digital edition' }} ↗</a>
-        <span class="text-muted">{{ edition.date or 'Undated' }}{% if edition.country %} · {{ edition.country }}{% endif %}{% if edition.track_count %} · {{ edition.track_count }} tracks{% endif %}{% if edition.disambiguation %} · {{ edition.disambiguation }}{% endif %}{% if edition.id == album.sidecar.mb_release_id %} · Current release{% endif %}</span>
-        {% if edition.store_linked is sameas true %}
-        <p>Links to this download. Review its tracks and mix before choosing it.</p>
-        {% elif edition.store_linked is sameas false %}
-        <p>Store link missing. If this is the correct edition, add the <a href="{{ contribution.store_url }}" target="_blank" rel="noopener" class="text-accent">download URL ↗</a> to its MusicBrainz relationships.</p>
-        {% elif contribution.private %}
-        <p>Check the mix against your private download.</p>
-        {% endif %}
-    </li>
+            <tr class="border-t border-line hover:bg-surface">
+                <td class="p-2"><a href="https://musicbrainz.org/release/{{ edition.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline font-bold">{{ release_name(edition.title, edition.disambiguation) }} ↗</a>{% if edition.label %}<div class="text-muted">{{ edition.label }}{% if edition.catalog_number %} · {{ edition.catalog_number }}{% endif %}</div>{% endif %}</td>
+                <td class="p-2 whitespace-nowrap">{{ edition.media }}</td>
+                <td class="p-2 {% if edition.track_count != album.track_count %}text-amber-700{% endif %}">{{ edition.track_count or '?' }}</td>
+                <td class="p-2">{{ edition.date or '?' }} · {{ edition.country or '?' }}</td>
+                <td class="p-2">{{ 'Same URL' if edition.store_linked is sameas true else 'Not linked' if edition.store_linked is sameas false else 'Private download' if contribution.private else 'Unknown' }}</td>
+                <td class="p-2">{{ use_edition(edition) }}</td>
+            </tr>
         {% endfor %}
-</ul>
+        </tbody>
+    </table>
+</div>
     {% else %}
-<p>No confirmed digital editions found in this release group.</p>
+<p class="text-xs text-muted">No confirmed digital editions found in this release group.</p>
     {% endif %}
+    {% if suggested_edition %}</details>{% endif %}
     {% if editions_truncated or editions_unknown %}
-<p class="text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>
+<p class="text-xs text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>
     {% endif %}
-    {% if editions and not contribution.private and contribution.store_url %}
-<details><summary class="cursor-pointer text-muted">None of these is the right edition?</summary>
-    <a href="{{ harmony_base }}/release?url={{ contribution.store_url | urlencode }}" target="_blank" rel="noopener" class="text-accent">Import another digital edition with Harmony ↗</a>
-</details>
-    {% elif not editions and not editions_truncated and not editions_unknown and not contribution.private and contribution.store_url %}
-<a href="{{ harmony_base }}/release?url={{ contribution.store_url | urlencode }}" target="_blank" rel="noopener" class="text-accent font-bold">Create digital release with Harmony ↗</a>
+    {% if not contribution.private and contribution.store_url %}
+        {% if editions %}
+<details><summary class="cursor-pointer text-xs text-muted hover:text-ink">None of these is the right edition?</summary><div class="mt-2">{{ harmony() }}</div></details>
+        {% elif not editions_truncated and not editions_unknown %}
+{{ harmony() }}
+        {% endif %}
     {% endif %}
-<a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener" class="text-accent">Browse all editions on MusicBrainz ↗</a>
+<a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener" class="text-xs text-mb-purple hover:underline">Browse all editions on MusicBrainz ↗</a>
+<span id="edition-reviewing-{{ album.id }}" class="htmx-indicator text-xs text-muted" role="status">Loading review…</span>
 {% endif %}
+</div>

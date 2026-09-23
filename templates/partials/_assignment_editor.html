@@ -1,4 +1,4 @@
-{% from 'macros.html' import reload_on_success %}
+{% from 'macros.html' import reload_on_success, review_url %}
 {% macro duration(ms) -%}
     {{ '%d:%02d' | format(ms // 60000, (ms // 1000) % 60) if ms is not none else '—' }}
 {%- endmacro %}
@@ -17,7 +17,7 @@
 {% endif %}
 <div class="assignment-content space-y-3">
         {% if error %}<p role="alert" class="text-sm text-amber-700">{{ error }}</p>{% endif %}
-        {% set has_suggestion = album.sidecar and album.sidecar.mb_match_candidate %}
+        {% set has_suggestion = replacement or (album.sidecar and album.sidecar.mb_match_candidate) %}
         {% if has_suggestion or panel %}
         <div class="flex flex-wrap items-center justify-between gap-2">
             {% if has_suggestion %}
@@ -41,8 +41,8 @@
         {% for entry in panel.disk + panel.mb %}
             {% if entry.number.split('.')[0] not in ['?', '1'] %}{% set counts.multidisc = true %}{% endif %}
         {% endfor %}
-        <form hx-post="/assignments/{{ album.id }}" hx-target="closest .assignment-content"
-              hx-swap="outerHTML" hx-disabled-elt="find button" class="space-y-2">
+        <form hx-post="{{ review_url('/assignments/' ~ album.id, replacement) }}" hx-target="closest .assignment-content"
+              hx-swap="outerHTML settle:0ms" hx-disabled-elt="find button" class="space-y-2">
             <input type="hidden" name="disk_order" value="{{ panel.draft.disk_order }}">
             <input type="hidden" name="mb_order" value="{{ panel.draft.mb_order }}">
             <input type="hidden" name="disk_fingerprint" value="{{ panel.draft.disk_fingerprint }}">
@@ -159,13 +159,13 @@
                 <button type="submit" name="assignment_action" value="reset"
                         class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Reset</button>
                 {% else %}
-                <button type="button" hx-post="/confirm/{{ album.id }}/accept" hx-include="closest form"
+                <button type="button" hx-post="{{ review_url('/confirm/' ~ album.id ~ '/accept', replacement) }}" hx-include="closest form"
                         {% if not on_album_page %}hx-sync="body:queue last"{% endif %}
                         hx-target="#confirmation-modal" hx-swap="none" hx-disabled-elt="this"
                         hx-indicator="#assignment-progress-{{ album.id }}"
                         hx-on::after-request="if (event.detail.successful &amp;&amp; (event.detail.xhr.getResponseHeader('HX-Trigger') || '').includes('confirmation-applied')) harmonistCloseConfirmation(true)"
                         class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Accept changes</button>
-                <button type="button" hx-get="/assignments/{{ album.id }}?album_tracks={{ 'true' if album_tracks else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+                <button type="button" hx-get="{{ review_url('/assignments/' ~ album.id ~ '?album_tracks=' ~ ('true' if album_tracks else 'false') ~ '&on_album_page=' ~ ('true' if on_album_page else 'false'), replacement) }}"
                         hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
                         class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Reset</button>
                 {% endif %}
@@ -187,7 +187,7 @@
             {% if not album_tracks %}
             <div id="assignment-artwork-{{ album.id }}-{{ release_fingerprint }}" hx-preserve
                  class="assignment-artwork py-3 border-t border-line">
-                <div hx-get="/assignments/{{ album.id }}/artwork?release_fingerprint={{ release_fingerprint }}"
+                <div hx-get="{{ review_url('/assignments/' ~ album.id ~ '/artwork?release_fingerprint=' ~ release_fingerprint, replacement) }}"
                      hx-trigger="load" hx-target="closest .assignment-artwork" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this">
                     <p class="text-xs text-muted" role="status">Loading artwork… You can apply tags while keeping your images.</p>
                 </div>
@@ -202,7 +202,7 @@
         </form>
         {% else %}
         <div class="flex flex-wrap gap-3 text-xs">
-            <button hx-get="/assignments/{{ album.id }}?reread=true&amp;cancel={{ 'true' if cancel else 'false' }}&amp;album_tracks={{ 'true' if album_tracks else 'false' }}&amp;on_album_page={{ 'true' if on_album_page else 'false' }}"
+            <button hx-get="{{ review_url('/assignments/' ~ album.id ~ '?reread=true&cancel=' ~ ('true' if cancel else 'false') ~ '&album_tracks=' ~ ('true' if album_tracks else 'false') ~ '&on_album_page=' ~ ('true' if on_album_page else 'false'), replacement) }}"
                     hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this" class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded font-bold uppercase tracking-widest transition">{{ 'Read MusicBrainz' if cancel else 'Refresh MusicBrainz and reset' }}</button>
             {% if not cancel %}{% include 'partials/_assignment_cancel.html' %}{% else %}{% include 'partials/_assignment_edit_button.html' %}{% include 'partials/_assignment_view_actions.html' %}{% endif %}
         </div>

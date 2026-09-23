@@ -1,3 +1,4 @@
+{% from 'macros.html' import review_url %}
 <dialog class="bg-transparent p-0 m-auto max-w-lg w-full" aria-labelledby="confirm-release-title"
         onclick="if (event.target === this) this.close()">
     <div class="bg-white border border-line rounded-lg p-6 shadow-2xl space-y-4">
@@ -40,7 +41,7 @@
         </section>
         {% endif %}
         {% endif %}
-        <form hx-post="/confirm/{{ album.id }}" hx-target="#confirmation-modal" hx-swap="none"
+        <form hx-post="{{ review_url('/confirm/' ~ album.id, replacement) }}" hx-target="#confirmation-modal" hx-swap="none"
               hx-disabled-elt="find button[type='submit']" hx-indicator="#confirm-progress"
               hx-on::after-request="if (event.detail.successful &amp;&amp; (event.detail.xhr.getResponseHeader('HX-Trigger') || '').includes('confirmation-applied')) harmonistCloseConfirmation(true)"
               class="space-y-3">

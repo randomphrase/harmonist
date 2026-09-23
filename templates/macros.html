@@ -1,6 +1,11 @@
 {# Reusable Jinja rendering helpers.
    Import in a template with:  {% from 'macros.html' import release_name %} #}
 
+{# Carry a page-local replacement through every step of the shared review. #}
+{% macro review_url(path, replacement) -%}
+{{ path }}{% if replacement %}{{ '&' if '?' in path else '?' }}replacement={{ replacement|urlencode }}{% endif %}
+{%- endmacro %}
+
 {# An MB release name with its disambiguation rendered visually distinct —
    muted and parenthesised, the way MusicBrainz itself shows it. Pass the title
    and the (possibly empty) disambiguation separately. Wrap the call in an <a>

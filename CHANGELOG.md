@@ -8,7 +8,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
-- An MB contributions filter gathers Bandcamp downloads with possible media mismatches or missing store URLs, with concise findings, digital-edition discovery and Harmony links (#10).
+- An MB contributions filter helps correct Bandcamp media mismatches through reviewed digital-edition suggestions, then add missing store links to the chosen MusicBrainz release (#10).
 
 ### Changed
 

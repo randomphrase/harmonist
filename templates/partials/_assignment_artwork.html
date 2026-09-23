@@ -1,4 +1,5 @@
 {% from 'partials/_artwork_images.html' import thumbnail, full_size with context %}
+{% from 'macros.html' import review_url %}
 {% from 'partials/_caa_checked.html' import caa_checked with context %}
 {% set image_prefix = 'assignment-art-' ~ album.id ~ '-' %}
 <div class="space-y-3">
@@ -6,7 +7,7 @@
         <h3 class="text-sm font-bold">Artwork</h3>
         <dl class="grid grid-cols-[auto_auto_auto] items-center gap-x-2 text-xs">
             {{ caa_checked(caa.fetched_at if caa else none,
-                '/assignments/' ~ album.id ~ '/artwork?release_fingerprint=' ~ release_fingerprint ~ '&reread=true',
+                review_url('/assignments/' ~ album.id ~ '/artwork?release_fingerprint=' ~ release_fingerprint ~ '&reread=true', replacement),
                 'closest .assignment-artwork') }}
         </dl>
     </div>

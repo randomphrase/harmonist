@@ -1,14 +1,20 @@
 <div id="album-contributions-{{ album.id }}"{% if oob | default(false) %} hx-swap-oob="true"{% endif %}>
 {% if contribution is defined and contribution.eligible %}
 <section class="border border-line rounded-lg p-4 space-y-3" aria-label="MusicBrainz contributions">
-    <h2 class="text-sm font-bold text-ink">Contribute to MusicBrainz</h2>
+    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">MB contributions</h2>
     {% if contribution.media_mismatch %}
     <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> Bandcamp download matched to {{ contribution.observation.formats | join(' + ') }}.</p>
     {% elif contribution.observation and contribution.media_mismatch is none %}
     <p class="text-sm text-muted">MusicBrainz has not specified all medium formats. The media check is incomplete.</p>
-    {% endif %}
-    {% if contribution.missing_url %}
+    {% elif contribution.missing_url %}
     <p class="text-sm text-ink"><strong>Store URL missing from MusicBrainz.</strong> This release has no link to the download.</p>
+    <p class="text-xs text-muted">Only add this URL if it is the public release page for this edition.</p>
+    <div class="flex flex-wrap items-center gap-2">
+        <input type="text" readonly value="{{ contribution.store_url }}" aria-label="Store URL to copy"
+               onclick="this.select()" class="min-w-0 flex-grow px-3 py-1.5 border border-line rounded text-xs bg-surface text-ink">
+        <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit" target="_blank" rel="noopener"
+           class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Edit store link on MusicBrainz ↗</a>
+    </div>
     {% endif %}
     {% if contribution.private %}
     <p class="text-xs text-muted">Private Bandcamp download: check the mix; its URL stays private.</p>
@@ -23,15 +29,15 @@
     <p class="text-xs text-muted">Not checked against a stored MusicBrainz release yet.</p>
     {% endif %}
     <div class="flex flex-wrap items-center gap-3 text-xs">
-        <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}" target="_blank" rel="noopener" class="text-accent">Review current MB release ↗</a>
+        <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">Review current MB release ↗</a>
     </div>
-    {% if contribution.has_findings %}
+    {% if contribution.media_mismatch %}
     <div class="text-xs space-y-3">
         <button type="button" hx-get="/library/{{ album.id }}/contributions/editions"
                 hx-sync="#compare-{{ album.id }}:queue last"
                 hx-target="#contribution-editions-{{ album.id }}" hx-swap="innerHTML"
                 hx-disabled-elt="this" hx-indicator="#editions-checking-{{ album.id }}"
-                class="px-3 py-1 rounded border border-line hover:border-accent font-bold">Find digital editions</button>
+                class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Find digital editions</button>
         <span id="editions-checking-{{ album.id }}" class="htmx-indicator text-muted">Checking editions…</span>
         <div id="contribution-editions-{{ album.id }}" aria-live="polite"></div>
     </div>

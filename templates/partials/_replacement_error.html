@@ -1,0 +1,9 @@
+<dialog class="bg-transparent p-0 m-auto max-w-lg w-full" aria-labelledby="replacement-error-title"
+        onclick="if (event.target === this) this.close()">
+    <div class="bg-white border border-line rounded-lg p-6 shadow-2xl space-y-4">
+        <h2 id="replacement-error-title" class="text-xl font-bold">Review unavailable</h2>
+        <p role="alert" class="text-sm text-amber-700">{{ error }}</p>
+        <button type="button" onclick="harmonistCloseConfirmation()"
+                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Close</button>
+    </div>
+</dialog>

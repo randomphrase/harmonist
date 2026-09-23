@@ -75,23 +75,30 @@ without a finding.
 
 A missing URL may mean an existing digital release only needs its relationship
 added. A physical-media match may mean the appropriate digital edition is missing
-or your files are matched to the wrong edition. **Find digital editions** checks
-the same release group and lists digital editions with their store-link status.
-Review their tracks and mix before choosing one or adding its missing store link.
-If a complete search finds none, **Create digital release with Harmony** imports
-the public download. If the listed editions differ from yours, expand **None of
-these is the right edition?** to import another. Large groups and unspecified
-media are marked incomplete; a failed request never counts as absence.
+or your files are matched to the wrong edition. Resolve the media mismatch first:
+**Find digital editions** checks the same release group. A single edition with
+the same store URL and track count is suggested; other choices appear in a
+scrolling table with media, disambiguation, track count and release details.
+**Review suggestion** or **Use** opens the usual track and artwork review.
+Confirming tags this copy; cancelling leaves its current release intact.
+If no edition fits, **Add digital release with Harmony** imports the public
+download. Large groups and unspecified media are marked incomplete; a failed
+request never counts as absence.
 
-After an edit lands on MusicBrainz, refresh the album header to clear the finding. To
-choose a different match, use the pencil beside the MusicBrainz badge; the existing
-rematch workflow returns this album to Needs MBID while keeping its file tags
-until you confirm a replacement. Other copies and editions remain separate.
+Once the correct digital release is tagged, a missing store link is the next
+contribution. **Edit store link on MusicBrainz** opens that release's editor;
+click the adjacent URL field to select it for copying. Verify that it is the
+public release page for this edition before adding it. Refresh the album header
+after the edit lands to clear the finding. The pencil beside the MusicBrainz
+badge remains available for a different match outside this release group.
+Other copies and editions remain separate.
 
 Private downloads may contain a different mix from the public edition. They can
 still warrant media review, but Harmonist does not suggest publishing their
-private URLs or importing them through Harmony. Digital-edition discovery still
-works, but leaves the mix comparison to you.
+private URLs or importing them through Harmony. Privacy is known when Bandcamp
+supplied the private flag during purchase linking or download; a comment URL
+alone does not establish public availability. Digital-edition discovery still
+works for private downloads, but leaves the mix comparison to you.
 
 ## The Inbox
 

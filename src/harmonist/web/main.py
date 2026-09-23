@@ -1656,6 +1656,9 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     cfg: config_mod.Config = request.app.state.cfg
     base: dict[str, Any] = {
         "request": request,
+        # A page-local replacement choice travels with the shared review's
+        # requests. It never changes the sidecar before confirmation.
+        "replacement": request.query_params.get("replacement", ""),
         "cfg": cfg,
         "now": datetime.now(UTC),
         # Sync-popover state (header renders on every page): whether link-only
@@ -3384,6 +3387,10 @@ class _ConfirmationChanged(Exception):
     """The selected release no longer describes the confirmation preview."""
 
 
+class _ReplacementUnavailable(Exception):
+    """A page-local replacement cannot safely continue its review."""
+
+
 def _release_fingerprint(release: Release, requested_mbid: str) -> str:
     # Bind the selected candidate to the canonical snapshot. A merge stores
     # only the surviving ID; continuing review must find that same row locally.
@@ -3779,6 +3786,16 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
 
 
 def _register_routes(app: FastAPI) -> None:
+
+    @app.exception_handler(_ReplacementUnavailable)
+    async def replacement_unavailable(request: Request, exc: _ReplacementUnavailable) -> Response:
+        log.warning("replacement review unavailable: %s", exc, extra=_LOG_ONLY)
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/_replacement_error.html",
+            _ctx(request, error=str(exc)),
+            headers={"HX-Retarget": "#confirmation-modal", "HX-Reswap": "innerHTML settle:0ms"},
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def index(
@@ -4611,6 +4628,7 @@ def _register_routes(app: FastAPI) -> None:
                 else:
                     releases, total = mb_lookup.browse_release_group_editions(str(group_id))
                     editions, unknown = contributions.digital_editions(releases, contribution)
+                    editions.sort(key=lambda edition: edition["store_linked"] is not True)
                     truncated = total > len(releases)
             except mb_lookup.ReleaseGoneError:
                 error = "MusicBrainz no longer has this release. Review its match."
@@ -4629,6 +4647,15 @@ def _register_routes(app: FastAPI) -> None:
                 editions_truncated=truncated,
                 editions_group=group_id,
                 editions_error=error,
+                suggested_edition=(
+                    linked[0]
+                    if not error
+                    and not truncated
+                    and not unknown
+                    and len(linked := [e for e in editions if e["store_linked"] is True]) == 1
+                    and linked[0]["track_count"] == album.track_count
+                    else None
+                ),
             ),
         )
 
@@ -6171,7 +6198,47 @@ def _register_routes(app: FastAPI) -> None:
             album=album,
         )
 
-    def _assignment_candidate(album: Album) -> MatchCandidate | None:
+    def _assignment_candidate(
+        request: Request, album: Album, *, load_replacement: bool = False, reread: bool = False
+    ) -> MatchCandidate | None:
+        replacement = request.query_params.get("replacement", "")
+        if replacement:
+            original, separator, selected = replacement.partition(":")
+            sc = sidecar_mod.read(album.path)
+            if not separator or not selected or sc is None or sc.mb_release_id != original:
+                raise _ReplacementUnavailable(
+                    "The album's release changed. Close this review and choose again."
+                )
+            current = mb_cache.stored_release(original)
+            release = mb_cache.stored_release(selected)
+            if load_replacement and (release is None or reread):
+                try:
+                    release = mb_cache.fetch_release(
+                        selected, max_age=mb_cache.FRESH if reread else None
+                    )
+                except mb_lookup.MBError as exc:
+                    raise _ReplacementUnavailable(
+                        f"Could not load the digital edition: {exc}"
+                    ) from exc
+            group = (current.get("release-group") or {}).get("id") if current else None
+            media = (release.get("medium-list") or []) if release else []
+            if (
+                not group
+                or not release
+                or release["id"] != selected
+                or (release.get("release-group") or {}).get("id") != group
+                or not media
+                or any(m.get("format") != "Digital Media" for m in media)
+            ):
+                raise _ReplacementUnavailable(
+                    "The digital edition is no longer available for this review. Close it and check again.",
+                )
+            return MatchCandidate(
+                mb_release_id=selected,
+                confidence="no_match",
+                file_count=album.track_count,
+                track_count=mb_lookup.release_summary(release)["track_count"] or 0,
+            )
         if album.sidecar is None:
             return None
         if album.sidecar.mb_match_candidate is not None:
@@ -6201,7 +6268,9 @@ def _register_routes(app: FastAPI) -> None:
         album_tracks: bool = False,
     ) -> Response:
         album = _find_album(request, album_id)
-        candidate = _assignment_candidate(album)
+        candidate = _assignment_candidate(
+            request, album, load_replacement=request.method == "GET", reread=reread
+        )
         if candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to assign")
         panel = None
@@ -6216,7 +6285,7 @@ def _register_routes(app: FastAPI) -> None:
             try:
                 if draft:
                     release = _reviewed_release(candidate.mb_release_id, release_fingerprint)
-                elif reread or release is None:
+                elif (reread and not request.query_params.get("replacement")) or release is None:
                     release = mb_cache.fetch_release(
                         candidate.mb_release_id, max_age=mb_cache.FRESH if reread else None
                     )
@@ -6363,7 +6432,7 @@ def _register_routes(app: FastAPI) -> None:
     ) -> Response:
         """Load candidate artwork independently of the assignment/accept path."""
         album = _find_album(request, album_id)
-        candidate = _assignment_candidate(album)
+        candidate = _assignment_candidate(request, album)
         if candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to review")
         view = None
@@ -6426,7 +6495,7 @@ def _register_routes(app: FastAPI) -> None:
         any network requests. The original editor remains beneath this dialog.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
-        candidate = _assignment_candidate(album)
+        candidate = _assignment_candidate(request, album)
         if candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
         release = None
@@ -6572,7 +6641,7 @@ def _register_routes(app: FastAPI) -> None:
     ) -> Response:
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         sc = album.sidecar
-        candidate = _assignment_candidate(album)
+        candidate = _assignment_candidate(request, album)
         if sc is None or candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
         if sc.mb_match_candidate is None and not disk_fingerprint:

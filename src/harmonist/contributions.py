@@ -35,7 +35,9 @@ class Assessment:
 
     @property
     def has_findings(self) -> bool:
-        return self.media_mismatch is True or self.missing_url is True
+        return self.media_mismatch is True or (
+            self.media_mismatch is False and self.missing_url is True
+        )
 
     @property
     def unchecked(self) -> bool:

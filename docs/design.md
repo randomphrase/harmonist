@@ -970,8 +970,11 @@ Bandcamp URL in the files' comments. The scanner reads those comments through
 its existing single-open format readers; purchase ownership or a URL recovered
 from MusicBrainz alone cannot qualify a CD rip.
 
-`contributions.assess` derives independent possible-media-mismatch and
-missing-store-URL results from each local copy's evidence and an MB observation.
+`contributions.assess` derives possible-media-mismatch and missing-store-URL
+observations from each local copy's evidence and an MB observation. Only one
+contribution is actionable at a time: physical/mixed media takes precedence;
+missing-link editing is offered only for a confirmed digital release. Unknown
+media remains unchecked rather than inviting a link edit on an uncertain edition.
 Non-digital media, including mixed editions, invite review. Unspecified media
 remain unknown. URL equality retains the host and album/track path, normalizing
 scheme, trailing slash and tracking parameters. A precise file-comment URL wins
@@ -995,7 +998,10 @@ has no separate timestamp or refresh request.
 media and URL relationships in one request, capped at 100 releases. The current
 release's stored payload supplies the group; a missing payload costs at most one
 additional cached by-id fetch. Only wholly Digital Media editions are listed,
-with exact host-scoped store-link status and descriptive edition details. These
+with exact host-scoped store-link status and descriptive edition details in a
+scrolling table. The current release group is assumed correct. A complete search
+with exactly one URL-linked digital edition whose track count matches the files
+offers a prominent suggestion; otherwise the table presents the choices. These
 are candidates to review, never automatic matches. Truncation and unspecified
 media prevent a claim of absence, and failures remain distinct from no results.
 The search has no persistent results or cached negatives; repeating it asks MB
@@ -1004,14 +1010,32 @@ empty public search offers Harmony. Existing candidates offer a separate
 disclosure for importing another edition if the user judges that none fits.
 Private downloads never send their URL to a lookup or Harmony.
 
+**Use** and **Review suggestion** open the shared track/artwork review with a
+page-local replacement selection. The current MBID remains intact through
+review, cancellation and pre-write failure; no candidate is persisted. Each
+request validates the original MBID and the cached target's digital media and
+release group. Initial review may fetch one full release through `mb_cache`;
+continuation and confirmation use its reviewed snapshot without network access.
+Confirmation uses the existing audited tagger, scoped to this local copy. After
+tagging, its new release may raise the missing-link contribution.
+
+**Edit store link on MusicBrainz** opens the current release's editor with a
+selectable URL to copy. The existing header refresh verifies the eventual edit.
+MusicBrainz's release-editor seeding implementation applies URL relationships
+only when adding a release, so this path does not claim to prefill an existing
+release edit. No URL is published automatically.
+
 Private downloads can still warrant media review, but their URLs are not
 missing-link contribution opportunities and are never sent to Harmony. The
-public edition may have a different mix. A release group is context, not local
+public edition may have a different mix. `bandcamp.is_private` records positive
+purchase metadata; its absent/false legacy value does not establish that a URL
+is public. Import/edit actions therefore tell the user to verify the public
+release page. Privacy is not inferred from the URL's spelling.
+A release group is context, not local
 identity: original/reissue and physical/digital editions remain distinct, as do
 multiple local copies temporarily carrying the same approximate MBID. This
-feature leaves matching and purchase linking unchanged. The existing explicit
-rematch control provides the path to choosing a different edition; it clears
-the association for that copy while retaining file tags until confirmation.
+feature leaves purchase linking unchanged. The existing explicit rematch control
+remains available for choosing outside the release group.
 
 ### Caching MusicBrainz releases
 

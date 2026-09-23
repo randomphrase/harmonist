@@ -1,4 +1,4 @@
-<button {% if panel and album.sidecar.mb_match_candidate %}type="submit" name="assignment_action" value="edit"
-        {% else %}type="button" hx-get="/assignments/{{ album.id }}?on_album_page={{ 'true' if on_album_page else 'false' }}"
+<button {% if panel and (replacement or album.sidecar.mb_match_candidate) %}type="submit" name="assignment_action" value="edit"
+        {% else %}type="button" hx-get="{{ review_url('/assignments/' ~ album.id ~ '?on_album_page=' ~ ('true' if on_album_page else 'false'), replacement) }}"
         hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"{% endif %}
         class="px-3 py-1.5 border rounded text-xs font-bold uppercase tracking-widest transition {% if counts is defined and counts.unassigned %}bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-300{% else %}bg-white hover:bg-surface text-ink border-line{% endif %}">Edit track assignments</button>

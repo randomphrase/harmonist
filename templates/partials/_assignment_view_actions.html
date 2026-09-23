@@ -1,6 +1,6 @@
 {% if panel %}
-{% if album.sidecar.mb_match_candidate %}
-<button {% if actions_disabled|default(false) %}disabled{% endif %} type="button" hx-post="/confirm/{{ album.id }}/accept" hx-include="closest form"
+{% if replacement or album.sidecar.mb_match_candidate %}
+<button {% if actions_disabled|default(false) %}disabled{% endif %} type="button" hx-post="{{ review_url('/confirm/' ~ album.id ~ '/accept', replacement) }}" hx-include="closest form"
         {% if not on_album_page %}hx-sync="body:queue last"{% endif %}
         hx-target="#confirmation-modal" hx-swap="none" hx-disabled-elt="this"
         hx-indicator="#assignment-progress-{{ album.id }}"
@@ -10,7 +10,12 @@
 </button>
 {% endif %}
 {% endif %}
-{% if album.sidecar.mb_match_candidate %}
+{% if replacement %}
+{% if not actions_disabled|default(false) %}
+<button type="button" onclick="harmonistCloseModal()"
+        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Cancel</button>
+{% endif %}
+{% elif album.sidecar.mb_match_candidate %}
 <button {% if actions_disabled|default(false) %}disabled{% endif %} type="button" hx-post="/reject/{{ album.id }}" hx-swap="none" hx-disabled-elt="this"
         {{ reload_on_success(on_album_page) }}
         title="Clear this suggestion. The album stays here so you can assign a different release or recheck."
