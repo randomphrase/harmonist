@@ -1,14 +1,14 @@
 {% from 'macros.html' import release_name %}
-{% macro use_edition(edition) %}
+{% macro use_edition(edition, suggested) %}
 <button type="button" hx-get="/assignments/{{ album.id }}?replacement={{ (album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode }}&amp;modal=true&amp;cancel=true&amp;on_album_page=true"
         hx-target="#modal" hx-swap="innerHTML" hx-disabled-elt="this"
         hx-indicator="#edition-reviewing-{{ album.id }}"
-        class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Use</button>
+        class="px-3 py-1.5 {% if suggested %}bg-accent hover:bg-accent-dark text-white{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Use</button>
 {% endmacro %}
 {% macro harmony() %}
 <p class="text-xs text-muted mb-2">Only import this URL if it is the public release page for this edition.</p>
 <a href="{{ harmony_base }}/release?url={{ contribution.store_url|urlencode }}" target="_blank" rel="noopener"
-   class="inline-flex px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Add digital release with Harmony ↗</a>
+   class="inline-flex px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Add digital release with Harmony ↗</a>
 {% endmacro %}
 <div class="space-y-3">
 {% if editions_error %}
@@ -29,7 +29,7 @@
                 <td class="p-2 {% if edition.track_count != album.track_count %}text-amber-700{% endif %}">{{ edition.track_count or '?' }}</td>
                 <td class="p-2">{{ edition.date or '?' }} · {{ edition.country or '?' }}</td>
                 <td class="p-2">{{ 'Same URL' if edition.store_linked is sameas true else 'Not linked' if edition.store_linked is sameas false else 'Private download' if contribution.private else 'Unknown' }}</td>
-                <td class="p-2 text-center">{% if suggested %}<span class="block mb-1 text-amber-700 font-bold">Suggested</span>{% endif %}{{ use_edition(edition) }}</td>
+                <td class="p-2 text-center">{% if suggested %}<span class="block mb-1 text-amber-700 font-bold">Suggested</span>{% endif %}{{ use_edition(edition, suggested) }}</td>
             </tr>
         {% endfor %}
         </tbody>
