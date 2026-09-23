@@ -987,8 +987,9 @@ even when tag-relevant data is unchanged. Library predicates do no I/O.
 Unchecked/incomplete coverage is counted explicitly. A fresh check spends one
 release request and changes no tags, sidecars or match; failed checks retain
 dated evidence and explain the failure. URL-only changes do not unmute ignored
-tag updates or require another tag plan. Album comparison and contribution
-refresh requests share an HTMX synchronization group.
+tag updates or require another tag plan. The album header's MB date and refresh
+control cover contribution findings alongside the tag comparison; the section
+has no separate timestamp or refresh request.
 
 Private downloads can still warrant media review, but their URLs are not
 missing-link contribution opportunities and are never sent to Harmony. The

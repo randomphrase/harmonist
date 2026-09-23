@@ -65,9 +65,9 @@ that your files are Bandcamp downloads: a Bandcamp URL in their comments, or an
 actual download recorded by Harmonist. Owning a Bandcamp purchase alone does not qualify a CD rip.
 Older downloads without either kind of evidence are not assumed to qualify.
 
-Open an album's **Contribute to MusicBrainz** section to see the evidence and when
-it was checked. **Check MusicBrainz again** makes a fresh, read-only check; it does
-not tag files or change the match. Checks also run with background update checks
+Open an album's **Contribute to MusicBrainz** section to see the findings. The
+album header's **MB checked** date and refresh control cover these findings too;
+refreshing does not tag files or change the match. Checks also run with background update checks
 when enabled in Settings. Separate coverage counts identify downloads without a
 complete assessment, including unknown medium formats or an ambiguous store URL.
 Unchecked albums are not counted as clean or added to the contribution filter

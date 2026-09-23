@@ -296,15 +296,15 @@ def test_fresh_check_changes_only_observation_and_preserves_failures(tmp_path, m
     initial = {p: p.read_bytes() for p in cfg.paths.music_dir.rglob("*") if p.is_file()}
     fetch = Mock(return_value=release(("CD",)))
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
-    response = client.post(f"/library/{a.id}/contributions/check")
+    response = client.get(f"/library/{a.id}/compare?reread=1")
     assert response.status_code == 200
     assert "Possible media mismatch" in response.text and "Open in Harmony" in response.text
     fetch.return_value = release(urls=(URL,))
-    response = client.post(f"/library/{a.id}/contributions/check")
+    response = client.get(f"/library/{a.id}/compare?reread=1")
     assert "Digital Media and store URL agree" in response.text
     fetch.side_effect = mb_lookup.MBError("offline")
-    response = client.post(f"/library/{a.id}/contributions/check")
-    assert "previous observation is retained" in response.text
+    response = client.get(f"/library/{a.id}/compare?reread=1")
+    assert "Couldn't read MusicBrainz again" in response.text
     assert "Digital Media and store URL agree" in response.text
     assert fetch.call_count == 3  # explicit check bypasses the fresh TTL every time
     assert initial == {p: p.read_bytes() for p in initial}
@@ -319,7 +319,7 @@ def test_private_refresh_keeps_manual_review_without_harmony(tmp_path, monkeypat
     client = TestClient(app, headers={"HX-Request": "true"})
     a = next(a for a in app.state.scan_runner.scan_now() if a.path == d)
     monkeypatch.setattr(mb_lookup, "fetch_release", Mock(return_value=release(("CD",))))
-    response = client.post(f"/library/{a.id}/contributions/check")
+    response = client.get(f"/library/{a.id}/compare?reread=1")
     assert (
         "Private Bandcamp download" in response.text
         and "Review current MB release" in response.text

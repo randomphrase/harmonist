@@ -4586,39 +4586,6 @@ def _register_routes(app: FastAPI) -> None:
         ctx["edit_assignments"] = edit_assignments
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 
-    @app.post("/library/{album_id}/contributions/check", response_class=HTMLResponse)
-    def check_contributions(request: Request, album_id: str) -> Response:
-        """One explicit, fresh, read-only check; never retag or change identity."""
-        album = _refreshed_from_disk(request, _find_album(request, album_id))
-        contributions.warm(album)
-        error = None
-        if contributions.assess(album).eligible:
-            assert album.sidecar is not None and album.sidecar.mb_release_id is not None
-            try:
-                release = mb_cache.fetch_release(
-                    album.sidecar.mb_release_id, max_age=mb_cache.FRESH
-                )
-            except mb_lookup.ReleaseGoneError:
-                error = "MusicBrainz no longer has this release. Review its match."
-            except mb_lookup.MBError as exc:
-                error = f"Could not check MusicBrainz: {exc}. The previous observation is retained."
-            else:
-                if release["id"] != album.sidecar.mb_release_id:
-                    error = "MusicBrainz merged this release. Refresh the album comparison to review it."
-                else:
-                    contributions.observe(album, release, mb_cache.fetched_at(str(release["id"])))
-        request.state.skip_rescan = True
-        return _templates(request).TemplateResponse(
-            request,
-            "partials/_contributions.html",
-            _ctx(
-                request,
-                album=album,
-                contribution=contributions.assess(album),
-                contribution_error=error,
-            ),
-        )
-
     @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
     def library_compare(
         request: Request, album_id: str, check: bool = False, reread: bool = False

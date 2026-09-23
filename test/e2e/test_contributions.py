@@ -23,18 +23,24 @@ def test_contribution_check_and_library_filter(contribution_server: str) -> None
         assert "url=https" in panel.get_by_role("link", name="Open in Harmony").get_attribute(
             "href"
         )
+        # Replace the displayed finding so a successful request alone cannot
+        # pass: the header refresh must actually update this section too.
+        panel.get_by_text("Possible media mismatch.", exact=True).evaluate(
+            "e => e.textContent = 'Previous contribution finding'"
+        )
         with page.expect_response(
             lambda r: (
-                r.url.endswith(f"/library/{ALBUM}/contributions/check")
-                and r.request.method == "POST"
+                r.url.endswith(f"/library/{ALBUM}/compare?reread=1") and r.request.method == "GET"
             ),
             timeout=10_000,
         ) as checked:
-            panel.get_by_role("button", name="Check MusicBrainz again").click()
+            page.get_by_role(
+                "button", name="Read this release from MusicBrainz again", exact=True
+            ).click()
         assert checked.value.status == 200
-        playwright_sync.expect(panel).to_contain_text("MB contribution check: just now")
+        playwright_sync.expect(panel).to_contain_text("Possible media mismatch")
         playwright_sync.expect(
-            panel.get_by_role("button", name="Check MusicBrainz again")
+            page.get_by_role("button", name="Read this release from MusicBrainz again", exact=True)
         ).to_be_enabled()
         page.goto(f"{contribution_server}/?tab=library")
         page.evaluate("window.__contributionNoReload = true")
