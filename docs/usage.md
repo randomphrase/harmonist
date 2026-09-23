@@ -82,8 +82,8 @@ edition with the same store URL and track count is highlighted as **Suggested**
 above its **Use** button.
 **Use** on any row opens the usual track and artwork review.
 Confirming tags this copy; cancelling leaves its current release intact.
-If no edition fits, expand **Add a missing digital edition** for the Harmony
-import link. A complete search with no digital editions shows the link directly.
+If no release fits, **Add Release** opens Harmony to import the public download.
+**Browse all releases on MusicBrainz** opens the release group's full list.
 Large groups and unspecified media are marked incomplete; a failed request never
 counts as absence.
 

@@ -203,7 +203,7 @@ def test_discovery_is_scoped_read_only_fresh_and_keeps_multiple_editions(library
         assert 'release/digital"' in r.text and 'release/digital-reissue"' in r.text
         assert "Same URL" in r.text and "Not linked" in r.text
         assert f'release/{MBID}"' not in r.text
-        assert "Add digital release with Harmony" in r.text
+        assert "Add Release" in r.text
     assert browse.call_count == 2
     assert browse.call_args.kwargs["release_group"] == "rg-aaa"
     assert browse.call_args.kwargs["limit"] == 100
@@ -244,7 +244,7 @@ def test_only_complete_public_absence_offers_harmony(library, monkeypatch, kind)
     monkeypatch.setattr(musicbrainzngs, "browse_releases", browse)
     r = client.get(f"/library/{MBID}/contributions/editions")
     assert r.status_code == 200
-    assert ("Add digital release with Harmony" in r.text) is (kind == "absent")
+    assert ("Add Release" in r.text) is (kind == "absent")
     if kind == "absent":
         assert "No confirmed digital editions found" in r.text
     elif kind in {"unknown", "truncated"}:
@@ -264,7 +264,7 @@ def test_no_cached_group_costs_one_release_fetch_and_one_browse(library, monkeyp
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
     monkeypatch.setattr(musicbrainzngs, "browse_releases", browse)
     response = client.get("/library/other-edition/contributions/editions")
-    assert response.status_code == 200 and "Add digital release with Harmony" in response.text
+    assert response.status_code == 200 and "Add Release" in response.text
     assert fetch.call_count == browse.call_count == 1
 
 

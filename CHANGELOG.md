@@ -8,7 +8,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
-- An MB contributions filter automatically lists digital editions and highlights the suggested action for review, then helps add missing store links to the chosen MusicBrainz release (#10).
+- An MB contributions filter offers suggested digital releases, a Harmony import link, and help adding missing store links to MusicBrainz (#10).
 
 ### Changed
 

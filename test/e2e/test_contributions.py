@@ -32,6 +32,7 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         playwright_sync.expect(panel).not_to_contain_text("Store URL missing from MusicBrainz")
         results = panel.locator(f"#contribution-editions-{ALBUM}")
         playwright_sync.expect(results.locator("tbody tr")).to_have_count(2)
+        playwright_sync.expect(results.locator('a[href*="/release?url="]')).to_be_visible()
         assert len(discoveries) == 1
         # A second visit has a stored comparison. With the zero-TTL fixture
         # that comparison refreshes itself before it may discover siblings.

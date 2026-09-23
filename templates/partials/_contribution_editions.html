@@ -5,11 +5,6 @@
         hx-indicator="#edition-reviewing-{{ album.id }}"
         class="px-3 py-1.5 {% if suggested %}bg-accent hover:bg-accent-dark text-white{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Use</button>
 {% endmacro %}
-{% macro harmony() %}
-<p class="text-xs text-muted mb-2">Only import this URL if it is the public release page for this edition.</p>
-<a href="{{ harmony_base }}/release?url={{ contribution.store_url|urlencode }}" target="_blank" rel="noopener"
-   class="inline-flex px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Add digital release with Harmony ↗</a>
-{% endmacro %}
 <div class="space-y-3">
 {% if editions_error %}
 <p role="alert" class="text-amber-700">{{ editions_error }} Refresh MusicBrainz in the album header to try again.</p>
@@ -41,14 +36,13 @@
     {% if editions_truncated or editions_unknown %}
 <p class="text-xs text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>
     {% endif %}
-    {% if not contribution.private and contribution.store_url %}
-        {% if editions %}
-<details><summary class="cursor-pointer text-xs text-muted hover:text-ink">Add a missing digital edition</summary><div class="mt-2">{{ harmony() }}</div></details>
-        {% elif not editions_truncated and not editions_unknown %}
-{{ harmony() }}
-        {% endif %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+    <a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener" class="text-xs text-mb-purple hover:underline">Browse all releases on MusicBrainz ↗</a>
+    {% if not contribution.private and contribution.store_url and (editions or (not editions_truncated and not editions_unknown)) %}
+    <a href="{{ harmony_base }}/release?url={{ contribution.store_url|urlencode }}" target="_blank" rel="noopener" title="Add release with Harmony"
+       class="ml-auto inline-flex px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Add Release ↗</a>
     {% endif %}
-<a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener" class="text-xs text-mb-purple hover:underline">Browse all editions on MusicBrainz ↗</a>
+</div>
 <span id="edition-reviewing-{{ album.id }}" class="htmx-indicator text-xs text-muted" role="status">Loading review…</span>
 {% endif %}
 </div>

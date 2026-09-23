@@ -1009,8 +1009,9 @@ media prevent a claim of absence, and failures remain distinct from no results.
 The search has no persistent results or cached negatives; repeating it asks MB
 again, and the album header refresh reloads its transient results. Discovery
 failures direct the user to that same header control to retry. A complete
-empty public search offers Harmony. Existing candidates offer a separate
-disclosure for importing another edition if the user judges that none fits.
+empty public search offers Harmony. When existing candidates are listed,
+the same **Add Release** link remains visible beside **Browse all releases**
+for importing another release if the user judges that none fits.
 Private downloads never send their URL to a lookup or Harmony.
 
 **Use** on any row opens the shared track/artwork review with a
