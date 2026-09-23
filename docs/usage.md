@@ -89,8 +89,8 @@ counts as absence.
 
 Once the correct digital release is tagged, a missing store link is the next
 contribution. **Edit store link on MusicBrainz** opens that release's editor;
-click the adjacent URL field to select it for copying. Verify that it is the
-public release page for this edition before adding it. Refresh the album header
+click the adjacent URL field to select it for copying. MusicBrainz does not
+pre-fill URL relationships when editing an existing release. Refresh the album header
 after the edit lands to clear the finding. The pencil beside the MusicBrainz
 badge remains available for a different match outside this release group.
 Other copies and editions remain separate.

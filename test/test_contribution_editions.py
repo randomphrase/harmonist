@@ -26,7 +26,7 @@ def library(tmp_path):
     return client, cfg.paths.music_dir
 
 
-def test_contributions_resolve_media_before_link_and_explain_unknown_privacy(library):
+def test_contributions_resolve_media_before_store_link(library):
     from bs4 import BeautifulSoup
 
     client, _ = library
@@ -43,7 +43,6 @@ def test_contributions_resolve_media_before_link_and_explain_unknown_privacy(lib
         if fmt == "CD":
             assert "Store URL missing" not in panel.text
         else:
-            assert "public release page" in panel.text
             assert panel.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
             url_input = panel.select_one("input[readonly]")
             assert url_input is not None and url_input["value"] == URL

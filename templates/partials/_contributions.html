@@ -8,7 +8,6 @@
     <p class="text-sm text-muted">MusicBrainz has not specified all medium formats. The media check is incomplete.</p>
     {% elif contribution.missing_url %}
     <p class="text-sm text-ink"><strong>Store URL missing from MusicBrainz.</strong> This release has no link to the download.</p>
-    <p class="text-xs text-muted">Only add this URL if it is the public release page for this edition.</p>
     <div class="flex flex-wrap items-center gap-2">
         <input type="text" readonly value="{{ contribution.store_url }}" aria-label="Store URL to copy"
                onclick="this.select()" class="min-w-0 flex-grow px-3 py-1.5 border border-line rounded text-xs bg-surface text-ink">
