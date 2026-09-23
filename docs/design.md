@@ -991,6 +991,19 @@ tag updates or require another tag plan. The album header's MB date and refresh
 control cover contribution findings alongside the tag comparison; the section
 has no separate timestamp or refresh request.
 
+**Find digital editions** makes a fresh, explicit release-group browse with
+media and URL relationships in one request, capped at 100 releases. The current
+release's stored payload supplies the group; a missing payload costs at most one
+additional cached by-id fetch. Only wholly Digital Media editions are listed,
+with exact host-scoped store-link status and descriptive edition details. These
+are candidates to review, never automatic matches. Truncation and unspecified
+media prevent a claim of absence, and failures remain distinct from no results.
+The search has no persistent results or cached negatives; repeating it asks MB
+again, and the album header refresh clears its transient results. A complete
+empty public search offers Harmony. Existing candidates offer a separate
+disclosure for importing another edition if the user judges that none fits.
+Private downloads never send their URL to a lookup or Harmony.
+
 Private downloads can still warrant media review, but their URLs are not
 missing-link contribution opportunities and are never sent to Harmony. The
 public edition may have a different mix. A release group is context, not local

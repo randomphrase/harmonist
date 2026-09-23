@@ -254,6 +254,28 @@ def browse_release_group_releases(release_group_mbid: str) -> list[tuple[str, li
     return out
 
 
+def browse_release_group_editions(release_group_mbid: str) -> tuple[list[Release], int]:
+    """One fresh page of editions, with media and links for contribution review.
+
+    Return the total as well: a truncated group cannot prove a digital edition
+    is absent. No per-edition requests and no cached negative search results.
+    """
+    try:
+        result = musicbrainzngs.browse_releases(
+            release_group=release_group_mbid,
+            includes=["media", "url-rels", "artist-credits", "labels"],
+            limit=100,
+        )
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.ResponseError,
+        musicbrainzngs.AuthenticationError,
+    ) as exc:
+        raise MBError(f"Could not check release-group editions: {exc}") from exc
+    releases = result.get("release-list") or []
+    return releases, int(result.get("release-count", len(releases)))
+
+
 def _media_summary(media: list[dict[str, Any]]) -> str:
     """Summarise a release's media/format the way MusicBrainz does: 'CD',
     a 2-disc CD as '2{cross}CD', 'CD + Digital Media'. Empty when no format

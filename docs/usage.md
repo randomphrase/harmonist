@@ -75,16 +75,23 @@ without a finding.
 
 A missing URL may mean an existing digital release only needs its relationship
 added. A physical-media match may mean the appropriate digital edition is missing
-or your files are matched to the wrong edition. Review the current MB release and
-its other editions first; **Open in Harmony** can import a missing public digital
-release. After an edit lands on MusicBrainz, check again to clear the finding. To
+or your files are matched to the wrong edition. **Find digital editions** checks
+the same release group and lists digital editions with their store-link status.
+Review their tracks and mix before choosing one or adding its missing store link.
+If a complete search finds none, **Create digital release with Harmony** imports
+the public download. If the listed editions differ from yours, expand **None of
+these is the right edition?** to import another. Large groups and unspecified
+media are marked incomplete; a failed request never counts as absence.
+
+After an edit lands on MusicBrainz, refresh the album header to clear the finding. To
 choose a different match, use the pencil beside the MusicBrainz badge; the existing
 rematch workflow returns this album to Needs MBID while keeping its file tags
 until you confirm a replacement. Other copies and editions remain separate.
 
 Private downloads may contain a different mix from the public edition. They can
 still warrant media review, but Harmonist does not suggest publishing their
-private URLs or importing them through Harmony. Search MusicBrainz manually.
+private URLs or importing them through Harmony. Digital-edition discovery still
+works, but leaves the mix comparison to you.
 
 ## The Inbox
 

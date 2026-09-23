@@ -907,6 +907,15 @@ def browse_release_group_releases(release_group_mbid: str) -> list[tuple[str, li
     return out
 
 
+def browse_release_group_editions(release_group_mbid: str) -> tuple[list[Release], int]:
+    releases = [
+        fetch_release(mbid)
+        for mbid, rel in MB_RELEASES.items()
+        if (rel.get("release-group") or {}).get("id") == release_group_mbid
+    ]
+    return releases[:100], len(releases)
+
+
 def search_releases(artist: str, title: str, limit: int = 10) -> list[dict[str, Any]]:
     a = (artist or "").strip().lower()
     t = (title or "").strip().lower()
@@ -1017,6 +1026,7 @@ def install() -> None:
     mb_lookup.fetch_video_media = fetch_video_media
     mb_lookup.lookup_by_bandcamp_url = lookup_by_bandcamp_url
     mb_lookup.browse_release_group_releases = browse_release_group_releases
+    mb_lookup.browse_release_group_editions = browse_release_group_editions
     mb_search.search_releases = search_releases
     cover_art.front_image = front_image
     cover_art.check_front = check_front

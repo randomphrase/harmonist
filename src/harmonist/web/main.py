@@ -4586,6 +4586,52 @@ def _register_routes(app: FastAPI) -> None:
         ctx["edit_assignments"] = edit_assignments
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 
+    @app.get("/library/{album_id}/contributions/editions", response_class=HTMLResponse)
+    def contribution_editions(request: Request, album_id: str) -> Response:
+        """An explicit, bounded sibling search; never replace the current match."""
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        contribution = contributions.assess(album)
+        editions: list[dict[str, Any]] = []
+        unknown = 0
+        truncated = False
+        group_id = None
+        error = None
+        sc = album.sidecar
+        if not contribution.eligible or sc is None or not sc.mb_release_id:
+            error = "No confirmed Bandcamp download to check."
+        else:
+            try:
+                release = mb_cache.stored_release(sc.mb_release_id)
+                if release is None:
+                    release = mb_cache.fetch_release(sc.mb_release_id)
+                if release["id"] != sc.mb_release_id:
+                    error = "MusicBrainz merged this release. Refresh the album header first."
+                elif not (group_id := (release.get("release-group") or {}).get("id")):
+                    error = "MusicBrainz has not supplied a release group for this release."
+                else:
+                    releases, total = mb_lookup.browse_release_group_editions(str(group_id))
+                    editions, unknown = contributions.digital_editions(releases, contribution)
+                    truncated = total > len(releases)
+            except mb_lookup.ReleaseGoneError:
+                error = "MusicBrainz no longer has this release. Review its match."
+            except mb_lookup.MBError as exc:
+                log.warning("digital-edition discovery failed for %s: %s", sc.mb_release_id, exc)
+                error = f"Could not check digital editions: {exc}"
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/_contribution_editions.html",
+            _ctx(
+                request,
+                album=album,
+                contribution=contribution,
+                editions=editions,
+                editions_unknown=unknown,
+                editions_truncated=truncated,
+                editions_group=group_id,
+                editions_error=error,
+            ),
+        )
+
     @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
     def library_compare(
         request: Request, album_id: str, check: bool = False, reread: bool = False

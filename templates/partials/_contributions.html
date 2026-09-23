@@ -11,7 +11,7 @@
     <p class="text-sm text-ink"><strong>Store URL missing from MusicBrainz.</strong> This release has no link to the download.</p>
     {% endif %}
     {% if contribution.private %}
-    <p class="text-xs text-muted">Private Bandcamp download: its mix may differ from the public edition. Search MusicBrainz manually; do not publish its private URL.</p>
+    <p class="text-xs text-muted">Private Bandcamp download: check the mix; its URL stays private.</p>
     {% elif not contribution.store_url %}
     <p class="text-xs text-muted">No unambiguous album or track URL is known. The store URL check is incomplete.</p>
     {% endif %}
@@ -24,10 +24,18 @@
     {% endif %}
     <div class="flex flex-wrap items-center gap-3 text-xs">
         <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}" target="_blank" rel="noopener" class="text-accent">Review current MB release ↗</a>
-        {% if not contribution.private and contribution.store_url and (contribution.media_mismatch or contribution.missing_url) %}
-        <a href="{{ harmony_base }}/release?url={{ contribution.store_url | urlencode }}" target="_blank" rel="noopener" class="text-accent">Open in Harmony ↗</a>
-        {% endif %}
     </div>
+    {% if contribution.has_findings %}
+    <div class="text-xs space-y-3">
+        <button type="button" hx-get="/library/{{ album.id }}/contributions/editions"
+                hx-sync="#compare-{{ album.id }}:queue last"
+                hx-target="#contribution-editions-{{ album.id }}" hx-swap="innerHTML"
+                hx-disabled-elt="this" hx-indicator="#editions-checking-{{ album.id }}"
+                class="px-3 py-1 rounded border border-line hover:border-accent font-bold">Find digital editions</button>
+        <span id="editions-checking-{{ album.id }}" class="htmx-indicator text-muted">Checking editions…</span>
+        <div id="contribution-editions-{{ album.id }}" aria-live="polite"></div>
+    </div>
+    {% endif %}
 </section>
 {% endif %}
 </div>

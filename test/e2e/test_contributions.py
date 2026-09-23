@@ -20,9 +20,6 @@ def test_contribution_check_and_library_filter(contribution_server: str) -> None
         panel = page.locator(f"#album-contributions-{ALBUM}")
         playwright_sync.expect(panel).to_contain_text("Possible media mismatch")
         playwright_sync.expect(panel).to_contain_text("Store URL missing from MusicBrainz")
-        assert "url=https" in panel.get_by_role("link", name="Open in Harmony").get_attribute(
-            "href"
-        )
         # Replace the displayed finding so a successful request alone cannot
         # pass: the header refresh must actually update this section too.
         panel.get_by_text("Possible media mismatch.", exact=True).evaluate(
@@ -42,6 +39,23 @@ def test_contribution_check_and_library_filter(contribution_server: str) -> None
         playwright_sync.expect(
             page.get_by_role("button", name="Read this release from MusicBrainz again", exact=True)
         ).to_be_enabled()
+        with page.expect_response(
+            lambda r: r.url.endswith(f"/library/{ALBUM}/contributions/editions"),
+            timeout=10_000,
+        ) as discovered:
+            panel.get_by_role("button", name="Find digital editions").click()
+        assert discovered.value.status == 200
+        results = panel.locator(f"#contribution-editions-{ALBUM}")
+        playwright_sync.expect(results).to_contain_text("Bandcamp download")
+        playwright_sync.expect(results).to_contain_text("Links to this download")
+        playwright_sync.expect(results).to_contain_text("Digital reissue")
+        playwright_sync.expect(results).to_contain_text("Store link missing")
+        playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
+        # Refreshing the source observation clears transient discovery results.
+        page.get_by_role(
+            "button", name="Read this release from MusicBrainz again", exact=True
+        ).click()
+        playwright_sync.expect(results).to_be_empty()
         page.goto(f"{contribution_server}/?tab=library")
         page.evaluate("window.__contributionNoReload = true")
         page.get_by_role("navigation", name="Library filters").get_by_role(

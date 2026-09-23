@@ -298,7 +298,7 @@ def test_fresh_check_changes_only_observation_and_preserves_failures(tmp_path, m
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
     response = client.get(f"/library/{a.id}/compare?reread=1")
     assert response.status_code == 200
-    assert "Possible media mismatch" in response.text and "Open in Harmony" in response.text
+    assert "Possible media mismatch" in response.text and "Find digital editions" in response.text
     fetch.return_value = release(urls=(URL,))
     response = client.get(f"/library/{a.id}/compare?reread=1")
     assert "Digital Media and store URL agree" in response.text
@@ -324,5 +324,5 @@ def test_private_refresh_keeps_manual_review_without_harmony(tmp_path, monkeypat
         "Private Bandcamp download" in response.text
         and "Review current MB release" in response.text
     )
-    assert "Open in Harmony" not in response.text
+    assert "Find digital editions" in response.text
     assert "Store URL missing from MusicBrainz" not in response.text

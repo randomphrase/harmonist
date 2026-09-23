@@ -1,0 +1,34 @@
+{% if editions_error %}
+<p role="alert" class="text-amber-700">{{ editions_error }}. Try Find digital editions again.</p>
+{% else %}
+    {% if editions %}
+<ul class="space-y-3">
+        {% for edition in editions %}
+    <li>
+        <a href="https://musicbrainz.org/release/{{ edition.id }}" target="_blank" rel="noopener" class="text-accent font-bold">Review {{ edition.title or 'digital edition' }} ↗</a>
+        <span class="text-muted">{{ edition.date or 'Undated' }}{% if edition.country %} · {{ edition.country }}{% endif %}{% if edition.track_count %} · {{ edition.track_count }} tracks{% endif %}{% if edition.disambiguation %} · {{ edition.disambiguation }}{% endif %}{% if edition.id == album.sidecar.mb_release_id %} · Current release{% endif %}</span>
+        {% if edition.store_linked is sameas true %}
+        <p>Links to this download. Review its tracks and mix before choosing it.</p>
+        {% elif edition.store_linked is sameas false %}
+        <p>Store link missing. If this is the correct edition, add the <a href="{{ contribution.store_url }}" target="_blank" rel="noopener" class="text-accent">download URL ↗</a> to its MusicBrainz relationships.</p>
+        {% elif contribution.private %}
+        <p>Check the mix against your private download.</p>
+        {% endif %}
+    </li>
+        {% endfor %}
+</ul>
+    {% else %}
+<p>No confirmed digital editions found in this release group.</p>
+    {% endif %}
+    {% if editions_truncated or editions_unknown %}
+<p class="text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>
+    {% endif %}
+    {% if editions and not contribution.private and contribution.store_url %}
+<details><summary class="cursor-pointer text-muted">None of these is the right edition?</summary>
+    <a href="{{ harmony_base }}/release?url={{ contribution.store_url | urlencode }}" target="_blank" rel="noopener" class="text-accent">Import another digital edition with Harmony ↗</a>
+</details>
+    {% elif not editions and not editions_truncated and not editions_unknown and not contribution.private and contribution.store_url %}
+<a href="{{ harmony_base }}/release?url={{ contribution.store_url | urlencode }}" target="_blank" rel="noopener" class="text-accent font-bold">Create digital release with Harmony ↗</a>
+    {% endif %}
+<a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener" class="text-accent">Browse all editions on MusicBrainz ↗</a>
+{% endif %}

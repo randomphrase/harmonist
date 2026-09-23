@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from . import mb_cache
+from . import mb_cache, mb_lookup
 from .models import Album, Release
 
 
@@ -133,3 +134,34 @@ def warm(album: Album) -> None:
     snapshot = mb_cache.stored_release_snapshot(mbid)
     if snapshot is not None:
         observe(album, snapshot.payload, snapshot.fetched_at)
+
+
+def digital_editions(
+    releases: list[Release], assessment: Assessment
+) -> tuple[list[dict[str, Any]], int]:
+    """Digital candidates, never matches; retain uncertainty about missing media."""
+    editions = []
+    unknown = 0
+    for release in releases:
+        formats = [m.get("format") for m in (release.get("medium-list") or [])]
+        if any(f and f != "Digital Media" for f in formats):
+            continue
+        if not formats or not all(formats):
+            unknown += 1
+            continue
+        urls = {
+            url
+            for rel in (release.get("url-relation-list") or [])
+            if (url := release_url(rel.get("target")))
+        }
+        editions.append(
+            {
+                **mb_lookup.release_summary(release),
+                "store_linked": (
+                    assessment.store_url in urls
+                    if assessment.store_url and not assessment.private
+                    else None
+                ),
+            }
+        )
+    return editions, unknown
