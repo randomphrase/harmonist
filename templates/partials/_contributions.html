@@ -28,18 +28,18 @@
     {% else %}
     <p class="text-xs text-muted">Not checked against a stored MusicBrainz release yet.</p>
     {% endif %}
-    <div class="flex flex-wrap items-center gap-3 text-xs">
-        <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">Review current MB release ↗</a>
-    </div>
     {% if contribution.media_mismatch %}
-    <div class="text-xs space-y-3">
-        <button type="button" hx-get="/library/{{ album.id }}/contributions/editions"
-                hx-sync="#compare-{{ album.id }}:queue last"
-                hx-target="#contribution-editions-{{ album.id }}" hx-swap="innerHTML"
-                hx-disabled-elt="this" hx-indicator="#editions-checking-{{ album.id }}"
-                class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Find digital editions</button>
-        <span id="editions-checking-{{ album.id }}" class="htmx-indicator text-muted">Checking editions…</span>
-        <div id="contribution-editions-{{ album.id }}" aria-live="polite"></div>
+    {# The comparison owns discovery: the initial page and a stale comparison
+       must not browse before the final comparison replaces this section. #}
+    {% set load_editions = oob | default(false) and not refreshing | default(false) %}
+    <div id="contribution-editions-{{ album.id }}" class="text-xs" aria-live="polite"
+         {% if load_editions %}
+         hx-get="/library/{{ album.id }}/contributions/editions" hx-trigger="load"
+         hx-sync="#compare-{{ album.id }}:queue last" hx-swap="innerHTML"
+         {% endif %}>
+        {% if load_editions %}
+        <span class="text-muted">Checking digital editions…</span>
+        {% endif %}
     </div>
     {% endif %}
 </section>

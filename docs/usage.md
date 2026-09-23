@@ -65,7 +65,7 @@ that your files are Bandcamp downloads: a Bandcamp URL in their comments, or an
 actual download recorded by Harmonist. Owning a Bandcamp purchase alone does not qualify a CD rip.
 Older downloads without either kind of evidence are not assumed to qualify.
 
-Open an album's **Contribute to MusicBrainz** section to see the findings. The
+Open an album's **MB contributions** section to see the findings. The
 album header's **MB checked** date and refresh control cover these findings too;
 refreshing does not tag files or change the match. Checks also run with background update checks
 when enabled in Settings. Separate coverage counts identify downloads without a
@@ -76,10 +76,10 @@ without a finding.
 A missing URL may mean an existing digital release only needs its relationship
 added. A physical-media match may mean the appropriate digital edition is missing
 or your files are matched to the wrong edition. Resolve the media mismatch first:
-**Find digital editions** checks the same release group. A single edition with
-the same store URL and track count is suggested; other choices appear in a
-scrolling table with media, disambiguation, track count and release details.
-**Review suggestion** or **Use** opens the usual track and artwork review.
+digital editions from the same release group appear automatically in a scrolling
+table with media, disambiguation, track count and release details. A single
+edition with the same store URL and track count is highlighted as **Suggested**.
+**Use** on any row opens the usual track and artwork review.
 Confirming tags this copy; cancelling leaves its current release intact.
 If no edition fits, **Add digital release with Harmony** imports the public
 download. Large groups and unspecified media are marked incomplete; a failed

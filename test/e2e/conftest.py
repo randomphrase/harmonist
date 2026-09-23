@@ -58,12 +58,16 @@ def stale_cache_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str
     )
 
 
-@pytest.fixture(scope="module")
-def contribution_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
-    yield from _run_demo_server(
+@pytest.fixture(scope="module", params=[3600, 0], ids=["fresh", "stale"])
+def contribution_server(
+    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
+) -> Iterator[tuple[str, bool]]:
+    for base in _run_demo_server(
         tmp_path_factory.mktemp("e2e-contributions"),
         app_module="test.e2e.contribution_app:app",
-    )
+        config_toml=f"[musicbrainz]\ncache_ttl_seconds = {request.param}\n",
+    ):
+        yield base, request.param == 0
 
 
 @pytest.fixture

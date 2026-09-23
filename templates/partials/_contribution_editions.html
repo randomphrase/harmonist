@@ -1,9 +1,9 @@
 {% from 'macros.html' import release_name %}
-{% macro use_edition(edition, label='Use') %}
+{% macro use_edition(edition) %}
 <button type="button" hx-get="/assignments/{{ album.id }}?replacement={{ (album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode }}&amp;modal=true&amp;cancel=true&amp;on_album_page=true"
         hx-target="#modal" hx-swap="innerHTML" hx-disabled-elt="this"
         hx-indicator="#edition-reviewing-{{ album.id }}"
-        class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">{{ label }}</button>
+        class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Use</button>
 {% endmacro %}
 {% macro harmony() %}
 <p class="text-xs text-muted mb-2">Only import this URL if it is the public release page for this edition.</p>
@@ -12,18 +12,8 @@
 {% endmacro %}
 <div class="space-y-3">
 {% if editions_error %}
-<p role="alert" class="text-amber-700">{{ editions_error }} Try Find digital editions again.</p>
+<p role="alert" class="text-amber-700">{{ editions_error }} Refresh MusicBrainz in the album header to try again.</p>
 {% else %}
-    {% if suggested_edition %}
-<div class="rounded-lg border border-amber-200 bg-amber-50/40 p-3 flex flex-wrap items-center justify-between gap-3" aria-label="Suggested digital release">
-    <div>
-        <p class="text-sm font-bold">Suggested match: <a href="https://musicbrainz.org/release/{{ suggested_edition.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">{{ release_name(suggested_edition.title, suggested_edition.disambiguation) }} ↗</a></p>
-        <p class="text-xs text-muted">{{ suggested_edition.media }} · {{ suggested_edition.track_count }} tracks · Same store URL</p>
-    </div>
-    {{ use_edition(suggested_edition, 'Review suggestion') }}
-</div>
-<details><summary class="cursor-pointer text-xs text-muted hover:text-ink">Other digital editions</summary>
-    {% endif %}
     {% if editions %}
 <div class="max-h-64 overflow-auto border border-line rounded" tabindex="0" role="region" aria-label="Digital editions">
     <table class="w-full text-xs text-left">
@@ -32,8 +22,9 @@
         </tr></thead>
         <tbody>
         {% for edition in editions %}
-            <tr class="border-t border-line hover:bg-surface">
-                <td class="p-2"><a href="https://musicbrainz.org/release/{{ edition.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline font-bold">{{ release_name(edition.title, edition.disambiguation) }} ↗</a>{% if edition.label %}<div class="text-muted">{{ edition.label }}{% if edition.catalog_number %} · {{ edition.catalog_number }}{% endif %}</div>{% endif %}</td>
+            {% set suggested = suggested_edition and edition.id == suggested_edition.id %}
+            <tr class="border-t border-line {% if suggested %}bg-amber-50/40{% else %}hover:bg-surface{% endif %}"{% if suggested %} aria-label="Suggested digital release"{% endif %}>
+                <td class="p-2">{% if suggested %}<span class="block text-amber-700 font-bold">Suggested</span>{% endif %}<a href="https://musicbrainz.org/release/{{ edition.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline font-bold">{{ release_name(edition.title, edition.disambiguation) }} ↗</a>{% if edition.label %}<div class="text-muted">{{ edition.label }}{% if edition.catalog_number %} · {{ edition.catalog_number }}{% endif %}</div>{% endif %}</td>
                 <td class="p-2 whitespace-nowrap">{{ edition.media }}</td>
                 <td class="p-2 {% if edition.track_count != album.track_count %}text-amber-700{% endif %}">{{ edition.track_count or '?' }}</td>
                 <td class="p-2">{{ edition.date or '?' }} · {{ edition.country or '?' }}</td>
@@ -47,7 +38,6 @@
     {% else %}
 <p class="text-xs text-muted">No confirmed digital editions found in this release group.</p>
     {% endif %}
-    {% if suggested_edition %}</details>{% endif %}
     {% if editions_truncated or editions_unknown %}
 <p class="text-xs text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>
     {% endif %}

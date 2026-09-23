@@ -994,23 +994,26 @@ tag updates or require another tag plan. The album header's MB date and refresh
 control cover contribution findings alongside the tag comparison; the section
 has no separate timestamp or refresh request.
 
-**Find digital editions** makes a fresh, explicit release-group browse with
-media and URL relationships in one request, capped at 100 releases. The current
-release's stored payload supplies the group; a missing payload costs at most one
+Opening a media-mismatch album automatically browses its release group with
+media and URL relationships in one fresh request, capped at 100 releases. It
+waits for the album comparison, including any stale-cache refresh, to settle
+before loading editions, so the initial render does not duplicate the browse.
+The current release's stored payload supplies the group; a missing payload costs at most one
 additional cached by-id fetch. Only wholly Digital Media editions are listed,
 with exact host-scoped store-link status and descriptive edition details in a
 scrolling table. The current release group is assumed correct. A complete search
 with exactly one URL-linked digital edition whose track count matches the files
-offers a prominent suggestion; otherwise the table presents the choices. These
+highlights that row as **Suggested** alongside the other choices. These
 are candidates to review, never automatic matches. Truncation and unspecified
 media prevent a claim of absence, and failures remain distinct from no results.
 The search has no persistent results or cached negatives; repeating it asks MB
-again, and the album header refresh clears its transient results. A complete
+again, and the album header refresh reloads its transient results. Discovery
+failures direct the user to that same header control to retry. A complete
 empty public search offers Harmony. Existing candidates offer a separate
 disclosure for importing another edition if the user judges that none fits.
 Private downloads never send their URL to a lookup or Harmony.
 
-**Use** and **Review suggestion** open the shared track/artwork review with a
+**Use** on any row opens the shared track/artwork review with a
 page-local replacement selection. The current MBID remains intact through
 review, cancellation and pre-write failure; no candidate is persisted. Each
 request validates the original MBID and the cached target's digital media and

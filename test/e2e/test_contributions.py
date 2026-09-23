@@ -12,14 +12,39 @@ playwright_sync = pytest.importorskip("playwright.sync_api")
 ALBUM = "demo-rel-dingoes"
 
 
-def test_contribution_check_and_library_filter(contribution_server: str) -> None:
+def test_contribution_check_and_library_filter(contribution_server: tuple[str, bool]) -> None:
+    server, stale = contribution_server
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page()
-        page.goto(f"{contribution_server}/album/{ALBUM}")
+        discoveries = []
+        page.on(
+            "request",
+            lambda request: (
+                discoveries.append(request.url)
+                if request.url.endswith(f"/library/{ALBUM}/contributions/editions")
+                else None
+            ),
+        )
+        page.goto(f"{server}/album/{ALBUM}")
         panel = page.locator(f"#album-contributions-{ALBUM}")
         playwright_sync.expect(panel).to_contain_text("Possible media mismatch")
         playwright_sync.expect(panel).not_to_contain_text("Store URL missing from MusicBrainz")
+        results = panel.locator(f"#contribution-editions-{ALBUM}")
+        playwright_sync.expect(results.locator("tbody tr")).to_have_count(2)
+        assert len(discoveries) == 1
+        # A second visit has a stored comparison. With the zero-TTL fixture
+        # that comparison refreshes itself before it may discover siblings.
+        if stale:
+            with page.expect_response(
+                lambda r: r.url.endswith(f"/library/{ALBUM}/compare?check=1"), timeout=10_000
+            ) as refreshed:
+                page.reload()
+            assert refreshed.value.ok
+        else:
+            page.reload()
+        playwright_sync.expect(results.locator("tbody tr")).to_have_count(2)
+        assert len(discoveries) == 2
         # Replace the displayed finding so a successful request alone cannot
         # pass: the header refresh must actually update this section too.
         panel.get_by_text("Possible media mismatch.", exact=True).evaluate(
@@ -39,25 +64,20 @@ def test_contribution_check_and_library_filter(contribution_server: str) -> None
         playwright_sync.expect(
             page.get_by_role("button", name="Read this release from MusicBrainz again", exact=True)
         ).to_be_enabled()
-        with page.expect_response(
-            lambda r: r.url.endswith(f"/library/{ALBUM}/contributions/editions"),
-            timeout=10_000,
-        ) as discovered:
-            panel.get_by_role("button", name="Find digital editions").click()
-        assert discovered.value.status == 200
-        results = panel.locator(f"#contribution-editions-{ALBUM}")
         playwright_sync.expect(results).to_contain_text("Bandcamp download")
-        playwright_sync.expect(results).to_contain_text("Same store URL")
+        playwright_sync.expect(results).to_contain_text("Same URL")
         playwright_sync.expect(results).to_contain_text("Digital reissue")
-        results.get_by_text("Other digital editions", exact=True).click()
         playwright_sync.expect(
             results.get_by_role("region", name="Digital editions")
         ).to_be_visible()
         playwright_sync.expect(results.locator("tbody tr")).to_have_count(2)
+        assert len(discoveries) == 3
         playwright_sync.expect(results).to_contain_text("Not linked")
         # Choosing a replacement opens the existing review without clearing
         # the original match. Closing it must preserve the media finding.
-        results.get_by_role("button", name="Review suggestion").click()
+        suggestion = results.locator("tbody tr").filter(has_text="Suggested")
+        playwright_sync.expect(suggestion).to_contain_text("Bandcamp download")
+        suggestion.get_by_role("button", name="Use", exact=True).click()
         dialog = page.locator("#modal dialog[open]")
         playwright_sync.expect(dialog).to_contain_text("Suggested match")
         playwright_sync.expect(
@@ -99,7 +119,7 @@ def test_contribution_check_and_library_filter(contribution_server: str) -> None
             "button", name="Read this release from MusicBrainz again", exact=True
         ).click()
         playwright_sync.expect(panel).to_contain_text("Store URL missing from MusicBrainz")
-        page.goto(f"{contribution_server}/?tab=library")
+        page.goto(f"{server}/?tab=library")
         page.evaluate("window.__contributionNoReload = true")
         page.get_by_role("navigation", name="Library filters").get_by_role(
             "link", name="MB contributions"

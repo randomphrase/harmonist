@@ -47,7 +47,7 @@ def test_contributions_resolve_media_before_link_and_explain_unknown_privacy(lib
             assert panel.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
             url_input = panel.select_one("input[readonly]")
             assert url_input is not None and url_input["value"] == URL
-            assert "Find digital editions" not in panel.text
+            assert panel.select_one(f"#contribution-editions-{MBID}") is None
 
 
 @pytest.mark.parametrize(
@@ -72,7 +72,11 @@ def test_suggestion_requires_one_exact_url_and_matching_count(library, monkeypat
     )
     monkeypatch.setattr(musicbrainzngs, "browse_releases", browse)
     page = BeautifulSoup(client.get(f"/library/{MBID}/contributions/editions").text, "html.parser")
-    assert bool(page.select('[aria-label="Suggested digital release"]')) is (kind == "unique")
+    suggestion = page.select_one('tbody tr[aria-label="Suggested digital release"]')
+    assert bool(suggestion) is (kind == "unique")
+    if suggestion:
+        assert "Suggested" in suggestion.text
+        assert "bg-amber-50/40" in suggestion["class"]
     assert len(page.select("tbody tr")) == 2
     assert len(page.select("tbody button[hx-get]")) == 2
     assert "Digital Media" in page.text
