@@ -68,8 +68,10 @@ sidecar contents.
 - **Never push or publish without an explicit say-so.** Commit freely; anything
   that leaves the machine is the user's call, every time — ask, and wait. A skill
   that lists `git push` among its steps is documenting it, not authorizing it.
-  See the **source-control** skill for what else doesn't count as authorization,
-  plus staging and history-rewrite discipline.
+  The one standing exception: once a PR branch is approved for pushing, fixes
+  for that PR's CI failures may be pushed to it. Merging always needs its own
+  explicit go-ahead. See the **source-control** skill for the limits, what else
+  doesn't count as authorization, and staging and history-rewrite discipline.
 - **Issue-first:** raise substantial/functional work (bug fixes, features,
   behavior changes, non-trivial refactors) as a GitHub issue *before* writing the
   code, and close it from the commit (`Fixes #N`). Only changes that can't alter
