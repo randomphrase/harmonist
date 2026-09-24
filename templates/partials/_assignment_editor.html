@@ -197,8 +197,8 @@
                 {% with actions_disabled=not cancel %}
                     {% include 'partials/_assignment_view_actions.html' %}
                 {% endwith %}
+                <span id="assignment-progress-{{ album.id }}" class="htmx-indicator hidden [&.htmx-request]:inline text-xs text-muted" role="status">Applying reviewed changes…</span>
             </div>
-            <span id="assignment-progress-{{ album.id }}" class="htmx-indicator text-xs text-muted" role="status">Applying reviewed changes…</span>
         </form>
         {% else %}
         <div class="flex flex-wrap gap-3 text-xs">
