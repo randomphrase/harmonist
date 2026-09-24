@@ -2,9 +2,8 @@
 {% if replacement or album.sidecar.mb_match_candidate %}
 <button {% if actions_disabled|default(false) %}disabled{% endif %} type="button" hx-post="{{ review_url('/confirm/' ~ album.id ~ '/accept', replacement) }}" hx-include="closest form"
         {% if not on_album_page %}hx-sync="body:queue last"{% endif %}
-        hx-target="#confirmation-modal" hx-swap="none" hx-disabled-elt="this"
+        hx-target="#assignment-error-{{ album.id }}-{{ candidate.mb_release_id }}" hx-swap="none" hx-disabled-elt="this"
         hx-indicator="#assignment-progress-{{ album.id }}"
-        hx-on::after-request="if (event.detail.successful &amp;&amp; (event.detail.xhr.getResponseHeader('HX-Trigger') || '').includes('confirmation-applied')) harmonistCloseConfirmation(true)"
         class="disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
     Confirm suggestion
 </button>

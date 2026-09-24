@@ -134,10 +134,19 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         playwright_sync.expect(
             review.get_by_role("button", name="Confirm suggestion", exact=True)
         ).to_be_enabled()
+        selected_art = review.get_by_alt_text("Artwork for selected release")
+        playwright_sync.expect(selected_art).to_be_visible()
+        selected_digest = selected_art.get_attribute("src").split("?")[0].rsplit("/", 1)[-1]
+        review.get_by_role("checkbox", name="Use artwork from the selected release").check()
         with page.expect_response(lambda r: "/confirm/" in r.url and "/accept" in r.url) as tagged:
             review.get_by_role("button", name="Confirm suggestion", exact=True).click()
         assert "confirmation-applied" in tagged.value.headers.get("hx-trigger", "")
         page.wait_for_url("**/album/demo-rel-dingoes-reissue*")
+        current_art = page.locator("#album-artwork .art-row__side:not(.art-row__side--after) img")
+        playwright_sync.expect(current_art.first).to_be_visible()
+        assert set(
+            current_art.evaluate_all("els => els.map(e => e.src.split('?')[0].split('/').pop())")
+        ) == {selected_digest}
         panel = page.locator("#album-contributions-demo-rel-dingoes-reissue")
         playwright_sync.expect(panel).to_contain_text("Store URL missing from MusicBrainz")
         playwright_sync.expect(panel).not_to_contain_text("Possible media mismatch")

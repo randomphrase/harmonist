@@ -124,17 +124,9 @@ def test_confirmation_applies_only_included_artwork(reset_demo_server, on_album,
         pw.expect(review.locator('[name="disk_order"]')).to_have_value("0,1,2")
         review.get_by_role("button", name="Cancel", exact=True).click()
         pw.expect(checkbox).to_be_checked(checked=included)
-        if included:
+        with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as confirmed:
             review.get_by_role("button", name="Confirm suggestion", exact=True).click()
-            dialog = page.locator("#confirmation-modal dialog")
-            pw.expect(dialog.get_by_role("region", name="Artwork replacement")).to_be_visible()
-            with page.expect_response(lambda r: r.url.endswith("/confirm/" + aid)) as confirmed:
-                dialog.get_by_role("button", name="Confirm suggestion", exact=True).click()
-        else:
-            with page.expect_response(
-                lambda r: r.url.endswith(f"/confirm/{aid}/accept")
-            ) as confirmed:
-                review.get_by_role("button", name="Confirm suggestion", exact=True).click()
+        assert "confirmation-applied" in confirmed.value.headers.get("hx-trigger", "")
         assert (
             parse_qs(confirmed.value.request.post_data)["include_artwork"][-1]
             == str(included).lower()
@@ -179,7 +171,7 @@ def test_pending_artwork_does_not_block_tags_only_acceptance(reset_demo_server):
         browser.close()
 
 
-def test_changed_confirmation_stays_open_for_review(reset_demo_server):
+def test_changed_confirmation_preserves_review_and_artwork_choice(reset_demo_server):
     base = reset_demo_server
     with pw.sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -187,27 +179,32 @@ def test_changed_confirmation_stays_open_for_review(reset_demo_server):
         aid = _suggest(page, base)
         page.goto(base)
         card = page.locator(f"#task-{aid}")
+        pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         card.get_by_role("button", name="Edit track assignments").click()
         editor = card.locator(".assignment-editor")
         pw.expect(editor.get_by_role("button", name="Accept changes")).to_be_visible()
         editor.get_by_role("button", name="Accept changes").click()
         pw.expect(editor.get_by_role("button", name="Edit track assignments")).to_be_visible()
+        checkbox = editor.get_by_role("checkbox", name="Use artwork from the selected release")
+        checkbox.check()
+        draft = editor.locator('[name="disk_order"]').input_value()
         # A stale explicit pairing must be reviewed again before it can be saved.
+        fingerprint = editor.locator('[name="release_fingerprint"]').input_value()
         editor.locator('[name="release_fingerprint"]').evaluate(
             "e => e.value = e.value.split(':')[0] + ':obsolete'"
         )
         editor.get_by_role("button", name="Confirm suggestion").click()
-        dialog = page.locator("#confirmation-modal dialog")
-        pw.expect(dialog.get_by_role("alert")).to_contain_text("Refresh the comparison")
-        pw.expect(dialog).to_be_visible()
-        pw.expect(
-            dialog.get_by_role("button", name="Confirm suggestion", exact=True)
-        ).to_have_count(0)
-        dialog.get_by_role("button", name="Close confirmation", exact=True).click()
-        card.get_by_role(
-            "button", name="Read this release from MusicBrainz again and reset assignment changes"
-        ).click()
-        pw.expect(editor.locator('[name="release_fingerprint"]')).not_to_have_value("obsolete")
+        pw.expect(editor.get_by_role("alert")).to_contain_text("Refresh the comparison")
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value(draft)
+        pw.expect(checkbox).to_be_checked()
+        pw.expect(editor.get_by_role("button", name="Confirm suggestion")).to_be_enabled()
+        with page.expect_response(lambda r: f"/assignments/{aid}?" in r.url and "reread" in r.url):
+            card.get_by_role(
+                "button",
+                name="Read this release from MusicBrainz again and reset assignment changes",
+            ).click()
+        pw.expect(editor.locator('[name="release_fingerprint"]')).to_have_value(fingerprint)
         with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
             card.get_by_role("button", name="Confirm suggestion", exact=True).click()
         assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")

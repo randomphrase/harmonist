@@ -3798,9 +3798,9 @@ def _register_routes(app: FastAPI) -> None:
             )
         return _templates(request).TemplateResponse(
             request,
-            "partials/_replacement_error.html",
+            "partials/_assignment_error.html",
             _ctx(request, error=str(exc)),
-            headers={"HX-Retarget": "#confirmation-modal", "HX-Reswap": "innerHTML settle:0ms"},
+            headers={"HX-Reswap": "innerHTML settle:0ms"},
         )
 
     @app.get("/", response_class=HTMLResponse)
@@ -6275,7 +6275,6 @@ def _register_routes(app: FastAPI) -> None:
         on_album_page: bool = False,
         cancel: bool = False,
         reread: bool = False,
-        modal: bool = False,
         release_only: bool = False,
         album_tracks: bool = False,
     ) -> Response:
@@ -6352,7 +6351,7 @@ def _register_routes(app: FastAPI) -> None:
                 assignment_error = str(e)
         return _templates(request).TemplateResponse(
             request,
-            "partials/_assignment_dialog.html" if modal else "partials/_assignment_editor.html",
+            "partials/_assignment_editor.html",
             _ctx(
                 request,
                 album=album,
@@ -6364,7 +6363,7 @@ def _register_routes(app: FastAPI) -> None:
                 album_tracks=album_tracks,
                 cancel=cancel,
                 checked_at=checked_at,
-                fragment=not modal,
+                fragment=True,
                 assignment_changes=assignment_changes,
                 assignment_error=assignment_error,
                 review_draft=review_draft,
@@ -6380,7 +6379,6 @@ def _register_routes(app: FastAPI) -> None:
         on_album_page: bool = False,
         cancel: bool = False,
         reread: bool = False,
-        modal: bool = False,
         album_tracks: bool = False,
     ) -> Response:
         return _assignment_editor(
@@ -6389,7 +6387,6 @@ def _register_routes(app: FastAPI) -> None:
             on_album_page=on_album_page,
             cancel=cancel,
             reread=reread,
-            modal=modal,
             album_tracks=album_tracks,
         )
 
@@ -6488,104 +6485,19 @@ def _register_routes(app: FastAPI) -> None:
             ),
         )
 
-    def _confirmation_preview(
+    def _confirmation_error(
         request: Request,
-        album_id: str,
-        *,
-        incomplete: bool = False,
-        on_album_page: bool = False,
-        error: str | None = None,
-        assignment_draft: track_assignment.Draft | None = None,
-        assignment_release: str = "",
-        include_artwork: bool = False,
-        art_plan: str = "",
-        apply_if_ready: bool = False,
+        error: str,
     ) -> Response:
-        """Confirm only unresolved assignments and included artwork replacements.
-
-        This and the write both continue the stored review, without spending
-        any network requests. The original editor remains beneath this dialog.
-        """
-        album = _refreshed_from_disk(request, _find_album(request, album_id))
-        candidate = _assignment_candidate(request, album)
-        if candidate is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
-        release = None
-        panel = None
-        view = None
-        try:
-            release = _reviewed_release(candidate.mb_release_id, assignment_release)
-            if assignment_draft is None:
-                raise _ConfirmationChanged("Review the track assignments before applying changes.")
-            panel = track_assignment.panel(
-                album_files.for_paths(album.folders), release, assignment_draft
-            )
-            tagger_mod.plan_album(
-                album.path,
-                release,
-                files=panel.files,
-                artwork=False,
-                incomplete=incomplete,
-                assignment=panel.mapping(),
-                transforms=_transforms(request),
-            )
-            if include_artwork:
-                view = _artwork_view(
-                    album,
-                    caa_cache.stored(release["id"]),
-                    _archive_image(release["id"]),
-                    chosen=artwork.Source.ARCHIVE,
-                    folder_cover=_folder_cover_policy(request),
-                )
-                if not art_plan or view.fingerprint != art_plan:
-                    raise _ConfirmationChanged(
-                        "Artwork changed since the review. Go back and review the artwork again."
-                    )
-        except (_ConfirmationChanged, ValueError, OSError, tagger_mod.TagMismatchError) as e:
-            log.warning("could not confirm reviewed changes: %s", e, extra=_LOG_ONLY)
-            error = error or str(e)
-        if (
-            apply_if_ready
-            and not error
-            and panel is not None
-            and panel.paired
-            and (view is None or view.operation != "replacement")
-        ):
-            assert assignment_draft is not None
-            request.state.skip_rescan = False  # this branch really writes
-            return confirm_match(
-                request,
-                album_id,
-                candidate_mbid=candidate.mb_release_id,
-                release_fingerprint=assignment_release,
-                art_plan=art_plan,
-                include_artwork=include_artwork,
-                on_album_page=on_album_page,
-                disk_order=assignment_draft.disk_order,
-                mb_order=assignment_draft.mb_order,
-                disk_fingerprint=assignment_draft.disk_fingerprint,
-                incomplete=incomplete,
-            )
+        """Keep the user's review and artwork choice in place on failure."""
+        request.state.skip_rescan = True
         response = _templates(request).TemplateResponse(
             request,
-            "partials/_confirm_release.html",
-            _ctx(
-                request,
-                album=album,
-                candidate=candidate,
-                release=release,
-                release_fingerprint=assignment_release,
-                assignment_panel=panel,
-                assignment_draft=assignment_draft,
-                artwork=view,
-                included=include_artwork,
-                art_plan=art_plan,
-                incomplete=incomplete,
-                on_album_page=on_album_page,
-                error=error,
-            ),
+            "partials/_assignment_error.html",
+            _ctx(request, error=error),
         )
-        response.headers["HX-Retarget"] = "#confirmation-modal"
+        # The clicked action targets its own review's error region, even when
+        # sibling selection and confirmed-track review share an album page.
         response.headers["HX-Reswap"] = "innerHTML settle:0ms"
         return response
 
@@ -6598,44 +6510,16 @@ def _register_routes(app: FastAPI) -> None:
         reread: bool = False,
         release_only: bool = False,
     ) -> Response:
-        # Legacy entry points open the full review on the page, not a second
-        # review disguised as a confirmation. Its artwork loads independently.
+        # Legacy read-only entry point uses the same inline review.
         return _assignment_editor(
             request,
             album_id,
             on_album_page=on_album_page,
             reread=reread,
             release_only=release_only,
-            modal=True,
         )
 
     @app.post("/confirm/{album_id}/accept", response_class=HTMLResponse)
-    @app.post("/confirm/{album_id}/preview", response_class=HTMLResponse)
-    def assignment_preview(
-        request: Request,
-        album_id: str,
-        disk_order: str = Form(...),
-        mb_order: str = Form(...),
-        disk_fingerprint: str = Form(...),
-        release_fingerprint: str = Form(...),
-        incomplete: bool = Form(False),
-        on_album_page: bool = Form(False),
-        include_artwork: bool = Form(False),
-        art_plan: str = Form(""),
-    ) -> Response:
-        request.state.skip_rescan = True  # preview only; confirmation handles writes
-        return _confirmation_preview(
-            request,
-            album_id,
-            incomplete=incomplete,
-            on_album_page=on_album_page,
-            assignment_draft=track_assignment.Draft(disk_order, mb_order, disk_fingerprint),
-            assignment_release=release_fingerprint,
-            include_artwork=include_artwork,
-            art_plan=art_plan,
-            apply_if_ready=request.url.path.endswith("/accept"),
-        )
-
     @app.post("/confirm/{album_id}", response_class=HTMLResponse)
     @app.post("/confirm/{album_id}/incomplete", response_class=HTMLResponse)
     def confirm_match(
@@ -6666,6 +6550,8 @@ def _register_routes(app: FastAPI) -> None:
             if not all((disk_order, mb_order, disk_fingerprint, release_fingerprint)):
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "incomplete assignment review")
             draft = track_assignment.Draft(disk_order, mb_order, disk_fingerprint)
+        if request.url.path.endswith("/accept") and draft is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "review assignments before applying")
         try:
             if candidate_mbid and candidate_mbid != candidate.mb_release_id:
                 raise _ConfirmationChanged(
@@ -6700,32 +6586,13 @@ def _register_routes(app: FastAPI) -> None:
                 assignment_draft=draft,
             )
         except (_ConfirmationChanged, track_assignment.AssignmentChanged) as e:
-            return _confirmation_preview(
-                request,
-                album_id,
-                incomplete=incomplete,
-                on_album_page=on_album_page,
-                error=str(e),
-                assignment_draft=draft,
-                assignment_release=release_fingerprint,
-                include_artwork=include_artwork,
-                art_plan=art_plan,
-            )
+            log.warning("could not apply reviewed changes: %s", e, extra=_LOG_ONLY)
+            return _confirmation_error(request, str(e))
         except Exception as e:
             # Per-album request boundary: retain the review and report the failure.
             log.exception("confirmation tagging failed", extra=_LOG_ONLY)
             if release_fingerprint:
-                return _confirmation_preview(
-                    request,
-                    album_id,
-                    incomplete=incomplete,
-                    on_album_page=on_album_page,
-                    error=f"Tagging failed: {e}",
-                    assignment_draft=draft,
-                    assignment_release=release_fingerprint,
-                    include_artwork=include_artwork,
-                    art_plan=art_plan,
-                )
+                return _confirmation_error(request, f"Tagging failed: {e}")
             return _flash_response(
                 "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
@@ -6748,7 +6615,7 @@ def _register_routes(app: FastAPI) -> None:
         if outcome.artwork.stale:
             details.append("artwork left alone, changed since: " + ", ".join(outcome.artwork.stale))
         # Confirmation can change the album's canonical id. Make that identity
-        # visible before the dialog closes or redirects to its new album URL.
+        # visible before the page refreshes or redirects to its new album URL.
         runner = request.app.state.scan_runner
         if runner.is_engaged():
             runner.refresh_now()

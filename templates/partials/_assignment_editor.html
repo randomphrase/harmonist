@@ -151,6 +151,9 @@
                     </tbody>
                 </table>
             </div>
+            {% if counts.unassigned %}
+            <p class="text-xs text-amber-700">Unassigned files will receive the album's MusicBrainz ID and keep their current track metadata. You can finish their assignments later.</p>
+            {% endif %}
             {% if not cancel %}
             <div class="flex flex-wrap items-center gap-4">
                 {% if has_suggestion %}
@@ -161,9 +164,8 @@
                 {% else %}
                 <button type="button" hx-post="{{ review_url('/confirm/' ~ album.id ~ '/accept', replacement) }}" hx-include="closest form"
                         {% if not on_album_page %}hx-sync="body:queue last"{% endif %}
-                        hx-target="#confirmation-modal" hx-swap="none" hx-disabled-elt="this"
+                        hx-target="#assignment-error-{{ album.id }}-tracks" hx-swap="none" hx-disabled-elt="this"
                         hx-indicator="#assignment-progress-{{ album.id }}"
-                        hx-on::after-request="if (event.detail.successful &amp;&amp; (event.detail.xhr.getResponseHeader('HX-Trigger') || '').includes('confirmation-applied')) harmonistCloseConfirmation(true)"
                         class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Accept changes</button>
                 <button type="button" hx-get="{{ review_url('/assignments/' ~ album.id ~ '?album_tracks=' ~ ('true' if album_tracks else 'false') ~ '&on_album_page=' ~ ('true' if on_album_page else 'false'), replacement) }}"
                         hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
@@ -193,6 +195,7 @@
                 </div>
             </div>
             {% endif %}
+            <div id="assignment-error-{{ album.id }}-{{ candidate.mb_release_id if has_suggestion else 'tracks' }}"></div>
             <div class="flex flex-wrap items-center gap-4">
                 {% with actions_disabled=not cancel %}
                     {% include 'partials/_assignment_view_actions.html' %}

@@ -14,6 +14,8 @@ def _card(page, base):
     page.goto(base)
     card = page.locator('div[id^="task-"].relative').filter(has_text="Gimme Some Money")
     pw.expect(card).to_have_count(1)
+    pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
+    page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     return card
 
 
@@ -97,22 +99,16 @@ def test_suggested_release_link_follows_review_and_confirmation(reset_demo_serve
         )
         pw.expect(edit).to_have_class(re.compile("bg-amber-50"))
         pw.expect(groups.nth(0)).to_contain_text("1 file unassigned")
-        review.get_by_role("button", name="Dismiss suggestion", exact=True).click()
-        pw.expect(review).to_have_count(0)
-        pw.expect(
-            host.locator('a[href="https://musicbrainz.org/release/demo-rel-folksmen"]')
-        ).to_have_count(0)
-        assert page.request.post(
-            f"{base}/manual/{aid}/assign",
-            headers={"HX-Request": "true"},
-            form={"mbid": "demo-rel-folksmen"},
-        ).ok
-        page.reload()
-        review.get_by_role("button", name="Confirm suggestion", exact=True).click()
-        dialog = page.get_by_role("dialog")
-        pw.expect(dialog).to_contain_text("Tracks unassigned")
-        dialog.get_by_role("button", name="Confirm suggestion", exact=True).click()
-        pw.expect(dialog).not_to_be_visible()
+        pw.expect(review.locator(".assignment-artwork")).to_contain_text("CAA checked")
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
+        pw.expect(review).to_contain_text(
+            "Unassigned files will receive the album's MusicBrainz ID"
+        )
+        with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+            review.get_by_role("button", name="Confirm suggestion", exact=True).click()
+        assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
+        if on_album:
+            page.wait_for_url(f"{base}/album/demo-rel-folksmen")
         page.goto(f"{base}/album/demo-rel-folksmen")
         pw.expect(
             page.locator("main").get_by_role("link", name="MusicBrainz ↗", exact=True)
@@ -152,6 +148,7 @@ def test_column_display_toggle_survives_moves_and_reset(reset_demo_server):
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2")
         editor.get_by_role("button", name="Cancel", exact=True).click()
         pw.expect(card.get_by_role("button", name="Confirm suggestion", exact=True)).to_be_visible()
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         # Read-only mode keeps the same table geometry and display preference.
         columns = editor.locator("thead tr").last.locator("th")
         positions = columns.evaluate_all("els => els.map(el => el.getBoundingClientRect().x)")
@@ -188,16 +185,14 @@ def test_partial_confirmation_can_be_applied_and_reviewed(reset_demo_server):
         ).ok
         page.reload()
         card = page.locator(f"#task-{aid}")
-        card.get_by_role("button", name="Confirm suggestion", exact=True).click()
-        dialog = page.get_by_role("dialog")
-        pw.expect(dialog).to_contain_text("Tracks unassigned")
-        dialog.get_by_role("button", name="Confirm suggestion", exact=True).click()
-        pw.expect(dialog).not_to_be_visible()
+        pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
+        with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+            card.get_by_role("button", name="Confirm suggestion", exact=True).click()
+        assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
         page.goto(f"{base}/album/demo-rel-folksmen")
         pw.expect(page.locator("main")).to_contain_text("Tracks unassigned")
-        page.locator("#album-tracks").get_by_role(
-            "button", name="Edit track assignments", exact=True
-        ).click()
+        # Required assignment reviews now open automatically on the album page.
         dialog = page.locator("#album-track-editor")
         pw.expect(dialog).to_be_visible()
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,1,2")
@@ -206,17 +201,16 @@ def test_partial_confirmation_can_be_applied_and_reviewed(reset_demo_server):
         dialog.get_by_role(
             "button", name="Read this release from MusicBrainz again and reset assignment changes"
         ).click()
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,1,2")
-        dialog.get_by_role("button", name="Accept changes").click()
-        confirmation = page.locator("#confirmation-modal dialog")
-        pw.expect(confirmation).to_be_visible()
-        confirmation.get_by_role("button", name="Back", exact=True).click()
-        pw.expect(confirmation).not_to_be_visible()
-        pw.expect(dialog.get_by_role("button", name="Accept changes")).to_be_enabled()
+        with page.expect_response(
+            lambda r: r.url.endswith("/confirm/demo-rel-folksmen/accept")
+        ) as applied:
+            dialog.get_by_role("button", name="Accept changes").click()
+        assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
+        pw.expect(dialog).to_be_visible()
         pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,1,2")
-        dialog.get_by_role("button", name="Cancel", exact=True).click()
-        pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
-        pw.expect(page.get_by_role("dialog")).not_to_be_visible()
+        pw.expect(dialog).to_contain_text("1 file unassigned")
         browser.close()
 
 
@@ -254,6 +248,7 @@ def test_arrow_mapping_survives_refresh_review_and_apply(reset_demo_server):
         # A normal inbox poll must not reset a corrected draft.
         with page.expect_response(lambda r: "/tasks" in r.url):
             page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
         editor.get_by_role("button", name="Accept changes").click()
         pw.expect(editor.get_by_role("button", name="Confirm suggestion")).to_be_enabled()
@@ -288,6 +283,8 @@ def test_gap_can_move_on_either_side_and_cancel_discards_the_draft(reset_demo_se
         ).ok
         page.reload()
         card = page.locator(f"#task-{aid}")
+        pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         card.get_by_role("button", name="Edit track assignments").click()
         editor = card.locator(".assignment-editor")
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2,-")
@@ -304,7 +301,7 @@ def test_gap_can_move_on_either_side_and_cancel_discards_the_draft(reset_demo_se
         browser.close()
 
 
-def test_closing_partial_confirmation_restores_accept_button(reset_demo_server):
+def test_failed_partial_confirmation_preserves_review_during_inbox_refresh(reset_demo_server):
     base = reset_demo_server
     with pw.sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -318,13 +315,24 @@ def test_closing_partial_confirmation_restores_accept_button(reset_demo_server):
         ).ok
         page.reload()
         card = page.locator(f"#task-{aid}")
+        pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         card.get_by_role("button", name="Edit track assignments").click()
         editor = card.locator(".assignment-editor")
         before = editor.locator('[name="disk_order"]').input_value()
         editor.get_by_role("button", name="Accept changes").click()
         accept = editor.get_by_role("button", name="Confirm suggestion", exact=True)
+        pw.expect(accept).to_be_enabled()
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
+        fingerprint = editor.locator('[name="release_fingerprint"]').input_value()
+        editor.locator('[name="release_fingerprint"]').evaluate(
+            "e => e.value = e.value.split(':')[0] + ':obsolete'"
+        )
 
         def poll_during_accept(route):
+            assert parse_qs(route.request.post_data)["release_fingerprint"] == [
+                fingerprint.split(":")[0] + ":obsolete"
+            ]
             response = route.fetch()
             # Queue the normal Inbox refresh while acceptance is in flight.
             page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
@@ -333,25 +341,18 @@ def test_closing_partial_confirmation_restores_accept_button(reset_demo_server):
             route.fulfill(response=response)
 
         page.route(f"**/confirm/{aid}/accept", poll_during_accept)
-        for dismissal in ("Close confirmation", "Back", "Escape", "backdrop"):
-            accept.click()
-            dialog = page.locator("#confirmation-modal dialog")
-            pw.expect(dialog).to_be_visible()
-            pw.expect(
-                dialog.get_by_role("region", name="Tracks unassigned").locator("li")
-            ).to_have_count(1)
-            if dismissal == "Escape":
-                page.keyboard.press("Escape")
-            elif dismissal == "backdrop":
-                page.mouse.click(5, 5)
-            else:
-                dialog.get_by_role("button", name=dismissal, exact=True).click()
-            pw.expect(dialog).not_to_be_visible()
-            pw.expect(accept).to_be_enabled()
-            pw.expect(accept).to_have_css("opacity", "1")
-            pw.expect(editor.locator('[name="disk_order"]')).to_have_value(before)
         accept.click()
-        pw.expect(dialog).to_be_visible()
+        pw.expect(editor.get_by_role("alert")).to_contain_text("Refresh the comparison")
+        pw.expect(accept).to_be_enabled()
+        pw.expect(accept).to_have_css("opacity", "1")
+        pw.expect(editor.locator('[name="disk_order"]')).to_have_value(before)
+        page.unroute(f"**/confirm/{aid}/accept", poll_during_accept)
+        editor.locator('[name="release_fingerprint"]').evaluate(
+            "(e, value) => e.value = value", fingerprint
+        )
+        with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+            accept.click()
+        assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
         browser.close()
 
 

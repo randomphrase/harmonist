@@ -12,7 +12,7 @@ cfg = test_web.cfg
 client = test_web.client
 
 
-@pytest.mark.parametrize("action", ["move", "preview", "review"])
+@pytest.mark.parametrize("action", ["move", "review"])
 @pytest.mark.parametrize("stale", [False, True])
 def test_assignment_drafts_do_not_rescan_or_write_files(client, cfg, monkeypatch, action, stale):
     from unittest.mock import Mock
@@ -31,10 +31,8 @@ def test_assignment_drafts_do_not_rescan_or_write_files(client, cfg, monkeypatch
         fields["disk_fingerprint"] = "obsolete"
     if action == "move":
         response = client.post(f"/assignments/{aid}", data=fields | {"move": "disk:0:down"})
-    elif action == "review":
-        response = client.post(f"/assignments/{aid}", data=fields | {"assignment_action": "review"})
     else:
-        response = client.post(f"/confirm/{aid}/preview", data=fields)
+        response = client.post(f"/assignments/{aid}", data=fields | {"assignment_action": "review"})
     assert response.status_code == 200
     if stale:
         assert "Files changed since the review" in response.text
@@ -48,8 +46,8 @@ def test_assignment_drafts_do_not_rescan_or_write_files(client, cfg, monkeypatch
         assert confirm is not None and not confirm.has_attr("disabled")
     scan.assert_not_called()
     assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
-    if action == "preview" and not stale:
-        applied = client.post(f"/confirm/{aid}", data=_confirmation_fields(response.text))
+    if action == "review" and not stale:
+        applied = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(response.text))
         assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
         scan.assert_called_once()
 
@@ -86,8 +84,7 @@ def test_release_only_preview_from_suggestion_requires_confirmation(client, cfg,
     fields = _confirmation_fields(preview.text)
     assert fields["disk_order"] == "0,1,-,-"
     assert fields["mb_order"] == "-,-,0,1"
-    preview = client.post(f"/confirm/{aid}/preview", data=fields)
-    assert "Tracks unassigned" in preview.text
+    assert "Unassigned files will receive the album's MusicBrainz ID" in preview.text
     assert [f.read_bytes() for f in files] == before
     assert [call for call in calls if call[0] == "mb"] == [("mb", "rel-new-confirm")]
 
@@ -145,14 +142,17 @@ def test_read_only_confirmation_uses_current_counts_and_displayed_mapping(
     soup = BeautifulSoup(view.text, "html.parser")
     confirm = soup.select_one(f'button[hx-post="/confirm/{aid}/accept"]')
     assert confirm is not None and confirm.get_text(strip=True) == "Confirm suggestion"
-    preview = client.post(f"/confirm/{aid}/preview", data=_confirmation_fields(view.text))
+    preview = client.post(
+        f"/assignments/{aid}",
+        data=_confirmation_fields(view.text) | {"assignment_action": "review"},
+    )
     assert (
         _confirmation_fields(preview.text)["disk_order"]
         == _confirmation_fields(view.text)["disk_order"]
     )
     if tracks == 1:
-        assert "These files will receive the album's MusicBrainz ID" in preview.text
-        applied = client.post(f"/confirm/{aid}", data=_confirmation_fields(preview.text))
+        assert "Unassigned files will receive the album's MusicBrainz ID" in preview.text
+        applied = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(preview.text))
         assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
 
 
@@ -173,10 +173,10 @@ def test_assignment_review_writes_the_pairing_the_user_moved(client, cfg, monkey
     assert moved.status_code == 200
     fields = _confirmation_fields(moved.text)
     assert fields["disk_order"] == "1,0"
-    preview = client.post(f"/confirm/{aid}/preview", data=fields)
+    preview = client.post(f"/assignments/{aid}", data=fields | {"assignment_action": "review"})
     assert preview.status_code == 200
     assert [f.read_bytes() for f in files] == before
-    result = client.post(f"/confirm/{aid}", data=_confirmation_fields(preview.text))
+    result = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(preview.text))
     assert "confirmation-applied" in result.headers.get("HX-Trigger", "")
     expected = release["medium-list"][0]["track-list"]
     assert formats.read_tags(files[0]).title == expected[1]["title"]
@@ -201,7 +201,7 @@ def test_assignment_confirmation_refuses_changed_inputs(client, cfg, monkeypatch
     aid = _id_for(cfg, d)
     editor = client.get(f"/assignments/{aid}")
     assert editor.status_code == 200
-    preview = client.post(f"/confirm/{aid}/preview", data=_confirmation_fields(editor.text))
+    fields = _confirmation_fields(editor.text)
     files = album_files.audio_files(d)
     if change == "file":
         audio = MP4(files[0])
@@ -215,7 +215,7 @@ def test_assignment_confirmation_refuses_changed_inputs(client, cfg, monkeypatch
 
         mb_cache.fetch_release(release["id"], max_age=mb_cache.FRESH)
     before = [f.read_bytes() for f in files]
-    result = client.post(f"/confirm/{aid}", data=_confirmation_fields(preview.text))
+    result = client.post(f"/confirm/{aid}/accept", data=fields)
     assert "changed" in result.text.lower()
     assert "confirmation-applied" not in result.headers.get("HX-Trigger", "")
     assert [f.read_bytes() for f in files] == before
@@ -256,9 +256,8 @@ def test_extra_file_can_move_past_a_gap_but_cannot_be_silently_dropped(client, c
     fields = _confirmation_fields(moved.text)
     assert fields["mb_order"] == "-,0"
     assert "Accept changes" in moved.text
-    preview = client.post(f"/confirm/{aid}/preview", data=fields)
-    assert "unassigned file already has MusicBrainz track IDs" in preview.text
-    attempted = client.post(f"/confirm/{aid}", data=_confirmation_fields(preview.text))
+    attempted = client.post(f"/confirm/{aid}/accept", data=fields)
+    assert "unassigned file already has MusicBrainz track IDs" in attempted.text
     assert "confirmation-applied" not in attempted.headers.get("HX-Trigger", "")
     assert [f.read_bytes() for f in files] == before
 
@@ -339,9 +338,9 @@ def test_preview_retry_preserves_the_assignment_after_a_musicbrainz_failure(
 
     with monkeypatch.context() as patch:
         patch.setattr("harmonist.mb_cache.fetch_release", unavailable)
-        failed = client.post(f"/confirm/{aid}/preview", data=fields)
+        failed = client.post(f"/assignments/{aid}", data=fields | {"assignment_action": "review"})
     retry = _confirmation_fields(failed.text)
     assert retry["disk_order"] == "1,0"
     assert retry["release_fingerprint"] == fields["release_fingerprint"]
-    restored = client.post(f"/confirm/{aid}/preview", data=retry)
+    restored = client.post(f"/assignments/{aid}", data=retry | {"assignment_action": "review"})
     assert _confirmation_fields(restored.text)["disk_order"] == "1,0"

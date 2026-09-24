@@ -12,7 +12,7 @@ cfg = test_web.cfg
 client = test_web.client
 
 
-@pytest.mark.parametrize("action", ["preview", "apply", "accept"])
+@pytest.mark.parametrize("action", ["apply", "accept"])
 @pytest.mark.parametrize("included", [False, True])
 def test_reviewed_confirmation_does_not_refetch_expired_data(
     client, cfg, monkeypatch, action, included
@@ -21,17 +21,13 @@ def test_reviewed_confirmation_does_not_refetch_expired_data(
     aid = _id_for(cfg, root)
     _, _, fields = _review_with_artwork(client, aid)
     fields["include_artwork"] = str(included).lower()
-    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
     calls.clear()
     monkeypatch.setattr(mb_cache, "_ttl", timedelta(0))
     endpoint = f"/confirm/{aid}" + ("" if action == "apply" else f"/{action}")
     response = client.post(endpoint, data=fields)
     assert response.status_code == 200
     assert calls == []
-    if action == "preview" or (action == "accept" and included):
-        assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
-    else:
-        assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
+    assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
 
 
 @pytest.mark.parametrize("missing", [False, True])
@@ -60,7 +56,7 @@ def test_review_uses_its_snapshot_or_stops_without_fetching(client, cfg, monkeyp
         )
 
 
-def test_partial_confirmation_lists_only_unassigned_files(client, cfg, monkeypatch):
+def test_partial_review_explains_unassigned_files_and_applies_once(client, cfg, monkeypatch):
     from bs4 import BeautifulSoup
 
     root, release, *_rest, calls = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
@@ -68,12 +64,11 @@ def test_partial_confirmation_lists_only_unassigned_files(client, cfg, monkeypat
     aid = _id_for(cfg, root)
     editor = client.get(f"/assignments/{aid}")
     rows = BeautifulSoup(editor.text, "html.parser").select("[data-assignment-row]")
-    unassigned_title = rows[-1].select_one(".assignment-title").text
+    assert "Unassigned" in rows[-1].text
+    assert "Unassigned files will receive the album's MusicBrainz ID" in editor.text
     calls.clear()
     confirmation = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(editor.text))
-    dialog = BeautifulSoup(confirmation.text, "html.parser")
-    items = dialog.select('section[aria-label="Tracks unassigned"] li')
-    assert len(items) == 1 and unassigned_title in items[0].text
+    assert "confirmation-applied" in confirmation.headers.get("HX-Trigger", "")
     assert calls == []
 
 

@@ -30,22 +30,14 @@
        innerHTML wipe) keeps buttons attached while htmx's delegated handlers run —
        the destroy-before-dispatch race behind #40 can't occur. #}
     <div id="modal"></div>
-    {# Confirmation has its own mount so closing it preserves an assignment
-       editor that is itself open in the album page's modal. #}
-    <div id="confirmation-modal"></div>
     <script>
         function harmonistCloseModal() {
             const d = document.querySelector('#modal dialog[open]');
             if (d) d.close();
         }
-        function harmonistCloseConfirmation(applied = false) {
-            const d = document.querySelector('#confirmation-modal dialog[open]');
-            if (d) d.close();
-            if (applied) harmonistCloseModal();
-        }
         // Open the dialog a fragment renders as soon as htmx swaps it in.
         document.body.addEventListener('htmx:afterSwap', function (e) {
-            if (!['modal', 'confirmation-modal'].includes(e.target.id)) return;
+            if (e.target.id !== 'modal') return;
             const d = e.target.querySelector('dialog');
             if (d && !d.open) d.showModal();
         });
@@ -53,7 +45,7 @@
         // next open starts fresh. Esc is handled natively by <dialog>.
         document.addEventListener('close', function (e) {
             const m = e.target.parentElement;
-            if (m && ['modal', 'confirmation-modal'].includes(m.id)) m.innerHTML = '';
+            if (m && m.id === 'modal') m.innerHTML = '';
         }, true);
     </script>
 

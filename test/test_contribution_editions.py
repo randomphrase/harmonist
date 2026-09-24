@@ -165,10 +165,11 @@ def test_unavailable_replacement_is_visible_without_mutation(library, monkeypatc
     else:
         response = client.get(f"/assignments/{MBID}?{query}")
         assert fetch.call_count == 1
-    assert "Review unavailable" in response.text
     if kind == "missing-cache":
-        assert response.headers["HX-Retarget"] == "#confirmation-modal"
+        assert 'role="alert"' in response.text
+        assert response.headers["HX-Reswap"] == "innerHTML settle:0ms"
     else:
+        assert "Review unavailable" in response.text
         assert "Cancel" in response.text
         assert "HX-Retarget" not in response.headers
     assert "confirmation-applied" not in response.headers.get("HX-Trigger", "")

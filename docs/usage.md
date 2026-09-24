@@ -155,11 +155,10 @@ leads with whichever fits:
   **Accept changes** keeps the pairing in this page and returns to review without
   writing tags. **Confirm suggestion** and **Dismiss suggestion** stay below artwork,
   disabled while editing. **Confirm suggestion** applies the reviewed pairing and
-  selected artwork. If files remain unassigned,
-  a small confirmation lists just those files. Included artwork replacements
-  show compact current/new images in the same dialog. Otherwise the changes
-  apply directly. Closing or choosing **Back** preserves your draft and artwork
-  choice. Applying writes MusicBrainz's numbering
+  selected artwork in one step. The track comparison identifies unassigned files
+  and explains which metadata they keep. If applying fails, the error appears
+  within the review and preserves your draft and artwork choice.
+  Applying writes MusicBrainz's numbering
   and metadata without renaming files; **Undo tag changes** in History reverses
   the tagging.
   **Cancel** restores the pairing from before this edit and returns to review; **Reset**
@@ -172,7 +171,7 @@ leads with whichever fits:
   Files may be left opposite a gap when MusicBrainz has no corresponding track.
   Those files receive only the album MBID; their titles, numbering, totals, and
   other metadata stay as they are. If any files will remain unassigned, the
-  confirmation explains what will stay unassigned. Confirm normally to apply
+  comparison explains what will stay unassigned. Confirm normally to apply
   the displayed pairings. Existing MB track IDs on an
   unassigned file must be resolved first; the preview explains which file needs attention.
   The Library shows **Tracks unassigned** as a compact badge at the lower left of

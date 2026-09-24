@@ -11377,7 +11377,7 @@ def test_confirmation_rejects_a_changed_stored_release_before_any_writes(client,
         f"/confirm/{aid}", data=_confirmation_fields(preview.text) | {"include_artwork": "true"}
     )
     assert "MusicBrainz changed since the preview" in result.text
-    assert result.headers["hx-retarget"] == "#confirmation-modal"
+    assert result.headers["hx-reswap"] == "innerHTML settle:0ms"
     assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
 
 

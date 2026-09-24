@@ -71,10 +71,7 @@ def test_partial_confirmation_and_review_after_mb_adds_track(client, cfg, monkey
     files = album_files.audio_files(root)
     untouched = formats.read_owned(files[1])
     editor = client.get(f"/assignments/{aid}")
-    preview = client.post(
-        f"/confirm/{aid}/preview", data=test_web._confirmation_fields(editor.text)
-    )
-    result = client.post(f"/confirm/{aid}", data=test_web._confirmation_fields(preview.text))
+    result = client.post(f"/confirm/{aid}/accept", data=test_web._confirmation_fields(editor.text))
     assert "confirmation-applied" in result.headers.get("HX-Trigger", "")
     assert [call for call in calls if call[0] == "mb"] == [("mb", release["id"])]
     assert formats.read_owned(files[1]) == untouched | {"mb_album_id": release["id"]}
@@ -104,8 +101,7 @@ def test_partial_confirmation_and_review_after_mb_adds_track(client, cfg, monkey
     assert [track.state for track in comparison.tracks].count(compare.TrackState.EXTRA) == 1
     assert formats.read_owned(files[1]) == untouched | {"mb_album_id": release["id"]}
     assert "Proposed assignment" in editor.text
-    preview = client.post(f"/confirm/{album.id}/preview", data=fields)
-    result = client.post(f"/confirm/{album.id}", data=test_web._confirmation_fields(preview.text))
+    result = client.post(f"/confirm/{album.id}/accept", data=fields)
     assert "confirmation-applied" in result.headers.get("HX-Trigger", "")
     assert formats.read_owned(files[1])["mb_release_track_id"] == later["id"]
     album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == root)

@@ -739,7 +739,7 @@ Which file is compared against which track is **not** positional — it goes thr
 
 When a store URL resolves to several MB releases, `match.match_releases` ranks them all and reports whether the ranking could actually separate them. **Exact is not enough to auto-tag on its own — the winner has to be unique.** Two editions of one release with the same tracklist and the same durations rank identically, and picking one is then picking whichever MusicBrainz listed first; the album is left as it is, with no tag write and no stashed suggestion (a suggestion names one release, which is the same coin toss), and Activity says several editions fit. *Look up releases at this URL* on the album's card lists them for the user to choose (#426).
 
-**Confirm suggestion** applies the reviewed pairing from the shared comparison on the inbox or album page (#532). Inspectable tag changes and the optional artwork choice live below that comparison. Artwork loads independently and starts excluded; an unavailable or pending archive does not block tags-only acceptance. The selected release's cover is available regardless of size, with a labelled release-group fallback and protection for differing per-track artwork. A small final dialog lists only unassigned files and, when included, existing artwork being replaced with compact current/new images. Fully assigned changes with no artwork replacements apply directly. Closing confirmation preserves the underlying review, including an editor open in a modal.
+**Confirm suggestion** applies the reviewed pairing from the shared comparison on the inbox or album page (#532, #589). Inspectable tag changes and the optional artwork choice live below that comparison. Artwork loads independently and starts excluded; an unavailable or pending archive does not block tags-only acceptance. The selected release's cover is available regardless of size, with a labelled release-group fallback and protection for differing per-track artwork. The review explains the effect on unassigned files beside the track table. Confirmation applies directly, including selected artwork replacements; there is no second confirmation dialog. Failures appear inline without replacing the review, its draft or the artwork choice.
 
 **Applying reviewed changes** resolves the stored release and validates its fingerprint without fetching MusicBrainz, CAA or image bytes, regardless of TTL. It promotes the candidate to `mb_release_id`, clears the candidate and tags with the included artwork plan. Missing or changed stored release data, changed files or a changed included artwork plan require renewed review before any write. Per-target checks still guard races during artwork writes; tag and artwork outcomes use existing audit, retained-backup and Undo rules. Unreviewed writes retain fresh-fetch behavior and exact initial auto-tagging retains its additions-only artwork behavior.
 Dismiss suggestion → clear candidate; the album stays in Needs MBID so a different release can be assigned.
@@ -756,10 +756,10 @@ the on-disk column heading (untitled files always fall back to filenames).
 For suggestions, Accept changes returns the page-local pairing to review without
 writing tags or artwork. Accept changes, Reset and Cancel sit directly beneath
 the track table. Reopening preserves the accepted pairing; Cancel restores the
-pairing from before that edit. Confirm suggestion applies the review, with the
-focused confirmation above when needed. The release badge links to MusicBrainz. Refresh/reset uses the album page's
+pairing from before that edit. Confirm suggestion applies the review directly.
+The release badge links to MusicBrainz. Refresh/reset uses the album page's
 icon beside MB checked at the top right. The non-editing panel has one Confirm
-suggestion action using the displayed pairing. The final preview explains any
+suggestion action using the displayed pairing. The comparison explains any
 unassigned files in an informational warning; its normal confirmation action
 applies the reviewed pairings. Actions use standard
 button styling. Confirm/Dismiss suggestion remain below artwork but are disabled
@@ -774,7 +774,7 @@ fragment from stored release data without network requests, regardless of cache
 age; a missing cache is visible and offers an explicit read. Entering an uncached
 editor may fetch once, and explicit refresh always fetches fresh while preserving
 view/edit mode. Non-editing confirmation submits the displayed pairing through
-the same guarded preview. Draft movement and preview POSTs opt out of the
+the same guarded write. Draft movement and review POSTs opt out of the
 post-mutation rescan middleware, including rejected drafts; applying a
 confirmation still refreshes the Library (#527).
 The automatic assignment initialises both views; after that, the explicit mapping drives both the tag
@@ -2092,7 +2092,7 @@ forever because `TagMismatchError` would block the tagger.
 **Handling:** the suggestion card (Needs MBID with a candidate) offers an
 incomplete release review when files are missing:
 
-- **Confirm suggestion** — applies the displayed review in incomplete mode, with the focused confirmation above when needed. The
+- **Confirm suggestion** — applies the displayed review in incomplete mode in one step. The
   tagging writes the release's own track/disc totals into every file it
   touches, so the album's state becomes `INCOMPLETE`, derived at scan time
   from those tags (§3). Nothing about the count is persisted separately.

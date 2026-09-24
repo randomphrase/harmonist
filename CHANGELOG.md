@@ -21,6 +21,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Reviewed release changes now apply in one step, including selected artwork replacements and partial track assignments, with errors shown inline (#589).
+
 - **The Cover Art Archive's candidate no longer breaks apart on a narrow
   window**, with its frame against the right edge and the facts that belong
   beside it wrapped onto a line of their own (#577).
