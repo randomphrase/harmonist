@@ -26,6 +26,7 @@
 .album-contribution-area:not(:has(.album-contributions section, .contribution-review > *)),
 .album-contribution-area:has(.contribution-review > *) > .album-contributions,
 .album-page:has(.contribution-review > *) .album-findings { display: none; }
+.album-page:has(.contribution-review > *, #album-inbox-actions .assignment-editor) #album-artwork { display: none; }
 
 /* Keep numeric columns compact and both title columns equal, including when
  * movement controls appear. Long names wrap instead of stretching the table. */
@@ -1323,8 +1324,14 @@ button.art-row__art--absent:hover {
 
 /* The assignment review uses flex rows beside variable-length carrier labels.
    Text wraps within its column; it must never squeeze the image frame (#594). */
-.assignment-artwork__image { display: flex; align-items: center; gap: .5rem; }
+.assignment-artwork__image { display: flex; align-items: start; gap: .5rem; }
 .assignment-artwork__image > :last-child { min-width: 0; overflow-wrap: anywhere; }
+.assignment-artwork__comparison { display: grid; gap: .5rem 1rem; align-items: start; }
+@media (min-width: 40rem) {
+  .assignment-artwork__comparison { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .assignment-artwork__current { grid-column: 1; grid-row: var(--art-review-row); }
+  .assignment-artwork__selected { grid-column: 2; grid-row: var(--art-review-row); }
+}
 
 /* A native popover supplies the top layer, light-dismiss and Escape. The image
    alone scrolls at 100%; its controls and source dimensions stay in view. */

@@ -11329,7 +11329,7 @@ def test_confirmation_names_artwork_outcome_and_exact_identity(client, cfg, monk
     )
     _, response, _fields = _review_with_artwork(client, _id_for(cfg, d))
     page = BeautifulSoup(response.text, "html.parser")
-    assert "Keep existing artwork" in page.text
+    assert ("Keep existing artwork" in page.text) is (kind in {"identical", "protected"})
     assert ("Selected-release image already present" in page.text) is (kind == "identical")
     candidate_preview = page.find("img", alt="Artwork for selected release")
     assert bool(candidate_preview) is (kind != "identical")

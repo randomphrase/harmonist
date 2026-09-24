@@ -21,7 +21,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
-- Artwork comparison thumbnails stay equal-sized, with shared-scale Fit and scrollable 100% inspection for switching between covers (#594).
+- Artwork comparison thumbnails align and keep the same size, with shared-scale Fit and scrollable 100% inspection for switching between covers (#594).
 
 - Release confirmation states whether artwork will be kept or changed, identifies affected files, and avoids duplicate previews of identical images (#593).
 

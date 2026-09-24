@@ -39,7 +39,10 @@ def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
         review = page.get_by_role("region", name="Review suggested release")
         artwork = review.locator(".assignment-artwork")
         keep = artwork.get_by_text("Keep existing artwork", exact=True)
-        pw.expect(keep).to_be_visible()
+        if writes:
+            pw.expect(keep).to_have_count(0)
+        else:
+            pw.expect(keep).to_be_visible()
         candidate = artwork.get_by_alt_text("Artwork for selected release", exact=True)
         if scenario in {"identical", "tracks-only"}:
             pw.expect(candidate).to_have_count(0)
@@ -47,6 +50,16 @@ def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
         else:
             pw.expect(candidate).to_be_visible()
             pw.expect(artwork).not_to_contain_text("Selected-release image already present")
+            if writes:
+                current = artwork.get_by_alt_text(
+                    "Current artwork: cover.png"
+                    if scenario == "protected-folder"
+                    else "Current artwork: All 3 tracks",
+                    exact=True,
+                )
+                assert candidate.bounding_box()["y"] == pytest.approx(
+                    current.bounding_box()["y"], abs=1
+                )
             # These are different pictures despite having the same dimensions.
             original = before[paths[0]]
             assert original is not None
@@ -57,7 +70,6 @@ def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
             will_update = artwork.get_by_text("Will update:", exact=False)
             pw.expect(will_update).to_be_hidden()
             checkbox.check()
-            pw.expect(keep).to_be_hidden()
             pw.expect(will_update).to_be_visible()
             expected = (
                 "folder cover (cover.png)"
@@ -74,7 +86,7 @@ def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
             pw.expect(checkbox).to_be_checked()
             pw.expect(will_update).to_be_visible()
             checkbox.set_checked(included)
-            pw.expect(keep).to_be_visible(visible=not included)
+            pw.expect(will_update).to_be_visible(visible=included)
         else:
             pw.expect(checkbox).to_have_count(0)
         if scenario.startswith("protected"):
@@ -87,6 +99,7 @@ def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
             confirm.click()
         assert "confirmation-applied" in response.value.headers.get("hx-trigger", "")
         page.wait_for_url("**/album/demo-rel-dingoes-digital*")
+        pw.expect(page.locator("#album-artwork")).to_be_visible()
         for path in paths:
             assert formats.read_album_id(path) == "demo-rel-dingoes-digital"
             assert formats.read_cover(path) == (
@@ -129,6 +142,8 @@ def test_review_artwork_inspection_and_refresh_preserve_draft(reset_demo_server,
         )
         artwork = review.locator(".assignment-artwork")
         pw.expect(artwork.get_by_alt_text("Artwork for selected release")).to_be_visible()
+        if on_album:
+            pw.expect(page.locator("#album-artwork")).to_be_hidden()
         thumbs = artwork.locator("button[popovertarget]")
         assert thumbs.count() >= 2, "current and selected artwork must both open full size"
         sizes = []

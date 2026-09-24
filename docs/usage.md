@@ -133,8 +133,9 @@ leads with whichever fits:
   identity badges show only confirmed releases. Artwork loads separately;
   you can apply tags while keeping your images even if the archive is slow or
   unavailable. **Use artwork from the selected release** is optional and starts
-  unticked: **Keep existing artwork** is the default. Ticking it names the
-  embedded images and/or folder cover that will change. An identical selected
+  unticked. Ticking it names the embedded images and/or folder cover that will
+  change, below the aligned comparison images. With nothing to change, the review
+  states **Keep existing artwork**. An identical selected
   image is identified as already present and shown only once; matching dimensions
   alone do not count as identical. Differing per-track images stay protected.
   You can also choose artwork later from the album page.
@@ -607,7 +608,8 @@ picture: **Fit** uses a shared scale for the comparison, while **100% (1:1)**
 shows one image pixel per browser CSS pixel with scrolling for large images.
 The **Image** selector switches covers at the same scale and scroll position;
 source dimensions stay visible. The same viewer is available during release
-confirmation. Press Escape or **Close** to return. On a multi-disc release the rows name the disc — *Disc 1,
+confirmation, where the review temporarily replaces the separate Artwork section.
+Press Escape or **Close** to return. On a multi-disc release the rows name the disc — *Disc 1,
 track 5 · Disc 7, track 7* — because a bare track number means two different
 things on a box set.
 

@@ -114,3 +114,36 @@ def test_native_pixels_and_switching_preserve_scale_and_position(
         pw.expect(thumb).to_be_focused()
         assert not errors
         browser.close()
+
+
+@pytest.mark.parametrize("width", [650, 1280])
+def test_review_images_align_below_wrapping_headings(artwork_inspection_server, width):
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": width, "height": 800})
+        host = _open(page, artwork_inspection_server, True)
+        current = host.get_by_alt_text("Current artwork: All 3 tracks", exact=True)
+        candidate = host.get_by_alt_text("Artwork for selected release", exact=True)
+        pw.expect(candidate).to_be_visible()
+        checkbox = host.get_by_role("checkbox", name="Use artwork from the selected release")
+        for included in [False, True]:
+            checkbox.set_checked(included)
+            assert candidate.bounding_box()["y"] == pytest.approx(
+                current.bounding_box()["y"], abs=1
+            )
+        pw.expect(host.get_by_text("Keep existing artwork", exact=True)).to_have_count(0)
+        browser.close()
+
+
+def test_review_is_the_only_artwork_section_until_cancelled(artwork_inspection_server):
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        review_artwork = _open(page, artwork_inspection_server, True)
+        pw.expect(review_artwork).to_be_visible()
+        pw.expect(page.locator("#album-artwork")).to_be_hidden()
+        page.get_by_role("region", name="Review suggested release").get_by_role(
+            "button", name="Cancel", exact=True
+        ).click()
+        pw.expect(page.locator("#album-artwork")).to_be_visible()
+        browser.close()
