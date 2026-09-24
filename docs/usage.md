@@ -381,12 +381,14 @@ you tagged it — each with its count:
   update is still a button you press. It waits for any sync, reconcile or scan to
   finish rather than competing with them, and it is off until you turn it on.
 
-  When a pass turns something up it leaves one line in **Activity** —
-  *"Update check: 3 albums now have an update available"* — one line per pass
-  rather than one per album, and nothing at all from a pass that found nothing.
-  Only albums that didn't already have an update waiting are counted, so an
-  update you haven't got round to yet isn't announced again every time
-  MusicBrainz touches the release.
+  When a pass turns something up it leaves a line in **Activity** for each
+  album, linked to it: *"Update available from MusicBrainz (identity)"*, where
+  the word in brackets says how far the update reaches. If one pass finds more
+  than five it leaves a single line counting them instead, and a pass that
+  found nothing leaves nothing. Only updates that are new are announced. One
+  you haven't got round to yet isn't announced again every time MusicBrainz
+  touches the release, and neither is one Harmonist is only now seeing for the
+  first time, such as on a new install.
 
   The setting applies straight away — no restart — but the first pass is
   otherwise up to ten minutes off, which looks like nothing happened. **Check

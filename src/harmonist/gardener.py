@@ -447,6 +447,12 @@ _TICK_FETCH_BUDGET = 0.5
 #: at when deciding how many fit in a tick.
 _SECONDS_PER_FETCH = 1.0
 
+#: The most new updates one pass names in the Activity feed, one linked entry
+#: each (#600). Beyond this it posts a single counted line instead. A pass
+#: normally finds one or two, so the cap is for bursts: a wave of MusicBrainz
+#: edits, or the first pass on a new install.
+NAMED_UPDATES_MAX = 5
+
 #: How many MusicBrainz failures in a row end a pass early. MusicBrainz being
 #: down looks exactly like this, and grinding through the rest of the queue to
 #: fail at each one spends a request apiece and buries the first failure — the
@@ -507,8 +513,9 @@ class PassResult:
     #: #274's discipline: an album the user has been sitting on for a fortnight
     #: is still outstanding every time MusicBrainz touches the release, so
     #: `flagged` would announce it again on an edit that changed nothing for
-    #: them. A transition is news; a standing state is not (#272).
-    newly_flagged: int
+    #: them. A transition is news; a standing state is not (#272). The albums
+    #: themselves rather than a count, so the digest can name them (#600).
+    newly_flagged: tuple[Album, ...]
     #: Releases MusicBrainz no longer has (#194/#210).
     gone: int
     #: Fetches that failed — a network error, a 503. Not an answer either way.
@@ -602,7 +609,8 @@ def sweep(
     log.debug(
         "update check: %d album(s) due, asking MusicBrainz about up to %d", len(due), slice_size
     )
-    asked = examined = flagged = newly_flagged = gone = failed = 0
+    asked = examined = flagged = gone = failed = 0
+    newly_flagged: list[Album] = []
     gave_up = False
     reported = time.monotonic()
     for mbid, group in due[:slice_size]:
@@ -675,24 +683,16 @@ def sweep(
             continue  # MusicBrainz has said nothing new; read no files
         examined += len(group)
         for album in group:
-            # Read BEFORE the refresh, because the refresh is what overwrites
-            # it. This is the only moment the two are both knowable, and the
-            # digest is a statement about the difference between them.
-            #
-            # The flag is in-memory and rebuilt by `warm_from_cache` after a
-            # restart, so a pass that overtakes the warm-up can read False for
-            # an album that was already flagged and announce it a second time.
-            # Bounded — it needs an album that is due, whose payload has moved,
-            # that was flagged before the restart and that the warm-up has not
-            # reached yet — and the only cure would be persisting the flag,
-            # which is exactly the stored state this module refuses to keep
-            # (see the header). A repeated line is the cheaper failure.
-            was_flagged = album.update_available
+            # Judged BEFORE the refresh, because the refresh overwrites the
+            # fields it reads. The digest is a statement about the difference
+            # between the two verdicts, and this is the only moment both are
+            # knowable.
+            already = _already_outstanding(album, before)
             refresh_flag(album, release)
             if album.update_available:
                 flagged += 1
-                if not was_flagged:
-                    newly_flagged += 1
+                if not already:
+                    newly_flagged.append(album)
         if time.monotonic() - reported >= _PROGRESS_EVERY.total_seconds():
             reported = time.monotonic()
             log.info("update check: %d asked, %d with something new", asked, examined)
@@ -700,7 +700,7 @@ def sweep(
         asked=asked,
         examined=examined,
         flagged=flagged,
-        newly_flagged=newly_flagged,
+        newly_flagged=tuple(newly_flagged),
         gone=gone,
         failed=failed,
         gave_up=gave_up,
@@ -727,14 +727,49 @@ def sweep(
     return result
 
 
-def _record_digest(result: PassResult) -> None:
-    """Leave one Activity entry for what the pass found, or none at all (#274).
+def _already_outstanding(album: Album, before: Release | None) -> bool:
+    """Whether `album` already had an update against `before`, the payload
+    MusicBrainz gave us last time. An update found now is news only if not.
 
-    One row per pass, never one per album: a tick that wrote a line for each
-    album it looked at would bury the feed under its own bookkeeping, which is
-    the failure mode that makes people stop reading it. The per-album account
-    lives on the album — its History, its tile badge, the Update available
-    filter — and this is the global feed's summary of it.
+    The in-memory flag answers this only when it was computed against `before`,
+    which `mb_version` says. It was not after a restart the warm-up has not
+    reached yet, nor after a rescan rebuilt the album, and in both cases it reads
+    False. Trusting it anyway re-announced updates that had been waiting all
+    along (#600). Then the old verdict is taken from `before` directly, at the
+    cost of one more read of the files. That happens only for albums whose
+    payload moved and whose flag nobody has computed, so it is rare.
+
+    **No baseline counts as outstanding.** With nothing stored, nothing says
+    MusicBrainz moved: a first look at a release (a new install, or a cache
+    orphaned by an include change, #599) may find an update that has been
+    waiting for years. The flag still goes up; it just is not announced.
+
+    Nor does a verdict nobody could reach. If the files cannot be read,
+    `refresh_flag` logs it as they are read again straight after, and the flag
+    stays as it was, so there is nothing to announce either way.
+    """
+    if before is None:
+        return True
+    version = release_version(before)
+    if version is not None and album.mb_version == version:
+        return album.update_available
+    try:
+        return verdict_for(plan_for(album, before)) is not None
+    except tagger.TagMismatchError:
+        return True  # a tracklist that did not fit then is outstanding too
+    except formats.READ_ERRORS:
+        return True  # reported by `refresh_flag`, which reads the same files next
+
+
+def _record_digest(result: PassResult) -> None:
+    """Tell the Activity feed which albums the pass found an update for (#274).
+
+    **One entry per album, up to `NAMED_UPDATES_MAX`** (#600), each linked to
+    its album. #274 wrote a single counted line on the assumption that a pass
+    would find many. At #349's pace it finds one or two, and a bare count left
+    the user to spot the new tile in the Update available filter. Past the cap it
+    falls back to one counted line, so a burst still cannot bury the rest of the
+    feed.
 
     **Only the transition.** `newly_flagged`, not `flagged`: an album whose
     update the user has yet to take is outstanding on every pass, so counting
@@ -753,17 +788,23 @@ def _record_digest(result: PassResult) -> None:
     * a pass that gave up already posts its own warning, once per episode.
 
     So the digest speaks exactly when a person has something new to look at. No
-    action scope: it is a summary of many albums, nothing hangs off it, and
-    there is nothing to correlate or revert — the same shape as reconcile's
-    closing line.
+    action scope: nothing was changed, so there is nothing to correlate or
+    revert. The album id is safe to read here because the pass writes nothing
+    that could move it.
     """
-    if not result.newly_flagged:
+    albums = result.newly_flagged
+    if len(albums) > NAMED_UPDATES_MAX:
+        activity.record(
+            f"Update check: {len(albums)} albums now have an update available — "
+            "see the Library's Update available filter"
+        )
         return
-    n = result.newly_flagged
-    activity.record(
-        f"Update check: {n} album{'' if n == 1 else 's'} now {'has' if n == 1 else 'have'} "
-        "an update available — see the Library's Update available filter"
-    )
+    for album in albums:
+        activity.record(
+            f"Update available from MusicBrainz ({album.update_significance})",
+            album_id=album.id,
+            album_label=album.label,
+        )
 
 
 def _due(

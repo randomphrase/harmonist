@@ -953,22 +953,36 @@ def _digest() -> list[str]:
     ]
 
 
-def test_a_pass_leaves_one_digest_for_everything_it_found(tmp_path, monkeypatch):
-    """#274: one entry per pass, not one per album. Two albums, one row — and the
-    row counts them, so the feed says how much is waiting without becoming the
-    thing that buries everything else in it."""
-    activity_store.init(tmp_path / "activity.db")
-    other = _release("Other Album", mbid="rel-bbb")
-    albums = [
-        _tagged(tmp_path, _release()),
-        _tagged(tmp_path, other, name="Other Album"),
+def _named_updates() -> list[tuple[str | None, str | None, str]]:
+    """The pass's per-album entries (#600), oldest first: id, label, message."""
+    return [
+        (e.album_id, e.album_label, e.message)
+        for e in reversed(activity_store.recent(source=activity_store.Source.ACTIVITY))
+        if e.message.startswith("Update available")
     ]
-    _store(_release(), age=_stale())
-    _store(other, age=_stale())
+
+
+def _moved_albums(tmp_path: Path, count: int) -> list[Album]:
+    """`count` albums, each tagged from a release MusicBrainz has since retitled."""
+    albums = []
+    for i in range(count):
+        name = f"Album {i}"
+        release = _release(name, mbid=f"rel-{i:03d}")
+        albums.append(_tagged(tmp_path, release, name=name))
+        _store(release, age=_stale())
+    return albums
+
+
+def test_a_pass_names_each_album_it_found_an_update_for(tmp_path, monkeypatch):
+    """#600. A pass finds one or two updates, not the flood the original digest
+    was written for, so each gets a linked entry of its own: the user is told
+    which album to look at instead of having to spot the new tile in the
+    filter."""
+    activity_store.init(tmp_path / "activity.db")
+    albums = _moved_albums(tmp_path, 2)
     _serving(
         monkeypatch,
-        _release("Test Album (remastered)"),
-        _release("Other Album (remastered)", mbid="rel-bbb"),
+        *(_release(f"Album {i} (remastered)", mbid=f"rel-{i:03d}") for i in range(2)),
     )
 
     # `limit`, because the paced slice is 1/144th of what's due (#349) and would
@@ -976,28 +990,68 @@ def test_a_pass_leaves_one_digest_for_everything_it_found(tmp_path, monkeypatch)
     # the rate.
     gardener.sweep(albums, limit=2)
 
+    assert _named_updates() == [
+        (a.id, a.label, "Update available from MusicBrainz (identity)") for a in albums
+    ]
+    assert _digest() == []
+
+
+def test_a_pass_that_finds_more_than_it_can_name_leaves_one_summary(tmp_path, monkeypatch):
+    """#274's reason for one row per pass still holds for a burst: a pass that
+    found a dozen updates must not bury the rest of the feed under a dozen
+    rows. Past the cap it counts them instead."""
+    activity_store.init(tmp_path / "activity.db")
+    count = gardener.NAMED_UPDATES_MAX + 1
+    albums = _moved_albums(tmp_path, count)
+    _serving(
+        monkeypatch,
+        *(_release(f"Album {i} (remastered)", mbid=f"rel-{i:03d}") for i in range(count)),
+    )
+
+    gardener.sweep(albums, limit=count)
+
     expected = (
-        "Update check: 2 albums now have an update available — "
+        f"Update check: {count} albums now have an update available — "
         "see the Library's Update available filter"
     )
+    assert _named_updates() == []
     assert _digest() == [expected]
 
 
-def test_the_digest_reads_in_the_singular_for_one_album(tmp_path, monkeypatch):
-    """The count is the whole content of the line, so "1 albums now have" is the
-    one way it can read wrong (#384 for the same trap in the outlier popover)."""
+def test_a_release_with_no_stored_baseline_is_not_news(tmp_path, monkeypatch):
+    """#600. With nothing stored, nothing says MusicBrainz moved: the pass is
+    seeing the release for the first time, so an update it finds may have
+    been outstanding for years. That is what flooded the feed after #599
+    orphaned the cache. The flag still goes up; only the announcement is
+    withheld."""
     activity_store.init(tmp_path / "activity.db")
     album = _tagged(tmp_path, _release())
-    _store(_release(), age=_stale())
     _serving(monkeypatch, _release("Test Album (remastered)"))
 
-    gardener.sweep([album])
+    result = gardener.sweep([album])
 
-    expected = (
-        "Update check: 1 album now has an update available — "
-        "see the Library's Update available filter"
-    )
-    assert _digest() == [expected]
+    assert album.update_available is True
+    assert (result.flagged, len(result.newly_flagged)) == (1, 0)
+    assert _named_updates() == []
+
+
+def test_an_update_outstanding_before_the_warm_up_reached_it_is_not_news(tmp_path, monkeypatch):
+    """#600. The in-memory flag starts False after a restart, and after a rescan
+    rebuilds the album, so on its own it cannot say the update is new. Here the
+    stored payload already had an update the files never took, and MusicBrainz
+    has edited the release again. The pass judges "was it outstanding
+    before?" against that stored payload, not against a flag nobody computed."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release("Test Album (remastered)"), age=_stale())
+    assert album.update_available is False  # the warm-up has not got here
+    _serving(monkeypatch, _release("Test Album (remastered, again)"))
+
+    result = gardener.sweep([album])
+
+    assert album.update_available is True
+    assert len(result.newly_flagged) == 0
+    assert _named_updates() == []
 
 
 def test_a_pass_that_finds_nothing_writes_nothing_to_the_feed(tmp_path, monkeypatch):
@@ -1033,8 +1087,8 @@ def test_an_album_already_flagged_is_not_announced_a_second_time(tmp_path, monke
     _serving(monkeypatch, _release("Test Album (remastered, again)"))
     result = gardener.sweep([album])
 
-    assert (result.examined, result.flagged, result.newly_flagged) == (1, 1, 0)
-    assert _digest() == []
+    assert (result.examined, result.flagged, len(result.newly_flagged)) == (1, 1, 0)
+    assert _named_updates() == []
 
 
 def test_an_unchanged_release_never_reaches_the_files(tmp_path, monkeypatch):
@@ -1441,7 +1495,7 @@ def _sweep_signal(monkeypatch) -> threading.Event:
     def _sweep(albums, **kwargs):
         done.set()
         return gardener.PassResult(
-            asked=0, examined=0, flagged=0, newly_flagged=0, gone=0, failed=0
+            asked=0, examined=0, flagged=0, newly_flagged=(), gone=0, failed=0
         )
 
     monkeypatch.setattr(gardener, "sweep", _sweep)

@@ -5911,7 +5911,7 @@ def test_check_now_starts_a_pass(client, cfg, monkeypatch):
     def _sweep(albums, **kw):
         swept.set()
         return gardener.PassResult(
-            asked=0, examined=0, flagged=0, newly_flagged=0, gone=0, failed=0
+            asked=0, examined=0, flagged=0, newly_flagged=(), gone=0, failed=0
         )
 
     monkeypatch.setattr(client.app.state.scan_runner, "has_completed", lambda: True, raising=False)
@@ -5942,7 +5942,7 @@ def test_check_now_says_why_when_it_declines(client, cfg, monkeypatch):
     def _sweep(albums, **kw):
         swept.set()
         return gardener.PassResult(
-            asked=0, examined=0, flagged=0, newly_flagged=0, gone=0, failed=0
+            asked=0, examined=0, flagged=0, newly_flagged=(), gone=0, failed=0
         )
 
     monkeypatch.setattr(gardener, "sweep", _sweep)
