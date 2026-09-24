@@ -128,7 +128,4 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         page.wait_for_url("**/*filter=mb-contributions*")
         playwright_sync.expect(page.locator("#library-page")).to_contain_text("Little Bit o' Hoot")
         assert page.evaluate("window.__contributionNoReload === true")
-        playwright_sync.expect(page.locator("#contribution-coverage")).to_contain_text(
-            "fully checked"
-        )
         browser.close()

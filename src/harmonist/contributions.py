@@ -39,14 +39,6 @@ class Assessment:
             self.media_mismatch is False and self.missing_url is True
         )
 
-    @property
-    def unchecked(self) -> bool:
-        return self.eligible and (
-            self.observation is None
-            or self.media_mismatch is None
-            or (not self.private and self.store_url is None)
-        )
-
 
 def release_url(url: str | None) -> str | None:
     """Conservative release URL equality; never match a slug across hosts.

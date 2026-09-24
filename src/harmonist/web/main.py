@@ -1575,7 +1575,6 @@ def _library_page_vars(
     # After the search, before the filter: the All chip's number, and the
     # denominator every other chip is a subset of.
     total_matched = len(done)
-    contribution_checks = [c for a in done if (c := contributions.assess(a)).eligible]
     # The options the control offers, each with the count it would yield. Counted
     # off the same `done` list the grid pages, so a count can never describe a
     # different population than selecting it would show. Computed on every render,
@@ -1628,8 +1627,6 @@ def _library_page_vars(
         # says, and what the chips beside it are subsets of. Equal to `total_done`
         # when nothing is being searched for (#180).
         "total_matched": total_matched,
-        "contribution_total": len(contribution_checks),
-        "contribution_unchecked": sum(c.unchecked for c in contribution_checks),
         # How many albums the CURRENT view holds: the same number when nothing is
         # filtered, the matching subset when something is. Only the pager reads it.
         "total_shown": len(done),

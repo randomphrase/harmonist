@@ -75,7 +75,6 @@ def test_independent_media_and_url_findings(formats, urls, media, missing):
     contributions.observe(a, release(formats, urls), NOW)
     result = contributions.assess(a)
     assert (result.media_mismatch, result.missing_url) == (media, missing)
-    assert result.unchecked is (media is None)
 
 
 def test_purchase_ownership_and_legacy_timestamp_are_not_file_provenance():
@@ -97,7 +96,6 @@ def test_private_cd_mix_is_reviewed_without_publishing_its_url():
     result = contributions.assess(a)
     assert result.media_mismatch and result.private
     assert result.missing_url is None
-    assert not result.unchecked
 
 
 def test_url_identity_is_host_scoped_and_comment_evidence_wins():
@@ -115,17 +113,17 @@ def test_url_identity_is_host_scoped_and_comment_evidence_wins():
     a.bandcamp_comment_urls = ("https://artist.bandcamp.com",)
     a.sidecar = replace(a.sidecar, store_url="https://artist.bandcamp.com")
     assert contributions.assess(a).eligible
-    assert contributions.assess(a).unchecked
+    assert contributions.assess(a).store_url is None
     assert contributions.assess(a).missing_url is None
 
 
 def test_identity_change_drops_old_observation_and_unknown_is_not_clean():
     a = album()
-    assert contributions.assess(a).unchecked
+    assert contributions.assess(a).observation is None
     contributions.observe(a, release(urls=(URL,)), NOW)
-    assert not contributions.assess(a).unchecked
+    assert contributions.assess(a).missing_url is False
     a.sidecar = replace(a.sidecar, mb_release_id="new-edition")
-    assert contributions.assess(a).unchecked
+    assert contributions.assess(a).observation is None
     assert contributions.assess(a).missing_url is None
 
 
@@ -199,7 +197,6 @@ def test_restart_rebuild_and_library_filters_make_no_mb_calls(tmp_path, monkeypa
     assert len({a.id for a in albums}) == 3
     view = _library_page_vars(albums, 1, 30, filter_="mb-contributions")
     assert [a.title for a in view["rows"]] == ["Download"]
-    assert (view["contribution_total"], view["contribution_unchecked"]) == (2, 1)
     assert fetch.call_count == 1
 
 
@@ -221,7 +218,6 @@ def test_contribution_filter_includes_either_reason_and_counts_each_copy_once():
     assert {a.title for a in view["rows"]} == {"Media only", "URL only", "Both"}
     option = next(f for f in view["filters"] if f["slug"] == "mb-contributions")
     assert option["count"] == view["total_shown"] == 3
-    assert (view["contribution_total"], view["contribution_unchecked"]) == (5, 1)
 
 
 def test_url_only_edit_does_not_unmute_tag_update():
@@ -254,7 +250,7 @@ def test_old_includes_cache_does_not_claim_urls_were_checked(monkeypatch):
     fetch = Mock(side_effect=AssertionError("warming must not fetch"))
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
     contributions.warm(a)
-    assert contributions.assess(a).unchecked
+    assert contributions.assess(a).observation is None
     assert contributions.assess(a).missing_url is None
     assert fetch.call_count == 0
 

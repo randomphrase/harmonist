@@ -175,12 +175,6 @@
     {% endif %}
     {% endfor %}
 </nav>
-{% if contribution_total %}
-<p class="mb-3 text-xs text-muted" id="contribution-coverage">
-    MusicBrainz contributions: {{ contribution_total - contribution_unchecked }} of {{ contribution_total }} Bandcamp downloads fully checked;
-    {{ contribution_unchecked }} need a check or more information. Open an album to check it, or enable background update checks in Settings.
-</p>
-{% endif %}
 {% endif %}
 
 {% if not rows %}

@@ -68,8 +68,8 @@ Older downloads without either kind of evidence are not assumed to qualify.
 Open an album's **MB contributions** section to see the findings. The
 album header's **MB checked** date and refresh control cover these findings too;
 refreshing does not tag files or change the match. Checks also run with background update checks
-when enabled in Settings. Separate coverage counts identify downloads without a
-complete assessment, including unknown medium formats or an ambiguous store URL.
+when enabled in Settings. The album panel explains incomplete checks, including
+unknown medium formats or an ambiguous store URL.
 Unchecked albums are not counted as clean or added to the contribution filter
 without a finding.
 
