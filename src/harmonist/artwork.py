@@ -919,6 +919,19 @@ class ArtworkView:
         return bool(self.plan and self.plan.changes)
 
     @property
+    def write_targets(self) -> str:
+        """Name the reviewed plan's actual destinations, independent of image size."""
+        changes = self.plan.changes if self.plan else ()
+        tracks = sum(not change.folder_cover for change in changes)
+        targets = []
+        if tracks:
+            targets.append(f"embedded artwork in {tracks} track{'' if tracks == 1 else 's'}")
+        targets.extend(
+            f"folder cover ({change.target.name})" for change in changes if change.folder_cover
+        )
+        return " and ".join(targets)
+
+    @property
     def operation(self) -> Operation | None:
         """Addition or Replacement, for the action's own scope — what the
         finding at the top of the page is labelled with (#468)."""

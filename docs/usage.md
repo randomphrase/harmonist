@@ -133,8 +133,11 @@ leads with whichever fits:
   identity badges show only confirmed releases. Artwork loads separately;
   you can apply tags while keeping your images even if the archive is slow or
   unavailable. **Use artwork from the selected release** is optional and starts
-  unticked. Differing per-track images stay protected. You can also choose artwork
-  later from the album page.
+  unticked: **Keep existing artwork** is the default. Ticking it names the
+  embedded images and/or folder cover that will change. An identical selected
+  image is identified as already present and shown only once; matching dimensions
+  alone do not count as identical. Differing per-track images stay protected.
+  You can also choose artwork later from the album page.
   **Dismiss suggestion** leaves the album where it is.
   Viewing and editing use the same compact comparison table. MusicBrainz
   values are purple, with a hexagon beside the group heading. **MB checked**

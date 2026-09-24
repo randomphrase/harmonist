@@ -84,6 +84,22 @@ def sibling_artwork_server(tmp_path, monkeypatch, request):
         yield base, request.param
 
 
+@pytest.fixture(
+    params=[
+        "identical",
+        "same-size-off",
+        "same-size-on",
+        "protected",
+        "protected-folder",
+        "tracks-only",
+    ]
+)
+def confirmation_outcome_server(tmp_path, monkeypatch, request):
+    monkeypatch.setenv("HARMONIST_TEST_ARTWORK_OUTCOME", request.param)
+    for base in _run_demo_server(tmp_path, app_module="test.e2e.confirmation_outcome_app:app"):
+        yield base, request.param, tmp_path / "harmonist-demo"
+
+
 @pytest.fixture(scope="module")
 def public_demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, Path]]:
     """Exercise the recording catalogue through the ordinary application entry point."""

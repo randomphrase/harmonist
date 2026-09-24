@@ -13,6 +13,7 @@
     </div>
     {% if artwork_error %}<p role="alert" class="text-sm text-amber-700">{{ artwork_error }}</p>{% endif %}
     {% if artwork %}
+    {% set same_images = artwork.images|selectattr('image.digest', 'equalto', archive_image.digest)|list if archive_image else [] %}
     <div class="grid grid-cols-2 gap-4 text-xs">
         <div class="space-y-2">
             <h4 class="text-muted font-semibold">Current</h4>
@@ -23,7 +24,7 @@
             </div>
             {% else %}<p class="text-muted">No readable artwork.</p>{% endfor %}
         </div>
-        <div class="space-y-2">
+        <div class="space-y-2 group/artwork-choice">
             {% if archive_image and artwork.writes %}
             <input type="hidden" name="art_plan" value="{{ artwork.fingerprint }}">
             <h4 class="font-semibold">
@@ -32,10 +33,16 @@
                            type="checkbox" name="include_artwork" value="true"> Use artwork from the selected release
                 </label>
             </h4>
+            <div aria-live="polite">
+                <p class="text-muted group-has-checked/artwork-choice:hidden">Keep existing artwork</p>
+                <p class="hidden group-has-checked/artwork-choice:block">Will update: {{ artwork.write_targets }}.</p>
+            </div>
             {% else %}
-            <h4 class="text-muted font-semibold">Selected release</h4>
+            <h4 class="font-semibold">Keep existing artwork</h4>
             {% endif %}
-            {% if archive_image %}
+            {% if same_images %}
+            <p class="text-muted">Selected-release image already present: {{ same_images|map(attribute='label')|join('; ') }}.</p>
+            {% elif archive_image %}
             <div class="flex items-center gap-2">
                 {{ thumbnail(archive_image, album.id, "the selected release's artwork", image_prefix, 'Artwork for selected release', replacement) }}
                 <p class="text-muted">{{ describe_image(archive_image) }}</p>

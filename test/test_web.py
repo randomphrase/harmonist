@@ -11301,6 +11301,41 @@ def test_confirmation_preview_is_read_only_and_uses_the_selected_release_cache(
     assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
 
 
+@pytest.mark.parametrize("kind", ["identical", "same-size", "protected", "protected-folder"])
+def test_confirmation_names_artwork_outcome_and_exact_identity(client, cfg, monkeypatch, kind):
+    from bs4 import BeautifulSoup
+
+    from harmonist import cover_art
+
+    d, release, original, _small, _calls = _confirmation_setup(
+        cfg, monkeypatch, per_track=kind.startswith("protected")
+    )
+    if kind == "protected":
+        (d / "cover.jpg").unlink()
+    candidate = original if kind == "identical" else _png_sized(99, 800)
+    monkeypatch.setattr(
+        cover_art,
+        "fetch_image",
+        lambda mbid, url: cover_art.cache_image(mbid, candidate, "image/png"),
+    )
+    _, response, _fields = _review_with_artwork(client, _id_for(cfg, d))
+    page = BeautifulSoup(response.text, "html.parser")
+    assert "Keep existing artwork" in page.text
+    assert ("Selected-release image already present" in page.text) is (kind == "identical")
+    candidate_preview = page.find("img", alt="Artwork for selected release")
+    assert bool(candidate_preview) is (kind != "identical")
+    checkbox = page.select_one('[name="include_artwork"]')
+    assert bool(checkbox) is (kind in {"same-size", "protected-folder"})
+    if kind == "same-size":
+        assert "embedded artwork in 2 tracks and folder cover (cover.jpg)" in page.text
+    elif kind == "protected-folder":
+        assert "Will update: folder cover (cover.jpg)" in page.text
+        assert "Will update: embedded" not in page.text
+    if kind.startswith("protected"):
+        assert "Differing per-track artwork is preserved" in page.text
+    assert sc.read(d).mb_release_id != release["id"]
+
+
 @pytest.mark.parametrize("included", [False, True])
 def test_confirmation_checkbox_controls_the_actual_write(client, cfg, monkeypatch, included):
     from harmonist import formats

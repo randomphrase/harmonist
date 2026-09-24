@@ -11,6 +11,95 @@ pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e di
 pw = pytest.importorskip("playwright.sync_api")
 
 
+def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
+    from harmonist import demo, formats, images
+
+    base, scenario, root = confirmation_outcome_server
+    paths = sorted(
+        p
+        for p in root.rglob("*")
+        if formats.is_supported(p) and formats.read_album_id(p) == "demo-rel-dingoes"
+    )
+    assert len(paths) == 3
+    before = {p: formats.read_cover(p) for p in paths}
+    cover = paths[0].parent / "cover.png"
+    old_cover = cover.read_bytes() if cover.exists() else None
+    selected = (
+        demo.ASSETS_DIR / ("dingoes.png" if scenario == "identical" else "wyld.png")
+    ).read_bytes()
+    included = scenario in {"same-size-on", "protected-folder", "tracks-only"}
+    writes = scenario not in {"identical", "protected"}
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{base}/album/demo-rel-dingoes")
+        page.locator("#contribution-editions-demo-rel-dingoes tbody tr").filter(
+            has_text="Suggested"
+        ).get_by_role("button", name="Use", exact=True).click()
+        review = page.get_by_role("region", name="Review suggested release")
+        artwork = review.locator(".assignment-artwork")
+        keep = artwork.get_by_text("Keep existing artwork", exact=True)
+        pw.expect(keep).to_be_visible()
+        candidate = artwork.get_by_alt_text("Artwork for selected release", exact=True)
+        if scenario in {"identical", "tracks-only"}:
+            pw.expect(candidate).to_have_count(0)
+            pw.expect(artwork).to_contain_text("Selected-release image already present")
+        else:
+            pw.expect(candidate).to_be_visible()
+            pw.expect(artwork).not_to_contain_text("Selected-release image already present")
+            # These are different pictures despite having the same dimensions.
+            original = before[paths[0]]
+            assert original is not None
+            assert images.dimensions(selected) == images.dimensions(original[0])
+        checkbox = artwork.get_by_role("checkbox", name="Use artwork from the selected release")
+        if writes:
+            pw.expect(checkbox).not_to_be_checked()
+            will_update = artwork.get_by_text("Will update:", exact=False)
+            pw.expect(will_update).to_be_hidden()
+            checkbox.check()
+            pw.expect(keep).to_be_hidden()
+            pw.expect(will_update).to_be_visible()
+            expected = (
+                "folder cover (cover.png)"
+                if scenario == "protected-folder"
+                else "embedded artwork in 3 tracks"
+                if scenario == "tracks-only"
+                else "embedded artwork in 3 tracks and folder cover (cover.png)"
+            )
+            pw.expect(will_update).to_have_text(f"Will update: {expected}.")
+            with page.expect_response(lambda r: "/artwork?" in r.url and "reread=true" in r.url):
+                artwork.get_by_role(
+                    "button", name="Ask the Cover Art Archive about this release again"
+                ).click()
+            pw.expect(checkbox).to_be_checked()
+            pw.expect(will_update).to_be_visible()
+            checkbox.set_checked(included)
+            pw.expect(keep).to_be_visible(visible=not included)
+        else:
+            pw.expect(checkbox).to_have_count(0)
+        if scenario.startswith("protected"):
+            pw.expect(artwork).to_contain_text("Differing per-track artwork is preserved")
+        confirm = review.get_by_role("button", name="Confirm suggestion", exact=True)
+        pw.expect(confirm).to_have_count(1)
+        with page.expect_response(
+            lambda r: "/confirm/" in r.url and "/accept" in r.url
+        ) as response:
+            confirm.click()
+        assert "confirmation-applied" in response.value.headers.get("hx-trigger", "")
+        page.wait_for_url("**/album/demo-rel-dingoes-digital*")
+        for path in paths:
+            assert formats.read_album_id(path) == "demo-rel-dingoes-digital"
+            assert formats.read_cover(path) == (
+                (selected, "image/png")
+                if included and scenario != "protected-folder"
+                else before[path]
+            )
+        assert (cover.read_bytes() if cover.exists() else None) == (
+            selected if included else old_cover
+        )
+        browser.close()
+
+
 def _suggest(page, base):
     headers = {"HX-Request": "true"}
     assert page.request.post(f"{base}/library/demo-rel-dingoes/rematch", headers=headers).ok

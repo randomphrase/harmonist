@@ -21,6 +21,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Release confirmation states whether artwork will be kept or changed, identifies affected files, and avoids duplicate previews of identical images (#593).
+
 - Reviewed release changes now apply in one step, including selected artwork replacements and partial track assignments, with errors shown inline (#589).
 
 - **The Cover Art Archive's candidate no longer breaks apart on a narrow
