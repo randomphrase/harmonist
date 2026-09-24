@@ -140,6 +140,33 @@ tuple. Two consequences:
 - the key is **sorted**, so reordering the tuple cannot orphan every existing
   row.
 
+**Adding or removing an include orphans every stored row on every install.**
+That is the price of deriving the key from the tuple, and it is not
+free. #599 was one line, adding `url-rels`: after the upgrade the warm-up found
+nothing to flag from, so the Update available filter went empty, and the update
+check read the whole library as never asked about and re-fetched all of it.
+Nothing failed and every test stayed green, because each payload was correct.
+Only the number of requests, and the Activity feed's re-announced updates (#600),
+showed anything had happened.
+
+**That cost is accepted, not engineered around.** #599 considered letting some
+readers fall back to the older rows. The maintainer declined: the old rows expire
+and the update check replaces them, and a fallback is a second source of truth
+with its own trap. An older row lacks whatever the new include adds, and a
+missing list reads as an empty one, so `contributions` would have called every
+Bandcamp link missing. So don't add a fallback, and don't read older keys.
+
+What changing the tuple still owes:
+
+- **Say so where it lands.** In the PR, and in the changelog if the change is
+  released: after upgrading, the Update available filter starts empty and fills
+  in as the update check re-asks, at a cost of one request per album.
+- **Make sure the refill doesn't look like news.** Every release re-fetched with
+  no baseline is a first observation, not an edit, and must not be announced as
+  a new update (#600).
+- **Change it in the same release as other include changes where you can**, so
+  users pay the refill once.
+
 Prefer adding an include to making a second call. The rate limit is **per
 request, not per byte** — a fatter payload is free, a second round trip is not.
 That is the whole reason `RELEASE_INCLUDES` is one tuple rather than a few
@@ -182,7 +209,8 @@ Never by library size in a loop the user did not ask for — that is the rule
 4. Does `ReleaseGoneError` still reach something that can act on it?
 5. Is the code reading `release["id"]` rather than the mbid it requested?
 6. If `includes` changed: is the cache key still derived from the same tuple the
-   request uses?
+   request uses, and does the PR say what orphaning every stored row costs
+   (§6)?
 7. Are MusicBrainz functions called through their module, so demo mode's patch
    lands?
 8. Is there a test asserting how many requests this makes?

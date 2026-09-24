@@ -12,6 +12,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- After upgrading, the Update available filter starts empty and fills in over the following days as the background update check re-reads each release from MusicBrainz, since release data is now fetched with its links (#599).
+
 - Required track-assignment reviews open automatically with proposed pairings and a concise finding instead of tag-difference counts (#576).
 
 - **The Cover Art Archive's candidate now gets a column of its own** in an

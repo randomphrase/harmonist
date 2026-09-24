@@ -31,6 +31,12 @@ MAX_URL_CANDIDATES = 5
 # of the includes, adding one here would leave the key unchanged and every stale
 # row would keep being served under it — a drift nothing could detect, since the
 # payload would still parse. One definition, used for the request AND the key.
+#
+# **Changing it orphans every stored row** (#599). Each existing install's cache
+# goes unread at once: the Update available filter is empty after the upgrade,
+# and the update check refills the cache at its own pace, costing one request per
+# album. That cost is accepted. The older rows are not read as a fallback, since
+# they lack whatever the new include adds.
 RELEASE_INCLUDES = (
     "artist-credits",
     "recordings",
