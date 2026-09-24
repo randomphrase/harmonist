@@ -24,7 +24,17 @@
             {% else %}<p class="text-muted">No readable artwork.</p>{% endfor %}
         </div>
         <div class="space-y-2">
+            {% if archive_image and artwork.writes %}
+            <input type="hidden" name="art_plan" value="{{ artwork.fingerprint }}">
+            <h4 class="font-semibold">
+                <label class="flex items-center gap-2">
+                    <input id="assignment-include-artwork-{{ album.id }}-{{ release_fingerprint }}" hx-preserve
+                           type="checkbox" name="include_artwork" value="true"> Use artwork from the selected release
+                </label>
+            </h4>
+            {% else %}
             <h4 class="text-muted font-semibold">Selected release</h4>
+            {% endif %}
             {% if archive_image %}
             <div class="flex items-center gap-2">
                 {{ thumbnail(archive_image, album.id, "the selected release's artwork", image_prefix, 'Artwork for selected release', replacement) }}
@@ -35,14 +45,6 @@
         </div>
     </div>
     {% if artwork.cover_unreadable %}<p class="text-xs text-amber-700">The folder cover could not be read. It will be left alone.</p>{% endif %}
-    {% if archive_image and artwork.writes %}
-    <input type="hidden" name="art_plan" value="{{ artwork.fingerprint }}">
-    <label class="flex items-center gap-2 text-sm font-semibold">
-        <input id="assignment-include-artwork-{{ album.id }}-{{ release_fingerprint }}" hx-preserve
-               type="checkbox" name="include_artwork" value="true"> Use artwork from the selected release
-    </label>
-    <p class="text-xs text-muted">If selected: {{ artwork.summary }}. Leave unticked to keep your images.</p>
-    {% endif %}
     {% if artwork.plan.preserves_per_track_art %}<p class="text-xs text-muted">Differing per-track artwork is preserved.</p>{% endif %}
     {% for image, who in artwork.distinct %}
         {{ full_size(image, album.id, who, image_prefix, replacement if archive_image and image.digest == archive_image.digest else '') }}
