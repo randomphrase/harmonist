@@ -1,16 +1,17 @@
 {# Shared thumbnails and native full-size views. Hosts render each popover once
    per digest and give separate sections/cards their own namespace. #}
-{% macro thumbnail(image, album_id, who, prefix='art-', alt='') %}
+{% from 'macros.html' import review_url %}
+{% macro thumbnail(image, album_id, who, prefix='art-', alt='', replacement='') %}
 <button type="button" class="art-row__art"
         popovertarget="{{ prefix }}{{ image.digest[:12] }}"
         aria-label="View {{ who }} full size">
-    <img src="/artwork/image/{{ album_id }}/{{ image.digest }}" alt="{{ alt }}" loading="lazy">
+    <img src="{{ review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, replacement) }}" alt="{{ alt }}" loading="lazy">
 </button>
 {% endmacro %}
 
-{% macro full_size(image, album_id, who, prefix='art-') %}
+{% macro full_size(image, album_id, who, prefix='art-', replacement='') %}
 <div id="{{ prefix }}{{ image.digest[:12] }}" popover class="art-full">
-    <img src="/artwork/image/{{ album_id }}/{{ image.digest }}" alt="{{ who }}">
+    <img src="{{ review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, replacement) }}" alt="{{ who }}">
     <p class="art-full__meta">{{ who }} — {{ describe_image(image) }}</p>
 </div>
 {% endmacro %}

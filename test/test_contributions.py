@@ -282,6 +282,8 @@ def test_multi_folder_album_keeps_fresh_observation_after_cached_rescan(tmp_path
 
 
 def test_fresh_check_changes_only_observation_and_preserves_failures(tmp_path, monkeypatch):
+    from bs4 import BeautifulSoup
+
     cfg = Config(paths=PathsConfig(music_dir=tmp_path / "music", config_dir=tmp_path / "config"))
     cfg.paths.config_dir.mkdir()
     d = make_files(cfg.paths.music_dir, "Download")
@@ -298,11 +300,14 @@ def test_fresh_check_changes_only_observation_and_preserves_failures(tmp_path, m
     assert f'hx-get="/library/{a.id}/contributions/editions" hx-trigger="load"' in response.text
     fetch.return_value = release(urls=(URL,))
     response = client.get(f"/library/{a.id}/compare?reread=1")
-    assert "Digital Media and store URL agree" in response.text
+    panel = BeautifulSoup(response.text, "html.parser").find(id=f"album-contributions-{a.id}")
+    assert panel is not None and panel["hx-swap-oob"] == "true"
+    assert panel.find("section") is None
     fetch.side_effect = mb_lookup.MBError("offline")
     response = client.get(f"/library/{a.id}/compare?reread=1")
     assert "Couldn't read MusicBrainz again" in response.text
-    assert "Digital Media and store URL agree" in response.text
+    panel = BeautifulSoup(response.text, "html.parser").find(id=f"album-contributions-{a.id}")
+    assert panel is not None and panel.find("section") is None
     assert fetch.call_count == 3  # explicit check bypasses the fresh TTL every time
     assert initial == {p: p.read_bytes() for p in initial}
     assert len(scanner.scan(cfg.paths.music_dir)) == 2

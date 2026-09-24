@@ -12,8 +12,7 @@
 {% endif %}
 {% if replacement %}
 {% if not actions_disabled|default(false) %}
-<button type="button" onclick="harmonistCloseModal()"
-        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Cancel</button>
+{% include 'partials/_contribution_back.html' %}
 {% endif %}
 {% elif album.sidecar.mb_match_candidate %}
 <button {% if actions_disabled|default(false) %}disabled{% endif %} type="button" hx-post="/reject/{{ album.id }}" hx-swap="none" hx-disabled-elt="this"

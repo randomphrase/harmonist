@@ -1,11 +1,11 @@
-<div id="album-contributions-{{ album.id }}"{% if oob | default(false) %} hx-swap-oob="true"{% endif %}>
-{% if contribution is defined and contribution.eligible %}
+<div id="album-contributions-{{ album.id }}" class="album-contributions"
+     hx-on::oob-before-swap="if (document.getElementById('contribution-review-{{ album.id }}')?.children.length) event.preventDefault()"
+     {% if oob | default(false) %}hx-swap-oob="true"{% endif %}>
+{% if contribution is defined and contribution.has_findings %}
 <section class="border border-line rounded-lg p-4 space-y-3" aria-label="MusicBrainz contributions">
     <h2 class="text-sm font-bold text-ink uppercase tracking-widest">MB contributions</h2>
     {% if contribution.media_mismatch %}
     <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These files are a Bandcamp download, but the matched MusicBrainz release is listed as {{ contribution.observation.formats | join(' + ') }}. A digital edition may be a better match.</p>
-    {% elif contribution.observation and contribution.media_mismatch is none %}
-    <p class="text-sm text-muted">MusicBrainz has not specified all medium formats. The media check is incomplete.</p>
     {% elif contribution.missing_url %}
     <p class="text-sm text-ink"><strong>Store URL missing from MusicBrainz.</strong> This release has no link to the download.</p>
     <div class="flex flex-wrap items-center gap-2">
@@ -19,13 +19,6 @@
     <p class="text-xs text-muted">Private Bandcamp download: check the mix; its URL stays private.</p>
     {% elif not contribution.store_url %}
     <p class="text-xs text-muted">No unambiguous album or track URL is known. The store URL check is incomplete.</p>
-    {% endif %}
-    {% if contribution.observation %}
-        {% if contribution.media_mismatch is sameas false and contribution.missing_url is sameas false %}
-    <p class="text-xs text-muted">Digital Media and store URL agree.</p>
-        {% endif %}
-    {% else %}
-    <p class="text-xs text-muted">Not checked against a stored MusicBrainz release yet.</p>
     {% endif %}
     {% if contribution.media_mismatch %}
     {# The comparison owns discovery: the initial page and a stale comparison

@@ -166,7 +166,11 @@ def test_unavailable_replacement_is_visible_without_mutation(library, monkeypatc
         response = client.get(f"/assignments/{MBID}?{query}")
         assert fetch.call_count == 1
     assert "Review unavailable" in response.text
-    assert response.headers["HX-Retarget"] == "#confirmation-modal"
+    if kind == "missing-cache":
+        assert response.headers["HX-Retarget"] == "#confirmation-modal"
+    else:
+        assert "Cancel" in response.text
+        assert "HX-Retarget" not in response.headers
     assert "confirmation-applied" not in response.headers.get("HX-Trigger", "")
     assert before == {p: p.read_bytes() for p in before}
 
@@ -180,6 +184,42 @@ def test_replacement_refresh_spends_one_request_even_when_uncached(library, monk
         assert response.status_code == 200
         assert _confirmation_fields(response.text)["candidate_mbid"] == "digital"
         assert fetch.call_count == count
+
+
+def test_replacement_artwork_serves_reviewed_release_without_fetching(library, monkeypatch):
+    from datetime import UTC, datetime
+
+    from bs4 import BeautifulSoup
+
+    from harmonist import cover_art, images
+    from harmonist.web.main import _release_fingerprint
+    from test.test_web import _png
+
+    client, _ = library
+    selected = _release(mbid="digital")
+    activity_store.store_release("digital", mb_cache._key(mb_lookup.RELEASE_INCLUDES), selected)
+    image = _png(77)
+    cover_art.cache_image("digital", image, "image/png")
+    # The artwork renderer needs a dated answer; no live service participates.
+    answer = activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    monkeypatch.setattr("harmonist.caa_cache.front", Mock(return_value=answer))
+    fetch = Mock(side_effect=AssertionError("image requests must use the review cache"))
+    monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
+    monkeypatch.setattr(cover_art, "fetch_image", fetch)
+    query = f"replacement={MBID}:digital"
+    response = client.get(
+        f"/assignments/{MBID}/artwork?{query}"
+        f"&release_fingerprint={_release_fingerprint(selected, 'digital')}"
+    )
+    page = BeautifulSoup(response.text, "html.parser")
+    preview = page.find("img", alt="Artwork for selected release")
+    assert preview is not None
+    served = client.get(preview["src"])
+    assert served.status_code == 200 and served.content == image
+    assert fetch.call_count == 0
+    assert client.get(f"/artwork/image/{MBID}/{images.digest(image)}").status_code == 404
+    assert client.get(preview["src"].replace("digital", "unknown")).status_code == 404
+    assert fetch.call_count == 0
 
 
 def test_discovery_is_scoped_read_only_fresh_and_keeps_multiple_editions(library, monkeypatch):

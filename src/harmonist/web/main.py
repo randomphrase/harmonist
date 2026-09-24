@@ -3787,6 +3787,15 @@ def _register_routes(app: FastAPI) -> None:
     @app.exception_handler(_ReplacementUnavailable)
     async def replacement_unavailable(request: Request, exc: _ReplacementUnavailable) -> Response:
         log.warning("replacement review unavailable: %s", exc, extra=_LOG_ONLY)
+        if request.url.path.startswith("/assignments/") and not request.url.path.endswith(
+            "/artwork"
+        ):
+            album = _find_album(request, request.path_params["album_id"])
+            return _templates(request).TemplateResponse(
+                request,
+                "partials/_replacement_review_error.html",
+                _ctx(request, album=album, error=str(exc)),
+            )
         return _templates(request).TemplateResponse(
             request,
             "partials/_replacement_error.html",
@@ -6030,7 +6039,13 @@ def _register_routes(app: FastAPI) -> None:
         # the page talks to one host, so opening an album cannot tell the
         # Internet Archive which records this user owns.
         mbid = album.sidecar.mb_release_id if album.sidecar else None
-        if not mbid and album.sidecar and album.sidecar.mb_match_candidate:
+        if request.query_params.get("replacement"):
+            try:
+                candidate = _assignment_candidate(request, album)
+            except _ReplacementUnavailable as exc:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+            mbid = candidate.mb_release_id if candidate else None
+        elif not mbid and album.sidecar and album.sidecar.mb_match_candidate:
             selected = album.sidecar.mb_match_candidate.mb_release_id
             release = mb_cache.stored_release(selected)
             mbid = release["id"] if release else selected

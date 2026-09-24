@@ -27,7 +27,7 @@
             <h4 class="text-muted font-semibold">Selected release</h4>
             {% if archive_image %}
             <div class="flex items-center gap-2">
-                {{ thumbnail(archive_image, album.id, "the selected release's artwork", image_prefix, 'Artwork for selected release') }}
+                {{ thumbnail(archive_image, album.id, "the selected release's artwork", image_prefix, 'Artwork for selected release', replacement) }}
                 <p class="text-muted">{{ describe_image(archive_image) }}</p>
             </div>
             {% else %}<p class="text-muted">No front cover is available. Existing images will be kept.</p>{% endif %}
@@ -45,7 +45,7 @@
     {% endif %}
     {% if artwork.plan.preserves_per_track_art %}<p class="text-xs text-muted">Differing per-track artwork is preserved.</p>{% endif %}
     {% for image, who in artwork.distinct %}
-        {{ full_size(image, album.id, who, image_prefix) }}
+        {{ full_size(image, album.id, who, image_prefix, replacement if archive_image and image.digest == archive_image.digest else '') }}
     {% endfor %}
     {% endif %}
 </div>

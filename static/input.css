@@ -20,6 +20,13 @@
 @source "../templates/**/*.html";
 @source "../src/harmonist/web/main.py";
 
+/* An identity review replaces the contribution choices and findings about the
+ * current release. Empty swap targets leave no card or gap on the album page. */
+.contribution-review:not(:has(> *)),
+.album-contribution-area:not(:has(.album-contributions section, .contribution-review > *)),
+.album-contribution-area:has(.contribution-review > *) > .album-contributions,
+.album-page:has(.contribution-review > *) .album-findings { display: none; }
+
 /* Keep numeric columns compact and both title columns equal, including when
  * movement controls appear. Long names wrap instead of stretching the table. */
 .assignment-table { table-layout: fixed; min-width: 760px; }

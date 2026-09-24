@@ -1,7 +1,8 @@
 {% from 'macros.html' import release_name %}
 {% macro use_edition(edition, suggested) %}
-<button type="button" hx-get="/assignments/{{ album.id }}?replacement={{ (album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode }}&amp;modal=true&amp;cancel=true&amp;on_album_page=true"
-        hx-target="#modal" hx-swap="innerHTML" hx-disabled-elt="this"
+<button type="button" hx-get="/assignments/{{ album.id }}?replacement={{ (album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode }}&amp;cancel=true&amp;on_album_page=true"
+        hx-target="#contribution-review-{{ album.id }}" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
+        hx-on::after-request="if (event.detail.successful) { const review = document.getElementById('contribution-review-{{ album.id }}'); review.focus(); review.scrollIntoView({block: 'start'}); }"
         hx-indicator="#edition-reviewing-{{ album.id }}"
         class="px-3 py-1.5 {% if suggested %}bg-accent hover:bg-accent-dark text-white{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Use</button>
 {% endmacro %}

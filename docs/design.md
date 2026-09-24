@@ -987,7 +987,9 @@ fetch timestamp are the observation; no persisted conclusion or duplicate MB
 sidecar payload is added. The includes key excludes older incomplete snapshots.
 Scanning restores observations from that cache, and the gardener updates them
 even when tag-relevant data is unchanged. Library predicates do no I/O.
-The album panel explains incomplete checks. A fresh check spends one
+The album panel appears only for an actionable contribution, using the same
+predicate as the filter; an empty swap target allows a later check to add or
+clear it. An unchecked release is not an assertion of agreement. A fresh check spends one
 release request and changes no tags, sidecars or match; failed checks retain
 dated evidence and explain the failure. URL-only changes do not unmute ignored
 tag updates or require another tag plan. The album header's MB date and refresh
@@ -1014,8 +1016,13 @@ the same **Add Release** link remains visible beside **Browse all releases**
 for importing another release if the user judges that none fits.
 Private downloads never send their URL to a lookup or Harmony.
 
-**Use** on any row opens the shared track/artwork review with a
-page-local replacement selection. The current MBID remains intact through
+**Use** on any row replaces the contribution choices with the shared inline
+track/artwork review using a page-local replacement selection. The ordinary
+findings about the current release are hidden while this review is open.
+**Cancel** discards the review and restores the choices. Comparison
+responses cannot replace an active review or restart sibling discovery.
+Replacement artwork URLs carry the validated selection and serve only cached
+image bytes, including the full-size view. The current MBID remains intact through
 review, cancellation and pre-write failure; no candidate is persisted. Each
 request validates the original MBID and the cached target's digital media and
 release group. Initial review may fetch one full release through `mb_cache`;

@@ -68,8 +68,7 @@ Older downloads without either kind of evidence are not assumed to qualify.
 Open an album's **MB contributions** section to see the findings. The
 album header's **MB checked** date and refresh control cover these findings too;
 refreshing does not tag files or change the match. Checks also run with background update checks
-when enabled in Settings. The album panel explains incomplete checks, including
-unknown medium formats or an ambiguous store URL.
+when enabled in Settings. The section appears only when there is a contribution to make.
 Unchecked albums are not counted as clean or added to the contribution filter
 without a finding.
 
@@ -80,8 +79,10 @@ digital editions from the same release group appear automatically in a scrolling
 table with media, disambiguation, track count and release details. A single
 edition with the same store URL and track count is highlighted as **Suggested**
 above its **Use** button.
-**Use** on any row opens the usual track and artwork review.
-Confirming tags this copy; cancelling leaves its current release intact.
+**Use** on any row replaces the choices with an inline track and artwork review.
+**Confirm suggestion** tags this copy; **Cancel** restores the choices
+without changing its current release. Other findings about the current release
+are hidden while reviewing the replacement.
 If no release fits, **Add Release** opens Harmony to import the public download.
 **Browse all releases on MusicBrainz** opens the release group's full list.
 Large groups and unspecified media are marked incomplete; a failed request never

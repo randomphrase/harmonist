@@ -17,6 +17,9 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page()
+        with page.expect_response(lambda r: r.url.endswith("/library/demo-rel-wyld/compare")):
+            page.goto(f"{server}/album/demo-rel-wyld")
+        playwright_sync.expect(page.locator(".album-contribution-area")).to_be_hidden()
         discoveries = []
         page.on(
             "request",
@@ -74,35 +77,65 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         playwright_sync.expect(results.locator("tbody tr")).to_have_count(2)
         assert len(discoveries) == 3
         playwright_sync.expect(results).to_contain_text("Not linked")
-        # Choosing a replacement opens the existing review without clearing
-        # the original match. Closing it must preserve the media finding.
+        # Review replaces the choices inline without changing the confirmed
+        # match. Returning restores both the choices and the ordinary findings.
         suggestion = results.locator("tbody tr").filter(has_text="Suggested")
         playwright_sync.expect(suggestion).to_contain_text("Bandcamp download")
         suggestion.get_by_role("button", name="Use", exact=True).click()
-        dialog = page.locator("#modal dialog[open]")
-        playwright_sync.expect(dialog).to_contain_text("Suggested match")
+        review = page.get_by_role("region", name="Review suggested release")
+        playwright_sync.expect(review).to_contain_text("Suggested match")
+        playwright_sync.expect(panel).to_be_hidden()
+        playwright_sync.expect(page.locator(f"#album-findings-{ALBUM}")).to_be_hidden()
         playwright_sync.expect(
-            dialog.get_by_role("button", name="Confirm suggestion")
+            review.get_by_role("button", name="Confirm suggestion", exact=True)
         ).to_be_enabled()
-        dialog.get_by_role("button", name="Cancel", exact=True).click()
-        playwright_sync.expect(dialog).to_have_count(0)
+        selected_art = review.get_by_alt_text("Artwork for selected release", exact=True)
+        playwright_sync.expect(selected_art).to_be_visible()
+        page.wait_for_function(
+            "() => { const img = document.querySelector('.contribution-review img[alt=\"Artwork for selected release\"]'); return img?.complete && img.naturalWidth > 0; }"
+        )
+        selected_art.click()
+        popover_image = review.locator("[popover]:popover-open img")
+        playwright_sync.expect(popover_image).to_be_visible()
+        page.wait_for_function(
+            "() => { const img = document.querySelector('.contribution-review [popover]:popover-open img'); return img?.complete && img.naturalWidth > 0; }"
+        )
+        page.keyboard.press("Escape")
+        # A current-release refresh cannot tear down the replacement or browse
+        # siblings again while the user is reviewing it.
+        review.locator(".assignment-content").evaluate("e => e.dataset.reviewKept = 'true'")
+        panel.evaluate("e => e.dataset.choicesKept = 'true'")
+        with page.expect_response(lambda r: r.url.endswith(f"/library/{ALBUM}/compare?reread=1")):
+            page.get_by_role(
+                "button", name="Read this release from MusicBrainz again", exact=True
+            ).click()
+        playwright_sync.expect(
+            page.get_by_role("button", name="Read this release from MusicBrainz again", exact=True)
+        ).to_be_enabled()
+        playwright_sync.expect(panel).to_have_attribute("data-choices-kept", "true")
+        playwright_sync.expect(review.locator(".assignment-content")).to_have_attribute(
+            "data-review-kept", "true"
+        )
+        assert len(discoveries) == 3
+        review.get_by_role("button", name="Cancel", exact=True).click()
+        playwright_sync.expect(review).to_be_hidden()
+        playwright_sync.expect(panel).to_be_visible()
         playwright_sync.expect(panel).to_contain_text("Possible media mismatch")
         # An unlinked sibling is still a valid choice. Its missing URL becomes
         # actionable only after successful reviewed tagging.
         results.locator("tbody tr").filter(has_text="Digital reissue").get_by_role(
             "button", name="Use", exact=True
         ).click()
-        dialog = page.locator("#modal dialog[open]")
-        dialog.get_by_role("button", name="Edit track assignments", exact=True).click()
+        review.get_by_role("button", name="Edit track assignments", exact=True).click()
         playwright_sync.expect(
-            dialog.get_by_role("button", name="Cancel", exact=True)
+            review.get_by_role("button", name="Cancel", exact=True)
         ).to_have_count(1)
-        dialog.get_by_role("button", name="Accept changes", exact=True).click()
+        review.get_by_role("button", name="Accept changes", exact=True).click()
         playwright_sync.expect(
-            dialog.get_by_role("button", name="Confirm suggestion")
+            review.get_by_role("button", name="Confirm suggestion", exact=True)
         ).to_be_enabled()
         with page.expect_response(lambda r: "/confirm/" in r.url and "/accept" in r.url) as tagged:
-            dialog.get_by_role("button", name="Confirm suggestion", exact=True).click()
+            review.get_by_role("button", name="Confirm suggestion", exact=True).click()
         assert "confirmation-applied" in tagged.value.headers.get("hx-trigger", "")
         page.wait_for_url("**/album/demo-rel-dingoes-reissue*")
         panel = page.locator("#album-contributions-demo-rel-dingoes-reissue")

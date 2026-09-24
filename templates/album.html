@@ -8,7 +8,7 @@
    `library_detail.html` is still a partial rather than inline markup because it
    is the album panel's definition, not because anything else includes it. #}
 {% block content %}
-<div class="space-y-5">
+<div class="album-page space-y-5">
 
     {# Back to the Library page this album was opened from, not the top of the
        grid (#139). `?tab=library` is always sent: a link says where it goes, and
@@ -39,7 +39,13 @@
     <div id="album-alert-{{ album.id }}"></div>
 
     {% include 'partials/library_detail.html' %}
-    {% include 'partials/_contributions.html' %}
+    <div class="album-contribution-area">
+        {% include 'partials/_contributions.html' %}
+        {# The current-release comparison only swaps the choices. The review
+           and its draft stay local to this page until confirmed or discarded. #}
+        <section id="contribution-review-{{ album.id }}" tabindex="-1" aria-label="Review suggested release"
+                 class="contribution-review border border-line rounded-lg p-4 space-y-3"></section>
+    </div>
 
     {# What this album could be asked to do about itself, and the answers to it
        (#366, #443).
