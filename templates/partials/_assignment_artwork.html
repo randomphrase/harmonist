@@ -14,11 +14,11 @@
     {% if artwork_error %}<p role="alert" class="text-sm text-amber-700">{{ artwork_error }}</p>{% endif %}
     {% if artwork %}
     {% set same_images = artwork.images|selectattr('image.digest', 'equalto', archive_image.digest)|list if archive_image else [] %}
-    <div class="grid grid-cols-2 gap-4 text-xs">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
         <div class="space-y-2">
             <h4 class="text-muted font-semibold">Current</h4>
             {% for row in artwork.images %}
-            <div class="flex items-center gap-2">
+            <div class="assignment-artwork__image">
                 {{ thumbnail(row.image, album.id, 'current ' ~ row.label, image_prefix, 'Current artwork: ' ~ row.label) }}
                 <span>{{ row.label }}<br><span class="text-muted">{{ describe_image(row.image) }}</span></span>
             </div>
@@ -43,7 +43,7 @@
             {% if same_images %}
             <p class="text-muted">Selected-release image already present: {{ same_images|map(attribute='label')|join('; ') }}.</p>
             {% elif archive_image %}
-            <div class="flex items-center gap-2">
+            <div class="assignment-artwork__image">
                 {{ thumbnail(archive_image, album.id, "the selected release's artwork", image_prefix, 'Artwork for selected release', replacement) }}
                 <p class="text-muted">{{ describe_image(archive_image) }}</p>
             </div>
@@ -54,7 +54,7 @@
     {% if artwork.cover_unreadable %}<p class="text-xs text-amber-700">The folder cover could not be read. It will be left alone.</p>{% endif %}
     {% if artwork.plan.preserves_per_track_art %}<p class="text-xs text-muted">Differing per-track artwork is preserved.</p>{% endif %}
     {% for image, who in artwork.distinct %}
-        {{ full_size(image, album.id, who, image_prefix, replacement if archive_image and image.digest == archive_image.digest else '') }}
+        {{ full_size(image, album.id, who, image_prefix, replacement if archive_image and image.digest == archive_image.digest else '', gallery=artwork.distinct) }}
     {% endfor %}
     {% endif %}
 </div>

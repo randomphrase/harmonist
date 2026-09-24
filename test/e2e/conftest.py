@@ -101,6 +101,14 @@ def confirmation_outcome_server(tmp_path, monkeypatch, request):
 
 
 @pytest.fixture(scope="module")
+def artwork_inspection_server(tmp_path_factory):
+    yield from _run_demo_server(
+        tmp_path_factory.mktemp("e2e-inspection"),
+        app_module="test.e2e.artwork_inspection_app:app",
+    )
+
+
+@pytest.fixture(scope="module")
 def public_demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, Path]]:
     """Exercise the recording catalogue through the ordinary application entry point."""
     root = tmp_path_factory.mktemp("e2e-public")

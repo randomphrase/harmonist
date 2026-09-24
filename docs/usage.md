@@ -602,8 +602,12 @@ another, and until you can see both there is no way to tell why.
 
 One row per distinct image, labelled by everything carrying it: *All 12 tracks
 and cover.jpg* when they agree, *Tracks 1–4* and *Tracks 5–7* when they don't.
-Each row gives the image's dimensions, format and size, and clicking it opens the
-picture full size. On a multi-disc release the rows name the disc — *Disc 1,
+Each row gives the image's dimensions, format and size. Click it to inspect the
+picture: **Fit** uses a shared scale for the comparison, while **100% (1:1)**
+shows one image pixel per browser CSS pixel with scrolling for large images.
+The **Image** selector switches covers at the same scale and scroll position;
+source dimensions stay visible. The same viewer is available during release
+confirmation. Press Escape or **Close** to return. On a multi-disc release the rows name the disc — *Disc 1,
 track 5 · Disc 7, track 7* — because a bare track number means two different
 things on a box set.
 

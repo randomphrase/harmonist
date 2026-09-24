@@ -342,7 +342,7 @@
    placement (web-ui rule 1), and it is the same element the odd-tracks pill
    already uses on this page. #}
 {% for image, who in artwork.distinct %}
-{{ full_size(image, album.id, who) }}
+{{ full_size(image, album.id, who, gallery=artwork.distinct) }}
 {% endfor %}
 
 {% if artwork.unreadable %}

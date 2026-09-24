@@ -9,9 +9,35 @@
 </button>
 {% endmacro %}
 
-{% macro full_size(image, album_id, who, prefix='art-', replacement='') %}
-<div id="{{ prefix }}{{ image.digest[:12] }}" popover class="art-full">
-    <img src="{{ review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, replacement) }}" alt="{{ who }}">
-    <p class="art-full__meta">{{ who }} — {{ describe_image(image) }}</p>
+{% macro full_size(image, album_id, who, prefix='art-', replacement='', gallery=()) %}
+<div id="{{ prefix }}{{ image.digest[:12] }}" popover class="art-full"
+     role="dialog" aria-label="Artwork viewer" data-art-gallery="{{ prefix }}{{ album_id }}">
+    <div class="art-full__controls">
+        <label class="art-full__choice">Image
+            <select aria-label="Artwork image" class="art-full__image-choice" autofocus>
+                {% for other, caption in gallery %}
+                <option value="{{ prefix }}{{ other.digest[:12] }}"{% if other.digest == image.digest %} selected{% endif %}>{{ caption }}</option>
+                {% else %}
+                <option value="{{ prefix }}{{ image.digest[:12] }}">{{ who }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Scale
+            <select aria-label="Viewing scale" class="art-full__mode">
+                <option value="fit">Fit</option>
+                <option value="native">100% (1:1)</option>
+            </select>
+        </label>
+        <button type="button" aria-label="Close artwork viewer"
+                onclick="this.closest('[popover]').hidePopover()">Close</button>
+    </div>
+    <div class="art-full__stage" role="region" aria-label="Artwork detail" tabindex="0">
+        <div class="art-full__canvas">
+            <img src="{{ review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, replacement) }}" alt="{{ who }}"
+                 {% if image.size %}width="{{ image.size.width }}" height="{{ image.size.height }}"{% endif %}>
+        </div>
+    </div>
+    <p class="art-full__meta">{{ describe_image(image) }}</p>
+    <output class="art-full__scale" aria-live="polite">Fit</output>
 </div>
 {% endmacro %}
