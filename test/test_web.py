@@ -6324,6 +6324,8 @@ def test_a_length_difference_is_stated_but_never_offered_as_a_change(client, cfg
     drew MusicBrainz's length on that purple line under a hexagon, so a test that
     merely looked for "3:07" somewhere would have passed on the bug.
     """
+    from bs4 import BeautifulSoup
+
     d = _make_tagged_album(cfg, "Skewed", mbid="rel-skew", tagged_at=datetime.now(UTC))
 
     def fake_release(mbid):
@@ -6345,6 +6347,11 @@ def test_a_length_difference_is_stated_but_never_offered_as_a_change(client, cfg
         }
 
     monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
+    # Deliberately collide with the duration's text in the page's MB timestamp.
+    monkeypatch.setattr(
+        "harmonist.web.main.mb_cache.fetched_at",
+        lambda _mbid: datetime(2026, 9, 24, 16, 33, 7, tzinfo=UTC),
+    )
     body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
 
     # The column earns its place and carries MusicBrainz's figure...
@@ -6352,7 +6359,9 @@ def test_a_length_difference_is_stated_but_never_offered_as_a_change(client, cfg
     # ...once. The behaviour being replaced put it on the purple line under a
     # hexagon, so a second copy here means the row is still stating it as a
     # pending change.
-    assert body.count("3:07") == 1
+    table = BeautifulSoup(body, "html.parser").select_one("table.track-diff")
+    assert table is not None
+    assert table.get_text().count("3:07") == 1
     # The heading explains itself on hover, and so does the FIGURE — the numbers
     # are what raise the question and where the reader's pointer already is, and
     # a heading several rows up is not somewhere anyone thinks to hover.
