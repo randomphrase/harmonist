@@ -77,6 +77,13 @@ def reset_demo_server(demo_server: str) -> str:
     return demo_server
 
 
+@pytest.fixture(params=["absent", "cached-group", "failure"])
+def sibling_artwork_server(tmp_path, monkeypatch, request):
+    monkeypatch.setenv("HARMONIST_TEST_SIBLING_ARTWORK", request.param)
+    for base in _run_demo_server(tmp_path, app_module="test.e2e.sibling_artwork_app:app"):
+        yield base, request.param
+
+
 @pytest.fixture(scope="module")
 def public_demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, Path]]:
     """Exercise the recording catalogue through the ordinary application entry point."""

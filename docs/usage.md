@@ -80,6 +80,9 @@ table with media, disambiguation, track count and release details. A single
 edition with the same store URL and track count is highlighted as **Suggested**
 above its **Use** button.
 **Use** on any row replaces the choices with an inline track and artwork review.
+This review offers only the selected release's front cover, never another
+edition's release-group artwork. If that release has no cover, or the Cover Art
+Archive cannot be reached, you can still confirm its tags and keep your images.
 **Confirm suggestion** tags this copy; **Cancel** restores the choices
 without changing its current release. Other findings about the current release
 are hidden while reviewing the replacement.

@@ -1022,7 +1022,12 @@ findings about the current release are hidden while this review is open.
 **Cancel** discards the review and restores the choices. Comparison
 responses cannot replace an active review or restart sibling discovery.
 Replacement artwork URLs carry the validated selection and serve only cached
-image bytes, including the full-size view. The current MBID remains intact through
+image bytes, including the full-size view. Sibling review requires release-specific
+CAA evidence: preview, refresh, image serving and confirmation exclude group
+observations and their cached bytes. Missing artwork and failed checks are distinct;
+both permit tags-only confirmation retaining local artwork. Ordinary artwork flows
+retain group fallback. A release-only negative records `source=release`, so it
+cannot suppress a later group-enabled check. The current MBID remains intact through
 review, cancellation and pre-write failure; no candidate is persisted. Each
 request validates the original MBID and the cached target's digital media and
 release group. Initial review may fetch one full release through `mb_cache`;

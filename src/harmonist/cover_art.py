@@ -51,13 +51,20 @@ class Front:
     mime: str
 
 
-def cached_front(release_mbid: str) -> Front | None:
+def cached_front(release_mbid: str, *, release_only: bool = False) -> Front | None:
     """The archive's image for this release from the local cache only, or None.
 
     No network, so it is safe on every path — the gardener's included. An
     unreadable cache file is logged and treated as absent: the copy is
     disposable, and the archive still has the original.
+
+    `release_only` requires a positive release observation. Group candidates
+    and bytes left behind after an absent answer cannot represent this edition.
     """
+    if release_only:
+        known = activity_store.cached_cover_art(release_mbid)
+        if known is None or not known.has_art or known.from_release_group:
+            return None
     path = cached_image(release_mbid)
     if path is None:
         return None

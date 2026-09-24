@@ -185,3 +185,27 @@ def test_a_zero_ttl_asks_every_time(monkeypatch):
     caa_cache.front(MBID)
 
     assert check.calls == 2
+
+
+def test_release_only_absence_does_not_suppress_ordinary_group_fallback(monkeypatch):
+    calls = []
+
+    def check(mbid, *, release_group_mbid=None, known=None, **kw):
+        calls.append((release_group_mbid, known))
+        return activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://caa.example/group.jpg" if release_group_mbid else None,
+            source="release-group" if release_group_mbid else None,
+        )
+
+    monkeypatch.setattr(cover_art, "check_front", check)
+    assert not caa_cache.front(MBID, release_only=True).has_art
+    assert not caa_cache.front(MBID, release_only=True).has_art
+    assert len(calls) == 1  # A release-only absence still benefits from the TTL.
+    assert caa_cache.due(MBID)  # The ordinary album page may still find group artwork.
+    assert caa_cache.front(MBID, release_group_mbid="group").from_release_group
+    assert caa_cache.front(MBID, release_group_mbid="group").has_art
+    assert len(calls) == 2
+    assert not caa_cache.front(MBID, release_only=True).has_art
+    assert len(calls) == 3
+    assert calls == [(None, None), ("group", None), (None, None)]

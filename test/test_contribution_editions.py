@@ -201,9 +201,15 @@ def test_replacement_artwork_serves_reviewed_release_without_fetching(library, m
     activity_store.store_release("digital", mb_cache._key(mb_lookup.RELEASE_INCLUDES), selected)
     image = _png(77)
     cover_art.cache_image("digital", image, "image/png")
-    # The artwork renderer needs a dated answer; no live service participates.
-    answer = activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
-    monkeypatch.setattr("harmonist.caa_cache.front", Mock(return_value=answer))
+    # The cached bytes belong to a release-specific observation.
+    activity_store.store_cover_art(
+        "digital",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://caa.example/front.png",
+            source="release",
+        ),
+    )
     fetch = Mock(side_effect=AssertionError("image requests must use the review cache"))
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
     monkeypatch.setattr(cover_art, "fetch_image", fetch)
@@ -221,6 +227,118 @@ def test_replacement_artwork_serves_reviewed_release_without_fetching(library, m
     assert client.get(f"/artwork/image/{MBID}/{images.digest(image)}").status_code == 404
     assert client.get(preview["src"].replace("digital", "unknown")).status_code == 404
     assert fetch.call_count == 0
+
+
+@pytest.mark.parametrize("cached_group", [False, True])
+@pytest.mark.parametrize("outcome", ["absent", "failure", "release", "changed"])
+def test_sibling_artwork_is_release_specific_through_confirmation(
+    library, monkeypatch, cached_group, outcome
+):
+    from datetime import UTC, datetime
+
+    from bs4 import BeautifulSoup
+
+    from harmonist import cover_art, formats, images, sidecar
+    from test.test_web import _png
+
+    client, root = library
+    folder = root / "Download"
+    track = next(folder.glob("*.m4a"))
+    local, group, selected_image = _png(11), _png(22), _png(33)
+    (folder / "cover.png").write_bytes(local)
+    formats.write_cover(track, local)
+    selected = _release(mbid="digital")
+    monkeypatch.setattr(mb_lookup, "fetch_release", Mock(return_value=selected))
+    query = f"replacement={MBID}:digital"
+    editor = client.get(f"/assignments/{MBID}?{query}&cancel=true&on_album_page=true")
+    fields = _confirmation_fields(editor.text)
+    forbidden = Mock(side_effect=AssertionError("confirmation must not fetch"))
+    monkeypatch.setattr(mb_lookup, "fetch_release", forbidden)
+
+    def seed_group():
+        cover_art.cache_image("digital", group, "image/png")
+        activity_store.store_cover_art(
+            "digital",
+            activity_store.CachedCoverArt(
+                fetched_at=datetime.now(UTC),
+                image_url="https://caa.example/group.png",
+                source="release-group",
+                etag='"group"',
+            ),
+        )
+
+    if cached_group:
+        seed_group()
+    calls = []
+
+    def check(mbid, *, release_group_mbid=None, known=None, **kw):
+        calls.append((mbid, release_group_mbid, known))
+        if outcome == "failure":
+            raise cover_art.CoverArtError("CAA unavailable")
+        if release_group_mbid:
+            seed_group()
+            return activity_store.cached_cover_art("digital")
+        if outcome in {"release", "changed"}:
+            cover_art.cache_image(mbid, selected_image, "image/png")
+            return activity_store.CachedCoverArt(
+                fetched_at=datetime.now(UTC),
+                image_url="https://caa.example/release.png",
+                source="release",
+            )
+        # Leave old bytes present to test readers independently of cache eviction.
+        return activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+
+    monkeypatch.setattr(cover_art, "check_front", check)
+    monkeypatch.setattr(
+        cover_art,
+        "fetch_image",
+        lambda mbid, url: cover_art.cache_image(mbid, selected_image, "image/png"),
+    )
+    artwork_url = (
+        f"/assignments/{MBID}/artwork?{query}&release_fingerprint={fields['release_fingerprint']}"
+    )
+    for suffix in ("", "&reread=true"):
+        response = client.get(artwork_url + suffix)
+        assert response.status_code == 200
+        page = BeautifulSoup(response.text, "html.parser")
+        checkbox = page.select_one('[name="include_artwork"]')
+        assert bool(checkbox) is (outcome in {"release", "changed"})
+        assert (
+            client.get(f"/artwork/image/{MBID}/{images.digest(group)}?{query}").status_code == 404
+        )
+        if outcome in {"release", "changed"}:
+            preview = page.find("img", alt="Artwork for selected release")
+            assert preview is not None
+            assert client.get(preview["src"]).content == selected_image
+            plan = page.select_one('[name="art_plan"]')
+            assert plan is not None
+            fields.update(include_artwork="true", art_plan=plan["value"])
+        elif outcome == "failure":
+            assert "Artwork could not be loaded" in page.text
+            assert "No front cover" not in page.text
+        else:
+            assert "No front cover" in page.text
+            assert "Existing images will be kept" in page.text
+    assert len(calls) == 2
+    assert all(mbid == "digital" and rg is None for mbid, rg, _ in calls)
+    assert calls[0][2] is None
+    if outcome == "changed":
+        seed_group()  # Another ordinary artwork check replaced the reviewed cache.
+    monkeypatch.setattr(cover_art, "check_front", forbidden)
+    monkeypatch.setattr(cover_art, "fetch_image", forbidden)
+    response = client.post(f"/confirm/{MBID}/accept?{query}", data=fields)
+    if outcome == "changed":
+        assert "Artwork changed since the review" in response.text
+        assert sidecar.read(folder).mb_release_id == MBID
+    else:
+        assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
+        assert sidecar.read(folder).mb_release_id == "digital"
+        assert formats.read_album_id(track) == "digital"
+    expected = selected_image if outcome == "release" else local
+    assert (folder / "cover.png").read_bytes() == expected
+    embedded = formats.read_cover(track)
+    assert embedded is not None and embedded[0] == expected
+    assert forbidden.call_count == 0
 
 
 def test_discovery_is_scoped_read_only_fresh_and_keeps_multiple_editions(library, monkeypatch):

@@ -12,6 +12,47 @@ playwright_sync = pytest.importorskip("playwright.sync_api")
 ALBUM = "demo-rel-dingoes"
 
 
+def test_sibling_without_release_cover_keeps_local_artwork(sibling_artwork_server):
+    server, scenario = sibling_artwork_server
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{server}/album/{ALBUM}")
+        results = page.locator(f"#contribution-editions-{ALBUM}")
+        results.locator("tbody tr").filter(has_text="Suggested").get_by_role(
+            "button", name="Use", exact=True
+        ).click()
+        review = page.get_by_role("region", name="Review suggested release")
+        artwork = review.locator(".assignment-artwork")
+        expected = "Artwork could not be loaded" if scenario == "failure" else "No front cover"
+        playwright_sync.expect(artwork).to_contain_text(expected)
+        playwright_sync.expect(
+            artwork.get_by_role("checkbox", name="Use artwork from the selected release")
+        ).to_have_count(0)
+        playwright_sync.expect(
+            artwork.get_by_alt_text("Artwork for selected release")
+        ).to_have_count(0)
+        # The album's current artwork is available even when the CAA check failed.
+        before = page.locator("#album-artwork .art-row__side:not(.art-row__side--after) img")
+        playwright_sync.expect(before.first).to_be_attached()
+        digests = before.evaluate_all("els => els.map(e => e.src.split('?')[0].split('/').pop())")
+        with page.expect_response(lambda r: "/artwork?" in r.url and "reread=true" in r.url):
+            artwork.get_by_role(
+                "button", name="Ask the Cover Art Archive about this release again"
+            ).click()
+        playwright_sync.expect(artwork).to_contain_text(expected)
+        with page.expect_response(lambda r: "/confirm/" in r.url and "/accept" in r.url) as tagged:
+            review.get_by_role("button", name="Confirm suggestion", exact=True).click()
+        assert "confirmation-applied" in tagged.value.headers.get("hx-trigger", "")
+        page.wait_for_url("**/album/demo-rel-dingoes-digital*")
+        current = page.locator("#album-artwork .art-row__side:not(.art-row__side--after) img")
+        playwright_sync.expect(current.first).to_be_visible()
+        assert set(
+            current.evaluate_all("els => els.map(e => e.src.split('?')[0].split('/').pop())")
+        ) == set(digests)
+        browser.close()
+
+
 def test_contribution_check_and_library_filter(contribution_server: tuple[str, bool]) -> None:
     server, stale = contribution_server
     with playwright_sync.sync_playwright() as pw:

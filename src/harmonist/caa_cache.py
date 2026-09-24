@@ -44,6 +44,7 @@ and the album page's control (#419) is the way to not wait.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from . import activity_store, cover_art, timing
@@ -107,7 +108,7 @@ def _fresh(known: activity_store.CachedCoverArt, max_age: timedelta) -> bool:
     return timedelta(0) <= age < max_age
 
 
-def stored(mbid: str) -> activity_store.CachedCoverArt | None:
+def stored(mbid: str, *, release_only: bool = False) -> activity_store.CachedCoverArt | None:
     """What the archive last said about `mbid`, or None if we never asked.
 
     **Reads the store and never the network**, whatever the row's age — what
@@ -116,7 +117,10 @@ def stored(mbid: str) -> activity_store.CachedCoverArt | None:
     function's to act on: the panel says how old it is (#276) and offers the
     control that gets a newer one (#419).
     """
-    return activity_store.cached_cover_art(mbid)
+    known = activity_store.cached_cover_art(mbid)
+    if release_only and known is not None and known.from_release_group:
+        return None
+    return known
 
 
 def due(mbid: str) -> bool:
@@ -128,7 +132,13 @@ def due(mbid: str) -> bool:
     the machine, so the decision has to be made without making the request.
     """
     known = stored(mbid)
-    return known is None or not _fresh(known, _ttl)
+    return (
+        known is None
+        # The ordinary album page permits group fallback. A sibling review's
+        # release-only absence has not answered that broader question yet.
+        or (not known.has_art and known.source == "release")
+        or not _fresh(known, _ttl)
+    )
 
 
 def front(
@@ -137,18 +147,27 @@ def front(
     release_group_mbid: str | None = None,
     keep_if_wider_than: int | None = None,
     max_age: timedelta | None = None,
+    release_only: bool = False,
 ) -> activity_store.CachedCoverArt:
     """`cover_art.check_front`, served from the store when it is fresh enough.
 
     `max_age=FRESH` forces a live check and refreshes the stored row — what the
     album page's re-ask control passes.
 
+    `release_only` excludes group observations, including their ETags, and
+    never asks the group. A release-only negative cannot answer a later check
+    that permits fallback: its `source` records which listing was checked.
+
     `CoverArtError` propagates untouched. A transport failure must never be
     recorded as "the archive has nothing": those are different facts, and the
     caller's job is to leave the stored answer — and its timestamp — exactly
     where they were, which is the honest signal that the check did not happen.
     """
-    known = stored(mbid)
+    known = stored(mbid, release_only=release_only)
+    if release_only:
+        release_group_mbid = None
+    elif release_group_mbid and known and not known.has_art and known.source == "release":
+        known = None
     if known is not None and _fresh(known, _ttl if max_age is None else max_age):
         return known
     with timing.warn_if_slow("Cover Art Archive check", _SLOW_CHECK, mbid=mbid):
@@ -163,5 +182,7 @@ def front(
             known=known,
             keep_if_wider_than=keep_if_wider_than,
         )
+    if release_only and not answer.has_art:
+        answer = replace(answer, source="release")
     activity_store.store_cover_art(mbid, answer)
     return answer

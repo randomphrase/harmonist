@@ -2419,7 +2419,7 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 _IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
 
 
-def _archive_image(mbid: str | None) -> formats.EmbeddedArt | None:
+def _archive_image(mbid: str | None, *, release_only: bool = False) -> formats.EmbeddedArt | None:
     """The Cover Art Archive's image for this release, described, when one has
     been fetched (#276).
 
@@ -2430,16 +2430,8 @@ def _archive_image(mbid: str | None) -> formats.EmbeddedArt | None:
     """
     if mbid is None:
         return None
-    path = cover_art.cached_image(mbid)
-    if path is None:
-        return None
-    try:
-        data = path.read_bytes()
-    except OSError:
-        log.exception("could not read the cached archive image for %s", mbid)
-        return None
-    mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
-    return formats.EmbeddedArt.of(data, mime)
+    front = cover_art.cached_front(mbid, release_only=release_only)
+    return formats.EmbeddedArt.of(front.data, front.mime) if front else None
 
 
 def _chosen(use: str) -> artwork.Source | None:
@@ -3440,6 +3432,7 @@ def _tag_with_release(
     chosen: artwork.Source | None = None,
     expected_release: str | None = None,
     assignment_draft: track_assignment.Draft | None = None,
+    release_artwork_only: bool = False,
 ) -> tagger_mod.TaggingOutcome:
     """Fetch MB release, fetch cover, write tags, update sidecar.
 
@@ -3529,6 +3522,14 @@ def _tag_with_release(
     rg = release.get("release-group") or {}
     cover_path = cover_art.cached_cover(album_path) if artwork_included else None
     archive: cover_art.Front | None = None
+    if artwork_included and release_artwork_only:
+        # Pin the validated bytes before tagging. Passing None would let the
+        # tagger independently reuse a group image from the shared cache.
+        archive = cover_art.cached_front(mbid, release_only=True)
+        if archive is None:
+            raise _ConfirmationChanged(
+                "Artwork changed since the review. Go back and review the artwork again."
+            )
     try:
         # Asked only when the album has no folder cover — the one case a
         # tagging has always spent a request on, and the one where the archive
@@ -3536,7 +3537,12 @@ def _tag_with_release(
         # tagger's plan decides whether it wins (#469). An album whose folder
         # cover already exists weighs the archive only from the cache, which
         # the album page's own check fills.
-        if artwork_included and cover_path is None and expected_release is None:
+        if (
+            artwork_included
+            and not release_artwork_only
+            and cover_path is None
+            and expected_release is None
+        ):
             archive = cover_art.front_image(release["id"], rg.get("id"))
     except cover_art.CoverArtError:
         # Tagging is the work; the cover is a side effect of it (#458). Design
@@ -6049,12 +6055,13 @@ def _register_routes(app: FastAPI) -> None:
             selected = album.sidecar.mb_match_candidate.mb_release_id
             release = mb_cache.stored_release(selected)
             mbid = release["id"] if release else selected
-        cached = cover_art.cached_image(mbid) if mbid else None
-        if cached is not None:
-            data = cached.read_bytes()
-            if images.digest(data) == digest:
-                media = "image/png" if cached.suffix.lower() == ".png" else "image/jpeg"
-                return Response(content=data, media_type=media, headers=_IMMUTABLE)
+        cached = (
+            cover_art.cached_front(mbid, release_only=bool(request.query_params.get("replacement")))
+            if mbid
+            else None
+        )
+        if cached is not None and images.digest(cached.data) == digest:
+            return Response(content=cached.data, media_type=cached.mime, headers=_IMMUTABLE)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
 
     @app.get("/cover/{album_id}")
@@ -6448,16 +6455,18 @@ def _register_routes(app: FastAPI) -> None:
         error = None
         answer = None
         archive_image = None
+        release_only = bool(request.query_params.get("replacement"))
         try:
             release = _reviewed_release(candidate.mb_release_id, release_fingerprint)
             answer = caa_cache.front(
                 release["id"],
                 release_group_mbid=(release.get("release-group") or {}).get("id"),
                 max_age=caa_cache.FRESH if reread else None,
+                release_only=release_only,
             )
             if answer.image_url and (reread or cover_art.cached_image(release["id"]) is None):
                 cover_art.fetch_image(release["id"], answer.image_url)
-            archive_image = _archive_image(release["id"])
+            archive_image = _archive_image(release["id"], release_only=release_only)
             view = _artwork_view(
                 album,
                 answer,
@@ -6559,10 +6568,11 @@ def _register_routes(app: FastAPI) -> None:
                 )
             if release_fingerprint and include_artwork:
                 reviewed = _reviewed_release(candidate.mb_release_id, release_fingerprint)
+                release_only = bool(request.query_params.get("replacement"))
                 view = _artwork_view(
                     album,
-                    caa_cache.stored(reviewed["id"]),
-                    _archive_image(reviewed["id"]),
+                    caa_cache.stored(reviewed["id"], release_only=release_only),
+                    _archive_image(reviewed["id"], release_only=release_only),
                     chosen=artwork.Source.ARCHIVE,
                     folder_cover=_folder_cover_policy(request),
                 )
@@ -6584,6 +6594,7 @@ def _register_routes(app: FastAPI) -> None:
                 scope=artwork.Scope.ALL,
                 chosen=artwork.Source.ARCHIVE,
                 assignment_draft=draft,
+                release_artwork_only=bool(request.query_params.get("replacement")),
             )
         except (_ConfirmationChanged, track_assignment.AssignmentChanged) as e:
             log.warning("could not apply reviewed changes: %s", e, extra=_LOG_ONLY)
