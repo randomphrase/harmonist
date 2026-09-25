@@ -826,8 +826,14 @@ excluded and a disc subtitle alone remains an ordinary metadata update.
 
 The editor first retains unique release-track IDs, then recording IDs for
 ripper-tagged files when they identify one remaining track (or one exact numbered
-occurrence of a repeated recording). Those pairs leave the candidate pool. Only
-files carrying neither ID are eligible for unique disc/track-number proposals
+occurrence of a repeated recording). A file tagged as a release MusicBrainz has
+since merged into this one is read the same way when its release-track ID names
+no track here: a merge that folds tracks together issues new IDs, so the old one
+names a track of the release that is gone, while its recording usually survives
+(#602). The file's own album ID is the merge evidence; a release-track ID that
+vanishes from the *same* release is still a conflict. Those pairs leave the
+candidate pool. Only files carrying neither usable ID are eligible for unique
+disc/track-number proposals
 against remaining MB tracks, followed by a sole remaining file/track pair.
 Conflicting file IDs, missing or duplicate MB IDs and ambiguous leftovers stay
 as gaps. Proposed or manually changed pairs are

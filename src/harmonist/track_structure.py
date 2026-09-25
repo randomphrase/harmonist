@@ -28,10 +28,26 @@ def pairs(
     A conflicting ID is never repaired by a number or singleton guess. Rippers
     use recording IDs (#538); retain those when they uniquely name a remaining
     track, while release-track IDs always take precedence.
+
+    A file tagged as a release MusicBrainz has since merged into this one may
+    carry release-track IDs this release no longer has: a merge that folds the
+    tracks together gives them new ones (#602). Those name tracks of the release
+    that is gone, so the file is read by its recording instead. A merge that
+    moved the tracks across kept their IDs, and those still pair. An ID missing
+    without the album having moved has no merge behind it and stays a conflict
+    (design §5).
     """
     slots: list[int | None] = [None] * len(tags)
     free = set(eligible)
-    disk_ids = [t.owned.get("mb_release_track_id") for t in tags]
+    releases = {t.mb_album_id for t in targets}
+    current = {t.mb_release_track_id for t in targets}
+
+    def release_track_id(tag: TrackTags) -> str | None:
+        ref = tag.owned.get("mb_release_track_id")
+        album = tag.owned.get("mb_album_id")
+        return ref if ref in current or not album or album in releases else None
+
+    disk_ids = [release_track_id(t) for t in tags]
     mb_ids = [t.mb_release_track_id for t in targets]
     disk_counts, mb_counts = Counter(disk_ids), Counter(mb_ids)
     for i, ref in enumerate(disk_ids):

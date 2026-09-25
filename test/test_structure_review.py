@@ -143,6 +143,32 @@ def test_recording_id_pairs_remain_available_without_release_track_ids(album_wit
     tagger.tag_and_artwork(root, release, artwork_included=False)
 
 
+def test_a_merged_releases_files_follow_their_recording_ids(album_with_tracks):
+    """#602: a merge gives every track a new release-track id and usually keeps
+    the recordings. The files' old release-track ids name tracks of the release
+    that was merged away, so they say nothing about the survivor; the recording
+    ids still name each track exactly.
+
+    `replace` above is the other half: the same id change WITHOUT the album id
+    moving has no merge behind it, and still needs review."""
+    root = album_with_tracks(2)
+    release = _release_2_tracks()
+    tagger.tag_album(root, release)
+    survivor = deepcopy(release)
+    survivor["id"] = "rel-survivor"
+    for track in survivor["medium-list"][0]["track-list"]:
+        track["id"] += "-survivor"
+    files = album_files.audio_files(root)
+    panel = track_assignment.panel(files, survivor, confirmed=True)
+    assert panel.mapping() == {files[0]: 0, files[1]: 1}
+    assert not panel.proposed
+    tagger.tag_and_artwork(root, survivor, artwork_included=False)
+    assert [formats.read_tags(f).release_track_id for f in files] == [
+        "rt-001-survivor",
+        "rt-002-survivor",
+    ]
+
+
 def test_unsupported_bonus_medium_does_not_require_audio_reassignment(album_with_tracks):
     root = album_with_tracks(2)
     release = _release_2_tracks()

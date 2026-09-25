@@ -25,6 +25,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- Re-tagging an album whose release MusicBrainz merged into another now pairs each file with its track by recording, instead of leaving every file unassigned for manual pairing (#602).
+
 - Artwork comparison thumbnails align and keep the same size, with shared-scale Fit and scrollable 100% inspection for switching between covers (#594).
 
 - Release confirmation states whether artwork will be kept or changed, identifies affected files, and avoids duplicate previews of identical images (#593).

@@ -472,15 +472,17 @@ def test_merged_assignment_review_uses_canonical_snapshot_without_refetch(client
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
     editor = client.get(f"/assignments/{OLD_MBID}?album_tracks=true&on_album_page=true")
     fields = _confirmation_fields(editor.text)
-    assert fields["disk_order"] == "-,-,0,1"
+    # The files' release-track ids name tracks of the merged-away release, so
+    # they are no conflict here: the files are proposed by number (#602).
+    assert fields["disk_order"] == "0,1"
     before = [p.read_bytes() for p in sorted(d.glob("*.m4a"))]
     monkeypatch.setattr(
         mb_cache, "fetch_release", lambda *a, **k: pytest.fail("review refetched MB")
     )
-    for move in ("disk:2:up", "disk:1:up", "disk:3:up", "disk:2:up"):
+    for move, order in (("disk:0:down", "1,0"), ("disk:1:up", "0,1")):
         response = client.post(f"/assignments/{OLD_MBID}", data=fields | {"move": move})
         fields = _confirmation_fields(response.text)
-    assert fields["disk_order"] == "0,1,-,-"
+        assert fields["disk_order"] == order
     assert [p.read_bytes() for p in sorted(d.glob("*.m4a"))] == before
     accepted = client.post(f"/confirm/{OLD_MBID}/accept", data=fields)
     assert accepted.headers["HX-Redirect"] == f"/album/{NEW_MBID}"

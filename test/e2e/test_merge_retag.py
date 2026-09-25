@@ -50,8 +50,10 @@ def test_re_tagging_a_merged_release_leaves_the_browser_on_the_surviving_one(
 
         page.get_by_role("button", name="Review assignments").click()
         editor = page.locator("#album-track-editor")
-        # This demo merge replaces both release-track IDs. Conflicting IDs
-        # cannot be guessed into place; the user explicitly pairs each file.
+        # This demo merge folded the recordings together too, so neither ID on
+        # the files names a surviving track. The dead release-track IDs are
+        # set aside (#602), but a recording ID is still a claim no number may
+        # override; the user explicitly pairs each file.
         for token, order in [(0, "-,0,-,1"), (0, "0,-,-,1"), (1, "0,-,1,-"), (1, "0,1,-,-")]:
             editor.locator(f"#move-{MERGED_AWAY}-disk-{token}-up").click()
             playwright_sync.expect(editor.locator('[name="disk_order"]')).to_have_value(order)
