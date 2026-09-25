@@ -703,9 +703,11 @@ If the release has no cover of its own, Harmonist asks its **release group**,
 which is where the archive very often keeps an album's artwork. A cover found
 that way is labelled as the group's rather than this edition's.
 
-What comes back sits in the same column as anything else coming from outside
-the album, under **Also considered** — greyed, and without the hexagon, because
-nothing is going to come of it unless it wins.
+What comes back sits under **Also considered** — greyed, and without the
+hexagon, because nothing is going to come of it unless it wins. Where a re-tag
+would write something and the window is wide enough, it gets a third column of
+its own, beside what the album has and what the re-tag would write; otherwise
+it trails below them, in the column for anything coming from outside the album.
 
 Where the frame reads **none**, the archive has nothing for this release or its
 group, and there is nothing to fetch.

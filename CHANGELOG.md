@@ -6,40 +6,50 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-09-24
+
 ### Added
 
-- An MB contributions filter and actionable album findings offer inline review of suggested digital releases, Harmony imports, and a copyable store URL for editing MusicBrainz (#10, #587).
+- **An MB contributions filter finds Bandcamp downloads MusicBrainz could
+  describe better** — a possible media mismatch or a missing store URL — and
+  the album page offers the fix: a digital edition to switch to, a Harmony
+  import, or the store URL to add (#10, #587).
 
 ### Changed
 
-- The background update check now names and links each album it finds a new update for in Activity, and no longer re-announces updates that were already waiting (#600).
+- **After upgrading, the Update available filter starts empty** and refills
+  over the following days as the background update check re-reads each release
+  (#599).
 
-- After upgrading, the Update available filter starts empty and fills in over the following days as the background update check re-reads each release from MusicBrainz, since release data is now fetched with its links (#599).
+- **A required track-assignment review now opens by itself**, with the
+  proposed pairings already shown (#576).
 
-- Required track-assignment reviews open automatically with proposed pairings and a concise finding instead of tag-difference counts (#576).
+- **Activity names each album the update check finds a new update for**, and
+  no longer repeats updates that were already waiting (#600).
 
-- **The Cover Art Archive's candidate now gets a column of its own** in an
-  album's Artwork section, beside what the album has and what a re-tag would
-  write, instead of trailing below them — on a wide enough window, and only
-  where there is something to write (#447).
+- **The Cover Art Archive's candidate gets a column of its own** in an album's
+  Artwork section, on a wide enough window (#447).
 
 ### Fixed
 
-- Re-tagging an album whose release MusicBrainz merged into another now pairs each file with its track by recording, instead of leaving every file unassigned for manual pairing (#602).
+- **Re-tagging an album whose release MusicBrainz merged into another pairs
+  its files by recording**, instead of leaving every one unassigned (#602).
 
-- Artwork comparison thumbnails align and keep the same size, with shared-scale Fit and scrollable 100% inspection for switching between covers (#594).
+- **Confirming a reviewed release applies it in one step**, with no second
+  confirmation dialog when artwork is replaced or files are left unassigned
+  (#589).
 
-- Release confirmation states whether artwork will be kept or changed, identifies affected files, and avoids duplicate previews of identical images (#593).
+- **Confirming a release says whether its artwork will be kept or changed**,
+  and which files that touches (#593).
 
-- Reviewed release changes now apply in one step, including selected artwork replacements and partial track assignments, with errors shown inline (#589).
+- **Artwork thumbnails in a comparison stay the same size**, and the full-size
+  view can show an image at 100% (#594).
 
 - **The Cover Art Archive's candidate no longer breaks apart on a narrow
-  window**, with its frame against the right edge and the facts that belong
-  beside it wrapped onto a line of their own (#577).
+  window** (#577).
 
-- **VBR MP3, AAC and Opus tracks no longer count as differing in format**
-  just because each has its own average bitrate; the Format row shows the
-  album's mean bitrate instead (#582).
+- **VBR MP3, AAC and Opus tracks no longer count as differing in format**; the
+  Format row shows the album's mean bitrate instead (#582).
 
 ## [1.19.0] - 2026-09-21
 
