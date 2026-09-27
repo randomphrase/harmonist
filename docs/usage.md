@@ -92,7 +92,12 @@ Bandcamp purchase alone does not qualify a CD rip. A standard **BARCODE** tag
 alone does not prove a download: it may have come from a previous MB tagging.
 Missing, unreadable, invalid or conflicting original UPC evidence does not qualify.
 
-Open an album's **MB contributions** section to see the findings. The
+Open an album's **MB contributions** section to see its next finding. Harmonist
+checks for a possible release mismatch before offering any data edit, including
+a missing or conflicting barcode. A suggested rematch comes first; otherwise
+the panel shows a media mismatch, barcode disagreement, missing store URL, or
+missing barcode, in that order. Resolve the finding and refresh to see the next
+one. The
 album header's **MB checked** date and refresh control cover these findings too;
 refreshing does not tag files or change the match. Checks also run with background update checks
 when enabled in Settings. The section appears only when there is a contribution to make.
@@ -102,7 +107,7 @@ without a finding.
 A missing URL may mean an existing digital release only needs its relationship
 added, or that another release already links to your download. A physical-media
 match may also mean the appropriate digital release is missing or your files are
-matched to the wrong release. For either finding, other digital releases from
+matched to the wrong release. For any contribution finding, other digital releases from
 the same release group appear automatically in a scrolling list using the same
 release rows as Name, Barcode and Store URL search. Each row shows media,
 disambiguation, track count and release details. Positive evidence appears as
@@ -119,14 +124,15 @@ Archive cannot be reached, you can still confirm its tags and keep your images.
 **Confirm suggestion** tags this copy; **Cancel** restores the choices
 without changing its current release. Other findings about the current release
 are hidden while reviewing the replacement.
-If no existing release matches the source URL or UPC, **Add Release** opens
+If a complete check finds no existing release matching the source URL or UPC, **Add Release** opens
 Harmony to import the public download.
 For albums with original UPC evidence, this seeds a Qobuz/Deezer barcode lookup.
 **Browse all releases on MusicBrainz** opens the release group's full list.
+This link sits beside **Add Release** below any release choices.
 Large groups and unspecified media are marked incomplete; a failed request never
 counts as absence.
 
-Before offering a store-link edit, Harmonist checks the release group's links.
+Before offering a store-link or barcode edit, Harmonist checks the release group.
 If the URL is already linked, the section names those releases and offers digital
 siblings for review, without prompting you to edit the current release or add
 another one. The current release is not offered as its own replacement.

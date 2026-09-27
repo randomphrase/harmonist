@@ -22,8 +22,11 @@ for mbid, description in (
     edition["medium-list"][0]["format"] = "Digital Media"
     demo.MB_RELEASES[mbid] = edition
 demo.URL_RELS["https://dingoes.bandcamp.com/album/little-bit-o-hoot"] = "demo-rel-dingoes-digital"
-if digital_scenario == "absent":
+if digital_scenario in {"absent", "empty"}:
     demo.URL_RELS.pop("https://dingoes.bandcamp.com/album/little-bit-o-hoot")
+if digital_scenario == "empty":
+    del demo.MB_RELEASES["demo-rel-dingoes-digital"]
+    del demo.MB_RELEASES["demo-rel-dingoes-reissue"]
 
 _original_archive_asset = demo._archive_asset
 

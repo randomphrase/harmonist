@@ -296,7 +296,7 @@ def test_fresh_check_changes_only_observation_and_preserves_failures(tmp_path, m
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
     response = client.get(f"/library/{a.id}/compare?reread=1")
     assert response.status_code == 200
-    assert "Possible media mismatch" in response.text
+    assert "Checking digital releases" in response.text
     assert f'hx-get="/library/{a.id}/contributions/editions" hx-trigger="load"' in response.text
     fetch.return_value = release(urls=(URL,))
     response = client.get(f"/library/{a.id}/compare?reread=1")
@@ -322,6 +322,6 @@ def test_private_refresh_keeps_manual_review_without_harmony(tmp_path, monkeypat
     a = next(a for a in app.state.scan_runner.scan_now() if a.path == d)
     monkeypatch.setattr(mb_lookup, "fetch_release", Mock(return_value=release(("CD",))))
     response = client.get(f"/library/{a.id}/compare?reread=1")
-    assert "Private Bandcamp download" in response.text
+    assert "Checking digital releases" in response.text
     assert f'hx-get="/library/{a.id}/contributions/editions" hx-trigger="load"' in response.text
     assert "Store URL missing from this release" not in response.text

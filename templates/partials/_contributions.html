@@ -1,36 +1,12 @@
-{% from 'partials/_contribution_barcode.html' import barcode_finding, barcode_editor %}
 <div id="album-contributions-{{ album.id }}" class="album-contributions"
      hx-on::oob-before-swap="if (document.getElementById('contribution-review-{{ album.id }}')?.children.length) event.preventDefault()"
      {% if oob | default(false) %}hx-swap-oob="true"{% endif %}>
 {% if contribution is defined and contribution.has_findings %}
 <section class="border border-line rounded-lg p-4 space-y-3" aria-label="MusicBrainz contributions">
     <h2 class="text-sm font-bold text-ink uppercase tracking-widest">MB contributions</h2>
-    {% if contribution.media_mismatch %}
-    <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These files are a {% if contribution.source_upc %}digital{% else %}Bandcamp{% endif %} download, but the matched MusicBrainz release is listed as {{ contribution.observation.formats | join(' + ') }}. A digital release may be a better match.</p>
-    {% else %}
-    {% if not contribution.missing_url and contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
-    {{ barcode_finding(contribution) }}
-    {% endif %}
-    {% endif %}
-    {% if contribution.source_upc %}
-    <div class="space-y-2 text-xs">
-        <label for="source-upc-{{ album.id }}" class="block text-muted">Original UPC tag · {{ album.track_count }} file{{ 's' if album.track_count != 1 else '' }}</label>
-        <div class="flex flex-wrap items-center gap-2">
-        <input id="source-upc-{{ album.id }}" type="text" readonly value="{{ contribution.source_upc }}" aria-label="Original UPC to copy"
-               onclick="this.select()" class="min-w-0 flex-grow px-3 py-1.5 border border-line rounded bg-surface text-ink font-mono">
-        {% if not contribution.media_mismatch and not contribution.missing_url and contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
-        {{ barcode_editor(contribution, album.sidecar.mb_release_id) }}
-        {% endif %}
-        </div>
-    </div>
-    {% endif %}
-    {% if contribution.private %}
-    <p class="text-xs text-muted">Private Bandcamp download: check the mix; its URL stays private.</p>
-    {% elif not contribution.store_url and not contribution.source_upc %}
-    <p class="text-xs text-muted">No unambiguous album or track URL is known. The store URL check is incomplete.</p>
-    {% endif %}
-    {% if contribution.media_mismatch or contribution.missing_url %}
-    {# The comparison owns discovery: the initial page and a stale comparison
+    {# Every finding first checks the release match. Only the discovery response
+       chooses a finding; the parent cannot leave a competing one on screen.
+       The comparison owns discovery: the initial page and a stale comparison
        must not browse before the final comparison replaces this section. #}
     {% set load_editions = oob | default(false) and not refreshing | default(false) %}
     <div id="contribution-editions-{{ album.id }}" class="text-xs" aria-live="polite"
@@ -42,7 +18,6 @@
         <span class="text-muted">Checking digital releases…</span>
         {% endif %}
     </div>
-    {% endif %}
 </section>
 {% endif %}
 </div>

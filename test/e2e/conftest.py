@@ -77,7 +77,7 @@ def reset_demo_server(demo_server: str) -> str:
     return demo_server
 
 
-@pytest.fixture(params=["linked", "absent"])
+@pytest.fixture(params=["linked", "absent", "empty"])
 def digital_contribution_server(tmp_path, monkeypatch, request):
     monkeypatch.setenv("HARMONIST_TEST_DIGITAL_CONTRIBUTION", request.param)
     for base in _run_demo_server(
@@ -138,6 +138,17 @@ def upc_contribution_server(tmp_path_factory):
     root = tmp_path_factory.mktemp("e2e-upc-contribution")
     for base in _run_demo_server(root, app_module="test.e2e.upc_contribution_app:app"):
         yield base, root / "harmonist-demo"
+
+
+@pytest.fixture(params=["linked", "absent"])
+def barcode_contribution_server(tmp_path, monkeypatch, request):
+    monkeypatch.setenv("HARMONIST_TEST_UPC_CONTRIBUTION", request.param)
+    for base in _run_demo_server(
+        tmp_path,
+        app_module="test.e2e.upc_contribution_app:app",
+        config_toml="[musicbrainz]\ncache_ttl_seconds = 0\n",
+    ):
+        yield base, request.param
 
 
 @pytest.fixture(scope="module")

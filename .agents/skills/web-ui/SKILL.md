@@ -48,10 +48,11 @@ sentences and controls can contradict one another when assembled.
 ### Actions look like actions
 
 - Actions use the existing button styles, including workflow links such as
-  **Browse all releases**, **Edit store link**, and **Add release**. An external
-  destination is still an `<a href>` styled as a button, with the established
-  external-link cue; local operations use `<button>`. Ordinary inline references
-  can remain text links. Visual consistency does not require changing semantics.
+  **Edit store link** and **Add release**. An external action is still an
+  `<a href>` styled as a button, with the established external-link cue; local
+  operations use `<button>`. Navigation such as **Browse all releases** and
+  ordinary inline references stay text links. Distinguish taking an action from
+  browsing information; being in a workflow does not make every link an action.
 - Use a short verb-led label that describes the next step. Distinguish opening
   a review or external editor from applying a change. Put the action beside
   the entity or evidence it acts on, with consistent spacing and sizing.
@@ -74,6 +75,13 @@ sentences and controls can contradict one another when assembled.
   a clear Cancel/Dismiss path back to the choices, and preserve drafts on errors
   and background refreshes. Don't stack another confirmation of the same
   changes after the user has already reviewed and explicitly confirmed them.
+- **MB contributions show one finding at a time.** Every missing or conflicting
+  datum, including a barcode-only finding, checks for a possible release mismatch
+  first. A suggested rematch takes precedence over media, URL, and barcode
+  contributions. Pending, failed, or incomplete checks must not invite edits or
+  a new release. Choose the finding in one place after discovery, rather than
+  letting a parent template and its fragment each add their own. Once resolved,
+  refresh to reveal the next applicable finding.
 - Make consequences visible at the choice: for optional artwork, say what will
   be kept or replaced and which files/images are affected. Don't repeat an
   identical image just to fill both comparison columns.

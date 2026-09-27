@@ -159,7 +159,7 @@ def test_upc_siblings_use_one_fresh_scoped_browse_and_review(upc_library, monkey
         else:
             assert page.select_one('a[title="Add release with Harmony"]') is None
             assert "Possible better MB match found" in page.text
-            assert "matching barcode" in page.text
+            assert "Barcode matches" in page.select_one('[role="listitem"]').text
         assert browse.call_count == n
         assert browse.call_args.kwargs["release_group"] == release()["release-group"]["id"]
     assert before == {p: p.read_bytes() for p in before}
@@ -169,13 +169,13 @@ def test_upc_siblings_use_one_fresh_scoped_browse_and_review(upc_library, monkey
     "value,wording",
     [
         (None, "Barcode missing from MusicBrainz"),
-        ("", "explicitly has no barcode"),
+        ("", "lists this release as having no barcode"),
         (OTHER_UPC, "Barcode differs from MusicBrainz"),
         ("801061000332", None),
     ],
 )
 def test_digital_contributions_distinguish_missing_free_different_and_equal(
-    upc_library, value, wording
+    upc_library, monkeypatch, value, wording
 ):
     client, _ = upc_library
     payload = release()
@@ -185,11 +185,20 @@ def test_digital_contributions_distinguish_missing_free_different_and_equal(
     page = BeautifulSoup(client.get(f"/album/{MBID}").text, "html.parser")
     panel = page.select_one(f"#album-contributions-{MBID}")
     if wording:
-        assert wording in panel.text
-        value_input = panel.select_one('input[aria-label="Original UPC to copy"]')
+        assert panel.select_one('a[href$="/edit"]') is None
+        monkeypatch.setattr(
+            musicbrainzngs,
+            "browse_releases",
+            Mock(return_value={"release-list": [payload], "release-count": 1}),
+        )
+        results = BeautifulSoup(
+            client.get(f"/library/{MBID}/contributions/editions").text, "html.parser"
+        )
+        assert wording in results.text
+        value_input = results.select_one('input[aria-label="Original UPC to copy"]')
         assert value_input is not None and value_input["value"] == UPC
-        assert "UPC tag" in panel.text
-        assert panel.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
+        assert "UPC tag" in results.text
+        assert results.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
     else:
         assert panel.select_one("section") is None
 
@@ -210,8 +219,6 @@ def test_missing_url_defers_all_edit_prompts_until_siblings_checked(
     remember(release())
     initial = BeautifulSoup(client.get(f"/album/{MBID}").text, "html.parser")
     panel = initial.select_one(f"#album-contributions-{MBID}")
-    original_upc = panel.select_one('input[aria-label="Original UPC to copy"]')
-    assert original_upc is not None and original_upc["value"] == UPC
     assert panel.select_one('a[href$="/edit"]') is None
     sibling = release(urls=(URL,) if match == "url" else (), mbid="sibling")
     sibling["barcode"] = UPC if match == "barcode" else OTHER_UPC
@@ -225,15 +232,72 @@ def test_missing_url_defers_all_edit_prompts_until_siblings_checked(
         client.get(f"/library/{MBID}/contributions/editions").text, "html.parser"
     )
     assert bool(results.select('a[href$="/edit"]')) is (match == "neither")
-    assert ("Barcode missing from MusicBrainz" in results.text) is (match == "neither")
+    assert len(results.select("p > strong")) == 1
+    assert "Barcode missing from MusicBrainz" not in results.text
     assert ("Store URL missing from this release" in results.text) is (match == "neither")
+
+
+@pytest.mark.parametrize("barcode", [None, "", OTHER_UPC])
+@pytest.mark.parametrize("kind", ["linked", "absent", "unknown", "truncated", "failure"])
+def test_barcode_findings_wait_for_complete_sibling_check(upc_library, monkeypatch, barcode, kind):
+    client, root = upc_library
+    current = release()
+    if barcode is not None:
+        current["barcode"] = barcode
+    remember(current)
+    sibling = release(("",) if kind == "unknown" else ("Digital Media",), mbid="sibling")
+    sibling["barcode"] = UPC if kind == "linked" else OTHER_UPC
+    sibling["medium-list"][0]["track-count"] = 1
+    browse = Mock(
+        return_value={
+            "release-list": [current, sibling],
+            "release-count": 101 if kind == "truncated" else 2,
+        }
+    )
+    if kind == "failure":
+        browse.side_effect = musicbrainzngs.NetworkError("offline")
+    monkeypatch.setattr(musicbrainzngs, "browse_releases", browse)
+    fetch = Mock(side_effect=AssertionError("the current release is already stored"))
+    monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    for path in (f"/album/{MBID}", f"/library/{MBID}/compare"):
+        page = BeautifulSoup(client.get(path).text, "html.parser")
+        panel = page.select_one(f"#album-contributions-{MBID}")
+        assert panel.select_one('a[href$="/edit"]') is None
+        assert panel.select("p > strong") == []
+        if path.endswith("/compare"):
+            assert len(panel.select(f'[hx-get="/library/{MBID}/contributions/editions"]')) == 1
+    assert browse.call_count == 0
+    results = BeautifulSoup(
+        client.get(f"/library/{MBID}/contributions/editions").text, "html.parser"
+    )
+    assert len(results.select("p > strong")) <= 1
+    editor = results.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
+    assert bool(editor) is (kind == "absent")
+    if kind == "linked":
+        assert "Possible better MB match found" in results.text
+        assert "Barcode matches" in results.select_one('[role="listitem"]').text
+    elif kind == "absent":
+        original_upc = results.select_one('input[aria-label="Original UPC to copy"]')
+        assert original_upc is not None and original_upc["value"] == UPC
+        assert ("Add barcode" if barcode is None else "Review barcode") in editor.text
+    elif kind in {"unknown", "truncated"}:
+        assert "search is incomplete" in results.text
+    else:
+        assert results.select_one('[role="alert"]') is not None
+    if kind != "absent":
+        assert results.select_one('a[title="Add release with Harmony"]') is None
+    assert browse.call_count == 1
+    assert fetch.call_count == 0
+    assert before == {p: p.read_bytes() for p in before}
 
 
 def test_reread_clears_barcode_finding_without_touching_files(upc_library, monkeypatch):
     client, root = upc_library
     payload = _release(mbid=MBID)
     remember(payload)
-    assert "Barcode missing from MusicBrainz" in client.get(f"/album/{MBID}").text
+    initial = BeautifulSoup(client.get(f"/album/{MBID}").text, "html.parser")
+    assert initial.select_one(f"#album-contributions-{MBID} section") is not None
     payload["barcode"] = UPC
     fetch = Mock(return_value=payload)
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
@@ -242,6 +306,48 @@ def test_reread_clears_barcode_finding_without_touching_files(upc_library, monke
     assert page.select_one(f"#album-contributions-{MBID} section") is None
     assert fetch.call_count == 1
     assert not contributions.assess(scanner.scan(root)[0]).has_findings
+    assert before == {p: p.read_bytes() for p in before}
+
+
+def test_contributions_reveal_one_finding_after_each_resolution(upc_library, monkeypatch):
+    from dataclasses import replace
+
+    from test.test_contributions import URL
+
+    client, root = upc_library
+    folder = root / "Download"
+    sc = sidecar.read(folder)
+    assert sc is not None
+    sidecar.write(folder, replace(sc, store_url=URL, bandcamp_downloaded=True))
+    browse = Mock()
+    monkeypatch.setattr(musicbrainzngs, "browse_releases", browse)
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    stages = [
+        ("CD", OTHER_UPC, (), "Possible media mismatch", None),
+        ("Digital Media", OTHER_UPC, (), "Barcode differs from MusicBrainz", "Review barcode"),
+        ("Digital Media", None, (), "Store URL missing from this release", "Edit store link"),
+        ("Digital Media", None, (URL,), "Barcode missing from MusicBrainz", "Add barcode"),
+    ]
+    for n, (media, barcode, urls, finding, action) in enumerate(stages, 1):
+        payload = release((media,), urls=urls)
+        if barcode is not None:
+            payload["barcode"] = barcode
+        remember(payload)
+        browse.return_value = {"release-list": [payload], "release-count": 1}
+        results = BeautifulSoup(
+            client.get(f"/library/{MBID}/contributions/editions").text, "html.parser"
+        )
+        assert [p.text.strip().rstrip(".") for p in results.select("p > strong")] == [finding]
+        editors = results.select('a[href$="/edit"]')
+        assert len(editors) == (1 if action else 0)
+        if action:
+            assert action in editors[0].text
+        assert browse.call_count == n
+    payload["barcode"] = UPC
+    remember(payload)
+    page = BeautifulSoup(client.get(f"/album/{MBID}").text, "html.parser")
+    assert page.select_one(f"#album-contributions-{MBID} section") is None
+    assert browse.call_count == len(stages)
     assert before == {p: p.read_bytes() for p in before}
 
 
@@ -265,7 +371,8 @@ def test_reviewed_replacement_and_undo_preserve_original_upc(upc_library, monkey
     path = root / "Download" / "01.m4a"
     assert formats.read_owned(path)["barcode"] is None
     assert formats.read_scan_fields(path).source_upcs == (UPC,)
-    assert "Barcode missing from MusicBrainz" in client.get("/album/digital").text
+    page = BeautifulSoup(client.get("/album/digital").text, "html.parser")
+    assert page.select_one("#contribution-editions-digital") is not None
     after = {p: p.read_bytes() for p in before}
     repeated = client.post(f"/confirm/{MBID}/accept?{query}", data=fields)
     assert "confirmation-applied" not in repeated.headers.get("HX-Trigger", "")

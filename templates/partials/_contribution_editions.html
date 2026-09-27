@@ -1,6 +1,6 @@
 {% from 'macros.html' import release_name %}
 {% from 'partials/_release_candidate.html' import release_candidate %}
-{% from 'partials/_contribution_barcode.html' import barcode_finding, barcode_editor %}
+{% from 'partials/_contribution_barcode.html' import barcode_contribution %}
 {% set matching_editions = editions | selectattr('source_matches') | list %}
 {% macro use_edition(edition, suggested) %}
 <button type="button" hx-get="/assignments/{{ album.id }}?replacement={{ (album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode }}&amp;cancel=true&amp;on_album_page=true"
@@ -14,27 +14,37 @@
 <p role="alert" class="text-amber-700">{{ editions_error }} Refresh MusicBrainz in the album header to try again.</p>
 {% else %}
     {% if matching_editions %}
-        {% set matching_urls = matching_editions | selectattr('store_linked') | list %}
-        {% set matching_barcodes = matching_editions | selectattr('upc_matches') | list %}
-<p class="text-sm text-ink"><strong>Possible better MB match found.</strong>
-    {{ 'Another release has' if matching_editions | length == 1 else 'Other releases have' }} a matching {% if matching_urls %}store URL{% endif %}{% if matching_urls and matching_barcodes %}{{ ' and ' if matching_editions | length == 1 else ' or ' }}{% endif %}{% if matching_barcodes %}barcode{% endif %}.
-</p>
-    {% elif store_linked_releases %}
+<p class="text-sm text-ink"><strong>Possible better MB match found.</strong></p>
+    {% elif contribution.missing_url and store_linked_releases %}
 <p class="text-sm text-ink"><strong>Store URL already linked on MusicBrainz.</strong>
     {% for linked in store_linked_releases %}<a href="https://musicbrainz.org/release/{{ linked.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">{{ release_name(linked.title, linked.disambiguation) }}{% if linked.media %} ({{ linked.media }}){% endif %} ↗</a>{{ ', ' if not loop.last else '.' }}{% endfor %}
 </p>
-    {% elif contribution.media_mismatch is sameas false and contribution.missing_url and not editions_truncated and not editions_unknown %}
-<p class="text-xs text-muted"><strong>Store URL missing from this release.</strong> No release in this release group links to the download. If the current release is correct, you can add its store link.</p>
+    {% elif not editions_truncated and not editions_unknown %}
+        {% if contribution.media_mismatch %}
+<p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These downloaded files are matched to a {{ contribution.observation.formats | join(' + ') }} release.</p>
+        {% elif contribution.media_mismatch is sameas false %}
+            {% if contribution.barcode_status in ['barcode_free', 'different'] %}
+{{ barcode_contribution(contribution, album) }}
+            {% elif contribution.missing_url %}
+<p class="text-sm text-ink"><strong>Store URL missing from this release.</strong></p>
 <div class="flex flex-wrap items-center gap-2">
     <input type="text" readonly value="{{ contribution.store_url }}" aria-label="Store URL to copy"
-           onclick="this.select()" class="min-w-0 flex-grow px-3 py-1.5 border border-line rounded text-xs bg-surface text-ink">
+           onclick="this.select()" class="w-full sm:w-auto min-w-0 flex-grow px-3 py-1.5 border border-line rounded text-xs bg-surface text-ink">
     <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit" target="_blank" rel="noopener"
        class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Edit store link on MusicBrainz ↗</a>
 </div>
-            {% if contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
-{{ barcode_finding(contribution) }}
-{{ barcode_editor(contribution, album.sidecar.mb_release_id) }}
+            {% elif contribution.barcode_status == 'missing' %}
+{{ barcode_contribution(contribution, album) }}
             {% endif %}
+        {% endif %}
+    {% endif %}
+    {% if editions_truncated or editions_unknown %}
+<p class="text-xs text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>
+    {% endif %}
+    {% if contribution.private %}
+<p class="text-xs text-muted">Private Bandcamp download: check the mix; its URL stays private.</p>
+    {% elif not contribution.store_url and not contribution.source_upc %}
+<p class="text-xs text-muted">No unambiguous album or track URL is known. The store URL check is incomplete.</p>
     {% endif %}
     {% if editions %}
 <div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label="Digital releases">
@@ -47,19 +57,15 @@
         {% endfor %}
     </div>
 </div>
-    {% else %}
-<p class="text-xs text-muted">No other confirmed digital releases found in this release group.</p>
     {% endif %}
-    {% if editions_truncated or editions_unknown %}
-<p class="text-xs text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>
-    {% endif %}
-<div class="flex flex-wrap items-center justify-between gap-3">
-    <a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener" class="text-xs text-mb-purple hover:underline">Browse all releases on MusicBrainz ↗</a>
-    {% if not store_linked_releases and not matching_editions and not contribution.private and (contribution.store_url or contribution.source_upc) and (editions or (not editions_truncated and not editions_unknown)) %}
+<div class="flex flex-wrap items-center gap-2">
+    <a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener"
+       class="text-xs text-mb-purple hover:underline">Browse all releases on MusicBrainz ↗</a>
+    {% if not store_linked_releases and not matching_editions and not contribution.private and (contribution.store_url or contribution.source_upc) and not editions_truncated and not editions_unknown %}
     <a href="{{ harmony_base }}/release?{% if contribution.source_upc %}gtin={{ contribution.source_upc|urlencode }}&amp;qobuz=&amp;deezer={% else %}url={{ contribution.store_url|urlencode }}{% endif %}" target="_blank" rel="noopener" title="Add release with Harmony"
-       class="ml-auto inline-flex px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Add Release ↗</a>
+       class="inline-flex px-3 py-1.5 text-mb-purple border border-mb-purple/30 hover:bg-mb-purple/10 rounded text-xs font-bold uppercase tracking-widest transition">Add Release ↗</a>
     {% endif %}
+<span id="edition-reviewing-{{ album.id }}" class="hidden [&.htmx-request]:block text-xs text-muted" role="status">Loading review…</span>
 </div>
-<span id="edition-reviewing-{{ album.id }}" class="htmx-indicator text-xs text-muted" role="status">Loading review…</span>
 {% endif %}
 </div>

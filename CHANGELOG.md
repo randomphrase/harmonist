@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- MB contributions check the release match first and show one finding at a time, with concise copy and grouped controls (#617).
+
 - Release search and sibling suggestions share a compact picker with positive store URL and barcode match labels beside Use (#615).
 
 - UI text and documentation consistently call MusicBrainz releases “releases” (#615).

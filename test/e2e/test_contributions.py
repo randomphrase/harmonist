@@ -36,7 +36,9 @@ def test_digital_store_link_waits_for_siblings(digital_contribution_server):
             assert len(pending) == visit + 1
             pending[-1].continue_()
             results = panel.locator(f"#contribution-editions-{ALBUM}")
-            playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
+            playwright_sync.expect(results.get_by_role("listitem")).to_have_count(
+                0 if scenario == "empty" else 2
+            )
             if scenario == "linked":
                 playwright_sync.expect(results).to_contain_text("Possible better MB match found")
                 playwright_sync.expect(
@@ -59,6 +61,68 @@ def test_digital_store_link_waits_for_siblings(digital_contribution_server):
                     editor.get_attribute("href") == f"https://musicbrainz.org/release/{ALBUM}/edit"
                 )
             assert len(pending) == visit + 1
+        browser.close()
+
+
+def test_contribution_actions_and_review_progress_layout(digital_contribution_server):
+    server, scenario = digital_contribution_server
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{server}/album/{ALBUM}")
+        panel = page.locator(f"#album-contributions-{ALBUM}")
+        browse = panel.get_by_role("link", name="Browse all releases on MusicBrainz")
+        add = panel.get_by_role("link", name="Add Release")
+        progress = panel.locator('[role="status"]')
+        playwright_sync.expect(browse).to_be_visible()
+        for width in (1360, 390):
+            page.set_viewport_size({"width": width, "height": 900})
+            bounds = panel.bounding_box()
+            assert bounds is not None
+            for action in [browse] + ([] if scenario == "linked" else [add]):
+                box = action.bounding_box()
+                assert box is not None
+                assert box["x"] >= bounds["x"]
+                assert box["x"] + box["width"] <= bounds["x"] + bounds["width"]
+                action.focus()
+                playwright_sync.expect(action).to_be_focused()
+            if scenario != "linked":
+                assert add.evaluate("el => el.getBoundingClientRect().height") >= 28
+                assert add.evaluate("el => parseFloat(getComputedStyle(el).borderTopWidth)") > 0
+                if width == 1360:
+                    left, right = browse.bounding_box(), add.bounding_box()
+                    assert left is not None and right is not None
+                    assert (
+                        abs(left["y"] + left["height"] / 2 - right["y"] - right["height"] / 2) <= 1
+                    )
+                    assert 0 < right["x"] - left["x"] - left["width"] <= 16
+            assert progress.evaluate("el => el.getBoundingClientRect().height") == 0
+            last_action = browse if scenario == "linked" else add
+            action_bottom = last_action.evaluate("el => el.getBoundingClientRect().bottom")
+            padding = panel.locator("section").evaluate(
+                "el => parseFloat(getComputedStyle(el).paddingBottom)"
+            )
+            bounds = panel.bounding_box()
+            assert bounds is not None
+            assert abs(bounds["y"] + bounds["height"] - action_bottom - padding - 1) <= 1
+        if scenario != "empty":
+            pending = []
+            page.route("**/assignments/**", lambda route: pending.append(route))
+            panel.get_by_role("button", name="Use", exact=True).first.click()
+            playwright_sync.expect(progress).to_be_visible()
+            page.wait_for_function(
+                "() => document.querySelector('[id^=\"edition-reviewing-\"].htmx-request') !== null"
+            )
+            assert len(pending) == 1
+            assert progress.evaluate("el => el.getBoundingClientRect().height") > 0
+            pending[0].continue_()
+            review = page.get_by_role("region", name="Review suggested release")
+            playwright_sync.expect(review).to_be_visible()
+            playwright_sync.expect(panel).to_be_hidden()
+            page.unroute("**/assignments/**")
+            review.get_by_role("button", name="Cancel", exact=True).click()
+            playwright_sync.expect(browse).to_be_visible()
+            assert progress.evaluate("el => el.getBoundingClientRect().height") == 0
         browser.close()
 
 
@@ -122,7 +186,8 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         )
         page.goto(f"{server}/album/{ALBUM}")
         panel = page.locator(f"#album-contributions-{ALBUM}")
-        playwright_sync.expect(panel).to_contain_text("Possible media mismatch")
+        playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
+        playwright_sync.expect(panel.locator("p > strong")).to_have_count(1)
         playwright_sync.expect(panel).not_to_contain_text("Store URL missing from this release")
         results = panel.locator(f"#contribution-editions-{ALBUM}")
         playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
@@ -142,7 +207,7 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         assert len(discoveries) == 2
         # Replace the displayed finding so a successful request alone cannot
         # pass: the header refresh must actually update this section too.
-        panel.get_by_text("Possible media mismatch.", exact=True).evaluate(
+        panel.get_by_text("Possible better MB match found.", exact=True).evaluate(
             "e => e.textContent = 'Previous contribution finding'"
         )
         with page.expect_response(
@@ -155,7 +220,8 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
                 "button", name="Read this release from MusicBrainz again", exact=True
             ).click()
         assert checked.value.status == 200
-        playwright_sync.expect(panel).to_contain_text("Possible media mismatch")
+        playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
+        playwright_sync.expect(panel.locator("p > strong")).to_have_count(1)
         playwright_sync.expect(
             page.get_by_role("button", name="Read this release from MusicBrainz again", exact=True)
         ).to_be_enabled()
@@ -215,7 +281,8 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         review.get_by_role("button", name="Cancel", exact=True).click()
         playwright_sync.expect(review).to_be_hidden()
         playwright_sync.expect(panel).to_be_visible()
-        playwright_sync.expect(panel).to_contain_text("Possible media mismatch")
+        playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
+        playwright_sync.expect(panel.locator("p > strong")).to_have_count(1)
         # An unlinked sibling is still a valid choice. After tagging, its missing
         # URL must trigger discovery again before any link edit is offered.
         results.get_by_role("listitem").filter(has_text="Digital reissue").get_by_role(

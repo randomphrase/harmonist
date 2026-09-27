@@ -31,23 +31,15 @@ def test_contributions_resolve_media_before_store_link(library):
     from bs4 import BeautifulSoup
 
     client, _ = library
-    for fmt, expected in [
-        ("CD", "Possible media mismatch"),
-        ("Digital Media", "MB contributions"),
-    ]:
+    for fmt in ("CD", "Digital Media"):
         activity_store.store_release(
             MBID, mb_cache._key(mb_lookup.RELEASE_INCLUDES), release((fmt,))
         )
         page = BeautifulSoup(client.get(f"/album/{MBID}").text, "html.parser")
         panel = page.select_one(f"#album-contributions-{MBID}")
-        assert expected in panel.text
-        if fmt == "CD":
-            assert "Store URL missing" not in panel.text
-        else:
-            assert (
-                panel.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]') is None
-            )
-            assert panel.select_one(f"#contribution-editions-{MBID}") is not None
+        assert panel.select("p > strong") == []
+        assert panel.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]') is None
+        assert panel.select_one(f"#contribution-editions-{MBID}") is not None
 
 
 @pytest.mark.parametrize(
@@ -124,7 +116,7 @@ def test_missing_store_link_requires_complete_sibling_check(library, monkeypatch
     if kind in {"linked", "physical-linked", "unknown-linked", "ambiguous", "current-linked"}:
         if kind in {"linked", "ambiguous"}:
             assert "Possible better MB match found" in page.text
-            assert "matching store URL" in page.text
+            assert "Store URL matches" in page.select_one('[role="listitem"]').text
         else:
             assert "Store URL already linked on MusicBrainz" in page.text
         assert page.select_one('a[title="Add release with Harmony"]') is None
@@ -499,14 +491,11 @@ def test_only_complete_public_absence_offers_harmony(library, monkeypatch, kind)
     r = client.get(f"/library/{MBID}/contributions/editions")
     assert r.status_code == 200
     assert ("Add Release" in r.text) is (kind == "absent")
-    if kind == "absent":
-        assert "No other confirmed digital releases found" in r.text
-    elif kind in {"unknown", "truncated"}:
+    if kind in {"unknown", "truncated"}:
         assert "search is incomplete" in r.text
     elif kind == "failure":
         assert "Could not check digital releases" in r.text
-        assert "No other confirmed digital releases found" not in r.text
-    else:
+    elif kind.startswith("private"):
         assert URL not in r.text and "harmony.pulsewidth" not in r.text
     assert browse.call_count == 1
 

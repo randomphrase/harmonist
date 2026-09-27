@@ -1024,9 +1024,12 @@ albums require agreement across all parts; separate copies retain their own evid
 
 `contributions.assess` derives possible-media-mismatch and missing-store-URL
 observations from each local copy's evidence and an MB observation, plus missing
-or discrepant barcodes against the original UPC. Physical/mixed media takes precedence;
-missing-link and barcode editing are offered only for a confirmed digital release.
-Missing-link editing also requires a complete sibling check finding no existing link. Unknown
+or discrepant barcodes against the original UPC. Every finding first checks sibling
+releases for a possible mismatch. The panel chooses one finding after discovery:
+existing source match, physical/mixed media, barcode disagreement, missing store
+URL, then missing barcode. Missing-link and barcode editing require a confirmed
+digital release and a complete successful sibling check without an existing source
+match; a current release's own store link does not block a barcode finding. Unknown
 media remains unchecked rather than inviting a link edit on an uncertain release.
 Non-digital media, including mixed releases, invite review. Unspecified media
 remain unknown. URL equality retains the host and album/track path, normalizing
@@ -1056,7 +1059,8 @@ tag updates or require another tag plan. The album header's MB date and refresh
 control cover contribution findings alongside the tag comparison; the section
 has no separate timestamp or refresh request.
 
-Opening an album with a media mismatch or missing store URL automatically browses
+Opening an album with any contribution finding (media mismatch, missing store URL,
+or missing/conflicting barcode) automatically browses
 its release group with media and URL relationships in one fresh request, capped at 100 releases. It
 waits for the album comparison, including any stale-cache refresh, to settle
 before loading releases, so the initial render does not duplicate the browse.
@@ -1077,12 +1081,17 @@ again, and the album header refresh reloads its transient results. Discovery
 failures direct the user to that same header control to retry. A complete
 empty public search offers Harmony. Existing source matches suppress **Add Release**
 even when ambiguity or incomplete discovery prevents a suggestion. Candidates
-without any source match retain that link beside **Browse all releases**.
-While a missing-URL check is pending, the panel makes no contribution claim.
-Matching digital siblings show “Possible better MB match found” with the matching
-store URL or barcode evidence. Store-link and barcode edit prompts
-for the current release appear only after a complete negative sibling check.
-Barcode-only findings on digital releases retain their direct edit path.
+without any source match retain that action beside the **Browse all releases**
+navigation link only when discovery is complete. Pending, failed, truncated or
+unspecified-media checks never invite a data edit or new release.
+While discovery is pending, the panel makes no contribution claim.
+Matching digital siblings show “Possible better MB match found”, with matching
+store URL or barcode evidence on the candidate rows. Store-link and barcode edit prompts
+for the current release appear only after a complete negative sibling check,
+including barcode-only findings. The parent renders only the discovery container;
+the result fragment owns the single finding and its evidence/actions, so a media
+warning cannot remain above a rematch suggestion. Resolving one finding and
+refreshing exposes the next applicable one; no persisted dismissal is introduced.
 Original UPC seeds Harmony's Qobuz/Deezer lookup when available; otherwise the
 public store URL is used. Barcode equality never bypasses the shared track review:
 releases may reuse a barcode while their recordings or durations differ.

@@ -1,13 +1,25 @@
 {% macro barcode_finding(contribution) %}
 <p class="text-sm text-ink">
     {% if contribution.barcode_status == 'missing' %}
-    <strong>Barcode missing from MusicBrainz.</strong> Review the original UPC against this release before adding it.
+    <strong>Barcode missing from MusicBrainz.</strong>
     {% elif contribution.barcode_status == 'barcode_free' %}
-    <strong>MusicBrainz explicitly has no barcode for this release.</strong> The original UPC disagrees; check the release before editing it.
+    <strong>MusicBrainz lists this release as having no barcode.</strong> Your files contain an original UPC.
     {% else %}
-    <strong>Barcode differs from MusicBrainz.</strong> MusicBrainz has <span class="font-mono">{{ contribution.observation.barcode }}</span>. Check the release before editing it.
+    <strong>Barcode differs from MusicBrainz.</strong> MusicBrainz has <span class="font-mono">{{ contribution.observation.barcode }}</span>.
     {% endif %}
 </p>
+{% endmacro %}
+
+{% macro barcode_contribution(contribution, album) %}
+{{ barcode_finding(contribution) }}
+<div class="space-y-2 text-xs">
+    <label for="source-upc-{{ album.id }}" class="block text-muted">Original UPC tag · {{ album.track_count }} file{{ 's' if album.track_count != 1 else '' }}</label>
+    <div class="flex flex-wrap items-center gap-2">
+        <input id="source-upc-{{ album.id }}" type="text" readonly value="{{ contribution.source_upc }}" aria-label="Original UPC to copy"
+               onclick="this.select()" class="w-full sm:w-auto min-w-0 flex-grow px-3 py-1.5 border border-line rounded bg-surface text-ink font-mono">
+        {{ barcode_editor(contribution, album.sidecar.mb_release_id) }}
+    </div>
+</div>
 {% endmacro %}
 {% macro barcode_editor(contribution, mbid) %}
 <a href="https://musicbrainz.org/release/{{ mbid }}/edit" target="_blank" rel="noopener"
