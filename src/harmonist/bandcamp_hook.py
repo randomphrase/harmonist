@@ -595,7 +595,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                     log.warning(
                         "Linked %r to a purchase by title (item_id=%s). Possible mis-tag: "
                         "the tagged release's store URL (%s) differs from the matched "
-                        "purchase URL (%s) — this can be a correctly-tagged edition whose "
+                        "purchase URL (%s) — this can be a correctly-tagged release whose "
                         "MB URL is the shared public page, or the wrong release.",
                         album_dir.name,
                         getattr(avail[0], "item_id", "?"),
@@ -674,7 +674,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                     ambiguous += 1
                     log.warning(
                         "Ambiguous Bandcamp link for %r: could be item_id %s — "
-                        "%d editions share this store URL and the title didn't "
+                        "%d releases share this store URL and the title didn't "
                         "single one out. Stored all candidates; left out of Needs Linking.",
                         album_dir.name,
                         cand_desc,

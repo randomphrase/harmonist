@@ -10240,9 +10240,9 @@ def test_a_chosen_release_group_cover_still_says_whose_it_is(client, cfg):
     chosen = " ".join(client.get(f"/album/{aid}/artwork?use=archive").text.split())
 
     # The candidate row says it while the image is only a candidate…
-    assert "for the release group, not this edition" in ordinary
+    assert "for the release group, not this release" in ordinary
     # …and the incoming preview must keep saying it once it is the one coming in.
-    assert "for the release group, not this edition" in chosen
+    assert "for the release group, not this release" in chosen
 
 
 def test_choosing_an_image_that_is_no_longer_here_says_so(client, cfg):
@@ -11303,7 +11303,7 @@ def test_confirmation_preview_is_read_only_and_uses_the_selected_release_cache(
     preview, artwork, _fields = _review_with_artwork(client, aid)
     assert "Tag changes" in preview.text
     assert "Current artwork" in artwork.text and "Artwork for selected release" in artwork.text
-    assert "For the release group, not this edition" in artwork.text
+    assert "For the release group, not this release" in artwork.text
     assert not re.search(r'name="include_artwork" value="true" checked', artwork.text)
     from harmonist import images
 

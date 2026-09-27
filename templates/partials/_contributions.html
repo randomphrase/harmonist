@@ -6,11 +6,8 @@
 <section class="border border-line rounded-lg p-4 space-y-3" aria-label="MusicBrainz contributions">
     <h2 class="text-sm font-bold text-ink uppercase tracking-widest">MB contributions</h2>
     {% if contribution.media_mismatch %}
-    <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These files are a {% if contribution.source_upc %}digital{% else %}Bandcamp{% endif %} download, but the matched MusicBrainz release is listed as {{ contribution.observation.formats | join(' + ') }}. A digital edition may be a better match.</p>
+    <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These files are a {% if contribution.source_upc %}digital{% else %}Bandcamp{% endif %} download, but the matched MusicBrainz release is listed as {{ contribution.observation.formats | join(' + ') }}. A digital release may be a better match.</p>
     {% else %}
-    {% if contribution.missing_url %}
-    <p class="text-sm text-ink">Review the release match for this download.</p>
-    {% endif %}
     {% if not contribution.missing_url and contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
     {{ barcode_finding(contribution) }}
     {% endif %}
@@ -42,7 +39,7 @@
          hx-sync="#compare-{{ album.id }}:queue last" hx-swap="innerHTML"
          {% endif %}>
         {% if load_editions %}
-        <span class="text-muted">Checking digital editions…</span>
+        <span class="text-muted">Checking digital releases…</span>
         {% endif %}
     </div>
     {% endif %}

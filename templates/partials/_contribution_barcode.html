@@ -1,11 +1,11 @@
 {% macro barcode_finding(contribution) %}
 <p class="text-sm text-ink">
     {% if contribution.barcode_status == 'missing' %}
-    <strong>Barcode missing from MusicBrainz.</strong> Review the original UPC against this edition before adding it.
+    <strong>Barcode missing from MusicBrainz.</strong> Review the original UPC against this release before adding it.
     {% elif contribution.barcode_status == 'barcode_free' %}
-    <strong>MusicBrainz explicitly has no barcode for this release.</strong> The original UPC disagrees; check the edition before editing it.
+    <strong>MusicBrainz explicitly has no barcode for this release.</strong> The original UPC disagrees; check the release before editing it.
     {% else %}
-    <strong>Barcode differs from MusicBrainz.</strong> MusicBrainz has <span class="font-mono">{{ contribution.observation.barcode }}</span>. Check the edition before editing it.
+    <strong>Barcode differs from MusicBrainz.</strong> MusicBrainz has <span class="font-mono">{{ contribution.observation.barcode }}</span>. Check the release before editing it.
     {% endif %}
 </p>
 {% endmacro %}

@@ -27,7 +27,7 @@ def test_digital_store_link_waits_for_siblings(digital_contribution_server):
                 # An expired comparison must finish its refresh before discovery.
                 with page.expect_response(lambda r: r.url.endswith("/compare?check=1")):
                     page.reload()
-            playwright_sync.expect(panel).to_contain_text("Checking digital editions")
+            playwright_sync.expect(panel).to_contain_text("Checking digital releases")
             playwright_sync.expect(editor).to_have_count(0)
             # Pump browser events until the intercepted request is delivered.
             page.wait_for_function(
@@ -38,9 +38,7 @@ def test_digital_store_link_waits_for_siblings(digital_contribution_server):
             results = panel.locator(f"#contribution-editions-{ALBUM}")
             playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
             if scenario == "linked":
-                playwright_sync.expect(results).to_contain_text(
-                    "Store URL already linked on MusicBrainz"
-                )
+                playwright_sync.expect(results).to_contain_text("Possible better MB match found")
                 playwright_sync.expect(
                     results.get_by_role("listitem", name="Suggested digital release")
                 ).to_contain_text("Bandcamp download")
@@ -165,7 +163,7 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         playwright_sync.expect(results).to_contain_text("Store URL matches")
         playwright_sync.expect(results).to_contain_text("Digital reissue")
         playwright_sync.expect(
-            results.get_by_role("region", name="Digital editions")
+            results.get_by_role("region", name="Digital releases")
         ).to_be_visible()
         playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
         assert len(discoveries) == 3
@@ -247,7 +245,7 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         panel = page.locator("#album-contributions-demo-rel-dingoes-reissue")
         playwright_sync.expect(panel).not_to_contain_text("Store URL missing from this release")
         playwright_sync.expect(panel).not_to_contain_text("Possible media mismatch")
-        playwright_sync.expect(panel).to_contain_text("Store URL already linked on MusicBrainz")
+        playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
         playwright_sync.expect(
             panel.get_by_role("link", name="Edit store link on MusicBrainz")
         ).to_have_count(0)
@@ -258,7 +256,7 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         page.get_by_role(
             "button", name="Read this release from MusicBrainz again", exact=True
         ).click()
-        playwright_sync.expect(panel).to_contain_text("Store URL already linked on MusicBrainz")
+        playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
         page.goto(f"{server}/?tab=library")
         page.evaluate("window.__contributionNoReload = true")
         page.get_by_role("navigation", name="Library filters").get_by_role(

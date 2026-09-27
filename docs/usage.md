@@ -100,21 +100,21 @@ Unchecked albums are not counted as clean or added to the contribution filter
 without a finding.
 
 A missing URL may mean an existing digital release only needs its relationship
-added, or that another edition already links to your download. A physical-media
-match may also mean the appropriate digital edition is missing or your files are
-matched to the wrong edition. For either finding, other digital editions from
+added, or that another release already links to your download. A physical-media
+match may also mean the appropriate digital release is missing or your files are
+matched to the wrong release. For either finding, other digital releases from
 the same release group appear automatically in a scrolling list using the same
 release rows as Name, Barcode and Store URL search. Each row shows media,
 disambiguation, track count and release details. Positive evidence appears as
 **Store URL matches** or **Barcode matches** beside **Use**; other rows have no
-match label. A single edition with the same store URL or original UPC, and the
+match label. A single release with the same store URL or original UPC, and the
 same track count, is highlighted.
 Equivalent UPC/EAN spellings count as agreement. Barcodes can be reused between
-editions, so review the tracklist and durations before confirming. Other digital
+releases, so review the tracklist and durations before confirming. Other digital
 siblings remain available even when MB has not recorded their barcode or URL.
 **Use** on any row replaces the choices with an inline track and artwork review.
 This review offers only the selected release's front cover, never another
-edition's release-group artwork. If that release has no cover, or the Cover Art
+release's release-group artwork. If that release has no cover, or the Cover Art
 Archive cannot be reached, you can still confirm its tags and keep your images.
 **Confirm suggestion** tags this copy; **Cancel** restores the choices
 without changing its current release. Other findings about the current release
@@ -136,22 +136,22 @@ click the adjacent URL field to select it for copying. MusicBrainz does not
 pre-fill URL relationships when editing an existing release. Refresh the album header
 after the edit lands to clear the finding. The pencil beside the MusicBrainz
 badge remains available for a different match outside this release group.
-Other copies and editions remain separate.
+Other copies and releases remain separate.
 
 An original UPC missing from a digital MB release is offered beside **Add barcode
 on MusicBrainz**. The section shows its source and file coverage; select the UPC
-to copy it into the release editor after checking the edition. An existing,
+to copy it into the release editor after checking the release. An existing,
 different barcode or an explicit “no barcode” is a discrepancy to review, not an
 invitation to replace it automatically. Refresh the album header after editing.
 The original **UPC** is kept through tagging, changing releases and undo. The
 separate **BARCODE** field still follows MusicBrainz, including removal when MB
 has no value; previews and History describe that owned field.
 
-Private downloads may contain a different mix from the public edition. They can
+Private downloads may contain a different mix from the public release. They can
 still warrant media review, but Harmonist does not suggest publishing their
 private URLs or importing them through Harmony. Privacy is known when Bandcamp
 supplied the private flag during purchase linking or download; a comment URL
-alone does not establish public availability. Digital-edition discovery still
+alone does not establish public availability. Digital-release discovery still
 works for private downloads, but leaves the mix comparison to you.
 
 ## The Inbox
@@ -338,9 +338,9 @@ keeping its current release as context. **Move to Library** accepts it as yours
 and done.
 
 **When the match looks wrong.** After a sync, Harmonist checks whether you
-actually own a *different edition* of what an album is tagged as — a live version
+actually own a *different release* of what an album is tagged as — a live version
 where the files claim the standard release, say. If so the album is flagged
-**Possibly mis-tagged**, with the edition you own offered as the fix.
+**Possibly mis-tagged**, with the release you own offered as the fix.
 
 ## The Library
 
@@ -598,7 +598,7 @@ A tag MusicBrainz has no value for is a change too, in the other direction: a
 re-tag removes it, because MusicBrainz is canonical and a tag it does not carry
 is one your files should not keep either. The row says *"3760180501052 →
 removed"* rather than drawing the tag as though it agreed — a barcode from the
-CD edition on files tagged to the digital one is the usual way this happens. The
+CD release on files tagged to the digital one is the usual way this happens. The
 word wears MusicBrainz's hexagon like any other value on that side of an arrow,
 because the removal is what MusicBrainz makes of your files rather than something
 Harmonist decided.
@@ -752,7 +752,7 @@ have just changed on the archive.
 
 If the release has no cover of its own, Harmonist asks its **release group**,
 which is where the archive very often keeps an album's artwork. A cover found
-that way is labelled as the group's rather than this edition's.
+that way is labelled as the group's rather than this release's.
 
 What comes back sits under **Also considered** — greyed, and without the
 hexagon, because nothing is going to come of it unless it wins. Where a re-tag

@@ -13,14 +13,18 @@
 {% if editions_error %}
 <p role="alert" class="text-amber-700">{{ editions_error }} Refresh MusicBrainz in the album header to try again.</p>
 {% else %}
-    {% if contribution.media_mismatch is sameas false and contribution.missing_url %}
-        {% if store_linked_releases %}
+    {% if matching_editions %}
+        {% set matching_urls = matching_editions | selectattr('store_linked') | list %}
+        {% set matching_barcodes = matching_editions | selectattr('upc_matches') | list %}
+<p class="text-sm text-ink"><strong>Possible better MB match found.</strong>
+    {{ 'Another release has' if matching_editions | length == 1 else 'Other releases have' }} a matching {% if matching_urls %}store URL{% endif %}{% if matching_urls and matching_barcodes %}{{ ' and ' if matching_editions | length == 1 else ' or ' }}{% endif %}{% if matching_barcodes %}barcode{% endif %}.
+</p>
+    {% elif store_linked_releases %}
 <p class="text-sm text-ink"><strong>Store URL already linked on MusicBrainz.</strong>
     {% for linked in store_linked_releases %}<a href="https://musicbrainz.org/release/{{ linked.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">{{ release_name(linked.title, linked.disambiguation) }}{% if linked.media %} ({{ linked.media }}){% endif %} ↗</a>{{ ', ' if not loop.last else '.' }}{% endfor %}
-    Review the existing release below, or open it on MusicBrainz to check the match.
 </p>
-        {% elif not matching_editions and not editions_truncated and not editions_unknown %}
-<p class="text-xs text-muted"><strong>Store URL missing from this release.</strong> No edition in this release group links to the download. If the current release is correct, you can add its store link.</p>
+    {% elif contribution.media_mismatch is sameas false and contribution.missing_url and not editions_truncated and not editions_unknown %}
+<p class="text-xs text-muted"><strong>Store URL missing from this release.</strong> No release in this release group links to the download. If the current release is correct, you can add its store link.</p>
 <div class="flex flex-wrap items-center gap-2">
     <input type="text" readonly value="{{ contribution.store_url }}" aria-label="Store URL to copy"
            onclick="this.select()" class="min-w-0 flex-grow px-3 py-1.5 border border-line rounded text-xs bg-surface text-ink">
@@ -31,10 +35,9 @@
 {{ barcode_finding(contribution) }}
 {{ barcode_editor(contribution, album.sidecar.mb_release_id) }}
             {% endif %}
-        {% endif %}
     {% endif %}
     {% if editions %}
-<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label="Digital editions">
+<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label="Digital releases">
     <div class="space-y-1" role="list" aria-label="Release candidates">
         {% for edition in editions %}
             {% set suggested = suggested_edition and edition.id == suggested_edition.id %}
@@ -45,7 +48,7 @@
     </div>
 </div>
     {% else %}
-<p class="text-xs text-muted">No other confirmed digital editions found in this release group.</p>
+<p class="text-xs text-muted">No other confirmed digital releases found in this release group.</p>
     {% endif %}
     {% if editions_truncated or editions_unknown %}
 <p class="text-xs text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>

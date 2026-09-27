@@ -4669,8 +4669,8 @@ def _register_routes(app: FastAPI) -> None:
             except mb_lookup.ReleaseGoneError:
                 error = "MusicBrainz no longer has this release. Review its match."
             except mb_lookup.MBError as exc:
-                log.warning("digital-edition discovery failed for %s: %s", sc.mb_release_id, exc)
-                error = f"Could not check digital editions: {exc}"
+                log.warning("digital-release discovery failed for %s: %s", sc.mb_release_id, exc)
+                error = f"Could not check digital releases: {exc}"
         return _templates(request).TemplateResponse(
             request,
             "partials/_contribution_editions.html",
@@ -6263,7 +6263,7 @@ def _register_routes(app: FastAPI) -> None:
                     )
                 except mb_lookup.MBError as exc:
                     raise _ReplacementUnavailable(
-                        f"Could not load the digital edition: {exc}"
+                        f"Could not load the digital release: {exc}"
                     ) from exc
             group = (current.get("release-group") or {}).get("id") if current else None
             media = (release.get("medium-list") or []) if release else []
@@ -6276,7 +6276,7 @@ def _register_routes(app: FastAPI) -> None:
                 or any(m.get("format") != "Digital Media" for m in media)
             ):
                 raise _ReplacementUnavailable(
-                    "The digital edition is no longer available for this review. Close it and check again.",
+                    "The digital release is no longer available for this review. Close it and check again.",
                 )
             return MatchCandidate(
                 mb_release_id=selected,

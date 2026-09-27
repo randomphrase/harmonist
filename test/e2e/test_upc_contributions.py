@@ -29,7 +29,7 @@ def test_upc_sibling_review_and_missing_barcode(upc_contribution_server):
         playwright_sync.expect(
             panel.get_by_role("textbox", name="Original UPC to copy")
         ).to_have_value(UPC)
-        results = panel.get_by_role("region", name="Digital editions")
+        results = panel.get_by_role("region", name="Digital releases")
         suggested = results.get_by_role("listitem", name="Suggested digital release")
         playwright_sync.expect(suggested).to_contain_text("Barcode matches")
         assert len(discoveries) == 1

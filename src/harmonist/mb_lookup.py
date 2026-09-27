@@ -277,7 +277,7 @@ def browse_release_group_editions(release_group_mbid: str) -> tuple[list[Release
         musicbrainzngs.ResponseError,
         musicbrainzngs.AuthenticationError,
     ) as exc:
-        raise MBError(f"Could not check release-group editions: {exc}") from exc
+        raise MBError(f"Could not check releases in the release group: {exc}") from exc
     releases = result.get("release-list") or []
     return releases, int(result.get("release-count", len(releases)))
 

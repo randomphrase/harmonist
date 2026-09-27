@@ -158,6 +158,8 @@ def test_upc_siblings_use_one_fresh_scoped_browse_and_review(upc_library, monkey
             assert harmony is not None and "gtin=" + UPC in harmony["href"]
         else:
             assert page.select_one('a[title="Add release with Harmony"]') is None
+            assert "Possible better MB match found" in page.text
+            assert "matching barcode" in page.text
         assert browse.call_count == n
         assert browse.call_args.kwargs["release_group"] == release()["release-group"]["id"]
     assert before == {p: p.read_bytes() for p in before}

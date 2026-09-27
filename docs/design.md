@@ -292,7 +292,7 @@ Because tagging records the `store_url`, a manually-assigned download lands in
 placeholder is only an artist-root URL (no `/album/` slug), the sync can't match
 it by slug, so the backfill links it in its **title-fallback** pass instead (see
 below) — tagged `©alb` title ⟷ purchase title, the same exact-match rule used for
-edition mismatches.
+release mismatches.
 
 #### Linking purchases to on-disk albums
 
@@ -350,13 +350,13 @@ grouped by store_url slug, and the set of item_ids **already** linked to an
 album. Candidate purchases are those that are ignored AND not already linked —
 the linked-id guard stops a purchase correctly attached to one album from being
 re-attached to a sibling that merely shares a slug (a standard + a long-form
-edition sold from the same page).
+release sold from the same page).
 
 **Phase 1 — per store_url slug** (`_resolve_slug_group`): for each slug, take its
 unlinked albums and the candidate purchases whose URL carries that slug.
 
 1. One album + one purchase → **link directly**.
-2. Several editions share the page (so several albums and/or purchases share the
+2. Several releases share the page (so several albums and/or purchases share the
    slug) → separate them by an **exact normalized title match**: the album's
    tagged `©alb` title vs the purchase's item title, lowercased and reduced to
    alphanumerics. (The album is tagged, so its title is authoritative; the
@@ -369,9 +369,9 @@ unlinked albums and the candidate purchases whose URL carries that slug.
    can collapse the set by fetching each candidate's tracklist.
 4. An album with no candidate purchase for its slug is handed to phase 2.
 
-**Phase 2 — title fallback across a URL mismatch.** Some editions sit on one
+**Phase 2 — title fallback across a URL mismatch.** Some releases sit on one
 public Bandcamp page but each *purchase* carries its own URL — e.g. a standard
-and a long-form edition where MB records only the public page on both releases,
+and a long-form release where MB records only the public page on both releases,
 yet the long-form purchase resolves to a different slug. Phase 1 links the
 standard (its purchase URL matches the album's store_url); the long-form album
 matches no purchase by slug and falls to phase 2. Here, an album still unlinked
@@ -384,7 +384,7 @@ have no slug to match in phase 1, so they're added directly to this title pass.
 A phase-2 link of a **slug-bearing** album **always** has a URL mismatch by
 construction (that's why it fell out of phase 1), so the tagged release's
 store_url differs from the matched purchase's URL. That can mean the tag is the
-wrong edition (a mis-tag), OR a correctly-tagged edition whose MB URL is the
+wrong release (a mis-tag), OR a correctly-tagged release whose MB URL is the
 shared public page — indistinguishable
 without comparing tracklists. So we **link and log a WARNING** ("possible mis-tag",
 naming both URLs) into the Activity feed for the user to judge. (A slug-less album
@@ -398,9 +398,9 @@ search against all of MusicBrainz is still forbidden (that belongs to manual
 ingest, §2.2). What's different is the **scope and strictness**: phase-1/2 title
 matching runs inside an already-narrow set (purchases the user provably owns vs
 on-disk albums), requires an **exact** normalized match (a near-miss falls
-through rather than mis-linking), and demands **uniqueness**. The edition
+through rather than mis-linking), and demands **uniqueness**. The release
 qualifier that fuzzy matching erases (`[lp edition]`, `(long-form edition)`) is
-exactly what makes the exact match *discriminate* editions instead of colliding
+exactly what makes the exact match *discriminate* releases instead of colliding
 them. Title is signal here *because* it's exact and scoped; the old objection was
 to loose, unscoped matching.
 
@@ -454,13 +454,13 @@ matched no unique purchase title:
    free/name-your-price download that isn't in the *purchase* collection) but
    carrying a bandcamp-ish `store_url`. Benign — there is genuinely nothing to
    link.
-2. **Wrong/stale `store_url` *and* a non-matching title.** A wrong-edition URL,
+2. **Wrong/stale `store_url` *and* a non-matching title.** A wrong-release URL,
    or a renamed folder that `_norm_title` can't bridge. Here the **tag itself
    may be wrong**.
 3. **An uncaught mis-tag.** The post-sync mis-tag pass only fires when the user
-   owns a *sibling edition in the same MB release group*, and exactly one. A
-   wrong release in a *different* release group, ≥2 owned editions (ambiguous),
-   or not owning the correct edition's purchase all slip past it — and the album
+   owns a *sibling release in the same MB release group*, and exactly one. A
+   wrong release in a *different* release group, ≥2 owned releases (ambiguous),
+   or not owning the correct release's purchase all slip past it — and the album
    really is mis-tagged, just unprovably.
 
 This is precisely why surrender **defers to the user instead of silently marking
@@ -575,7 +575,7 @@ side-by-side, rather than drawing a comparison table with no rows in it.
 
 - **Ambiguous link → Complete, not Needs Linking.** A bandcamp album with
   `bandcamp.item_id=None` is normally Needs Linking — *unless* it carries
-  `bandcamp.candidate_item_ids` (several editions share one store URL and a
+  `bandcamp.candidate_item_ids` (several releases share one store URL and a
   title tiebreak couldn't pin a single one). That's as resolved as we can get
   without per-item track data, so it scans as **Complete**, not Needs Linking. The
   Library badge's tooltip shows the candidate ids.
@@ -779,7 +779,7 @@ Mechanically this is `compare.FieldComparison.comparable` doing what it has alwa
 
 Which file is compared against which track is **not** positional — it goes through `compare.assign` like everywhere else (see *Which file is which track* below). The durations above are what the confidence is derived from and what `match_releases` ranks competing releases on, so pairing the two lists by position alone did not merely describe an album badly: an album whose files don't sort into track order was measured against its own tracks in the wrong order, downgraded from exact to approximate, and parked awaiting a decision it never needed (#395).
 
-When a store URL resolves to several MB releases, `match.match_releases` ranks them all and reports whether the ranking could actually separate them. **Exact is not enough to auto-tag on its own — the winner has to be unique.** Two editions of one release with the same tracklist and the same durations rank identically, and picking one is then picking whichever MusicBrainz listed first; the album is left as it is, with no tag write and no stashed suggestion (a suggestion names one release, which is the same coin toss), and Activity says several editions fit. *Look up releases at this URL* on the album's card lists them for the user to choose (#426).
+When a store URL resolves to several MB releases, `match.match_releases` ranks them all and reports whether the ranking could actually separate them. **Exact is not enough to auto-tag on its own — the winner has to be unique.** Two releases in one release group with the same tracklist and the same durations rank identically, and picking one is then picking whichever MusicBrainz listed first; the album is left as it is, with no tag write and no stashed suggestion (a suggestion names one release, which is the same coin toss), and Activity says several releases fit. *Look up releases at this URL* on the album's card lists them for the user to choose (#426).
 
 **Confirm suggestion** applies the reviewed pairing from the shared comparison on the inbox or album page (#532, #589). Inspectable tag changes and the optional artwork choice live below that comparison. Artwork loads independently and starts excluded; an unavailable or pending archive does not block tags-only acceptance. The selected release's cover is available regardless of size, with a labelled release-group fallback and protection for differing per-track artwork. The review explains the effect on unassigned files beside the track table. Confirmation applies directly, including selected artwork replacements; there is no second confirmation dialog. Failures appear inline without replacing the review, its draft or the artwork choice.
 
@@ -940,14 +940,14 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   null, the album is in **Needs Linking** until the next sync resolves it —
   *unless* `candidate_item_ids` is set.
   - `candidate_item_ids` (optional, list of ints): the purchase ids this album
-    *could* be when several editions share one store URL and a title tiebreak
+    *could* be when several releases share one store URL and a title tiebreak
     couldn't pin a single one (§2.5). Set instead of `item_id`; takes the album
     out of Needs Linking (it scans as Complete). A future re-download can collapse
     the set to one id by comparing tracklists.
 - `mb_match_candidate` (optional) is a proposed-but-unconfirmed match (§"Match
   confidence"). Beyond the track comparison it can carry **mis-tag provenance**
   (`mistag_owned_url/label/disambig`, `mistag_tagged_*`, `mistag_release_group_mbid`)
-  when the suggestion is a different owned edition in the same release group, and
+  when the suggestion is a different owned release in the same release group, and
   `unmatched_purchase=true` when it's a **surrender** suggestion (the album's own
   release, kept read-only after a full sync found no purchase — §3).
 - `mb_release_id` is the MBID string when matched; `null` when not yet
@@ -1018,7 +1018,7 @@ Bandcamp URL in the files' comments, or consistent valid literal UPC tags on
 every file (#608). The scanner reads those tags through its existing single-open
 format readers; purchase ownership, owned BARCODE tags or a URL recovered from
 MusicBrainz alone cannot qualify a CD rip. Original UPC establishes digital-download
-provenance independently of BARCODE, which may describe a previous MB edition.
+provenance independently of BARCODE, which may describe a previous MB release.
 Missing, unreadable, invalid or conflicting UPC evidence cannot qualify. Merged
 albums require agreement across all parts; separate copies retain their own evidence.
 
@@ -1027,8 +1027,8 @@ observations from each local copy's evidence and an MB observation, plus missing
 or discrepant barcodes against the original UPC. Physical/mixed media takes precedence;
 missing-link and barcode editing are offered only for a confirmed digital release.
 Missing-link editing also requires a complete sibling check finding no existing link. Unknown
-media remains unchecked rather than inviting a link edit on an uncertain edition.
-Non-digital media, including mixed editions, invite review. Unspecified media
+media remains unchecked rather than inviting a link edit on an uncertain release.
+Non-digital media, including mixed releases, invite review. Unspecified media
 remain unknown. URL equality retains the host and album/track path, normalizing
 scheme, trailing slash and tracking parameters. A precise file-comment URL wins
 over an MB-derived sidecar URL; conflicting precise comments remain unresolved.
@@ -1059,16 +1059,16 @@ has no separate timestamp or refresh request.
 Opening an album with a media mismatch or missing store URL automatically browses
 its release group with media and URL relationships in one fresh request, capped at 100 releases. It
 waits for the album comparison, including any stale-cache refresh, to settle
-before loading editions, so the initial render does not duplicate the browse.
+before loading releases, so the initial render does not duplicate the browse.
 The current release's stored payload supplies the group; a missing payload costs at most one
-additional cached by-id fetch. Only wholly Digital Media sibling editions are listed,
-with exact host-scoped store-link status and descriptive edition details in a
+additional cached by-id fetch. Only wholly Digital Media sibling releases are listed,
+with exact host-scoped store-link status and descriptive release details in a
 scrolling list. Name, barcode, store-URL and sibling pickers share one candidate
 row renderer and mismatch cues, while retaining their existing assignment or
 review actions. Positive evidence labels, Store URL matches / Barcode matches,
 sit beside Use; other rows have no match label. Private-download and incomplete
 search notices remain on the containing panel. The current release group is assumed correct. A complete search
-with exactly one digital edition matching the source URL or original UPC, whose track count matches the files,
+with exactly one digital release matching the source URL or original UPC, whose track count matches the files,
 highlights that row alongside the other choices. These
 are candidates to review, never automatic matches. Truncation and unspecified
 media prevent a claim of absence, and failures remain distinct from no results.
@@ -1078,13 +1078,14 @@ failures direct the user to that same header control to retry. A complete
 empty public search offers Harmony. Existing source matches suppress **Add Release**
 even when ambiguity or incomplete discovery prevents a suggestion. Candidates
 without any source match retain that link beside **Browse all releases**.
-While a missing-URL check is pending, the panel asks for release review rather
-than asserting a contribution is needed. Store-link and barcode edit prompts
+While a missing-URL check is pending, the panel makes no contribution claim.
+Matching digital siblings show “Possible better MB match found” with the matching
+store URL or barcode evidence. Store-link and barcode edit prompts
 for the current release appear only after a complete negative sibling check.
 Barcode-only findings on digital releases retain their direct edit path.
 Original UPC seeds Harmony's Qobuz/Deezer lookup when available; otherwise the
 public store URL is used. Barcode equality never bypasses the shared track review:
-editions may reuse a barcode while their recordings or durations differ.
+releases may reuse a barcode while their recordings or durations differ.
 Private downloads never send their URL to a lookup or Harmony.
 
 **Use** on any row replaces the contribution choices with the shared inline
@@ -1125,12 +1126,12 @@ does not preserve arbitrary BARCODE values as source evidence or copy them to UP
 
 Private downloads can still warrant media review, but their URLs are not
 missing-link contribution opportunities and are never sent to Harmony. The
-public edition may have a different mix. `bandcamp.is_private` records positive
+public release may have a different mix. `bandcamp.is_private` records positive
 purchase metadata; its absent/false legacy value does not establish that a URL
 is public. Import/edit actions therefore tell the user to verify the public
 release page. Privacy is not inferred from the URL's spelling.
 A release group is context, not local
-identity: original/reissue and physical/digital editions remain distinct, as do
+identity: original/reissue and physical/digital releases remain distinct, as do
 multiple local copies temporarily carrying the same approximate MBID. This
 feature leaves purchase linking unchanged. The existing explicit rematch control
 remains available for choosing outside the release group.
@@ -2178,7 +2179,7 @@ corruption. We refuse to guess; Picard exists for this case.
 
 On-disk track count is **less than** the MB release's track count, but
 the user has a valid reason (CD rip missing a hidden track, intentional
-selection, vinyl-only edition where the digital MB release has bonus
+selection, vinyl-only release where the digital MB release has bonus
 tracks, etc.). Without special handling these stall in `NEEDS_MBID`
 forever because `TagMismatchError` would block the tagger.
 

@@ -49,7 +49,7 @@
                 <p class="hidden group-has-checked/artwork-choice:block">Will update: {{ artwork.write_targets }}.</p>
             </div>
             {% endif %}
-            {% if caa and caa.from_release_group %}<p class="text-muted">For the release group, not this edition.</p>{% endif %}
+            {% if caa and caa.from_release_group %}<p class="text-muted">For the release group, not this release.</p>{% endif %}
         </div>
     </div>
     {% if artwork.cover_unreadable %}<p class="text-xs text-amber-700">The folder cover could not be read. It will be left alone.</p>{% endif %}

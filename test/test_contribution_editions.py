@@ -33,7 +33,7 @@ def test_contributions_resolve_media_before_store_link(library):
     client, _ = library
     for fmt, expected in [
         ("CD", "Possible media mismatch"),
-        ("Digital Media", "Review the release match for this download"),
+        ("Digital Media", "MB contributions"),
     ]:
         activity_store.store_release(
             MBID, mb_cache._key(mb_lookup.RELEASE_INCLUDES), release((fmt,))
@@ -122,7 +122,11 @@ def test_missing_store_link_requires_complete_sibling_check(library, monkeypatch
         url_input = page.select_one('input[aria-label="Store URL to copy"]')
         assert url_input is not None and url_input["value"] == URL
     if kind in {"linked", "physical-linked", "unknown-linked", "ambiguous", "current-linked"}:
-        assert "Store URL already linked on MusicBrainz" in page.text
+        if kind in {"linked", "ambiguous"}:
+            assert "Possible better MB match found" in page.text
+            assert "matching store URL" in page.text
+        else:
+            assert "Store URL already linked on MusicBrainz" in page.text
         assert page.select_one('a[title="Add release with Harmony"]') is None
         assert "Store URL missing from this release" not in page.text
         linked_id = MBID if kind == "current-linked" else "sibling"
@@ -211,7 +215,7 @@ def test_replacement_review_keeps_original_until_confirmed(library, monkeypatch,
     if outcome == "apply":
         assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
         assert sidecar.read(root / "Download").mb_release_id == "digital"
-        assert "Review the release match for this download" in client.get("/album/digital").text
+        assert 'id="contribution-editions-digital"' in client.get("/album/digital").text
         after = {p: p.read_bytes() for p in before}
         repeated = client.post(f"/confirm/{aid}/accept?{query}", data=fields)
         assert "confirmation-applied" not in repeated.headers.get("HX-Trigger", "")
@@ -496,12 +500,12 @@ def test_only_complete_public_absence_offers_harmony(library, monkeypatch, kind)
     assert r.status_code == 200
     assert ("Add Release" in r.text) is (kind == "absent")
     if kind == "absent":
-        assert "No other confirmed digital editions found" in r.text
+        assert "No other confirmed digital releases found" in r.text
     elif kind in {"unknown", "truncated"}:
         assert "search is incomplete" in r.text
     elif kind == "failure":
-        assert "Could not check digital editions" in r.text
-        assert "No other confirmed digital editions found" not in r.text
+        assert "Could not check digital releases" in r.text
+        assert "No other confirmed digital releases found" not in r.text
     else:
         assert URL not in r.text and "harmony.pulsewidth" not in r.text
     assert browse.call_count == 1
