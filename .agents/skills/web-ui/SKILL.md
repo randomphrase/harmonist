@@ -1,6 +1,6 @@
 ---
 name: web-ui
-description: Front-end conventions for Harmonist's HTMX + Jinja2 + Tailwind UI. Consult BEFORE editing anything under templates/ or static/input.css — adding a button or action, building a modal/popover/disclosure, wiring hx-* attributes, or changing how a control behaves. The Python suite cannot see browser event ordering, focus, or the top layer, so the rules that keep this layer honest are collected here rather than discovered one outage at a time.
+description: UI design, copy, and front-end conventions for Harmonist's HTMX + Jinja2 + Tailwind UI. Consult when reviewing a screen or changing user-facing wording, actions, templates/, or static/input.css. Covers terminology, useful evidence, visual consistency, review flows, and browser verification as well as HTMX mechanics.
 ---
 
 # Web UI: HTMX + Jinja2 + Tailwind
@@ -9,6 +9,88 @@ Harmonist's front end is server-rendered Jinja2 fragments swapped by HTMX, style
 with a committed Tailwind bundle. There is no framework, no client-side router,
 and deliberately very little JavaScript. That buys simplicity, and it costs you
 the safety net a framework would provide — these are the rules that replace it.
+
+## Review the user's decision before the markup
+
+Read `docs/usage.md` for the workflow and `docs/design.md` for the meaning of
+states, matching, and tagging. Review the **whole rendered panel**, including
+parent templates and asynchronously loaded fragments. Individually plausible
+sentences and controls can contradict one another when assembled.
+
+### Use one vocabulary
+
+- MusicBrainz has **releases** and **release groups**. Don't call releases
+  "editions" or interchange those two entities. Use **album** for the user's
+  library item where that distinction matters.
+- Reuse the same label for the same action, source, or status across Inbox,
+  Library, searches, and review. Check existing shared components before
+  introducing a new label or presentation. A terminology review includes
+  tooltips, accessible names, loading/error messages, and related user docs.
+
+### Every sentence must help the current decision
+
+- Lead with the observed finding and the available action. State what is known
+  now: "Another release may already link…" is unhelpful after the check has
+  completed, and contradicts a following "No release … links to the download."
+  While checking, show a loading state; afterward, replace it with the result.
+- Remove prose that repeats a heading, button, visible evidence, or another
+  paragraph. Keep background explanations in the usage guide. Don't add a
+  disclaimer merely because an edge case exists; show relevant constraints
+  when they affect this user's action.
+- Don't narrate internal bookkeeping or every empty collection. "No other
+  confirmed digital releases found" adds nothing beside an actionable missing
+  store-link finding. Keep an empty-state explanation when it explains a missing
+  result or gives the user a way forward, such as an explicit search with no hits.
+- Brevity must preserve meaning: a failed or incomplete check is **not** evidence
+  of absence. Retain a concise limitation and recovery action where needed;
+  don't hide errors or turn uncertainty into a definitive claim.
+
+### Actions look like actions
+
+- Actions use the existing button styles, including workflow links such as
+  **Browse all releases**, **Edit store link**, and **Add release**. An external
+  destination is still an `<a href>` styled as a button, with the established
+  external-link cue; local operations use `<button>`. Ordinary inline references
+  can remain text links. Visual consistency does not require changing semantics.
+- Use a short verb-led label that describes the next step. Distinguish opening
+  a review or external editor from applying a change. Put the action beside
+  the entity or evidence it acts on, with consistent spacing and sizing.
+- Give the main next step appropriate emphasis and alternatives secondary
+  styling. Subtle actions must still be recognizable and keyboard reachable;
+  don't make users discover an action by hovering over ordinary-looking prose.
+
+### Reuse presentation and show evidence where it helps
+
+- The same choice should look and behave the same wherever it appears. Release
+  pickers share candidate rows, metadata, mismatch cues, and selection controls
+  (`_release_candidate.html`), rather than inventing a table for each entry point.
+- Put positive evidence such as **Store URL matches** or **Barcode matches**
+  beside the selection control. Prefer the reason to a vague "Suggested" badge.
+  Leave absent evidence unlabelled unless it materially affects the decision;
+  avoid filling every row with "Unknown" / "Doesn't match" noise. A matching
+  barcode is evidence for review, not proof of release identity.
+- Show the current decision once. During a selected-release review, hide
+  competing search/edit/import controls and duplicate artwork sections. Preserve
+  a clear Cancel/Dismiss path back to the choices, and preserve drafts on errors
+  and background refreshes. Don't stack another confirmation of the same
+  changes after the user has already reviewed and explicitly confirmed them.
+- Make consequences visible at the choice: for optional artwork, say what will
+  be kept or replaced and which files/images are affected. Don't repeat an
+  identical image just to fill both comparison columns.
+
+### Layout should make relationships obvious
+
+Align comparison headings, images, and their facts; place the choice beside the
+image or value it controls. Check wrapping labels, long URLs/titles, missing
+images, and multiple rows at wide and narrow widths. Avoid blank space left by
+hidden sections or idle progress indicators. Check focus visibility, keyboard
+operation, readable contrast, and accessible names; color alone must not carry
+the distinction between a suggestion, warning, and ordinary candidate.
+
+These checks come from the contribution-panel iterations (`13620a4`, `03c43c5`,
+`164a515`, `5e0f607`, `8e3bb2b`), review simplification (`d329a6f`, `0b2910a`),
+and artwork outcome/alignment fixes (`65662ed`, `56f7e1d`, `b90820c`, `20be68a`).
+Use those as examples of recurring problems, not specifications to copy blindly.
 
 ## 1. Prefer the platform to a hand-rolled equivalent
 
@@ -135,6 +217,8 @@ Two traps:
 - Rare actions should be **subtle** (muted until hover), not prominent.
 - Anything destructive or hard to undo gets `hx-confirm`, plus both a `title`
   and an `aria-label` — the tooltip explains, the label makes it reachable.
+  An explicit review-and-confirm flow already supplies that confirmation;
+  don't add a second prompt for the same reviewed operation.
 - Long-running actions get `hx-disabled-elt="this"` and an `hx-indicator`, so a
   multi-second re-tag can't be double-fired and doesn't look hung (#34).
 
@@ -157,6 +241,14 @@ So a template change is not proven by pytest. Exercise it in **demo mode**
 where the change concerns event ordering or dialog lifecycle, add to the
 Playwright smoke tests in `test/e2e/`.
 
+Also inspect the rendered screen for the decision-review items above. Exercise
+the relevant loading, populated, empty, incomplete, error, and selected-review
+states, including Cancel and retry. Inspect both initial page load and HTMX
+updates: a fragment can be correct alone and misleading inside its parent.
+Check affected layouts at wide and narrow widths, and use keyboard interaction;
+for browser-specific changes, verify in the affected browser. Passing request
+assertions does not establish that the result is clear, aligned, or uncluttered.
+
 The **`testing`** skill owns the rest: which rung of the ladder can see which
 bug, why a browser test must be mutation-checked, and why a mutation check that
 *passes* means the test is wrong (#144). Read it before writing the test.
@@ -168,6 +260,11 @@ sends it in a browser; `TestClient` does not. New web fixtures must be built as
 `TestClient(app, headers={"HX-Request": "true"})` or every POST 403s.
 
 ## Before committing a template change
+
+Review the assembled screen first: consistent terminology; useful, nonduplicated
+copy that agrees with the loaded result; recognizable and consistently styled
+actions; evidence beside choices; one active review; clear consequences and a
+way back; usable layout and keyboard controls at the affected widths/states.
 
 1. `make css` run and the regenerated bundle staged.
 2. `make check` green (includes `template-lint`).
