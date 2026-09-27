@@ -6,7 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
-- Albums with consistent UPC or barcode tags now get MusicBrainz suggestions during adoption, with ambiguous matches available to review (#607).
+- Albums with consistent UPC or barcode tags automatically search MusicBrainz and suggest unique matches, with Name/Barcode search options and seeded Harmony lookup for missing releases (#607).
 
 - Artwork Fit sizes the selected image to the viewer, and opening or switching covers no longer focuses a popup menu (#604).
 

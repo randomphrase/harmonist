@@ -62,7 +62,7 @@ def test_needs_link_badge_action(reset_demo_server: str, on_album: bool, action:
             corrected = page.get_by_role(
                 "link", name="Little Bit o' Hoot, Whole Lotta Nanny", exact=True
             ).locator("xpath=ancestor::div[starts-with(@id, 'task-')][1]")
-            corrected.get_by_role("radio", name="Search by name").check()
+            corrected.get_by_role("radio", name="Name", exact=True).check()
             corrected.get_by_role("button", name="Search", exact=True).wait_for()
         elif on_album:
             # Reload must expose the new state and remove the live Needs Linking control.

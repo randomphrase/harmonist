@@ -1,0 +1,57 @@
+{# One search mode and results box; the parent preserves both across inbox polls. #}
+{% from 'macros.html' import reload_unless_retargeted %}
+{% set sc = album.sidecar %}
+{% set on_album = on_album_page | default(false) %}
+{% set public_url = sc and sc.store_url and not (sc.bandcamp and sc.bandcamp.is_private) %}
+{% set prefer_name = request.query_params.get('search') == 'name' %}
+{% set barcode_default = album.barcode and not prefer_name %}
+<div class="find-mode mb-2">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs">
+        <span class="text-muted font-bold uppercase tracking-widest text-2xs">Search MusicBrainz by</span>
+        <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" name="find-{{ album.id }}" value="name"
+                   {% if prefer_name or (not album.barcode and not public_url) %}checked{% endif %} class="accent-mb-purple">
+            <span>Name</span>
+        </label>
+        <label class="inline-flex items-center gap-1.5 {% if album.barcode %}cursor-pointer{% else %}text-muted{% endif %}">
+            <input id="barcode-mode-{{ album.id }}" type="radio" name="find-{{ album.id }}" value="barcode"
+                   {% if barcode_default %}checked{% endif %} {% if not album.barcode %}disabled{% endif %} class="accent-mb-purple">
+            <span>Barcode</span>
+        </label>
+        {% if public_url %}
+        <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" name="find-{{ album.id }}" value="url"
+                   {% if not barcode_default and not prefer_name %}checked{% endif %} class="accent-mb-purple">
+            <span>Releases at this store URL</span>
+        </label>
+        {% endif %}
+    </div>
+    <div class="find-mode__panel find-mode__panel--name">
+        {% include 'partials/_name_search.html' %}
+    </div>
+    {% if album.barcode %}
+    <div class="find-mode__panel find-mode__panel--barcode">
+        <form hx-post="/manual/{{ album.id }}/barcode"
+              hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML settle:0ms"
+              {# Defer load until HTMX has initialized the child button's request
+                 counter, or it stays disabled after the first response. #}
+              hx-trigger="{% if barcode_default and not (sc and sc.mb_match_candidate) %}load delay:1ms, {% endif %}submit, change from:#barcode-mode-{{ album.id }}"
+              hx-disabled-elt="find button" hx-indicator="#tagging-{{ album.id }}"
+              {{ reload_unless_retargeted(on_album) }} class="flex items-center gap-2">
+            <input type="hidden" name="on_album_page" value="{{ 'true' if on_album else 'false' }}">
+            <span class="flex-1 text-xs text-muted">{{ album.barcode }}</span>
+            <button type="submit" class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Search</button>
+        </form>
+    </div>
+    {% endif %}
+    {% if public_url %}
+    <div class="find-mode__panel find-mode__panel--url">
+        <button hx-post="/manual/{{ album.id }}/candidates"
+                hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML" hx-disabled-elt="this"
+                hx-vals='{"on_album_page": "{{ 'true' if on_album else 'false' }}"}'
+                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
+            Look up releases at this URL
+        </button>
+    </div>
+    {% endif %}
+</div>

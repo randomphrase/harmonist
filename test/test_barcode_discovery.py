@@ -242,9 +242,11 @@ def test_empty_lookup_remains_retryable_and_offers_harmony(client, cfg, monkeypa
     page = client.get(f"/album/{aid}")
     # Qobuz's Harmony provider searches the literal spelling; padding this UPC
     # to GTIN-14 loses the Qobuz result even though MB comparison needs padding.
-    assert "gtin=0801061000332" in page.text
+    assert 'value="barcode"' in page.text
     response = client.post(f"/manual/{aid}/barcode")
     assert "No matches" in response.text
+    assert "gtin=0801061000332" in response.text
+    assert "Open in Harmony" in response.text
     assert search.call_count == 2 and fetch.call_count == 0
 
 

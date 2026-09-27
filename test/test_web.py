@@ -433,7 +433,7 @@ def test_needs_mbid_private_release_suppresses_harmony_and_recheck(client, cfg):
     assert "Bandcamp (private)" in r.text
     # No store-URL search mode for a private release — only name search.
     assert "Look up releases at this URL" not in r.text
-    assert "Search MusicBrainz by name" in r.text
+    assert "Search MusicBrainz by" in r.text
     # The manual resolution path remains.
     assert 'name="mbid"' in r.text
 
@@ -1609,7 +1609,7 @@ def test_needs_mbid_store_url_offers_both_search_modes(client, cfg):
     d = _needs_mbid_with_store_url(cfg, "Modes", "https://x.bandcamp.com/album/y")
     aid = _id_for(cfg, d)
     r = client.get("/tasks")
-    assert "Find a different release" in r.text
+    assert "Search MusicBrainz by" in r.text
     # Both radio options + their controls render (one results box for both).
     assert 'value="url"' in r.text
     assert 'value="name"' in r.text

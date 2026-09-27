@@ -53,9 +53,13 @@ MusicBrainz. A single matching release appears as a suggestion for you to
 review and confirm; barcode discovery never tags automatically. The comparison
 still shows differing track counts and lengths.
 
-**Look up barcode** repeats the search on demand and lists choices when several
-releases match. **Find barcode in Harmony** helps locate or contribute a missing
-release. Ordinary scans preserve existing suggestions and dismissals. Equivalent
+The **Search MusicBrainz by** radios default to **Barcode** when one is available
+and search automatically when there is no suggestion. Several matches appear as
+choices; no matches offer **Open in Harmony**, seeded with the barcode. Select
+**Name** to search by artist and title instead, or press **Search** to try again
+after contributing a release. Dismissing a suggestion on the album page returns
+to Name search so it isn't immediately suggested again. Ordinary scans preserve
+existing suggestions and dismissals. Equivalent
 UPC/EAN forms (including a leading zero) count as the same barcode; missing,
 invalid or conflicting barcode tags leave the usual name/MBID tools available.
 

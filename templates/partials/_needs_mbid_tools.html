@@ -1,6 +1,6 @@
 {# Find/assign tools for the Needs MBID card. ONE "find a different release"
-   area: a radio picks the search method (store URL vs name) and only the
-   chosen method's controls show — both feed the shared #mbid-results box,
+   area: a radio picks the search method and only the chosen method's controls
+   show — all feed the shared #mbid-results box,
    whose heading names the search that ran. Plus a direct MBID-paste fallback.
    The whole thing sits inside the card's hx-preserve wrapper, so a background
    re-render can't wipe the selected mode or the results. #}
@@ -8,7 +8,6 @@
 {% set sc = album.sidecar %}
 {% set _private = sc and sc.bandcamp and sc.bandcamp.is_private %}
 {% set on_album = on_album_page | default(false) %}
-{% include 'partials/_barcode_tools.html' %}
 {% if sc and sc.store_url and not _private %}
 <div class="flex gap-2 flex-wrap mb-3">
     <a href="{{ harmony_base }}/release?url={{ sc.store_url|urlencode }}"
@@ -25,42 +24,14 @@
         Recheck
     </button>
 </div>
-<div class="find-mode mb-2">
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs">
-        <span class="text-muted font-bold uppercase tracking-widest text-2xs">Find a different release</span>
-        <label class="inline-flex items-center gap-1.5 cursor-pointer">
-            <input type="radio" name="find-{{ album.id }}" value="url" checked class="accent-mb-purple">
-            <span>Releases at this store URL</span>
-        </label>
-        <label class="inline-flex items-center gap-1.5 cursor-pointer">
-            <input type="radio" name="find-{{ album.id }}" value="name" class="accent-mb-purple">
-            <span>Search by name</span>
-        </label>
-    </div>
-    {# Only the selected mode's panel shows (find-mode :has() rule in input.css). #}
-    <div class="find-mode__panel find-mode__panel--url">
-        <button hx-post="/manual/{{ album.id }}/candidates"
-                hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML" hx-disabled-elt="this"
-                {# Which page is asking — same reason as the name search (#150). #}
-                hx-vals='{"on_album_page": "{{ 'true' if on_album else 'false' }}"}'
-                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-            Look up releases at this URL
-        </button>
-    </div>
-    <div class="find-mode__panel find-mode__panel--name">
-        {% include 'partials/_name_search.html' %}
-    </div>
-</div>
-{% else %}
+{% endif %}
 {% if _private %}
 <p class="text-xs text-muted mb-2 italic">
     Private Bandcamp release — its public URL won't resolve on MusicBrainz.
     Search by name or paste an MBID.
 </p>
 {% endif %}
-<p class="text-muted font-bold uppercase tracking-widest text-2xs mb-1">Search MusicBrainz by name</p>
-{% include 'partials/_name_search.html' %}
-{% endif %}
+{% include 'partials/_release_search.html' %}
 {# Shared results target. #}
 <div id="mbid-results-{{ album.id }}" class="mt-2"></div>
 {# Direct entry fallback. #}

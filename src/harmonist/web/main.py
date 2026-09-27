@@ -6896,13 +6896,15 @@ def _register_routes(app: FastAPI) -> None:
             [formats.read_scan_fields(f) for f in album_files.for_paths(album.folders)]
         )
         if evidence is None or (album.sidecar and album.sidecar.mb_release_id):
-            return _flash_response(
+            response = _flash_response(
                 "Barcode lookup unavailable",
                 "Requires an unmatched album with consistent barcode, artist and album tags",
                 level=Level.WARNING,
                 tasks_changed=False,
                 album=album,
             )
+            response.headers["HX-Retarget"] = f"#mbid-results-{album.id}"
+            return response
         try:
             results, total = mb_search.search_barcode(evidence)
             if total == 1 and len(results) == 1:
@@ -6921,13 +6923,17 @@ def _register_routes(app: FastAPI) -> None:
                     "Needs review", "Barcode match found — review and confirm", album=album
                 )
         except (mb_search.MBSearchError, mb_lookup.MBError) as exc:
-            return _flash_response(
+            response = _flash_response(
                 "Barcode lookup failed",
                 str(exc),
                 level=Level.ERROR,
                 tasks_changed=False,
                 album=album,
             )
+            # Keep an automatic lookup failure visible instead of reloading
+            # the page and immediately triggering another lookup.
+            response.headers["HX-Retarget"] = f"#mbid-results-{album.id}"
+            return response
         return _render_release_picker(
             request,
             album,
@@ -6937,6 +6943,7 @@ def _register_routes(app: FastAPI) -> None:
             on_album_page=on_album_page,
             review_only=True,
             retarget=True,
+            barcode=evidence.barcode,
         )
 
     @app.post("/manual/{album_id}/candidates", response_class=HTMLResponse)
@@ -7211,6 +7218,7 @@ def _render_release_picker(
     retarget: bool = False,
     on_album_page: bool = False,
     review_only: bool = False,
+    barcode: str | None = None,
 ) -> Response:
     """Render the shared candidate-release list (store-URL picker or name
     search). `retarget` rewrites the swap to the card's preserved results box —
@@ -7243,6 +7251,7 @@ def _render_release_picker(
             "local_artist": album.artist,
             "on_album_page": on_album_page,
             "review_only": review_only,
+            "barcode": barcode,
         },
         headers=headers,
     )

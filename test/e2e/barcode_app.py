@@ -1,5 +1,6 @@
 """A sandboxed Qobuz-style album with two MusicBrainz barcode candidates."""
 
+import os
 import shutil
 from pathlib import Path
 
@@ -58,7 +59,16 @@ for mbid, barcode in ((FIRST, "0801061000332"), (SECOND, "801061000332")):
 
 demo.seed = seed
 app = create_app()
-mb_search.search_barcode = lambda evidence: (
-    [mb_lookup.release_summary(demo.MB_RELEASES[mid]) for mid in (FIRST, SECOND)],
-    2,
-)
+
+
+def search_barcode(evidence):
+    scenario = os.environ.get("HARMONIST_TEST_BARCODE_RESULTS", "2")
+    if scenario == "error":
+        raise mb_search.MBSearchError("MusicBrainz unavailable")
+    count = int(scenario)
+    return [
+        mb_lookup.release_summary(demo.MB_RELEASES[mid]) for mid in (FIRST, SECOND)[:count]
+    ], count
+
+
+mb_search.search_barcode = search_barcode

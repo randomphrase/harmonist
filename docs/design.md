@@ -731,7 +731,7 @@ the validated, zero-padded 14-digit form; the search includes all equivalent
 8/12/13/14-digit spellings. Search hits must match the barcode and normalised
 artist/title exactly. One result becomes `mb_match_candidate`, always requiring
 review even when its track lengths are exact. Several results are never ranked
-into one suggestion; the barcode lookup control lists them for explicit choice,
+into one suggestion; barcode search lists them for explicit choice,
 which also opens review. A truncated search cannot establish uniqueness.
 
 Initial adoption runs on NEW albums, creates the normal Needs MBID sidecar,
@@ -740,11 +740,18 @@ negative cache or additional state is persisted. The derived `Album.barcode`
 drives the lookup and Harmony links, preserving the spelling in the file tags
 because Qobuz's Harmony search does not accept GTIN-14 padding. Explicit lookup
 always searches again and fetches a unique release through `mb_cache` with
-`FRESH`; initial assessment may
-use the cache. One search (at most 100 summaries) and at most one by-id fetch
+`FRESH`; initial assessment may use the cache. One search (at most 100 summaries) and at most one by-id fetch
 bound each lookup; ambiguous/empty searches fetch no full releases. Failures
 remain failures and do not record a completed adoption. Demo mode patches this
 search entry point as well as the existing name search.
+
+The shared search radios default to Barcode when available. With no existing
+suggestion, that mode searches on load; selecting Barcode or submitting Search
+repeats the lookup. The inbox preserves the controls across background polls.
+Unique results use the existing suggestion panel; empty results offer the same
+Open in Harmony button as store-URL seeding. Dismissal on the album page returns
+to `?search=name`, avoiding an immediate automatic re-suggestion. Lookup failures
+render in the results area without reloading and retrying indefinitely.
 
 A URL → MBID match from [MusicBrainz](https:://musicbrainz.org) is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
 

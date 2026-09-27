@@ -9,6 +9,13 @@
 {% endif %}
 {% if not results %}
 <p class="text-muted text-xs italic px-2 py-1">No matches.</p>
+{% if barcode %}
+<a href="{{ harmony_base }}/release?gtin={{ barcode|urlencode }}&amp;qobuz=&amp;deezer="
+   target="_blank" rel="noopener"
+   class="inline-block mt-2 px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
+    Open in Harmony ↗
+</a>
+{% endif %}
 {% else %}
 <div class="space-y-1">
     {% for r in results %}

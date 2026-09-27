@@ -115,6 +115,13 @@ def barcode_server(tmp_path_factory):
         yield base, root / "harmonist-demo"
 
 
+@pytest.fixture(params=["0", "1", "error"])
+def barcode_outcome_server(tmp_path, monkeypatch, request):
+    monkeypatch.setenv("HARMONIST_TEST_BARCODE_RESULTS", request.param)
+    for base in _run_demo_server(tmp_path, app_module="test.e2e.barcode_app:app"):
+        yield base, tmp_path / "harmonist-demo", request.param
+
+
 @pytest.fixture(scope="module")
 def public_demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, Path]]:
     """Exercise the recording catalogue through the ordinary application entry point."""
