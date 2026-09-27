@@ -132,14 +132,11 @@
 </div>
 {% endif %}
 
-{# ---- Always available: find / assign a different MBID. Primary when there's
-     no suggestion; collapsed under a disclosure when a suggestion is shown.
-     (For a mis-tag the explanatory panel above already says "Wrong release?",
-     so phrase this one as the manual fallback.)
-
-     The whole tools area is hx-preserve'd so a background poll re-rendering
-     this card can't wipe an open disclosure or in-progress search/picker
-     results (which live only in the DOM). ---- #}
+{# Resolve the current suggestion before offering another release search.
+   Keep visibility outside hx-preserve so candidate changes take effect while
+   the inner search state survives polling and dismissal. Surrender has no
+   confirm/dismiss decision, so its recovery tools remain available. #}
+<div {% if candidate and not is_surrender %}hidden{% endif %}>
 <div id="mbid-tools-{{ album.id }}" hx-preserve="true">
 {% if is_surrender %}
 {# Surrender: the primary action ("Keep in Library") is in the panel above. The
@@ -153,16 +150,8 @@
         {% include 'partials/_surrender_tools.html' %}
     </div>
 </details>
-{% elif candidate %}
-<details class="text-xs">
-    <summary class="cursor-pointer text-muted hover:text-ink select-none">
-        {% if is_mistag %}Not that either? Find or assign a different release{% else %}Wrong release? Find or assign a different one{% endif %}
-    </summary>
-    <div class="mt-2 space-y-3">
-        {% include 'partials/_needs_mbid_tools.html' %}
-    </div>
-</details>
 {% else %}
 {% include 'partials/_needs_mbid_tools.html' %}
 {% endif %}
+</div>
 </div>

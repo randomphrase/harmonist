@@ -219,7 +219,9 @@ leads with whichever fits:
   Cancel leaves the update available. Ordinary metadata updates and already-missing
   tracks keep their existing behavior. Imported albums with an album MBID but no track IDs use this review
   too. An album can have both unassigned files and missing tracks.
-- *Without one.* Search by artist + title, or paste an MBID directly.
+- *Without one.* Search by artist + title, barcode or store URL, or paste an MBID directly.
+  These controls stay hidden while a suggestion awaits your decision; **Dismiss suggestion**
+  reveals them so you can find a different release.
 - *Not in MusicBrainz yet.* Common for Bandcamp-only releases. **Open in Harmony**
   seeds it to [Harmony](https://harmony.pulsewidth.org.uk) in a couple of clicks,
   then **Search** picks it up — so every gap you hit makes MusicBrainz better for
