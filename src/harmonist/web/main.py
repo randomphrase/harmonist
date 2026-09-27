@@ -4631,6 +4631,7 @@ def _register_routes(app: FastAPI) -> None:
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         contribution = contributions.assess(album)
         editions: list[dict[str, Any]] = []
+        store_linked_releases: list[dict[str, Any]] = []
         unknown = 0
         truncated = False
         group_id = None
@@ -4649,7 +4650,20 @@ def _register_routes(app: FastAPI) -> None:
                     error = "MusicBrainz has not supplied a release group for this release."
                 else:
                     releases, total = mb_lookup.browse_release_group_editions(str(group_id))
+                    # A URL on any edition (even physical or unspecified media)
+                    # needs review before inviting an edit on the current one.
+                    if contribution.store_url and not contribution.private:
+                        store_linked_releases = [
+                            mb_lookup.release_summary(r)
+                            for r in releases
+                            if any(
+                                contributions.release_url(rel.get("target"))
+                                == contribution.store_url
+                                for rel in (r.get("url-relation-list") or [])
+                            )
+                        ]
                     editions, unknown = contributions.digital_editions(releases, contribution)
+                    editions = [e for e in editions if e["id"] != sc.mb_release_id]
                     editions.sort(key=lambda edition: not edition["source_matches"])
                     truncated = total > len(releases)
             except mb_lookup.ReleaseGoneError:
@@ -4669,6 +4683,7 @@ def _register_routes(app: FastAPI) -> None:
                 editions_truncated=truncated,
                 editions_group=group_id,
                 editions_error=error,
+                store_linked_releases=store_linked_releases,
                 suggested_edition=(
                     linked[0]
                     if not error

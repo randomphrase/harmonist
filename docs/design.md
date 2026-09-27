@@ -1025,7 +1025,8 @@ albums require agreement across all parts; separate copies retain their own evid
 `contributions.assess` derives possible-media-mismatch and missing-store-URL
 observations from each local copy's evidence and an MB observation, plus missing
 or discrepant barcodes against the original UPC. Physical/mixed media takes precedence;
-missing-link and barcode editing are offered only for a confirmed digital release. Unknown
+missing-link and barcode editing are offered only for a confirmed digital release.
+Missing-link editing also requires a complete sibling check finding no existing link. Unknown
 media remains unchecked rather than inviting a link edit on an uncertain edition.
 Non-digital media, including mixed editions, invite review. Unspecified media
 remain unknown. URL equality retains the host and album/track path, normalizing
@@ -1055,12 +1056,12 @@ tag updates or require another tag plan. The album header's MB date and refresh
 control cover contribution findings alongside the tag comparison; the section
 has no separate timestamp or refresh request.
 
-Opening a media-mismatch album automatically browses its release group with
-media and URL relationships in one fresh request, capped at 100 releases. It
+Opening an album with a media mismatch or missing store URL automatically browses
+its release group with media and URL relationships in one fresh request, capped at 100 releases. It
 waits for the album comparison, including any stale-cache refresh, to settle
 before loading editions, so the initial render does not duplicate the browse.
 The current release's stored payload supplies the group; a missing payload costs at most one
-additional cached by-id fetch. Only wholly Digital Media editions are listed,
+additional cached by-id fetch. Only wholly Digital Media sibling editions are listed,
 with exact host-scoped store-link status and descriptive edition details in a
 scrolling table. The current release group is assumed correct. A complete search
 with exactly one digital edition matching the source URL or original UPC, whose track count matches the files,
@@ -1097,8 +1098,14 @@ continuation and confirmation use its reviewed snapshot without network access.
 Confirmation uses the existing audited tagger, scoped to this local copy. After
 tagging, its new release may raise missing-link or barcode contributions.
 
-**Edit store link on MusicBrainz** opens the current release's editor with a
-selectable URL to copy. The existing header refresh verifies the eventual edit.
+For a digital missing-URL finding, discovery checks exact links on every returned
+release, including physical and unspecified media and the current release (whose
+link may be newer than the cached observation). Existing links are shown and
+withhold the edit action; digital siblings remain candidates for review. The
+current release is never offered as its own replacement. Pending, failed,
+truncated or unspecified-media checks cannot authorize a link edit. Only complete
+successful absence offers **Edit store link on MusicBrainz**, opening the current
+release's editor with a selectable URL to copy. The existing header refresh verifies the eventual edit.
 MusicBrainz's release-editor seeding implementation applies URL relationships
 only when adding a release, so this path does not claim to prefill an existing
 release edit. No URL is published automatically.

@@ -1,6 +1,7 @@
 """Scoped digital-edition discovery, bounded requests and honest uncertainty."""
 
 from unittest.mock import Mock
+from urllib.parse import parse_qs, urlsplit
 
 import musicbrainzngs
 import pytest
@@ -32,7 +33,7 @@ def test_contributions_resolve_media_before_store_link(library):
     client, _ = library
     for fmt, expected in [
         ("CD", "Possible media mismatch"),
-        ("Digital Media", "Store URL missing"),
+        ("Digital Media", "Store URL missing from this release"),
     ]:
         activity_store.store_release(
             MBID, mb_cache._key(mb_lookup.RELEASE_INCLUDES), release((fmt,))
@@ -43,10 +44,99 @@ def test_contributions_resolve_media_before_store_link(library):
         if fmt == "CD":
             assert "Store URL missing" not in panel.text
         else:
-            assert panel.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
-            url_input = panel.select_one("input[readonly]")
-            assert url_input is not None and url_input["value"] == URL
-            assert panel.select_one(f"#contribution-editions-{MBID}") is None
+            assert (
+                panel.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]') is None
+            )
+            assert panel.select_one(f"#contribution-editions-{MBID}") is not None
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "linked",
+        "physical-linked",
+        "unknown-linked",
+        "ambiguous",
+        "current-linked",
+        "absent",
+        "different-host",
+        "unknown",
+        "truncated",
+        "failure",
+        "private",
+    ],
+)
+def test_missing_store_link_requires_complete_sibling_check(library, monkeypatch, kind):
+    from dataclasses import replace
+
+    from bs4 import BeautifulSoup
+
+    from harmonist import sidecar
+
+    client, root = library
+    current = release(mbid=MBID)
+    current["medium-list"][0]["track-count"] = 1
+    activity_store.store_release(MBID, mb_cache._key(mb_lookup.RELEASE_INCLUDES), current)
+    sibling = release(
+        ("CD",)
+        if kind == "physical-linked"
+        else ("",)
+        if kind in {"unknown", "unknown-linked"}
+        else ("Digital Media",),
+        urls=(URL,)
+        if kind in {"linked", "physical-linked", "unknown-linked", "ambiguous"}
+        else ("https://other.bandcamp.com/album/record",)
+        if kind == "different-host"
+        else (),
+        mbid="sibling",
+    )
+    sibling["medium-list"][0]["track-count"] = 1
+    releases = [current, sibling]
+    if kind == "ambiguous":
+        releases.append(release(urls=(URL,), mbid="second-linked"))
+    if kind == "current-linked":
+        # The fresh browse can discover an edit newer than the cached observation.
+        current["url-relation-list"] = [{"target": URL}]
+    if kind == "private":
+        sc = sidecar.read(root / "Download")
+        assert sc is not None and sc.bandcamp is not None
+        sidecar.write(
+            root / "Download", replace(sc, bandcamp=replace(sc.bandcamp, is_private=True))
+        )
+    browse = Mock(
+        return_value={
+            "release-list": releases,
+            "release-count": 101 if kind == "truncated" else len(releases),
+        }
+    )
+    if kind == "failure":
+        browse.side_effect = musicbrainzngs.NetworkError("offline")
+    monkeypatch.setattr(musicbrainzngs, "browse_releases", browse)
+    fetch = Mock(side_effect=AssertionError("stored release supplies the group"))
+    monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    page = BeautifulSoup(client.get(f"/library/{MBID}/contributions/editions").text, "html.parser")
+    editor = page.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
+    assert bool(editor) is (kind in {"absent", "different-host"})
+    if editor:
+        url_input = page.select_one('input[aria-label="Store URL to copy"]')
+        assert url_input is not None and url_input["value"] == URL
+    if kind in {"linked", "physical-linked", "unknown-linked", "ambiguous", "current-linked"}:
+        assert "Store URL already linked on MusicBrainz" in page.text
+        linked_id = MBID if kind == "current-linked" else "sibling"
+        assert page.select_one(f'a[href="https://musicbrainz.org/release/{linked_id}"]')
+    suggestion = page.select_one('tr[aria-label="Suggested digital release"]')
+    assert bool(suggestion) is (kind == "linked")
+    targets = [
+        parse_qs(urlsplit(str(button["hx-get"])).query)["replacement"][0]
+        for button in page.select("tbody button[hx-get]")
+    ]
+    assert f"{MBID}:{MBID}" not in targets
+    if kind == "linked":
+        assert f"{MBID}:sibling" in targets
+    assert browse.call_count == 1
+    assert fetch.call_count == 0
+    assert before == {p: p.read_bytes() for p in before}
 
 
 @pytest.mark.parametrize(
@@ -404,12 +494,12 @@ def test_only_complete_public_absence_offers_harmony(library, monkeypatch, kind)
     assert r.status_code == 200
     assert ("Add Release" in r.text) is (kind == "absent")
     if kind == "absent":
-        assert "No confirmed digital editions found" in r.text
+        assert "No other confirmed digital editions found" in r.text
     elif kind in {"unknown", "truncated"}:
         assert "search is incomplete" in r.text
     elif kind == "failure":
         assert "Could not check digital editions" in r.text
-        assert "No confirmed digital editions found" not in r.text
+        assert "No other confirmed digital editions found" not in r.text
     else:
         assert URL not in r.text and "harmony.pulsewidth" not in r.text
     assert browse.call_count == 1

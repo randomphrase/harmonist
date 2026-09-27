@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Missing store links are checked across sibling releases before offering a MusicBrainz edit, with already-linked editions offered for review (#612).
+
 - Original UPC tags identify downloads matched to physical editions, suggest digital siblings and expose missing or conflicting MusicBrainz barcodes for review (#608).
 
 - Release search and MBID entry stay hidden until the current suggestion is dismissed (#610).

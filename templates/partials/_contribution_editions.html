@@ -10,6 +10,22 @@
 {% if editions_error %}
 <p role="alert" class="text-amber-700">{{ editions_error }} Refresh MusicBrainz in the album header to try again.</p>
 {% else %}
+    {% if contribution.media_mismatch is sameas false and contribution.missing_url %}
+        {% if store_linked_releases %}
+<p class="text-sm text-ink"><strong>Store URL already linked on MusicBrainz.</strong>
+    {% for linked in store_linked_releases %}<a href="https://musicbrainz.org/release/{{ linked.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">{{ release_name(linked.title, linked.disambiguation) }}{% if linked.media %} ({{ linked.media }}){% endif %} ↗</a>{{ ', ' if not loop.last else '.' }}{% endfor %}
+    Review the release match before editing store links.
+</p>
+        {% elif not editions_truncated and not editions_unknown %}
+<p class="text-xs text-muted">No edition in this release group links to the download. If the current release is correct, you can add its store link.</p>
+<div class="flex flex-wrap items-center gap-2">
+    <input type="text" readonly value="{{ contribution.store_url }}" aria-label="Store URL to copy"
+           onclick="this.select()" class="min-w-0 flex-grow px-3 py-1.5 border border-line rounded text-xs bg-surface text-ink">
+    <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit" target="_blank" rel="noopener"
+       class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Edit store link on MusicBrainz ↗</a>
+</div>
+        {% endif %}
+    {% endif %}
     {% if editions %}
 <div class="max-h-64 overflow-auto border border-line rounded" tabindex="0" role="region" aria-label="Digital editions">
     <table class="w-full text-xs text-left">
@@ -33,7 +49,7 @@
     </table>
 </div>
     {% else %}
-<p class="text-xs text-muted">No confirmed digital editions found in this release group.</p>
+<p class="text-xs text-muted">No other confirmed digital editions found in this release group.</p>
     {% endif %}
     {% if editions_truncated or editions_unknown %}
 <p class="text-xs text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>

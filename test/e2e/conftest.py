@@ -77,6 +77,17 @@ def reset_demo_server(demo_server: str) -> str:
     return demo_server
 
 
+@pytest.fixture(params=["linked", "absent"])
+def digital_contribution_server(tmp_path, monkeypatch, request):
+    monkeypatch.setenv("HARMONIST_TEST_DIGITAL_CONTRIBUTION", request.param)
+    for base in _run_demo_server(
+        tmp_path,
+        app_module="test.e2e.contribution_app:app",
+        config_toml="[musicbrainz]\ncache_ttl_seconds = 0\n",
+    ):
+        yield base, request.param
+
+
 @pytest.fixture(params=["absent", "cached-group", "failure"])
 def sibling_artwork_server(tmp_path, monkeypatch, request):
     monkeypatch.setenv("HARMONIST_TEST_SIBLING_ARTWORK", request.param)

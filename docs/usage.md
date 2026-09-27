@@ -100,9 +100,10 @@ Unchecked albums are not counted as clean or added to the contribution filter
 without a finding.
 
 A missing URL may mean an existing digital release only needs its relationship
-added. A physical-media match may mean the appropriate digital edition is missing
-or your files are matched to the wrong edition. Resolve the media mismatch first:
-digital editions from the same release group appear automatically in a scrolling
+added, or that another edition already links to your download. A physical-media
+match may also mean the appropriate digital edition is missing or your files are
+matched to the wrong edition. For either finding, other digital editions from
+the same release group appear automatically in a scrolling
 table with media, disambiguation, track count and release details. A single
 edition with the same store URL or original UPC, and the same track count, is highlighted as **Suggested**
 above its **Use** button.
@@ -122,8 +123,11 @@ For albums with original UPC evidence, this seeds a Qobuz/Deezer barcode lookup.
 Large groups and unspecified media are marked incomplete; a failed request never
 counts as absence.
 
-Once the correct digital release is tagged, a missing store link is the next
-contribution. **Edit store link on MusicBrainz** opens that release's editor;
+Before offering a store-link edit, Harmonist checks the release group's links.
+If the URL is already linked, the section names those releases and offers digital
+siblings for review. The current release is not offered as its own replacement.
+Only a complete successful check with no existing link and no unspecified media
+offers **Edit store link on MusicBrainz**, which opens the current release's editor;
 click the adjacent URL field to select it for copying. MusicBrainz does not
 pre-fill URL relationships when editing an existing release. Refresh the album header
 after the edit lands to clear the finding. The pencil beside the MusicBrainz

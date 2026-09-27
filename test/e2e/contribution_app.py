@@ -1,12 +1,16 @@
-"""A demo edition whose public download is tagged to a CD missing its URL."""
+"""Demo downloads matched to physical or digital editions missing their URL."""
 
+import os
 from copy import deepcopy
 from pathlib import Path
 
 from harmonist import demo
 from harmonist.web.main import create_app
 
-demo.MB_RELEASES["demo-rel-dingoes"]["medium-list"][0]["format"] = "CD"
+digital_scenario = os.environ.get("HARMONIST_TEST_DIGITAL_CONTRIBUTION")
+demo.MB_RELEASES["demo-rel-dingoes"]["medium-list"][0]["format"] = (
+    "Digital Media" if digital_scenario else "CD"
+)
 demo.URL_RELS.pop("https://dingoes.bandcamp.com/album/little-bit-o-hoot")
 for mbid, description in (
     ("demo-rel-dingoes-digital", "Bandcamp download"),
@@ -18,6 +22,8 @@ for mbid, description in (
     edition["medium-list"][0]["format"] = "Digital Media"
     demo.MB_RELEASES[mbid] = edition
 demo.URL_RELS["https://dingoes.bandcamp.com/album/little-bit-o-hoot"] = "demo-rel-dingoes-digital"
+if digital_scenario == "absent":
+    demo.URL_RELS.pop("https://dingoes.bandcamp.com/album/little-bit-o-hoot")
 
 _original_archive_asset = demo._archive_asset
 

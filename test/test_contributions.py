@@ -324,4 +324,4 @@ def test_private_refresh_keeps_manual_review_without_harmony(tmp_path, monkeypat
     response = client.get(f"/library/{a.id}/compare?reread=1")
     assert "Private Bandcamp download" in response.text
     assert f'hx-get="/library/{a.id}/contributions/editions" hx-trigger="load"' in response.text
-    assert "Store URL missing from MusicBrainz" not in response.text
+    assert "Store URL missing from this release" not in response.text
