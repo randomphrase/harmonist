@@ -3,7 +3,8 @@
    dicts), `album_id`, and the local facts for mismatch cues. Optional:
    `heading` (a label above the list) and `more_count` (total found when the
    list was truncated). #}
-{% from 'macros.html' import release_name, reload_on_success %}
+{% from 'macros.html' import reload_on_success %}
+{% from 'partials/_release_candidate.html' import release_candidate %}
 {% if heading %}
 <p class="text-2xs uppercase tracking-widest text-muted font-bold mb-1 px-1">{{ heading }}</p>
 {% endif %}
@@ -17,40 +18,9 @@
 </a>
 {% endif %}
 {% else %}
-<div class="space-y-1">
+<div class="space-y-1" role="list" aria-label="Release candidates">
     {% for r in results %}
-    {# Flag obvious mismatches against the local album so a wrong candidate is
-       spotted before "Use". Track count is an exact numeric signal; artist is
-       fuzzier (punctuation / "feat." / "&"), so it's a softer cue. #}
-    {% set tc_mismatch = r.track_count and local_track_count and r.track_count != local_track_count %}
-    {% set artist_mismatch = local_artist and r.artist
-                             and (r.artist | lower | trim) != (local_artist | lower | trim) %}
-    <div class="flex items-center justify-between gap-2 p-2 rounded bg-surface border border-line hover:border-mb-purple/40 transition">
-        <div class="min-w-0 flex-grow">
-            <div class="text-sm text-ink truncate">
-                <span class="font-bold">{{ release_name(r.title, r.disambiguation) }}</span>
-                <span class="text-muted{% if artist_mismatch %} text-amber-600{% endif %}"
-                      {% if artist_mismatch %}title="Differs from your tag: {{ local_artist }}"{% endif %}>
-                    — {{ r.artist }}</span>
-            </div>
-            <div class="text-2xs text-muted">
-                {% if r.track_count %}<span class="{% if tc_mismatch %}line-through text-red-600 decoration-red-600{% endif %}"
-                      {% if tc_mismatch %}title="MusicBrainz lists {{ r.track_count }} tracks; your album has {{ local_track_count }} file{{ 's' if local_track_count != 1 else '' }}"{% endif %}>{{ r.track_count }} tracks</span>{% else %}? tracks{% endif %}
-                {% if r.media %} · {{ r.media }}{% endif %}
-                · {{ r.date or '?' }} · {{ r.country or '?' }} · {{ r.status or '?' }}
-                {% if r.label %} · {{ r.label }}{% endif %}
-                {% if r.catalog_number %} · {{ r.catalog_number }}{% endif %}
-            </div>
-        </div>
-        <div class="flex items-center gap-2 flex-shrink-0">
-            {# Escape hatch: when the row's metadata isn't enough to judge a
-               match, open the actual release on MusicBrainz to eyeball it. #}
-            <a href="https://musicbrainz.org/release/{{ r.id }}"
-               target="_blank" rel="noopener"
-               title="View this release on MusicBrainz"
-               class="inline-flex items-center gap-1 px-2 py-1 rounded text-2xs font-bold uppercase tracking-widest text-mb-purple border border-mb-purple/30 hover:bg-mb-purple/10 transition whitespace-nowrap">
-                MB ↗
-            </a>
+    {% call release_candidate(r, local_track_count, local_artist, store_match='Matches' if store_url else none, barcode_match='Matches' if barcode else none) %}
             {# Rendered by a route, not included from a card, so the flag has to
                be carried into this response rather than inherited from a
                surrounding template (#150) — see `_render_release_picker`.
@@ -63,12 +33,11 @@
                 <input type="hidden" name="mbid" value="{{ r.id }}">
                 {% if review_only %}<input type="hidden" name="review_only" value="true">{% endif %}
                 <button type="submit"
-                        class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-2xs font-bold uppercase tracking-widest transition whitespace-nowrap">
+                        class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">
                     Use
                 </button>
             </form>
-        </div>
-    </div>
+    {% endcall %}
     {% endfor %}
 </div>
 {% if more_count and more_count > results | length %}

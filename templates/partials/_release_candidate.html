@@ -1,0 +1,39 @@
+{% from 'macros.html' import release_name %}
+{# All release pickers share metadata, evidence and mismatch cues. The caller
+   supplies its existing assignment/review action, without changing semantics. #}
+{% macro release_candidate(r, local_track_count, local_artist, suggested=false, store_match=none, barcode_match=none) %}
+{% set tc_mismatch = r.track_count and local_track_count and r.track_count != local_track_count %}
+{% set artist_mismatch = local_artist and r.artist and (r.artist | lower | trim) != (local_artist | lower | trim) %}
+<div class="release-candidate flex flex-wrap items-center justify-between gap-2 p-2 rounded border border-line hover:border-mb-purple/40 transition {% if suggested %}bg-amber-50/40{% else %}bg-surface{% endif %}"
+     role="listitem"{% if suggested %} aria-label="Suggested digital release"{% endif %}>
+    <div class="min-w-0 flex-1">
+        <div class="text-sm text-ink break-words">
+            <span class="font-bold">{{ release_name(r.title, r.disambiguation) }}</span>
+            {% if r.artist %}<span class="text-muted{% if artist_mismatch %} text-amber-600{% endif %}"
+                  {% if artist_mismatch %}title="Differs from your tag: {{ local_artist }}"{% endif %}> — {{ r.artist }}</span>{% endif %}
+        </div>
+        <div class="text-2xs text-muted">
+            {% if r.track_count %}<span class="{% if tc_mismatch %}line-through text-red-600 decoration-red-600{% endif %}"
+                  {% if tc_mismatch %}title="MusicBrainz lists {{ r.track_count }} tracks; your album has {{ local_track_count }} file{{ 's' if local_track_count != 1 else '' }}"{% endif %}>{{ r.track_count }} tracks</span>{% else %}? tracks{% endif %}
+            {% if r.media %} · {{ r.media }}{% endif %}
+            · {{ r.date or '?' }} · {{ r.country or '?' }} · {{ r.status or '?' }}
+            {% if r.label %} · {{ r.label }}{% endif %}
+            {% if r.catalog_number %} · {{ r.catalog_number }}{% endif %}
+        </div>
+        {% if store_match or barcode_match %}
+        <div class="text-xs text-ink mt-1">
+            {% if store_match %}<span>Store URL: {{ store_match }}</span>{% endif %}
+            {% if store_match and barcode_match %} · {% endif %}
+            {% if barcode_match %}<span>Barcode: {{ barcode_match }}{% if r.barcode %} <span class="text-muted font-mono">({{ r.barcode }})</span>{% endif %}</span>{% endif %}
+        </div>
+        {% endif %}
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+        {% if suggested %}<span class="text-xs text-amber-700 font-bold">Suggested</span>{% endif %}
+        <a href="https://musicbrainz.org/release/{{ r.id }}" target="_blank" rel="noopener"
+           title="View this release on MusicBrainz"
+           class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest text-mb-purple border border-mb-purple/30 hover:bg-mb-purple/10 transition whitespace-nowrap">MB ↗</a>
+        {{ caller() }}
+    </div>
+</div>
+{% endmacro %}

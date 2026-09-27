@@ -103,10 +103,12 @@ A missing URL may mean an existing digital release only needs its relationship
 added, or that another edition already links to your download. A physical-media
 match may also mean the appropriate digital edition is missing or your files are
 matched to the wrong edition. For either finding, other digital editions from
-the same release group appear automatically in a scrolling
-table with media, disambiguation, track count and release details. A single
+the same release group appear automatically in a scrolling list using the same
+release rows as Name, Barcode and Store URL search. Each row shows media,
+disambiguation, track count and release details. Store URL and barcode evidence
+use **Matches** or **Doesn’t match**, with unavailable or private evidence labelled separately. A single
 edition with the same store URL or original UPC, and the same track count, is highlighted as **Suggested**
-above its **Use** button.
+beside its **Use** button.
 Equivalent UPC/EAN spellings count as agreement. Barcodes can be reused between
 editions, so review the tracklist and durations before confirming. Other digital
 siblings remain available even when MB has not recorded their barcode or URL.
@@ -117,7 +119,8 @@ Archive cannot be reached, you can still confirm its tags and keep your images.
 **Confirm suggestion** tags this copy; **Cancel** restores the choices
 without changing its current release. Other findings about the current release
 are hidden while reviewing the replacement.
-If no release fits, **Add Release** opens Harmony to import the public download.
+If no existing release matches the source URL or UPC, **Add Release** opens
+Harmony to import the public download.
 For albums with original UPC evidence, this seeds a Qobuz/Deezer barcode lookup.
 **Browse all releases on MusicBrainz** opens the release group's full list.
 Large groups and unspecified media are marked incomplete; a failed request never
@@ -125,8 +128,9 @@ counts as absence.
 
 Before offering a store-link edit, Harmonist checks the release group's links.
 If the URL is already linked, the section names those releases and offers digital
-siblings for review. The current release is not offered as its own replacement.
-Only a complete successful check with no existing link and no unspecified media
+siblings for review, without prompting you to edit the current release or add
+another one. The current release is not offered as its own replacement.
+Only a complete successful check with no existing source match and no unspecified media
 offers **Edit store link on MusicBrainz**, which opens the current release's editor;
 click the adjacent URL field to select it for copying. MusicBrainz does not
 pre-fill URL relationships when editing an existing release. Refresh the album header

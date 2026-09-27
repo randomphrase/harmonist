@@ -30,10 +30,10 @@ def test_upc_sibling_review_and_missing_barcode(upc_contribution_server):
             panel.get_by_role("textbox", name="Original UPC to copy")
         ).to_have_value(UPC)
         results = panel.get_by_role("region", name="Digital editions")
-        suggested = results.get_by_role("row", name="Suggested digital release")
-        playwright_sync.expect(suggested).to_contain_text("Same UPC")
+        suggested = results.get_by_role("listitem", name="Suggested digital release")
+        playwright_sync.expect(suggested).to_contain_text("Barcode: Matches")
         assert len(discoveries) == 1
-        assert "gtin=" + UPC in panel.get_by_role("link", name="Add Release").get_attribute("href")
+        playwright_sync.expect(panel.get_by_role("link", name="Add Release")).to_have_count(0)
         before = file.read_bytes()
         suggested.get_by_role("button", name="Use", exact=True).click()
         review = page.get_by_role("region", name="Review suggested release")
@@ -46,7 +46,7 @@ def test_upc_sibling_review_and_missing_barcode(upc_contribution_server):
         playwright_sync.expect(panel).to_be_visible()
         # MB's unbarcoded sibling is still selectable; its UPC contribution
         # becomes actionable after confirmation, without changing source tags.
-        results.locator("tbody tr").filter(has_text="Reissue").get_by_role(
+        results.get_by_role("listitem").filter(has_text="Reissue").get_by_role(
             "button", name="Use", exact=True
         ).click()
         review.get_by_role("button", name="Confirm suggestion", exact=True).click()

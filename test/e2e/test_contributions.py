@@ -36,17 +36,27 @@ def test_digital_store_link_waits_for_siblings(digital_contribution_server):
             assert len(pending) == visit + 1
             pending[-1].continue_()
             results = panel.locator(f"#contribution-editions-{ALBUM}")
-            playwright_sync.expect(results.locator("tbody tr")).to_have_count(2)
+            playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
             if scenario == "linked":
                 playwright_sync.expect(results).to_contain_text(
                     "Store URL already linked on MusicBrainz"
                 )
                 playwright_sync.expect(
-                    results.locator('tr[aria-label="Suggested digital release"]')
+                    results.get_by_role("listitem", name="Suggested digital release")
                 ).to_contain_text("Bandcamp download")
                 playwright_sync.expect(editor).to_have_count(0)
+                playwright_sync.expect(panel.get_by_role("link", name="Add Release")).to_have_count(
+                    0
+                )
+                playwright_sync.expect(panel).not_to_contain_text(
+                    "Store URL missing from this release"
+                )
             else:
                 playwright_sync.expect(editor).to_be_visible()
+                playwright_sync.expect(
+                    panel.get_by_role("link", name="Add Release")
+                ).to_be_visible()
+                playwright_sync.expect(panel).to_contain_text("Store URL missing from this release")
                 assert (
                     editor.get_attribute("href") == f"https://musicbrainz.org/release/{ALBUM}/edit"
                 )
@@ -61,7 +71,7 @@ def test_sibling_without_release_cover_keeps_local_artwork(sibling_artwork_serve
         page = browser.new_page()
         page.goto(f"{server}/album/{ALBUM}")
         results = page.locator(f"#contribution-editions-{ALBUM}")
-        results.locator("tbody tr").filter(has_text="Suggested").get_by_role(
+        results.get_by_role("listitem", name="Suggested digital release").get_by_role(
             "button", name="Use", exact=True
         ).click()
         review = page.get_by_role("region", name="Review suggested release")
@@ -117,8 +127,8 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         playwright_sync.expect(panel).to_contain_text("Possible media mismatch")
         playwright_sync.expect(panel).not_to_contain_text("Store URL missing from this release")
         results = panel.locator(f"#contribution-editions-{ALBUM}")
-        playwright_sync.expect(results.locator("tbody tr")).to_have_count(2)
-        playwright_sync.expect(results.locator('a[href*="/release?url="]')).to_be_visible()
+        playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
+        playwright_sync.expect(results.get_by_role("link", name="Add Release")).to_have_count(0)
         assert len(discoveries) == 1
         # A second visit has a stored comparison. With the zero-TTL fixture
         # that comparison refreshes itself before it may discover siblings.
@@ -130,7 +140,7 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
             assert refreshed.value.ok
         else:
             page.reload()
-        playwright_sync.expect(results.locator("tbody tr")).to_have_count(2)
+        playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
         assert len(discoveries) == 2
         # Replace the displayed finding so a successful request alone cannot
         # pass: the header refresh must actually update this section too.
@@ -152,17 +162,17 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
             page.get_by_role("button", name="Read this release from MusicBrainz again", exact=True)
         ).to_be_enabled()
         playwright_sync.expect(results).to_contain_text("Bandcamp download")
-        playwright_sync.expect(results).to_contain_text("Same URL")
+        playwright_sync.expect(results).to_contain_text("Store URL: Matches")
         playwright_sync.expect(results).to_contain_text("Digital reissue")
         playwright_sync.expect(
             results.get_by_role("region", name="Digital editions")
         ).to_be_visible()
-        playwright_sync.expect(results.locator("tbody tr")).to_have_count(2)
+        playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
         assert len(discoveries) == 3
-        playwright_sync.expect(results).to_contain_text("Not linked")
+        playwright_sync.expect(results).to_contain_text("Store URL: Doesn’t match")
         # Review replaces the choices inline without changing the confirmed
         # match. Returning restores both the choices and the ordinary findings.
-        suggestion = results.locator("tbody tr").filter(has_text="Suggested")
+        suggestion = results.get_by_role("listitem", name="Suggested digital release")
         playwright_sync.expect(suggestion).to_contain_text("Bandcamp download")
         suggestion.get_by_role("button", name="Use", exact=True).click()
         review = page.get_by_role("region", name="Review suggested release")
@@ -206,7 +216,7 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         playwright_sync.expect(panel).to_contain_text("Possible media mismatch")
         # An unlinked sibling is still a valid choice. After tagging, its missing
         # URL must trigger discovery again before any link edit is offered.
-        results.locator("tbody tr").filter(has_text="Digital reissue").get_by_role(
+        results.get_by_role("listitem").filter(has_text="Digital reissue").get_by_role(
             "button", name="Use", exact=True
         ).click()
         review.get_by_role("button", name="Edit track assignments", exact=True).click()
@@ -231,14 +241,14 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
             current_art.evaluate_all("els => els.map(e => e.src.split('?')[0].split('/').pop())")
         ) == {selected_digest}
         panel = page.locator("#album-contributions-demo-rel-dingoes-reissue")
-        playwright_sync.expect(panel).to_contain_text("Store URL missing from this release")
+        playwright_sync.expect(panel).not_to_contain_text("Store URL missing from this release")
         playwright_sync.expect(panel).not_to_contain_text("Possible media mismatch")
         playwright_sync.expect(panel).to_contain_text("Store URL already linked on MusicBrainz")
         playwright_sync.expect(
             panel.get_by_role("link", name="Edit store link on MusicBrainz")
         ).to_have_count(0)
         playwright_sync.expect(
-            panel.locator('tr[aria-label="Suggested digital release"]')
+            panel.get_by_role("listitem", name="Suggested digital release")
         ).to_contain_text("Bandcamp download")
         # Refreshing the source observation clears transient discovery results.
         page.get_by_role(

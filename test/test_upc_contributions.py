@@ -147,15 +147,17 @@ def test_upc_siblings_use_one_fresh_scoped_browse_and_review(upc_library, monkey
         page = BeautifulSoup(
             client.get(f"/library/{MBID}/contributions/editions").text, "html.parser"
         )
-        suggestion = page.select_one('tr[aria-label="Suggested digital release"]')
+        suggestion = page.select_one('[role="listitem"][aria-label="Suggested digital release"]')
         assert bool(suggestion) is (kind == "unique")
         if suggestion:
-            assert "Same UPC" in suggestion.text
+            assert "Barcode: Matches" in suggestion.text
             button = suggestion.select_one("button")
             assert button is not None and "replacement=" in button["hx-get"]
         if kind == "empty":
             harmony = page.select_one('a[title="Add release with Harmony"]')
             assert harmony is not None and "gtin=" + UPC in harmony["href"]
+        else:
+            assert page.select_one('a[title="Add release with Harmony"]') is None
         assert browse.call_count == n
         assert browse.call_args.kwargs["release_group"] == release()["release-group"]["id"]
     assert before == {p: p.read_bytes() for p in before}
@@ -188,6 +190,41 @@ def test_digital_contributions_distinguish_missing_free_different_and_equal(
         assert panel.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
     else:
         assert panel.select_one("section") is None
+
+
+@pytest.mark.parametrize("match", ["url", "barcode", "neither"])
+def test_missing_url_defers_all_edit_prompts_until_siblings_checked(
+    upc_library, monkeypatch, match
+):
+    from dataclasses import replace
+
+    from test.test_contributions import URL
+
+    client, root = upc_library
+    folder = root / "Download"
+    sc = sidecar.read(folder)
+    assert sc is not None
+    sidecar.write(folder, replace(sc, store_url=URL, bandcamp_downloaded=True))
+    remember(release())
+    initial = BeautifulSoup(client.get(f"/album/{MBID}").text, "html.parser")
+    panel = initial.select_one(f"#album-contributions-{MBID}")
+    original_upc = panel.select_one('input[aria-label="Original UPC to copy"]')
+    assert original_upc is not None and original_upc["value"] == UPC
+    assert panel.select_one('a[href$="/edit"]') is None
+    sibling = release(urls=(URL,) if match == "url" else (), mbid="sibling")
+    sibling["barcode"] = UPC if match == "barcode" else OTHER_UPC
+    sibling["medium-list"][0]["track-count"] = 1
+    monkeypatch.setattr(
+        musicbrainzngs,
+        "browse_releases",
+        Mock(return_value={"release-list": [sibling], "release-count": 1}),
+    )
+    results = BeautifulSoup(
+        client.get(f"/library/{MBID}/contributions/editions").text, "html.parser"
+    )
+    assert bool(results.select('a[href$="/edit"]')) is (match == "neither")
+    assert ("Barcode missing from MusicBrainz" in results.text) is (match == "neither")
+    assert ("Store URL missing from this release" in results.text) is (match == "neither")
 
 
 def test_reread_clears_barcode_finding_without_touching_files(upc_library, monkeypatch):

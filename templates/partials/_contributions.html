@@ -1,3 +1,4 @@
+{% from 'partials/_contribution_barcode.html' import barcode_finding, barcode_editor %}
 <div id="album-contributions-{{ album.id }}" class="album-contributions"
      hx-on::oob-before-swap="if (document.getElementById('contribution-review-{{ album.id }}')?.children.length) event.preventDefault()"
      {% if oob | default(false) %}hx-swap-oob="true"{% endif %}>
@@ -8,18 +9,10 @@
     <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These files are a {% if contribution.source_upc %}digital{% else %}Bandcamp{% endif %} download, but the matched MusicBrainz release is listed as {{ contribution.observation.formats | join(' + ') }}. A digital edition may be a better match.</p>
     {% else %}
     {% if contribution.missing_url %}
-    <p class="text-sm text-ink"><strong>Store URL missing from this release.</strong> Another edition may already link to this download.</p>
+    <p class="text-sm text-ink">Review the release match for this download.</p>
     {% endif %}
-    {% if contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
-    <p class="text-sm text-ink">
-        {% if contribution.barcode_status == 'missing' %}
-        <strong>Barcode missing from MusicBrainz.</strong> Review the original UPC against this edition before adding it.
-        {% elif contribution.barcode_status == 'barcode_free' %}
-        <strong>MusicBrainz explicitly has no barcode for this release.</strong> The original UPC disagrees; check the edition before editing it.
-        {% else %}
-        <strong>Barcode differs from MusicBrainz.</strong> MusicBrainz has <span class="font-mono">{{ contribution.observation.barcode }}</span>. Check the edition before editing it.
-        {% endif %}
-    </p>
+    {% if not contribution.missing_url and contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
+    {{ barcode_finding(contribution) }}
     {% endif %}
     {% endif %}
     {% if contribution.source_upc %}
@@ -28,9 +21,8 @@
         <div class="flex flex-wrap items-center gap-2">
         <input id="source-upc-{{ album.id }}" type="text" readonly value="{{ contribution.source_upc }}" aria-label="Original UPC to copy"
                onclick="this.select()" class="min-w-0 flex-grow px-3 py-1.5 border border-line rounded bg-surface text-ink font-mono">
-        {% if not contribution.media_mismatch and contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
-        <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit" target="_blank" rel="noopener"
-           class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">{{ 'Add barcode' if contribution.barcode_status == 'missing' else 'Review barcode' }} on MusicBrainz ↗</a>
+        {% if not contribution.media_mismatch and not contribution.missing_url and contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
+        {{ barcode_editor(contribution, album.sidecar.mb_release_id) }}
         {% endif %}
         </div>
     </div>

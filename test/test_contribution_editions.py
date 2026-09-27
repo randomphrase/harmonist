@@ -33,7 +33,7 @@ def test_contributions_resolve_media_before_store_link(library):
     client, _ = library
     for fmt, expected in [
         ("CD", "Possible media mismatch"),
-        ("Digital Media", "Store URL missing from this release"),
+        ("Digital Media", "Review the release match for this download"),
     ]:
         activity_store.store_release(
             MBID, mb_cache._key(mb_lookup.RELEASE_INCLUDES), release((fmt,))
@@ -123,13 +123,15 @@ def test_missing_store_link_requires_complete_sibling_check(library, monkeypatch
         assert url_input is not None and url_input["value"] == URL
     if kind in {"linked", "physical-linked", "unknown-linked", "ambiguous", "current-linked"}:
         assert "Store URL already linked on MusicBrainz" in page.text
+        assert page.select_one('a[title="Add release with Harmony"]') is None
+        assert "Store URL missing from this release" not in page.text
         linked_id = MBID if kind == "current-linked" else "sibling"
         assert page.select_one(f'a[href="https://musicbrainz.org/release/{linked_id}"]')
-    suggestion = page.select_one('tr[aria-label="Suggested digital release"]')
+    suggestion = page.select_one('[role="listitem"][aria-label="Suggested digital release"]')
     assert bool(suggestion) is (kind == "linked")
     targets = [
         parse_qs(urlsplit(str(button["hx-get"])).query)["replacement"][0]
-        for button in page.select("tbody button[hx-get]")
+        for button in page.select('[role="listitem"] button[hx-get]')
     ]
     assert f"{MBID}:{MBID}" not in targets
     if kind == "linked":
@@ -161,13 +163,13 @@ def test_suggestion_requires_one_exact_url_and_matching_count(library, monkeypat
     )
     monkeypatch.setattr(musicbrainzngs, "browse_releases", browse)
     page = BeautifulSoup(client.get(f"/library/{MBID}/contributions/editions").text, "html.parser")
-    suggestion = page.select_one('tbody tr[aria-label="Suggested digital release"]')
+    suggestion = page.select_one('[role="listitem"][aria-label="Suggested digital release"]')
     assert bool(suggestion) is (kind == "unique")
     if suggestion:
         assert "Suggested" in suggestion.text
         assert "bg-amber-50/40" in suggestion["class"]
-    assert len(page.select("tbody tr")) == 2
-    assert len(page.select("tbody button[hx-get]")) == 2
+    assert len(page.select('[role="listitem"]')) == 2
+    assert len(page.select('[role="listitem"] button[hx-get]')) == 2
     assert "Digital Media" in page.text
     assert browse.call_count == 1
 
@@ -209,7 +211,7 @@ def test_replacement_review_keeps_original_until_confirmed(library, monkeypatch,
     if outcome == "apply":
         assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
         assert sidecar.read(root / "Download").mb_release_id == "digital"
-        assert "Store URL missing" in client.get("/album/digital").text
+        assert "Review the release match for this download" in client.get("/album/digital").text
         after = {p: p.read_bytes() for p in before}
         repeated = client.post(f"/confirm/{aid}/accept?{query}", data=fields)
         assert "confirmation-applied" not in repeated.headers.get("HX-Trigger", "")
@@ -449,9 +451,9 @@ def test_discovery_is_scoped_read_only_fresh_and_keeps_multiple_editions(library
         r = client.get(f"/library/{MBID}/contributions/editions")
         assert r.status_code == 200
         assert 'release/digital"' in r.text and 'release/digital-reissue"' in r.text
-        assert "Same URL" in r.text and "Not linked" in r.text
+        assert "Store URL: Matches" in r.text and "Store URL: Doesn’t match" in r.text
         assert f'release/{MBID}"' not in r.text
-        assert "Add Release" in r.text
+        assert "Add Release" not in r.text
     assert browse.call_count == 2
     assert browse.call_args.kwargs["release_group"] == "rg-aaa"
     assert browse.call_args.kwargs["limit"] == 100

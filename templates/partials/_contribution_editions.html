@@ -1,10 +1,13 @@
 {% from 'macros.html' import release_name %}
+{% from 'partials/_release_candidate.html' import release_candidate %}
+{% from 'partials/_contribution_barcode.html' import barcode_finding, barcode_editor %}
+{% set matching_editions = editions | selectattr('source_matches') | list %}
 {% macro use_edition(edition, suggested) %}
 <button type="button" hx-get="/assignments/{{ album.id }}?replacement={{ (album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode }}&amp;cancel=true&amp;on_album_page=true"
         hx-target="#contribution-review-{{ album.id }}" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
         hx-on::after-request="if (event.detail.successful) { const review = document.getElementById('contribution-review-{{ album.id }}'); review.focus(); review.scrollIntoView({block: 'start'}); }"
         hx-indicator="#edition-reviewing-{{ album.id }}"
-        class="px-3 py-1.5 {% if suggested %}bg-accent hover:bg-accent-dark text-white{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Use</button>
+        class="px-2 py-1 {% if suggested %}bg-accent hover:bg-accent-dark text-white{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Use</button>
 {% endmacro %}
 <div class="space-y-3">
 {% if editions_error %}
@@ -14,39 +17,34 @@
         {% if store_linked_releases %}
 <p class="text-sm text-ink"><strong>Store URL already linked on MusicBrainz.</strong>
     {% for linked in store_linked_releases %}<a href="https://musicbrainz.org/release/{{ linked.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">{{ release_name(linked.title, linked.disambiguation) }}{% if linked.media %} ({{ linked.media }}){% endif %} ↗</a>{{ ', ' if not loop.last else '.' }}{% endfor %}
-    Review the release match before editing store links.
+    Review the existing release below, or open it on MusicBrainz to check the match.
 </p>
-        {% elif not editions_truncated and not editions_unknown %}
-<p class="text-xs text-muted">No edition in this release group links to the download. If the current release is correct, you can add its store link.</p>
+        {% elif not matching_editions and not editions_truncated and not editions_unknown %}
+<p class="text-xs text-muted"><strong>Store URL missing from this release.</strong> No edition in this release group links to the download. If the current release is correct, you can add its store link.</p>
 <div class="flex flex-wrap items-center gap-2">
     <input type="text" readonly value="{{ contribution.store_url }}" aria-label="Store URL to copy"
            onclick="this.select()" class="min-w-0 flex-grow px-3 py-1.5 border border-line rounded text-xs bg-surface text-ink">
     <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit" target="_blank" rel="noopener"
        class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Edit store link on MusicBrainz ↗</a>
 </div>
+            {% if contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
+{{ barcode_finding(contribution) }}
+{{ barcode_editor(contribution, album.sidecar.mb_release_id) }}
+            {% endif %}
         {% endif %}
     {% endif %}
     {% if editions %}
-<div class="max-h-64 overflow-auto border border-line rounded" tabindex="0" role="region" aria-label="Digital editions">
-    <table class="w-full text-xs text-left">
-        <thead class="bg-surface text-muted sticky top-0"><tr>
-            <th class="p-2">Release</th><th class="p-2">Media</th><th class="p-2">Tracks</th><th class="p-2">Date / country</th>{% if contribution.store_url %}<th class="p-2">Store URL</th>{% endif %}{% if contribution.source_upc %}<th class="p-2">Barcode</th>{% endif %}<th class="p-2"><span class="sr-only">Choose</span></th>
-        </tr></thead>
-        <tbody>
+<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label="Digital editions">
+    <div class="space-y-1" role="list" aria-label="Release candidates">
         {% for edition in editions %}
             {% set suggested = suggested_edition and edition.id == suggested_edition.id %}
-            <tr class="border-t border-line {% if suggested %}bg-amber-50/40{% else %}hover:bg-surface{% endif %}"{% if suggested %} aria-label="Suggested digital release"{% endif %}>
-                <td class="p-2"><a href="https://musicbrainz.org/release/{{ edition.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline font-bold">{{ release_name(edition.title, edition.disambiguation) }} ↗</a>{% if edition.label %}<div class="text-muted">{{ edition.label }}{% if edition.catalog_number %} · {{ edition.catalog_number }}{% endif %}</div>{% endif %}</td>
-                <td class="p-2 whitespace-nowrap">{{ edition.media }}</td>
-                <td class="p-2 {% if edition.track_count != album.track_count %}text-amber-700{% endif %}">{{ edition.track_count or '?' }}</td>
-                <td class="p-2">{{ edition.date or '?' }} · {{ edition.country or '?' }}</td>
-                {% if contribution.store_url %}<td class="p-2">{{ 'Same URL' if edition.store_linked is sameas true else 'Not linked' if edition.store_linked is sameas false else 'Private download' if contribution.private else 'Unknown' }}</td>{% endif %}
-                {% if contribution.source_upc %}<td class="p-2">{{ 'Same UPC' if edition.upc_matches else 'Different UPC' if edition.barcode else 'No barcode' if edition.barcode == '' else 'Unknown' }}{% if edition.barcode %}<div class="text-muted font-mono">{{ edition.barcode }}</div>{% endif %}</td>{% endif %}
-                <td class="p-2 text-center">{% if suggested %}<span class="block mb-1 text-amber-700 font-bold">Suggested</span>{% endif %}{{ use_edition(edition, suggested) }}</td>
-            </tr>
+            {% set store_match = ('Matches' if edition.store_linked is sameas true else 'Doesn’t match' if edition.store_linked is sameas false else 'Private download' if contribution.private else 'Unknown') if contribution.store_url else none %}
+            {% set barcode_match = ('Matches' if edition.upc_matches else 'Doesn’t match' if edition.barcode else 'No barcode' if edition.barcode == '' else 'Unknown') if contribution.source_upc else none %}
+            {% call release_candidate(edition, album.track_count, album.artist, suggested, store_match, barcode_match) %}
+                {{ use_edition(edition, suggested) }}
+            {% endcall %}
         {% endfor %}
-        </tbody>
-    </table>
+    </div>
 </div>
     {% else %}
 <p class="text-xs text-muted">No other confirmed digital editions found in this release group.</p>
@@ -56,7 +54,7 @@
     {% endif %}
 <div class="flex flex-wrap items-center justify-between gap-3">
     <a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener" class="text-xs text-mb-purple hover:underline">Browse all releases on MusicBrainz ↗</a>
-    {% if not contribution.private and (contribution.store_url or contribution.source_upc) and (editions or (not editions_truncated and not editions_unknown)) %}
+    {% if not store_linked_releases and not matching_editions and not contribution.private and (contribution.store_url or contribution.source_upc) and (editions or (not editions_truncated and not editions_unknown)) %}
     <a href="{{ harmony_base }}/release?{% if contribution.source_upc %}gtin={{ contribution.source_upc|urlencode }}&amp;qobuz=&amp;deezer={% else %}url={{ contribution.store_url|urlencode }}{% endif %}" target="_blank" rel="noopener" title="Add release with Harmony"
        class="ml-auto inline-flex px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Add Release ↗</a>
     {% endif %}

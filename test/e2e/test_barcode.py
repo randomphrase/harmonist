@@ -28,11 +28,19 @@ def test_barcode_choices_open_review_without_tagging(barcode_server):
         ).to_be_enabled()
         page.get_by_role("radio", name="Name", exact=True).check()
         playwright_sync.expect(page.get_by_placeholder("Artist", exact=True)).to_be_visible()
+        results = page.locator(f"#mbid-results-{album.id}")
+        with page.expect_response(lambda r: r.url.endswith("/search")):
+            page.get_by_role("button", name="Search", exact=True).click()
+        playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
+        playwright_sync.expect(results.get_by_role("listitem").first).to_contain_text("Frequencies")
         # Widen HTMX's initialization interval to catch fast-click races.
         page.evaluate("htmx.config.defaultSettleDelay = 1000")
         with page.expect_response(lambda r: r.url.endswith("/barcode")):
             page.get_by_role("radio", name="Barcode", exact=True).check()
-        results = page.locator(f"#mbid-results-{album.id}")
+        playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
+        playwright_sync.expect(results.get_by_role("listitem").first).to_contain_text(
+            "Barcode: Matches"
+        )
         playwright_sync.expect(results.get_by_role("button", name="Use", exact=True)).to_have_count(
             2
         )

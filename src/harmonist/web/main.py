@@ -6188,6 +6188,7 @@ def _register_routes(app: FastAPI) -> None:
                 heading="Several releases share this store URL — pick the right one",
                 retarget=True,
                 on_album_page=on_album_page,
+                store_url=sc.store_url,
             )
 
         try:

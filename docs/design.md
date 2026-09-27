@@ -1063,7 +1063,10 @@ before loading editions, so the initial render does not duplicate the browse.
 The current release's stored payload supplies the group; a missing payload costs at most one
 additional cached by-id fetch. Only wholly Digital Media sibling editions are listed,
 with exact host-scoped store-link status and descriptive edition details in a
-scrolling table. The current release group is assumed correct. A complete search
+scrolling list. Name, barcode, store-URL and sibling pickers share one candidate
+row renderer and mismatch cues, while retaining their existing assignment or
+review actions. Evidence labels use Matches / Doesn’t match; missing barcode
+data and private URLs remain distinct from a known mismatch. The current release group is assumed correct. A complete search
 with exactly one digital edition matching the source URL or original UPC, whose track count matches the files,
 highlights that row as **Suggested** alongside the other choices. These
 are candidates to review, never automatic matches. Truncation and unspecified
@@ -1071,9 +1074,13 @@ media prevent a claim of absence, and failures remain distinct from no results.
 The search has no persistent results or cached negatives; repeating it asks MB
 again, and the album header refresh reloads its transient results. Discovery
 failures direct the user to that same header control to retry. A complete
-empty public search offers Harmony. When existing candidates are listed,
-the same **Add Release** link remains visible beside **Browse all releases**
-for importing another release if the user judges that none fits.
+empty public search offers Harmony. Existing source matches suppress **Add Release**
+even when ambiguity or incomplete discovery prevents a suggestion. Candidates
+without any source match retain that link beside **Browse all releases**.
+While a missing-URL check is pending, the panel asks for release review rather
+than asserting a contribution is needed. Store-link and barcode edit prompts
+for the current release appear only after a complete negative sibling check.
+Barcode-only findings on digital releases retain their direct edit path.
 Original UPC seeds Harmony's Qobuz/Deezer lookup when available; otherwise the
 public store URL is used. Barcode equality never bypasses the shared track review:
 editions may reuse a barcode while their recordings or durations differ.

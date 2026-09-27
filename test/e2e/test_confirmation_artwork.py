@@ -33,7 +33,7 @@ def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.goto(f"{base}/album/demo-rel-dingoes")
-        page.locator("#contribution-editions-demo-rel-dingoes tbody tr").filter(
+        page.locator("#contribution-editions-demo-rel-dingoes").get_by_role("listitem").filter(
             has_text="Suggested"
         ).get_by_role("button", name="Use", exact=True).click()
         review = page.get_by_role("region", name="Review suggested release")
