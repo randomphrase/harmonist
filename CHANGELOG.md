@@ -6,21 +6,44 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
-- MB contributions check the release match first and show one finding at a time, with concise copy and grouped controls (#617).
+## [1.21.0] - 2026-09-27
 
-- Release search and sibling suggestions share a compact picker with positive store URL and barcode match labels beside Use (#615).
+### Added
 
-- UI text and documentation consistently call MusicBrainz releases “releases” (#615).
+- **Albums with consistent UPC or barcode tags get a MusicBrainz release
+  suggestion automatically**, and release search can look up by **Barcode**
+  (#607).
 
-- Missing store links are checked across sibling releases before offering a MusicBrainz edit, with already-linked releases offered for review (#612).
+- **MB contributions use original UPC tags**, such as Qobuz supplies, to suggest
+  a digital release and to flag a barcode missing from or conflicting with
+  MusicBrainz (#608).
 
-- Original UPC tags identify downloads matched to physical releases, suggest digital siblings and expose missing or conflicting MusicBrainz barcodes for review (#608).
+### Changed
 
-- Release search and MBID entry stay hidden until the current suggestion is dismissed (#610).
+- **MB contributions look for a better-matching release first, and show one
+  finding at a time** (#617).
 
-- Albums with consistent UPC or barcode tags automatically search MusicBrainz and suggest unique matches, with Name/Barcode/Store URL search options and seeded Harmony lookup for missing releases (#607).
+- **Recheck is now Search, with Store URL selected**, and a single match waits
+  for your review instead of tagging straight away (#607).
 
-- Artwork Fit sizes the selected image to the viewer, and opening or switching covers no longer focuses a popup menu (#604).
+- **A pending release suggestion hides the search and MBID tools** until you
+  dismiss it (#610).
+
+- **Release search results and MB contributions' release choices share one
+  layout**, with **Store URL matches** or **Barcode matches** beside **Use**
+  (#615).
+
+- **The interface calls MusicBrainz releases "releases" throughout**, not
+  editions (#615).
+
+### Fixed
+
+- **MB contributions no longer offer to add a store URL that another release in
+  the group already links to**, and offer that release for review instead
+  (#612).
+
+- **Artwork Fit sizes the selected image to the viewer**, and opening or
+  switching covers no longer pops open the image menu in Safari (#604).
 
 ## [1.20.0] - 2026-09-24
 

@@ -85,7 +85,7 @@ the whole reason the `NEEDS_SYNC` state exists.
 4. Inbox updates live as albums land (HTMX poll while sync is in-flight).
 5. For each new album, MB lookup runs by Bandcamp URL.
 6. If MB has a release linked to that URL → Harmonist tags the files Picard-compatibly. The album disappears from the inbox.
-7. If MB has no match → the album sits in the inbox as **Needs MBID** with an "Open in Harmony" button and a "Recheck" button.
+7. If MB has no match → the album sits in the inbox as **Needs MBID** with an "Open in Harmony" button and a release search (Name / Barcode / Store URL).
 
 ### 2.2 Manual ingest (non-Bandcamp music)
 
@@ -94,11 +94,11 @@ the whole reason the `NEEDS_SYNC` state exists.
 3. User pastes an MB release URL/MBID, or uses a name-based MB search helper.
 4. Harmonist writes a sidecar with no `store_url` (the manual case) and the resolved `mb_release_id`, then tags the files.
 
-### 2.3 Recheck a Needs-MBID album
+### 2.3 Search again for a Needs-MBID album
 
 1. User previously seeded a release in Harmony (an album with a `store_url` but no MB match).
-2. User clicks **Recheck** on that album.
-3. Harmonist re-runs the MB URL lookup. If now matched, it tags; if still unmatched, the album stays in Needs MBID.
+2. User presses **Search** with **Store URL** (or **Barcode**) selected on that album.
+3. Harmonist re-runs the MB lookup. A single match becomes a suggestion to review and confirm — never an immediate tag; several are offered as choices; if still unmatched, the album stays in Needs MBID.
 
 ### 2.4 Apply updates
 
@@ -551,8 +551,8 @@ Every album in the music dir is in exactly one state, derived from the presence/
 | Sidecar | `mb_release_id` | `mb_match_candidate` | Files tagged | File count vs MB tracks | State | Inbox? | UI affordances |
 |---|---|---|---|---|---|---|---|
 | absent | — | — | — | — | **New** | yes | "Reconcile from tags" / search-by-name / manual MBID form |
-| present | null | null | n/a | — | **Needs MBID** | yes | If `store_url`: "Open in Harmony" + "Recheck"; always: manual MBID form |
-| present | null | set | n/a | — | **Needs MBID** (with suggestion) | yes | Adaptive card: side-by-side files vs MB release (inline duration deltas) + "Confirm suggestion" / "Dismiss suggestion", with the find/assign tools available under a disclosure. Sorted first in the group. |
+| present | null | null | n/a | — | **Needs MBID** | yes | If `store_url`: "Open in Harmony"; release search by Name / Barcode / Store URL; always: manual MBID form |
+| present | null | set | n/a | — | **Needs MBID** (with suggestion) | yes | Adaptive card: side-by-side files vs MB release (inline duration deltas) + "Confirm suggestion" / "Dismiss suggestion"; the find/assign tools stay hidden until the suggestion is dismissed. Sorted first in the group. |
 | present | set | n/a | no | — | **Tagging** (transient) | yes (briefly) | spinner |
 | present, `store_url` is bandcamp, `bandcamp.item_id=None` | set | n/a | yes | — | **Needs Linking** | yes | "Wrong MusicBrainz match" / "Mark purchased elsewhere" |
 | present | set | n/a | yes | equal | **Complete** | no | (hidden — visible in library) |
@@ -665,10 +665,10 @@ stateDiagram-v2
     NEW --> NEEDS_MBID: manual MBID<br/>(approximate → suggestion)
     NEW --> COMPLETE: manual MBID<br/>(exact)
 
-    NEEDS_MBID --> NEEDS_MBID: recheck / paste MBID<br/>(approximate → suggestion)
-    NEEDS_MBID --> NEEDS_MBID: dismiss suggestion / recheck (no match)
-    NEEDS_MBID --> COMPLETE: Confirm / recheck / paste MBID<br/>(non-bandcamp store_url → tagged)
-    NEEDS_MBID --> NEEDS_SYNC: Confirm / recheck / paste MBID<br/>(bandcamp store_url → awaits item_id)
+    NEEDS_MBID --> NEEDS_MBID: search / paste MBID<br/>(single search match or approximate → suggestion)
+    NEEDS_MBID --> NEEDS_MBID: dismiss suggestion / search (no match)
+    NEEDS_MBID --> COMPLETE: Confirm / paste MBID<br/>(non-bandcamp store_url → tagged)
+    NEEDS_MBID --> NEEDS_SYNC: Confirm / paste MBID<br/>(bandcamp store_url → awaits item_id)
     NEEDS_MBID --> INCOMPLETE: Confirm as Incomplete
     NEEDS_MBID --> COMPLETE: Move to Library<br/>(surrendered, no purchase;<br/>purchase_unavailable)
     NEEDS_MBID --> COMPLETE: Link a potential download<br/>(surrendered; un-surrenders)
@@ -1151,7 +1151,7 @@ MusicBrainz rate-limits at **one request per second, per request rather than per
 
 **Keyed on `(mbid, inc)`, never on the MBID alone.** Harmonist fetches releases with different `inc=` parameters in different places — the full tracklist for the tagger, `url-rels` alone for reconciliation — and those are different payloads for the same release. Serving one to a caller expecting the other is wrong data that still parses. `mb_lookup` owns the includes as module constants and `mb_cache` keys off the same tuples, so a key cannot drift from the request that filled it.
 
-**Who may be served a cached answer:** display/comparison reads may be cached; unreviewed writes and explicit re-checks fetch fresh. Reviewed release confirmation and its final write instead use the exact stored snapshot, validated against the review fingerprint regardless of TTL (#532). A missing or changed snapshot requires another review without fetching or substituting data. **Recheck** fetches because its meaning is "I have just edited MusicBrainz". A forced fetch still goes through `mb_cache`, refreshing the change-detection baseline.
+**Who may be served a cached answer:** display/comparison reads may be cached; unreviewed writes and explicit re-checks fetch fresh. Reviewed release confirmation and its final write instead use the exact stored snapshot, validated against the review fingerprint regardless of TTL (#532). A missing or changed snapshot requires another review without fetching or substituting data. A Barcode or Store URL **Search** fetches because its meaning is "I have just edited MusicBrainz". A forced fetch still goes through `mb_cache`, refreshing the change-detection baseline.
 
 **The TTL decides when to ask again, not whether an answer may be shown** (#387). An album page renders its comparison from the stored payload whatever its age — `mb_cache.stored_release`, no network — and, when that payload is past its TTL, asks the browser to come back for a fresh one out of band (`?check=1`, the same shape as the artwork section's). The MusicBrainz cost is identical either way: one request per page view of a stale album, spent behind a rendered comparison instead of in front of a placeholder. What the fresh answer may change while the user reads the stale one is why **Re-tag** and the ignore box are held for the length of that request: both act on a release, and the one on screen may not be the one that answers.
 
@@ -1648,10 +1648,10 @@ a UUID assigned by `id_registry` — never a hash of the path.
 - When `/sync/status` returns `state == "idle"` post-run, the polling stops and the button re-enables.
 - Per-sync limit: `max_downloads_per_sync` downloads at most N **new** albums per run (enforced per item in `sync_item`); the rest are deferred to the next sync (not marked ignored, so they retry). The finish message reports "N more reached the per-sync limit — run Sync again". Already-on-disk albums are skipped by `sync_item` and never count toward the limit.
 
-### 9.2 Needs MBID → Recheck
+### 9.2 Needs MBID → Search
 
-- Card has an "Open in Harmony" link (`https://harmony.pulsewidth.org.uk/release?url=<store_url>`) and a "Recheck" button.
-- Recheck POSTs to `/recheck/{id}`. On success, the card swaps into the Tagging spinner, then disappears (album moves to Complete).
+- Card has an "Open in Harmony" link (`https://harmony.pulsewidth.org.uk/release?url=<store_url>`) and a **Search MusicBrainz by** Name / Barcode / Store URL picker.
+- Store URL **Search** POSTs to `/manual/{id}/candidates`, Barcode to `/manual/{id}/barcode`. A single match is written as `mb_match_candidate` for review; several render as choices. Neither tags directly.
 
 ### 9.3 Manual ingest
 

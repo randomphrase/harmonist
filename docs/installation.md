@@ -122,8 +122,8 @@ that, the album page still draws its comparison from the stored answer and asks
 for a newer one in the background, so it never waits on MusicBrainz to show
 something it already has. An album's page shows when its release was last read,
 as the **Checked** date in the album panel with a refresh button beside it, so you
-can always force a fresh look after editing MusicBrainz — and re-tagging and
-**Recheck** never use the cache. Set it to `0` to ask on every page view.
+can always force a fresh look after editing MusicBrainz — and re-tagging and a
+Barcode or Store URL **Search** never use the cache. Set it to `0` to ask on every page view.
 
 The Cover Art Archive is asked the same way, with its own
 `[cover_art] cache_ttl_seconds` — **a week** rather than an hour, because cover

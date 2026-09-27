@@ -274,7 +274,7 @@ wrong one (**Wrong MusicBrainz match**). Harmonist won't guess which.
 **A release that's vanished from MusicBrainz.** Editors occasionally delete a
 release (usually a duplicate). The album's page says so rather than showing a
 fetch error, and **Find a new release** sends it back to Needs MBID with its
-store link intact — a Recheck usually finds the replacement straight away. Re-tag
+store link intact — a Store URL search usually finds the replacement straight away. Re-tag
 is disabled meanwhile, since there's nothing to re-tag from. Nothing happens
 until you press the button: your files keep their tags, and the album stays in
 the Library if you'd rather deal with it later. Tags and Tracks still list what's
@@ -534,7 +534,7 @@ means a newer one is on its way, and **Apply updates** is held until it lands,
 since the release it would write from may not be the one you are looking at. The
 album panel's **Checked** date says when it was last read — "20 minutes ago" —
 with a refresh button beside it if you've just edited MusicBrainz and want to see
-the edit now. Unreviewed re-tagging and **Recheck** fetch a fresh MusicBrainz
+the edit now. Unreviewed re-tagging and a Barcode or Store URL **Search** fetch a fresh MusicBrainz
 answer. Accepting reviewed assignments instead uses the exact release snapshot
 shown in the editor, with no further query. If that snapshot or your files have
 changed, Harmonist asks you to review again.
