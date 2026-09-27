@@ -11,7 +11,7 @@ dependencies = ["mutagen", "bandcampsync~=0.8.0", "fastapi", "jinja2", "httpx", 
 # a dev machine and CI (a patch bump reformats code), which fails the format
 # check on a green-locally branch. Bump deliberately, like TAILWINDCSS_VERSION.
 dev = ["pytest", "pytest-mock", "pytailwindcss", "ruff==0.16.8", "mypy==2.3.1", "coverage"]
-# Browser smoke tests (opt-in; see test/e2e/). Needs `playwright install chromium`.
+# Browser smoke tests (opt-in; see test/e2e/). Needs `playwright install chromium webkit`.
 e2e = ["pytest-playwright"]
 
 [tool.setuptools.packages]

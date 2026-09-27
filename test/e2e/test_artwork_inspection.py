@@ -24,6 +24,58 @@ def _open(page, base, review):
     return host
 
 
+def _assert_fitted(viewer):
+    image = viewer.locator("img")
+    image.evaluate("e => e.decode()")
+    geometry = image.evaluate("""e => {
+        const stage = e.closest('.art-full__stage');
+        return {
+            image: e.getBoundingClientRect().toJSON(),
+            stage: stage.getBoundingClientRect().toJSON(),
+            scale: Math.min(1, stage.clientWidth / e.naturalWidth,
+                              stage.clientHeight / e.naturalHeight),
+            width: e.naturalWidth, height: e.naturalHeight,
+        };
+    }""")
+    rect, stage = geometry["image"], geometry["stage"]
+    assert rect["width"] == pytest.approx(geometry["width"] * geometry["scale"], abs=1)
+    assert rect["height"] == pytest.approx(geometry["height"] * geometry["scale"], abs=1)
+    assert rect["left"] >= stage["left"] - 1
+    assert rect["top"] >= stage["top"] - 1
+    assert rect["right"] <= stage["right"] + 1
+    assert rect["bottom"] <= stage["bottom"] + 1
+
+
+@pytest.mark.parametrize("engine", ["chromium", "webkit"])
+@pytest.mark.parametrize("review", [False, True], ids=["album", "review"])
+@pytest.mark.parametrize("check", ["fit", "focus"])
+def test_open_and_switch_fit_the_selected_image_without_focusing_a_menu(
+    artwork_inspection_server, engine, review, check
+):
+    with pw.sync_playwright() as playwright:
+        browser = getattr(playwright, engine).launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 882}, has_touch=True)
+        host = _open(page, artwork_inspection_server, review)
+        thumb = host.locator("button.art-row__art[popovertarget]").first
+        target = thumb.get_attribute("popovertarget")
+        thumb.click()
+        viewer = page.locator(".art-full:popover-open")
+        options = viewer.locator(".art-full__image-choice option").evaluate_all(
+            "es => es.map(e => e.value)"
+        )
+        for index, image_id in enumerate([target, *options[1:], target]):
+            if index:
+                viewer.get_by_role("combobox", name="Artwork image").select_option(image_id)
+            pw.expect(viewer).to_have_attribute("id", image_id)
+            if check == "fit":
+                _assert_fitted(viewer)
+            else:
+                pw.expect(viewer.get_by_role("button", name="Close artwork viewer")).to_be_focused()
+        page.keyboard.press("Escape")
+        pw.expect(thumb).to_be_focused()
+        browser.close()
+
+
 @pytest.mark.parametrize("width", [1280, 390])
 @pytest.mark.parametrize("review", [False, True], ids=["album", "review"])
 def test_thumbnail_frames_do_not_shrink_for_long_metadata(artwork_inspection_server, width, review):
@@ -99,16 +151,10 @@ def test_native_pixels_and_switching_preserve_scale_and_position(
             "e => [e.scrollLeft, e.scrollTop]"
         ) == [200, 150]
         switched.get_by_role("combobox", name="Viewing scale").select_option("fit")
-        fit_scale = switched.locator("img").evaluate("e => e.width / e.naturalWidth")
-        assert 0 < fit_scale < 1
-        assert switched.locator("img").evaluate("e => e.height / e.naturalHeight") == pytest.approx(
-            fit_scale, abs=0.001
-        )
+        _assert_fitted(switched)
         switched.get_by_role("combobox", name="Artwork image").select_option(target)
         pw.expect(viewer).to_be_visible()
-        assert viewer.locator("img").evaluate("e => e.width / e.naturalWidth") == pytest.approx(
-            fit_scale, abs=0.001
-        )
+        _assert_fitted(viewer)
         page.keyboard.press("Escape")
         pw.expect(viewer).to_be_hidden()
         pw.expect(thumb).to_be_focused()

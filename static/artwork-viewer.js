@@ -1,5 +1,5 @@
-// The popover owns opening/dismissal. Only inspection scale and scroll position
-// are shared between images in the same rendered album/review, never persisted.
+// The popover owns opening/dismissal. Inspection mode and native-pixel scroll
+// position are shared within the rendered album/review, never persisted.
 (() => {
     const openers = new WeakMap();
     const peers = viewer => Array.from(document.querySelectorAll('.art-full'))
@@ -16,25 +16,24 @@
         const [width, height] = dimensions(image);
         if (!width || !height) return; // The image's load event will measure it.
         const native = viewer.querySelector('.art-full__mode').value === 'native';
-        // Fit the largest extents in the group so switching does not silently
-        // give a smaller source more magnification than its comparison image.
-        const sizes = peers(viewer).map(other => dimensions(other.querySelector('img')));
         const scale = native ? 1 : Math.min(1,
-            stage.clientWidth / Math.max(...sizes.map(size => size[0])),
-            stage.clientHeight / Math.max(...sizes.map(size => size[1])));
+            stage.clientWidth / width, stage.clientHeight / height);
         image.style.width = `${width * scale}px`;
         image.style.height = `${height * scale}px`;
         viewer.querySelector('output').textContent = native
             ? '100% · 1 image pixel per CSS pixel'
-            : `${(scale * 100).toFixed(1)}% · same scale for all images`;
+            : `${(scale * 100).toFixed(1)}% · fit to viewer`;
     }
 
     const renderOpen = () => document.querySelectorAll('.art-full:popover-open').forEach(render);
-    document.addEventListener('beforetoggle', event => {
-        const viewer = event.target;
-        if (!viewer.matches('.art-full') || event.newState !== 'open') return;
-        if (!document.activeElement.closest('.art-full')) {
-            openers.set(viewer, document.activeElement);
+    document.addEventListener('click', event => {
+        // Safari does not focus a button on pointer activation. Remember the
+        // actual trigger so Escape can return to it after switching images.
+        const trigger = event.target.closest('button[popovertarget]');
+        const viewer = trigger && document.getElementById(trigger.getAttribute('popovertarget'));
+        if (viewer?.matches('.art-full')) {
+            openers.set(viewer, trigger);
+            trigger.focus({preventScroll: true});
         }
     }, true);
     document.addEventListener('toggle', event => {
@@ -68,8 +67,8 @@
             next.showPopover();
             openers.set(next, opener);
             render(next);
-            next.querySelector('.art-full__stage').scrollTo(...position);
-            next.querySelector('.art-full__image-choice').focus();
+            next.querySelector('.art-full__stage').scrollTo(...(mode === 'native' ? position : [0, 0]));
+            next.querySelector('[autofocus]').focus({preventScroll: true});
         }
     });
     document.addEventListener('load', event => {

@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Artwork Fit sizes the selected image to the viewer, and opening or switching covers no longer focuses a popup menu (#604).
+
 ## [1.20.0] - 2026-09-24
 
 ### Added

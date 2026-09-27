@@ -1,7 +1,7 @@
 """Shared fixtures for the opt-in browser (e2e) suite.
 
 Opt-in: requires playwright (`pip install -e .[e2e]` + `playwright install
-chromium`) and RUN_E2E=1, so `make test` / `make check` stay browser-free.
+chromium webkit`) and RUN_E2E=1, so `make test` / `make check` stay browser-free.
 Run via `make e2e`.
 """
 

@@ -47,7 +47,7 @@ template-lint:
 # Everything CI would gate on (lint + format + types + tests).
 check: lint format-check typecheck template-lint test
 
-# Browser smoke tests (opt-in): pip install -e .[e2e] && playwright install chromium
+# Browser smoke tests (opt-in): pip install -e .[e2e] && playwright install chromium webkit
 e2e:
 	RUN_E2E=1 pytest test/e2e/
 
