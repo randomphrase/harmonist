@@ -1,30 +1,11 @@
 {# Find/assign tools for the Needs MBID card. ONE "find a different release"
    area: a radio picks the search method and only the chosen method's controls
-   show — all feed the shared #mbid-results box,
-   whose heading names the search that ran. Plus a direct MBID-paste fallback.
+   show — all feed the shared #mbid-results box. Plus a direct MBID-paste fallback.
    The whole thing sits inside the card's hx-preserve wrapper, so a background
    re-render can't wipe the selected mode or the results. #}
-{% from 'macros.html' import reload_unless_retargeted %}
 {% set sc = album.sidecar %}
 {% set _private = sc and sc.bandcamp and sc.bandcamp.is_private %}
 {% set on_album = on_album_page | default(false) %}
-{% if sc and sc.store_url and not _private %}
-<div class="flex gap-2 flex-wrap mb-3">
-    <a href="{{ harmony_base }}/release?url={{ sc.store_url|urlencode }}"
-       target="_blank" rel="noopener"
-       class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">
-        Open in Harmony ↗
-    </a>
-    <button hx-post="/recheck/{{ album.id }}"
-            hx-swap="none" hx-disabled-elt="this"
-            {{ reload_unless_retargeted(on_album) }}
-            hx-vals='{"on_album_page": "{{ 'true' if on_album else 'false' }}"}'
-            title="Re-query MusicBrainz for this store URL. Tags automatically on a single exact match; lists the options if several releases share the URL."
-            class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-        Recheck
-    </button>
-</div>
-{% endif %}
 {% if _private %}
 <p class="text-xs text-muted mb-2 italic">
     Private Bandcamp release — its public URL won't resolve on MusicBrainz.
@@ -35,7 +16,7 @@
 {# Shared results target. #}
 <div id="mbid-results-{{ album.id }}" class="mt-2"></div>
 {# Direct entry fallback. #}
-<div class="mt-3">
+<div class="mt-6">
     <p class="text-muted font-bold uppercase tracking-widest text-2xs mb-1">Or paste a MusicBrainz ID</p>
     {% include 'partials/_mbid_paste.html' %}
 </div>

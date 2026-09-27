@@ -48,7 +48,7 @@ It works best on a library that's already in reasonable shape. Harmonist assumes
 
 Albums without a MusicBrainz ID can carry a UPC/barcode instead, including
 Qobuz FLAC downloads and ALAC files transcoded with XLD. When all files carry
-the same valid barcode, artist and album identity, initial adoption searches
+the same valid barcode, initial adoption searches
 MusicBrainz. A single matching release appears as a suggestion for you to
 review and confirm; barcode discovery never tags automatically. The comparison
 still shows differing track counts and lengths.
@@ -62,6 +62,13 @@ to Name search so it isn't immediately suggested again. Ordinary scans preserve
 existing suggestions and dismissals. Equivalent
 UPC/EAN forms (including a leading zero) count as the same barcode; missing,
 invalid or conflicting barcode tags leave the usual name/MBID tools available.
+
+Bandcamp downloads also offer **Store URL**, selected automatically when no
+barcode is available. It follows the same suggestion/choices/Harmony flow.
+Barcode matches can be physical releases, including CDs: format alone does not
+exclude a result, and the suggestion still requires review before tagging.
+Artist and title variations do not filter out barcode results; inspect those
+details in the review before confirming a release.
 
 **Recommended order:**
 
@@ -215,7 +222,7 @@ leads with whichever fits:
 - *Without one.* Search by artist + title, or paste an MBID directly.
 - *Not in MusicBrainz yet.* Common for Bandcamp-only releases. **Open in Harmony**
   seeds it to [Harmony](https://harmony.pulsewidth.org.uk) in a couple of clicks,
-  then **Recheck** picks it up — so every gap you hit makes MusicBrainz better for
+  then **Search** picks it up — so every gap you hit makes MusicBrainz better for
   the next person.
 
 **Needs Linking** — tagged from MusicBrainz, but not yet tied to the Bandcamp

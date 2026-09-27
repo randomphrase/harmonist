@@ -17,7 +17,6 @@
 {% set on_album = on_album_page | default(false) %}
 {% set sc = album.sidecar %}
 {% set candidate = sc.mb_match_candidate if sc else None %}
-{% set has_store_url = sc and sc.store_url %}
 {# A mis-tag candidate carries the owned sibling release (store-URL match). It
    gets its own explanatory panel, independent of the track-count match quality
    below. #}
@@ -164,12 +163,6 @@
     </div>
 </details>
 {% else %}
-{% if has_store_url %}
-<p class="text-muted text-xs mb-3">
-    Store URL on file but no MusicBrainz match yet. Seed it on Harmony, then recheck —
-    or paste an MBID below.
-</p>
-{% endif %}
 {% include 'partials/_needs_mbid_tools.html' %}
 {% endif %}
 </div>

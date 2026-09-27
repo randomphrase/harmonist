@@ -19,7 +19,7 @@ and no MBID, so the album advances NEW → NEEDS_MBID (then, once tagged,
 NEEDS_SYNC picks up its Bandcamp item_id). Without this an untagged download
 would sit in NEW forever, or tag straight to COMPLETE and never sync.
 
-When no store URL is embedded, consistent UPC/barcode and artist/album tags
+When no store URL is embedded, consistent UPC/barcode tags
 permit a bounded MusicBrainz search. A unique result is a review suggestion,
 never an automatic tag; an empty or ambiguous result still adopts the folder
 into Needs MBID with an explicit barcode lookup available.

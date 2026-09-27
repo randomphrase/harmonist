@@ -28,19 +28,13 @@ def variants(value: str) -> tuple[str, ...]:
     )
 
 
-def text_key(value: str) -> str:
-    return " ".join(value.split()).casefold()
-
-
 @dataclass(frozen=True)
 class Evidence:
     barcode: str
-    artist: str
-    title: str
 
 
 def evidence(fields: Sequence[ScanFields]) -> Evidence | None:
-    """Require consistent readable album identity and barcode on every file.
+    """Require a consistent valid barcode on every readable file.
 
     Keep all barcode aliases until this decision: a BARCODE/UPC conflict within
     one file is as disqualifying as disagreement between two files.
@@ -48,12 +42,8 @@ def evidence(fields: Sequence[ScanFields]) -> Evidence | None:
     if not fields or any(f.unreadable or not f.barcodes for f in fields):
         return None
     codes = {normalise(value) for f in fields for value in f.barcodes}
-    titles = {text_key(f.album_title or "") for f in fields}
-    artists = {text_key(f.album_artist or f.artist or "") for f in fields}
-    if None in codes or len(codes) != 1 or len(titles) != 1 or "" in titles:
-        return None
-    if len(artists) != 1 or "" in artists:
+    if None in codes or len(codes) != 1:
         return None
     # Keep the original spelling for Harmony: Qobuz's literal barcode search
     # does not find a 13-digit UPC when given its equivalent padded GTIN-14.
-    return Evidence(fields[0].barcodes[0].strip(), next(iter(artists)), next(iter(titles)))
+    return Evidence(fields[0].barcodes[0].strip())

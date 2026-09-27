@@ -25,13 +25,37 @@ pytestmark = pytest.mark.skipif(
 playwright_sync = pytest.importorskip("playwright.sync_api")
 
 # Seeded as NEEDS_MBID with a store URL, and demo's MusicBrainz resolves that URL
-# to exactly one release — so Recheck tags it and the album lands in the Library.
+# to exactly one release — automatic URL search should suggest it for review.
 # Reached by its title rather than by id, which also exercises the card link.
 ALBUM_TITLE = "We Are Here To Make You Sad"
 
 
+def test_automatic_url_search_runs_once_across_inbox_refreshes(reset_demo_server: str) -> None:
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        lookups: list[str] = []
+        page.on("request", lambda r: lookups.append(r.url) if "/candidates" in r.url else None)
+        page.goto(reset_demo_server)
+        card = page.locator('div[id^="task-"].relative').filter(has_text=ALBUM_TITLE)
+        playwright_sync.expect(card.get_by_role("heading", name="Suggested match:")).to_be_visible()
+        page.wait_for_load_state("networkidle", timeout=10_000)
+        assert len(lookups) == 1
+        # A real inbox swap must preserve the form without repeating its load search.
+        with page.expect_response(lambda r: r.url.endswith("/tasks")):
+            page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
+        page.wait_for_load_state("networkidle", timeout=10_000)
+        assert len(lookups) == 1
+        # An explicit retry still asks MusicBrainz again.
+        with page.expect_response(lambda r: "/candidates" in r.url):
+            card.get_by_role("button", name="Search", exact=True).click()
+        page.wait_for_load_state("networkidle", timeout=10_000)
+        assert len(lookups) == 2
+        browser.close()
+
+
 def test_a_card_links_to_its_album_page_and_the_decision_can_be_taken_there(
-    demo_server: str,
+    reset_demo_server: str,
 ) -> None:
     """Both halves of #150 in the one path a user actually walks: from the card,
     to the album, to the decision."""
@@ -42,34 +66,24 @@ def test_a_card_links_to_its_album_page_and_the_decision_can_be_taken_there(
         requests: list[str] = []
         page.on("request", lambda r: requests.append(r.url))
 
-        page.goto(demo_server)
+        page.goto(reset_demo_server)
         # The inbox is pulled into the page after load, so wait for the card.
         link = page.get_by_role("link", name=ALBUM_TITLE)
         link.wait_for(timeout=20_000)
         link.click()
 
         page.wait_for_url("**/album/**", timeout=10_000)
-        # The page is one you can ACT on, not only read: the actions section is
-        # the thing #150 added, and Recheck is this album's way out of the inbox.
         page.wait_for_selector("#album-inbox-actions", timeout=10_000)
-        recheck = page.get_by_role("button", name="Recheck")
-        recheck.wait_for(timeout=10_000)
-
-        assert not [u for u in requests if "/recheck/" in u], "nothing pressed yet"
-
-        with page.expect_response(lambda r: "/recheck/" in r.url, timeout=15_000) as got:
-            recheck.click()
+        playwright_sync.expect(page.get_by_role("heading", name="Suggested match:")).to_be_visible()
+        assert any("/candidates" in u for u in requests)
+        assert page.locator("#album-tags").count() == 0
+        with page.expect_response(lambda r: "/reject/" in r.url, timeout=15_000) as got:
+            page.get_by_role("button", name="Dismiss suggestion", exact=True).click()
         assert got.value.ok
-
-        # ...and the page came BACK. `#album-tags` is rendered server-side and
-        # only for an album that has a MusicBrainz release, so its appearance is
-        # two facts at once: the recheck tagged the album, and the reload that
-        # `reload_unless_retargeted` fires actually happened. Without the reload
-        # the page would sit on the untagged render with no section at all.
-        page.wait_for_selector("#album-tags", timeout=15_000)
-        # ...and the album has left the inbox: the actions section that offered
-        # Recheck is gone, because there is no longer a release to find. Its
-        # presence a moment ago is what makes this absence worth asserting.
-        assert page.locator("#album-inbox-actions").count() == 0
+        playwright_sync.expect(page.get_by_role("radio", name="Name", exact=True)).to_be_checked()
+        # Selecting URL is an explicit fresh search after dismissal.
+        with page.expect_response(lambda r: "/candidates" in r.url):
+            page.get_by_role("radio", name="Store URL", exact=True).check()
+        playwright_sync.expect(page.get_by_role("heading", name="Suggested match:")).to_be_visible()
 
         browser.close()

@@ -70,10 +70,15 @@ def services(monkeypatch, releases):
 
 
 @pytest.mark.parametrize("suffix", ["flac", "m4a"])
-def test_adoption_suggests_unique_barcode_without_tagging(tmp_path, monkeypatch, suffix):
+@pytest.mark.parametrize("media_format", ["Digital Media", "CD"])
+def test_adoption_suggests_unique_barcode_without_tagging(
+    tmp_path, monkeypatch, suffix, media_format
+):
     path, file = album(tmp_path, suffix)
     before = file.read_bytes()
-    search, fetch = services(monkeypatch, [release()])
+    candidate = release()
+    candidate["medium-list"][0]["format"] = media_format
+    search, fetch = services(monkeypatch, [candidate])
     result = reconcile.reconcile_album(path, fetch_urls=lambda _: [])
     assert result is not None
     assert result.mb_release_id is None
@@ -90,7 +95,8 @@ def test_adoption_suggests_unique_barcode_without_tagging(tmp_path, monkeypatch,
 def test_lfo_equivalent_barcodes_are_multiple_candidates(tmp_path, monkeypatch):
     path, file = album(tmp_path)
     before = file.read_bytes()
-    search, fetch = services(monkeypatch, [release(), release(OTHER, "801061000332")])
+    variation = {**release(OTHER, "801061000332"), "title": "Frequencies (Remastered)"}
+    search, fetch = services(monkeypatch, [release(), variation])
     result = reconcile.reconcile_album(path, fetch_urls=lambda _: [])
     assert result is not None
     assert result.mb_release_id is None
@@ -102,21 +108,37 @@ def test_lfo_equivalent_barcodes_are_multiple_candidates(tmp_path, monkeypatch):
     assert "0801061000332" in query and "801061000332" in query
 
 
-@pytest.mark.parametrize(
-    "barcode,artist,title",
-    [
-        ("0801061000639", "LFO", "Frequencies"),
-        (BARCODE, "Someone Else", "Frequencies"),
-        (BARCODE, "LFO", "Another Album"),
-    ],
-)
-def test_search_hits_must_agree_with_local_identity(tmp_path, monkeypatch, barcode, artist, title):
+def test_search_hits_must_have_the_same_barcode(tmp_path, monkeypatch):
     path, _ = album(tmp_path)
-    wrong = {**release(barcode=barcode), "artist-credit-phrase": artist, "title": title}
-    search, fetch = services(monkeypatch, [wrong])
+    search, fetch = services(monkeypatch, [release(barcode="0801061000639")])
     result = reconcile.reconcile_album(path, fetch_urls=lambda _: [])
     assert result is not None and result.mb_match_candidate is None
     assert search.call_count == 1 and fetch.call_count == 0
+
+
+@pytest.mark.parametrize(
+    "artist,title", [("L.F.O.", "Frequencies"), ("LFO", "Frequencies (Remastered)")]
+)
+def test_name_variations_do_not_hide_barcode_results(tmp_path, monkeypatch, artist, title):
+    path, file = album(tmp_path)
+    before = file.read_bytes()
+    variation = {**release(), "artist-credit-phrase": artist, "title": title}
+    services(monkeypatch, [variation])
+    result = reconcile.reconcile_album(path, fetch_urls=lambda _: [])
+    assert result.mb_match_candidate.mb_release_id == MBID
+    assert result.mb_release_id is None
+    assert file.read_bytes() == before
+
+
+def test_barcode_discovery_does_not_require_name_tags(tmp_path, monkeypatch):
+    path, file = album(tmp_path)
+    tags = MP4(file)
+    del tags["aART"]
+    del tags["©alb"]
+    tags.save()
+    services(monkeypatch, [release()])
+    result = reconcile.reconcile_album(path, fetch_urls=lambda _: [])
+    assert result.mb_match_candidate.mb_release_id == MBID
 
 
 def test_conflicting_identifiers_skip_lookup(tmp_path, monkeypatch):
@@ -258,3 +280,20 @@ def test_search_and_fetched_release_must_agree(tmp_path, monkeypatch):
     with pytest.raises(mb_search.MBSearchError, match="changed"):
         reconcile.reconcile_album(path, fetch_urls=lambda _: [])
     assert sidecar.read(path) is None
+
+
+def test_store_url_search_suggests_without_tagging(client, cfg, monkeypatch):
+    path, file = album(cfg.paths.music_dir)
+    sidecar.write(path, Sidecar(store_url="https://lfo.bandcamp.com/album/frequencies"))
+    aid = scanner.scan(cfg.paths.music_dir)[0].id
+    before = file.read_bytes()
+    _, fetch = services(monkeypatch, [release()])
+    lookup = Mock(return_value=([{"id": MBID}], 1))
+    monkeypatch.setattr("harmonist.mb_lookup.candidate_summaries_for_url", lookup)
+    response = client.post(f"/manual/{aid}/candidates", data={"suggest": "true"})
+    assert response.status_code == 200
+    assert sidecar.read(path).mb_match_candidate.mb_release_id == MBID
+    assert sidecar.read(path).mb_release_id is None
+    assert file.read_bytes() == before
+    assert fetch.call_args.kwargs["max_age"] == mb_cache.FRESH
+    assert lookup.call_count == fetch.call_count == 1

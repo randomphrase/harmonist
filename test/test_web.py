@@ -323,8 +323,8 @@ def test_tasks_groups_albums_by_state_with_headers_and_instructions(client, cfg)
     r = client.get("/tasks")
     # Both are NEEDS_MBID — single section heading
     assert ">MBID</abbr>" in r.text  # the "Needs MBID" header (MBID is an <abbr>)
-    # Open-in-Harmony link appears for the store_url card
-    assert "Open in Harmony" in r.text
+    # The public store URL is available as an automatic search mode.
+    assert "Store URL" in r.text
     # Manual MBID form appears too
     assert 'name="mbid"' in r.text
 
@@ -398,7 +398,7 @@ def test_new_card_rendered(client, cfg):
     assert 'id="newtools-' in r.text  # search/paste tools present
 
 
-def test_needs_mbid_card_with_store_url_rendered(client, cfg):
+def test_needs_mbid_card_with_store_url_rendered(client, cfg, monkeypatch):
     d = _make_album(cfg, "HasURL")
     sc.write(
         d,
@@ -409,6 +409,9 @@ def test_needs_mbid_card_with_store_url_rendered(client, cfg):
     )
     r = client.get("/tasks")
     assert ">MBID</abbr>" in r.text  # the "Needs MBID" header (MBID is an <abbr>)
+    assert 'value="url"' in r.text
+    monkeypatch.setattr("harmonist.mb_lookup.candidate_summaries_for_url", lambda url: ([], 0))
+    r = client.post(f"/manual/{_id_for(cfg, d)}/candidates", data={"suggest": "true"})
     assert "Open in Harmony" in r.text
     assert "harmony.pulsewidth.org.uk" in r.text
 
@@ -432,7 +435,7 @@ def test_needs_mbid_private_release_suppresses_harmony_and_recheck(client, cfg):
     assert "won't resolve on MusicBrainz" in r.text
     assert "Bandcamp (private)" in r.text
     # No store-URL search mode for a private release — only name search.
-    assert "Look up releases at this URL" not in r.text
+    assert 'value="url"' not in r.text
     assert "Search MusicBrainz by" in r.text
     # The manual resolution path remains.
     assert 'name="mbid"' in r.text
@@ -622,7 +625,7 @@ def test_surrender_card_renders_readonly_with_tools(client, cfg):
     assert "Confirm &amp; Tag" not in r.text
     assert "/confirm/" not in r.text
     # The redundant store-URL lookup is gone; the name/MBID escape hatch remains.
-    assert "Look up releases at this URL" not in r.text
+    assert 'value="url"' not in r.text
 
 
 def test_surrender_is_audited(client, cfg):
@@ -1613,7 +1616,7 @@ def test_needs_mbid_store_url_offers_both_search_modes(client, cfg):
     # Both radio options + their controls render (one results box for both).
     assert 'value="url"' in r.text
     assert 'value="name"' in r.text
-    assert "Look up releases at this URL" in r.text  # store-URL mode action
+    assert f"/manual/{aid}/candidates" in r.text  # store-URL mode action
     assert f"/manual/{aid}/search" in r.text  # name-mode form
     assert r.text.count('id="mbid-results-') == 1  # single shared results box
 
@@ -1674,7 +1677,6 @@ def test_manual_candidates_lists_store_url_releases(client, cfg, monkeypatch):
     )
     r = client.post(f"/manual/{aid}/candidates")
     assert r.status_code == 200
-    assert "Releases linked to this store URL" in r.text
     assert "musicbrainz.org/release/rel-std" in r.text
     assert "musicbrainz.org/release/rel-24" in r.text
     assert "(24-bit)" in r.text  # disambiguation rendered distinctly

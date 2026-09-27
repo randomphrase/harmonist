@@ -5,7 +5,8 @@
 {% set public_url = sc and sc.store_url and not (sc.bandcamp and sc.bandcamp.is_private) %}
 {% set prefer_name = request.query_params.get('search') == 'name' %}
 {% set barcode_default = album.barcode and not prefer_name %}
-<div class="find-mode mb-2">
+<div class="find-mode mb-2"
+     hx-on:change="if (event.target.type === 'radio') document.getElementById('mbid-results-{{ album.id }}').replaceChildren()">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs">
         <span class="text-muted font-bold uppercase tracking-widest text-2xs">Search MusicBrainz by</span>
         <label class="inline-flex items-center gap-1.5 cursor-pointer">
@@ -20,9 +21,9 @@
         </label>
         {% if public_url %}
         <label class="inline-flex items-center gap-1.5 cursor-pointer">
-            <input type="radio" name="find-{{ album.id }}" value="url"
+            <input id="url-mode-{{ album.id }}" type="radio" name="find-{{ album.id }}" value="url"
                    {% if not barcode_default and not prefer_name %}checked{% endif %} class="accent-mb-purple">
-            <span>Releases at this store URL</span>
+            <span>Store URL</span>
         </label>
         {% endif %}
     </div>
@@ -36,6 +37,9 @@
               {# Defer load until HTMX has initialized the child button's request
                  counter, or it stays disabled after the first response. #}
               hx-trigger="{% if barcode_default and not (sc and sc.mb_match_candidate) %}load delay:1ms, {% endif %}submit, change from:#barcode-mode-{{ album.id }}"
+              {# hx-preserve retains the form, but HTMX reinitializes its load
+                 listener after inbox swaps. Retire only that automatic trigger. #}
+              hx-on::before-request="this.setAttribute('hx-trigger', 'submit, change from:#barcode-mode-{{ album.id }}')"
               hx-disabled-elt="find button" hx-indicator="#tagging-{{ album.id }}"
               {{ reload_unless_retargeted(on_album) }} class="flex items-center gap-2">
             <input type="hidden" name="on_album_page" value="{{ 'true' if on_album else 'false' }}">
@@ -46,12 +50,17 @@
     {% endif %}
     {% if public_url %}
     <div class="find-mode__panel find-mode__panel--url">
-        <button hx-post="/manual/{{ album.id }}/candidates"
-                hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML" hx-disabled-elt="this"
-                hx-vals='{"on_album_page": "{{ 'true' if on_album else 'false' }}"}'
-                class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
-            Look up releases at this URL
-        </button>
+        <form hx-post="/manual/{{ album.id }}/candidates"
+              hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML settle:0ms"
+              hx-trigger="{% if not barcode_default and not prefer_name and not sc.mb_match_candidate %}load delay:1ms, {% endif %}submit, change from:#url-mode-{{ album.id }}"
+              hx-on::before-request="this.setAttribute('hx-trigger', 'submit, change from:#url-mode-{{ album.id }}')"
+              hx-disabled-elt="find button" hx-indicator="#tagging-{{ album.id }}"
+              {{ reload_unless_retargeted(on_album) }} class="flex items-center gap-2">
+            <input type="hidden" name="on_album_page" value="{{ 'true' if on_album else 'false' }}">
+            <input type="hidden" name="suggest" value="true">
+            <span class="flex-1 min-w-0 truncate text-xs text-muted" title="{{ sc.store_url }}">{{ sc.store_url }}</span>
+            <button type="submit" class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Search</button>
+        </form>
     </div>
     {% endif %}
 </div>

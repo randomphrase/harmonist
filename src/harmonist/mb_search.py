@@ -25,17 +25,13 @@ class MBSearchError(Exception):
 
 
 def matches_barcode(release: Release, evidence: barcodes.Evidence) -> bool:
-    """Check search hits and fetched snapshots against the same local evidence."""
-    artist = release.get("artist-credit-phrase") or _extract_artist(release)
-    return (
-        barcodes.normalise(release.get("barcode") or "") == barcodes.normalise(evidence.barcode)
-        and barcodes.text_key(artist) == barcodes.text_key(evidence.artist)
-        and barcodes.text_key(release.get("title") or "") == barcodes.text_key(evidence.title)
-    )
+    """Verify the identifier only; names and medium format are review evidence."""
+    expected = barcodes.normalise(evidence.barcode)
+    return expected is not None and barcodes.normalise(release.get("barcode") or "") == expected
 
 
 def search_barcode(evidence: barcodes.Evidence) -> tuple[list[dict[str, Any]], int]:
-    """One bounded, uncached search; verify identity instead of trusting score.
+    """One bounded, uncached search; verify barcodes instead of trusting score.
 
     Query every equivalent spelling. A truncated answer cannot prove uniqueness;
     its total remains the unfiltered count so callers offer choices instead.

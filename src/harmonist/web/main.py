@@ -6891,6 +6891,7 @@ def _register_routes(app: FastAPI) -> None:
     ) -> Response:
         from harmonist import barcodes
 
+        request.state.skip_rescan = True
         album = _find_album(request, album_id)
         evidence = barcodes.evidence(
             [formats.read_scan_fields(f) for f in album_files.for_paths(album.folders)]
@@ -6898,7 +6899,7 @@ def _register_routes(app: FastAPI) -> None:
         if evidence is None or (album.sidecar and album.sidecar.mb_release_id):
             response = _flash_response(
                 "Barcode lookup unavailable",
-                "Requires an unmatched album with consistent barcode, artist and album tags",
+                "Requires an unmatched album with consistent barcode tags",
                 level=Level.WARNING,
                 tasks_changed=False,
                 album=album,
@@ -6919,6 +6920,9 @@ def _register_routes(app: FastAPI) -> None:
                 if current.mb_release_id:
                     raise mb_search.MBSearchError("Album was matched while the lookup ran")
                 sidecar_mod.write(album.path, replace(current, mb_match_candidate=ranking.best))
+                runner = request.app.state.scan_runner
+                if runner.is_engaged():
+                    runner.refresh_now()
                 return _flash_response(
                     "Needs review", "Barcode match found — review and confirm", album=album
                 )
@@ -6939,7 +6943,7 @@ def _register_routes(app: FastAPI) -> None:
             album,
             results,
             total,
-            heading="Releases matching your barcode, artist and album",
+            heading=None,
             on_album_page=on_album_page,
             review_only=True,
             retarget=True,
@@ -6948,32 +6952,54 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post("/manual/{album_id}/candidates", response_class=HTMLResponse)
     def manual_candidates(
-        request: Request, album_id: str, on_album_page: bool = Form(False)
+        request: Request,
+        album_id: str,
+        on_album_page: bool = Form(False),
+        suggest: bool = Form(False),
     ) -> Response:
         """List the MB releases linked to this album's store URL so the user can
         pick the right one. Fresh lookup each call — no caching — so a fix made
         on MusicBrainz shows up immediately."""
+        request.state.skip_rescan = True
         album = _find_album(request, album_id)
         sc = album.sidecar
         if sc is None or not sc.store_url:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no store URL on sidecar")
         try:
             results, total = mb_lookup.candidate_summaries_for_url(sc.store_url)
+            if suggest and total == 1 and len(results) == 1:
+                release = mb_cache.fetch_release(results[0]["id"], max_age=mb_cache.FRESH)
+                candidate = match.assess_match(album.path, release)
+                current = sidecar_mod.read(album.path)
+                if current is None or current.mb_release_id or current.store_url != sc.store_url:
+                    raise mb_lookup.MBError("Album changed while the lookup ran")
+                sidecar_mod.write(album.path, replace(current, mb_match_candidate=candidate))
+                runner = request.app.state.scan_runner
+                if runner.is_engaged():
+                    runner.refresh_now()
+                return _flash_response(
+                    "Needs review", "Store URL match found — review and confirm", album=album
+                )
         except mb_lookup.MBError as e:
-            return _flash_response(
+            response = _flash_response(
                 "MB lookup failed",
                 str(e),
                 level=Level.ERROR,
                 tasks_changed=False,
                 album=album,
             )
+            response.headers["HX-Retarget"] = f"#mbid-results-{album.id}"
+            return response
         return _render_release_picker(
             request,
             album,
             results,
             total,
-            heading="Releases linked to this store URL",
+            heading=None,
             on_album_page=on_album_page,
+            review_only=suggest,
+            retarget=True,
+            store_url=sc.store_url,
         )
 
     @app.post("/manual/{album_id}/assign", response_class=HTMLResponse)
@@ -7219,6 +7245,7 @@ def _render_release_picker(
     on_album_page: bool = False,
     review_only: bool = False,
     barcode: str | None = None,
+    store_url: str | None = None,
 ) -> Response:
     """Render the shared candidate-release list (store-URL picker or name
     search). `retarget` rewrites the swap to the card's preserved results box —
@@ -7252,6 +7279,7 @@ def _render_release_picker(
             "on_album_page": on_album_page,
             "review_only": review_only,
             "barcode": barcode,
+            "store_url": store_url,
         },
         headers=headers,
     )

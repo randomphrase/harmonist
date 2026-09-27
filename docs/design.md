@@ -725,11 +725,14 @@ Notes:
 
 **Barcode discovery (#607)** is an additional adoption path for files without
 an MBID or recoverable Bandcamp URL. Scan fields retain every `UPC`/`BARCODE`
-value (including XLD's MP4 freeform `UPC` atom); a consistent, valid GTIN and
-artist/album identity across every file enables discovery. GTIN comparison uses
+value (including XLD's MP4 freeform `UPC` atom); a consistent, valid GTIN across
+every file enables discovery. GTIN comparison uses
 the validated, zero-padded 14-digit form; the search includes all equivalent
-8/12/13/14-digit spellings. Search hits must match the barcode and normalised
-artist/title exactly. One result becomes `mb_match_candidate`, always requiring
+8/12/13/14-digit spellings. Search hits must match the barcode exactly; artist,
+title and format differences are review evidence, never exclusion filters.
+This barcode-only scope is intentional: names in store metadata can differ from
+MusicBrainz and filtering by them hides valid releases or conceals ambiguity.
+One result becomes `mb_match_candidate`, always requiring
 review even when its track lengths are exact. Several results are never ranked
 into one suggestion; barcode search lists them for explicit choice,
 which also opens review. A truncated search cannot establish uniqueness.
@@ -752,6 +755,15 @@ Unique results use the existing suggestion panel; empty results offer the same
 Open in Harmony button as store-URL seeding. Dismissal on the album page returns
 to `?search=name`, avoiding an immediate automatic re-suggestion. Lookup failures
 render in the results area without reloading and retrying indefinitely.
+
+Public store URLs use the same search-mode control and automatic suggestion
+flow, defaulting to Store URL when no barcode is available. One URL-linked
+release is assessed from a fresh cached-client fetch and suggested, never tagged
+by the search itself. Multiple results remain choices; no result offers URL-seeded
+Harmony. Private Bandcamp URLs remain excluded. Switching modes clears the
+previous result list. Barcode discovery imposes no format restriction: an exact,
+unique barcode match may suggest a CD when no digital release is
+present. The medium format remains visible in the comparison and picker.
 
 A URL → MBID match from [MusicBrainz](https:://musicbrainz.org) is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
 
