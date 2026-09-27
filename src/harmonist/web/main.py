@@ -3259,7 +3259,12 @@ def _reassigns_release(files: Sequence[Path], mbid: str) -> bool:
 
 
 def _apply_best_match(
-    album_path: Path, mbids: list[str], cfg: config_mod.Config, tagger: Tagger
+    album_path: Path,
+    mbids: list[str],
+    cfg: config_mod.Config,
+    tagger: Tagger,
+    *,
+    review_only: bool = False,
 ) -> tuple[str, str]:
     """Fetch every candidate MB release, pick the best fit, then tag or stash.
 
@@ -3290,8 +3295,10 @@ def _apply_best_match(
         )
         return "ambiguous", message
 
-    if candidate.confidence == "exact" and not _reassigns_release(
-        album_files.audio_files(album_path), candidate.mb_release_id
+    if (
+        not review_only
+        and candidate.confidence == "exact"
+        and not _reassigns_release(album_files.audio_files(album_path), candidate.mb_release_id)
     ):
         _tag_with_release(album_path, candidate.mb_release_id, cfg, tagger)
         return "tagged", "Match exact — files tagged."
@@ -3878,18 +3885,21 @@ def _register_routes(app: FastAPI) -> None:
         # with any NEW album would always flash "Reconciling".)
         reconcile_status = request.app.state.reconcile_runner.status()
         # Auto-kick the reconciler ONLY when there's an orphan it can actually
-        # resolve: a NEW album whose tags carry an MBID, and which the user
+        # resolve: a NEW album whose tags carry an MBID or barcode, and which the user
         # hasn't Forgotten. Reconcile writes a sidecar for every such album, so
         # it leaves NEW — meaning a finished pass clears its own trigger and we
         # don't re-fire on incidental inbox refreshes (after a Recheck, a tag,
-        # etc.). Untagged orphans are never reconcilable, so they never kick it.
+        # etc.). Untagged orphans with no barcode do not kick it.
         forgotten: set[Path] = request.app.state.forgotten_paths
         # NEW (MBID-tagged) orphans get a sidecar; TAGGING albums (sidecar MBID
         # disagrees with the file tags — an external re-tag) get the file tags
         # adopted. Both are reconcile's job, so either kicks it.
         if any(
             a.path not in forgotten
-            and ((a.state == AlbumState.NEW and a.has_tag_mbid) or a.state == AlbumState.TAGGING)
+            and (
+                (a.state == AlbumState.NEW and (a.has_tag_mbid or a.barcode))
+                or a.state == AlbumState.TAGGING
+            )
             for a in albums
         ):
             request.app.state.reconcile_runner.start()
@@ -6875,6 +6885,60 @@ def _register_routes(app: FastAPI) -> None:
             on_album_page=on_album_page,
         )
 
+    @app.post("/manual/{album_id}/barcode", response_class=HTMLResponse)
+    def barcode_lookup(
+        request: Request, album_id: str, on_album_page: bool = Form(False)
+    ) -> Response:
+        from harmonist import barcodes
+
+        album = _find_album(request, album_id)
+        evidence = barcodes.evidence(
+            [formats.read_scan_fields(f) for f in album_files.for_paths(album.folders)]
+        )
+        if evidence is None or (album.sidecar and album.sidecar.mb_release_id):
+            return _flash_response(
+                "Barcode lookup unavailable",
+                "Requires an unmatched album with consistent barcode, artist and album tags",
+                level=Level.WARNING,
+                tasks_changed=False,
+                album=album,
+            )
+        try:
+            results, total = mb_search.search_barcode(evidence)
+            if total == 1 and len(results) == 1:
+                release = mb_cache.fetch_release(results[0]["id"], max_age=mb_cache.FRESH)
+                if not mb_search.matches_barcode(release, evidence):
+                    raise mb_search.MBSearchError(
+                        "Release metadata changed since the barcode search"
+                    )
+                ranking = match_releases(album.path, [release])
+                assert ranking is not None
+                current = sidecar_mod.read(album.path) or Sidecar(added_at=datetime.now(UTC))
+                if current.mb_release_id:
+                    raise mb_search.MBSearchError("Album was matched while the lookup ran")
+                sidecar_mod.write(album.path, replace(current, mb_match_candidate=ranking.best))
+                return _flash_response(
+                    "Needs review", "Barcode match found — review and confirm", album=album
+                )
+        except (mb_search.MBSearchError, mb_lookup.MBError) as exc:
+            return _flash_response(
+                "Barcode lookup failed",
+                str(exc),
+                level=Level.ERROR,
+                tasks_changed=False,
+                album=album,
+            )
+        return _render_release_picker(
+            request,
+            album,
+            results,
+            total,
+            heading="Releases matching your barcode, artist and album",
+            on_album_page=on_album_page,
+            review_only=True,
+            retarget=True,
+        )
+
     @app.post("/manual/{album_id}/candidates", response_class=HTMLResponse)
     def manual_candidates(
         request: Request, album_id: str, on_album_page: bool = Form(False)
@@ -6906,7 +6970,9 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/manual/{album_id}/assign", response_class=HTMLResponse)
-    def manual_assign(request: Request, album_id: str, mbid: str = Form(...)) -> Response:
+    def manual_assign(
+        request: Request, album_id: str, mbid: str = Form(...), review_only: bool = Form(False)
+    ) -> Response:
         album = _find_album(request, album_id)
         extracted = _extract_mbid(mbid)
         if not extracted:
@@ -6919,7 +6985,11 @@ def _register_routes(app: FastAPI) -> None:
             )
         try:
             status_str, msg = _apply_best_match(
-                album.path, [extracted], request.app.state.cfg, request.app.state.tagger
+                album.path,
+                [extracted],
+                request.app.state.cfg,
+                request.app.state.tagger,
+                review_only=review_only,
             )
         except mb_lookup.MBError as e:
             return _flash_response(
@@ -7140,6 +7210,7 @@ def _render_release_picker(
     heading: str | None,
     retarget: bool = False,
     on_album_page: bool = False,
+    review_only: bool = False,
 ) -> Response:
     """Render the shared candidate-release list (store-URL picker or name
     search). `retarget` rewrites the swap to the card's preserved results box —
@@ -7155,7 +7226,9 @@ def _render_release_picker(
     headers: dict[str, str] = {}
     if retarget:
         headers["HX-Retarget"] = f"#mbid-results-{album.id}"
-        headers["HX-Reswap"] = "innerHTML"
+        # Barcode choices must be initialized before their visible Use buttons
+        # can submit; the default settle delay leaves a native-GET race.
+        headers["HX-Reswap"] = "innerHTML settle:0ms" if review_only else "innerHTML"
     return _templates(request).TemplateResponse(
         request,
         "partials/manual_search_results.html",
@@ -7169,6 +7242,7 @@ def _render_release_picker(
             "local_track_count": album.track_count,
             "local_artist": album.artist,
             "on_album_page": on_album_page,
+            "review_only": review_only,
         },
         headers=headers,
     )

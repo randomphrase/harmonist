@@ -282,6 +282,11 @@ def read_scan_fields(path: Path) -> ScanFields:
     return ScanFields(
         album_title=_text_atom(audio, ATOM_ALBUM),
         comment=_text_atom(audio, ATOM_COMMENT),
+        barcodes=tuple(
+            value
+            for key in (ATOM_BARCODE, "----:com.apple.iTunes:UPC")
+            for value in _binary_atom_list(audio, key)
+        ),
         album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),
         artist=_text_atom(audio, ATOM_ARTIST),
         codec=codec,

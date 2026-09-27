@@ -19,8 +19,10 @@ and no MBID, so the album advances NEW → NEEDS_MBID (then, once tagged,
 NEEDS_SYNC picks up its Bandcamp item_id). Without this an untagged download
 would sit in NEW forever, or tag straight to COMPLETE and never sync.
 
-Pure: no globals. Caller injects `fetch_urls` (MB lookup) and `recover_url`
-(Bandcamp URL recovery) so tests don't need real network.
+When no store URL is embedded, consistent UPC/barcode and artist/album tags
+permit a bounded MusicBrainz search. A unique result is a review suggestion,
+never an automatic tag; an empty or ambiguous result still adopts the folder
+into Needs MBID with an explicit barcode lookup available.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from . import album_files, formats, url_recovery
+from . import album_files, barcodes, formats, match, mb_cache, mb_search, url_recovery
 from . import sidecar as sidecar_mod
 from .models import Album, Sidecar, is_bandcamp_url
 
@@ -108,16 +110,36 @@ def reconcile_album(
 def _reconcile_untagged(
     album_dir: Path, recover_url: Callable[[Path], str | None], now: datetime
 ) -> Sidecar | None:
-    """For an album with no MBID atom: recover its Bandcamp store URL (if any)
-    and record it. Returns the sidecar (NEEDS_MBID — no MBID, no tagged_at), or
-    None when no URL is recoverable (album stays an Orphan)."""
+    """Adopt an untagged album using a store URL or consistent barcode evidence.
+
+    Returns a Needs MBID sidecar (possibly with a barcode suggestion), or None
+    when neither source supplies identity. Discovery failures propagate.
+    """
     try:
         recovered = recover_url(album_dir)
     except Exception as e:
         log.warning("URL recovery failed for %s: %s", album_dir, e)
         return None
     if not recovered:
-        return None
+        evidence = barcodes.evidence(
+            [formats.read_scan_fields(f) for f in album_files.audio_files(album_dir)]
+        )
+        if evidence is None:
+            return None
+        results, total = mb_search.search_barcode(evidence)
+        # Adoption creates an ordinary Needs MBID album even when discovery is
+        # ambiguous/empty. It is not a negative search cache: explicit lookup
+        # always searches again. Existing sidecars bypass initial adoption.
+        sc = Sidecar(added_at=now)
+        if total == 1 and len(results) == 1:
+            release = mb_cache.fetch_release(results[0]["id"])
+            if not mb_search.matches_barcode(release, evidence):
+                raise mb_search.MBSearchError("Release metadata changed since the barcode search")
+            sc = replace(sc, mb_match_candidate=match.assess_match(album_dir, release))
+        if sidecar_mod.has_sidecar(album_dir):
+            return None  # a user action adopted the album while the lookup ran
+        sidecar_mod.write(album_dir, sc)
+        return sc
     sc = Sidecar(
         store_url=recovered,
         mb_release_id=None,  # untagged — lands in NEEDS_MBID, not NEEDS_SYNC

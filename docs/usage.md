@@ -46,6 +46,19 @@ It works best on a library that's already in reasonable shape. Harmonist assumes
   Album ID from your files to recognize what's matched; anything untagged lands in
   the inbox for you to match by hand.
 
+Albums without a MusicBrainz ID can carry a UPC/barcode instead, including
+Qobuz FLAC downloads and ALAC files transcoded with XLD. When all files carry
+the same valid barcode, artist and album identity, initial adoption searches
+MusicBrainz. A single matching release appears as a suggestion for you to
+review and confirm; barcode discovery never tags automatically. The comparison
+still shows differing track counts and lengths.
+
+**Look up barcode** repeats the search on demand and lists choices when several
+releases match. **Find barcode in Harmony** helps locate or contribute a missing
+release. Ordinary scans preserve existing suggestions and dismissals. Equivalent
+UPC/EAN forms (including a leading zero) count as the same barcode; missing,
+invalid or conflicting barcode tags leave the usual name/MBID tools available.
+
 **Recommended order:**
 
 1. **Get everything matched first.** Work through **Needs MBID** — this is the one

@@ -723,6 +723,29 @@ Notes:
 
 ### Match confidence (when MB has the URL but the files might not match)
 
+**Barcode discovery (#607)** is an additional adoption path for files without
+an MBID or recoverable Bandcamp URL. Scan fields retain every `UPC`/`BARCODE`
+value (including XLD's MP4 freeform `UPC` atom); a consistent, valid GTIN and
+artist/album identity across every file enables discovery. GTIN comparison uses
+the validated, zero-padded 14-digit form; the search includes all equivalent
+8/12/13/14-digit spellings. Search hits must match the barcode and normalised
+artist/title exactly. One result becomes `mb_match_candidate`, always requiring
+review even when its track lengths are exact. Several results are never ranked
+into one suggestion; the barcode lookup control lists them for explicit choice,
+which also opens review. A truncated search cannot establish uniqueness.
+
+Initial adoption runs on NEW albums, creates the normal Needs MBID sidecar,
+and never replaces an existing sidecar or dismissal. No barcode, search results,
+negative cache or additional state is persisted. The derived `Album.barcode`
+drives the lookup and Harmony links, preserving the spelling in the file tags
+because Qobuz's Harmony search does not accept GTIN-14 padding. Explicit lookup
+always searches again and fetches a unique release through `mb_cache` with
+`FRESH`; initial assessment may
+use the cache. One search (at most 100 summaries) and at most one by-id fetch
+bound each lookup; ambiguous/empty searches fetch no full releases. Failures
+remain failures and do not record a completed adoption. Demo mode patches this
+search entry point as well as the existing name search.
+
 A URL → MBID match from [MusicBrainz](https:://musicbrainz.org) is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
 
 - **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote an initial match: write `mb_release_id`, run tagger, transition to Tagging → Complete with no user intervention. If files already name a different release, manual assignment and Recheck instead retain a suggestion so the user reviews its artwork before reassignment (#483).

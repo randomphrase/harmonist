@@ -14,7 +14,7 @@ from typing import Any
 
 import musicbrainzngs
 
-from . import mb_lookup
+from . import barcodes, mb_lookup
 from .models import Release
 
 log = logging.getLogger(__name__)
@@ -22,6 +22,43 @@ log = logging.getLogger(__name__)
 
 class MBSearchError(Exception):
     pass
+
+
+def matches_barcode(release: Release, evidence: barcodes.Evidence) -> bool:
+    """Check search hits and fetched snapshots against the same local evidence."""
+    artist = release.get("artist-credit-phrase") or _extract_artist(release)
+    return (
+        barcodes.normalise(release.get("barcode") or "") == barcodes.normalise(evidence.barcode)
+        and barcodes.text_key(artist) == barcodes.text_key(evidence.artist)
+        and barcodes.text_key(release.get("title") or "") == barcodes.text_key(evidence.title)
+    )
+
+
+def search_barcode(evidence: barcodes.Evidence) -> tuple[list[dict[str, Any]], int]:
+    """One bounded, uncached search; verify identity instead of trusting score.
+
+    Query every equivalent spelling. A truncated answer cannot prove uniqueness;
+    its total remains the unfiltered count so callers offer choices instead.
+    """
+    spellings = barcodes.variants(evidence.barcode)
+    if not spellings:
+        return [], 0
+    query = "barcode:(" + " OR ".join(spellings) + ")"
+    try:
+        response = musicbrainzngs.search_releases(query=query, limit=100)
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.ResponseError,
+        musicbrainzngs.AuthenticationError,
+    ) as exc:
+        raise MBSearchError(f"MusicBrainz barcode lookup failed: {exc}") from exc
+    releases = response.get("release-list", [])
+    total = int(response["release-count"])
+    results: dict[str, dict[str, Any]] = {}
+    for release in releases:
+        if matches_barcode(release, evidence):
+            results[release["id"]] = mb_lookup.release_summary(release)
+    return list(results.values()), total if total > len(releases) else len(results)
 
 
 def search_releases(artist: str, title: str, limit: int = 10) -> list[dict[str, Any]]:

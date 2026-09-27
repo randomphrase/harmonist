@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Albums with consistent UPC or barcode tags now get MusicBrainz suggestions during adoption, with ambiguous matches available to review (#607).
+
 - Artwork Fit sizes the selected image to the viewer, and opening or switching covers no longer focuses a popup menu (#604).
 
 ## [1.20.0] - 2026-09-24

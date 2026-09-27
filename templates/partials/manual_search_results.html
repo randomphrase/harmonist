@@ -54,6 +54,7 @@
                   hx-indicator="#tagging-{{ album_id }}"
                   {{ reload_on_success(on_album_page | default(false)) }}>
                 <input type="hidden" name="mbid" value="{{ r.id }}">
+                {% if review_only %}<input type="hidden" name="review_only" value="true">{% endif %}
                 <button type="submit"
                         class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-2xs font-bold uppercase tracking-widest transition whitespace-nowrap">
                     Use

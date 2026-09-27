@@ -1028,6 +1028,9 @@ def install() -> None:
     mb_lookup.browse_release_group_releases = browse_release_group_releases
     mb_lookup.browse_release_group_editions = browse_release_group_editions
     mb_search.search_releases = search_releases
+    # Barcode discovery is a separate search entry point; never let a demo
+    # file carrying a barcode reach the real MusicBrainz service.
+    mb_search.search_barcode = lambda evidence: ([], 0)
     cover_art.front_image = front_image
     cover_art.check_front = check_front
     cover_art.fetch_image = fetch_image

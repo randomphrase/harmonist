@@ -310,8 +310,10 @@ def reconcile_pending_orphans(
                 sc = reconcile.reconcile_album(
                     album.path, fetch_urls=fetch_urls, recover_url=recover
                 )
-            except Exception as e:
-                log.warning("Reconcile failed for %s: %s", label, e)
+            except Exception:
+                # Per-album boundary: one failure must not stop the rest of the
+                # adoption pass, but it must remain visible as a failed lookup.
+                log.exception("Reconcile failed for %s", label)
                 errors += 1
                 _report()
                 continue
@@ -361,7 +363,13 @@ def reconcile_pending_orphans(
                 recovered_url += 1
                 live_counts.move(AlbumState.NEW, AlbumState.NEEDS_MBID)
                 activity.record(
-                    "New → Needs MBID (recovered Bandcamp URL from tags)",
+                    (
+                        "New → Needs MBID (barcode match suggested for review)"
+                        if sc.mb_match_candidate
+                        else "New → Needs MBID (look up the barcode to choose a release)"
+                        if not sc.store_url
+                        else "New → Needs MBID (recovered Bandcamp URL from tags)"
+                    ),
                     album_id=sidecar.album_id_for(album.path),
                     album_label=feed_label,
                 )

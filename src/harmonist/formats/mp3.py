@@ -221,6 +221,12 @@ def read_scan_fields(path: Path) -> ScanFields:
     return ScanFields(
         album_title=_text(tags, "TALB"),
         comment=_comment_text(tags),
+        barcodes=tuple(
+            str(value)
+            for name in (TXXX_BARCODE, "UPC")
+            for frame in (tags.getall(f"TXXX:{name}") if tags is not None else [])
+            for value in frame.text
+        ),
         album_id=_txxx(tags, TXXX_ALBUM_ID),
         artist=_text(tags, "TPE1"),
         codec="MP3",

@@ -408,9 +408,12 @@ class Album:
     has_cover: bool = False
     # True if the tracks carry a MusicBrainz Album Id atom. For a NEW album
     # (no sidecar) this is what makes it *reconcilable* — reconcile derives a
-    # sidecar from the tag MBID. Untagged orphans (no MBID) are never
-    # reconcilable, so the inbox uses this to avoid kicking reconcile for them.
+    # sidecar from the tag MBID. Barcode evidence below is the other automatic
+    # adoption path; the inbox only kicks reconciliation for these two cases.
     has_tag_mbid: bool = False
+    # Consistent embedded GTIN, derived during the scan. Drives discovery and
+    # the barcode/Harmony controls; never copied into the sidecar.
+    barcode: str | None = None
     # The release's track count as the FILES report it (#195) — `trkn`/`disk`
     # totals, written by the tagging from MusicBrainz. Scanner-derived, never
     # persisted: it replaced a sidecar field holding the same number from the

@@ -282,6 +282,7 @@ class VorbisTagger:
         return ScanFields(
             album_title=first(KEY_ALBUM),
             comment=first(KEY_COMMENT),
+            barcodes=tuple(str(v) for key in (KEY_BARCODE, "UPC") for v in tags.get(key, [])),
             album_id=first(KEY_ALBUM_ID),
             artist=first(KEY_ARTIST),
             codec=codec,

@@ -16,7 +16,7 @@ from pathlib import Path
 from stat import S_ISREG
 from typing import NamedTuple
 
-from . import album_files, compare, contributions, formats, id_registry, url_recovery
+from . import album_files, barcodes, compare, contributions, formats, id_registry, url_recovery
 from .formats import quality
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecarError, UnsupportedSchemaVersionError
@@ -589,6 +589,7 @@ def build_album(
     fields = io.fields
     title = (fields[0].album_title if fields else None) or album_dir.name
     artist = _display_artist(fields)
+    barcode_evidence = barcodes.evidence(fields)
 
     # Inconsistency trumps sidecar-driven state — see design §15.2.
     # The sidecar is kept on disk; once the user fixes the on-disk tags
@@ -636,6 +637,7 @@ def build_album(
         # reconcile.reconcile_album reads). Lets the inbox skip kicking
         # reconcile for untagged orphans it could never resolve.
         has_tag_mbid=any(sf.album_id for sf in fields),
+        barcode=barcode_evidence.barcode if barcode_evidence else None,
         expected_track_count=expected.total,
         absent_media=expected.absent_media,
         disc_total=_consistent(f.disc_total for f in fields if not f.unreadable),

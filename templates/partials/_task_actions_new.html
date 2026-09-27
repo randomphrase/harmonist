@@ -31,6 +31,7 @@
    (New albums kick auto-reconcile, which polls) can't wipe in-progress
    search results — they live only in the DOM. #}
 <div id="newtools-{{ album.id }}" hx-preserve="true" class="space-y-2">
+    {% include 'partials/_barcode_tools.html' %}
     <p class="text-muted font-bold uppercase tracking-widest text-2xs">Search MusicBrainz by name</p>
     {% include 'partials/_name_search.html' %}
     <div id="mbid-results-{{ album.id }}" class="mt-2"></div>

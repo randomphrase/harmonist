@@ -25,6 +25,7 @@ _PRISTINE_GLOBALS = {
     (mb_lookup, "browse_release_group_editions"): mb_lookup.browse_release_group_editions,
     (mb_lookup, "lookup_by_bandcamp_url"): mb_lookup.lookup_by_bandcamp_url,
     (mb_search, "search_releases"): mb_search.search_releases,
+    (mb_search, "search_barcode"): mb_search.search_barcode,
     (cover_art, "front_image"): cover_art.front_image,
     (cover_art, "check_front"): cover_art.check_front,
     (cover_art, "fetch_image"): cover_art.fetch_image,

@@ -81,6 +81,8 @@ class ScanFields(NamedTuple):
     # other field on an unreadable one.
     quality: AudioQuality = AudioQuality()
     comment: str | None = None
+    # Preserve every alias/value until album-wide consistency is checked.
+    barcodes: tuple[str, ...] = ()
 
 
 @dataclass

@@ -8,6 +8,7 @@
 {% set sc = album.sidecar %}
 {% set _private = sc and sc.bandcamp and sc.bandcamp.is_private %}
 {% set on_album = on_album_page | default(false) %}
+{% include 'partials/_barcode_tools.html' %}
 {% if sc and sc.store_url and not _private %}
 <div class="flex gap-2 flex-wrap mb-3">
     <a href="{{ harmony_base }}/release?url={{ sc.store_url|urlencode }}"
