@@ -1445,6 +1445,47 @@ def test_mp3_scan_fields_read_the_totals(tmp_path, trck, tpos, want_track_total,
     assert sf.disc_total == want_disc_total
 
 
+@pytest.mark.parametrize(("ext", "fixture"), FIXTURES)
+@pytest.mark.parametrize("mb_barcode", [None, "0801061000639"])
+def test_source_upc_survives_tagging_and_owned_writes(tmp_path, ext, fixture, mb_barcode):
+    """Purchase evidence survives even when MB lacks it or gives another value."""
+    from mutagen import File
+    from mutagen.id3 import TXXX
+
+    folder = _make_album(tmp_path, fixture)
+    path = next(folder.glob(f"*{ext}"))
+    audio = File(path)
+    if audio.tags is None:
+        audio.add_tags()
+    upc = "0801061000332"
+    if ext == ".m4a":
+        key = "----:com.apple.iTunes:UPC"
+        audio[key] = [upc.encode()]
+    elif ext == ".mp3":
+        key = "TXXX:UPC"
+        audio.tags.add(TXXX(encoding=3, desc="UPC", text=[upc]))
+    else:
+        key = "UPC"
+        audio[key] = [upc]
+    audio.save()
+
+    def read_upc():
+        value = File(path).tags[key]
+        if ext == ".m4a":
+            return [bytes(v).decode() for v in value]
+        if ext == ".mp3":
+            return list(value.text)
+        return list(value)
+
+    release = _release_one_track()
+    release["barcode"] = mb_barcode
+    tag_album(folder, release)
+    assert read_upc() == [upc]
+    # Reviewed changes and undo use the owned-field writer instead of write_tags.
+    formats.write_owned(path, formats.read_owned(path))
+    assert read_upc() == [upc]
+
+
 # ---------- a second tagging is a real no-op, per format (#266) ----------
 
 
