@@ -1065,10 +1065,11 @@ additional cached by-id fetch. Only wholly Digital Media sibling editions are li
 with exact host-scoped store-link status and descriptive edition details in a
 scrolling list. Name, barcode, store-URL and sibling pickers share one candidate
 row renderer and mismatch cues, while retaining their existing assignment or
-review actions. Evidence labels use Matches / Doesn’t match; missing barcode
-data and private URLs remain distinct from a known mismatch. The current release group is assumed correct. A complete search
+review actions. Positive evidence labels, Store URL matches / Barcode matches,
+sit beside Use; other rows have no match label. Private-download and incomplete
+search notices remain on the containing panel. The current release group is assumed correct. A complete search
 with exactly one digital edition matching the source URL or original UPC, whose track count matches the files,
-highlights that row as **Suggested** alongside the other choices. These
+highlights that row alongside the other choices. These
 are candidates to review, never automatic matches. Truncation and unspecified
 media prevent a claim of absence, and failures remain distinct from no results.
 The search has no persistent results or cached negatives; repeating it asks MB

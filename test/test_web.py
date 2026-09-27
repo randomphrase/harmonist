@@ -1752,7 +1752,7 @@ def test_recheck_multiple_matches_shows_picker_not_autopick(client, cfg, monkeyp
     )
     r = client.post(f"/recheck/{aid}")
     assert r.status_code == 200
-    assert r.text.count("Store URL: Matches") == 2
+    assert r.text.count("Store URL matches") == 2
     # The button posts with hx-swap=none, so the response retargets the picker.
     assert r.headers.get("HX-Retarget") == f"#mbid-results-{aid}"
     assert r.headers.get("HX-Reswap") == "innerHTML"

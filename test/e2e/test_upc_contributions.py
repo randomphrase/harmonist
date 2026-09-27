@@ -31,7 +31,7 @@ def test_upc_sibling_review_and_missing_barcode(upc_contribution_server):
         ).to_have_value(UPC)
         results = panel.get_by_role("region", name="Digital editions")
         suggested = results.get_by_role("listitem", name="Suggested digital release")
-        playwright_sync.expect(suggested).to_contain_text("Barcode: Matches")
+        playwright_sync.expect(suggested).to_contain_text("Barcode matches")
         assert len(discoveries) == 1
         playwright_sync.expect(panel.get_by_role("link", name="Add Release")).to_have_count(0)
         before = file.read_bytes()

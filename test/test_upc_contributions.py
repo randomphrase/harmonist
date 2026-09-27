@@ -150,7 +150,7 @@ def test_upc_siblings_use_one_fresh_scoped_browse_and_review(upc_library, monkey
         suggestion = page.select_one('[role="listitem"][aria-label="Suggested digital release"]')
         assert bool(suggestion) is (kind == "unique")
         if suggestion:
-            assert "Barcode: Matches" in suggestion.text
+            assert "Barcode matches" in suggestion.text
             button = suggestion.select_one("button")
             assert button is not None and "replacement=" in button["hx-get"]
         if kind == "empty":

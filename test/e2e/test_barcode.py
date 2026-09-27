@@ -39,7 +39,7 @@ def test_barcode_choices_open_review_without_tagging(barcode_server):
             page.get_by_role("radio", name="Barcode", exact=True).check()
         playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
         playwright_sync.expect(results.get_by_role("listitem").first).to_contain_text(
-            "Barcode: Matches"
+            "Barcode matches"
         )
         playwright_sync.expect(results.get_by_role("button", name="Use", exact=True)).to_have_count(
             2

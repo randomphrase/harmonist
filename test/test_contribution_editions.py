@@ -166,7 +166,7 @@ def test_suggestion_requires_one_exact_url_and_matching_count(library, monkeypat
     suggestion = page.select_one('[role="listitem"][aria-label="Suggested digital release"]')
     assert bool(suggestion) is (kind == "unique")
     if suggestion:
-        assert "Suggested" in suggestion.text
+        assert "Store URL matches" in suggestion.text
         assert "bg-amber-50/40" in suggestion["class"]
     assert len(page.select('[role="listitem"]')) == 2
     assert len(page.select('[role="listitem"] button[hx-get]')) == 2
@@ -451,7 +451,7 @@ def test_discovery_is_scoped_read_only_fresh_and_keeps_multiple_editions(library
         r = client.get(f"/library/{MBID}/contributions/editions")
         assert r.status_code == 200
         assert 'release/digital"' in r.text and 'release/digital-reissue"' in r.text
-        assert "Store URL: Matches" in r.text and "Store URL: Doesn’t match" in r.text
+        assert "Store URL matches" in r.text
         assert f'release/{MBID}"' not in r.text
         assert "Add Release" not in r.text
     assert browse.call_count == 2

@@ -105,10 +105,10 @@ match may also mean the appropriate digital edition is missing or your files are
 matched to the wrong edition. For either finding, other digital editions from
 the same release group appear automatically in a scrolling list using the same
 release rows as Name, Barcode and Store URL search. Each row shows media,
-disambiguation, track count and release details. Store URL and barcode evidence
-use **Matches** or **Doesn’t match**, with unavailable or private evidence labelled separately. A single
-edition with the same store URL or original UPC, and the same track count, is highlighted as **Suggested**
-beside its **Use** button.
+disambiguation, track count and release details. Positive evidence appears as
+**Store URL matches** or **Barcode matches** beside **Use**; other rows have no
+match label. A single edition with the same store URL or original UPC, and the
+same track count, is highlighted.
 Equivalent UPC/EAN spellings count as agreement. Barcodes can be reused between
 editions, so review the tracklist and durations before confirming. Other digital
 siblings remain available even when MB has not recorded their barcode or URL.

@@ -162,14 +162,18 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
             page.get_by_role("button", name="Read this release from MusicBrainz again", exact=True)
         ).to_be_enabled()
         playwright_sync.expect(results).to_contain_text("Bandcamp download")
-        playwright_sync.expect(results).to_contain_text("Store URL: Matches")
+        playwright_sync.expect(results).to_contain_text("Store URL matches")
         playwright_sync.expect(results).to_contain_text("Digital reissue")
         playwright_sync.expect(
             results.get_by_role("region", name="Digital editions")
         ).to_be_visible()
         playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
         assert len(discoveries) == 3
-        playwright_sync.expect(results).to_contain_text("Store URL: Doesn’t match")
+        playwright_sync.expect(
+            results.get_by_role("listitem")
+            .filter(has_text="Digital reissue")
+            .get_by_text("Store URL matches", exact=True)
+        ).to_have_count(0)
         # Review replaces the choices inline without changing the confirmed
         # match. Returning restores both the choices and the ordinary findings.
         suggestion = results.get_by_role("listitem", name="Suggested digital release")

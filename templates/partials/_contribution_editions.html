@@ -38,9 +38,7 @@
     <div class="space-y-1" role="list" aria-label="Release candidates">
         {% for edition in editions %}
             {% set suggested = suggested_edition and edition.id == suggested_edition.id %}
-            {% set store_match = ('Matches' if edition.store_linked is sameas true else 'Doesn’t match' if edition.store_linked is sameas false else 'Private download' if contribution.private else 'Unknown') if contribution.store_url else none %}
-            {% set barcode_match = ('Matches' if edition.upc_matches else 'Doesn’t match' if edition.barcode else 'No barcode' if edition.barcode == '' else 'Unknown') if contribution.source_upc else none %}
-            {% call release_candidate(edition, album.track_count, album.artist, suggested, store_match, barcode_match) %}
+            {% call release_candidate(edition, album.track_count, album.artist, suggested, edition.store_linked is sameas true, edition.upc_matches is sameas true) %}
                 {{ use_edition(edition, suggested) }}
             {% endcall %}
         {% endfor %}

@@ -6,7 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
-- Release search and sibling suggestions share a compact picker with consistent store URL and barcode match labels (#615).
+- Release search and sibling suggestions share a compact picker with positive store URL and barcode match labels beside Use (#615).
 
 - Missing store links are checked across sibling releases before offering a MusicBrainz edit, with already-linked editions offered for review (#612).
 

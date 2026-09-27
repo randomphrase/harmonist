@@ -12,8 +12,8 @@ pw = pytest.importorskip("playwright.sync_api")
 def _open(page, base, review):
     page.goto(f"{base}/album/demo-rel-dingoes")
     if review:
-        page.locator("#contribution-editions-demo-rel-dingoes").get_by_role("listitem").filter(
-            has_text="Suggested"
+        page.locator("#contribution-editions-demo-rel-dingoes").get_by_role(
+            "listitem", name="Suggested digital release"
         ).get_by_role("button", name="Use", exact=True).click()
         host = page.get_by_role("region", name="Review suggested release").locator(
             ".assignment-artwork"
