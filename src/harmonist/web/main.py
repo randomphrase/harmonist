@@ -4637,7 +4637,7 @@ def _register_routes(app: FastAPI) -> None:
         error = None
         sc = album.sidecar
         if not contribution.eligible or sc is None or not sc.mb_release_id:
-            error = "No confirmed Bandcamp download to check."
+            error = "No confirmed download with source evidence to check."
         else:
             try:
                 release = mb_cache.stored_release(sc.mb_release_id)
@@ -4650,7 +4650,7 @@ def _register_routes(app: FastAPI) -> None:
                 else:
                     releases, total = mb_lookup.browse_release_group_editions(str(group_id))
                     editions, unknown = contributions.digital_editions(releases, contribution)
-                    editions.sort(key=lambda edition: edition["store_linked"] is not True)
+                    editions.sort(key=lambda edition: not edition["source_matches"])
                     truncated = total > len(releases)
             except mb_lookup.ReleaseGoneError:
                 error = "MusicBrainz no longer has this release. Review its match."
@@ -4674,7 +4674,7 @@ def _register_routes(app: FastAPI) -> None:
                     if not error
                     and not truncated
                     and not unknown
-                    and len(linked := [e for e in editions if e["store_linked"] is True]) == 1
+                    and len(linked := [e for e in editions if e["source_matches"]]) == 1
                     and linked[0]["track_count"] == album.track_count
                     else None
                 ),

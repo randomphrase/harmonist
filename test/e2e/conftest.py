@@ -123,6 +123,13 @@ def barcode_outcome_server(tmp_path, monkeypatch, request):
 
 
 @pytest.fixture(scope="module")
+def upc_contribution_server(tmp_path_factory):
+    root = tmp_path_factory.mktemp("e2e-upc-contribution")
+    for base in _run_demo_server(root, app_module="test.e2e.upc_contribution_app:app"):
+        yield base, root / "harmonist-demo"
+
+
+@pytest.fixture(scope="module")
 def public_demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, Path]]:
     """Exercise the recording catalogue through the ordinary application entry point."""
     root = tmp_path_factory.mktemp("e2e-public")

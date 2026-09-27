@@ -9,11 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from . import mb_cache, mb_lookup
+from . import barcodes, mb_cache, mb_lookup
 from .models import Album, Release
+
+BarcodeStatus = Literal["missing", "barcode_free", "different", "same"]
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,8 @@ class Observation:
     formats: tuple[str, ...]
     urls: frozenset[str]
     checked_at: datetime | None
+    # None is unknown; an explicitly empty MB barcode means barcode-free.
+    barcode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -32,11 +36,17 @@ class Assessment:
     media_mismatch: bool | None = None
     missing_url: bool | None = None
     observation: Observation | None = None
+    source_upc: str | None = None
+    barcode_status: BarcodeStatus | None = None
 
     @property
     def has_findings(self) -> bool:
         return self.media_mismatch is True or (
-            self.media_mismatch is False and self.missing_url is True
+            self.media_mismatch is False
+            and (
+                self.missing_url is True
+                or self.barcode_status in {"missing", "barcode_free", "different"}
+            )
         )
 
 
@@ -74,7 +84,8 @@ def assess(album: Album) -> Assessment:
     sc = album.sidecar
     if sc is None or not sc.mb_release_id:
         return Assessment()
-    if not sc.bandcamp_downloaded and not album.bandcamp_comment_urls:
+    bandcamp = sc.bandcamp_downloaded or bool(album.bandcamp_comment_urls)
+    if not bandcamp and not album.source_upc:
         return Assessment()
     private = bool(sc.bandcamp and sc.bandcamp.is_private)
     comments = {u for raw in album.bandcamp_comment_urls if (u := release_url(raw))}
@@ -84,7 +95,7 @@ def assess(album: Album) -> Assessment:
     if url is None:
         if len(comments) == 1:
             url = next(iter(comments))
-        elif not comments:
+        elif not comments and bandcamp:
             url = release_url(sc.store_url)
     observed = album.contribution_observation
     if observed is not None and observed.mbid != sc.mb_release_id:
@@ -98,7 +109,26 @@ def assess(album: Album) -> Assessment:
             media = False
         if url and not private:
             missing = url not in observed.urls
-    return Assessment(True, private, url, media, missing, observed)
+    barcode_status: BarcodeStatus | None = None
+    if observed is not None and album.source_upc:
+        if observed.barcode is None:
+            barcode_status = "missing"
+        elif observed.barcode == "":
+            barcode_status = "barcode_free"
+        elif barcodes.normalise(observed.barcode) == barcodes.normalise(album.source_upc):
+            barcode_status = "same"
+        else:
+            barcode_status = "different"
+    return Assessment(
+        eligible=True,
+        private=private,
+        store_url=url,
+        media_mismatch=media,
+        missing_url=missing,
+        observation=observed,
+        source_upc=album.source_upc,
+        barcode_status=barcode_status,
+    )
 
 
 def observe(album: Album, release: Release, checked_at: datetime | None) -> None:
@@ -116,6 +146,7 @@ def observe(album: Album, release: Release, checked_at: datetime | None) -> None
             if (url := release_url(rel.get("target")))
         ),
         checked_at,
+        release.get("barcode"),
     )
 
 
@@ -148,14 +179,26 @@ def digital_editions(
             for rel in (release.get("url-relation-list") or [])
             if (url := release_url(rel.get("target")))
         }
+        store_linked = (
+            assessment.store_url in urls
+            if assessment.store_url and not assessment.private
+            else None
+        )
+        upc_matches = (
+            barcodes.normalise(release.get("barcode") or "")
+            == barcodes.normalise(assessment.source_upc)
+            if assessment.source_upc
+            else None
+        )
         editions.append(
             {
                 **mb_lookup.release_summary(release),
-                "store_linked": (
-                    assessment.store_url in urls
-                    if assessment.store_url and not assessment.private
-                    else None
-                ),
+                "store_linked": store_linked,
+                "barcode": release.get("barcode"),
+                "upc_matches": upc_matches,
+                # Either original identifier can support a reviewed suggestion.
+                # Keep siblings with missing evidence visible for manual choice.
+                "source_matches": store_linked is True or upc_matches is True,
             }
         )
     return editions, unknown

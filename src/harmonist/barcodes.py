@@ -33,17 +33,21 @@ class Evidence:
     barcode: str
 
 
-def evidence(fields: Sequence[ScanFields]) -> Evidence | None:
+def evidence(fields: Sequence[ScanFields], *, source_only: bool = False) -> Evidence | None:
     """Require a consistent valid barcode on every readable file.
 
     Keep all barcode aliases until this decision: a BARCODE/UPC conflict within
     one file is as disqualifying as disagreement between two files.
+
+    For contribution review, literal UPC alone is original download evidence;
+    an owned BARCODE supplied by a previous MB tagging cannot contradict it.
     """
-    if not fields or any(f.unreadable or not f.barcodes for f in fields):
+    values = [f.source_upcs if source_only else f.barcodes for f in fields]
+    if not fields or any(f.unreadable for f in fields) or not all(values):
         return None
-    codes = {normalise(value) for f in fields for value in f.barcodes}
+    codes = {normalise(value) for tags in values for value in tags}
     if None in codes or len(codes) != 1:
         return None
     # Keep the original spelling for Harmony: Qobuz's literal barcode search
     # does not find a 13-digit UPC when given its equivalent padded GTIN-14.
-    return Evidence(fields[0].barcodes[0].strip())
+    return Evidence(values[0][0].strip())

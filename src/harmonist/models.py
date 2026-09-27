@@ -414,6 +414,9 @@ class Album:
     # Consistent embedded GTIN, derived during the scan. Drives discovery and
     # the barcode/Harmony controls; never copied into the sidecar.
     barcode: str | None = None
+    # Consistent literal UPC on every file, independent of owned BARCODE.
+    # Original download provenance for contributions; derived, never persisted.
+    source_upc: str | None = None
     # The release's track count as the FILES report it (#195) — `trkn`/`disk`
     # totals, written by the tagging from MusicBrainz. Scanner-derived, never
     # persisted: it replaced a sidecar field holding the same number from the

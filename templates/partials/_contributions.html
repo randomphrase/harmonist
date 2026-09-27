@@ -5,8 +5,9 @@
 <section class="border border-line rounded-lg p-4 space-y-3" aria-label="MusicBrainz contributions">
     <h2 class="text-sm font-bold text-ink uppercase tracking-widest">MB contributions</h2>
     {% if contribution.media_mismatch %}
-    <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These files are a Bandcamp download, but the matched MusicBrainz release is listed as {{ contribution.observation.formats | join(' + ') }}. A digital edition may be a better match.</p>
-    {% elif contribution.missing_url %}
+    <p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These files are a {% if contribution.source_upc %}digital{% else %}Bandcamp{% endif %} download, but the matched MusicBrainz release is listed as {{ contribution.observation.formats | join(' + ') }}. A digital edition may be a better match.</p>
+    {% else %}
+    {% if contribution.missing_url %}
     <p class="text-sm text-ink"><strong>Store URL missing from MusicBrainz.</strong> This release has no link to the download.</p>
     <div class="flex flex-wrap items-center gap-2">
         <input type="text" readonly value="{{ contribution.store_url }}" aria-label="Store URL to copy"
@@ -15,9 +16,34 @@
            class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Edit store link on MusicBrainz ↗</a>
     </div>
     {% endif %}
+    {% if contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
+    <p class="text-sm text-ink">
+        {% if contribution.barcode_status == 'missing' %}
+        <strong>Barcode missing from MusicBrainz.</strong> Review the original UPC against this edition before adding it.
+        {% elif contribution.barcode_status == 'barcode_free' %}
+        <strong>MusicBrainz explicitly has no barcode for this release.</strong> The original UPC disagrees; check the edition before editing it.
+        {% else %}
+        <strong>Barcode differs from MusicBrainz.</strong> MusicBrainz has <span class="font-mono">{{ contribution.observation.barcode }}</span>. Check the edition before editing it.
+        {% endif %}
+    </p>
+    {% endif %}
+    {% endif %}
+    {% if contribution.source_upc %}
+    <div class="space-y-2 text-xs">
+        <label for="source-upc-{{ album.id }}" class="block text-muted">Original UPC tag · {{ album.track_count }} file{{ 's' if album.track_count != 1 else '' }}</label>
+        <div class="flex flex-wrap items-center gap-2">
+        <input id="source-upc-{{ album.id }}" type="text" readonly value="{{ contribution.source_upc }}" aria-label="Original UPC to copy"
+               onclick="this.select()" class="min-w-0 flex-grow px-3 py-1.5 border border-line rounded bg-surface text-ink font-mono">
+        {% if not contribution.media_mismatch and contribution.barcode_status in ['missing', 'barcode_free', 'different'] %}
+        <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit" target="_blank" rel="noopener"
+           class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">{{ 'Add barcode' if contribution.barcode_status == 'missing' else 'Review barcode' }} on MusicBrainz ↗</a>
+        {% endif %}
+        </div>
+    </div>
+    {% endif %}
     {% if contribution.private %}
     <p class="text-xs text-muted">Private Bandcamp download: check the mix; its URL stays private.</p>
-    {% elif not contribution.store_url %}
+    {% elif not contribution.store_url and not contribution.source_upc %}
     <p class="text-xs text-muted">No unambiguous album or track URL is known. The store URL check is incomplete.</p>
     {% endif %}
     {% if contribution.media_mismatch %}

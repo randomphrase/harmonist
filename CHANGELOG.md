@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Original UPC tags identify downloads matched to physical editions, suggest digital siblings and expose missing or conflicting MusicBrainz barcodes for review (#608).
+
 - Release search and MBID entry stay hidden until the current suggestion is dismissed (#610).
 
 - Albums with consistent UPC or barcode tags automatically search MusicBrainz and suggest unique matches, with Name/Barcode/Store URL search options and seeded Harmony lookup for missing releases (#607).

@@ -282,6 +282,12 @@ def read_scan_fields(path: Path) -> ScanFields:
     return ScanFields(
         album_title=_text_atom(audio, ATOM_ALBUM),
         comment=_text_atom(audio, ATOM_COMMENT),
+        # Keep malformed values as invalid evidence instead of dropping one
+        # beside a valid value and falsely claiming complete agreement.
+        source_upcs=tuple(
+            bytes(v).decode("utf-8", "replace")
+            for v in (audio.get("----:com.apple.iTunes:UPC") or [])
+        ),
         barcodes=tuple(
             value
             for key in (ATOM_BARCODE, "----:com.apple.iTunes:UPC")

@@ -1011,17 +1011,21 @@ fields don't go here.
 ### MusicBrainz contributions (#10)
 
 Contribution checks use one optional **MB contributions** Library filter
-(either finding qualifies) and an album-page section,
+(any actionable finding qualifies) and an album-page section,
 separate from tag-update findings and their Ignore state. Eligibility requires
-a confirmed MBID plus actual download provenance (`bandcamp_downloaded`) or a
-Bandcamp URL in the files' comments. The scanner reads those comments through
-its existing single-open format readers; purchase ownership or a URL recovered
-from MusicBrainz alone cannot qualify a CD rip.
+a confirmed MBID plus actual download provenance (`bandcamp_downloaded`), a
+Bandcamp URL in the files' comments, or consistent valid literal UPC tags on
+every file (#608). The scanner reads those tags through its existing single-open
+format readers; purchase ownership, owned BARCODE tags or a URL recovered from
+MusicBrainz alone cannot qualify a CD rip. Original UPC establishes digital-download
+provenance independently of BARCODE, which may describe a previous MB edition.
+Missing, unreadable, invalid or conflicting UPC evidence cannot qualify. Merged
+albums require agreement across all parts; separate copies retain their own evidence.
 
 `contributions.assess` derives possible-media-mismatch and missing-store-URL
-observations from each local copy's evidence and an MB observation. Only one
-contribution is actionable at a time: physical/mixed media takes precedence;
-missing-link editing is offered only for a confirmed digital release. Unknown
+observations from each local copy's evidence and an MB observation, plus missing
+or discrepant barcodes against the original UPC. Physical/mixed media takes precedence;
+missing-link and barcode editing are offered only for a confirmed digital release. Unknown
 media remains unchecked rather than inviting a link edit on an uncertain edition.
 Non-digital media, including mixed editions, invite review. Unspecified media
 remain unknown. URL equality retains the host and album/track path, normalizing
@@ -1029,6 +1033,13 @@ scheme, trailing slash and tracking parameters. A precise file-comment URL wins
 over an MB-derived sidecar URL; conflicting precise comments remain unresolved.
 An actual Harmonist download uses its captured store URL, including custom
 domains. Root URLs prove likely provenance but cannot establish release identity.
+
+The MB observation retains the raw barcode: absent/None is unknown, empty is
+explicitly barcode-free. Valid UPC/EAN/GTIN spellings compare by zero-padded
+GTIN-14. A different or explicitly absent barcode invites investigation; only
+unknown barcode data invites adding the original UPC. Source UPC and its coverage
+are displayed separately from the owned-tag comparison. Neither contribution
+assessment nor discovery writes tags, sidecars or persisted conclusions.
 
 The full MB fetch includes `url-rels` alongside media. Its durable cache row and
 fetch timestamp are the observation; no persisted conclusion or duplicate MB
@@ -1052,7 +1063,7 @@ The current release's stored payload supplies the group; a missing payload costs
 additional cached by-id fetch. Only wholly Digital Media editions are listed,
 with exact host-scoped store-link status and descriptive edition details in a
 scrolling table. The current release group is assumed correct. A complete search
-with exactly one URL-linked digital edition whose track count matches the files
+with exactly one digital edition matching the source URL or original UPC, whose track count matches the files,
 highlights that row as **Suggested** alongside the other choices. These
 are candidates to review, never automatic matches. Truncation and unspecified
 media prevent a claim of absence, and failures remain distinct from no results.
@@ -1062,6 +1073,9 @@ failures direct the user to that same header control to retry. A complete
 empty public search offers Harmony. When existing candidates are listed,
 the same **Add Release** link remains visible beside **Browse all releases**
 for importing another release if the user judges that none fits.
+Original UPC seeds Harmony's Qobuz/Deezer lookup when available; otherwise the
+public store URL is used. Barcode equality never bypasses the shared track review:
+editions may reuse a barcode while their recordings or durations differ.
 Private downloads never send their URL to a lookup or Harmony.
 
 **Use** on any row replaces the contribution choices with the shared inline
@@ -1081,13 +1095,18 @@ request validates the original MBID and the cached target's digital media and
 release group. Initial review may fetch one full release through `mb_cache`;
 continuation and confirmation use its reviewed snapshot without network access.
 Confirmation uses the existing audited tagger, scoped to this local copy. After
-tagging, its new release may raise the missing-link contribution.
+tagging, its new release may raise missing-link or barcode contributions.
 
 **Edit store link on MusicBrainz** opens the current release's editor with a
 selectable URL to copy. The existing header refresh verifies the eventual edit.
 MusicBrainz's release-editor seeding implementation applies URL relationships
 only when adding a release, so this path does not claim to prefill an existing
 release edit. No URL is published automatically.
+The barcode action likewise opens the existing release editor with a selectable
+original UPC beside it; no edit is submitted automatically. Literal UPC remains
+unowned and survives tagging, replacement and undo. Owned BARCODE retains its
+canonical clear-before-write policy, shared by previews, plans and undo; #608
+does not preserve arbitrary BARCODE values as source evidence or copy them to UPC.
 
 Private downloads can still warrant media review, but their URLs are not
 missing-link contribution opportunities and are never sent to Harmony. The

@@ -221,6 +221,11 @@ def read_scan_fields(path: Path) -> ScanFields:
     return ScanFields(
         album_title=_text(tags, "TALB"),
         comment=_comment_text(tags),
+        source_upcs=tuple(
+            str(value)
+            for frame in (tags.getall("TXXX:UPC") if tags is not None else [])
+            for value in frame.text
+        ),
         barcodes=tuple(
             str(value)
             for name in (TXXX_BARCODE, "UPC")

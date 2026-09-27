@@ -83,11 +83,14 @@ details in the review before confirming a release.
 
 ## Contributing missing release information
 
-The Library's **MB contributions** filter collects albums with either
-a possible media mismatch or a missing store URL on MusicBrainz. It uses evidence
-that your files are Bandcamp downloads: a Bandcamp URL in their comments, or an
-actual download recorded by Harmonist. Owning a Bandcamp purchase alone does not qualify a CD rip.
-Older downloads without either kind of evidence are not assumed to qualify.
+The Library's **MB contributions** filter collects albums with a possible media
+mismatch, a missing store URL, or missing or conflicting barcode information on
+MusicBrainz. Download evidence is a Bandcamp URL in the files' comments, an actual
+Bandcamp download recorded by Harmonist, or a consistent original **UPC** tag on
+every file, such as Qobuz supplies (including ALAC converted with XLD). Owning a
+Bandcamp purchase alone does not qualify a CD rip. A standard **BARCODE** tag
+alone does not prove a download: it may have come from a previous MB tagging.
+Missing, unreadable, invalid or conflicting original UPC evidence does not qualify.
 
 Open an album's **MB contributions** section to see the findings. The
 album header's **MB checked** date and refresh control cover these findings too;
@@ -101,8 +104,11 @@ added. A physical-media match may mean the appropriate digital edition is missin
 or your files are matched to the wrong edition. Resolve the media mismatch first:
 digital editions from the same release group appear automatically in a scrolling
 table with media, disambiguation, track count and release details. A single
-edition with the same store URL and track count is highlighted as **Suggested**
+edition with the same store URL or original UPC, and the same track count, is highlighted as **Suggested**
 above its **Use** button.
+Equivalent UPC/EAN spellings count as agreement. Barcodes can be reused between
+editions, so review the tracklist and durations before confirming. Other digital
+siblings remain available even when MB has not recorded their barcode or URL.
 **Use** on any row replaces the choices with an inline track and artwork review.
 This review offers only the selected release's front cover, never another
 edition's release-group artwork. If that release has no cover, or the Cover Art
@@ -111,6 +117,7 @@ Archive cannot be reached, you can still confirm its tags and keep your images.
 without changing its current release. Other findings about the current release
 are hidden while reviewing the replacement.
 If no release fits, **Add Release** opens Harmony to import the public download.
+For albums with original UPC evidence, this seeds a Qobuz/Deezer barcode lookup.
 **Browse all releases on MusicBrainz** opens the release group's full list.
 Large groups and unspecified media are marked incomplete; a failed request never
 counts as absence.
@@ -122,6 +129,15 @@ pre-fill URL relationships when editing an existing release. Refresh the album h
 after the edit lands to clear the finding. The pencil beside the MusicBrainz
 badge remains available for a different match outside this release group.
 Other copies and editions remain separate.
+
+An original UPC missing from a digital MB release is offered beside **Add barcode
+on MusicBrainz**. The section shows its source and file coverage; select the UPC
+to copy it into the release editor after checking the edition. An existing,
+different barcode or an explicit “no barcode” is a discrepancy to review, not an
+invitation to replace it automatically. Refresh the album header after editing.
+The original **UPC** is kept through tagging, changing releases and undo. The
+separate **BARCODE** field still follows MusicBrainz, including removal when MB
+has no value; previews and History describe that owned field.
 
 Private downloads may contain a different mix from the public edition. They can
 still warrant media review, but Harmonist does not suggest publishing their

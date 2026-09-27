@@ -83,6 +83,9 @@ class ScanFields(NamedTuple):
     comment: str | None = None
     # Preserve every alias/value until album-wide consistency is checked.
     barcodes: tuple[str, ...] = ()
+    # Literal UPC is unowned download evidence. BARCODE may have been replaced
+    # from a different MB edition, so contribution checks must read it separately.
+    source_upcs: tuple[str, ...] = ()
 
 
 @dataclass

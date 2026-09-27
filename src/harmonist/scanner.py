@@ -590,6 +590,7 @@ def build_album(
     title = (fields[0].album_title if fields else None) or album_dir.name
     artist = _display_artist(fields)
     barcode_evidence = barcodes.evidence(fields)
+    source_evidence = barcodes.evidence(fields, source_only=True)
 
     # Inconsistency trumps sidecar-driven state — see design §15.2.
     # The sidecar is kept on disk; once the user fixes the on-disk tags
@@ -638,6 +639,7 @@ def build_album(
         # reconcile for untagged orphans it could never resolve.
         has_tag_mbid=any(sf.album_id for sf in fields),
         barcode=barcode_evidence.barcode if barcode_evidence else None,
+        source_upc=source_evidence.barcode if source_evidence else None,
         expected_track_count=expected.total,
         absent_media=expected.absent_media,
         disc_total=_consistent(f.disc_total for f in fields if not f.unreadable),

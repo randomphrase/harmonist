@@ -14,7 +14,7 @@
 <div class="max-h-64 overflow-auto border border-line rounded" tabindex="0" role="region" aria-label="Digital editions">
     <table class="w-full text-xs text-left">
         <thead class="bg-surface text-muted sticky top-0"><tr>
-            <th class="p-2">Release</th><th class="p-2">Media</th><th class="p-2">Tracks</th><th class="p-2">Date / country</th><th class="p-2">Store URL</th><th class="p-2"><span class="sr-only">Choose</span></th>
+            <th class="p-2">Release</th><th class="p-2">Media</th><th class="p-2">Tracks</th><th class="p-2">Date / country</th>{% if contribution.store_url %}<th class="p-2">Store URL</th>{% endif %}{% if contribution.source_upc %}<th class="p-2">Barcode</th>{% endif %}<th class="p-2"><span class="sr-only">Choose</span></th>
         </tr></thead>
         <tbody>
         {% for edition in editions %}
@@ -24,7 +24,8 @@
                 <td class="p-2 whitespace-nowrap">{{ edition.media }}</td>
                 <td class="p-2 {% if edition.track_count != album.track_count %}text-amber-700{% endif %}">{{ edition.track_count or '?' }}</td>
                 <td class="p-2">{{ edition.date or '?' }} · {{ edition.country or '?' }}</td>
-                <td class="p-2">{{ 'Same URL' if edition.store_linked is sameas true else 'Not linked' if edition.store_linked is sameas false else 'Private download' if contribution.private else 'Unknown' }}</td>
+                {% if contribution.store_url %}<td class="p-2">{{ 'Same URL' if edition.store_linked is sameas true else 'Not linked' if edition.store_linked is sameas false else 'Private download' if contribution.private else 'Unknown' }}</td>{% endif %}
+                {% if contribution.source_upc %}<td class="p-2">{{ 'Same UPC' if edition.upc_matches else 'Different UPC' if edition.barcode else 'No barcode' if edition.barcode == '' else 'Unknown' }}{% if edition.barcode %}<div class="text-muted font-mono">{{ edition.barcode }}</div>{% endif %}</td>{% endif %}
                 <td class="p-2 text-center">{% if suggested %}<span class="block mb-1 text-amber-700 font-bold">Suggested</span>{% endif %}{{ use_edition(edition, suggested) }}</td>
             </tr>
         {% endfor %}
@@ -39,8 +40,8 @@
     {% endif %}
 <div class="flex flex-wrap items-center justify-between gap-3">
     <a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener" class="text-xs text-mb-purple hover:underline">Browse all releases on MusicBrainz ↗</a>
-    {% if not contribution.private and contribution.store_url and (editions or (not editions_truncated and not editions_unknown)) %}
-    <a href="{{ harmony_base }}/release?url={{ contribution.store_url|urlencode }}" target="_blank" rel="noopener" title="Add release with Harmony"
+    {% if not contribution.private and (contribution.store_url or contribution.source_upc) and (editions or (not editions_truncated and not editions_unknown)) %}
+    <a href="{{ harmony_base }}/release?{% if contribution.source_upc %}gtin={{ contribution.source_upc|urlencode }}&amp;qobuz=&amp;deezer={% else %}url={{ contribution.store_url|urlencode }}{% endif %}" target="_blank" rel="noopener" title="Add release with Harmony"
        class="ml-auto inline-flex px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Add Release ↗</a>
     {% endif %}
 </div>

@@ -294,6 +294,11 @@ def test_reconcile_status_endpoint_returns_json(client):
 
 
 def test_tasks_kicks_reconcile_runner_when_orphans_present(client, tmp_path, monkeypatch):
+    from harmonist import mb_cache, mb_lookup
+
+    # Exercise the real worker without making network requests for the fake MBID.
+    monkeypatch.setattr(mb_cache, "fetch_release_urls", lambda mbid: [])
+    monkeypatch.setattr(mb_lookup, "fetch_video_media", lambda mbid: ())
     music_dir = tmp_path / "music"
     _make_album(music_dir, "Orphan", mbid="rel-1", comment="https://x.bandcamp.com")
 
