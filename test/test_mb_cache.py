@@ -93,7 +93,7 @@ def test_a_read_after_the_ttl_asks_again(monkeypatch):
 
 
 def test_a_forced_read_bypasses_a_fresh_row_and_refreshes_it(monkeypatch):
-    """What Recheck and the album page's "read again" control pass. It must
+    """What the release searches and the album page's "read again" control pass. It must
     fetch AND update the stored row — a bypass that read round the cache would
     leave the gardener's baseline stale at exactly the moment MusicBrainz is
     known to have changed."""

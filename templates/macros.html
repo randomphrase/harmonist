@@ -141,10 +141,10 @@
 {# The same, for a control whose response is sometimes a list to READ rather
    than a change to absorb (#150).
 
-   Recheck is the one that does this. It re-queries MusicBrainz for the store
-   URL and then either tags the album outright — one exact match, nothing to
-   decide — or comes back with the several releases that share the URL, for the
-   user to pick from. The second answer arrives as `HX-Retarget` pointing at the
+   The Barcode and Store URL searches do this. Each queries MusicBrainz and then
+   either writes a suggestion — one match, to review — or comes back with the
+   several releases that share the barcode or URL, for the user to pick from.
+   The second answer arrives as `HX-Retarget` pointing at the
    results box, and reloading the page on it would throw away the very list the
    press went to fetch, leaving the album looking unchanged for no stated reason.
 

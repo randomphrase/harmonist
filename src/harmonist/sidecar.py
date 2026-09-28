@@ -281,7 +281,7 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
     oversight:
 
       * `mb_match_candidate` — a suggestion, not a decision, and it is rewritten
-        on every Recheck. Auditing it would bury real changes in churn.
+        on every search. Auditing it would bury real changes in churn.
       * `tagged_at` / `added_at` / `downloaded_at` — bookkeeping timestamps; the
         events they date are audited in their own right (see tagger.tag_album).
       * `notes` — free text with no derived consequence.

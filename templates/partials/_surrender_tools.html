@@ -1,7 +1,7 @@
 {# Escape hatches for a SURRENDERED album whose tag is actually wrong. We already
    resolved an MBID (kept as the read-only candidate), so — unlike the general
-   Needs-MBID tools — there's no "look up releases at this store URL" or Recheck:
-   those re-run the very lookup that already succeeded. Only a name search, a
+   Needs-MBID tools — there's no Store URL search: that re-runs the very lookup
+   that already succeeded. Only a name search, a
    direct MBID paste, and (last resort) seeding a missing release on Harmony. #}
 {% set sc = album.sidecar %}
 <p class="text-muted font-bold uppercase tracking-widest text-2xs mb-1">Search MusicBrainz by name</p>

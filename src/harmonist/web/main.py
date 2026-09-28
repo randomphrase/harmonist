@@ -541,7 +541,7 @@ def create_app(
         def resolve_after_download(album_dir: Path) -> None:
             # Each freshly-downloaded album: look up its store URL on MB and
             # tag immediately, so an in-MB release lands straight in the
-            # Library rather than waiting in NEEDS_MBID for a manual Recheck.
+            # Library rather than waiting in NEEDS_MBID for a manual search.
             _resolve_by_store_url(album_dir, cfg, tagger)
 
         def runner_fn() -> Any:
@@ -3304,7 +3304,7 @@ def _apply_best_match(
         return "tagged", "Match exact — files tagged."
 
     existing = sidecar_mod.read(album_path)
-    # `replace` off whatever is there (#263) — a recheck that lands a suggestion
+    # `replace` off whatever is there (#263) — a lookup that lands a suggestion
     # must not also silently undo a surrender the user recorded.
     new = replace(
         existing or Sidecar(),
@@ -3734,7 +3734,7 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
 
     Used right after a Bandcamp download so a release that IS in MB goes
     straight to COMPLETE (Library) instead of waiting in NEEDS_MBID for a
-    manual Recheck. Looks up the store URL, and on a match runs the normal
+    manual search. Looks up the store URL, and on a match runs the normal
     match assessment: exact → tag (COMPLETE), approximate → stash candidate
     (NEEDS_MBID with a suggestion shown), no match → NEEDS_MBID. Never raises — returns a
     short status string for logging.
@@ -3888,7 +3888,7 @@ def _register_routes(app: FastAPI) -> None:
         # resolve: a NEW album whose tags carry an MBID or barcode, and which the user
         # hasn't Forgotten. Reconcile writes a sidecar for every such album, so
         # it leaves NEW — meaning a finished pass clears its own trigger and we
-        # don't re-fire on incidental inbox refreshes (after a Recheck, a tag,
+        # don't re-fire on incidental inbox refreshes (after a search, a tag,
         # etc.). Untagged orphans with no barcode do not kick it.
         forgotten: set[Path] = request.app.state.forgotten_paths
         # NEW (MBID-tagged) orphans get a sidecar; TAGGING albums (sidecar MBID
@@ -6141,108 +6141,6 @@ def _register_routes(app: FastAPI) -> None:
         label = "Bandcamp source" if sc.store_url else "manual source"
         return _flash_response("Reconciled", label, album=album)
 
-    @app.post("/recheck/{album_id}", response_class=HTMLResponse)
-    def recheck(request: Request, album_id: str, on_album_page: bool = Form(False)) -> Response:
-        album = _find_album(request, album_id)
-        sc = album.sidecar
-        if sc is None or not sc.store_url:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no store URL on sidecar")
-        try:
-            mbids = mb_lookup.lookup_by_bandcamp_url(sc.store_url)
-        except mb_lookup.MBError as e:
-            return _flash_response(
-                "MB lookup failed",
-                str(e),
-                level=Level.ERROR,
-                tasks_changed=False,
-                album=album,
-            )
-        if not mbids:
-            return _flash_response(
-                "Still no match",
-                "no MusicBrainz release for this URL yet",
-                level=Level.WARNING,
-                tasks_changed=False,
-                album=album,
-            )
-
-        # A URL can map to several MB releases (e.g. a long digital edition plus
-        # a shorter CD mix). Don't guess which one — surface them all and let the
-        # user pick (into the card's shared, preserved results box).
-        if len(mbids) > 1:
-            try:
-                results, total = mb_lookup.candidate_summaries_for_url(sc.store_url)
-            except mb_lookup.MBError as e:
-                return _flash_response(
-                    "MB lookup failed",
-                    str(e),
-                    level=Level.ERROR,
-                    tasks_changed=False,
-                    album=album,
-                )
-            return _render_release_picker(
-                request,
-                album,
-                results,
-                total,
-                heading="Several releases share this store URL — pick the right one",
-                retarget=True,
-                on_album_page=on_album_page,
-                store_url=sc.store_url,
-            )
-
-        try:
-            # FRESH, never cached. "Recheck" means "I have just edited
-            # MusicBrainz" — serving a stored payload would make the button a
-            # silent no-op, with nothing on screen to say why (#127).
-            releases = [mb_cache.fetch_release(m, max_age=mb_cache.FRESH) for m in mbids]
-        except mb_lookup.MBError as e:
-            return _flash_response(
-                "MB fetch failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
-            )
-        # A single mbid by here — several send the user to the picker above —
-        # so this ranking is over one candidate and cannot be ambiguous.
-        ranking = match_releases(album.path, releases)
-        assert ranking is not None  # releases is non-empty (mbids guarded)
-        candidate = ranking.best
-        mbid = candidate.mb_release_id
-
-        auto_tag = candidate.confidence == "exact" and not _reassigns_release(
-            album_files.for_paths(album.folders), mbid
-        )
-        # `replace`, not a fresh `Sidecar(...)` (#263).
-        new_sc = replace(
-            sc,
-            mb_release_id=mbid if auto_tag else None,
-            mb_match_candidate=None if auto_tag else candidate,
-        )
-        sidecar_mod.write(album.path, new_sc)
-
-        if auto_tag:
-            try:
-                _tag_with_release(
-                    album.path,
-                    mbid,
-                    request.app.state.cfg,
-                    request.app.state.tagger,
-                    paths=album.folders,
-                )
-                return _flash_response("Tagged", "match found via Recheck", album=album)
-            except Exception as e:
-                log.exception("tag after recheck failed", extra=_LOG_ONLY)
-                return _flash_response(
-                    "Tagging failed",
-                    str(e),
-                    level=Level.ERROR,
-                    tasks_changed=False,
-                    album=album,
-                )
-        return _flash_response(
-            "Needs review",
-            f"{candidate.confidence} match — please review and confirm",
-            album=album,
-        )
-
     def _assignment_candidate(
         request: Request, album: Album, *, load_replacement: bool = False, reread: bool = False
     ) -> MatchCandidate | None:
@@ -7264,8 +7162,9 @@ def _render_release_picker(
     store_url: str | None = None,
 ) -> Response:
     """Render the shared candidate-release list (store-URL picker or name
-    search). `retarget` rewrites the swap to the card's preserved results box —
-    needed when the trigger (e.g. the Recheck button) posts with hx-swap=none.
+    search). `retarget` rewrites the swap to the card's preserved results box, and
+    its `HX-Retarget` header tells `reload_unless_retargeted` not to reload the
+    album page over the list.
 
     `on_album_page` is what the *rows* need (#150). Every other action block is
     an include, so it inherits that flag from the template around it; this one

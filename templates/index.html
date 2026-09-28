@@ -414,7 +414,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // the completed-scan counter, NOT the scanning→done state edge. A scan
         // can start and finish between two 1.5s polls (mtime-cache hit → ~0.1s),
         // so the edge is unobservable; the counter still increments. Without
-        // this, a post-action rescan (e.g. after Recheck tags an album) can land
+        // this, a post-action rescan (e.g. after confirming a suggestion tags an album) can land
         // without the inbox ever refreshing — leaving a stale card whose cover
         // 404s because the album's id has moved on.
         if (lastScanSeq !== undefined && scan.seq !== lastScanSeq) {
@@ -445,8 +445,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     // `album` is the album the action concerned, carried as its own field (see
     // _flash_response). The bar has no album column, so it inlines the name ahead
-    // of the details — "[Tagged] Geogaddi — match found via Recheck". Without it
-    // a bare "[Tagged]" gives no clue WHICH album was tagged.
+    // of the details — "[Needs review] Geogaddi — Store URL match found". Without
+    // it a bare "[Needs review]" gives no clue WHICH album it concerns.
     function renderActionMessage(verb, details, level, album) {
         const pill = `<span class="px-3 py-0.5 rounded-full font-bold text-xs ${pillClasses(level)}">${esc(verb)}</span>`;
         const rest = [album, details].filter(Boolean).map(esc).join(' — ');

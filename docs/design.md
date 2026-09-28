@@ -556,7 +556,7 @@ Every album in the music dir is in exactly one state, derived from the presence/
 | present | set | n/a | no | — | **Tagging** (transient) | yes (briefly) | spinner |
 | present, `store_url` is bandcamp, `bandcamp.item_id=None` | set | n/a | yes | — | **Needs Linking** | yes | "Wrong MusicBrainz match" / "Mark purchased elsewhere" |
 | present | set | n/a | yes | equal | **Complete** | no | (hidden — visible in library) |
-| present | set | n/a | yes | less | **Incomplete** | no | library badge "N of M tracks"; "Recheck — maybe more tracks now" |
+| present | set | n/a | yes | less | **Incomplete** | no | library badge "N of M tracks"; promotes to Complete on the next scan once the missing tracks are on disk |
 
 **Needs MBID is a single state** whether or not a `mb_match_candidate`
 suggestion is attached — there is no separate "Needs Review" state. The
@@ -647,7 +647,7 @@ Incomplete at all until one rate-limited MusicBrainz call per album filled it in
 (#187). A retired key in an existing sidecar is ignored, not an error; see the
 `sidecar` skill.
 
-**Transitions are idempotent.** Running sync, recheck, or tag twice on the same album is safe and produces the same result.
+**Transitions are idempotent.** Running sync, a search, or tag twice on the same album is safe and produces the same result.
 
 ### 3.1 State transition diagram
 
@@ -687,9 +687,9 @@ stateDiagram-v2
     COMPLETE --> INCOMPLETE: Re-tag as incomplete<br/>(MB gained tracks — §2.4)
 
     INCOMPLETE --> NEW: Forget
-    INCOMPLETE --> NEEDS_MBID: Recheck<br/>(MB tracklist changed → suggestion)
+    INCOMPLETE --> NEEDS_MBID: Re-tag<br/>(MB tracklist changed → suggestion)
     INCOMPLETE --> NEEDS_MBID: Wrong match / undo<br/>the linking tagging
-    INCOMPLETE --> COMPLETE: Recheck<br/>(missing tracks now on disk)
+    INCOMPLETE --> COMPLETE: scan<br/>(missing tracks now on disk)
 
     INCONSISTENT --> NEW: user fixes on-disk<br/>tags via Picard
 ```
@@ -767,7 +767,7 @@ present. The medium format remains visible in the comparison and picker.
 
 A URL → MBID match from [MusicBrainz](https:://musicbrainz.org) is exact, but the local files on disk might not be the same release variant the user has on Bandcamp (different mastering, bonus tracks, single-disc edit, etc.). Before auto-tagging, the orchestrator runs a confidence check (`harmonist.match.assess_match`):
 
-- **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote an initial match: write `mb_release_id`, run tagger, transition to Tagging → Complete with no user intervention. If files already name a different release, manual assignment and Recheck instead retain a suggestion so the user reviews its artwork before reassignment (#483).
+- **Exact:** file count matches MB track count AND every per-track duration is within ±4 seconds of MB's recorded length. Auto-promote an initial match: write `mb_release_id`, run tagger, transition to Tagging → Complete with no user intervention. If files already name a different release, manual assignment instead retains a suggestion so the user reviews its artwork before reassignment (#483).
 - **Approximate:** file count matches but at least one track length differs significantly. Stash the candidate MBID + per-track diff in `mb_match_candidate`; do NOT tag. The album stays in Needs MBID with the suggestion attached; its card surfaces a Picard-style side-by-side with inline duration deltas and Confirm suggestion / Dismiss suggestion buttons (find/assign tools remain available under a disclosure).
 - **No match:** file count differs from MB track count. Treated like Approximate from the user's perspective (suggestion shown, explicit Confirm required) but the side-by-side has to handle uneven rows.
 
@@ -1485,7 +1485,7 @@ Harmonist supplies local artwork for Plex and Navidrome without depending on a p
 3. **Operations.** Each write is an **Addition** — an artless track, or a folder cover the album lacks — or a **Replacement**. Unreviewed tagging may make additions only (#418); a reviewed confirmation, Apply updates, and Apply artwork may also make the replacements explicitly included in their previews (#483). A missing folder cover is created from the winner, as `cover.jpg` or `cover.png` to match it, so an album whose tracks carry a 3000px image is not given a 1200px archive cover. A compilation's folder cover comes only from the archive: its first sleeve is not the album's cover.
 
    **Creating one is the user's setting, and it ships off** (`[tagging] folder_cover`, #516). `never` — the default — means no plan built anywhere names a `cover.*` the album has not got: the album page proposes nothing, the additions fingerprint covers nothing, and a tagging writes nothing. `if_missing` is what Harmonist did unconditionally before the setting existed. The policy is handed to `artwork.plan`, not applied to the rows or the scope afterwards, so there is one answer rather than four surfaces agreeing to hide the same row. It governs CREATION only: a folder cover that exists is weighed by the size rule under either value, and neither value touches a file. Default off because the two mistakes do not cost the same — an album without the file still plays correctly everywhere, since Plex and Navidrome read embedded art first, while the other direction writes megabytes into thousands of folders and (the #468 dogfood finding) presents three hundred albums as having an outstanding update whose entire content is the same missing file.
-4. **Revalidation.** The page carries a fingerprint of what it showed, at the scope the control applies — the whole plan for **Apply updates** and for **Apply artwork**, the additions alone for the controls that only add (the partial-tag badge, a merge finding's own button). The scope is declared with the fingerprint rather than inferred, because comparing one scope's digest against another mismatches every time and would withhold the artwork on every press (#482). The action rebuilds the plan from disk and proceeds only if it matches: Apply artwork otherwise writes nothing and redraws the section, and a re-tag writes its tags and no artwork, with a warning in the album's History. Each target is also re-read immediately before it is written, and one that no longer holds what the plan saw is left alone and reported. A tagging nobody previewed (an exact initial match or an unreviewed recheck) carries no fingerprint and writes its plan's additions. Release confirmation carries the whole reviewed artwork plan, its inclusion choice, and a separate fingerprint of the selected MusicBrainz release (#483).
+4. **Revalidation.** The page carries a fingerprint of what it showed, at the scope the control applies — the whole plan for **Apply updates** and for **Apply artwork**, the additions alone for the controls that only add (the partial-tag badge, a merge finding's own button). The scope is declared with the fingerprint rather than inferred, because comparing one scope's digest against another mismatches every time and would withhold the artwork on every press (#482). The action rebuilds the plan from disk and proceeds only if it matches: Apply artwork otherwise writes nothing and redraws the section, and a re-tag writes its tags and no artwork, with a warning in the album's History. Each target is also re-read immediately before it is written, and one that no longer holds what the plan saw is left alone and reported. A tagging nobody previewed (an exact initial match) carries no fingerprint and writes its plan's additions. Release confirmation carries the whole reviewed artwork plan, its inclusion choice, and a separate fingerprint of the selected MusicBrainz release (#483).
 5. **Records.** Every image written is recorded as an `artwork` before/after pair on a `tag.track` line — `[None, digest]` for an addition, including a created folder cover — and a folder cover also gets a `cover.write` audit line.
 
 **One image per file, not the file's whole collection** (#489). Every format can hold several pictures — a back cover, a booklet page — and Harmonist reads, measures, keeps a copy of and writes exactly one: the first, which is the album's cover. A write replaces that picture and an Undo takes it back off; the others stay where the user left them. They are nobody's backup and no outcome mentions them, so removing them would destroy the only copy of an image while reporting "1 file changed".
@@ -1626,7 +1626,7 @@ authoritative list; the shape is:
 - **Content fragments**: `GET /tasks` (inbox), `/library`, `/activity`.
 - **Background jobs**: `POST /sync`, `POST /reconcile`.
 - **Per-album actions** (keyed by album id): `/confirm/{id}`, `/reject/{id}`,
-  `/recheck/{id}`, `/manual/{id}/…` (search / candidates / assign),
+  `/manual/{id}/…` (search / barcode / candidates / assign),
   `/retag/{id}`, `/forget/{id}`, `/surrender/{id}/keep` (Move to Library),
   `/library/{id}/…` (detail / unlink / redownload).
 - **Potential downloads** (keyed by purchase item_id): `/pending/{id}/…`
@@ -2041,7 +2041,7 @@ A checklist in `docs/manual-tests.md` (separate doc, owned by QA):
 - Sync flow against real Bandcamp on macOS
 - Sync flow against real Bandcamp on Pi (over SMB-mounted Synology share)
 - Tag write over SMB doesn't corrupt files; Plex picks up the MBID
-- Held → Recheck after seeding in Harmony eventually transitions to Done
+- Held → Store URL search after seeding in Harmony eventually transitions to Done
 - Manual ingest with a non-Bandcamp album
 
 ---
@@ -2221,7 +2221,7 @@ per-track list of which MB tracks weren't on disk.
 
 **Promotion to Complete:** if the user later adds the missing tracks on
 disk, the next scan sees every expected track present and the state promotes
-to `COMPLETE` — no Recheck and no lookup, since the expectation was already
+to `COMPLETE` — no search and no lookup, since the expectation was already
 in the files. Conversely, if MB upstream gains new tracks, a Re-tag rewrites
 the higher total into the files and the album either stays `INCOMPLETE` (if
 the new count still exceeds what is on disk) or routes back through
@@ -2342,7 +2342,7 @@ handed to Harmony for MB seeding.
 ### 14.2 Other stores (URL-only)
 
 For any other store (Beatport, Discogs, Deezer, etc.) the sidecar can
-hold a `store_url`. The reconcile/recheck flow then asks Harmony to seed
+hold a `store_url`. The reconcile/search flow then asks Harmony to seed
 the MB release from that URL, and tagging proceeds via the existing
 MB-by-MBID path. This adds no store-specific code.
 

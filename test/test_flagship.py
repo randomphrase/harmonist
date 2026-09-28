@@ -5,7 +5,7 @@ Uses demo mode to make external services deterministic. Exercises:
   1. POST /sync starts the background runner.
   2. Polls /sync/status until state returns to idle.
   3. The real post-download callback identifies and tags the new album.
-  4. POST /recheck/{id} safely repeats that reconciliation.
+  4. POST /retag/{id} safely repeats that tagging.
   5. Album stays Done; file tags include the full Picard MBID atom
      set; sidecar persists `mb_release_id` + `tagged_at`.
 
@@ -97,8 +97,8 @@ def _album_by_title(music_dir: Path, title: str):
     raise AssertionError(f"no album titled {title!r} in {music_dir}")
 
 
-def test_flagship_sync_then_recheck_then_done(demo_client, tmp_path):
-    """The headline path: Sync, Recheck, file ends Done with full MB tags."""
+def test_flagship_sync_then_retag_then_done(demo_client, tmp_path):
+    """The headline path: Sync, Re-tag, file ends Done with full MB tags."""
     music_dir = tmp_path / "music"
 
     # --- 1. Click Sync (force full/download mode via the popover) ---
@@ -112,10 +112,9 @@ def test_flagship_sync_then_recheck_then_done(demo_client, tmp_path):
     assert new_album.sidecar.store_url == "https://cb4.bandcamp.com/album/straight-outta-lowcash"
     assert new_album.sidecar.mb_release_id == "demo-rel-cb4"
 
-    # --- 2. Click Recheck on the new album ---
-    r = demo_client.post(f"/recheck/{new_album.id}")
+    # --- 2. Click Re-tag on the new album ---
+    r = demo_client.post(f"/retag/{new_album.id}")
     assert r.status_code == 200, r.text
-    # With exact match (deltas == 0 in demo data), recheck auto-tags
     assert "tagged" in r.text.lower()
 
     # --- 3. Verify final state ---

@@ -29,9 +29,9 @@ fetch fresh; continuing or applying an explicitly reviewed snapshot never fetche
   `stored_release` regardless of TTL and validates the supplied fingerprint.
   A missing or changed stored snapshot requires another review, not a fetch or
   substitution. The same applies to reviewed artwork and URL recovery (#532).
-* **Recheck** — never cached. The entire meaning of that button is "I just
-  edited MusicBrainz"; serving it a stored answer would make it a no-op and the
-  user would have no way to tell.
+* Barcode and Store URL **Search** — never cached. The meaning of pressing it
+  again is "I just edited MusicBrainz"; serving it a stored answer would make it
+  a no-op and the user would have no way to tell.
 
 ## The row outlives the TTL on purpose
 
@@ -127,7 +127,7 @@ def fetch_release(mbid: str, *, max_age: timedelta | None = None) -> Release:
     """`mb_lookup.fetch_release`, served from the cache when it is fresh enough.
 
     `max_age=timedelta(0)` forces a live fetch and refreshes the stored row —
-    what Recheck and the album page's re-read control pass.
+    what the release searches and the album page's re-read control pass.
 
     `ReleaseGoneError` and `MBError` propagate untouched. A cache miss must not
     turn a deleted release into a stale-but-served one: #268's sibling case is

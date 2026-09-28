@@ -194,7 +194,7 @@ def test_write_sidecar_handles_missing_band_id(tmp_path):
 
 def test_write_sidecar_captures_is_private(tmp_path):
     """The Bandcamp `is_private` flag rides into the sidecar (and round-trips
-    through disk) so the UI can suppress Harmony/Recheck for private URLs."""
+    through disk) so the UI can suppress Harmony and Store URL search for private URLs."""
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     item = _StubItem(item_id=1, is_private=True, url_hints={"subdomain": "x", "slug": "y"})

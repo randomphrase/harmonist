@@ -162,7 +162,7 @@ def test_lookup_failure_is_not_adoption(tmp_path, monkeypatch):
     assert sidecar.read(path) is None
 
 
-def test_barcode_recheck_lists_lfo_choices(client, cfg, monkeypatch):
+def test_barcode_search_lists_lfo_choices(client, cfg, monkeypatch):
     path, file = album(cfg.paths.music_dir)
     sidecar.write(path, Sidecar())
     aid = scanner.scan(cfg.paths.music_dir)[0].id
@@ -176,7 +176,7 @@ def test_barcode_recheck_lists_lfo_choices(client, cfg, monkeypatch):
     assert sidecar.read(path).mb_match_candidate is None
 
 
-def test_barcode_recheck_suggests_and_uses_fresh_release(client, cfg, monkeypatch):
+def test_barcode_search_suggests_and_uses_fresh_release(client, cfg, monkeypatch):
     path, file = album(cfg.paths.music_dir)
     sidecar.write(path, Sidecar())
     aid = scanner.scan(cfg.paths.music_dir)[0].id
@@ -242,7 +242,7 @@ def test_barcode_selection_requires_review_even_with_exact_lengths(client, cfg, 
     assert file.read_bytes() == before
 
 
-def test_recheck_failure_preserves_existing_suggestion(client, cfg, monkeypatch):
+def test_barcode_search_failure_preserves_existing_suggestion(client, cfg, monkeypatch):
     path, _ = album(cfg.paths.music_dir)
     _, fetch = services(monkeypatch, [release()])
     reconcile.reconcile_album(path, fetch_urls=lambda _: [])

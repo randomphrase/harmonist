@@ -43,7 +43,7 @@ LIBRARY: list[dict[str, Any]] = [
     },
     {
         # State: NEEDS_MBID — sidecar with store URL but no MB match yet.
-        # Recheck looks up MB → exact match → tags → COMPLETE.
+        # A Store URL search finds the MB release → suggestion → confirm → COMPLETE.
         "artist": "Sex Bob-omb",
         "album": "We Are Here To Make You Sad",
         "tracks": ["Garbage Truck", "Threshold", "Summertime"],

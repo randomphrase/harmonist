@@ -18,6 +18,6 @@
         {% if on_album_page and (album.barcode or album.sidecar.store_url) %}
         hx-on::after-request="if (event.detail.successful) window.location.assign(window.location.pathname + '?search=name')"
         {% else %}{{ reload_on_success(on_album_page) }}{% endif %}
-        title="Clear this suggestion. The album stays here so you can assign a different release or recheck."
+        title="Clear this suggestion. The album stays here so you can search for or assign a different release."
         class="disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Dismiss suggestion</button>
 {% endif %}

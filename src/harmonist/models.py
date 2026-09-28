@@ -89,8 +89,8 @@ class BandcampInfo:
     item_id: int | None = None
     band_id: int | None = None
     # True when the Bandcamp release is marked private/unlisted (its public
-    # URL 404s). Load-bearing: suppresses the "Open in Harmony" + Recheck
-    # affordances, since a private URL should not be added to MusicBrainz.
+    # URL 404s). Load-bearing: suppresses "Open in Harmony" and the Store URL
+    # search, since a private URL should not be added to MusicBrainz.
     is_private: bool = False
     # Set ONLY when the album couldn't be pinned to a single purchase: several
     # editions share one store URL (so one purchase per edition, all on the same

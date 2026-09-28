@@ -416,10 +416,10 @@ def test_needs_mbid_card_with_store_url_rendered(client, cfg, monkeypatch):
     assert "harmony.pulsewidth.org.uk" in r.text
 
 
-def test_needs_mbid_private_release_suppresses_harmony_and_recheck(client, cfg):
+def test_needs_mbid_private_release_suppresses_harmony_and_store_url_search(client, cfg):
     """A private Bandcamp release (public URL 404s) must not offer Harmony
-    seeding or Recheck — its URL can't be added to MusicBrainz. The manual
-    MBID form stays, and the badge reads 'Bandcamp (private)'."""
+    seeding or a Store URL search — its URL can't be added to MusicBrainz. The
+    manual MBID form stays, and the badge reads 'Bandcamp (private)'."""
     d = _make_album(cfg, "Private")
     sc.write(
         d,
@@ -431,7 +431,6 @@ def test_needs_mbid_private_release_suppresses_harmony_and_recheck(client, cfg):
     r = client.get("/tasks")
     assert ">MBID</abbr>" in r.text  # still a Needs MBID card
     assert "Open in Harmony" not in r.text
-    assert "/recheck/" not in r.text
     assert "won't resolve on MusicBrainz" in r.text
     assert "Bandcamp (private)" in r.text
     # No store-URL search mode for a private release — only name search.
@@ -1487,7 +1486,7 @@ def test_unconfirmed_mark_manual(client, cfg):
 
 
 def test_404_for_missing_album(client):
-    r = client.post("/recheck/nonexistent")
+    r = client.post("/manual/nonexistent/candidates")
     assert r.status_code == 404
 
 
@@ -1684,7 +1683,7 @@ def test_manual_candidates_lists_store_url_releases(client, cfg, monkeypatch):
     assert r.text.count('name="mbid"') == 2  # a Use button per release
 
 
-def test_recheck_escapes_mb_error_text_in_the_flash(client, cfg, monkeypatch):
+def test_store_url_search_escapes_mb_error_text_in_the_flash(client, cfg, monkeypatch):
     """#142: an MBError message reaches the flash fragment as text, not markup.
 
     The message wraps upstream musicbrainzngs output, so it originates off-box.
@@ -1696,9 +1695,9 @@ def test_recheck_escapes_mb_error_text_in_the_flash(client, cfg, monkeypatch):
     def boom(url):
         raise mb_lookup.MBError('MB request failed: <script>alert(1)</script> & "quoted"')
 
-    monkeypatch.setattr("harmonist.mb_lookup.lookup_by_bandcamp_url", boom)
+    monkeypatch.setattr("harmonist.mb_lookup.candidate_summaries_for_url", boom)
 
-    r = client.post(f"/recheck/{aid}")
+    r = client.post(f"/manual/{aid}/candidates", data={"suggest": "true"})
     assert r.status_code == 200
     assert "<script>" not in r.text
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in r.text
@@ -1706,15 +1705,17 @@ def test_recheck_escapes_mb_error_text_in_the_flash(client, cfg, monkeypatch):
     assert "MB lookup failed" in r.text  # the diagnostic survives, escaped
 
 
-def test_recheck_multiple_matches_shows_picker_not_autopick(client, cfg, monkeypatch):
-    """When a store URL maps to several MB releases, Recheck stops guessing —
+def test_store_url_search_with_several_matches_lists_them_without_suggesting(
+    client, cfg, monkeypatch
+):
+    """When a store URL maps to several MB releases, the search doesn't guess —
     it retargets the picker into the card's results box and leaves the album
-    untagged for the user to choose."""
+    without a suggestion for the user to choose."""
     d = _needs_mbid_with_store_url(cfg, "Ambiguous", "https://x.bandcamp.com/album/y")
     aid = _id_for(cfg, d)
     monkeypatch.setattr(
-        "harmonist.mb_lookup.lookup_by_bandcamp_url",
-        lambda url: ["rel-a", "rel-b"],
+        "harmonist.mb_lookup.fetch_release",
+        lambda mbid: pytest.fail("listing several releases must not fetch one to suggest"),
     )
     monkeypatch.setattr(
         "harmonist.mb_lookup.candidate_summaries_for_url",
@@ -1750,13 +1751,11 @@ def test_recheck_multiple_matches_shows_picker_not_autopick(client, cfg, monkeyp
             2,
         ),
     )
-    r = client.post(f"/recheck/{aid}")
+    r = client.post(f"/manual/{aid}/candidates", data={"suggest": "true"})
     assert r.status_code == 200
     assert r.text.count("Store URL matches") == 2
-    # The button posts with hx-swap=none, so the response retargets the picker.
+    # HX-Retarget is also what stops the album page reloading over the list.
     assert r.headers.get("HX-Retarget") == f"#mbid-results-{aid}"
-    assert r.headers.get("HX-Reswap") == "innerHTML"
-    assert "pick the right one" in r.text
     assert "musicbrainz.org/release/rel-a" in r.text
     # No silent auto-pick: the album stays untagged.
     loaded = sc.read(d)
@@ -5448,7 +5447,7 @@ def test_canonical_id_change_mid_transaction(client, cfg, monkeypatch):
     # alias chain now makes that achievable. The id refers to the same album, so
     # acting on it is correct; a stale page's buttons keep working instead of
     # dead-ending.
-    r_stale = client.post(f"/recheck/{temp_uid}")
+    r_stale = client.post(f"/retag/{temp_uid}")
     assert r_stale.status_code == 200
 
 
@@ -11448,19 +11447,12 @@ def test_confirmation_withholds_artwork_changed_since_review(client, cfg, monkey
     assert (d / "cover.jpg").read_bytes() == (newer if changed == "folder" else big)
 
 
-@pytest.mark.parametrize("entry", ["assign", "recheck"])
-def test_exact_reassignment_waits_for_artwork_review(client, cfg, monkeypatch, entry):
+def test_exact_reassignment_waits_for_artwork_review(client, cfg, monkeypatch):
     from harmonist import formats
 
     d, release, big, _small, _calls = _confirmation_setup(cfg, monkeypatch)
     aid = _id_for(cfg, d)
-    if entry == "assign":
-        result = client.post(f"/manual/{aid}/assign", data={"mbid": release["id"]})
-    else:
-        monkeypatch.setattr(
-            "harmonist.mb_lookup.lookup_by_bandcamp_url", lambda url: [release["id"]]
-        )
-        result = client.post(f"/recheck/{aid}")
+    result = client.post(f"/manual/{aid}/assign", data={"mbid": release["id"]})
     assert "Needs review" in result.text
     assert sc.read(d).mb_match_candidate.mb_release_id == release["id"]
     assert all(

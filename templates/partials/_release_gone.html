@@ -56,7 +56,7 @@
             </p>
         </div>
         {# Straight to the existing rematch endpoint, which KEEPS the store link —
-           that is what makes the recovery cheap, since a Recheck can then find the
+           that is what makes the recovery cheap, since a Store URL search can then find the
            replacement from the same URL. Confirms first: it moves the album out of
            the Library, which is not what a mis-click should do. #}
         <button hx-post="/library/{{ album.id }}/rematch"

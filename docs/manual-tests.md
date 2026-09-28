@@ -45,23 +45,23 @@ session — don't try to power through all of them in one sitting.
        album should download.
 6. [ ] When sync completes, the new album should appear in the inbox as
        **Held (Bandcamp)** with a working "Open in Harmony" link and a
-       "Recheck" button.
+       **Store URL** search.
 7. [ ] Verify on disk:
        ```
        ls ~/Music/harmonist-test/<Band>/<Album>/
        cat ~/Music/harmonist-test/<Band>/<Album>/.harmonist.json
        ```
        Sidecar should have `source: bandcamp`, `bandcamp.url`,
-       `bandcamp.item_id`. `mb_release_id` should be null (recheck not run
-       yet).
+       `bandcamp.item_id`. `mb_release_id` should be null (no match
+       confirmed yet).
 8. [ ] Verify ignores.test.txt got the item_id appended by bandcampsync
        (back-fill happens during sync).
-9. [ ] Click **Recheck**. One of three outcomes:
-       - [ ] Exact match → album auto-tags → DONE (disappears from inbox)
-       - [ ] Approximate match → **Needs Confirmation** card with
-             side-by-side table; click **Confirm** → DONE
+9. [ ] Press **Search** with **Store URL** selected. One of three outcomes:
+       - [ ] One match → suggestion card with side-by-side table; click
+             **Confirm suggestion** → DONE (disappears from inbox)
+       - [ ] Several matches → a list of releases; **Use** one, review, confirm
        - [ ] No MB match → album stays Held. Open in Harmony, seed there,
-             wait, click Recheck again.
+             wait, press **Search** again.
 10. [ ] When Done, open the file in mutagen (`python -c
         "from mutagen.mp4 import MP4; m=MP4('...'); print(m.tags)"`) and
         verify the Picard MBID atoms are written.
@@ -114,7 +114,7 @@ prototype.
 
 ---
 
-## Section E — Held → Recheck after Harmony seeding
+## Section E — Held → Store URL search after Harmony seeding
 
 1. [ ] Pick an album from your collection that's NOT on MusicBrainz yet.
 2. [ ] Sync it via Section A. It should land as Held (Bandcamp).
@@ -122,7 +122,8 @@ prototype.
        URL into Harmony's lookup field.
 4. [ ] Seed the release on Harmony manually (out-of-band).
 5. [ ] After MB has indexed the new release (can take minutes-to-hours),
-       click **Recheck**. Should transition to Done.
+       press **Search** with **Store URL** selected, then confirm the
+       suggestion. Should transition to Done.
 
 ---
 
