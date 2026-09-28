@@ -6,6 +6,18 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Changed
+
+- **A possibly mismatched download gets its own Library filter, Possible
+  mismatch, before any MB contributions**: the album page says why the match is
+  in doubt, lists the matched release beside the others, and **Don't warn me
+  about this** accepts it and shows what MusicBrainz is missing from it (#618).
+  Both filters fill in as albums are opened or checked in the background after
+  upgrading.
+
+- **Release titles in release choices link to MusicBrainz**, replacing the
+  separate MB button (#618).
+
 ## [1.21.0] - 2026-09-27
 
 ### Added

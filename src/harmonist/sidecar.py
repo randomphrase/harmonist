@@ -276,6 +276,9 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
       * `purchase_unavailable` — a surrender. Permanent: the scanner then treats
         the album as terminal despite having no purchase link, and no future sync
         re-surrenders it. Named in the review gate; it moved silently until #88.
+      * `accepted_release_id` — the user's word that this is the release they
+        bought (#618). Moves the album between the Possible mismatch and MB
+        contributions filters, and nothing on disk could reconstruct it.
 
     Deliberately NOT audited, so the narrowness here is a choice rather than an
     oversight:
@@ -319,6 +322,8 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
         changes["tracks_unavailable"] = f"{old.tracks_unavailable}->{new.tracks_unavailable}"
     if old.video_media != new.video_media:
         changes["video_media"] = f"{old.video_media}->{new.video_media}"
+    if old.accepted_release_id != new.accepted_release_id:
+        changes["accepted_release_id"] = f"{old.accepted_release_id}->{new.accepted_release_id}"
     if changes:
         audit.record("sidecar.update", album_id=album_id, album=album_dir, **changes)
 
@@ -402,6 +407,8 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
         # `[]` is meaningful — "asked, none are video" — so it is written, while
         # the None default (never asked) is omitted like every other default.
         d["video_media"] = list(s.video_media)
+    if s.accepted_release_id:
+        d["accepted_release_id"] = s.accepted_release_id
     return d
 
 
@@ -543,6 +550,7 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
         purchase_unavailable=bool(d.get("purchase_unavailable", False)),
         tracks_unavailable=bool(d.get("tracks_unavailable", False)),
         video_media=_int_tuple(d.get("video_media")),
+        accepted_release_id=d.get("accepted_release_id") or None,
     )
 
 

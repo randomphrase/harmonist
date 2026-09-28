@@ -83,66 +83,99 @@ details in the review before confirming a release.
 
 ## Contributing missing release information
 
-The Library's **MB contributions** filter collects albums with a possible media
-mismatch, a missing store URL, or missing or conflicting barcode information on
-MusicBrainz. Download evidence is a Bandcamp URL in the files' comments, an actual
+Two Library filters work through downloads matched on MusicBrainz, one step at
+a time. **Possible mismatch** collects albums whose match may be the wrong release;
+**MB contributions** collects albums whose release is missing information you can
+add, such as your store URL or barcode. An album is in at most one of them: the
+release match is settled first. Download evidence is a Bandcamp URL in the files' comments, an actual
 Bandcamp download recorded by Harmonist, or a consistent original **UPC** tag on
 every file, such as Qobuz supplies (including ALAC converted with XLD). Owning a
 Bandcamp purchase alone does not qualify a CD rip. A standard **BARCODE** tag
 alone does not prove a download: it may have come from a previous MB tagging.
 Missing, unreadable, invalid or conflicting original UPC evidence does not qualify.
 
-Open an album's **MB contributions** section to see its next finding. Harmonist
-checks for a possible release mismatch before offering any data edit, including
-a missing or conflicting barcode. A suggested rematch comes first; otherwise
-the panel shows a media mismatch, barcode disagreement, missing store URL, or
-missing barcode, in that order. Resolve the finding and refresh to see the next
-one. The
-album header's **MB checked** date and refresh control cover these findings too;
-refreshing does not tag files or change the match. Checks also run with background update checks
-when enabled in Settings. The section appears only when there is a contribution to make.
-Unchecked albums are not counted as clean or added to the contribution filter
-without a finding.
+### Possible mismatch
 
-A missing URL may mean an existing digital release only needs its relationship
-added, or that another release already links to your download. A physical-media
-match may also mean the appropriate digital release is missing or your files are
-matched to the wrong release. For any contribution finding, other digital releases from
-the same release group appear automatically in a scrolling list using the same
-release rows as Name, Barcode and Store URL search. Each row shows media,
-disambiguation, track count and release details. Positive evidence appears as
-**Store URL matches** or **Barcode matches** beside **Use**; other rows have no
-match label. A single release with the same store URL or original UPC, and the
-same track count, is highlighted.
-Equivalent UPC/EAN spellings count as agreement. Barcodes can be reused between
-releases, so review the tracklist and durations before confirming. Other digital
-siblings remain available even when MB has not recorded their barcode or URL.
-**Use** on any row replaces the choices with an inline track and artwork review.
-This review offers only the selected release's front cover, never another
-release's release-group artwork. If that release has no cover, or the Cover Art
-Archive cannot be reached, you can still confirm its tags and keep your images.
-**Confirm suggestion** tags this copy; **Cancel** restores the choices
-without changing its current release. Other findings about the current release
-are hidden while reviewing the replacement.
-If a complete check finds no existing release matching the source URL or UPC, **Add Release** opens
-Harmony to import the public download.
-For albums with original UPC evidence, this seeds a Qobuz/Deezer barcode lookup.
+Opening such an album checks the other releases in its release group, and the
+album page says why its match is in doubt, each reason being evidence your files
+have and the matched release lacks:
+
+- your store URL is linked from another release, not the matched one;
+- another release has your files' barcode, and the matched release doesn't;
+- your download came from a Bandcamp store (say *artist.bandcamp.com*) that the
+  matched release has no link to, while another release does. A store renames
+  pages, and a label and an artist may both sell a release, so this is a reason to
+  look rather than a match;
+- the matched release is a CD or other physical release, and your files are a
+  download;
+- the matched release has a different barcode from your files' original UPC.
+
+Below the reasons, the matched release and the other digital releases in the group
+share one list, using the same release rows as Name, Barcode and Store URL search.
+The matched release comes first, marked **Current match**. Each release's title
+links to it on MusicBrainz, and its row shows media, disambiguation, track count
+and release details. Positive evidence appears beside **Use**: **Store URL
+matches**, **Barcode matches**, or **Links artist.bandcamp.com** for a release
+linking another page on your download's store (hover it for the page). A single
+release with the same store URL or original UPC, and the same track count, is
+highlighted. Equivalent UPC/EAN spellings count as agreement. Barcodes can be
+reused between releases, so review the tracklist and durations before confirming.
+
+You have three ways out:
+
+- **Use** on a release replaces the choices with an inline track and artwork
+  review. This review offers only the selected release's front cover, never another
+  release's release-group artwork. If that release has no cover, or the Cover Art
+  Archive cannot be reached, you can still confirm its tags and keep your images.
+  **Confirm suggestion** tags this copy and records the release as the one you
+  bought; **Cancel** restores the choices without changing the current release.
+- **Add Release**, when none of these is the release you bought, opens Harmony to
+  import the public download. For albums with original UPC evidence, this seeds a
+  Qobuz/Deezer barcode lookup. It is not offered when another release already
+  carries your store URL or barcode. Once the new release is on MusicBrainz,
+  refresh the album header: it appears as the suggested match, ready for **Use**.
+- **Don't warn me about this**, beside the heading, says the matched release is
+  the one you bought. The warning folds away to its heading, and the album moves
+  to **MB contributions** if its release is missing anything. Nothing about the
+  tags, files or match changes. Untick it to bring the warning back; changing the
+  album's release lapses it, since it was about the release you ticked it for.
+  Harmonist takes you at your word: the contributions that follow make no further
+  claim about other releases.
+
 **Browse all releases on MusicBrainz** opens the release group's full list.
-This link sits beside **Add Release** below any release choices.
-Large groups and unspecified media are marked incomplete; a failed request never
-counts as absence.
 
-Before offering a store-link or barcode edit, Harmonist checks the release group.
-If the URL is already linked, the section names those releases and offers digital
-siblings for review, without prompting you to edit the current release or add
-another one. The current release is not offered as its own replacement.
-Only a complete successful check with no existing source match and no unspecified media
-offers **Edit store link on MusicBrainz**, which opens the current release's editor;
-click the adjacent URL field to select it for copying. MusicBrainz does not
-pre-fill URL relationships when editing an existing release. Refresh the album header
-after the edit lands to clear the finding. The pencil beside the MusicBrainz
-badge remains available for a different match outside this release group.
-Other copies and releases remain separate.
+Nothing is flagged until the whole release group has been compared. A group of
+more than 100 releases, or one with a release whose media MusicBrainz leaves
+unspecified, can't be compared in full, so the album page says the check is
+incomplete and makes no finding — no possible mismatch, no edit, no new release —
+even for a CD match. A failed request never counts as absence either. The check
+is repeated, so an album is placed once MusicBrainz fills in the missing media.
+
+### MB contributions
+
+Once the release is settled, the section shows one finding at a time: a barcode
+disagreement, then a missing store URL, then a missing barcode. Resolve it and
+refresh the album header to see the next. A physical release you have accepted is
+not compared with your download's UPC, which legitimately differs from the disc's
+barcode.
+
+**Edit store link on MusicBrainz** opens the matched release's editor; click the
+adjacent URL field to select it for copying. MusicBrainz does not pre-fill URL
+relationships when editing an existing release. It is offered only after a
+complete successful check of the release group, and for a release you have not
+accepted, only when that check finds no mismatch evidence. If another release
+already links your URL, the section names it instead. Refresh the album header after the edit lands to clear
+the finding. The pencil beside the MusicBrainz badge remains available for a
+different match outside this release group. Other copies and releases remain
+separate.
+
+The album header's **MB checked** date and refresh control cover these findings
+too; refreshing does not tag files or change the match. The release-group check
+runs whenever you open an album with a finding, and the background update check
+repeats it when enabled in Settings — for albums whose match you haven't
+accepted, and for accepted ones until their group has been compared in full. An
+album appears in neither filter until then, so after upgrading, both filters fill
+in as albums are opened or checked.
 
 An original UPC missing from a digital MB release is offered beside **Add barcode
 on MusicBrainz**. The section shows its source and file coverage; select the UPC
@@ -451,6 +484,9 @@ you tagged it — each with its count:
   now**, beside the setting, runs one immediately; what it finds turns up here
   and as the purple **Update** badge on the tiles. (`level` under `[gardener]` in
   `harmonist.toml` is the same setting, for a config-managed install.)
+- **Possible mismatch** and **MB contributions** — downloads whose match may be
+  the wrong release, and releases missing your store URL or barcode. See
+  [Contributing missing release information](#contributing-missing-release-information).
 
 ### When you don't want the update
 

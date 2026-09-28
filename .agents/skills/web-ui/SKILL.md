@@ -53,6 +53,11 @@ sentences and controls can contradict one another when assembled.
   operations use `<button>`. Navigation such as **Browse all releases** and
   ordinary inline references stay text links. Distinguish taking an action from
   browsing information; being in a workflow does not make every link an action.
+  Viewing an entity is navigation: link its name (purple, with the ↗ cue) rather
+  than adding a button beside it, as release rows link their titles to MusicBrainz.
+- A persisted yes/no decision — *Don't warn me about this* — is a native checkbox,
+  muted and placed in the heading of the statement it governs, not a prominent
+  button. It shows the state as well as changing it.
 - Use a short verb-led label that describes the next step. Distinguish opening
   a review or external editor from applying a change. Put the action beside
   the entity or evidence it acts on, with consistent spacing and sizing.
@@ -75,13 +80,19 @@ sentences and controls can contradict one another when assembled.
   a clear Cancel/Dismiss path back to the choices, and preserve drafts on errors
   and background refreshes. Don't stack another confirmation of the same
   changes after the user has already reviewed and explicitly confirmed them.
-- **MB contributions show one finding at a time.** Every missing or conflicting
-  datum, including a barcode-only finding, checks for a possible release mismatch
-  first. A suggested rematch takes precedence over media, URL, and barcode
-  contributions. Pending, failed, or incomplete checks must not invite edits or
-  a new release. Choose the finding in one place after discovery, rather than
-  letting a parent template and its fragment each add their own. Once resolved,
-  refresh to reveal the next applicable finding.
+- **The release match is settled before MB contributions (#618).** Every missing
+  or conflicting datum, including a barcode-only finding, checks for a possible
+  release mismatch first. **Possible mismatch** says *why* — each reason is
+  evidence the download has and the matched release lacks, stated precisely
+  ("your download came from X; the matched release has no link to that store"),
+  never a bare "another release links a different page". **MB contributions**
+  then shows one finding at a time. Once the user dismisses the warning, take
+  them at their word: the contribution makes no further claims about other
+  releases, and needs no browse link either. Pending, failed, or incomplete
+  checks must not invite edits or a new release. Decide both sections in one
+  place (`contributions.panel`), render both, and let the dismissal checkbox
+  reveal one and fold the other — changing the whole panel on a click is
+  disorienting. Once resolved, refresh to reveal the next applicable finding.
 - Make consequences visible at the choice: for optional artwork, say what will
   be kept or replaced and which files/images are affected. Don't repeat an
   identical image just to fill both comparison columns.

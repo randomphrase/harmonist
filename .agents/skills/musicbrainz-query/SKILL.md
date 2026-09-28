@@ -28,6 +28,8 @@ and surviving the response.
 | `mb_lookup.lookup_by_bandcamp_url(url)` | URL → mbids | no, deliberately |
 | `mb_lookup.candidate_summaries_for_url(url)` | URL → summaries | no, deliberately |
 | `mb_lookup.browse_release_group_releases(rg)` | browse | no |
+| `mb_cache.fetch_release_group_editions(rg)` | browse | **always fetches**, then stores the page (§3's one exception) |
+| `mb_cache.stored_release_group_editions(rg)` | browse | stored page only, **never fetches** — for the Library filters |
 | `mb_lookup.fetch_video_media(mbid)` | by id | no — the **sidecar** is its cache |
 | `mb_search.search_releases(artist, title)` | search | no, deliberately |
 
@@ -90,7 +92,8 @@ Today this holds **structurally rather than by policy**, which is sturdier and
 worth preserving:
 
 - the lookups that can answer "no" — URL lookup, search, browse — don't go
-  through the cache at all, so there is nowhere for a negative to be stored;
+  through the cache at all, so there is nowhere for a negative to be stored,
+  with the one exception below;
 - `mb_cache.fetch_release` reaches `store_release` only on success.
   `ReleaseGoneError` and `MBError` propagate first, so neither a 404 nor a
   network failure ever becomes a row.
@@ -105,6 +108,23 @@ same way.
 If you ever put a caching layer in front of a lookup that can return empty, that
 property stops being free and you have to build it. An empty result is not an
 answer worth keeping.
+
+**The one exception, and what it had to build (#618).** The release-group browse
+behind the Possible mismatch and MB contributions filters is stored, because
+placing albums in a Library filter cannot cost a request per album per render. Its
+page records an absence — "no release links this URL" — so the property had to be
+built rather than inherited:
+
+- it is **never served to anything that decides what to offer**. The album page
+  fetches its own live browse (`fetch_release_group_editions` always asks) before
+  suggesting a rematch or an edit; only the filters read the stored page;
+- a stale filter entry is put right by opening the album, which re-browses and
+  replaces the stored page for the live album;
+- the update check refreshes it for the albums that need it, and a failed browse
+  stores nothing and keeps the previous page.
+
+Anything that wants the stored page for more than filter placement is a new
+decision, not a reuse.
 
 ## 4. A 404 is an answer, not a failure
 

@@ -237,9 +237,14 @@ def _library_filters(
             "Update available",
             lambda a: a.update_available and not gardener.is_ignored(a, ignored),
         ),
+        # Release match first (#618): an album is in at most one of these two.
+        "possible-mismatch": (
+            "Possible mismatch",
+            lambda a: contributions.possible_mismatch(contributions.assess(a)),
+        ),
         "mb-contributions": (
             "MB contributions",
-            lambda a: contributions.assess(a).has_findings,
+            lambda a: contributions.contribution_due(contributions.assess(a)),
         ),
     }
 
@@ -1790,7 +1795,14 @@ def _demote_to_needs_mbid(
     # no MBID, and `_tag_with_release` recomputes it from the release it uses.
     sidecar_mod.write(
         album_path,
-        replace(sc, mb_release_id=None, mb_match_candidate=candidate, tagged_at=None),
+        # Acceptance was of the release being taken away (#618).
+        replace(
+            sc,
+            mb_release_id=None,
+            mb_match_candidate=candidate,
+            tagged_at=None,
+            accepted_release_id=None,
+        ),
     )
     # Surrender / mis-tag demote: the album was an unlinked NEEDS_SYNC, now back
     # to NEEDS_MBID. Keep the live counts moving between scans.
@@ -3311,6 +3323,7 @@ def _apply_best_match(
         added_at=(existing.added_at if existing else None) or datetime.now(UTC),
         mb_release_id=None,
         mb_match_candidate=candidate,
+        accepted_release_id=None,  # of a release this album no longer has (#618)
     )
     sidecar_mod.write(album_path, new)
     return (
@@ -3423,6 +3436,19 @@ def _album_location(request: Request, album_id: str, *, edit_assignments: bool =
     return location + ("#album-tracks" if edit_assignments else "")
 
 
+def _accepted_after_tagging(
+    accepted: str | None, requested: str, tagged: str, *, accept: bool
+) -> str | None:
+    """The release the user bought, after tagging `requested` came back as `tagged` (#618).
+
+    A re-tag of the accepted release keeps it, and a merge (`tagged` differing
+    from `requested`) renames that release rather than replacing it, so
+    acceptance follows the id. Any other rematch clears it: kept, it would
+    silently return if the album were ever matched back.
+    """
+    return tagged if accept or accepted == requested else None
+
+
 def _tag_with_release(
     album_path: Path,
     mbid: str,
@@ -3440,8 +3466,13 @@ def _tag_with_release(
     expected_release: str | None = None,
     assignment_draft: track_assignment.Draft | None = None,
     release_artwork_only: bool = False,
+    accept_release: bool = False,
 ) -> tagger_mod.TaggingOutcome:
     """Fetch MB release, fetch cover, write tags, update sidecar.
+
+    `accept_release` records the release as the one the user bought (#618):
+    choosing it from the mismatch review's candidates and confirming its track
+    review already said so, and asking again would be a second confirmation.
 
     Returns what the tagging actually DID, in its two halves (#482). It used to
     return None, which left `TaggingOutcome.artwork_withheld` with no reader
@@ -3646,6 +3677,9 @@ def _tag_with_release(
         # cannot carry (#206) is recorded at the moment it is known rather than
         # left for a reconcile pass to fetch again. Pure — no request (#237).
         video_media=mb_lookup.video_media_of(release),
+        accepted_release_id=_accepted_after_tagging(
+            base.accepted_release_id, requested_mbid, mbid, accept=accept_release
+        ),
     )
     sidecar_mod.write(album_path, new)
     # The files now carry what MusicBrainz says, so there is nothing left to be
@@ -4630,10 +4664,8 @@ def _register_routes(app: FastAPI) -> None:
         """An explicit, bounded sibling search; never replace the current match."""
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         contribution = contributions.assess(album)
-        editions: list[dict[str, Any]] = []
-        store_linked_releases: list[dict[str, Any]] = []
-        unknown = 0
-        truncated = False
+        check: contributions.SiblingCheck | None = None
+        current_release: dict[str, Any] | None = None
         group_id = None
         error = None
         sc = album.sidecar
@@ -4649,23 +4681,25 @@ def _register_routes(app: FastAPI) -> None:
                 elif not (group_id := (release.get("release-group") or {}).get("id")):
                     error = "MusicBrainz has not supplied a release group for this release."
                 else:
-                    releases, total = mb_lookup.browse_release_group_editions(str(group_id))
-                    # A URL on any edition (even physical or unspecified media)
+                    if album.contribution_observation is None:
+                        # Fetched just now for want of a stored one: what it says
+                        # about media and links is the observation.
+                        contributions.observe(
+                            album, release, mb_cache.fetched_at(str(release["id"]))
+                        )
+                    releases, total = mb_cache.fetch_release_group_editions(str(group_id))
+                    # The live album, so the Library's filters see this browse.
+                    contributions.observe_group(album, releases, total)
+                    contribution = contributions.assess(album)
+                    # A URL on any release (even physical or unspecified media)
                     # needs review before inviting an edit on the current one.
-                    if contribution.store_url and not contribution.private:
-                        store_linked_releases = [
-                            mb_lookup.release_summary(r)
-                            for r in releases
-                            if any(
-                                contributions.release_url(rel.get("target"))
-                                == contribution.store_url
-                                for rel in (r.get("url-relation-list") or [])
-                            )
-                        ]
-                    editions, unknown = contributions.digital_editions(releases, contribution)
-                    editions = [e for e in editions if e["id"] != sc.mb_release_id]
-                    editions.sort(key=lambda edition: not edition["source_matches"])
-                    truncated = total > len(releases)
+                    check = contributions.sibling_check(
+                        releases, contribution, sc.mb_release_id, total
+                    )
+                    current_release = {
+                        **mb_lookup.release_summary(release),
+                        "barcode": release.get("barcode"),
+                    }
             except mb_lookup.ReleaseGoneError:
                 error = "MusicBrainz no longer has this release. Review its match."
             except mb_lookup.MBError as exc:
@@ -4678,22 +4712,61 @@ def _register_routes(app: FastAPI) -> None:
                 request,
                 album=album,
                 contribution=contribution,
-                editions=editions,
-                editions_unknown=unknown,
-                editions_truncated=truncated,
+                check=check,
+                current_release=current_release,
+                panel=contributions.panel(contribution, check) if check else None,
                 editions_group=group_id,
                 editions_error=error,
-                store_linked_releases=store_linked_releases,
                 suggested_edition=(
                     linked[0]
-                    if not error
-                    and not truncated
-                    and not unknown
-                    and len(linked := [e for e in editions if e["source_matches"]]) == 1
+                    if check
+                    and check.complete
+                    and len(linked := check.source_matches) == 1
                     and linked[0]["track_count"] == album.track_count
                     else None
                 ),
             ),
+        )
+
+    @app.post("/library/{album_id}/release-accepted", response_class=HTMLResponse)
+    def set_release_accepted(
+        request: Request, album_id: str, mbid: str = Form(...), accept: bool = Form(False)
+    ) -> Response:
+        """Record that this is the release the user bought, or take it back (#618).
+
+        `mbid` is the release the page showed: an acceptance of whatever the
+        album is matched to by the time the click lands would accept a release
+        nobody reviewed. Writes nothing but the sidecar field; tags, files and
+        the match are untouched.
+
+        The page already rendered both sections, and the checkbox shows or hides
+        them itself, so the response re-renders nothing. A refusal is an error
+        status, which puts the box back.
+        """
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        sc = album.sidecar
+        if sc is None or not sc.mb_release_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no confirmed release to accept")
+        if sc.mb_release_id != mbid:
+            return _flash_response(
+                "Not changed",
+                "this album is now matched to a different release; reload the page",
+                level=Level.WARNING,
+                album=album,
+                tasks_changed=False,
+                status_code=status.HTTP_409_CONFLICT,
+            )
+        target = mbid if accept else None
+        if sc.accepted_release_id == target:
+            # Idempotent: a double click writes nothing and reports nothing new.
+            return _flash_response("No change", album=album, tasks_changed=False)
+        sidecar_mod.write(album.path, replace(sc, accepted_release_id=target))
+        runner = request.app.state.scan_runner
+        if runner.is_engaged():
+            runner.refresh_now()
+        request.state.skip_rescan = True
+        return _flash_response(
+            "Mismatch warning off" if accept else "Mismatch warning back on", album=album
         )
 
     @app.get("/library/{album_id}/compare", response_class=HTMLResponse)
@@ -6519,6 +6592,8 @@ def _register_routes(app: FastAPI) -> None:
                 chosen=artwork.Source.ARCHIVE,
                 assignment_draft=draft,
                 release_artwork_only=bool(request.query_params.get("replacement")),
+                # A release chosen from the album page's release review (#618).
+                accept_release=bool(request.query_params.get("replacement")),
             )
         except (_ConfirmationChanged, track_assignment.AssignmentChanged) as e:
             log.warning("could not apply reviewed changes: %s", e, extra=_LOG_ONLY)
@@ -6574,7 +6649,7 @@ def _register_routes(app: FastAPI) -> None:
         if sc is None or sc.mb_match_candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to reject")
         # `replace`, not a fresh `Sidecar(...)` (#263).
-        new_sc = replace(sc, mb_release_id=None, mb_match_candidate=None)
+        new_sc = replace(sc, mb_release_id=None, mb_match_candidate=None, accepted_release_id=None)
         sidecar_mod.write(album.path, new_sc)
         return _flash_response("Match rejected", album=album)
 

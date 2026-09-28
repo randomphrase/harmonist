@@ -161,6 +161,25 @@ def test_only_successful_download_records_provenance(tmp_path, monkeypatch):
     assert not sidecar.read(d2).bandcamp_downloaded
 
 
+def before_dismissal(page):
+    """What a parsed panel shows until its mismatch warning is dismissed (#618).
+
+    The MB contributions section behind a warning is rendered hidden and only
+    revealed by the checkbox, so it is dropped here rather than read as shown.
+    Works on a copy: the caller's page keeps the hidden section.
+    """
+    from bs4 import BeautifulSoup
+
+    shown = BeautifulSoup(str(page), "html.parser")
+    for section in shown.select("section.hidden"):
+        section.decompose()
+    return shown
+
+
+def harmony_link(page):
+    return next((a for a in page.select("a") if "Add Release" in a.text), None)
+
+
 def make_files(root, name, mbid=MBID, *, comment=URL, private=False):
     d = root / name
     d.mkdir(parents=True)
@@ -191,33 +210,51 @@ def test_restart_rebuild_and_library_filters_make_no_mb_calls(tmp_path, monkeypa
     fetch = Mock(return_value=release(("CD",)))
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
     mb_cache.fetch_release(MBID)
+    # The stored group comparison the filters need is restored without a request.
+    activity_store.store_release(
+        release()["release-group"]["id"],
+        mb_cache._group_key(),
+        {"release-list": [], "release-count": 0},
+    )
     activity_store.init(tmp_path / "activity.db")
     albums = scanner.scan(root)
     assert len(albums) == 3
     assert len({a.id for a in albums}) == 3
-    view = _library_page_vars(albums, 1, 30, filter_="mb-contributions")
+    # A download matched to a CD release is a possible mismatch first (#618).
+    view = _library_page_vars(albums, 1, 30, filter_="possible-mismatch")
     assert [a.title for a in view["rows"]] == ["Download"]
+    view = _library_page_vars(albums, 1, 30, filter_="mb-contributions")
+    assert view["rows"] == []
     assert fetch.call_count == 1
 
 
-def test_contribution_filter_includes_either_reason_and_counts_each_copy_once():
+def test_release_match_and_contribution_filters_split_and_count_each_copy_once():
     albums = []
-    for name, formats, urls in (
-        ("Media only", ("CD",), (URL,)),
-        ("URL only", ("Digital Media",), ()),
-        ("Both", ("CD",), ()),
-        ("Clean", ("Digital Media",), (URL,)),
-        ("Unchecked", None, ()),
+    for name, formats, urls, browsed in (
+        ("Media only", ("CD",), (URL,), False),
+        ("URL only", ("Digital Media",), (), True),
+        ("URL, group unbrowsed", ("Digital Media",), (), False),
+        ("Both", ("CD",), (), True),
+        ("Clean", ("Digital Media",), (URL,), True),
+        ("Unchecked", None, (), False),
     ):
         a = album()
         a.id = a.title = name
         if formats is not None:
             contributions.observe(a, release(formats, urls), NOW)
+            if browsed:
+                contributions.observe_group(a, [], 0)
         albums.append(a)
+    # Nothing is flagged before its group is compared, even a CD match.
+    view = _library_page_vars(albums, 1, 30, filter_="possible-mismatch")
+    assert {a.title for a in view["rows"]} == {"Both"}
+    option = next(f for f in view["filters"] if f["slug"] == "possible-mismatch")
+    assert option["count"] == view["total_shown"] == 1
+    # A missing link counts only once the group shows no mismatch evidence.
     view = _library_page_vars(albums, 1, 30, filter_="mb-contributions")
-    assert {a.title for a in view["rows"]} == {"Media only", "URL only", "Both"}
+    assert {a.title for a in view["rows"]} == {"URL only"}
     option = next(f for f in view["filters"] if f["slug"] == "mb-contributions")
-    assert option["count"] == view["total_shown"] == 3
+    assert option["count"] == view["total_shown"] == 1
 
 
 def test_url_only_edit_does_not_unmute_tag_update():
@@ -296,7 +333,7 @@ def test_fresh_check_changes_only_observation_and_preserves_failures(tmp_path, m
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
     response = client.get(f"/library/{a.id}/compare?reread=1")
     assert response.status_code == 200
-    assert "Checking digital releases" in response.text
+    assert "Checking releases on MusicBrainz" in response.text
     assert f'hx-get="/library/{a.id}/contributions/editions" hx-trigger="load"' in response.text
     fetch.return_value = release(urls=(URL,))
     response = client.get(f"/library/{a.id}/compare?reread=1")
@@ -322,6 +359,6 @@ def test_private_refresh_keeps_manual_review_without_harmony(tmp_path, monkeypat
     a = next(a for a in app.state.scan_runner.scan_now() if a.path == d)
     monkeypatch.setattr(mb_lookup, "fetch_release", Mock(return_value=release(("CD",))))
     response = client.get(f"/library/{a.id}/compare?reread=1")
-    assert "Checking digital releases" in response.text
+    assert "Checking releases on MusicBrainz" in response.text
     assert f'hx-get="/library/{a.id}/contributions/editions" hx-trigger="load"' in response.text
     assert "Store URL missing from this release" not in response.text

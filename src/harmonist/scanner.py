@@ -502,6 +502,11 @@ def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
         # part that ASKED wins — `any`/`or` would collapse those two into each
         # other and re-ask MusicBrainz forever on a release with no video (#206).
         video_media=next((s.video_media for s in present if s.video_media is not None), None),
+        # Acceptance of THIS release by any part, like the surrenders: the parts
+        # are one album. A part that accepted some other release says nothing.
+        accepted_release_id=next(
+            (s.accepted_release_id for s in present if s.accepted_release_id == mbid), None
+        ),
     )
 
 

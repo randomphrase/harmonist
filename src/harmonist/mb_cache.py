@@ -224,6 +224,44 @@ def _urls_of(payload: dict[str, Any]) -> list[str]:
     return [r["target"] for r in rels if isinstance(r, dict) and r.get("target")]
 
 
+def _group_key() -> str:
+    # Prefixed so a release group's browse can never be mistaken for a release
+    # row sharing the table, whatever the includes happen to be.
+    return "browse-editions:" + _key(mb_lookup.RELEASE_GROUP_EDITION_INCLUDES)
+
+
+def fetch_release_group_editions(release_group_mbid: str) -> tuple[list[Release], int]:
+    """Browse a release group's releases, always live, and store the page (#618).
+
+    Always fresh: the only readers are the album page, where opening it is how
+    the user sees an edit they just made, and the background check, whose job
+    is to look again. The stored page feeds the Library's Possible mismatch and
+    MB contributions filters without a request.
+
+    It records an absence (no release links the store URL) that may be gone by
+    tomorrow, so nothing that decides what to offer is served it: the album page
+    offers edits only from its own live browse, and a stale filter entry is put
+    right by opening the album. Failures propagate and store nothing.
+    """
+    with timing.warn_if_slow(
+        "MusicBrainz release group browse", _SLOW_FETCH, mbid=release_group_mbid
+    ):
+        releases, total = mb_lookup.browse_release_group_editions(release_group_mbid)
+    activity_store.store_release(
+        release_group_mbid, _group_key(), {"release-list": releases, "release-count": total}
+    )
+    return releases, total
+
+
+def stored_release_group_editions(release_group_mbid: str) -> tuple[list[Release], int] | None:
+    """The last stored browse of a release group; never fetches."""
+    cached = activity_store.cached_release(release_group_mbid, _group_key())
+    if cached is None:
+        return None
+    releases = list(cached.payload.get("release-list") or [])
+    return releases, int(cached.payload.get("release-count", len(releases)))
+
+
 def fetched_at(mbid: str) -> datetime | None:
     """When the album's release payload was last read from MusicBrainz, or None
     if it never has been.

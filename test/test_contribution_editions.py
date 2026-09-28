@@ -109,20 +109,34 @@ def test_missing_store_link_requires_complete_sibling_check(library, monkeypatch
     before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
     page = BeautifulSoup(client.get(f"/library/{MBID}/contributions/editions").text, "html.parser")
     editor = page.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
-    assert bool(editor) is (kind in {"absent", "different-host"})
+    # A sibling carrying the exact URL is a possible mismatch (#618): the edit is
+    # rendered, but only revealed once the user dismisses the warning.
+    assert bool(editor) is (kind in {"absent", "different-host", "linked", "ambiguous"})
     if editor:
         url_input = page.select_one('input[aria-label="Store URL to copy"]')
         assert url_input is not None and url_input["value"] == URL
+        section = editor.find_parent("section")
+        assert section is not None
+        assert ("hidden" in section["class"]) is (kind in {"linked", "ambiguous"})
     if kind in {"linked", "physical-linked", "unknown-linked", "ambiguous", "current-linked"}:
         if kind in {"linked", "ambiguous"}:
-            assert "Possible better MB match found" in page.text
-            assert "Store URL matches" in page.select_one('[role="listitem"]').text
+            assert "Your store URL is linked from another release, not the matched one" in page.text
+            rows = page.select('[role="listitem"]')
+            assert "Current match" in rows[0].text
+            assert "Store URL matches" in rows[1].text
+        elif kind == "current-linked":
+            assert "MusicBrainz now links your store URL to this release" in page.text
+        elif kind == "unknown-linked":
+            # An incomplete check makes no finding, not even this one.
+            assert "The check is incomplete" in page.text
+            assert "Your store URL is linked from" not in page.text
         else:
             assert "Store URL already linked on MusicBrainz" in page.text
-        assert page.select_one('a[title="Add release with Harmony"]') is None
-        assert "Store URL missing from this release" not in page.text
-        linked_id = MBID if kind == "current-linked" else "sibling"
-        assert page.select_one(f'a[href="https://musicbrainz.org/release/{linked_id}"]')
+        assert not [a for a in page.select("a") if "Add Release" in a.text]
+        if kind not in {"linked", "ambiguous"}:
+            assert "Store URL missing from this release" not in page.text
+        if kind not in {"current-linked", "unknown-linked"}:
+            assert page.select_one('a[href="https://musicbrainz.org/release/sibling"]')
     suggestion = page.select_one('[role="listitem"][aria-label="Suggested digital release"]')
     assert bool(suggestion) is (kind == "linked")
     targets = [
@@ -164,9 +178,16 @@ def test_suggestion_requires_one_exact_url_and_matching_count(library, monkeypat
     if suggestion:
         assert "Store URL matches" in suggestion.text
         assert "bg-amber-50/40" in suggestion["class"]
-    assert len(page.select('[role="listitem"]')) == 2
-    assert len(page.select('[role="listitem"] button[hx-get]')) == 2
-    assert "Digital Media" in page.text
+    if kind in {"unknown", "truncated"}:
+        # No finding, so no choices to review, until the group is compared.
+        assert "The check is incomplete" in page.text
+        assert page.select('[role="listitem"]') == []
+    else:
+        # The matched release leads the list, without a Use of its own.
+        assert len(page.select('[role="listitem"]')) == 3
+        assert "Current match" in page.select('[role="listitem"]')[0].text
+        assert len(page.select('[role="listitem"] button[hx-get]')) == 2
+        assert "Digital Media" in page.text
     assert browse.call_count == 1
 
 
@@ -448,7 +469,9 @@ def test_discovery_is_scoped_read_only_fresh_and_keeps_multiple_editions(library
         assert r.status_code == 200
         assert 'release/digital"' in r.text and 'release/digital-reissue"' in r.text
         assert "Store URL matches" in r.text
-        assert f'release/{MBID}"' not in r.text
+        # Listed as the current match, never offered as its own replacement.
+        assert "Current match" in r.text
+        assert f"{MBID}%3A{MBID}" not in r.text
         assert "Add Release" not in r.text
     assert browse.call_count == 2
     assert browse.call_args.kwargs["release_group"] == "rg-aaa"
@@ -492,7 +515,7 @@ def test_only_complete_public_absence_offers_harmony(library, monkeypatch, kind)
     assert r.status_code == 200
     assert ("Add Release" in r.text) is (kind == "absent")
     if kind in {"unknown", "truncated"}:
-        assert "search is incomplete" in r.text
+        assert "The check is incomplete" in r.text
     elif kind == "failure":
         assert "Could not check digital releases" in r.text
     elif kind.startswith("private"):

@@ -23,7 +23,7 @@ def test_barcode_only_checks_releases_before_edits(barcode_contribution_server):
             else:
                 page.goto(f"{server}/album/{MBID}")
             panel = page.locator(f"#album-contributions-{MBID}")
-            playwright_sync.expect(panel).to_contain_text("Checking digital releases")
+            playwright_sync.expect(panel).to_contain_text("Checking releases on MusicBrainz")
             playwright_sync.expect(panel.locator('a[href$="/edit"]')).to_have_count(0)
             playwright_sync.expect(panel.locator("p > strong")).to_have_count(0)
             page.wait_for_function(
@@ -31,17 +31,22 @@ def test_barcode_only_checks_releases_before_edits(barcode_contribution_server):
             )
             assert len(pending) == visit + 1
             pending[-1].continue_()
-            playwright_sync.expect(panel.locator("p > strong")).to_have_count(1)
             if scenario == "linked":
-                playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
-                playwright_sync.expect(panel.get_by_role("listitem").first).to_contain_text(
-                    "Barcode matches"
+                playwright_sync.expect(panel.locator("li > strong")).to_have_text(
+                    ["Another release has your files' barcode; the matched release doesn't."]
                 )
-                playwright_sync.expect(panel.locator('a[href$="/edit"]')).to_have_count(0)
+                playwright_sync.expect(
+                    panel.get_by_role("list", name="Release candidates")
+                    .get_by_role("listitem")
+                    .nth(1)
+                ).to_contain_text("Barcode matches")
+                # The barcode edit waits behind the warning (#618).
+                playwright_sync.expect(panel.locator('a[href$="/edit"]')).to_be_hidden()
                 playwright_sync.expect(panel.get_by_role("link", name="Add Release")).to_have_count(
                     0
                 )
             else:
+                playwright_sync.expect(panel.locator("p > strong")).to_have_count(1)
                 playwright_sync.expect(panel).to_contain_text("Barcode missing from MusicBrainz")
                 playwright_sync.expect(
                     panel.get_by_role("textbox", name="Original UPC to copy")
@@ -68,9 +73,11 @@ def test_upc_sibling_review_prioritizes_rematch(upc_contribution_server):
         )
         page.goto(f"{server}/album/{MBID}")
         panel = page.locator(f"#album-contributions-{MBID}")
-        playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
-        playwright_sync.expect(panel.locator("p > strong")).to_have_count(1)
-        results = panel.get_by_role("region", name="Digital releases")
+        barcode_elsewhere = "Another release has your files' barcode"
+        playwright_sync.expect(panel).to_contain_text(barcode_elsewhere)
+        # The barcode on another release, and a CD match for a download.
+        playwright_sync.expect(panel.locator("li > strong")).to_have_count(2)
+        results = panel.get_by_role("region", name="Releases in this release group")
         suggested = results.get_by_role("listitem", name="Suggested digital release")
         playwright_sync.expect(suggested).to_contain_text("Barcode matches")
         assert len(discoveries) == 1
@@ -85,32 +92,40 @@ def test_upc_sibling_review_prioritizes_rematch(upc_contribution_server):
         assert file.read_bytes() == before
         review.get_by_role("button", name="Cancel", exact=True).click()
         playwright_sync.expect(panel).to_be_visible()
-        # An unbarcoded sibling stays selectable, but confirming it must check
-        # for the existing source match again before offering a barcode edit.
+        # An unbarcoded sibling stays selectable. Choosing and confirming it says
+        # it is the release bought (#618), so its warning starts dismissed and
+        # its own missing barcode is offered.
         results.get_by_role("listitem").filter(has_text="Reissue").get_by_role(
             "button", name="Use", exact=True
         ).click()
         review.get_by_role("button", name="Confirm suggestion", exact=True).click()
         page.wait_for_url("**/album/upc-unlinked*")
         panel = page.locator("#album-contributions-upc-unlinked")
-        playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
-        playwright_sync.expect(panel.locator("p > strong")).to_have_count(1)
-        playwright_sync.expect(panel.locator('a[href$="/edit"]')).to_have_count(0)
+        dont_warn = panel.get_by_role("checkbox", name="Don't warn me about this")
+        playwright_sync.expect(dont_warn).to_be_checked()
+        playwright_sync.expect(
+            panel.get_by_role("link", name="Add barcode on MusicBrainz")
+        ).to_be_visible()
         assert MP4(file)["----:com.apple.iTunes:UPC"] == [UPC.encode()]
         with page.expect_response(lambda r: "/compare?reread=1" in r.url) as refreshed:
             page.get_by_role(
                 "button", name="Read this release from MusicBrainz again", exact=True
             ).click()
         assert refreshed.value.ok
-        playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
+        playwright_sync.expect(
+            panel.get_by_role("link", name="Add barcode on MusicBrainz")
+        ).to_be_visible()
         page.goto(f"{server}/?tab=library&filter=mb-contributions")
         playwright_sync.expect(
             page.locator("#library-page").get_by_text("Test Album", exact=True)
         ).to_be_visible()
         page.goto(f"{server}/album/upc-unlinked")
         panel = page.locator("#album-contributions-upc-unlinked")
-        playwright_sync.expect(panel).to_contain_text("Possible better MB match found")
         page.wait_for_load_state("networkidle")
+        # Bringing the warning back reveals the barcode match to choose instead.
+        with page.expect_response(lambda r: r.url.endswith("/release-accepted")):
+            panel.get_by_role("checkbox", name="Don't warn me about this").uncheck()
+        playwright_sync.expect(panel).to_contain_text(barcode_elsewhere, use_inner_text=True)
         panel.get_by_role("listitem", name="Suggested digital release").get_by_role(
             "button", name="Use", exact=True
         ).click()

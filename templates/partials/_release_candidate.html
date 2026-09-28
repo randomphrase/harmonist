@@ -1,14 +1,18 @@
 {% from 'macros.html' import release_name %}
 {# All release pickers share metadata, evidence and mismatch cues. The caller
    supplies its existing assignment/review action, without changing semantics. #}
-{% macro release_candidate(r, local_track_count, local_artist, suggested=false, store_match=false, barcode_match=false) %}
+{% macro release_candidate(r, local_track_count, local_artist, suggested=false, store_match=false, barcode_match=false, store_pages=none) %}
 {% set tc_mismatch = r.track_count and local_track_count and r.track_count != local_track_count %}
 {% set artist_mismatch = local_artist and r.artist and (r.artist | lower | trim) != (local_artist | lower | trim) %}
 <div class="release-candidate flex flex-wrap items-center justify-between gap-2 p-2 rounded border border-line hover:border-mb-purple/40 transition {% if suggested %}bg-amber-50/40{% else %}bg-surface{% endif %}"
      role="listitem"{% if suggested %} aria-label="Suggested digital release"{% endif %}>
     <div class="min-w-0 flex-1">
         <div class="text-sm text-ink break-words">
-            <span class="font-bold">{{ release_name(r.title, r.disambiguation) }}</span>
+            {# The title is the link to the release: browsing it is navigation,
+               not an action, so it is not a button beside the row's choice. #}
+            <a href="https://musicbrainz.org/release/{{ r.id }}" target="_blank" rel="noopener"
+               title="View this release on MusicBrainz"
+               class="font-bold text-mb-purple hover:underline">{{ release_name(r.title, r.disambiguation) }} <span class="text-xs" aria-hidden="true">↗</span></a>
             {% if r.artist %}<span class="text-muted{% if artist_mismatch %} text-amber-600{% endif %}"
                   {% if artist_mismatch %}title="Differs from your tag: {{ local_artist }}"{% endif %}> — {{ r.artist }}</span>{% endif %}
         </div>
@@ -23,15 +27,15 @@
         </div>
     </div>
     <div class="flex items-center gap-2 flex-shrink-0">
-        {% if store_match or barcode_match %}
+        {% if store_match or barcode_match or store_pages %}
         <div class="text-xs {% if suggested %}text-amber-700 font-bold{% else %}text-muted{% endif %}">
             {% if store_match %}<div>Store URL matches</div>{% endif %}
             {% if barcode_match %}<div>Barcode matches</div>{% endif %}
+            {# The store the download came from, not the download's own page:
+               weaker than a match, so it names the host and shows the page. #}
+            {% if store_pages and not store_match %}<div title="{{ store_pages | join('\n') }}">Links {{ store_pages[0].split('/')[2] }}</div>{% endif %}
         </div>
         {% endif %}
-        <a href="https://musicbrainz.org/release/{{ r.id }}" target="_blank" rel="noopener"
-           title="View this release on MusicBrainz"
-           class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold uppercase tracking-widest text-mb-purple border border-mb-purple/30 hover:bg-mb-purple/10 transition whitespace-nowrap">MB ↗</a>
         {{ caller() }}
     </div>
 </div>

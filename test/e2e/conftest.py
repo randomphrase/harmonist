@@ -88,6 +88,12 @@ def digital_contribution_server(tmp_path, monkeypatch, request):
         yield base, request.param
 
 
+@pytest.fixture
+def release_match_server(tmp_path):
+    """One release-match scenario per downloaded demo album (#618)."""
+    yield from _run_demo_server(tmp_path, app_module="test.e2e.release_match_app:app")
+
+
 @pytest.fixture(params=["absent", "cached-group", "failure"])
 def sibling_artwork_server(tmp_path, monkeypatch, request):
     monkeypatch.setenv("HARMONIST_TEST_SIBLING_ARTWORK", request.param)

@@ -679,6 +679,7 @@ def sweep(
         # URL-only edits can settle contributions without changing any tag.
         for album in group:
             contributions.observe(album, release, mb_cache.fetched_at(str(release["id"])))
+        _browse_siblings(release, group)
         if before is not None and _same_release(before, release):
             continue  # MusicBrainz has said nothing new; read no files
         examined += len(group)
@@ -869,6 +870,43 @@ def _last_look(mbid: str, times: dict[str, datetime]) -> datetime | None:
     never has been. See `_asked` for why there are two."""
     seen = [t for t in (times.get(mbid), _asked.get(mbid)) if t is not None]
     return max(seen) if seen else None
+
+
+def _browse_siblings(release: Release, group: list[Album]) -> None:
+    """Browse the release's group when an album on it needs sibling evidence (#618).
+
+    Only when needed: an album with a finding, since neither Library filter
+    places one until a complete browse of its group exists. A release the user
+    accepted needs it only while that browse is missing or incomplete — its
+    mismatch evidence no longer matters, only whether the group was compared.
+    Incomplete browses are retried, since MusicBrainz fills in unspecified
+    media. At most one request per release this pass already fetched, so the
+    pass's pacing bounds it. A failure keeps the previous browse and costs
+    nothing but the log line.
+    """
+    wanted = False
+    for album in group:
+        assessment = contributions.assess(album)
+        siblings = assessment.siblings
+        settled = assessment.accepted and siblings is not None and siblings.complete
+        if assessment.eligible and assessment.has_findings and not settled:
+            wanted = True
+            break
+    group_id = (release.get("release-group") or {}).get("id")
+    if not wanted or not group_id:
+        return
+    try:
+        releases, total = mb_cache.fetch_release_group_editions(str(group_id))
+    except mb_lookup.MBError:
+        log.warning(
+            "update check: could not browse release group %s",
+            group_id,
+            exc_info=True,
+            extra={"_diagnostic": True},
+        )
+        return
+    for album in group:
+        contributions.observe_group(album, releases, total)
 
 
 def _same_release(before: Release, after: Release) -> bool:

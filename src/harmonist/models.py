@@ -346,6 +346,16 @@ class Sidecar:
     # CD is missing 44 DVD tracks is noise. A partially-present video medium is
     # still INCOMPLETE — if you have one video you should have the rest.
     video_media: tuple[int, ...] | None = None
+    # The release the user said they bought, recorded as its MBID (#618).
+    #
+    # A decision with no evidence on disk: tags that match a release do not say
+    # it is the product that was bought. Keyed to the release rather than a flag
+    # so a rematch lapses it by construction — accepted means this equals
+    # `mb_release_id`, and a stale value is simply not that.
+    #
+    # Load-bearing: it moves the album from Possible mismatch to MB
+    # contributions, and only then are data edits on this release offered.
+    accepted_release_id: str | None = None
 
 
 @dataclass

@@ -260,16 +260,21 @@ def browse_release_group_releases(release_group_mbid: str) -> list[tuple[str, li
     return out
 
 
+# One definition for the request and for `mb_cache`'s row key, so a change here
+# re-keys the stored browses rather than serving stale ones under the old key.
+RELEASE_GROUP_EDITION_INCLUDES: tuple[str, ...] = ("media", "url-rels", "artist-credits", "labels")
+
+
 def browse_release_group_editions(release_group_mbid: str) -> tuple[list[Release], int]:
     """One fresh page of editions, with media and links for contribution review.
 
     Return the total as well: a truncated group cannot prove a digital edition
-    is absent. No per-edition requests and no cached negative search results.
+    is absent. No per-edition requests; `mb_cache` stores the page it returns.
     """
     try:
         result = musicbrainzngs.browse_releases(
             release_group=release_group_mbid,
-            includes=["media", "url-rels", "artist-credits", "labels"],
+            includes=list(RELEASE_GROUP_EDITION_INCLUDES),
             limit=100,
         )
     except (

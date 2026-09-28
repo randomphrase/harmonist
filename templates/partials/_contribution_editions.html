@@ -1,7 +1,16 @@
 {% from 'macros.html' import release_name %}
 {% from 'partials/_release_candidate.html' import release_candidate %}
 {% from 'partials/_contribution_barcode.html' import barcode_contribution %}
-{% set matching_editions = editions | selectattr('source_matches') | list %}
+{# The discovery result owns what the album page shows (#618): a Possible
+   mismatch section with the evidence and the releases to choose between, and an
+   MB contributions section with the one finding for the matched release.
+   `contributions.panel` decides both up front, so "Don't warn me about this"
+   only hides the first and reveals the second, in place, with no re-render. #}
+{% set reasons = panel.reasons if panel else () %}
+{% set finding = panel.finding if panel else none %}
+{% set store_host = contribution.store_url.split('/')[2] if contribution.store_url else none %}
+{% set row_ids = (check.editions | map(attribute='id') | list) if check else [] %}
+{% set heading = "text-sm font-bold text-ink uppercase tracking-widest" %}
 {% macro use_edition(edition, suggested) %}
 <button type="button" hx-get="/assignments/{{ album.id }}?replacement={{ (album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode }}&amp;cancel=true&amp;on_album_page=true"
         hx-target="#contribution-review-{{ album.id }}" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
@@ -9,63 +18,153 @@
         hx-indicator="#edition-reviewing-{{ album.id }}"
         class="px-2 py-1 {% if suggested %}bg-accent hover:bg-accent-dark text-white{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Use</button>
 {% endmacro %}
-<div class="space-y-3">
-{% if editions_error %}
-<p role="alert" class="text-amber-700">{{ editions_error }} Refresh MusicBrainz in the album header to try again.</p>
-{% else %}
-    {% if matching_editions %}
-<p class="text-sm text-ink"><strong>Possible better MB match found.</strong></p>
-    {% elif contribution.missing_url and store_linked_releases %}
-<p class="text-sm text-ink"><strong>Store URL already linked on MusicBrainz.</strong>
-    {% for linked in store_linked_releases %}<a href="https://musicbrainz.org/release/{{ linked.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">{{ release_name(linked.title, linked.disambiguation) }}{% if linked.media %} ({{ linked.media }}){% endif %} ↗</a>{{ ', ' if not loop.last else '.' }}{% endfor %}
-</p>
-    {% elif not editions_truncated and not editions_unknown %}
-        {% if contribution.media_mismatch %}
-<p class="text-sm text-ink"><strong>Possible media mismatch.</strong> These downloaded files are matched to a {{ contribution.observation.formats | join(' + ') }} release.</p>
-        {% elif contribution.media_mismatch is sameas false %}
-            {% if contribution.barcode_status in ['barcode_free', 'different'] %}
-{{ barcode_contribution(contribution, album) }}
-            {% elif contribution.missing_url %}
-<p class="text-sm text-ink"><strong>Store URL missing from this release.</strong></p>
-<div class="flex flex-wrap items-center gap-2">
-    <input type="text" readonly value="{{ contribution.store_url }}" aria-label="Store URL to copy"
-           onclick="this.select()" class="w-full sm:w-auto min-w-0 flex-grow px-3 py-1.5 border border-line rounded text-xs bg-surface text-ink">
-    <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit" target="_blank" rel="noopener"
-       class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Edit store link on MusicBrainz ↗</a>
+{# Silencing the warning is a persisted boolean, so the native checkbox, worded
+   and muted like the incomplete-album one. Ticked posts accept=true; unticked
+   posts nothing, which the endpoint reads as taking it back. The sections hide
+   and reveal from its :checked state alone; a failed write puts the box back. #}
+{% macro dont_warn() %}
+<label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-2xs uppercase tracking-widest font-bold text-muted hover:text-ink transition"
+       title="This is the release you bought: stop flagging a possible mismatch and show what MusicBrainz is missing from it. Tags and files are not changed.">
+    <input type="checkbox" name="accept" value="true" class="release-accepted cursor-pointer"
+           {% if contribution.accepted %}checked{% endif %}
+           hx-post="/library/{{ album.id }}/release-accepted"
+           hx-vals='{{ {"mbid": album.sidecar.mb_release_id} | tojson }}'
+           hx-swap="none" hx-disabled-elt="this"
+           hx-on::after-request="if (!event.detail.successful) this.checked = !this.checked">
+    Don't warn me about this
+</label>
+{% endmacro %}
+{% macro release_links(releases) %}{% for linked in releases %}<a href="https://musicbrainz.org/release/{{ linked.id }}" target="_blank" rel="noopener" class="text-mb-purple hover:underline">{{ release_name(linked.title, linked.disambiguation) }}{% if linked.media %} ({{ linked.media }}){% endif %} ↗</a>{{ ', ' if not loop.last else '' }}{% endfor %}{% endmacro %}
+{% macro browse() %}{% if editions_group %}<a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener"
+       class="text-xs text-mb-purple hover:underline">Browse all releases on MusicBrainz ↗</a>{% endif %}{% endmacro %}
+{# The matched release in the same list as the releases it is judged against,
+   so "this release" always names something on screen. #}
+{% macro release_list() %}
+<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label="Releases in this release group">
+    <div class="space-y-1" role="list" aria-label="Release candidates">
+    {% if current_release %}
+        {% call release_candidate(current_release, album.track_count, album.artist) %}
+        <span class="px-2 py-1 text-xs font-bold uppercase tracking-widest text-muted whitespace-nowrap">Current match</span>
+        {% endcall %}
+    {% endif %}
+    {% for edition in check.editions %}
+        {% set suggested = suggested_edition and edition.id == suggested_edition.id %}
+        {% set on_store = check.same_store | selectattr('id', 'equalto', edition.id) | first %}
+        {% call release_candidate(edition, album.track_count, album.artist, suggested, edition.store_linked is sameas true, edition.upc_matches is sameas true, on_store.store_pages if on_store else none) %}
+            {{ use_edition(edition, suggested) }}
+        {% endcall %}
+    {% endfor %}
+    </div>
 </div>
-            {% elif contribution.barcode_status == 'missing' %}
-{{ barcode_contribution(contribution, album) }}
-            {% endif %}
-        {% endif %}
-    {% endif %}
-    {% if editions_truncated or editions_unknown %}
-<p class="text-xs text-muted">The search is incomplete.{% if editions_truncated %} Only the first 100 releases were checked.{% endif %}{% if editions_unknown %} {{ editions_unknown }} have unspecified media.{% endif %}</p>
-    {% endif %}
+{% endmacro %}
+{# Another release carries what the download has and the matched release
+   lacks; `sibling_check` counts only that as evidence. #}
+{% macro source_match_lines() %}
+    {% if check.source_matches | selectattr('url_evidence') | list %}<strong>Your store URL is linked from another release, not the matched one.</strong>{% endif %}
+    {% if check.source_matches | selectattr('upc_evidence') | list %}<strong>Another release has your files' barcode; the matched release doesn't.</strong>{% endif %}
+{% endmacro %}
+{% macro notes() %}
     {% if contribution.private %}
 <p class="text-xs text-muted">Private Bandcamp download: check the mix; its URL stays private.</p>
     {% elif not contribution.store_url and not contribution.source_upc %}
 <p class="text-xs text-muted">No unambiguous album or track URL is known. The store URL check is incomplete.</p>
     {% endif %}
-    {% if editions %}
-<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label="Digital releases">
-    <div class="space-y-1" role="list" aria-label="Release candidates">
-        {% for edition in editions %}
-            {% set suggested = suggested_edition and edition.id == suggested_edition.id %}
-            {% call release_candidate(edition, album.track_count, album.artist, suggested, edition.store_linked is sameas true, edition.upc_matches is sameas true) %}
-                {{ use_edition(edition, suggested) }}
-            {% endcall %}
-        {% endfor %}
+{% endmacro %}
+<div class="group/match space-y-4">
+{% if editions_error or not panel %}
+    {# A failed or incomplete check makes no finding at all: until the whole
+       group has been compared there is no reason to doubt the match, nor to
+       offer an edit. An acceptance already made can still be taken back. #}
+<section class="border border-line rounded-lg p-4 space-y-3" aria-labelledby="contribution-heading-{{ album.id }}">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="contribution-heading-{{ album.id }}" class="{{ heading }}">Release group check</h2>
+        {% if contribution.accepted %}{{ dont_warn() }}{% endif %}
     </div>
-</div>
+    {% if editions_error %}
+    <p role="alert" class="text-amber-700">{{ editions_error }} Refresh MusicBrainz in the album header to try again.</p>
+    {% else %}
+    <p class="text-sm text-ink"><strong>The check is incomplete:</strong>
+        {% if check.truncated %}only the first 100 releases in this release group were checked.{% else %}{{ check.unknown }} release{{ 's' if check.unknown != 1 else '' }} in this release group {{ 'have' if check.unknown != 1 else 'has' }} unspecified media.{% endif %}
+        Nothing is flagged until it can compare them all.</p>
+    <div class="flex flex-wrap items-center gap-2">{{ browse() }}</div>
     {% endif %}
-<div class="flex flex-wrap items-center gap-2">
-    <a href="https://musicbrainz.org/release-group/{{ editions_group }}" target="_blank" rel="noopener"
-       class="text-xs text-mb-purple hover:underline">Browse all releases on MusicBrainz ↗</a>
-    {% if not store_linked_releases and not matching_editions and not contribution.private and (contribution.store_url or contribution.source_upc) and not editions_truncated and not editions_unknown %}
-    <a href="{{ harmony_base }}/release?{% if contribution.source_upc %}gtin={{ contribution.source_upc|urlencode }}&amp;qobuz=&amp;deezer={% else %}url={{ contribution.store_url|urlencode }}{% endif %}" target="_blank" rel="noopener" title="Add release with Harmony"
-       class="inline-flex px-3 py-1.5 text-mb-purple border border-mb-purple/30 hover:bg-mb-purple/10 rounded text-xs font-bold uppercase tracking-widest transition">Add Release ↗</a>
+</section>
+{% else %}
+    {% if reasons %}
+<section class="border border-line rounded-lg p-4 space-y-3" aria-labelledby="mismatch-heading-{{ album.id }}">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="mismatch-heading-{{ album.id }}" class="{{ heading }}">Possible mismatch</h2>
+        {{ dont_warn() }}
+    </div>
+    {% if not finding %}
+    {# Dismissed with nothing to contribute: say so, rather than an empty box. #}
+    <p class="hidden group-has-[.release-accepted:checked]/match:block text-sm text-muted">Nothing to add to MusicBrainz for this release.</p>
     {% endif %}
-<span id="edition-reviewing-{{ album.id }}" class="hidden [&.htmx-request]:block text-xs text-muted" role="status">Loading review…</span>
-</div>
+    <div class="space-y-3 group-has-[.release-accepted:checked]/match:hidden">
+        <ul class="space-y-1 text-sm text-ink">
+        {% for reason in reasons %}
+            <li>
+            {# Each line says why it counts against the match: evidence the
+               download has and the matched release lacks. #}
+            {% if reason == 'source_match' %}
+                {{ source_match_lines() }}
+            {% elif reason == 'same_store' %}
+                {% set elsewhere = check.same_store | rejectattr('id', 'in', row_ids) | list %}
+                <strong>Your download came from {{ check.store_host }}.</strong> The matched release has no link to that store; another release does.{% if elsewhere %} {{ release_links(elsewhere) }}{% endif %}
+            {% elif reason == 'media' %}
+                <strong>Matched to a {{ contribution.observation.formats | join(' + ') }} release</strong>; your files are a download.
+            {% elif reason == 'barcode_different' %}
+                <strong>The matched release has barcode <span class="font-mono">{{ contribution.observation.barcode }}</span></strong>; your files have UPC <span class="font-mono">{{ contribution.source_upc }}</span>.
+            {% endif %}
+            </li>
+        {% endfor %}
+        {% if check.store_linked %}
+            <li>Your store URL is also linked from {{ release_links(check.store_linked) }}.</li>
+        {% endif %}
+        </ul>
+        {{ notes() }}
+        {{ release_list() }}
+        <div class="flex flex-wrap items-center gap-2">
+            {{ browse() }}
+            <span id="edition-reviewing-{{ album.id }}" class="hidden [&.htmx-request]:block text-xs text-muted" role="status">Loading review…</span>
+            {% if panel.add_release %}
+            <a href="{{ harmony_base }}/release?{% if contribution.source_upc %}gtin={{ contribution.source_upc|urlencode }}&amp;qobuz=&amp;deezer={% else %}url={{ contribution.store_url|urlencode }}{% endif %}" target="_blank" rel="noopener" title="None of these is the release you bought: add it with Harmony"
+               class="ml-auto inline-flex px-3 py-1.5 text-mb-purple border border-mb-purple/30 hover:bg-mb-purple/10 rounded text-xs font-bold uppercase tracking-widest transition">Add Release ↗</a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+    {% endif %}
+    {% if finding or (not reasons and contribution.missing_url and check.current_linked) %}
+<section class="border border-line rounded-lg p-4 space-y-3{% if reasons %} hidden group-has-[.release-accepted:checked]/match:block{% endif %}"
+         aria-labelledby="contribution-heading-{{ album.id }}">
+    <h2 id="contribution-heading-{{ album.id }}" class="{{ heading }}">MB contributions</h2>
+        {% if finding in ['barcode_different', 'barcode_free', 'barcode_missing'] %}
+    {{ barcode_contribution(contribution, album) }}
+        {% elif finding == 'store_linked' %}
+    <p class="text-sm text-ink"><strong>Store URL already linked on MusicBrainz.</strong>
+        {{ release_links(check.store_linked) }}.</p>
+        {% elif finding == 'same_store' %}
+    <p class="text-sm text-ink"><strong>Your download came from {{ store_host }}, and another release links a page there.</strong></p>
+    <ul class="text-xs space-y-0.5">
+        {% for linked in check.same_store %}
+        <li>{{ release_links([linked]) }} links <span class="font-mono break-all">{{ linked.store_pages | join(', ') }}</span></li>
+        {% endfor %}
+    </ul>
+    <p class="text-sm text-ink">Check whether that page is your download before adding your store URL to the matched release.</p>
+        {% elif finding == 'missing_url' %}
+    <p class="text-sm text-ink"><strong>Store URL missing from this release.</strong></p>
+    <div class="flex flex-wrap items-center gap-2">
+        <input type="text" readonly value="{{ contribution.store_url }}" aria-label="Store URL to copy"
+               onclick="this.select()" class="w-full sm:w-auto min-w-0 flex-grow px-3 py-1.5 border border-line rounded text-xs bg-surface text-ink">
+        <a href="https://musicbrainz.org/release/{{ album.sidecar.mb_release_id }}/edit" target="_blank" rel="noopener"
+           class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Edit store link on MusicBrainz ↗</a>
+    </div>
+        {% else %}
+    <p class="text-sm text-ink">MusicBrainz now links your store URL to this release. Refresh MusicBrainz in the album header to update.</p>
+        {% endif %}
+        {% if not reasons %}{{ notes() }}{% endif %}
+</section>
+    {% endif %}
 {% endif %}
 </div>

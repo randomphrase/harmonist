@@ -2,10 +2,9 @@
      hx-on::oob-before-swap="if (document.getElementById('contribution-review-{{ album.id }}')?.children.length) event.preventDefault()"
      {% if oob | default(false) %}hx-swap-oob="true"{% endif %}>
 {% if contribution is defined and contribution.has_findings %}
-<section class="border border-line rounded-lg p-4 space-y-3" aria-label="MusicBrainz contributions">
-    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">MB contributions</h2>
     {# Every finding first checks the release match. Only the discovery response
-       chooses a finding; the parent cannot leave a competing one on screen.
+       chooses what to show (Possible mismatch, MB contributions, or both), so
+       the parent cannot leave a competing finding on screen.
        The comparison owns discovery: the initial page and a stale comparison
        must not browse before the final comparison replaces this section. #}
     {% set load_editions = oob | default(false) and not refreshing | default(false) %}
@@ -14,10 +13,9 @@
          hx-get="/library/{{ album.id }}/contributions/editions" hx-trigger="load"
          hx-sync="#compare-{{ album.id }}:queue last" hx-swap="innerHTML"
          {% endif %}>
-        {% if load_editions %}
-        <span class="text-muted">Checking digital releases…</span>
-        {% endif %}
+        <section class="border border-line rounded-lg p-4" aria-label="MusicBrainz releases">
+            <span class="text-muted">Checking releases on MusicBrainz…</span>
+        </section>
     </div>
-</section>
 {% endif %}
 </div>

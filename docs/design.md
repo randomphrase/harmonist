@@ -998,6 +998,17 @@ File: `<album_dir>/.harmonist.json`. UTF-8, two-space indent, written atomically
   holding the release already computes the same answer from it
   (`mb_lookup.video_media_of`), because a restored-from-backup sidecar can be
   older than the discs MusicBrainz has since added (#237).
+- `accepted_release_id` (optional, MBID string, omitted when absent) is the
+  release the user said they bought (#618): *Don't warn me about this* on a
+  possible mismatch, or confirming a replacement chosen from its release list.
+  Matching tags do not say which product was bought, so this is a decision with
+  no evidence on disk, and it is audited. It is keyed to the release rather than a
+  flag, so the album is accepted only while it equals `mb_release_id`. Tagging
+  keeps it for a re-tag of that release and carries it across a merge, and any
+  other rematch, demotion or rejection clears it, so a later match back to the same
+  release does not quietly revive it. It moves the album from **Possible mismatch** to **MB
+  contributions** and does not change state. A merged multi-folder view keeps it
+  when any part accepted this release.
 - All timestamps are ISO 8601 UTC with `Z` suffix.
 
 **Persistence philosophy:** The sidecar holds load-bearing state only —
@@ -1010,9 +1021,10 @@ fields don't go here.
 
 ### MusicBrainz contributions (#10)
 
-Contribution checks use one optional **MB contributions** Library filter
-(any actionable finding qualifies) and an album-page section,
-separate from tag-update findings and their Ignore state. Eligibility requires
+Contribution checks use two Library filters, **Possible mismatch** and **MB
+contributions** (#618), and an album-page section, separate from tag-update
+findings and their Ignore state. The release match is settled before any data
+edit is offered, so an album is in at most one of the two filters. Eligibility requires
 a confirmed MBID plus actual download provenance (`bandcamp_downloaded`), a
 Bandcamp URL in the files' comments, or consistent valid literal UPC tags on
 every file (#608). The scanner reads those tags through its existing single-open
@@ -1025,11 +1037,24 @@ albums require agreement across all parts; separate copies retain their own evid
 `contributions.assess` derives possible-media-mismatch and missing-store-URL
 observations from each local copy's evidence and an MB observation, plus missing
 or discrepant barcodes against the original UPC. Every finding first checks sibling
-releases for a possible mismatch. The panel chooses one finding after discovery:
-existing source match, physical/mixed media, barcode disagreement, missing store
-URL, then missing barcode. Missing-link and barcode editing require a confirmed
-digital release and a complete successful sibling check without an existing source
-match; a current release's own store link does not block a barcode finding. Unknown
+releases for a possible mismatch. `contributions.panel` decides, from one complete
+sibling check, both the mismatch reasons and the single contribution:
+
+- **Mismatch reasons** — evidence the files have and the matched release lacks: a
+  digital sibling carrying the exact source URL or original UPC; a sibling linking
+  another page on the download's store host while the matched release links none
+  (a renamed page, or a different product sold from the same store — withheld
+  evidence, never a match, since one Bandcamp item can back two releases once
+  tracks are added to it); physical or mixed media; a barcode that differs from the
+  original UPC.
+- **The contribution** — barcode disagreement, then missing store URL, then missing
+  barcode. With no reasons, a missing link is withheld while another release links
+  the URL exactly or links the same store. Behind reasons the user has dismissed,
+  it makes no further claim about other releases: dismissal is the user's word that
+  this is the release bought, and they know best. A physical release's barcode is
+  never compared with a download's UPC, which legitimately differs.
+
+A current release's own store link does not block a barcode finding. Unknown
 media remains unchecked rather than inviting a link edit on an uncertain release.
 Non-digital media, including mixed releases, invite review. Unspecified media
 remain unknown. URL equality retains the host and album/track path, normalizing
@@ -1050,8 +1075,19 @@ fetch timestamp are the observation; no persisted conclusion or duplicate MB
 sidecar payload is added. The includes key excludes older incomplete snapshots.
 Scanning restores observations from that cache, and the gardener updates them
 even when tag-relevant data is unchanged. Library predicates do no I/O.
-The album panel appears only for an actionable contribution, using the same
-predicate as the filter; an empty swap target allows a later check to add or
+The observation also carries the last stored browse of the release's group, which
+is what lets the two filters place an album without a request. The browse is
+stored in `mb_release_cache` under the release group's MBID and its own
+`browse-editions:` key, so it cannot be read as a release row. It records an
+absence (no release links the URL) that may be gone tomorrow, so nothing that
+decides what to offer is served it: the album page offers edits only from its own
+live browse, and a stale filter entry is put right by opening the album. An album
+appears in neither filter until its group has been browsed in full — accepted or
+not, and even when its own release shows media or barcode evidence — since until
+then there is no reason to doubt the match. Each album's classification of the
+stored browse is computed once and kept on the observation, keyed by the evidence
+it read, so a Library render does not reclassify every group.
+The album panel appears only for an actionable finding; an empty swap target allows a later check to add or
 clear it. An unchecked release is not an assertion of agreement. A fresh check spends one
 release request and changes no tags, sidecars or match; failed checks retain
 dated evidence and explain the failure. URL-only changes do not unmute ignored
@@ -1061,37 +1097,57 @@ has no separate timestamp or refresh request.
 
 Opening an album with any contribution finding (media mismatch, missing store URL,
 or missing/conflicting barcode) automatically browses
-its release group with media and URL relationships in one fresh request, capped at 100 releases. It
+its release group with media and URL relationships in one fresh request, capped at 100 releases,
+and stores it for the filters. It
 waits for the album comparison, including any stale-cache refresh, to settle
 before loading releases, so the initial render does not duplicate the browse.
 The current release's stored payload supplies the group; a missing payload costs at most one
-additional cached by-id fetch. Only wholly Digital Media sibling releases are listed,
-with exact host-scoped store-link status and descriptive release details in a
-scrolling list. Name, barcode, store-URL and sibling pickers share one candidate
-row renderer and mismatch cues, while retaining their existing assignment or
-review actions. Positive evidence labels, Store URL matches / Barcode matches,
-sit beside Use; other rows have no match label. Private-download and incomplete
-search notices remain on the containing panel. The current release group is assumed correct. A complete search
-with exactly one digital release matching the source URL or original UPC, whose track count matches the files,
-highlights that row alongside the other choices. These
-are candidates to review, never automatic matches. Truncation and unspecified
-media prevent a claim of absence, and failures remain distinct from no results.
-The search has no persistent results or cached negatives; repeating it asks MB
-again, and the album header refresh reloads its transient results. Discovery
-failures direct the user to that same header control to retry. A complete
-empty public search offers Harmony. Existing source matches suppress **Add Release**
-even when ambiguity or incomplete discovery prevents a suggestion. Candidates
-without any source match retain that action beside the **Browse all releases**
-navigation link only when discovery is complete. Pending, failed, truncated or
-unspecified-media checks never invite a data edit or new release.
-While discovery is pending, the panel makes no contribution claim.
-Matching digital siblings show “Possible better MB match found”, with matching
-store URL or barcode evidence on the candidate rows. Store-link and barcode edit prompts
-for the current release appear only after a complete negative sibling check,
-including barcode-only findings. The parent renders only the discovery container;
-the result fragment owns the single finding and its evidence/actions, so a media
-warning cannot remain above a rematch suggestion. Resolving one finding and
-refreshing exposes the next applicable one; no persisted dismissal is introduced.
+additional cached by-id fetch, whose media and links then become the observation.
+The background update check browses a release's group, at most once per release
+it has already fetched, only for an album with a finding that the filters could
+place: one whose release the user has not accepted, or an accepted one whose
+stored browse is missing or incomplete. Incomplete browses are retried, since
+MusicBrainz fills in unspecified media.
+
+The discovery result owns the page's two sections. **Possible mismatch** lists
+its reasons, each saying why it counts against the match, then one scrolling list
+of the matched release (marked **Current match**, with no Use) and the wholly
+Digital Media siblings. Name, barcode, store-URL and sibling pickers share one
+candidate row renderer and mismatch cues, while retaining their existing
+assignment or review actions; each release's title links to it on MusicBrainz.
+Positive evidence labels — Store URL matches, Barcode matches, or Links *host* for
+a same-store page — sit beside Use; other rows have no match label. A complete
+search with exactly one digital release matching the source URL or original UPC,
+whose track count matches the files, highlights that row. These are candidates to
+review, never automatic matches. **Add Release** ("none of these is the release
+you bought") sits at the right of the section's actions, beside the **Browse all
+releases** navigation link, and is suppressed when another release carries the
+source URL or UPC. **MB contributions** holds the one contribution and its action.
+
+*Don't warn me about this*, in the mismatch heading, records the user's acceptance
+(`accepted_release_id`, below). Both sections are rendered up front, so the
+checkbox's `:checked` state alone folds the mismatch section to its heading and
+reveals the contribution — the save re-renders nothing, and a failed save puts
+the box back. Confirming a replacement chosen with **Use** accepts that release
+too: choosing it and confirming its track review already said so. A re-tag of the
+accepted release keeps it and a merge carries it to the surviving id; any other
+rematch, demotion or rejection clears it, so matching back never revives it.
+Unticking on a merged multi-folder album writes the primary folder's sidecar, as
+the incomplete-album checkbox does.
+
+The current release group is assumed correct. Truncation and unspecified media
+make a check incomplete, and failures remain distinct from no results. An
+incomplete check makes no finding at all — no mismatch reason, not even a source
+match it saw, and no data edit or new release: the page says the check is
+incomplete and why, and keeps only an existing acceptance's checkbox so it can be
+taken back. Evidence counts against the match only where the matched release
+lacks it: a sibling linking a URL the matched release also links, or carrying a
+barcode the matched release shares, is not a source match. Dismissing with nothing
+to contribute says so rather than leaving an empty section. Discovery failures direct
+the user to the album header's refresh control to retry. While discovery is
+pending, the panel makes no contribution claim. The parent renders only the
+discovery container, so a media warning cannot remain above a rematch suggestion.
+Resolving one finding and refreshing exposes the next applicable one.
 Original UPC seeds Harmony's Qobuz/Deezer lookup when available; otherwise the
 public store URL is used. Barcode equality never bypasses the shared track review:
 releases may reuse a barcode while their recordings or durations differ.
@@ -1118,11 +1174,12 @@ tagging, its new release may raise missing-link or barcode contributions.
 
 For a digital missing-URL finding, discovery checks exact links on every returned
 release, including physical and unspecified media and the current release (whose
-link may be newer than the cached observation). Existing links are shown and
-withhold the edit action; digital siblings remain candidates for review. The
+link may be newer than the cached observation, in which case the page says so and
+points to the header refresh). Existing links are shown and withhold the edit
+action on an unaccepted release; digital siblings remain candidates for review. The
 current release is never offered as its own replacement. Pending, failed,
 truncated or unspecified-media checks cannot authorize a link edit. Only complete
-successful absence offers **Edit store link on MusicBrainz**, opening the current
+successful discovery offers **Edit store link on MusicBrainz**, opening the current
 release's editor with a selectable URL to copy. The existing header refresh verifies the eventual edit.
 MusicBrainz's release-editor seeding implementation applies URL relationships
 only when adding a release, so this path does not claim to prefill an existing
