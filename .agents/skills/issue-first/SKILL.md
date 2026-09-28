@@ -80,7 +80,7 @@ branch + PR for trivial work (no issue required).
    git rebase origin/main <branch> --gpg-sign
    git push --force-with-lease origin <branch>     # CI runs; wait for green
    git checkout main && git merge --ff-only <branch>
-   git push origin main && git push origin --delete <branch>
+   git push origin main
    ```
 
    GitHub's rebase-merge **re-creates the commits and strips their GPG signature**
@@ -88,6 +88,8 @@ branch + PR for trivial work (no issue required).
    linear *and* signed. The fast-forward makes the PR head reachable from `main`,
    so GitHub marks the PR merged, and `Fixes #N` in the commit closes the issue on
    push. This is not a CI bypass — the gate is that those exact commits went green.
+   GitHub automatically deletes merged head branches; leave that cleanup to it
+   without a deletion prompt (see `source-control` §5).
 
 **Don't stack PRs.** A PR whose base is another branch gets **closed** — not
 retargeted — when that base is deleted on merge, and a closed PR can't be

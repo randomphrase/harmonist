@@ -56,7 +56,7 @@ pushed to the same branch without a fresh ask. Its limits:
   that failure only: no unrelated commits riding along (the last bullet above
   still applies).
 - **Merging is always a fresh, explicit ask.** That covers the fast-forward of
-  `main` (`issue-first` step 7), `gh pr merge`, and deleting the branch. A green
+  `main` (`issue-first` step 7) and `gh pr merge`. A green
   PR after an auto-fix is not a go-ahead to land it.
 - **Merge conflicts and review comments are not CI failures.** Resolving a
   conflict means rebasing and force-pushing a published branch (§3). A review
@@ -93,6 +93,15 @@ Tags are signed (`git tag -s`) and verified locally *before* they go anywhere.
 Merges are fast-forward, landed from the terminal — GitHub's merge button
 re-creates commits and strips their GPG signatures. The mechanics live in
 `issue-first` step 7 and `release` step 7.
+
+## 5. Leave merged remote branches to GitHub
+
+Harmonist has GitHub's automatic head-branch deletion enabled. After verifying
+the PR is merged, leave remote branch removal to GitHub; do not run
+`git push origin --delete` or prompt the user to approve routine branch deletion.
+A remaining local branch does not make the merge incomplete: leave it in place
+unless local cleanup is requested, without adding a cleanup question to the
+handoff.
 
 ## Done when
 
