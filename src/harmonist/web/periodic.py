@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 log = logging.getLogger(__name__)
 
@@ -30,9 +30,14 @@ async def run_periodically(
     *,
     name: str,
     stop_event: asyncio.Event | None = None,
+    on_schedule: Callable[[datetime], None] | None = None,
 ) -> None:
     """Call `action` every `interval` until cancelled or `stop_event` is set.
     `name` labels the task in the log.
+
+    `on_schedule` is told when the next call is due, each time the loop starts
+    waiting for it — so a status line can say "next check in 6 minutes" from the
+    timer's own schedule rather than a guess (#623). It decides nothing here.
 
     A `timedelta` rather than a number, so a caller cannot pass the right
     figure in the wrong unit — the one mistake a bare `interval_seconds: float`
@@ -66,6 +71,8 @@ async def run_periodically(
     log.info("Periodic %s every %s", name, interval)
     failures = 0
     while not stop.is_set():
+        if on_schedule is not None:
+            on_schedule(datetime.now(UTC) + interval)
         try:
             await asyncio.wait_for(stop.wait(), timeout=seconds)
             return  # stop_event set — shutting down

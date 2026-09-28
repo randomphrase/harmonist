@@ -8,6 +8,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **Settings shows where the background update check is**, in its own
+  Background checks section: albums checked this week, how many are waiting, and
+  when the next batch runs. It replaces **Check now**, which only ran one small
+  batch (#623).
+
 - **A possibly mismatched download gets its own Library filter, Possible
   mismatch, before any MB contributions**: the album page says why the match is
   in doubt, lists the matched release beside the others, and **Don't warn me

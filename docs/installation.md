@@ -154,8 +154,9 @@ or scan rather than competing with them for the one-request-per-second budget.
 It is also on the **Settings** page, as **Background update checks**, and takes
 effect there without a restart — this is the setting most likely to be changed
 after install, since it ships off and its whole point is turning it on once you
-trust it. The first pass is otherwise up to an hour away, so the control has a
-**Check now** beside it that runs one straight away.
+trust it. The check runs a small batch every ten minutes; the **Background
+checks** section on Settings shows how far through the library it is and when the
+next batch runs.
 
 `[tagging] folder_cover` decides whether Harmonist creates a `cover.jpg` (or
 `cover.png`) for an album that hasn't got one. It ships **`never`**; set it to

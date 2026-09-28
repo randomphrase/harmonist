@@ -882,6 +882,7 @@ def _forget_what_was_asked():
     yield
     gardener._asked.clear()
     gardener._consecutive_failures = 0
+    gardener._next_pass = None  # the Settings line's schedule (#623)
 
 
 def _inc() -> str:
@@ -1176,6 +1177,27 @@ def test_an_album_asked_about_recently_is_not_asked_again(tmp_path, monkeypatch)
 
     assert gardener.sweep([album]).asked == 0
     assert asked == []
+
+
+def test_status_counts_what_the_pass_would_ask_about(tmp_path):
+    """The Settings line's figures come from the same fetch times the pass
+    schedules off (#623), so "waiting" is exactly what the next batches take."""
+    activity_store.init(tmp_path / "activity.db")
+    fresh = _tagged(tmp_path, _release(mbid="rel-fresh"), name="Fresh")
+    stale = _tagged(tmp_path, _release(mbid="rel-stale"), name="Stale")
+    never = _tagged(tmp_path, _release(mbid="rel-never"), name="Never")
+    _store(_release(mbid="rel-fresh"), age=gardener.RECHECK_AFTER - timedelta(hours=1))
+    _store(_release(mbid="rel-stale"), age=_stale())
+    next_pass = datetime.now(UTC) + timedelta(minutes=4)
+    gardener.note_next_pass(next_pass)
+
+    status = gardener.status([fresh, stale, never])
+
+    assert (status.matched, status.due, status.checked) == (3, 2, 1)
+    assert status.next_pass == next_pass
+    assert status.backing_off is False
+    gardener._consecutive_failures = gardener._GIVE_UP_AFTER
+    assert gardener.status([fresh]).backing_off is True
 
 
 def test_an_album_musicbrainz_was_never_asked_about_goes_first(tmp_path, monkeypatch):
@@ -1549,8 +1571,8 @@ def test_a_tick_stands_aside_for_work_with_a_better_claim(monkeypatch, sync, rec
     )
 
     assert done.wait(0.25) is False
-    # Named rather than merely refused: **Check now** (#312) shows this to
-    # whoever pressed it, and a control that declines in silence reads as broken.
+    # Named rather than merely refused, so the reason is there to state; the
+    # Settings line says what holds the next batch (#623).
     assert reason
 
 
@@ -1603,9 +1625,10 @@ def _engaged_timers(cfg, monkeypatch):
 
     actions: dict[str, object] = {}
 
-    async def _record(interval, action, *, name, stop_event=None):
+    async def _record(interval, action, *, name, stop_event=None, on_schedule=None):
         actions[name] = action
         actions[f"{name} cadence"] = interval
+        actions[f"{name} schedule"] = on_schedule
         if stop_event is not None:
             await stop_event.wait()
 
@@ -1650,6 +1673,8 @@ def test_the_check_ticks_on_the_interval_its_slice_is_sized_against(engaged, mon
 
     with _engaged_timers(cfg, monkeypatch) as (_app, actions):
         assert actions["update check cadence"] == gardener.SWEEP_TICK
+        # ...and tells the gardener when each tick is due, for Settings (#623).
+        assert actions["update check schedule"] is gardener.note_next_pass
 
 
 def test_turning_the_check_on_takes_effect_without_a_restart(engaged, monkeypatch):

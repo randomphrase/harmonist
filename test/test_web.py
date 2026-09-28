@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import re
 import shutil
-import threading
 import zipfile
 from collections.abc import Sequence
 from dataclasses import replace
@@ -5886,78 +5885,91 @@ def test_settings_save_rejects_an_unknown_gardener_level(client, cfg):
     assert not (cfg.paths.config_dir / "harmonist.toml").exists()
 
 
-def test_settings_offers_check_now_only_once_the_check_is_on(client, cfg):
-    """The control's escape hatch from the empty hour after enabling it (#312).
-    Inert while the level is `off`: there is no background pass to pre-empt, and
-    a button that spends a hundred MusicBrainz requests must not be the way round
-    a setting that says not to."""
-    from harmonist.config import GardenerConfig
+def _update_status_line(html: str):
+    from bs4 import BeautifulSoup
 
-    assert cfg.gardener.level == "off"
-    assert _button_is_disabled(client.get("/settings").text, "update-check-now") is True
-
-    client.app.state.cfg = cfg.model_copy(update={"gardener": GardenerConfig(level="review")})
-
-    assert _button_is_disabled(client.get("/settings").text, "update-check-now") is False
+    return BeautifulSoup(html, "html.parser").select_one("#update-check-status")
 
 
-def test_check_now_starts_a_pass(client, cfg, monkeypatch):
-    """`run_periodically` fires one full interval after startup, so enabling the
-    check at 10:00 does nothing until 11:00. This is what stops that hour
-    reading as a setting that didn't take."""
+def test_update_check_status_shows_progress_and_the_next_batch(client, cfg, monkeypatch):
+    """Where the background check is (#623): the albums it has been through this
+    week, those waiting, and when the next batch runs — rendered with the page
+    and by the route its line polls."""
     from harmonist import gardener
     from harmonist.config import GardenerConfig
 
-    swept = threading.Event()
+    # Off: no line at all, and nothing polling — the level already says so.
+    assert _update_status_line(client.get("/settings").text) is None
 
-    def _sweep(albums, **kw):
-        swept.set()
-        return gardener.PassResult(
-            asked=0, examined=0, flagged=0, newly_flagged=(), gone=0, failed=0
-        )
-
+    client.app.state.cfg = cfg.model_copy(update={"gardener": GardenerConfig(level="review")})
     monkeypatch.setattr(client.app.state.scan_runner, "has_completed", lambda: True, raising=False)
-    monkeypatch.setattr(gardener, "sweep", _sweep)
-    client.app.state.cfg = cfg.model_copy(update={"gardener": GardenerConfig(level="review")})
-
-    r = client.post("/settings/update-check")
-
-    assert r.status_code == 200
-    assert "Update check started" in r.text
-    assert swept.wait(5) is True
-    # And the page says so where the button is. The flash alone is silence on
-    # /settings — the status bar's JS is defined in index.html — so the outcome
-    # rides back as an out-of-band swap of the control's own row.
-    assert 'id="update-check-control"' in r.text
-    assert 'hx-swap-oob="true"' in r.text
-    assert "Checking now" in r.text
-
-
-def test_check_now_says_why_when_it_declines(client, cfg, monkeypatch):
-    """A press answered with silence reads as broken, so the tick's reason goes
-    back to whoever pressed — here the level, which the button is disabled for
-    but a stale page or a direct POST can still reach."""
-    from harmonist import gardener
-
-    swept = threading.Event()
-
-    def _sweep(albums, **kw):
-        swept.set()
-        return gardener.PassResult(
-            asked=0, examined=0, flagged=0, newly_flagged=(), gone=0, failed=0
+    status = gardener.SweepStatus(
+        matched=983,
+        due=12,
+        next_pass=datetime.now(UTC) + timedelta(minutes=5, seconds=30),
+        backing_off=False,
+    )
+    monkeypatch.setattr(gardener, "status", lambda albums, **kw: status)
+    for html in (client.get("/settings").text, client.get("/settings/update-check").text):
+        line = _update_status_line(html)
+        assert line is not None
+        text = " ".join(line.text.split())
+        assert (
+            text
+            == "971 of 983 albums checked in the last week, 12 waiting. Next batch in 6 minutes."
         )
+        assert line["hx-get"] == "/settings/update-check"
+        assert line["hx-trigger"] == "every 60s"
 
-    monkeypatch.setattr(gardener, "sweep", _sweep)
 
-    r = client.post("/settings/update-check")  # cfg ships `off`
+@pytest.mark.parametrize(
+    ("condition", "said"),
+    [
+        ("busy", "Waiting for the sync or reconcile to finish."),
+        ("unscanned", "Waiting for the library scan to finish."),
+        ("running", "Checking a batch now."),
+        ("backing_off", "MusicBrainz isn't answering, so each batch stops at its first failure."),
+    ],
+)
+def test_update_check_status_says_what_holds_the_next_batch(
+    client, cfg, monkeypatch, condition, said
+):
+    from harmonist import gardener
+    from harmonist.config import GardenerConfig
+    from harmonist.web import main as web_main
 
-    assert r.status_code == 200
-    assert "Update check not started" in r.text
-    assert "background update checks are off" in r.text
-    assert swept.wait(0.25) is False
-    # Refusals get the same out-of-band answer as a start, for the same reason.
-    assert 'hx-swap-oob="true"' in r.text
-    assert "Not started — background update checks are off." in r.text
+    client.app.state.cfg = cfg.model_copy(update={"gardener": GardenerConfig(level="review")})
+    state = client.app.state
+    monkeypatch.setattr(state.scan_runner, "has_completed", lambda: condition != "unscanned")
+    monkeypatch.setattr(type(state.sync_runner), "is_running", condition == "busy")
+    if condition == "running":
+        assert web_main._update_check_lock.acquire(blocking=False)
+    status = gardener.SweepStatus(
+        matched=10, due=0, next_pass=None, backing_off=condition == "backing_off"
+    )
+    monkeypatch.setattr(gardener, "status", lambda albums, **kw: status)
+    try:
+        line = _update_status_line(client.get("/settings/update-check").text)
+    finally:
+        if condition == "running":
+            web_main._update_check_lock.release()
+    assert line is not None
+    assert " ".join(line.text.split()) == f"10 of 10 albums checked in the last week. {said}"
+
+
+@pytest.mark.parametrize(
+    ("offset", "said"),
+    [
+        (timedelta(seconds=-5), "any moment now"),
+        (timedelta(seconds=20), "in 1 minute"),
+        (timedelta(minutes=9, seconds=1), "in 10 minutes"),
+        (timedelta(hours=1, minutes=5), "in 2 hours"),
+    ],
+)
+def test_until_rounds_remaining_time_up(offset, said):
+    from harmonist.web.main import _until
+
+    assert _until(datetime.now(UTC) + offset) == said
 
 
 def test_tasks_shows_scanning_placeholder_while_scanning(client, cfg, monkeypatch):

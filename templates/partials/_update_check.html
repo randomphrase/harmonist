@@ -1,31 +1,25 @@
-{# The background update check's status line and its Check now button (#312).
+{# Where the background update check is (#623): how much of the library it has
+   been through in the recheck window, and what it is doing now or when the next
+   batch runs. It replaced a Check now button that ran one ordinary batch — a
+   couple of albums — which read as a check of the library and wasn't.
 
-   Rendered inline by settings.html, and out of band by POST
-   /settings/update-check so the press has a visible answer *here*. It cannot
-   rely on the usual flash: the status bar's JS lives in index.html, so on
-   /settings a `harmonist-status` event goes nowhere — the same reason
-   `globals_off_reason` is derived server-side rather than by the poll.
-
-   Swapping the whole row also re-renders the button, so a pass that started
-   leaves it in whatever state the current level says it should be in. #}
-<div id="update-check-control" class="flex items-center justify-between gap-3 -mt-1"
-     {% if oob %}hx-swap-oob="true"{% endif %}>
-    <p class="text-2xs {{ 'text-red-700 font-bold' if outcome and not outcome_ok else 'text-muted' }}"
-       {% if outcome %}role="status"{% endif %}>
-        {% if outcome %}
-        {{ outcome }}
-        {% elif cfg.gardener.level == 'off' %}
-        Choose a level and save, and you can run the first check straight away
-        rather than waiting for it to come round.
-        {% else %}
-        The first check is up to an hour after you turn this on — run one
-        straight away instead.
-        {% endif %}
-    </p>
-    <button id="update-check-now" type="button"
-            hx-post="/settings/update-check" hx-swap="none" hx-disabled-elt="this"
-            {% if cfg.gardener.level == 'off' %}disabled{% endif %}
-            class="flex-shrink-0 px-3 py-1.5 border border-accent text-accent hover:bg-accent-soft disabled:opacity-40 disabled:hover:bg-transparent rounded text-xs font-bold uppercase tracking-widest transition">
-        Check now
-    </button>
-</div>
+   Rendered inline by settings.html, and by GET /settings/update-check, which the
+   line polls so the counts and the countdown stay current while the page is
+   open. Nothing is rendered while the check is off: the level already says so. #}
+{% if cfg.gardener.level != 'off' and update_status %}
+{% set s = update_status %}
+<p id="update-check-status" class="text-2xs text-muted -mt-2"
+   hx-get="/settings/update-check" hx-trigger="every 60s" hx-swap="outerHTML">
+    {{ s.checked }} of {{ s.matched }} albums checked in the last week{% if s.due %}, {{ s.due }} waiting{% endif %}.
+    {% if update_wait == 'running' %}
+    Checking a batch now.
+    {% elif update_wait == 'busy' %}
+    Waiting for the sync or reconcile to finish.
+    {% elif update_wait == 'unscanned' %}
+    Waiting for the library scan to finish.
+    {% else %}
+        {% if s.backing_off %}MusicBrainz isn't answering, so each batch stops at its first failure.{% endif %}
+        {% if s.next_pass %}Next batch {{ until(s.next_pass) }}.{% endif %}
+    {% endif %}
+</p>
+{% endif %}

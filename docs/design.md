@@ -1913,16 +1913,23 @@ closure holds the *startup* config, so reading the level from there would leave
 the setting saved, looking applied, and silently doing nothing — worse than
 having required the restart.
 
-**And a way out of the first empty interval.** `run_periodically` fires one full
+**A status line, not a button (#623).** `run_periodically` fires one full
 interval after startup and never at startup, so turning the check on buys ten
-minutes in which the library looks exactly as it did. `POST
-/settings/update-check` — **Check now**, beside the level — runs one pass
-immediately. It runs an *ordinary* tick, a couple of albums rather than a sweep:
-giving the button its own larger budget would put the burst back in at the one
-moment somebody is certainly sitting in front of the app. It shares the tick's guards rather than bypassing them, `off`
-included: the level is what the button asks permission from, so it cannot be the
-way round it. Whichever guard declines says so in the flash, because a control
-answered with silence reads as broken whether it ran or refused.
+minutes in which the library looks exactly as it did. That used to be answered by
+**Check now**, which ran one ordinary tick — a couple of albums, since #349 — and
+so read as a check of the library that it wasn't. Settings now says where the
+check is instead, in its own **Background checks** section: the matched albums
+looked at within `RECHECK_AFTER`, how many are waiting, and when the next batch
+runs, or what holds it (a sync or reconcile, the first scan, a batch already
+running, or backing off after repeated MusicBrainz failures). The counts come
+from `gardener.status`, which reads the same stored fetch times `_due` schedules
+off — one database read, no request. The time comes from the timer itself:
+`run_periodically` reports each tick's due time through `on_schedule`, recorded by
+`gardener.note_next_pass`. What holds a batch is `_update_check_waiting`, the
+tick's own guards read without starting anything. The line polls
+`GET /settings/update-check` each minute while the page is open, and is not
+rendered while the level is `off`. The section is also where the decisions about
+what the check may do with its findings (#32) will sit.
 
 **Detect-only is the classifier's answer, not a phase.** `owned.AUTO_APPLY` is
 empty, so every change needs a person; until #271 gives a finding somewhere to

@@ -462,7 +462,8 @@ you tagged it — each with its count:
   fine".
 
   You can have Harmonist go and look instead of waiting to be asked. Set
-  **Background update checks** to *Look and report* on the **Settings** page and
+  **Update checks** to *Look and report* under **Background checks** on the
+  **Settings** page and
   a small background pass works through the library, checking the albums it has
   looked at least recently against MusicBrainz — a few of them every ten minutes
   while nothing else is happening, so whatever is due gets through in about a day
@@ -479,11 +480,13 @@ you tagged it — each with its count:
   touches the release, and neither is one Harmonist is only now seeing for the
   first time, such as on a new install.
 
-  The setting applies straight away — no restart — but the first pass is
-  otherwise up to ten minutes off, which looks like nothing happened. **Check
-  now**, beside the setting, runs one immediately; what it finds turns up here
-  and as the purple **Update** badge on the tiles. (`level` under `[gardener]` in
-  `harmonist.toml` is the same setting, for a config-managed install.)
+  The setting applies straight away — no restart. Beneath it, a status line says
+  how many albums have been checked in the last week, how many are waiting, and
+  when the next batch runs, or what it's waiting for (a sync or reconcile, the
+  library scan, or MusicBrainz answering again); it keeps itself current while
+  the page is open. What the check finds turns up here and as the purple
+  **Update** badge on the tiles. (`level` under `[gardener]` in `harmonist.toml`
+  is the same setting, for a config-managed install.)
 - **Possible mismatch** and **MB contributions** — downloads whose match may be
   the wrong release, and releases missing your store URL or barcode. See
   [Contributing missing release information](#contributing-missing-release-information).

@@ -54,6 +54,39 @@ def test_fires_on_the_interval_until_stopped():
     assert len(calls) == 3
 
 
+def test_says_when_each_tick_is_due():
+    """A status line reads the next tick off the timer itself (#623): each wait
+    reports its end, before the action it leads to."""
+    from datetime import UTC, datetime
+
+    stop = asyncio.Event()
+    interval = timedelta(seconds=0.05)
+    events: list[tuple[str, datetime]] = []
+
+    def tick() -> None:
+        events.append(("tick", datetime.now(UTC)))
+        if sum(1 for kind, _ in events if kind == "tick") == 2:
+            stop.set()
+
+    async def go() -> None:
+        await asyncio.wait_for(
+            run_periodically(
+                interval,
+                tick,
+                name="test",
+                stop_event=stop,
+                on_schedule=lambda at: events.append(("due", at)),
+            ),
+            timeout=5,
+        )
+
+    asyncio.run(go())
+    kinds = [kind for kind, _ in events]
+    assert kinds[:4] == ["due", "tick", "due", "tick"]
+    # The tick lands at (or just after) the time it was announced for.
+    assert abs((events[1][1] - events[0][1]).total_seconds()) < 0.05
+
+
 def test_a_failing_tick_does_not_end_the_loop():
     """One transient failure — an unmounted volume, a moment of EIO — must not
     retire the rescan, or the library stays stale until the next restart."""

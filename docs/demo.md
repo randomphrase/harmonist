@@ -88,9 +88,10 @@ Reset restores the MP3 copy and removes the demonstration archive.
 
 ## 3. Review, update, and undo tags and artwork
 
-Reset the established demo. In Settings, enable **Look and report**, then
-**Check now**, to demonstrate discovery. Alternatively, open the featured album
-directly; its comparison also discovers the update.
+Reset the established demo, then open the featured album: its comparison
+discovers the update. To show the background check instead, enable **Look and
+report** under Settings' **Background checks**; its status line says when the next
+batch runs.
 
 | Album | What to show |
 | --- | --- |

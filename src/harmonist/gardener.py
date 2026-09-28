@@ -494,6 +494,45 @@ _NEVER = datetime.min.replace(tzinfo=UTC)
 #: by the size of the library — the same order as the album list itself.
 _asked: dict[str, datetime] = {}
 
+#: When the scheduler will next start a pass, as it last said (#623). Set from
+#: `periodic.run_periodically`'s `on_schedule`; None until the timer is running,
+#: which it never is under a bare TestClient.
+_next_pass: datetime | None = None
+
+
+def note_next_pass(at: datetime) -> None:
+    """The scheduler's hook: the next pass is due at `at`."""
+    global _next_pass
+    _next_pass = at
+
+
+@dataclass(frozen=True)
+class SweepStatus:
+    """Where the background pass is, for the Settings page (#623)."""
+
+    matched: int  # albums with a release to ask about
+    due: int  # of those, albums whose release has gone unasked-about too long
+    next_pass: datetime | None
+    backing_off: bool  # MusicBrainz failing: each pass stops at its first failure
+
+    @property
+    def checked(self) -> int:
+        return self.matched - self.due
+
+
+def status(albums: Sequence[Album], *, now: datetime | None = None) -> SweepStatus:
+    """Counts from the same stored fetch times the pass schedules off: one
+    database read, no MusicBrainz request."""
+    now = now or datetime.now(UTC)
+    due = sum(len(group) for _, group in _due(albums, recheck_after=RECHECK_AFTER, now=now))
+    matched = sum(1 for a in albums if a.sidecar is not None and a.sidecar.mb_release_id)
+    return SweepStatus(
+        matched=matched,
+        due=due,
+        next_pass=_next_pass,
+        backing_off=_consecutive_failures >= _GIVE_UP_AFTER,
+    )
+
 
 @dataclass(frozen=True)
 class PassResult:

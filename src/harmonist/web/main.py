@@ -7,6 +7,7 @@ import hashlib
 import html
 import json
 import logging
+import math
 import os
 
 # Demo mode is conditionally imported in create_app() — keeps demo-only code
@@ -697,6 +698,7 @@ def create_app(
     templates.env.globals["display_path"] = _display_path
     templates.env.globals["rel_path"] = _rel_path
     templates.env.globals["ago"] = _ago
+    templates.env.globals["until"] = _until
     templates.env.globals["missing_discs"] = _missing_discs
     # The one MusicBrainz note's legend (#328), composed from BOTH comparisons.
     # A global rather than a context key because the two partials that render
@@ -788,6 +790,7 @@ def create_app(
                 lambda: _update_check_if_idle(_app, sync_runner, reconcile_runner, scan_runner),
                 name="update check",
                 stop_event=watch_stop,
+                on_schedule=gardener.note_next_pass,
             )
         )
         try:
@@ -1234,6 +1237,22 @@ def _ago(when: datetime | None) -> str:
     return "just now"
 
 
+def _until(when: datetime) -> str:
+    """A time still to come as rough remaining time — "in 6 minutes" (#623).
+
+    Rounded up to the minute, so the countdown never says "in 0 minutes" while
+    there is still time on it. A time already past — the batch is starting — is
+    "any moment now" rather than a negative figure."""
+    seconds = (when - datetime.now(UTC)).total_seconds()
+    if seconds <= 0:
+        return "any moment now"
+    if seconds >= 3600:
+        n = math.ceil(seconds / 3600)
+        return f"in {n} hour{'s' if n != 1 else ''}"
+    n = math.ceil(seconds / 60)
+    return f"in {n} minute{'s' if n != 1 else ''}"
+
+
 # Libraries Harmonist builds on, for the About page. (name, pip distribution or
 # None for non-Python deps, homepage, licence). Versions are filled in live.
 _CREDITS: list[tuple[str, str | None, str, str]] = [
@@ -1352,16 +1371,16 @@ def _update_ignore_oob(request: Request, album: Album, *, ignored: bool) -> str:
     return template.render(_ctx(request, album=album, update_ignored=ignored, oob=True))
 
 
-def _update_check_oob(request: Request, outcome: str, *, ok: bool) -> str:
-    """The background update check's note + Check now button, as an out-of-band
-    swap carrying what the press just produced (#312).
-
-    A partial rather than a string of markup built here, so its class names sit
-    under `templates/` where Tailwind's `@source` globs can see them — a utility
-    minted only in Python is silently absent from the bundle.
-    """
-    template = _templates(request).env.get_template("partials/_update_check.html")
-    return template.render(_ctx(request, outcome=outcome, outcome_ok=ok, oob=True))
+def _update_check_ctx(request: Request) -> dict[str, Any]:
+    """What the background check's status line reads (#623): the pass's counts
+    and schedule, and why a batch would not start now. One database read."""
+    state = request.app.state
+    return {
+        "update_status": gardener.status(state.scan_runner.albums()),
+        "update_wait": _update_check_waiting(
+            request.app, state.sync_runner, state.reconcile_runner, state.scan_runner
+        ),
+    }
 
 
 def _retag_short_oob(
@@ -2609,6 +2628,32 @@ def _periodic_rescan_if_idle(
 _update_check_lock = threading.Lock()
 
 
+UpdateCheckWait = Literal["off", "busy", "unscanned", "running"]
+
+
+def _update_check_waiting(
+    app: FastAPI,
+    sync_runner: SyncRunner,
+    reconcile_runner: ReconcileRunner,
+    scan_runner: ScanRunner,
+) -> UpdateCheckWait | None:
+    """Why a pass would not start now, or None if it would — without starting one.
+
+    The guards `_update_check_if_idle` applies, read-only, so the Settings page
+    can say what the background check is doing (#623).
+    """
+    cfg: config_mod.Config = app.state.cfg
+    if cfg.gardener.level == "off":
+        return "off"
+    if sync_runner.is_running or reconcile_runner.is_running:
+        return "busy"
+    if not scan_runner.has_completed():
+        return "unscanned"
+    if _update_check_lock.locked():
+        return "running"
+    return None
+
+
 def _update_check_if_idle(
     app: FastAPI,
     sync_runner: SyncRunner,
@@ -2617,11 +2662,9 @@ def _update_check_if_idle(
 ) -> str | None:
     """One gardener pass (#270), unless something with a better claim is running.
 
-    Returns `None` when a pass was started, and otherwise the reason it wasn't,
-    phrased for a person: the hourly tick discards it — the log line beside each
-    guard is its channel — but **Check now** on the Settings page is a button a
-    user just pressed, and a control that answers a press with silence reads as
-    broken whether it declined or ran.
+    Returns `None` when a pass was started, and otherwise the reason it wasn't.
+    The tick discards it — the log line beside each guard is its channel — and
+    the Settings page states the same conditions through `_update_check_waiting`.
 
     `app` rather than the level itself, because the level moves at runtime
     (#312): `app.state.cfg` is re-read on every tick, so saving the setting
@@ -2658,8 +2701,8 @@ def _update_check_if_idle(
         # DEBUG since #349 shortened the tick to ten minutes: a long sync would
         # otherwise write this same line six times an hour for as long as it
         # ran, which is the noise that makes a log unread. Nothing is lost by
-        # standing aside quietly — the user started the sync, and **Check now**
-        # still answers with the reason in words.
+        # standing aside quietly — the user started the sync, and the Settings
+        # page says the check is waiting for it.
         log.debug("Skipping update check: sync or reconcile in progress")
         return "a sync or reconcile is using the MusicBrainz budget"
     if not scan_runner.has_completed():
@@ -4154,6 +4197,7 @@ def _register_routes(app: FastAPI) -> None:
             # The promise the figure sits under (#408) — what a user
             # can rely on being undoable, as opposed to how full it is.
             keep_per_album=cfg.artwork_store.keep_per_album,
+            **_update_check_ctx(request),
             **extra,
         )
 
@@ -4278,64 +4322,20 @@ def _register_routes(app: FastAPI) -> None:
             request, "settings.html", _settings_ctx(request, new_cfg, saved=True)
         )
 
-    @app.post("/settings/update-check", response_class=HTMLResponse)
-    def run_update_check_now(request: Request) -> Response:
-        """Run the background pass now, instead of waiting for the next tick.
+    @app.get("/settings/update-check", response_class=HTMLResponse)
+    def update_check_status(request: Request) -> Response:
+        """The background check's status line, which polls this (#623).
 
-        `run_periodically` fires one full interval after startup and never at
-        startup, so turning the check on buys an interval of a library that looks
-        exactly as it did — which reads as a setting that didn't take (#312).
-        This is the escape hatch from that wait, and the only way to see the pass
-        work on demand.
+        It replaced **Check now**, which ran one ordinary batch — a couple of
+        albums, since #349 — and so read as a check of the library that it
+        wasn't. What that button existed for, a first batch one whole interval
+        after turning the check on reading as a setting that didn't take (#312),
+        the line answers instead by saying when the next batch runs.
 
-        **It runs one ordinary tick, not a bigger one** (#349). A tick is now a
-        share of `gardener.SWEEP_WINDOW` — a couple of albums rather than a
-        hundred — so the press buys the ten minutes to the next one and not a
-        sweep. Deliberately: giving the button its own larger budget would put
-        the burst #349 removed back into the app at the one moment somebody is
-        certainly sitting in front of it, and the honest reading of "check now"
-        is that the check starts now, which it does.
-
-        Not a mutation: it starts a read-only pass on a worker thread and
-        returns at once, so there is nothing for the inbox or the library to
-        refresh yet (`tasks_changed=False`). What it finds arrives the way the
-        pass's findings always arrive — the Update badge on a tile, and the
-        Library's **Update available** filter.
-
-        The outcome goes back out of band as well as in the flash, because on
-        this page the flash alone is silence: the status bar's JS is defined in
-        index.html, so a `harmonist-status` event fired on /settings has nobody
-        listening for it. The OOB fragment answers beside the button that was
-        pressed, which is where the answer belongs anyway.
+        Read-only: one database read for the counts, and no request.
         """
-        state = request.app.state
-        reason = _update_check_if_idle(
-            request.app, state.sync_runner, state.reconcile_runner, state.scan_runner
-        )
-        if reason is not None:
-            return _flash_response(
-                "Update check not started",
-                reason,
-                level=Level.WARNING,
-                tasks_changed=False,
-                # No feed entry: nothing happened, the press has its answer on
-                # screen, and the one decline that IS news — a pass still
-                # running — already reaches the feed through its mirrored
-                # `log.warning`. Recording here too would post it twice (#258).
-                record_activity=False,
-                oob=_update_check_oob(request, f"Not started — {reason}.", ok=False),
-            )
-        return _flash_response(
-            "Update check started",
-            "asking MusicBrainz about the albums due; anything it finds appears "
-            "under the Library's Update available filter",
-            tasks_changed=False,
-            oob=_update_check_oob(
-                request,
-                "Checking now — anything it finds appears under the Library's "
-                "Update available filter.",
-                ok=True,
-            ),
+        return _templates(request).TemplateResponse(
+            request, "partials/_update_check.html", _ctx(request, **_update_check_ctx(request))
         )
 
     @app.get("/sync/status")
