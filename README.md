@@ -8,10 +8,9 @@ reversible.**
   stores get [Picard](https://picard.musicbrainz.org)-compatible metadata.
 - **Your folders, your formats.** Keep your own directory layout and your choice
   of FLAC, MP3, AAC, ALAC, Ogg Vorbis, and Opus.
-- **Keep your collection in step with MusicBrainz.** Link each album to its
-  MusicBrainz release as the canonical source of metadata, then review and apply
-  improvements as that source evolves. Uncertain matches go to the inbox for
-  review.
+- **Link your albums to MusicBrainz** for canonical release metadata.
+- **Keep your tags current.** Harmonist continually finds metadata updates on
+  MusicBrainz for you to review and apply.
 - **Fill missing covers and upgrade your artwork.** Compare images from your
   files and the Cover Art Archive, then apply the covers you choose.
 - **Undo tag and artwork changes.** See exactly what changed, restore previous
