@@ -8,6 +8,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **Cover Art Archive images kept for album pages are capped at 100 MB**, least
+  recently viewed first; tune with `image_cache_max_bytes` under `[cover_art]`
+  (#439).
+
 - **Settings shows where the background update check is**, in its own
   Background checks section: albums checked this week, how many are waiting, and
   when the next batch runs. It replaces **Check now**, which only ran one small

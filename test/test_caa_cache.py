@@ -157,11 +157,11 @@ def test_due_says_what_the_page_should_do_without_asking_anything(monkeypatch):
 
     monkeypatch.setattr(cover_art, "check_front", boom)
 
-    assert caa_cache.due(MBID) is True  # never asked
+    assert caa_cache.due(MBID, keep_if_wider_than=0) is True  # never asked
     _stored(timedelta(days=30))
-    assert caa_cache.due(MBID) is True  # asked, long ago
+    assert caa_cache.due(MBID, keep_if_wider_than=0) is True  # asked, long ago
     _stored(timedelta(hours=1))
-    assert caa_cache.due(MBID) is False  # asked within the window
+    assert caa_cache.due(MBID, keep_if_wider_than=0) is False  # asked within the window
 
 
 def test_a_row_stamped_in_the_future_is_stale_rather_than_immortal(monkeypatch):
@@ -171,7 +171,7 @@ def test_a_row_stamped_in_the_future_is_stale_rather_than_immortal(monkeypatch):
     monkeypatch.setattr(cover_art, "check_front", check)
     _stored(-timedelta(days=365))
 
-    assert caa_cache.due(MBID) is True
+    assert caa_cache.due(MBID, keep_if_wider_than=0) is True
     caa_cache.front(MBID)
     assert check.calls == 1
 
@@ -202,10 +202,73 @@ def test_release_only_absence_does_not_suppress_ordinary_group_fallback(monkeypa
     assert not caa_cache.front(MBID, release_only=True).has_art
     assert not caa_cache.front(MBID, release_only=True).has_art
     assert len(calls) == 1  # A release-only absence still benefits from the TTL.
-    assert caa_cache.due(MBID)  # The ordinary album page may still find group artwork.
+    # The ordinary album page may still find group artwork.
+    assert caa_cache.due(MBID, keep_if_wider_than=0)
     assert caa_cache.front(MBID, release_group_mbid="group").from_release_group
     assert caa_cache.front(MBID, release_group_mbid="group").has_art
     assert len(calls) == 2
     assert not caa_cache.front(MBID, release_only=True).has_art
     assert len(calls) == 3
     assert calls == [(None, None), ("group", None), (None, None)]
+
+
+# ---------- a winner the image cache has since evicted (#439) ----------
+#
+# The image cache is capped now, so a fresh answer can outlive its picture. The
+# measurement still stands; only the bytes are gone, and without them the
+# Artwork section has no winner to show and no Update artwork to offer — for as
+# long as the answer stays fresh, which is a week.
+
+
+@pytest.fixture
+def evicted_winner(tmp_path, monkeypatch):
+    """A fresh answer whose image beat a 500px album, with the cache empty, and
+    every call to the archive recorded rather than made."""
+    monkeypatch.setattr(cover_art, "_caa_root", tmp_path / "caa")
+    _stored(timedelta(hours=1), image_url="https://caa.example/front.jpg", width=1400)
+
+    def no_check(mbid, **kw):
+        raise AssertionError("a fresh answer was asked again")
+
+    fetched: list[tuple[str, str]] = []
+
+    def fetch(mbid, url, **kw):
+        fetched.append((mbid, url))
+        return cover_art.cache_image(mbid, b"\xff\xd8\xff", "image/jpeg")
+
+    monkeypatch.setattr(cover_art, "check_front", no_check)
+    monkeypatch.setattr(cover_art, "fetch_image", fetch)
+    return fetched
+
+
+def test_a_fresh_winner_whose_image_was_evicted_is_fetched_again(evicted_winner):
+    """The picture, and only the picture: the stored answer is fresh, so the
+    listing is not asked again."""
+    assert caa_cache.due(MBID, keep_if_wider_than=500) is True
+
+    caa_cache.front(MBID, keep_if_wider_than=500)
+
+    assert evicted_winner == [(MBID, "https://caa.example/front.jpg")]
+    assert cover_art.cached_image(MBID) is not None
+    assert caa_cache.due(MBID, keep_if_wider_than=500) is False
+
+
+def test_a_fresh_loser_is_not_fetched_because_it_is_missing(evicted_winner):
+    """A losing image is never downloaded by a check (#276); it being absent is
+    the ordinary state, not something to repair."""
+    assert caa_cache.due(MBID, keep_if_wider_than=2000) is False
+
+    caa_cache.front(MBID, keep_if_wider_than=2000)
+
+    assert evicted_winner == []
+
+
+def test_a_winner_is_not_fetched_with_the_image_cache_switched_off(evicted_winner, monkeypatch):
+    """Nowhere to keep it, so it would be missing again on the very next open —
+    a page that downloads megabytes to throw them away, every time."""
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+
+    assert caa_cache.due(MBID, keep_if_wider_than=500) is False
+    caa_cache.front(MBID, keep_if_wider_than=500)
+
+    assert evicted_winner == []

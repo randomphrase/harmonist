@@ -123,13 +123,16 @@ def stored(mbid: str, *, release_only: bool = False) -> activity_store.CachedCov
     return known
 
 
-def due(mbid: str) -> bool:
+def due(mbid: str, *, keep_if_wider_than: int) -> bool:
     """Whether this release is worth asking the archive about again.
 
     Asked by the album page to decide whether to send the out-of-band check —
     which is why it is a question of its own rather than a side effect of
     `front`. The section must render from what is known *before* anything leaves
     the machine, so the decision has to be made without making the request.
+
+    `keep_if_wider_than` is the album's widest image, as `front` takes it, and
+    has no default: it decides whether a fresh answer is still owed a picture.
     """
     known = stored(mbid)
     return (
@@ -138,6 +141,9 @@ def due(mbid: str) -> bool:
         # release-only absence has not answered that broader question yet.
         or (not known.has_art and known.source == "release")
         or not _fresh(known, _ttl)
+        # A winner whose picture the image cache has since evicted (#439).
+        # `front` fetches only the picture, but it has to be sent to.
+        or cover_art.unfetched_winner(mbid, known, keep_if_wider_than) is not None
     )
 
 
@@ -169,6 +175,12 @@ def front(
     elif release_group_mbid and known and not known.has_art and known.source == "release":
         known = None
     if known is not None and _fresh(known, _ttl if max_age is None else max_age):
+        # Fresh, but its winning picture may have been evicted from the image
+        # cache since (#439). The measurement stands, so only the picture is
+        # fetched — through the module attribute, for demo mode's patch.
+        if url := cover_art.unfetched_winner(mbid, known, keep_if_wider_than):
+            with timing.warn_if_slow("Cover Art Archive image fetch", _SLOW_CHECK, mbid=mbid):
+                cover_art.fetch_image(mbid, url)
         return known
     with timing.warn_if_slow("Cover Art Archive check", _SLOW_CHECK, mbid=mbid):
         # Through the module attribute, so demo mode's patch lands.

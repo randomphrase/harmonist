@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -254,6 +255,72 @@ def test_no_cache_configured_is_a_no_op(tmp_path):
     cover_art.configure_cache(None)
     assert cover_art.cache_image("demo-rel-3", b"data", "image/jpeg") is None
     assert cover_art.cached_image("demo-rel-3") is None
+
+
+# ---------- the cache's size cap (#439) ----------
+#
+# The album page's check fills the cache by itself now (#436), so browsing is
+# enough to grow it. Everything in it is a copy the archive still has, which is
+# why a byte cap and least-recently-used eviction are the whole policy.
+
+
+@pytest.fixture
+def capped(tmp_path, monkeypatch):
+    """Configure a capped cache, and put both globals back afterwards."""
+    monkeypatch.setattr(cover_art, "_caa_root", None)
+    monkeypatch.setattr(cover_art, "_caa_max_bytes", cover_art.DEFAULT_CACHE_MAX_BYTES)
+    root = tmp_path / "caa"
+
+    def configure(max_bytes: int) -> Path:
+        cover_art.configure_cache(root, max_bytes=max_bytes)
+        return root
+
+    return configure
+
+
+def _aged(release_mbid: str, seconds_ago: int) -> None:
+    """Backdate a cached image, so the order the cap sees is the test's and not
+    the filesystem clock's resolution."""
+    path = cover_art.cached_image(release_mbid)
+    assert path is not None
+    when = datetime.now(UTC).timestamp() - seconds_ago
+    os.utime(path, (when, when))
+
+
+def test_the_cap_evicts_the_image_least_recently_looked_at(capped):
+    """USED, not written: an album somebody keeps opening keeps its picture,
+    however long ago it was fetched."""
+    capped(3000)
+    for mbid, age in (("rel-a", 300), ("rel-b", 200), ("rel-c", 100)):
+        cover_art.cache_image(mbid, bytes(1000), "image/jpeg")
+        _aged(mbid, age)
+
+    # rel-a is the oldest write — and the album page has just shown it.
+    assert cover_art.cached_front("rel-a") is not None
+    cover_art.cache_image("rel-d", bytes(1000), "image/jpeg")
+
+    held = {m for m in ("rel-a", "rel-b", "rel-c", "rel-d") if cover_art.cached_image(m)}
+    assert held == {"rel-a", "rel-c", "rel-d"}
+
+
+def test_the_image_just_fetched_is_kept_even_alone_over_the_cap(capped):
+    """It is here because a page is about to show it. Evicting it would spend
+    the download on nothing, and the next page open would spend it again."""
+    root = capped(500)
+    cover_art.cache_image("rel-a", bytes(1000), "image/jpeg")
+    assert cover_art.cached_image("rel-a") is not None
+
+    cover_art.cache_image("rel-b", bytes(1000), "image/jpeg")
+
+    assert cover_art.cached_image("rel-a") is None
+    assert cover_art.cached_image("rel-b") is not None
+    assert [p.name for p in root.iterdir()] == ["rel-b.jpg"]
+
+
+def test_a_zero_cap_keeps_nothing(capped):
+    capped(0)
+    assert cover_art.cache_image("rel-a", bytes(10), "image/jpeg") is None
+    assert cover_art.cached_image("rel-a") is None
 
 
 # ---------- the release-group fallback (#434) ----------

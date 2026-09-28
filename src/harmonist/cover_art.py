@@ -69,10 +69,35 @@ def cached_front(release_mbid: str, *, release_only: bool = False) -> Front | No
     if path is None:
         return None
     try:
-        return Front(data=path.read_bytes(), mime=_mime_of(path))
+        front = Front(data=path.read_bytes(), mime=_mime_of(path))
+    except FileNotFoundError:
+        # Evicted between the look and the read (#439): the cache's ordinary
+        # answer for an image it no longer has, and nothing went wrong.
+        return None
     except OSError:
         log.exception("could not read the cached archive image for %s", release_mbid)
         return None
+    _mark_used(path)
+    return front
+
+
+def _mark_used(path: Path) -> None:
+    """Tell the cap this image is wanted (#439), by touching it: eviction goes
+    least recently used first, and serving it is the use.
+
+    A failure costs only the ordering — the image may go sooner than it should,
+    and the archive still has it — so it is logged and kept out of the feed:
+    this runs on every album page view, and a banner per view about the order a
+    cache empties in is nothing a user could act on.
+    """
+    try:
+        os.utime(path)
+    except FileNotFoundError:
+        pass  # evicted since it was read; there is nothing left to mark
+    except OSError:
+        log.warning(
+            "could not mark %s as recently used", path, exc_info=True, extra={"_activity": True}
+        )
 
 
 def front_image(
@@ -223,15 +248,10 @@ def check_front(
 
             if listing.status_code == 304 and known is not None:
                 # Unchanged since we last looked. The measurement still stands;
-                # retry a missing picture (a previous download may have failed).
-                if (
-                    known.image_url
-                    and known.width is not None
-                    and keep_if_wider_than is not None
-                    and known.width > keep_if_wider_than
-                    and cached_image(release_mbid) is None
-                ):
-                    _fetch_and_cache(http, release_mbid, known.image_url, known.mime)
+                # retry a missing picture (a previous download may have failed,
+                # or the cap evicted it).
+                if url := unfetched_winner(release_mbid, known, keep_if_wider_than):
+                    _fetch_and_cache(http, release_mbid, url, known.mime)
                 return replace(known, fetched_at=now)
             if listing.status_code == 404:
                 continue  # this listing has nothing; the next one may
@@ -282,6 +302,36 @@ def check_front(
     finally:
         if owns_client:
             http.close()
+
+
+def unfetched_winner(
+    release_mbid: str,
+    known: activity_store.CachedCoverArt,
+    keep_if_wider_than: int | None,
+) -> str | None:
+    """The URL of the archive's image when it beats the album's and the cache
+    does not hold it, or None.
+
+    The one case a check downloads the whole image for, asked of an answer
+    already in hand: a download that failed, or an image the cap has since
+    evicted (#439). Either way the measurement still stands and only the picture
+    is missing — which the Artwork section needs in order to show the winner and
+    offer to write it.
+
+    None when the cache is switched off. There is then nowhere to keep the
+    picture, and "missing" would be true forever: every page open would
+    download megabytes to throw them away.
+    """
+    if (
+        _caa_root is not None
+        and known.image_url
+        and known.width is not None
+        and keep_if_wider_than is not None
+        and known.width > keep_if_wider_than
+        and cached_image(release_mbid) is None
+    ):
+        return known.image_url
+    return None
 
 
 def fetch_image(release_mbid: str, url: str, *, client: httpx.Client | None = None) -> Path | None:
@@ -375,16 +425,30 @@ def _total_length(resp: httpx.Response) -> int | None:
 # dropping one costs a re-fetch and nothing else — which is why this needs no
 # per-album retention, no protected set, and no undo semantics. Deleting the
 # whole directory is safe at any moment.
+#
+# Which is also why it is bounded by a byte cap alone (#439). The album page's
+# own check fills it now (#436) — one image per album opened whose archive
+# cover beats what the album carries — so browsing an adopted library of legacy
+# rips is enough to grow it, and "how much disk is this costing me" is the
+# question a user actually asks. Least recently used goes first, and eviction
+# here is housekeeping, not a broken promise.
+
+#: Default cap. Around a hundred archive originals — the albums somebody has
+#: looked at lately, which are the ones whose pictures are worth having to hand.
+#: A fifth of `artwork_store`'s, because nothing here is irreplaceable.
+DEFAULT_CACHE_MAX_BYTES = 100 * 1024 * 1024
 
 _caa_root: Path | None = None
+_caa_max_bytes: int = DEFAULT_CACHE_MAX_BYTES
 
 
-def configure_cache(root: Path | None) -> None:
-    """Point the candidate cache at `root` (created on demand). None disables
-    it — every call becomes a no-op, and the archive's image simply is not
-    shown."""
-    global _caa_root
-    _caa_root = root
+def configure_cache(root: Path | None, *, max_bytes: int = DEFAULT_CACHE_MAX_BYTES) -> None:
+    """Point the candidate cache at `root` (created on demand), capped at
+    `max_bytes`. None — or a zero cap — disables it: every call becomes a
+    no-op, and the archive's image simply is not shown."""
+    global _caa_root, _caa_max_bytes
+    _caa_root = root if max_bytes > 0 else None
+    _caa_max_bytes = max_bytes
 
 
 def cache_image(release_mbid: str, data: bytes, mime: str | None) -> Path | None:
@@ -412,7 +476,62 @@ def cache_image(release_mbid: str, data: bytes, mime: str | None) -> Path | None
     except OSError:
         log.exception("could not cache the Cover Art Archive image for %s", release_mbid)
         return None
+    _evict_over_cap(root, keep=path)
     return path
+
+
+def _evict_over_cap(root: Path, *, keep: Path) -> None:
+    """Drop the least recently used images until the cache is under its cap
+    (#439).
+
+    Least recently USED rather than written: `cached_front` touches an image
+    each time it serves one, so an album somebody keeps opening keeps its
+    picture and one looked at months ago gives it up.
+
+    Never `keep`, the image just written. It is here because a page is about to
+    show it or a tagging to write it, and evicting it would spend the download on
+    nothing. An image larger than the whole cap is therefore held on its own,
+    and the cap is exceeded by at most that one image until the next write.
+
+    Not audited, and deliberately — the same call `_discard_image` makes. These
+    are copies of something the archive still has, never anything of the user's,
+    and a record per eviction would bury the audit log in housekeeping.
+
+    Temporary files are left alone: one may be another write in flight, and
+    removing it would fail that write rather than tidy anything.
+    """
+    entries: list[tuple[Path, os.stat_result]] = []
+    try:
+        for path in root.iterdir():
+            if path.suffix not in (".jpg", ".png"):
+                continue
+            try:
+                entries.append((path, path.stat()))
+            except FileNotFoundError:
+                continue  # retired or evicted by another request since the listing
+    except OSError:
+        log.warning("could not read the archive image cache to enforce its cap", exc_info=True)
+        return
+    total = sum(st.st_size for _, st in entries)
+    failed = 0
+    for path, st in sorted(entries, key=lambda e: e[1].st_mtime):
+        if total <= _caa_max_bytes:
+            break
+        if path == keep:
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            # Loud once, then counted: a cache that cannot shrink grows past its
+            # cap, which is worth knowing and not worth a traceback per file.
+            if not failed:
+                log.warning("could not evict %s from the archive image cache", path, exc_info=True)
+            failed += 1
+            continue
+        total -= st.st_size
+        log.debug("evicted %s from the archive image cache", path.name)
+    if failed > 1:
+        log.warning("%d archive images could not be evicted; the cache is over its cap", failed)
 
 
 def _discard_image(release_mbid: str) -> None:

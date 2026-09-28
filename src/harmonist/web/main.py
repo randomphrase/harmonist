@@ -467,7 +467,10 @@ def create_app(
     # Beside the artwork store rather than inside it: these are copies of
     # something the archive still has, so losing one costs a re-fetch, and they
     # must not compete for the space that store promises to an album's undo.
-    cover_art.configure_cache(cfg.artwork_dir / "caa")
+    # Capped on its own terms for the same reason (#439).
+    cover_art.configure_cache(
+        cfg.artwork_dir / "caa", max_bytes=cfg.cover_art.image_cache_max_bytes
+    )
     # Audit paths are recorded relative to the library (#98). Demo mode already
     # has its sandbox substituted into cfg, so this follows it automatically.
     audit.set_library_root(cfg.paths.music_dir)
@@ -2463,6 +2466,22 @@ def _archive_image(mbid: str | None, *, release_only: bool = False) -> formats.E
         return None
     front = cover_art.cached_front(mbid, release_only=release_only)
     return formats.EmbeddedArt.of(front.data, front.mime) if front else None
+
+
+def _widest(view: artwork.ArtworkView) -> int:
+    """What the archive's image has to beat to be worth downloading: the widest
+    image the album already has. A candidate that loses is measured and
+    forgotten; only a winner costs the full 200 KB–5 MB.
+
+    Zero when the album has no image at all, so ANY cover the archive has is
+    downloaded: it would be written into that album, and a preview of an
+    addition has to show the picture it adds (#469).
+
+    One answer for the check and for `caa_cache.due`, which must agree about
+    what a winner is — or a page would be sent to fetch a picture the check then
+    declines to download, on every open (#439).
+    """
+    return max((r.image.size.width for r in view.images if r.image and r.image.size), default=0)
 
 
 def _chosen(use: str) -> artwork.Source | None:
@@ -4874,6 +4893,9 @@ def _register_routes(app: FastAPI) -> None:
             )
             gone_reads = _album_file_tags(album.path, album.folders)
             comparison, tracks = _album_disk_view(album.path, album.folders, reads=gone_reads)
+            gone_artwork = _artwork_view(
+                album, tracks=gone_reads[0], folder_cover=_folder_cover_policy(request)
+            )
             return _templates(request).TemplateResponse(
                 request,
                 "partials/_release_gone.html",
@@ -4898,15 +4920,13 @@ def _register_routes(app: FastAPI) -> None:
                     # album, and a deleted release is no reason to stop showing
                     # the user their own artwork — the same argument #228 makes
                     # for still showing them their own tags.
-                    artwork=_artwork_view(
-                        album, tracks=gone_reads[0], folder_cover=_folder_cover_policy(request)
-                    ),
+                    artwork=gone_artwork,
                     # …and the archive is still asked (#436). It is keyed by the
                     # MBID, not by whether MusicBrainz still serves the release —
                     # a deleted release can have a cover in the archive, and this
                     # album's artwork is exactly what its owner is about to go
                     # through looking for the replacement.
-                    caa_check_due=caa_cache.due(mbid),
+                    caa_check_due=caa_cache.due(mbid, keep_if_wider_than=_widest(gone_artwork)),
                 ),
             )
         except mb_lookup.MBError as e:
@@ -4936,6 +4956,15 @@ def _register_routes(app: FastAPI) -> None:
             # Jinja autoescapes `error`, which is what keeps upstream
             # musicbrainzngs text — off-box, unsanitised — out of the DOM as
             # markup.
+            #
+            # The Artwork section still renders (#485). This response is the
+            # only thing that fills it, and the section never needed the
+            # release: holding it hostage to a fetch that failed would empty it
+            # for the length of a MusicBrainz outage.
+            #
+            # Its own pass over the files — this branch made none, and there is
+            # no comparison here to share one with.
+            failed_artwork = _artwork_view(album, folder_cover=_folder_cover_policy(request))
             return _templates(request).TemplateResponse(
                 request,
                 "partials/_compare_failed.html",
@@ -4943,19 +4972,12 @@ def _register_routes(app: FastAPI) -> None:
                     request,
                     album=album,
                     error=str(e),
-                    # The Artwork section still renders (#485). This response is
-                    # the only thing that fills it, and the section never needed
-                    # the release: holding it hostage to a fetch that failed
-                    # would empty it for the length of a MusicBrainz outage.
-                    #
-                    # Its own pass over the files — this branch made none, and
-                    # there is no comparison here to share one with.
-                    artwork=_artwork_view(album, folder_cover=_folder_cover_policy(request)),
+                    artwork=failed_artwork,
                     # …and the archive is still asked (#436): a different
                     # service, and MusicBrainz being unreachable is no reason to
                     # stop asking it. The section armed this when it fetched
                     # itself, and must still.
-                    caa_check_due=caa_cache.due(mbid),
+                    caa_check_due=caa_cache.due(mbid, keep_if_wider_than=_widest(failed_artwork)),
                 ),
             )
         return _comparison_response(request, album, mbid, release, asking=check or reread)
@@ -5102,7 +5124,9 @@ def _register_routes(app: FastAPI) -> None:
             # that carries no section, which is what keeps one page view to one
             # check: the render that opened the page arms it, and the refresh
             # landing afterwards does not arm it again.
-            caa_check_due=not asking and caa_cache.due(mbid),
+            # `artwork_view` is None exactly when this response is `asking`.
+            caa_check_due=artwork_view is not None
+            and caa_cache.due(mbid, keep_if_wider_than=_widest(artwork_view)),
             # What the panel's MusicBrainz ids are called (#298). Off the same
             # release the comparison is built from, so an id and the name shown
             # for it can never come from two different payloads — which is the
@@ -5854,12 +5878,13 @@ def _register_routes(app: FastAPI) -> None:
             )
         caa = caa_cache.stored(mbid) if mbid else None
         archive = _archive_image(mbid)
+        view = _artwork_view(
+            album, caa, archive, chosen=_chosen(use), folder_cover=_folder_cover_policy(request)
+        )
         ctx = _ctx(
             request,
             album=album,
-            artwork=_artwork_view(
-                album, caa, archive, chosen=_chosen(use), folder_cover=_folder_cover_policy(request)
-            ),
+            artwork=view,
             # Asked for an image that is not here — the cache dropped it, or it
             # was never loaded. Said rather than quietly showing the ordinary
             # plan instead, which would be the unannounced fallback #472 forbids.
@@ -5868,7 +5893,9 @@ def _register_routes(app: FastAPI) -> None:
             # the question to the archive (#436). Never on a response that has
             # just tried: a check that failed leaves the answer stale, and a
             # section that re-triggered on staleness alone would retry forever.
-            caa_check_due=mbid is not None and not asking and caa_cache.due(mbid),
+            caa_check_due=mbid is not None
+            and not asking
+            and caa_cache.due(mbid, keep_if_wider_than=_widest(view)),
             # The panel's dates ride back out of band, so the timestamp and the
             # answer it describes update together — the same pairing the
             # MusicBrainz control has with the Tags section.
@@ -5899,17 +5926,6 @@ def _register_routes(app: FastAPI) -> None:
         Archive was slow this morning would be reporting a failure the user did
         not ask for and cannot act on.
         """
-        # What the archive has to beat to be worth downloading: the widest image
-        # the album already has. A candidate that loses is measured and
-        # forgotten; only a winner costs the full 200 KB–5 MB.
-        #
-        # Zero when the album has no image at all, so ANY cover the archive has
-        # is downloaded: it would be written into that album, and a preview of an
-        # addition has to show the picture it adds (#469).
-        best = max(
-            (r.image.size.width for r in current.images if r.image and r.image.size),
-            default=0,
-        )
         try:
             # The release group, from the STORED release payload — a local read
             # with no MusicBrainz request in it (#434). An album whose release
@@ -5920,7 +5936,7 @@ def _register_routes(app: FastAPI) -> None:
             caa_cache.front(
                 mbid,
                 release_group_mbid=group if isinstance(group, str) else None,
-                keep_if_wider_than=best,
+                keep_if_wider_than=_widest(current),
                 max_age=max_age,
             )
         except cover_art.CoverArtError:

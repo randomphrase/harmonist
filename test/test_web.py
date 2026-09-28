@@ -10890,6 +10890,47 @@ def test_a_stored_archive_answer_inside_the_ttl_sends_nobody_back(client, cfg):
     assert f"/album/{album_id}/artwork?check=1" not in rendered
 
 
+def test_a_fresh_winner_whose_picture_was_evicted_sends_the_page_for_it(client, cfg, monkeypatch):
+    """The image cache is capped (#439), so a fresh answer can outlive its
+    picture — and without the picture the section has no winner to show and no
+    Update artwork to offer, for the rest of a week-long TTL. The page is sent
+    back for it, and the check fetches the picture without re-asking the
+    listing."""
+    from harmonist import activity_store, cover_art
+
+    d = _make_tagged_album(cfg, "Evicted", mbid="rel-evicted", tagged_at=datetime.now(UTC))
+    album_id = _id_for(cfg, d)
+    activity_store.store_cover_art(
+        "rel-evicted",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC), image_url="https://caa.example/front.jpg", width=5000
+        ),
+    )
+    assert cover_art.cached_image("rel-evicted") is None
+
+    def no_check(mbid, **kw):
+        raise AssertionError("a fresh answer's listing was asked again")
+
+    fetched: list[str] = []
+
+    def fetch(mbid, url, **kw):
+        fetched.append(url)
+        return cover_art.cache_image(mbid, _png(1), "image/png")
+
+    monkeypatch.setattr(cover_art, "check_front", no_check)
+    monkeypatch.setattr(cover_art, "fetch_image", fetch)
+
+    rendered = " ".join(client.get(f"/album/{album_id}/artwork").text.split())
+    assert f'hx-get="/album/{album_id}/artwork?check=1"' in rendered
+
+    client.get(f"/album/{album_id}/artwork?check=1")
+    assert fetched == ["https://caa.example/front.jpg"]
+
+    # …and once it is here, the next open is quiet again.
+    rendered = " ".join(client.get(f"/album/{album_id}/artwork").text.split())
+    assert f"/album/{album_id}/artwork?check=1" not in rendered
+
+
 def test_an_album_with_no_release_asks_the_archive_nothing(client, cfg):
     """There is no release to ask about. The section renders — artwork facts are
     disk facts — and nothing leaves the machine."""
