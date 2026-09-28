@@ -29,6 +29,13 @@ sentences and controls can contradict one another when assembled.
 
 ### Every sentence must help the current decision
 
+- **Show only the problem domain or actionable analysis.** Every line is either
+  a fact about the user's music and its releases, or analysis they can act on.
+  Never reassurance that the software did its job: "Nothing to add to
+  MusicBrainz for this release", "No issues found", "Checked just now" beside a
+  result that already says it. If a line admits it isn't actionable, delete it;
+  a section with nothing to say either keeps only its controls or isn't
+  rendered.
 - Lead with the observed finding and the available action. State what is known
   now: "Another release may already link…" is unhelpful after the check has
   completed, and contradicts a following "No release … links to the download."

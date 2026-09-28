@@ -96,10 +96,6 @@
         <h2 id="mismatch-heading-{{ album.id }}" class="{{ heading }}">Possible mismatch</h2>
         {{ dont_warn() }}
     </div>
-    {% if not finding %}
-    {# Dismissed with nothing to contribute: say so, rather than an empty box. #}
-    <p class="hidden group-has-[.release-accepted:checked]/match:block text-sm text-muted">Nothing to add to MusicBrainz for this release.</p>
-    {% endif %}
     <div class="space-y-3 group-has-[.release-accepted:checked]/match:hidden">
         <ul class="space-y-1 text-sm text-ink">
         {% for reason in reasons %}

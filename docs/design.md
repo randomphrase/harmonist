@@ -1143,7 +1143,8 @@ incomplete and why, and keeps only an existing acceptance's checkbox so it can b
 taken back. Evidence counts against the match only where the matched release
 lacks it: a sibling linking a URL the matched release also links, or carrying a
 barcode the matched release shares, is not a source match. Dismissing with nothing
-to contribute says so rather than leaving an empty section. Discovery failures direct
+to contribute leaves just the folded heading and its checkbox: a note that there
+is nothing to do would be neither about the album nor actionable. Discovery failures direct
 the user to the album header's refresh control to retry. While discovery is
 pending, the panel makes no contribution claim. The parent renders only the
 discovery container, so a media warning cannot remain above a rematch suggestion.

@@ -315,7 +315,7 @@ def test_incomplete_check_flags_nothing_but_keeps_an_acceptance_reversible(clien
         assert box is None or box.has_attr("checked")
 
 
-def test_dismissed_warning_with_nothing_to_add_says_so(tmp_path, monkeypatch):
+def test_dismissed_warning_with_nothing_to_add_stays_reversible(tmp_path, monkeypatch):
     client, folder = _app(tmp_path, monkeypatch, release(("CD",), urls=(URL,)))
     sc = sidecar.read(folder)
     assert sc is not None
@@ -326,11 +326,12 @@ def test_dismissed_warning_with_nothing_to_add_says_so(tmp_path, monkeypatch):
         Mock(return_value={"release-list": [release(("CD",), urls=(URL,))], "release-count": 1}),
     )
     page = BeautifulSoup(client.get(f"/library/{MBID}/contributions/editions").text, "html.parser")
+    # The warning folds to its heading, where the tick can still be taken back,
+    # and there is no contribution to reveal.
     mismatch = page.select_one(f"#mismatch-heading-{MBID}").find_parent("section")
     assert mismatch is not None
-    note = mismatch.find(string=lambda s: "Nothing to add to MusicBrainz" in s)
-    assert note is not None and note.parent is not None
-    assert "group-has-[.release-accepted:checked]/match:block" in note.parent["class"]
+    box = mismatch.select_one("input.release-accepted")
+    assert box is not None and box.has_attr("checked")
     assert page.select_one(f"#contribution-heading-{MBID}") is None
 
 
