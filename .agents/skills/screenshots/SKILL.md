@@ -1,18 +1,20 @@
 ---
 name: screenshots
-description: How screenshots get into the docs — where they live, what to crop them down to, how to crop them on this machine, and how to write their alt text. Consult BEFORE adding or replacing any image in `docs/` or `README.md`, and before cropping, resizing or renaming one. The user takes the screenshots; this covers everything that happens to them afterwards.
+description: How screenshots get into the docs — where they live, what to crop them down to, how to crop them on this machine, and how to write their alt text. Consult BEFORE adding or replacing any image in `docs/` or `README.md`, and before cropping, resizing or renaming one. Screenshots are real captures, by the user or from demo mode; this covers everything that happens to them afterwards.
 ---
 
 # Screenshots in the docs
 
-`docs/usage.md` describes a UI in prose, and some of its states are ones the
-reader will never see for themselves — a MusicBrainz release deleted out from
-under an album they own is not something you can arrange to look at. Those are
-the states worth a picture. Expect more of them.
+The user docs (`docs/getting-started.md`, `docs/how-it-works.md`,
+`docs/troubleshooting.md`) describe problems in prose, and some of the states
+behind them are ones the reader will never see for themselves — a MusicBrainz
+release deleted out from under an album they own is not something you can
+arrange to look at. Those are the states worth a picture. Expect more of them.
 
-**The user takes the screenshots.** Don't mock up a UI in ASCII, don't describe
-one as though it were captured, and don't generate a stand-in. Ask for the shot,
-then do the rest of this.
+**Screenshots are real captures.** Don't mock up a UI in ASCII, don't describe
+one as though it were captured, and don't generate a stand-in. Either the user
+takes the shot, or you capture it from demo mode (`HARMONIST_DEMO_MODE=1`) —
+never from the user's real library.
 
 ## 1. Crop to the subject, not the page
 
@@ -33,7 +35,7 @@ answer is "two things", that is usually two screenshots.
 ## 2. Where they live
 
 ```
-docs/images/<state-or-feature>.png     referenced from docs/usage.md as
+docs/images/<state-or-feature>.png     referenced from docs/*.md as
                                        ![…](images/release-gone.png)
 ```
 

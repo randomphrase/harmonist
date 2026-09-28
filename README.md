@@ -44,24 +44,23 @@ docker run --rm --platform linux/amd64 \
   ghcr.io/randomphrase/harmonist:latest
 ```
 
-Open [localhost:8000](http://localhost:8000) and explore, or follow the
-[demo walkthroughs](docs/demo.md). Press Ctrl+C to stop and remove the demo
-container.
+Open [localhost:8000](http://localhost:8000) and explore. Press Ctrl+C to stop
+and remove the demo container.
 
-To use your own collection, follow the [installation guide](docs/installation.md).
+To use your own collection, see [getting started](docs/getting-started.md).
 
 ## Documentation
 
-- **[Usage guide](docs/usage.md)** — onboarding an existing library, working the
-  inbox, syncing, the Library and its filters, an album's page, undo, activity.
-- **[Installation](docs/installation.md)** — Docker, from source, demo mode,
-  configuration, uninstall.
-- **[Deployment & security](docs/deployment.md)** — reverse proxy, hostname
-  allow-listing, built-in auth. **Read this before exposing Harmonist.**
-- **[Design](docs/design.md)** — the internal spec: state machine, sidecar schema,
-  tagging contract, module map. Written for people changing the code.
-- **[Contributing](CONTRIBUTING.md)** — development setup, checks, and contribution
-  guidelines.
+- **[Getting started](docs/getting-started.md)**: install, adopt your library,
+  set up Bandcamp sync.
+- **[How it works](docs/how-it-works.md)**: the ideas behind what Harmonist does.
+- **[Troubleshooting](docs/troubleshooting.md)**: problems and their fixes.
+- **[Configuration](docs/configuration.md)**: every setting.
+- **[Security](docs/security.md)**: read this before exposing Harmonist beyond
+  your own machine.
+
+Changing the code? See [contributing](CONTRIBUTING.md) and the
+[design spec](docs/design.md).
 
 ## How Harmonist compares
 

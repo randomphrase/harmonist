@@ -27,6 +27,10 @@ versions follow [semantic versioning](https://semver.org).
 - **Release titles in release choices link to MusicBrainz**, replacing the
   separate MB button (#618).
 
+- **The documentation is rewritten around solving problems**: getting started,
+  how it works, troubleshooting, configuration and security replace the old
+  usage, installation and deployment guides (#626).
+
 ## [1.21.0] - 2026-09-27
 
 ### Added

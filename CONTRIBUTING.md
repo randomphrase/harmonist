@@ -47,7 +47,8 @@ CI can validate them. When in doubt, just open the PR; a maintainer will help.
 ## Where to read more
 
 - **`README.md`** — what Harmonist is and where it fits.
-- **`docs/usage.md`** — the user guide; **`docs/installation.md`** for running and
-  configuring it, **`docs/deployment.md`** for exposing it safely.
+- **`docs/getting-started.md`**, **`docs/how-it-works.md`**,
+  **`docs/troubleshooting.md`**, **`docs/configuration.md`** and
+  **`docs/security.md`** — the user docs.
 - **`docs/design.md`** — the design spec: states, the sidecar schema, the tagging
   contract, and the matching/linking mechanics.

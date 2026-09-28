@@ -79,11 +79,13 @@ Two traps:
 
 ## 2. Sweep the docs for staleness
 
-A release is when someone new reads `README.md`, `docs/usage.md` and
-`docs/design.md`. Grep them for whatever this cycle removed or renamed — states,
-routes, UI surfaces, flags. 1.5.0 was about to ship with `docs/design.md` still
-telling users to click Re-tag from MB "in the detail modal", a surface deleted an
-hour earlier. `docs/usage.md` is the likeliest to rot: it names buttons.
+A release is when someone new reads `README.md`, the user docs under `docs/`
+and `docs/design.md`. Grep them for whatever this cycle removed or renamed —
+states, routes, UI surfaces, flags, settings. 1.5.0 was about to ship with
+`docs/design.md` still telling users to click Re-tag from MB "in the detail
+modal", a surface deleted an hour earlier. `docs/troubleshooting.md` is the
+likeliest to rot: it names buttons. `docs/configuration.md` must list every
+setting in `config.py`.
 
 ## 3. Cut every entry back to its claim
 
@@ -253,7 +255,7 @@ Confirm from the workflow run, not the registry: reading published tags via
 - [ ] **every `### Fixed` entry is a bug reachable on the previous tag** — a fix
       for a defect that only ever existed in this cycle's code is internal, and
       an entry covering both halves claims only the released one
-- [ ] `README.md`, `docs/usage.md` and `docs/design.md` describe what shipped
+- [ ] `README.md`, the user docs and `docs/design.md` describe what shipped
 - [ ] **every changelog bullet is its bold claim as a sentence**, plus a knob or
       an upgrade consequence where there is one — mechanism, bug history and
       caveats left to the issue and the commit

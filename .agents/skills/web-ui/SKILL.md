@@ -12,7 +12,7 @@ the safety net a framework would provide — these are the rules that replace it
 
 ## Review the user's decision before the markup
 
-Read `docs/usage.md` for the workflow and `docs/design.md` for the meaning of
+Read `docs/how-it-works.md` for the workflow and `docs/design.md` for the meaning of
 states, matching, and tagging. Review the **whole rendered panel**, including
 parent templates and asynchronously loaded fragments. Individually plausible
 sentences and controls can contradict one another when assembled.

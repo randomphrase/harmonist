@@ -55,7 +55,7 @@ class ServerConfig(BaseModel):
     # ["*"] is permissive — set this to your real hostname(s) when exposing
     # Harmonist beyond loopback. Loopback aliases are always implicitly
     # allowed regardless, so a tightened list still works for local curl /
-    # healthcheck. See docs/deployment.md.
+    # healthcheck. See docs/security.md.
     allowed_hosts: list[str] = Field(default_factory=lambda: ["*"])
 
 
