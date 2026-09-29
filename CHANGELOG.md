@@ -33,6 +33,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **An open artwork viewer keeps its image, scale, position and focus when the background artwork check finishes** (#644).
+
 - **A CD rip with a UPC tag is no longer treated as a download**: MB
   contributions now need a store's own tags — Bandcamp, Qobuz, Amazon or Beatport (#632).
 

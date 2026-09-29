@@ -25,6 +25,48 @@
             : `${(scale * 100).toFixed(1)}% · fit to viewer`;
     }
 
+    // A CAA response replaces the album's thumbnails AND popovers. Carry the
+    // live inspection through that swap, not through the request: the user may
+    // switch images, change scale, or dismiss the viewer while it is in flight.
+    const inspections = new WeakMap();
+    document.addEventListener('htmx:beforeSwap', event => {
+        const target = event.detail.target;
+        if (target.id !== 'album-artwork' || event.defaultPrevented || !event.detail.shouldSwap) return;
+        const viewer = target.querySelector('.art-full:popover-open');
+        if (!viewer) return;
+        const stage = viewer.querySelector('.art-full__stage');
+        const focus = ['.art-full__stage', '.art-full__mode', '.art-full__image-choice', '[autofocus]']
+            .find(selector => viewer.querySelector(selector) === document.activeElement);
+        inspections.set(target, {
+            id: viewer.id,
+            source: viewer.querySelector('img').getAttribute('src'),
+            mode: viewer.querySelector('.art-full__mode').value,
+            position: [stage.scrollLeft, stage.scrollTop],
+            opener: openers.get(viewer)?.getAttribute('popovertarget'),
+            focus,
+        });
+    });
+    // HTMX runs inserted autofocus controls during settling. Restore focus
+    // afterwards so the viewer's Close button cannot steal it back.
+    document.addEventListener('htmx:afterSettle', event => {
+        const target = event.detail.target;
+        const inspection = inspections.get(target);
+        if (!inspection) return;
+        inspections.delete(target);
+        const viewer = document.getElementById(inspection.id);
+        // Do not reopen a different image if the refreshed gallery lost this one.
+        if (!viewer || !target.contains(viewer) ||
+            viewer.querySelector('img').getAttribute('src') !== inspection.source) return;
+        const opener = Array.from(target.querySelectorAll('button[popovertarget]'))
+            .find(button => button.getAttribute('popovertarget') === inspection.opener);
+        if (opener) openers.set(viewer, opener);
+        viewer.querySelector('.art-full__mode').value = inspection.mode;
+        viewer.showPopover();
+        render(viewer);
+        viewer.querySelector('.art-full__stage').scrollTo(...inspection.position);
+        viewer.querySelector(inspection.focus || '[autofocus]').focus({preventScroll: true});
+    });
+
     const renderOpen = () => document.querySelectorAll('.art-full:popover-open').forEach(render);
     document.addEventListener('click', event => {
         // Safari does not focus a button on pointer activation. Remember the

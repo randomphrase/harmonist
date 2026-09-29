@@ -47,6 +47,62 @@ def _assert_fitted(viewer):
 
 
 @pytest.mark.parametrize("engine", ["chromium", "webkit"])
+@pytest.mark.parametrize("dismiss", [False, True], ids=["open", "dismissed"])
+def test_background_refresh_preserves_artwork_inspection(artwork_refresh_server, engine, dismiss):
+    with pw.sync_playwright() as playwright:
+        browser = getattr(playwright, engine).launch()
+        page = browser.new_page(viewport={"width": 900, "height": 700})
+        held = []
+
+        def hold(route):
+            held.append((route, route.fetch()))
+            page.evaluate("window.archiveResponseHeld = true")
+
+        page.route("**/artwork?check=1", hold)
+        host = _open(page, artwork_refresh_server, False)
+        page.wait_for_function("window.archiveResponseHeld === true")
+        # Finish the initial comparison's autofocus processing while the CAA
+        # response stays held; only the later artwork swap is under test.
+        page.wait_for_function("!document.querySelector('.htmx-settling')")
+        thumb = host.locator("button.art-row__art[popovertarget]").first
+        thumb.click()
+        viewer = page.locator(".art-full:popover-open")
+        # Switch away from the opener's image: Escape must still return to the
+        # original thumbnail after the refresh replaces both thumbnails.
+        selected = viewer.locator(".art-full__image-choice option").last.get_attribute("value")
+        viewer.get_by_role("combobox", name="Artwork image").select_option(selected)
+        pw.expect(viewer).to_have_attribute("id", selected)
+        viewer.get_by_role("combobox", name="Viewing scale").select_option("native")
+        stage = viewer.get_by_role("region", name="Artwork detail")
+        stage.evaluate("e => { e.scrollLeft = 200; e.scrollTop = 150; }")
+        stage.focus()
+        if dismiss:
+            page.keyboard.press("Escape")
+            pw.expect(viewer).to_have_count(0)
+        page.evaluate("""() => {
+            window.artworkBeforeRefresh = document.querySelector('#album-artwork .art-row');
+            document.body.addEventListener('htmx:afterSettle', e => {
+                if (e.target.id === 'album-artwork') window.artworkRefreshed = true;
+            });
+        }""")
+        route, response = held.pop()
+        route.fulfill(response=response)
+        page.wait_for_function("window.artworkRefreshed === true")
+        assert page.evaluate("!window.artworkBeforeRefresh.isConnected")
+        if dismiss:
+            pw.expect(viewer).to_have_count(0)
+        else:
+            pw.expect(viewer).to_have_attribute("id", selected)
+            pw.expect(viewer.get_by_role("combobox", name="Viewing scale")).to_have_value("native")
+            pw.expect(stage).to_be_focused()
+            assert stage.evaluate("e => [e.scrollLeft, e.scrollTop]") == [200, 150]
+            page.keyboard.press("Escape")
+            pw.expect(viewer).to_have_count(0)
+            pw.expect(thumb).to_be_focused()
+        browser.close()
+
+
+@pytest.mark.parametrize("engine", ["chromium", "webkit"])
 @pytest.mark.parametrize("review", [False, True], ids=["album", "review"])
 @pytest.mark.parametrize("check", ["fit", "focus"])
 def test_open_and_switch_fit_the_selected_image_without_focusing_a_menu(

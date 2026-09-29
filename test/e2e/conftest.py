@@ -125,6 +125,12 @@ def artwork_inspection_server(tmp_path_factory):
     )
 
 
+@pytest.fixture
+def artwork_refresh_server(tmp_path):
+    """Each refresh race starts with an uncached Cover Art Archive answer."""
+    yield from _run_demo_server(tmp_path, app_module="test.e2e.artwork_inspection_app:app")
+
+
 @pytest.fixture(scope="module")
 def barcode_server(tmp_path_factory):
     root = tmp_path_factory.mktemp("e2e-barcode")
