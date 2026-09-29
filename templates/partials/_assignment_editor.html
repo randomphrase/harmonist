@@ -24,7 +24,7 @@
             <h3 class="flex flex-wrap items-center gap-2 text-sm font-bold">
                 Suggested match:
                 {% with mb_release_id=candidate.mb_release_id %}
-                    {% include 'partials/_mb_release_link.html' %}
+                    {% include 'partials/_release_title_link.html' %}
                 {% endwith %}
             </h3>
             {% else %}<h3 class="text-sm font-bold">Track assignments</h3>{% endif %}

@@ -1,3 +1,8 @@
+{# `show_disambiguation` puts the release's disambiguation in the pill (#635),
+   for a pill beside the album's own title, where repeating the title would say
+   nothing: "24bits" is what tells this release from its siblings. Off by
+   default: whether the album page's header shows it is still undecided. #}
+{% set named = release_title(mb_release_id) if show_disambiguation | default(false) else none %}
 <a href="https://musicbrainz.org/release/{{ mb_release_id }}"
    target="_blank" rel="noopener"
    title="View on MusicBrainz · {{ mb_release_id }}"
@@ -5,5 +10,5 @@
     <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--color-mb-orange)" aria-hidden="true">
         <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
     </svg>
-    MusicBrainz ↗
+    MusicBrainz{% if named and named[1] %} <span class="font-normal">· {{ named[1] }}</span>{% endif %} ↗
 </a>

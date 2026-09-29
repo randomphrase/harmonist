@@ -44,6 +44,11 @@ versions follow [semantic versioning](https://semver.org).
 - **Clearing a MusicBrainz match with the pencil can be undone** from the
   album's History, putting back the release its files still carry (#639).
 
+- **A suggested or tagged release is named, disambiguation included**, rather
+  than shown as a bare MusicBrainz link, so "Far & Off" and "Far & Off (24bits)"
+  no longer look the same; inbox cards show the disambiguation beside the
+  MusicBrainz link (#635).
+
 ### Fixed
 
 - **An open artwork viewer keeps its image, scale, position and focus when the background artwork check finishes** (#644).

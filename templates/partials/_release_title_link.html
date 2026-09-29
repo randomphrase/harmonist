@@ -1,0 +1,19 @@
+{% from 'macros.html' import release_name %}
+{# One release, named (#635): its title and disambiguation, linking to it on
+   MusicBrainz — the way a release-choice row names its release (#618).
+
+   Sibling releases share a title, so the disambiguation is what says WHICH one:
+   a bare "MusicBrainz ↗" pill left "Far & Off" and "Far & Off (24bits)" looking
+   the same, and a wrong-looking cover sent the user down the wrong-match path
+   for a release that was right. The name comes from the stored release; with
+   nothing stored this is the pill it replaced.
+
+   Expects `mb_release_id`. #}
+{% set named = release_title(mb_release_id) %}
+{% if named %}
+<a href="https://musicbrainz.org/release/{{ mb_release_id }}" target="_blank" rel="noopener"
+   title="View this release on MusicBrainz"
+   class="font-bold text-mb-purple hover:underline">{{ release_name(named[0], named[1]) }} <span class="text-xs" aria-hidden="true">↗</span></a>
+{% else %}
+{% include 'partials/_mb_release_link.html' %}
+{% endif %}

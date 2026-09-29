@@ -718,6 +718,8 @@ def create_app(
     # The album page's Additional info (#634), and the URLs inside a comment.
     templates.env.globals["additional_info"] = provenance.info
     templates.env.globals["link_parts"] = url_recovery.link_parts
+    # A single release named by its title and disambiguation (#635).
+    templates.env.globals["release_title"] = _release_title
     templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
     # "1400×1400 · JPEG · 718 KB" (#155). A global rather than a filter for the
     # reason `headline` is one: the Artwork section states the same facts about
@@ -1820,21 +1822,38 @@ _FOUND_BY = {
 }
 
 
+def _release_title(mbid: str | None) -> tuple[str, str] | None:
+    """A release's (title, disambiguation) as MusicBrainz last gave it, or None
+    when nothing is stored (#635).
+
+    What tells one release from its siblings, which share a title: the
+    disambiguation is "24bits" against nothing at all. The artist is left out,
+    because everywhere this is shown already names the album's artist. Read
+    from the store and never the network, so naming a release costs no
+    MusicBrainz request; a caller with None shows what it showed before.
+    """
+    release = mb_cache.stored_release(mbid) if mbid else None
+    title = (release.get("title") or "").strip() if release else ""
+    if not release or not title:
+        return None
+    return title, (release.get("disambiguation") or "").strip()
+
+
 def _matched_detail(mbid: str, how: str | None) -> str:
     """The release a match landed on, and how it was found: "Far & Off
     (24bits), found by store URL" (#639).
 
-    The title and disambiguation only — the artist is already in History's album
-    column — and read from the stored release, which the tagging has just
-    fetched, so this costs no MusicBrainz request. The id stands in on the
-    unlikely path where nothing is stored, rather than leaving the record
-    unable to say which release it was. `how` is None when nothing is known,
-    and then the record says nothing about it.
+    The tagging has just fetched the release, so it is stored. The id stands in
+    on the unlikely path where it isn't, rather than leaving the record unable
+    to say which release it was. `how` is None when nothing is known, and then
+    the record says nothing about it.
     """
-    release = mb_cache.stored_release(mbid)
-    title = (release.get("title") or "").strip() if release else ""
-    disambiguation = (release.get("disambiguation") or "").strip() if release else ""
-    name = (f"{title} ({disambiguation})" if disambiguation else title) or mbid
+    named = _release_title(mbid)
+    if named is None:
+        name = mbid
+    else:
+        title, disambiguation = named
+        name = f"{title} ({disambiguation})" if disambiguation else title
     return f"{name}, {how}" if how else name
 
 

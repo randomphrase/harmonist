@@ -68,7 +68,7 @@
 <p class="flex flex-wrap items-center gap-2 text-sm mb-3">
     Tagged release:
     {% with mb_release_id=candidate.mb_release_id %}
-        {% include 'partials/_mb_release_link.html' %}
+        {% include 'partials/_release_title_link.html' %}
     {% endwith %}
 </p>
 {% set sugg = (surrender_suggestions | default({})).get(album.id) %}
