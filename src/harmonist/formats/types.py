@@ -37,10 +37,16 @@ class ProvenanceTags(NamedTuple):
     comments: tuple[str, ...] = ()
     # Qobuz's per-track id (`QBZ:TID`), which XLD carries across a transcode.
     qobuz_track_id: str | None = None
-    # dBpoweramp's AccurateRip tags: a verification of a physical disc, which
-    # nothing but a rip can produce. Unlike a CD table of contents
-    # (`iTunes_CDDB_1`), which XLD synthesizes on any transcode.
-    accuraterip: bool = False
+    # dBpoweramp's AccurateRip tags (`AccurateRipResult`, `AccurateRipDiscID`):
+    # a verification of a physical disc, which nothing but a rip can produce.
+    # Unlike a CD table of contents (`iTunes_CDDB_1`), which XLD synthesizes on
+    # any transcode. Both are per-track: each carries its track's CRC.
+    accuraterip_result: str | None = None
+    accuraterip_disc_id: str | None = None
+
+    @property
+    def accuraterip(self) -> bool:
+        return bool(self.accuraterip_result or self.accuraterip_disc_id)
 
 
 class ScanFields(NamedTuple):

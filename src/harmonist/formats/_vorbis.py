@@ -286,9 +286,8 @@ class VorbisTagger:
                 upcs=tuple(str(v) for v in tags.get("UPC", [])),
                 comments=tuple(str(v) for v in tags.get(KEY_COMMENT, []) if v),
                 qobuz_track_id=first("QBZ:TID"),
-                accuraterip=any(
-                    tags.get(key) for key in ("ACCURATERIPRESULT", "ACCURATERIPDISCID")
-                ),
+                accuraterip_result=first("ACCURATERIPRESULT"),
+                accuraterip_disc_id=first("ACCURATERIPDISCID"),
             ),
             barcodes=tuple(str(v) for key in (KEY_BARCODE, "UPC") for v in tags.get(key, [])),
             album_id=first(KEY_ALBUM_ID),

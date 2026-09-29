@@ -54,12 +54,14 @@ from harmonist import (
     mb_lookup,
     mb_search,
     pending_downloads,
+    provenance,
     reconcile,
     redownloads,
     scanner,
     tag_history,
     timing,
     track_assignment,
+    url_recovery,
 )
 from harmonist import config as config_mod
 from harmonist import sidecar as sidecar_mod
@@ -713,6 +715,9 @@ def create_app(
     # reason, and reading the same two comparisons, so the tint cannot disagree
     # with the legend it is drawn behind.
     templates.env.globals["advisory"] = compare.advisory
+    # The album page's Additional info (#634), and the URLs inside a comment.
+    templates.env.globals["additional_info"] = provenance.info
+    templates.env.globals["link_parts"] = url_recovery.link_parts
     templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
     # "1400×1400 · JPEG · 718 KB" (#155). A global rather than a filter for the
     # reason `headline` is one: the Artwork section states the same facts about

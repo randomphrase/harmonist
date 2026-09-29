@@ -15,8 +15,9 @@ themselves:
 - **Harmonist downloaded them** (recorded in the sidecar), or
 - **a store left its mark on them**: a Bandcamp URL in the comment, or a tag only
   that store writes (see [tagging](tagging.md#tags-read-for-provenance)),
-- and **no file carries AccurateRip's verification**, which only a rip produces.
-  Download and rip evidence together prove nothing.
+- and **nothing points elsewhere**: no file carries AccurateRip's verification,
+  which only a rip produces, and no second store's mark. Evidence pointing to
+  more than one [origin](tagging.md#the-origin) proves nothing.
 
 Owning a Bandcamp purchase of the same album doesn't qualify a CD rip. Neither
 does a `BARCODE` tag, which may have been written from a previous MusicBrainz

@@ -60,13 +60,15 @@ def write_track_totals(
 def write_provenance_tags(album_dir: Path, ext: str, tags: Mapping[str, Sequence[str]]) -> None:
     """Add tags to every track the way each format's own tools store them:
     an MP4 freeform atom, an ID3 `TXXX` (or `COMM`, one frame per comment), a
-    Vorbis comment. The key "comment" means the format's comment tag."""
+    Vorbis comment. The key "comment" means the format's comment tag, and `{n}`
+    in a value is the track's position, for a tag that varies per track."""
     from mutagen import File
     from mutagen.id3 import COMM, TXXX
 
-    for path in sorted(album_dir.glob(f"*{ext}")):
+    for n, path in enumerate(sorted(album_dir.glob(f"*{ext}")), 1):
         audio = File(path)
-        for key, values in tags.items():
+        for key, template in tags.items():
+            values = [v.replace("{n}", str(n)) for v in template]
             if key == "comment" and ext == ".m4a":
                 audio["©cmt"] = list(values)
             elif key == "comment" and ext == ".mp3":

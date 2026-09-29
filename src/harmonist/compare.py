@@ -535,14 +535,12 @@ _KINDS: dict[str, Kind] = {
 #:   ever fetched. There is nothing to compare against. Writing one is #12; if
 #:   that lands, genre becomes owned and joins the compared set automatically,
 #:   because the table below is derived rather than listed.
-#: * **Comment** — user data Harmonist preserves and will never write. Its row
-#:   answers a different question from the rest of the table: not "does this
-#:   match MusicBrainz" but "here is the evidence this album was linked from",
-#:   since `url_recovery` and `reconcile` read a Bandcamp URL out of it.
-_DISPLAY_ONLY: tuple[tuple[str, str, None, Kind], ...] = (
-    ("Genre", "genre", None, Kind.TEXT),
-    ("Comment", "comment", None, Kind.TEXT),
-)
+#:
+#: The comment was here too until #634 moved it to the page's Additional info.
+#: It answers a different question from this table — not "does this match
+#: MusicBrainz" but "where did these files come from" — and it sits there with
+#: the other tags that answer that one.
+_DISPLAY_ONLY: tuple[tuple[str, str, None, Kind], ...] = (("Genre", "genre", None, Kind.TEXT),)
 
 
 def _disk_value(tags: TrackTags, key: str) -> str | None:

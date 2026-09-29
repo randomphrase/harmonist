@@ -1,0 +1,66 @@
+{# What the files say about themselves beyond the tags Harmonist writes (#634):
+   the album's origin, concluded from its tags, then those tags as they are.
+   Only tags Harmonist reads for analysis appear — the provenance set #632
+   reads, and the comment — which is what keeps this from becoming a tag dump.
+   Disk facts, so it renders whether or not the album has a release; not at all
+   when the files carry none of these tags.
+
+   Three kinds of text, drawn three ways: the origin is a conclusion, a field's
+   value rather than a tag (one day a menu the user can override and restore),
+   with what it rests on in its tooltip; tag names are literal, in mono; and
+   where the tracks disagree, the Album section's pill says so beside the value
+   most of them carry. #}
+{% from 'macros.html' import odd_tracks_pill %}
+{# A tag's value as the file carries it, its URLs linked and its prose not. #}
+{% macro literal(value) %}<span class="info-tags__value">{% for text, href in link_parts(value) %}{% if href %}<a href="{{ href }}"
+   target="_blank" rel="noopener" class="text-accent hover:underline">{{ text }}</a>
+{%- else %}{{ text }}{% endif %}{% endfor %}</span>{% endmacro %}
+{% if info %}
+<section id="album-info" class="border border-line rounded-lg p-4 space-y-3">
+    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Additional info</h2>
+    <dl class="tag-fields">
+        <dt>Origin</dt>
+        <dd><span class="font-bold text-ink cursor-help underline decoration-dotted underline-offset-2"
+                  title="{{ info.why }}">{{ info.origin }}</span></dd>
+    </dl>
+    {% if info.rows %}
+    <table class="info-tags">
+        <thead><tr><th scope="col">Tag</th><th scope="col">Value</th></tr></thead>
+        <tbody>
+            {% for row in info.rows %}
+            {% set pop_id = 'info-odd-' ~ loop.index %}
+            <tr>
+                <td>{{ row.tag }}</td>
+                <td>
+                    {% if row.every_differs %}
+                    {# No majority to show: every track carries its own value.
+                       The Album section's pill and popover, listing them all. #}
+                    <button type="button" class="tag-fields__odd" popovertarget="{{ pop_id }}"
+                            style="anchor-name: --{{ pop_id }}"
+                            aria-label="Each track's {{ row.tag }}">differs on every track</button>
+                    <div id="{{ pop_id }}" popover class="odd-pop" style="position-anchor: --{{ pop_id }}">
+                        <p class="odd-pop__title">{{ row.tag }} — each of your {{ row.tracks | length }} tracks</p>
+                        <ul class="odd-pop__list">
+                            {% for name, value in row.tracks[:8] %}
+                            <li><span class="odd-pop__file">{{ name }}</span>
+                                <span class="odd-pop__val">{{ value }}</span></li>
+                            {% endfor %}
+                        </ul>
+                        {% if row.tracks | length > 8 %}
+                        <p class="odd-pop__more">and {{ row.tracks | length - 8 }} more</p>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    {# What most tracks carry, and the pill naming the rest — the
+                       Album section's model and macro, so a tag the tracks
+                       disagree about reads the same in both places. #}
+                    {{ literal(row.consensus.value) }} {{ odd_tracks_pill(row.tag, row.consensus, pop_id) }}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</section>
+{% endif %}

@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **An album's page shows where its files came from** — Bandcamp, Qobuz,
+  Amazon, Beatport, CD or unknown — under Additional info, with the tags it rests
+  on; the comment moves there from the Album section (#634).
+
 ### Changed
 
 - **Cover Art Archive images kept for album pages are capped at 1 GB**, least

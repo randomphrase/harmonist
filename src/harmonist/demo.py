@@ -26,6 +26,7 @@ import logging
 import os
 import shutil
 import time
+import zlib
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import replace
@@ -34,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from mutagen.flac import FLAC
-from mutagen.id3 import COMM, ID3, TCON
+from mutagen.id3 import COMM, ID3, TCON, TXXX
 from mutagen.mp4 import MP4
 
 from . import (
@@ -337,6 +338,11 @@ LIBRARY: list[dict[str, Any]] = [
         "cover": "mayhem.png",
         "fmt": "flac",
         "discs": True,
+        # A secure rip: AccurateRip's per-track result, as dBpoweramp writes it
+        # (#634). See `_provenance_tags` for the per-track placeholders.
+        "provenance": {
+            "AccurateRipResult": "AccurateRip: Accurate (confidence {conf})   [{crc}]",
+        },
     },
     {
         "artist": "The Soggy Bottom Boys",
@@ -357,6 +363,8 @@ LIBRARY: list[dict[str, Any]] = [
         # Earlier metadata counted a fourth track; MB now has the three files
         # actually owned. Known track identities survive assignment review.
         "tags": {"track_total": 4},
+        # Bought from Beatport: its genre comment, then its purchase note (#634).
+        "provenance": {"comment": ["Rock - Rock", "Purchased at Beatport.com"]},
     },
     {
         "artist": "Mouse Rat",
@@ -376,6 +384,8 @@ LIBRARY: list[dict[str, Any]] = [
         "cover": "blues.png",
         "fmt": "flac",
         "tags": {"label": [], "catalog_number": [], "date": "2024"},
+        # A Qobuz purchase: its per-track id (#634).
+        "provenance": {"QBZ:TID": "7917370{n}"},
     },
 ]
 
@@ -1067,6 +1077,34 @@ def _personal_tags(path: Path, comment: str) -> None:
         tags.save(path)
 
 
+def _provenance_tags(path: Path, tags: dict[str, Any], n: int) -> None:
+    """Where-it-came-from tags (#634), stored as each format's own tools do. A
+    string value is per track: `{n}` is the track's position, and `{conf}` and
+    `{crc}` vary as a real AccurateRip result does. A list is several comments."""
+    fill = {"n": n, "conf": 28 - n % 3, "crc": f"{zlib.crc32(path.name.encode()):08X}"}
+    for key, value in tags.items():
+        values = value if isinstance(value, list) else [value.format(**fill)]
+        if path.suffix == ".mp3":
+            id3 = ID3(path)
+            if key == "comment":
+                for lang, text in zip(("XXX", "eng"), values, strict=False):
+                    id3.add(COMM(encoding=3, lang=lang, desc="", text=[text]))
+            else:
+                id3.add(TXXX(encoding=3, desc=key, text=values))
+            id3.save(path)
+        elif path.suffix == ".m4a":
+            audio = MP4(path)
+            if key == "comment":
+                audio[ATOM_COMMENT] = values
+            else:
+                audio[f"----:com.apple.iTunes:{key}"] = [v.encode() for v in values]
+            audio.save()
+        else:
+            flac = FLAC(path)
+            flac[key] = values
+            flac.save()
+
+
 def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
     """Create valid audio files, complete baseline tags, then intentional drift."""
     from . import tagger
@@ -1101,6 +1139,8 @@ def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
         formats.write_tags(target, tags, None)
         if spec.get("personal") or spec.get("store"):
             _personal_tags(target, spec.get("store", "Collected over the years; keep my notes."))
+        if provenance := spec.get("provenance"):
+            _provenance_tags(target, provenance, i)
 
     for folder in sorted(folders):
         cover_name = spec.get("cover")

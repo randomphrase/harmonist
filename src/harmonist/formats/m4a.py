@@ -310,8 +310,15 @@ def _provenance(audio: MP4) -> ProvenanceTags:
     # Freeform names are case-sensitive in MP4 but not to the tools that write
     # them, so match these ones as the tools think of them.
     freeform = {
-        key.removeprefix(ATOM_PREFIX).casefold() for key in audio if key.startswith(ATOM_PREFIX)
+        key.removeprefix(ATOM_PREFIX).casefold(): key
+        for key in audio
+        if key.startswith(ATOM_PREFIX)
     }
+
+    def named(name: str) -> str | None:
+        key = freeform.get(name.casefold())
+        return _binary_atom_str(audio, key) if key else None
+
     return ProvenanceTags(
         # Keep malformed values as invalid evidence instead of dropping one
         # beside a valid value and falsely claiming complete agreement.
@@ -320,7 +327,8 @@ def _provenance(audio: MP4) -> ProvenanceTags:
         ),
         comments=tuple(v for v in audio.get(ATOM_COMMENT) or [] if isinstance(v, str) and v),
         qobuz_track_id=_binary_atom_str(audio, f"{ATOM_PREFIX}QBZ:TID"),
-        accuraterip=bool(freeform & {"accurateripresult", "accurateripdiscid"}),
+        accuraterip_result=named("AccurateRipResult"),
+        accuraterip_disc_id=named("AccurateRipDiscID"),
     )
 
 

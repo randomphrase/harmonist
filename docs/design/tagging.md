@@ -115,6 +115,44 @@ Deliberately not evidence:
   describes the match, not the files.
 - **Juno's and eMusic's marks** don't name their store clearly enough.
 
+### The origin
+
+All of that evidence comes to one conclusion: the album's **origin**, the single
+place it points to (Bandcamp, Qobuz, Amazon, Beatport or CD), or **Unknown** when
+it points to none or to more than one (#634). Two stores' marks are as
+inconclusive as a store's mark beside a rip's. Harmonist's own Bandcamp download
+settles it outright.
+
+The origin names the files, not the purchase. A CD bought from Bandcamp and then
+ripped is a CD, because nothing of the purchase travels with the rip. That's also
+why the values are plain names rather than "Qobuz download": it leaves room for
+an origin the user chooses, or adds, later.
+
+It's one conclusion with two readers. The album page shows it, and
+[contributions](contributions.md#which-albums-qualify) treats an album as a
+download exactly when its origin is a store. So the page can't name an origin
+the checks disagree with.
+
+### Additional info
+
+The album page shows the origin, then these tags and the comment by their
+literal names, in a section of its own. They answer "where did these files come
+from", not "does this match MusicBrainz", so they don't belong in the Album
+section's comparison. The comment was shown there, never compared, until #634
+moved it.
+
+A tag's value follows the Album section's consensus: the value most tracks
+carry, with the tracks that disagree one click away. The exception is a tag
+where every track carries its own value. There's no majority to show, and
+calling track 1's value the answer and the rest outliers would read as a
+problem, so the row says the values differ on every track and lists each one.
+`QBZ:TID` and AccurateRip's per-track CRCs always look like that, but Harmonist
+doesn't need to know which tags are meant to vary.
+
+The section shows only tags Harmonist reads for analysis, which keeps it from
+becoming a tag dump. An album with none of them, and nothing else settling its
+origin, has no section at all.
+
 ## How significant a change is
 
 Every owned field has a **significance**, which says how much of the album a

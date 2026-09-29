@@ -205,6 +205,8 @@
         <p class="text-2xs text-muted italic">Reading the album's artwork…</p>
     </section>
 
+    {% with info = additional_info(album) %}{% include 'partials/_additional_info.html' %}{% endwith %}
+
     {# Everything Harmonist has recorded about THIS album — activity and audit
        together, newest first. Unioned across the album's alias chain, so records
        written before it was tagged (under its old id) are here too; without that

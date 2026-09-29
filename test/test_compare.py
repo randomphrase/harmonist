@@ -314,9 +314,10 @@ def test_summary_counts_only_real_findings():
 def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
     """End to end, through `album_fields`, where the flag is really set.
 
-    Genre and comment are in the field table deliberately — the user should see
-    a tag Harmonist is keeping for them — but MusicBrainz has no counterpart for
-    either, so "All N fields match MusicBrainz" must not count them.
+    Genre is in the field table deliberately — the user should see a tag
+    Harmonist is keeping for them — but MusicBrainz has no counterpart for it, so
+    "All N fields match MusicBrainz" must not count it. (The comment was the
+    other such row until #634 moved it to the page's Additional info.)
     """
     tags = TrackTags(
         album="Obreel", album_artist="A", genre="Ambient", comment="https://x.bandcamp.com"
@@ -327,10 +328,9 @@ def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
     by_label = {f.label: f for f in fields}
 
     assert by_label["Genre"].comparable is False
-    assert by_label["Comment"].comparable is False
     assert by_label["Album"].comparable is True
-    # Every album-scoped tag Harmonist writes is compared bar one, and the two it
-    # only displays are not. Stated against `owned` rather than as literals: the
+    # Every album-scoped tag Harmonist writes is compared bar one, and the one it
+    # only displays is not. Stated against `owned` rather than as literals: the
     # gap between a hand-written count here and the real field set is what let
     # this panel omit twenty-one fields (#295), and a test asserting "19" would
     # have to be edited by the same person who forgot to add the field.
@@ -342,7 +342,7 @@ def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
     from harmonist.formats.owned import ALBUM_FIELDS, LABELS, Owned
 
     compared = [f for f in ALBUM_FIELDS if f is not Owned.MB_ALBUM_ID]
-    assert len(fields) == len(compared) + 2
+    assert len(fields) == len(compared) + 1
     comparable = AlbumComparison(fields=fields).comparable
     assert len(comparable) == len(compared)
     assert {f.label for f in comparable} == {LABELS[f] for f in compared}
@@ -1970,7 +1970,7 @@ def test_the_panel_pairs_release_fields_against_artist_fields():
         "Label",           "Cat. no.",
         "Barcode",         "ASIN",
         "Disc total",      "Script",
-        "Genre",           "Comment",
+        "Genre",
     ]  # fmt: skip
 
 

@@ -6604,7 +6604,7 @@ def test_album_page_compares_tags_field_by_field(client, cfg, monkeypatch):
     # A MusicBrainz-only value says so without relying on its colour — someone
     # who can't distinguish the purple still gets the mark and its tooltip.
     assert "Not in your files" in body
-    for label in ("Album", "Album artist", "Date", "Label", "Cat. no.", "Comment"):
+    for label in ("Album", "Album artist", "Date", "Label", "Cat. no."):
         assert f"<dt>{label}</dt>" in body, f"missing field row: {label}"
 
 

@@ -319,11 +319,18 @@ def _provenance(tags: Any) -> ProvenanceTags:
     frame known to carry it."""
     if tags is None:
         return ProvenanceTags()
-    txxx = {frame.desc.casefold() for frame in tags.getall("TXXX")}
+    # A TXXX description is case-sensitive to mutagen, not to the tools.
+    txxx = {frame.desc.casefold(): frame for frame in tags.getall("TXXX")}
+
+    def named(name: str) -> str | None:
+        frame = txxx.get(name.casefold())
+        return str(frame.text[0]) if frame is not None and frame.text else None
+
     return ProvenanceTags(
         upcs=tuple(str(value) for frame in tags.getall("TXXX:UPC") for value in frame.text),
         comments=tuple(str(text) for frame in tags.getall("COMM") for text in frame.text if text),
-        accuraterip=bool(txxx & {"accurateripresult", "accurateripdiscid"}),
+        accuraterip_result=named("AccurateRipResult"),
+        accuraterip_disc_id=named("AccurateRipDiscID"),
     )
 
 

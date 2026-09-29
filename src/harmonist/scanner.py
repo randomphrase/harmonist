@@ -635,6 +635,7 @@ def build_album(
         bandcamp_comment_urls=_bandcamp_comment_urls(fields),
         download_stores=frozenset().union(*(provenance.stores(f.provenance) for f in fields)),
         ripped=any(f.provenance.accuraterip for f in fields),
+        file_provenance=tuple(zip(audio_files, (f.provenance for f in fields), strict=True)),
         cover_path=io.cover_path,
         inconsistent_tracks=inconsistent_tracks,
         partial_tag_count=_partial_tag_count(sidecar, fields),

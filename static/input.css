@@ -1042,6 +1042,41 @@ button[disabled],
   text-align: right;
 }
 
+/* Additional info's tags (#634): literal tag names beside their values, headed
+   like the tag-changes table above. Names are printed as the files spell them —
+   `QBZ:TID`, `AccurateRipResult` — so they read as keys, not as the Album
+   section's field labels, which name what a tag means. Child combinators
+   throughout: a row's odd-tracks popover holds a list of its own. */
+.info-tags { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.info-tags > thead > tr > th {
+  text-align: left;
+  font-size: .6rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--color-muted);
+  font-weight: 700;
+  padding: .2rem 1.1rem .2rem 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.info-tags > tbody > tr > td {
+  padding: .3rem 1.1rem .3rem 0;
+  border-bottom: 1px solid var(--color-line);
+  vertical-align: baseline;
+  overflow-wrap: anywhere;
+}
+.info-tags > tbody > tr:last-child > td { border-bottom: 0; }
+.info-tags > tbody > tr > td:first-child {
+  font-family: var(--font-mono);
+  font-size: .75rem;
+  color: var(--color-muted);
+}
+/* The `.tag-fields` label column plus its gap (8rem + 1.1rem; border-box, so
+   the padding is inside), so tag values start where the Origin value does. */
+.info-tags > thead > tr > th:first-child,
+.info-tags > tbody > tr > td:first-child { width: 9.1rem; }
+/* A comment's own line breaks are part of what it says. */
+.info-tags__value { white-space: pre-line; }
+
 /* Native <dialog> modals (see base.html modal plumbing). The dialog element is
    an unstyled transparent shell (backdrop-click detection target); the inner
    card carries the visual chrome. */

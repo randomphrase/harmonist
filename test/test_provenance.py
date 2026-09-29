@@ -67,3 +67,10 @@ def test_download_and_rip_evidence_together_prove_nothing(tmp_path, marks):
     folder = download(tmp_path, marks=marks)
     write_provenance_tags(folder, ".m4a", ACCURATERIP_TAGS)
     assert not assessed(folder).eligible
+
+
+def test_two_stores_marks_prove_nothing_either(tmp_path):
+    """One origin rule serves the page and the checks (#634): files naming two
+    stores have no single origin, so they're no store's download either."""
+    folder = download(tmp_path, marks={**QOBUZ_TAGS, **AMAZON_TAGS})
+    assert not assessed(folder).eligible

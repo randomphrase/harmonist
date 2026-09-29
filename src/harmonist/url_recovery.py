@@ -101,6 +101,32 @@ def recover_store_url(album_dir: Path) -> str | None:
     return extract_bandcamp_url(formats.read_comment(files[0]) or "")
 
 
+# What reads as a link in free text: a URL with its scheme, or a `www.` host
+# without one. Not a bare domain — "Amazon.com Song ID: …" would become a link.
+_LINK_RE = re.compile(r"(?:https?://|www\.)[^\s<>\"']+", re.IGNORECASE)
+_TRAILING = ".,);]>\"'"
+
+
+def link_parts(text: str) -> list[tuple[str, str | None]]:
+    """Split free text into runs, each with the URL it links to or None, so a
+    template can link the URLs in a comment without linking its prose (#634).
+
+    Trailing punctuation stays prose: "see https://x.bandcamp.com." links the
+    URL, not the full stop. A `www.` host gets an https scheme to be a link.
+    """
+    parts: list[tuple[str, str | None]] = []
+    at = 0
+    for match in _LINK_RE.finditer(text):
+        url = match.group(0).rstrip(_TRAILING)
+        if match.start() > at:
+            parts.append((text[at : match.start()], None))
+        parts.append((url, url if "://" in url else f"https://{url}"))
+        at = match.start() + len(url)
+    if at < len(text):
+        parts.append((text[at:], None))
+    return parts
+
+
 def extract_bandcamp_url(comment: str) -> str | None:
     """Pull the first bandcamp.com URL out of a comment tag, stripping any
     surrounding prose ("Visit …") and trailing punctuation. Returns None when
