@@ -4,7 +4,7 @@
 #   - push a tag v1.2.3 -> :1.2.3, :1.2, :1, :latest        (stable release)
 #
 # Built for linux/amd64 (the Synology NAS). The NAS just pulls a published tag —
-# it never builds. See docs/design.md §10.
+# it never builds.
 name: Publish image
 
 on:

@@ -67,7 +67,7 @@ def test_archive_restores_the_album_byte_for_byte(tmp_path):
 
 
 def test_multi_directory_album_lands_in_one_archive(tmp_path):
-    """A release split across per-disc folders (§13.5) is one album, so it gets
+    """A release split across per-disc folders is one album, so it gets
     one zip — restoring half of it would be worse than not offering the button."""
     disc1 = _album(tmp_path, album="Album/Disc 1", tracks=1)
     disc2 = _album(tmp_path, album="Album/Disc 2", tracks=1)

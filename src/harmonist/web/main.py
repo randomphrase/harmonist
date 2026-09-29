@@ -1167,7 +1167,8 @@ def _detail_by_anchor(
     The feed used to look detail up by `action_id` straight from the template,
     which quietly assumed one activity entry per action. A re-tag that follows a
     MusicBrainz merge breaks that: it reports the tagging and names the merge,
-    two entries §5 requires to be said separately, and both matched — so every
+    two entries the design requires to be said separately
+    (docs/design/external-services.md), and both matched — so every
     audit row of the press was printed twice, under each of them.
 
     The anchor is the action's **user-facing outcome**: its first activity entry
@@ -3792,7 +3793,7 @@ def _tag_as_redownloaded(
     re-opens a question they did not ask — it can land on a different release, or
     on none, turning a finished album into inbox work. Carrying it also keeps the
     album's id stable across the round trip, which is what lets its history span
-    the archive (§2.4.1).
+    the archive (docs/design/bandcamp.md).
 
     This is `Confirm`'s semantics, not a guess: an explicit user decision to tag
     an album as a named release, so the match-confidence assessment is skipped
@@ -3818,8 +3819,8 @@ def _tag_as_redownloaded(
     except tagger_mod.TagMismatchError as e:
         # The replacement doesn't fit the release the old copy was. Genuinely
         # possible and worth seeing: MusicBrainz may not have caught up with a
-        # release the artist has grown, and extra files on disk are out of scope
-        # for the tagger either way (§13.3). Fall through to the normal path,
+        # release the artist has grown, and extra files on disk need an explicit
+        # assignment review either way. Fall through to the normal path,
         # which stashes a suggestion and puts it in the inbox with the tools.
         log.info("re-download of %s doesn't fit release %s: %s", album_path.name, mbid, e)
         activity.record(
@@ -5359,7 +5360,7 @@ def _register_routes(app: FastAPI) -> None:
                 # every tag, incomplete or not, so the test was true for every
                 # album Harmonist had ever tagged and distinguished nothing. The
                 # state does distinguish: a COMPLETE album still gets
-                # `incomplete=False` and the §15.3 guard still applies to it.
+                # `incomplete=False` and the count guard still applies to it.
                 #
                 # `accept_short` is the residual half (#252): the state answers
                 # "were the files short of what MusicBrainz said when they were
@@ -5405,8 +5406,8 @@ def _register_routes(app: FastAPI) -> None:
             )
         except tagger_mod.TagMismatchError as e:
             if not e.short:
-                # More files than the release has tracks. Out of scope for the
-                # tagger in *both* modes (§15.3), so there is no decision to
+                # More files than the release has tracks. Refused by the tagger
+                # in *both* modes without an assignment review, so there is no decision to
                 # offer — it stays an error, as it was.
                 log.exception("retag failed", extra=_LOG_ONLY)
                 return _flash_response(
@@ -5441,7 +5442,7 @@ def _register_routes(app: FastAPI) -> None:
             )
         # Say what the re-tag DID, not only that it ran. A short re-tag has just
         # written a longer tracklist's totals into the files, so the album derives
-        # INCOMPLETE from here (§13.3) and starts showing a shortfall badge — a
+        # INCOMPLETE from here and starts showing a shortfall badge — a
         # visible change to how it is listed, which the entry should name rather
         # than leave to be discovered. It stays in the Library either way.
         #

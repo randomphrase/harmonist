@@ -491,7 +491,7 @@ def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
         added_at=min((s.added_at for s in present if s.added_at), default=None),
         mb_release_id=mbid,
         # Dropped deliberately, and named so rather than omitted: exactly one of
-        # `(mb_release_id, temp_uid)` is non-null on a persisted sidecar (§4),
+        # `(mb_release_id, temp_uid)` is non-null on a persisted sidecar,
         # and the line above just set the MBID — a merged album is grouped BY its
         # release, so it always has one and can never still be wearing a temp id.
         temp_uid=None,
@@ -613,7 +613,7 @@ def build_album(
     barcode_evidence = barcodes.evidence(fields)
     source_evidence = barcodes.evidence(fields, source_only=True)
 
-    # Inconsistency trumps sidecar-driven state — see design §15.2.
+    # Inconsistency trumps sidecar-driven state — see docs/design/model.md.
     # The sidecar is kept on disk; once the user fixes the on-disk tags
     # via Picard, the next scan re-derives state from the sidecar.
     inconsistent_tracks = _check_consistency(audio_files, fields)
@@ -884,7 +884,7 @@ def _partial_tag_count(
     """Return `(tagged, total)` when only some files carry the matching
     MB Album Id atom (0 < tagged < total). None when fully tagged, none
     tagged, or when there's no MBID to compare against. Quality indicator
-    only — does not affect state (§15.1).
+    only — does not affect state.
     """
     if not sidecar or not sidecar.mb_release_id or not fields:
         return None
@@ -980,11 +980,11 @@ def _check_consistency(
     NOT inconsistent and produce an empty list.
 
     Files missing either field don't vote — partial tagging is handled
-    separately (§15.1). Returns one row per file when inconsistent,
+    separately. Returns one row per file when inconsistent,
     empty list when consistent.
 
     A release id every file agrees on settles the question on its own, and the
-    titles are not consulted at all (§13.2): the MBID *is* the release identity,
+    titles are not consulted at all: the MBID *is* the release identity,
     while the album title is a display string each ripper derives its own way —
     XLD folds a named medium into it, so disc 2 of U.F.Orb says "U.F.Orb - bonus
     disc" and the dir was accused of holding two albums (#381). One file without

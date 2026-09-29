@@ -35,7 +35,7 @@ def pairs(
     that is gone, so the file is read by its recording instead. A merge that
     moved the tracks across kept their IDs, and those still pair. An ID missing
     without the album having moved has no merge behind it and stays a conflict
-    (design §5).
+    (docs/design/matching.md).
     """
     slots: list[int | None] = [None] * len(tags)
     free = set(eligible)

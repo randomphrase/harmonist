@@ -83,12 +83,8 @@ in its hand.
 
 ## 3. Never store a negative
 
-"MusicBrainz doesn't have this yet" is the one answer most likely to be wrong by
-tomorrow. It is the state a user is actively trying to leave — they seed the
-release in Harmony precisely so the next look finds it — and a cached negative
-would make their own edit invisible to them for the length of a TTL.
-
-Today this holds **structurally rather than by policy**, which is sturdier and
+Why is in [`docs/design/external-services.md`](../../../docs/design/external-services.md#never-store-a-negative).
+Today the rule holds **structurally rather than by policy**, which is sturdier and
 worth preserving:
 
 - the lookups that can answer "no" — URL lookup, search, browse — don't go
@@ -109,11 +105,9 @@ If you ever put a caching layer in front of a lookup that can return empty, that
 property stops being free and you have to build it. An empty result is not an
 answer worth keeping.
 
-**The one exception, and what it had to build (#618).** The release-group browse
-behind the Possible mismatch and MB contributions filters is stored, because
-placing albums in a Library filter cannot cost a request per album per render. Its
-page records an absence — "no release links this URL" — so the property had to be
-built rather than inherited:
+**The one exception, and what it had to build (#618).** The stored release-group
+browse behind the Possible mismatch and MB contributions filters records an
+absence, so the property had to be built rather than inherited:
 
 - it is **never served to anything that decides what to offer**. The album page
   fetches its own live browse (`fetch_release_group_editions` always asks) before
@@ -141,10 +135,9 @@ target release under a *different* `id`. That difference is the only merge
 notification there is.
 
 Always read `release["id"]` afterwards; never assume it is the mbid you asked
-for. Writing the requested id anywhere — a sidecar, a cache row, a comparison —
-while the files get the returned one is #268 exactly: the album derived its
-state from a release that no longer existed, and self-healed through machinery
-meant for "the user re-tagged in Picard". `docs/design.md` §5 carries the rule.
+for, and never write the requested id anywhere — a sidecar, a cache row, a
+comparison. [`docs/design/external-services.md`](../../../docs/design/external-services.md#merges-and-deletions)
+carries the rule and what breaking it cost.
 
 ## 6. `includes` is part of the cache key
 

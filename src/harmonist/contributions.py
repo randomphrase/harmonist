@@ -324,7 +324,7 @@ def downloaded(album: Album) -> bool:
 
 
 def _eligible(album: Album) -> bool:
-    """A confirmed release plus download provenance: see docs/design.md #10."""
+    """A confirmed release plus download provenance: see docs/design/contributions.md."""
     sc = album.sidecar
     if sc is None or not sc.mb_release_id:
         return False

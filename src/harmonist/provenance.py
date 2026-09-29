@@ -3,8 +3,8 @@
 Only positive evidence counts. A store's own tags establish a download and
 AccurateRip's establish a rip; a UPC on its own establishes neither (CD rippers
 write one too), nor does hi-res audio (so is a vinyl or Blu-ray rip) or a CD
-table of contents (XLD synthesizes one on any transcode). docs/design.md keeps
-the table of what each tag proves.
+table of contents (XLD synthesizes one on any transcode). docs/design/tagging.md
+keeps the table of what each tag proves.
 """
 
 from enum import StrEnum

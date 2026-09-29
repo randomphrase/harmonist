@@ -49,7 +49,7 @@ The one thing that IS stored is the one thing nothing can recompute: that the
 user pressed **Ignore**, and which version of the release they pressed it
 against (#271). That is a decision, not a derivation — and deliberately a
 *bookmark* rather than a rejection, because MusicBrainz is canonical
-(`docs/design.md` §1): the answer to disliking what it says is to go and edit it,
+(`docs/design/principles.md`): the answer to disliking what it says is to go and edit it,
 and an ignore exists to keep quiet until that lands. `is_ignored` is the whole
 of the reading side; the flag itself never consults it.
 """

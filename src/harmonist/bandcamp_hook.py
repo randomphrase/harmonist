@@ -5,7 +5,7 @@ Two added behaviours on top of the parent:
   2. After each successful download, write a `.harmonist.json` sidecar in the
      album directory capturing the public Bandcamp album URL.
 
-The cap is the safety mechanism per design §11.3 — it protects the user from
+The cap is a safety mechanism (docs/design/bandcamp.md) — it protects the user from
 a misconfigured ignores file accidentally re-downloading their whole
 collection.
 """

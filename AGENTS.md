@@ -23,13 +23,15 @@ then follow the conventions below.
   isn't ours to direct, so write "the correction belongs on MusicBrainz", not
   "fix MusicBrainz". Only troubleshooting (and step-by-step procedures) is
   prescriptive.
-- **`docs/design.md`** — the design spec and source of truth for *how it's meant
-  to work*: use cases, the album **state machine** (states + transition diagram),
-  the **sidecar schema**, the tagging contract, cover art, the **module map**,
-  and the adoption/linking mechanics (backfill, surrender, potential downloads).
+- **`docs/design/`** — the design: *why* Harmonist is built the way it is. The
+  principles, the model (albums, derived state, identity), what's stored where,
+  matching, Bandcamp linking, MusicBrainz caching, tagging, artwork, history and
+  undo, and the directions deliberately rejected. It records reasons and the
+  alternatives they beat, never what the code does; modules describe themselves.
+  When a change alters a reason, update the page that states it.
 - **`.agents/skills/review-gate`** — the design-invariant checklist (below).
 
-Reach for `docs/design.md` before answering anything about states, the sidecar,
+Reach for `docs/design/` before answering anything about states, the sidecar,
 matching/linking, or tagging — don't reconstruct it from memory or code alone.
 
 Twelve further skills are situational rather than always-on, each written up from
@@ -55,7 +57,8 @@ whether a stored answer will do, and what the payload does under you).
 ## Review gate — before every commit
 
 Consult the **review-gate** skill before every commit, and before declaring any
-implementation task complete. It checks the `docs/design.md` invariants that
+implementation task complete. It checks the design principles
+(`docs/design/principles.md`) that
 tests and `mypy` can't see — audit coverage; no-guessing / exact-scoped-unique
 matching; state is *derived*, never stored; non-destructive to user data; an
 escape hatch out of every state; the MusicBrainz call budget; idempotent

@@ -127,10 +127,10 @@ place covers every writer, including ones not yet written.
 
 ## 8. Audit load-bearing fields; document the exclusions
 
-`_audit_sidecar_change` diffs identity, `purchase_unavailable` (a permanent
-decision) and `track_count_expected` (it reclassifies the album). It deliberately
-ignores `mb_match_candidate` (a suggestion rewritten on every Recheck — auditing
-it would bury real changes in churn), the bookkeeping timestamps, and `notes`.
+`_audit_sidecar_change` diffs the fields recording identity, provenance, a user
+decision, or an observation that reclassifies the album, and deliberately ignores
+the suggestion, the timestamps and `notes`. Its docstring has the list, and
+`docs/design/storage.md` the reasoning.
 
 Write exclusions down in the docstring. An undocumented omission is
 indistinguishable from an oversight, which is exactly how #88 was mis-filed.

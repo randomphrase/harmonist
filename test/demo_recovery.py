@@ -76,7 +76,7 @@ LIBRARY: list[dict[str, Any]] = [
         # Confirm → tags from MB; Reject → back to NEEDS_MBID.
         #
         # NO `file_mbid`, deliberately: an album awaiting confirmation has not
-        # been tagged yet — tagging happens ON confirm (§3.1) — so its files
+        # been tagged yet — tagging happens ON confirm — so its files
         # carry no MusicBrainz id. This used to seed one, which made Confirm
         # re-tag fields that were already there without ever ESTABLISHING the
         # album's identity, and left the demo with no way to exercise the

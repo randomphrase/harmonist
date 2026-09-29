@@ -86,7 +86,7 @@ def archive_and_remove(
     """Zip every directory in `dirs`, verify the zip, then delete them.
 
     `dirs` is an album's directories — usually one, but a release split across
-    per-disc folders (§13.5) has several and they belong in one archive, because
+    per-disc folders (docs/design/model.md) has several and they belong in one archive, because
     they are one album and get restored together.
 
     Members are stored under their path relative to `music_root`, so unzipping at
@@ -209,7 +209,8 @@ def _verify(zip_path: Path, members: list[tuple[Path, str, int]]) -> None:
 def _remove(dirs: Sequence[Path], music_root: Path, *, album_id: str | None) -> tuple[Path, ...]:
     """Delete each archived directory, then any parent it just emptied.
 
-    Pruning empty parents is not the directory reshuffling §1 forbids — nothing
+    Pruning empty parents is not the folder reorganising the design rules out
+    (docs/design/rejected.md) — nothing
     is renamed or moved, and the only directories touched are ones this call
     emptied itself. Left behind, an emptied `Artist/` shows up in Plex as an
     artist with no music; bandcampsync recreates the whole path on the way back

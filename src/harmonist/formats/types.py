@@ -24,7 +24,8 @@ class ProvenanceTags(NamedTuple):
     The other half of a split: `Owned` is what Harmonist writes from
     MusicBrainz, and these are never written, never cleared and never compared
     with MusicBrainz. A tag joins only when an analysis reads it — what each
-    one proves is `provenance`'s to decide, and docs/design.md keeps the table.
+    one proves is `provenance`'s to decide, and docs/design/tagging.md keeps the
+    table.
     """
 
     # Literal UPC, as a store sells the files. Barcode evidence once a download

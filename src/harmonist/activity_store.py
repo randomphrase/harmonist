@@ -241,7 +241,7 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
     # the fields instead and it stops being a decision and becomes a local
     # override list ("never apply MusicBrainz's album title here"), which is a
     # permanent per-album exception to the canonical source this whole project
-    # is built on (`docs/design.md` §1). There is no third key, because a
+    # is built on (`docs/design/principles.md`). There is no third key, because a
     # divergence is not a thing — it is a diff between two moving sides, and
     # diffs merge and split.
     #

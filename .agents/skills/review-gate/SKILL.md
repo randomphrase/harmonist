@@ -6,7 +6,8 @@ description: Pre-commit design-invariant review for Harmonist. MUST be consulted
 # Review Gate: Harmonist Design Invariants
 
 Run through this checklist against the full diff about to be committed. Each item
-is an invariant from `docs/design.md` that a plausible-looking change can violate
+is a principle from `docs/design/principles.md`, which says why it exists, turned
+into questions about a diff. Each can be violated by a plausible-looking change
 without any test failing. For each item, answer: **does this diff touch the area?
 If yes, does it hold the invariant?** If an invariant is violated, stop and fix it
 (or raise it with the user) before committing — do not note it as a TODO.

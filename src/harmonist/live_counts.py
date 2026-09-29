@@ -22,7 +22,7 @@ from collections.abc import Iterable
 
 from .models import Album, AlbumState
 
-# Terminal = "in the Library, off the inbox" (see models.py / docs §3).
+# Terminal = "in the Library, off the inbox" (see docs/design/model.md).
 _TERMINAL = frozenset({AlbumState.COMPLETE, AlbumState.INCOMPLETE})
 
 _lock = threading.Lock()

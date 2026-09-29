@@ -1058,7 +1058,7 @@ def test_surrender_leaves_on_disk_file_tags_intact(cfg):
     This is what makes it non-destructive: the release is still written on disk
     and is offered as a one-click re-confirm suggestion. (Pins the deferred
     user-assigned-MBID behavior: a manually-assigned tag is re-inboxed, never
-    erased — see design.md §3.)"""
+    erased — see docs/design/model.md.)"""
     from harmonist import formats
     from harmonist.web.main import _report_unmatched_after_sync
 
@@ -3566,7 +3566,7 @@ def test_retag_works_on_an_album_confirmed_as_incomplete(client, cfg, monkeypatc
 def test_retag_still_refuses_an_unconfirmed_short_album(client, cfg, monkeypatch):
     """The control: an album not already known to be short must still not be
     tagged short, or the guard against tagging a partial download by accident is
-    gone (design §15.3). Its files carry no totals, so it derives COMPLETE and
+    gone. Its files carry no totals, so it derives COMPLETE and
     /retag passes `incomplete=False`.
 
     Since #252 the refusal is a question rather than an error, so what's asserted
@@ -3631,7 +3631,7 @@ def test_grown_tracklist_routes_every_apply_choice_into_review(
 
 def test_retag_reports_extra_files_as_a_failure_with_no_way_out(client, cfg, monkeypatch):
     """The mismatch #252 does NOT turn into a decision: more files on disk than
-    the release has tracks is out of scope for the tagger in both modes (§15.3),
+    the release has tracks is refused by the tagger in both modes,
     so incomplete mode would not help and must not be offered."""
     d = _make_tagged_album(cfg, "Extra", mbid="rel-extra", tagged_at=datetime.now(UTC))
     shutil.copy(SINE_M4A, d / "02 Track.m4a")
@@ -5255,7 +5255,7 @@ def test_sidecar_album_id_survives_rename(client, cfg):
     assert aid_before == aid_after
 
 
-# ---------- Confirm as Incomplete (§15.3) ----------
+# ---------- Confirm as Incomplete ----------
 
 
 def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkeypatch):
@@ -5587,7 +5587,7 @@ def test_audit_detail_hangs_off_its_entry_and_only_when_asked(client, cfg):
 def test_an_action_with_two_entries_shows_its_detail_under_one_of_them(client, cfg):
     """One action can write two activity entries: a re-tag that follows a
     MusicBrainz merge reports the tagging AND names the merge, which
-    docs/design.md §5 requires to be said separately. The feed looked its detail
+    docs/design/external-services.md requires to be said separately. The feed looked its detail
     up by `action_id` alone, so both entries matched and every audit row was
     printed twice — one press, reported once and evidenced twice (#572).
 
@@ -9029,7 +9029,7 @@ def test_album_page_offers_redownload_only_for_a_linked_bandcamp_purchase(client
 
 
 def test_redownloading_twice_archives_once(client, cfg, quiet_sync):
-    """Transitions are idempotent (§3). The album is off disk after the first
+    """Transitions are idempotent. The album is off disk after the first
     call, so the second finds nothing to act on rather than writing a second
     archive of an album that no longer exists — which would be an empty zip and
     a second sync for a purchase already queued."""
@@ -9215,7 +9215,7 @@ def test_a_replacement_that_does_not_fit_the_release_falls_back_to_a_suggestion(
     tagging is representable is not something the user's assertion can settle.
     MusicBrainz may not have caught up with a release the artist has grown, so
     the new files can outnumber its tracklist — which is an error in both tagger
-    modes (§13.3). The user meets the ordinary side-by-side instead."""
+    modes. The user meets the ordinary side-by-side instead."""
     d = _make_tagged_album(
         cfg, "Outgrown", mbid="rel-outgrown", tagged_at=datetime.now(UTC), item_id=8003
     )

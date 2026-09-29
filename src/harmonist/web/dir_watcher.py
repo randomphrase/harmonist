@@ -7,11 +7,10 @@ watcher bridges that gap: it calls `on_change` (wired to
 `ScanRunner.request_scan`) whenever the tree changes, and the scanner's
 per-album mtime cache keeps the resulting rescan cheap.
 
-Caveat — inotify only fires for *local* filesystem changes. On a network mount
-(SMB/NFS) the kernel never delivers events, so the watcher silently sees
-nothing; restarting the container forces a fresh scan there. The watcher fails
-soft: any setup error (missing dir, watch-limit exhaustion) is logged and the
-task exits without taking the app down. See docs/design.md §10.4.
+The watcher fails soft: any setup error (missing dir, watch-limit exhaustion)
+is logged and the task exits without taking the app down. Why that's
+acceptable, and what covers network mounts it can't see, is in
+docs/design/staying-current.md.
 """
 
 from __future__ import annotations

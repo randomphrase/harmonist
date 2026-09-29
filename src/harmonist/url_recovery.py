@@ -11,8 +11,8 @@ artist URL — that's exactly the kind of guess Harmonist avoids. A bare
 artist-root URL is recorded as-is (the sync later links it by title); we just
 don't invent a `/album/` slug we don't have.
 
-Tertiary fallback per design §2.1 — the primary path is the bandcampsync hook
-that captures URLs at download time; the secondary is manual entry via the UI.
+A fallback for albums Harmonist didn't download: its own downloads record their
+URL when they land (docs/design/matching.md).
 """
 
 from __future__ import annotations

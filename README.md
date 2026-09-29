@@ -60,7 +60,7 @@ To use your own collection, see [getting started](docs/getting-started.md).
   your own machine.
 
 Changing the code? See [contributing](CONTRIBUTING.md) and the
-[design spec](docs/design.md).
+[design](docs/design/README.md).
 
 ## How Harmonist compares
 

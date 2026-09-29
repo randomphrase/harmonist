@@ -54,7 +54,7 @@ class AlbumState(StrEnum):
     # Displayed as "Needs Linking" — the album needs its on-disk copy linked to the
     # Bandcamp purchase (fill item_id). The enum name/value stay "needs_sync"
     # (the mechanism, and the /status JSON key the frontend reads); only the
-    # user-facing label changed. See docs/design.md §3.
+    # user-facing label changed. See docs/design/model.md.
     NEEDS_SYNC = "needs_sync"
     COMPLETE = "complete"
     INCOMPLETE = "incomplete"
@@ -70,7 +70,7 @@ class InconsistentTrack:
 
     Surfaced when files in a single album dir disagree on MB Album Id
     (`----:com.apple.iTunes:MusicBrainz Album Id`), or on album title
-    (`©alb`) without one release id on every file to settle it (§13.2).
+    (`©alb`) without one release id on every file to settle it (docs/design/model.md).
     Compilations (varying artist, consistent album+MBID) don't appear here
     — they're legitimate, not inconsistent.
     """
@@ -285,22 +285,14 @@ class MatchCandidate:
 class Sidecar:
     """Per-album persisted state — the on-disk `.harmonist.json`.
 
-    `store_url` carries the canonical purchase URL from any store Harmony
-    supports (Bandcamp, Beatport, Discogs, etc.). Store identity is derived
-    from the URL host; absence of store_url means "no store source recorded".
-
-    Identity: exactly one of `(mb_release_id, temp_uid)` is non-null on
-    any persisted sidecar. `temp_uid` holds the album's stable URL id
-    until an MBID lands, at which point sidecar.write() drops it. The
-    scanner reads whichever is set and assigns it to `Album.id`.
+    Why each field exists, and what may be added, is in docs/design/storage.md.
+    Exactly one of `(mb_release_id, temp_uid)` is set on any persisted sidecar.
     """
 
     schema_version: int = CURRENT_SCHEMA_VERSION
     store_url: str | None = None
     bandcamp: BandcampInfo | None = None
     downloaded_at: datetime | None = None
-    # Recorded only after Harmonist actually downloads these files. Linking an
-    # adopted album also sets downloaded_at, so that timestamp is not provenance.
     bandcamp_downloaded: bool = False
     added_at: datetime | None = None
     mb_release_id: str | None = None
@@ -308,54 +300,11 @@ class Sidecar:
     mb_match_candidate: MatchCandidate | None = None
     tagged_at: datetime | None = None
     notes: str | None = None
-    # Set when the user accepts a SURRENDERED album as done: a full sync found no
-    # matching Bandcamp purchase (release withdrawn from Bandcamp, bought
-    # elsewhere, or ripped) and they chose "Keep in Library". Load-bearing: the
-    # scanner then treats the album as terminal (COMPLETE/INCOMPLETE) despite the
-    # Bandcamp store_url + missing item_id, and the surrender pass leaves it alone.
-    # Without it the album would re-classify NEEDS_SYNC and re-surrender on every
-    # full sync — there is no purchase to link, ever.
     purchase_unavailable: bool = False
-    # Set when the user accepts an INCOMPLETE album as finished: the tracks it is
-    # missing are not obtainable, so there is nothing to act on. The Pink Floyd
-    # Blu-ray where only the stereo mixes were ripped; the hidden CD track never
-    # ripped from a disc since thrown away (#196).
-    #
-    # A claim about the SOURCE — "there are no more tracks to get" — not about
-    # the UI. That distinction is what keeps it from becoming a general "ignore
-    # this album": the honest reading is checkable, and it is the reason a
-    # Bandcamp album whose artist has since added tracks is the wrong candidate
-    # (#132 can genuinely fetch those).
-    #
-    # Load-bearing: the Library's Incomplete filter is for defects the user can
-    # do something about, and an accepted one is no longer such a defect, so this
-    # takes the album out of it. Deliberately does NOT change the state — the
-    # album really is short, `INCOMPLETE` says so truthfully, and the tile still
-    # reports the count. Not derivable at any price: it is a decision, with no
-    # evidence on disk. Same shape as `purchase_unavailable` one level over.
     tracks_unavailable: bool = False
-    # Which of the release's media hold nothing but video, by position — the one
-    # fact about a release that cannot be read off the files, because a medium
-    # the user never ripped has no files to carry it (#206).
-    #
-    # `None` means "not asked"; `()` means "asked, none are video". The
-    # difference is load-bearing: it is what stops the lookup being repeated
-    # forever on a release that turns out to have no video at all.
-    #
-    # Load-bearing: an album missing ONLY video media derives COMPLETE, since
-    # Harmonist cannot tag video (#66) and telling the user forever that their
-    # CD is missing 44 DVD tracks is noise. A partially-present video medium is
-    # still INCOMPLETE — if you have one video you should have the rest.
+    # None: not asked yet. (): asked, and none of the release's media are video.
     video_media: tuple[int, ...] | None = None
-    # The release the user said they bought, recorded as its MBID (#618).
-    #
-    # A decision with no evidence on disk: tags that match a release do not say
-    # it is the product that was bought. Keyed to the release rather than a flag
-    # so a rematch lapses it by construction — accepted means this equals
-    # `mb_release_id`, and a stale value is simply not that.
-    #
-    # Load-bearing: it moves the album from Possible mismatch to MB
-    # contributions, and only then are data edits on this release offered.
+    # Accepted only while it equals `mb_release_id`, so a rematch lapses it.
     accepted_release_id: str | None = None
 
 

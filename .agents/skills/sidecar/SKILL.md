@@ -14,11 +14,10 @@ release — an upgraded Harmonist opens whatever files are already there.
 Treat the sidecar as a **published interface with no version negotiation.**
 That is not a metaphor: see rule 1.
 
-Two documents own the content and must be updated with any change here —
-`docs/design.md` §4 (the schema and what each field means) and the
-`review-gate` skill's item 3 (state is derived, never stored). This skill is
-the *mechanics*: what happens on disk when you change a field, and which
-changes are survivable.
+`docs/design/storage.md` owns the content: why the sidecar exists, what earns a
+field a place, and why each field exists. Update its field table with any change
+here. This skill is the *mechanics*: what happens on disk when you change a
+field, and which changes are survivable.
 
 ## 1. The schema version is a hard gate. Bumping it nukes every sidecar.
 
@@ -66,25 +65,10 @@ That is the whole compatibility story, and it cuts both ways:
 
 ## 3. A new field must be load-bearing, and it must be absent by default
 
-Before adding anything, the `review-gate` item 3 test: **is this derivable?**
-State comes from the shape of the sidecar plus what is on disk. If a function
-could compute it, it does not go in the file.
-
-A field earns its place only if all of these hold:
-
-- it records a **decision or an observation that cannot be re-derived** — a user
-  intent (`purchase_unavailable`), or a fact about a moment that has passed;
-- it has **at least one real reader** that changes what the user sees;
-- it drives a **concrete affordance** in the UI. No speculative fields "for
-  later", no audit-ish breadcrumbs — the audit log is over there.
-
-`track_count_expected` is the cautionary tale (#195). It passes every test
-above — it has a reader, it drives Complete vs Incomplete — and it is still
-wrong, because the same number is already written into every audio file as
-`Owned.TRACK_TOTAL` by the same tagging run, from the same MusicBrainz release.
-"Load-bearing" is necessary, not sufficient. The other question is **is this
-already recorded somewhere more authoritative?** For anything MusicBrainz told
-us at tagging time, the answer is usually the tags.
+Whether a field may exist at all is decided by the rule in
+[`docs/design/storage.md`](../../../docs/design/storage.md#what-earns-a-place-in-the-sidecar):
+not derivable, a real reader, and not already recorded more authoritatively
+(usually in the tags). Settle that before touching code.
 
 Then, in `_to_dict`, **omit the default**:
 
@@ -111,8 +95,8 @@ The deprecation path, in order:
    rewritten for some other reason.
 4. **Remove it from `models.Sidecar`,** and from the load-bearing list in
    `_audit_sidecar_change` if it was there (rule 5).
-5. **Update `docs/design.md` §4** — the schema block and the prose. A field
-   documented but not implemented is worse than one that is neither.
+5. **Update the field table in `docs/design/storage.md`.** A field documented
+   but not implemented is worse than one that is neither.
 
 Do **not** bump `CURRENT_SCHEMA_VERSION` (rule 1). Do **not** write a pass that
 rewrites every sidecar to strip the key: it is a library-wide write to user data
@@ -130,17 +114,8 @@ Two things to check before you start:
 ## 5. Load-bearing fields are audited; the list is hand-maintained
 
 `_audit_sidecar_change` writes a `sidecar.update` row when a **load-bearing**
-field moves, and stays silent otherwise. The list is explicit, in
-`sidecar.py`:
-
-- identity — `mb_release_id` / `bandcamp.item_id` / `store_url`
-- `purchase_unavailable` — a surrender, effectively permanent
-- `track_count_expected` — reclassifies Complete ↔ Incomplete
-
-and deliberately *not* `mb_match_candidate` (a suggestion, rewritten on every
-Recheck — auditing it would bury real changes in churn), the timestamps
-(audited by the events that set them), or `notes` (free text, no derived
-consequence).
+field moves, and stays silent otherwise. Its docstring lists what is audited and
+what is deliberately left out; the reasoning is in `docs/design/storage.md`.
 
 **Adding a field means deciding which side of that line it falls on, and
 editing the diff block by hand.** Nothing enforces it. Ask: if this value
@@ -167,8 +142,7 @@ need to change one field, read, `dataclasses.replace`, write.
 
 **Re-read before you write.** A `Sidecar` from a scan snapshot can be minutes
 old on a large library; writing it back clobbers anything that landed in
-between. `reconcile.backfill_track_count` re-reads and re-checks its
-precondition for exactly this reason.
+between. Re-read, and re-check whatever precondition the write depends on.
 
 ### Rebuild with `replace`, never by naming the fields to keep
 
@@ -229,7 +203,7 @@ Before committing a sidecar content change:
 - [ ] `_audit_sidecar_change`'s load-bearing list considered explicitly (rule 5)
 - [ ] Every rewrite uses `replace`, not a fresh `Sidecar(...)` (rule 6)
 - [ ] `scanner._merge_sidecars` gives the new field a merge rule (rule 6)
-- [ ] `docs/design.md` §4 updated — schema block *and* prose
+- [ ] `docs/design/storage.md` field table updated
 - [ ] Round-trip test: write → read → identical `Sidecar`
 - [ ] Old-sidecar test: a dict without the new key loads at the default
 - [ ] For a retirement: a dict *with* the stale key still loads (rule 2)

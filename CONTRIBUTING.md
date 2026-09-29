@@ -50,5 +50,4 @@ CI can validate them. When in doubt, just open the PR; a maintainer will help.
 - **`docs/getting-started.md`**, **`docs/how-it-works.md`**,
   **`docs/troubleshooting.md`**, **`docs/configuration.md`** and
   **`docs/security.md`** — the user docs.
-- **`docs/design.md`** — the design spec: states, the sidecar schema, the tagging
-  contract, and the matching/linking mechanics.
+- **`docs/design/`** — the design: why Harmonist is built the way it is.

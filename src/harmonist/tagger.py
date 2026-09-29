@@ -242,8 +242,8 @@ def tag_album(
     Returns the number of files tagged.
 
     `incomplete=True` allows file_count < track_count. file_count >
-    track_count is still an error in both modes (per design §15.3 — "extra
-    files on disk" is out of scope).
+    track_count is still an error in both modes: extra files on disk need an
+    explicit assignment review (docs/design/matching.md).
 
     Which file is which track is decided by `compare.assign` in **both** modes
     (#235). It used to be positional in the complete mode and by the ladder in
@@ -541,7 +541,7 @@ def significance_of(field: str, before: Any, after: Any) -> owned.Significance:
     the fetch, where the redirect names both ids and the merge is provable. By
     the time a diff reaches here, `mb_album_id` moving means the album is being
     re-pointed at a genuinely different release, which is exactly the case its
-    REVIEW verdict is for. See `docs/design.md` §5.
+    REVIEW verdict is for. See `docs/design/tagging.md`.
 
     Raises `KeyError` for a key that is neither owned nor artwork, rather than
     guessing. A plan cannot produce one, and inventing a default here is how a
@@ -762,8 +762,8 @@ def _prepare(
     if assignment is None and len(files) > len(flat_tracks):
         raise TagMismatchError(
             f"album {album_dir.name!r}: {len(files)} files exceeds MB release "
-            f"track count {len(flat_tracks)} — extra files on disk are out of "
-            f"scope (see design §15.3)",
+            f"track count {len(flat_tracks)} — extra files on disk need an "
+            f"explicit track assignment review",
             files=len(files),
             tracks=len(flat_tracks),
         )
@@ -2108,7 +2108,7 @@ def _build_tagset(
         # the gap is invisible because both fields look right in isolation.
         #
         # Cost of getting it wrong is not one bad row: `mb_album_type` is
-        # Identity under the significance map (design §"Identity"), so the
+        # Identity under the significance map (docs/design/tagging.md), so the
         # gardener would route ~90% of an adopted library to the Inbox on its
         # first night over a capital letter — #283's failure mode on a second
         # field. Any future field taken from a MusicBrainz vocabulary belongs in
@@ -2159,7 +2159,7 @@ def _assign_files_to_tracks(
     """
     slots = compare.assign(identities, [_identity_of(t) for t in flat_tracks])
     # A file with no slot is not tagged at all. It can only happen with more
-    # files than tracks, which the caller has already refused (§15.3) — but
+    # files than tracks, which the caller has already refused — but
     # leaving one alone beats writing another track's metadata into it.
     return [(f, flat_tracks[s]) for f, s in zip(files, slots, strict=True) if s is not None]
 
@@ -2501,7 +2501,7 @@ def _compilation_flag(artist_credit: list[Any] | None) -> bool | None:
     describes the release group's nature, so a greatest-hits album by one artist
     carries it — and flagging one of those is precisely what makes a player
     shatter it into one album per track artist, the failure this tag exists to
-    prevent. Harmonist writes the primary type only (design §5).
+    prevent (docs/design/tagging.md).
     """
     return True if VARIOUS_ARTISTS_ID in _artist_ids(artist_credit) else None
 

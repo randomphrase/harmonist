@@ -1042,7 +1042,7 @@ def test_tag_album_returns_count(album_with_tracks):
     assert n == 2
 
 
-# ---------- incomplete-mode tagging (§15.3) ----------
+# ---------- incomplete-mode tagging ----------
 
 
 def test_tag_album_incomplete_allows_fewer_files_than_tracks(album_with_tracks):
@@ -1056,7 +1056,7 @@ def test_tag_album_incomplete_allows_fewer_files_than_tracks(album_with_tracks):
 
 
 def test_tag_album_incomplete_still_raises_when_too_many_files(album_with_tracks):
-    """file_count > track_count is out of scope (per §15.3) — still raises
+    """file_count > track_count needs an assignment review — still raises
     even in incomplete mode.
     """
     album_dir = album_with_tracks(3)  # 3 files, release has 1 track
@@ -1523,7 +1523,7 @@ def test_reverting_does_not_touch_the_artwork(album_with_tracks, tmp_path):
     assert formats.read_cover(f) == embedded
 
 
-# ---------- a bonus DVD is not missing audio (§15.3, #235) ----------
+# ---------- a bonus DVD is not missing audio (#235) ----------
 
 
 def _release_cd_plus_dvd() -> dict:

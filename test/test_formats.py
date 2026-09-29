@@ -948,7 +948,7 @@ def test_no_identifier_is_classified_below_identity():
     changing is the album being re-pointed at something else, and the one case
     where that is settled rather than proposed — a merged release, which arrives
     as a redirect naming both ids — is corrected at the fetch and never reaches
-    the classifier as a question (#268, `docs/design.md` §5).
+    the classifier as a question (#268, `docs/design/external-services.md`).
     """
     from harmonist.formats.owned import SIGNIFICANCE, Owned, Significance
 
