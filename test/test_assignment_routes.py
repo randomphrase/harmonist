@@ -185,7 +185,7 @@ def test_assignment_review_writes_the_pairing_the_user_moved(client, cfg, monkey
     new_id = _id_for(cfg, d)
     assert new_id != aid
     events = activity_store.album_history(new_id)
-    anchor = next(e.id for e in events if e.message == "Tagged")
+    anchor = next(e.id for e in events if e.message.startswith("Matched"))
     assert any(e.message.startswith("tag.track") for e in events)
     undo = client.post(f"/tags/restore/{new_id}", data={"event_id": anchor})
     assert undo.status_code == 200

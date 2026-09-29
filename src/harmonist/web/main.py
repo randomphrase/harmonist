@@ -72,6 +72,7 @@ from harmonist.models import (
     Album,
     AlbumState,
     BandcampInfo,
+    FoundBy,
     MatchCandidate,
     Release,
     Sidecar,
@@ -1804,6 +1805,59 @@ def _release_name_parts(release: Release) -> tuple[str, str]:
     return name, (release.get("disambiguation") or "").strip()
 
 
+#: How each way of finding a release reads in an album's History (#639).
+_FOUND_BY = {
+    FoundBy.STORE_URL: "found by store URL",
+    FoundBy.BARCODE: "found by barcode",
+    FoundBy.NAME_SEARCH: "chosen from a name search",
+    FoundBy.MBID: "entered by MBID",
+    FoundBy.UNDO: "restored by an undo",
+}
+
+
+def _matched_detail(mbid: str, how: str | None) -> str:
+    """The release a match landed on, and how it was found: "Far & Off
+    (24bits), found by store URL" (#639).
+
+    The title and disambiguation only — the artist is already in History's album
+    column — and read from the stored release, which the tagging has just
+    fetched, so this costs no MusicBrainz request. The id stands in on the
+    unlikely path where nothing is stored, rather than leaving the record
+    unable to say which release it was. `how` is None when nothing is known,
+    and then the record says nothing about it.
+    """
+    release = mb_cache.stored_release(mbid)
+    title = (release.get("title") or "").strip() if release else ""
+    disambiguation = (release.get("disambiguation") or "").strip() if release else ""
+    name = (f"{title} ({disambiguation})" if disambiguation else title) or mbid
+    return f"{name}, {how}" if how else name
+
+
+#: The "wrong match" pencil's History entry. One constant for the writer and
+#: the reader, because the album page finds the row to put its Undo on by it.
+_MATCH_CLEARED = "MB match cleared"
+
+
+def _cleared_release(album: Album) -> str | None:
+    """The release an Undo of the "wrong match" pencil would put back, or None
+    when there is nothing it could (#639).
+
+    The files are the evidence, and nothing is stored for this: the pencil
+    leaves the tags alone, so they still name the release it cleared. Offered
+    only while that is plainly so — the album has no release, and every one of
+    its files names the same one. A file without an id, or two ids, means the
+    tags have been changed since, and there is no longer one release to go
+    back to.
+    """
+    sc = album.sidecar
+    if sc is None or sc.mb_release_id:
+        return None
+    ids = {formats.read_scan_fields(path).album_id for path in album_files.for_paths(album.folders)}
+    if len(ids) != 1:
+        return None
+    return ids.pop() or None
+
+
 def _demote_to_needs_mbid(
     album_path: Path, sc: Sidecar, *, candidate: MatchCandidate | None
 ) -> None:
@@ -2032,6 +2086,7 @@ def _detect_mistags_after_sync(
             candidate.mistag_tagged_label = tagged_name
             candidate.mistag_tagged_disambig = tagged_disambig
             candidate.mistag_release_group_mbid = rg
+            candidate.found_by = FoundBy.STORE_URL  # the purchase's URL, on its sibling
         _demote_to_needs_mbid(album.path, album.sidecar, candidate=candidate)
         # Claim the purchase out of the potential-downloads list: it's now
         # represented by this mis-tag card (confirming re-tags + links it), so it
@@ -2252,6 +2307,7 @@ def _unlink_after_revert(album: Album, outcome: tagger_mod.RevertOutcome) -> boo
             track_count=album.expected_track_count or files,
             proposed_at=datetime.now(UTC),
             notes=["Unlinked when you undid the tagging that linked this album"],
+            found_by=FoundBy.UNDO,
         )
         if suggest
         else None
@@ -3356,12 +3412,16 @@ def _apply_best_match(
     cfg: config_mod.Config,
     tagger: Tagger,
     *,
+    found_by: FoundBy,
     review_only: bool = False,
 ) -> tuple[str, str]:
     """Fetch every candidate MB release, pick the best fit, then tag or stash.
 
     A Bandcamp URL can resolve to several MB releases; we assess the album
     against each and act on the strongest match (``match.match_releases``).
+
+    `found_by` is how `mbids` were found, which a stashed suggestion carries to
+    its confirm (#639). Required, so no caller can forget to say.
 
     Returns (status, message) where status is
     'tagged' | 'needs_confirmation' | 'ambiguous' | 'no_match'.
@@ -3402,7 +3462,7 @@ def _apply_best_match(
         existing or Sidecar(),
         added_at=(existing.added_at if existing else None) or datetime.now(UTC),
         mb_release_id=None,
-        mb_match_candidate=candidate,
+        mb_match_candidate=replace(candidate, found_by=found_by),
         accepted_release_id=None,  # of a release this album no longer has (#618)
     )
     sidecar_mod.write(album_path, new)
@@ -3879,7 +3939,9 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
                 album_label=label,
             )
             return "no_match"
-        status_str, msg = _apply_best_match(album_path, mbids, cfg, tagger)
+        status_str, msg = _apply_best_match(
+            album_path, mbids, cfg, tagger, found_by=FoundBy.STORE_URL
+        )
         album_id = sidecar_mod.album_id_for(album_path)
         if status_str == "tagged":
             activity.info(
@@ -4638,6 +4700,26 @@ def _register_routes(app: FastAPI) -> None:
             revertable = _revertable_anchors(history, detail)
         except activity_store.StoreUnavailableError:
             history_unavailable = True  # already logged with a traceback in the store
+        # The "wrong match" pencil's Undo (#639), on its newest row only, and only
+        # while there is a release to put back. The cheap checks come first: the
+        # files are read only for an album with no release and a row to offer.
+        cleared_row = next(
+            (
+                e.id
+                for e in history
+                if e.source is activity_store.Source.ACTIVITY
+                and e.message.startswith(_MATCH_CLEARED)
+            ),
+            None,
+        )
+        rematch_undo = (
+            cleared_row
+            if cleared_row is not None
+            and album.sidecar is not None
+            and not album.sidecar.mb_release_id
+            and _cleared_release(album) is not None
+            else None
+        )
         ctx = _ctx(
             request,
             album=album,
@@ -4648,6 +4730,7 @@ def _register_routes(app: FastAPI) -> None:
             tag_changes=tag_changes,
             restorable=restorable,
             revertable=revertable,
+            rematch_undo=rematch_undo,
             # When this release was last read from MusicBrainz, for the panel's
             # "Checked" date (#355). A local SQLite read with no MusicBrainz call
             # in it, so the panel can state it as the page is built rather than
@@ -5281,8 +5364,49 @@ def _register_routes(app: FastAPI) -> None:
         sidecar_mod.unlink(album.path, sc)
         request.app.state.scan_runner.request_scan()
         return _flash_response(
-            "MB match cleared",
+            _MATCH_CLEARED,
             "→ Needs MBID — pick the correct release",
+            album=album,
+        )
+
+    @app.post("/library/{album_id}/rematch/undo", response_class=HTMLResponse)
+    def undo_rematch(request: Request, album_id: str) -> Response:
+        """Put back the release the "wrong match" pencil cleared (#639).
+
+        The release is the one the files still carry (`_cleared_release`): the
+        pencil left them alone, so they are the record of what it took away, and
+        nothing had to be kept for this. The sidecar follows the files, as
+        adoption does when it links an album from its own tags — the release id,
+        and `tagged_at` stamped now. Any suggestion made since goes with the
+        Undo: the user has just said which release this is.
+
+        Idempotent: once relinked there is nothing to put back, and a second
+        press writes nothing — not even a History line saying so.
+        """
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        mbid = _cleared_release(album)
+        if album.sidecar is None or mbid is None:
+            return _flash_response(
+                "Nothing to undo",
+                "this album's files no longer name one release to put back",
+                tasks_changed=False,
+                album=album,
+                record_activity=False,
+            )
+        sidecar_mod.write(
+            album.path,
+            replace(
+                album.sidecar,
+                mb_release_id=mbid,
+                mb_match_candidate=None,
+                tagged_at=datetime.now(UTC),
+            ),
+        )
+        request.app.state.scan_runner.request_scan()
+        return _flash_response(
+            "MB match restored",
+            _matched_detail(mbid, "the release its files carry"),
+            extra_triggers=_retagged_trigger(album),
             album=album,
         )
 
@@ -6652,7 +6776,20 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
             )
-        details = []
+        # The decision is the event (#639): which release, and how it was found.
+        # A release chosen from the album page's release review carries no
+        # stored suggestion, so the review itself is how it was found.
+        replacement = bool(request.query_params.get("replacement"))
+        how = (
+            "chosen from its release group"
+            if replacement
+            else _FOUND_BY.get(candidate.found_by)
+            if candidate.found_by
+            else None
+        )
+        details = [_matched_detail(candidate.mb_release_id, how)]
+        if not outcome.tags_changed:
+            details.append("tags already matched")
         if outcome.artwork_withheld:
             details.append(
                 "artwork changed since the preview and was left alone; review it on the album page"
@@ -6677,8 +6814,8 @@ def _register_routes(app: FastAPI) -> None:
             runner.refresh_now()
         # As for re-tagging, the background scan still updates state counts.
         response = _flash_response(
-            "Tagged as incomplete" if incomplete else "Tagged",
-            "; ".join(details) or None,
+            "Matched as incomplete" if incomplete else "Matched",
+            "; ".join(details),
             album=album,
             extra_triggers={"confirmation-applied": True},
         )
@@ -6954,12 +7091,23 @@ def _register_routes(app: FastAPI) -> None:
                 current = sidecar_mod.read(album.path) or Sidecar(added_at=datetime.now(UTC))
                 if current.mb_release_id:
                     raise mb_search.MBSearchError("Album was matched while the lookup ran")
-                sidecar_mod.write(album.path, replace(current, mb_match_candidate=ranking.best))
+                sidecar_mod.write(
+                    album.path,
+                    replace(
+                        current,
+                        mb_match_candidate=replace(ranking.best, found_by=FoundBy.BARCODE),
+                    ),
+                )
                 runner = request.app.state.scan_runner
                 if runner.is_engaged():
                     runner.refresh_now()
+                # Flashed, not recorded (#639): a suggestion changes nothing about
+                # the album, and confirming it is the event History keeps.
                 return _flash_response(
-                    "Needs review", "Barcode match found — review and confirm", album=album
+                    "Needs review",
+                    "Barcode match found — review and confirm",
+                    album=album,
+                    record_activity=False,
                 )
         except (mb_search.MBSearchError, mb_lookup.MBError) as exc:
             response = _flash_response(
@@ -7008,12 +7156,21 @@ def _register_routes(app: FastAPI) -> None:
                 current = sidecar_mod.read(album.path)
                 if current is None or current.mb_release_id or current.store_url != sc.store_url:
                     raise mb_lookup.MBError("Album changed while the lookup ran")
-                sidecar_mod.write(album.path, replace(current, mb_match_candidate=candidate))
+                sidecar_mod.write(
+                    album.path,
+                    replace(
+                        current, mb_match_candidate=replace(candidate, found_by=FoundBy.STORE_URL)
+                    ),
+                )
                 runner = request.app.state.scan_runner
                 if runner.is_engaged():
                     runner.refresh_now()
+                # Flashed, not recorded (#639) — see the barcode lookup above.
                 return _flash_response(
-                    "Needs review", "Store URL match found — review and confirm", album=album
+                    "Needs review",
+                    "Store URL match found — review and confirm",
+                    album=album,
+                    record_activity=False,
                 )
         except mb_lookup.MBError as e:
             response = _flash_response(
@@ -7039,7 +7196,12 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post("/manual/{album_id}/assign", response_class=HTMLResponse)
     def manual_assign(
-        request: Request, album_id: str, mbid: str = Form(...), review_only: bool = Form(False)
+        request: Request,
+        album_id: str,
+        mbid: str = Form(...),
+        review_only: bool = Form(False),
+        # Which picker the release came from (#639); the paste box sends none.
+        found_by: FoundBy = Form(FoundBy.MBID),
     ) -> Response:
         album = _find_album(request, album_id)
         extracted = _extract_mbid(mbid)
@@ -7057,6 +7219,7 @@ def _register_routes(app: FastAPI) -> None:
                 [extracted],
                 request.app.state.cfg,
                 request.app.state.tagger,
+                found_by=found_by,
                 review_only=review_only,
             )
         except mb_lookup.MBError as e:
@@ -7076,10 +7239,13 @@ def _register_routes(app: FastAPI) -> None:
                 tasks_changed=False,
                 album=album,
             )
-        # status_str is 'tagged' or 'needs_confirmation' — use the friendlier
-        # verb from msg's first clause.
-        verb = "Tagged" if status_str == "tagged" else "Needs review"
-        return _flash_response(verb, msg, album=album)
+        if status_str == "tagged":
+            # An exact fit tags at once, so this IS the decision (#639).
+            return _flash_response(
+                "Matched", _matched_detail(extracted, _FOUND_BY[found_by]), album=album
+            )
+        # A suggestion to review, or nothing to act on: flashed, not recorded.
+        return _flash_response("Needs review", msg, album=album, record_activity=False)
 
     @app.post("/unconfirmed/{album_id}/manual", response_class=HTMLResponse)
     def mark_unconfirmed_manual(request: Request, album_id: str) -> Response:
@@ -7316,6 +7482,14 @@ def _render_release_picker(
             "review_only": review_only,
             "barcode": barcode,
             "store_url": store_url,
+            # How a row's release was found, carried by its Use (#639).
+            "found_by": (
+                FoundBy.BARCODE
+                if barcode
+                else FoundBy.STORE_URL
+                if store_url
+                else FoundBy.NAME_SEARCH
+            ),
         },
         headers=headers,
     )

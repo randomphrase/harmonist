@@ -31,6 +31,13 @@ versions follow [semantic versioning](https://semver.org).
   how it works, troubleshooting, configuration and security replace the old
   usage, installation and deployment guides (#626).
 
+- **An album's History records the match you confirm, not the suggestions
+  before it**: the entry names the release and how it was found — by store URL,
+  barcode, name search or MBID — and says when the tags already matched (#639).
+
+- **Clearing a MusicBrainz match with the pencil can be undone** from the
+  album's History, putting back the release its files still carry (#639).
+
 ### Fixed
 
 - **An open artwork viewer keeps its image, scale, position and focus when the background artwork check finishes** (#644).

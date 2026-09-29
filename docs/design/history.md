@@ -6,8 +6,10 @@ The records are shaped for reversal first and for reading second.
 
 ## Two records, one store
 
-- **Activity** is for the user: one plain-language entry per outcome ("Tagged",
-  "Unlinked"), shown in the Activity tab and on album pages.
+- **Activity** is for the user: one plain-language entry per outcome ("Matched",
+  "Unlinked"), shown in the Activity tab and on album pages. A suggestion is not
+  an outcome: finding one is only flashed, and confirming it is the entry, naming
+  the release and how it was found (#639).
 - **The audit log** is for finding out exactly what happened: structured
   `event key=value` lines, as many as an operation takes, for every download,
   file change, sidecar change, demotion and cleared checkpoint.
@@ -97,6 +99,13 @@ the undo takes the album off its release, the album goes back to Needs MBID with
 that release offered as a suggestion, so confirming it again is one click. The
 "wrong match" pencil makes the same move but offers no suggestion, since the
 user has just called that release wrong.
+
+**The pencil has an Undo of its own** (#639), and it needs nothing stored: the
+pencil leaves the tags alone, so the files still name the release it cleared.
+The Undo links the album back to that release, as adoption links an album from
+its own tags. It is offered only while the album has no release and every file
+names the same one, since a file changed since leaves no single release to go
+back to.
 
 **An undo is itself recorded**, and can be undone. An undo with nothing left to
 change records nothing, like a re-tag that changed nothing.

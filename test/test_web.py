@@ -4730,7 +4730,7 @@ def test_action_records_an_id_that_still_resolves_after_tagging(client, cfg, mon
     assert _id_for(cfg, d) != aid  # the identity really did move
     assert sc.read(d).temp_uid is None  # ...and the old id is gone from disk
 
-    entry = next(e for e in activity.recent(10) if "Tagged" in e.message)
+    entry = next(e for e in activity.recent(10) if e.message.startswith("Matched"))
     assert entry.album_id is not None
     assert entry.album_label  # the feed can name it
     # The recorded id resolves — i.e. the rendered link is live, not a 404.
@@ -8160,7 +8160,7 @@ def test_request_scope_correlates_the_action_with_its_audit_records(client, cfg,
 
     assert client.post(f"/confirm/{aid}").status_code == 200
 
-    entry = next(e for e in activity.recent(10) if "Tagged" in e.message)
+    entry = next(e for e in activity.recent(10) if e.message.startswith("Matched"))
     assert entry.action_id, "the request opened no action scope"
     detail = activity_store.audit_by_action([entry.action_id])
     assert detail.get(entry.action_id), "no audit records correlated to the action"
@@ -11319,7 +11319,7 @@ def test_confirmation_applies_the_reviewed_smaller_archive_image(
             "include_artwork": "true",
         },
     )
-    assert "Tagged" in result.text
+    assert "Matched" in result.text
     assert formats.read_cover(files[0]) == (small, "image/png")
     assert formats.read_cover(files[1]) == (small, "image/png")
     assert (d / "cover.jpg").read_bytes() == small
@@ -11461,7 +11461,7 @@ def test_confirmation_checkbox_controls_the_actual_write(client, cfg, monkeypatc
     _, _, fields = _review_with_artwork(client, aid)
     data = fields | {"include_artwork": str(included).lower()}
     result = client.post(f"/confirm/{aid}", data=data)
-    assert "Tagged" in result.text
+    assert "Matched" in result.text
     assert (d / "cover.jpg").read_bytes() == (small if included else big)
     for path in d.glob("*.m4a"):
         assert formats.read_cover(path) == (small if included else big, "image/png")
@@ -11489,7 +11489,7 @@ def test_confirmation_without_a_candidate_still_tags_and_keeps_art(
     assert fields["release_fingerprint"]
     assert "Accept changes</button>" in preview.text
     result = client.post(f"/confirm/{aid}", data=fields)
-    assert "Tagged" in result.text
+    assert "Matched" in result.text
     assert (d / "cover.jpg").read_bytes() == big
     assert sc.read(d).mb_release_id == release["id"]
 
@@ -11510,7 +11510,7 @@ def test_confirmation_preserves_per_track_artwork(client, cfg, monkeypatch):
     _, artwork, fields = _review_with_artwork(client, aid)
     assert "Differing per-track artwork is preserved" in artwork.text
     result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
-    assert "Tagged" in result.text
+    assert "Matched" in result.text
     assert [formats.read_cover(p) for p in sorted(d.glob("*.m4a"))] == before
     assert (d / "cover.jpg").read_bytes() == small
 
@@ -11604,7 +11604,7 @@ def test_repeating_confirmation_writes_nothing_twice(client, cfg, monkeypatch):
     aid = _id_for(cfg, d)
     _, _, fields = _review_with_artwork(client, aid)
     fields["include_artwork"] = "true"
-    assert "Tagged" in client.post(f"/confirm/{aid}", data=fields).text
+    assert "Matched" in client.post(f"/confirm/{aid}", data=fields).text
     before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
     history = activity_store.album_history(release["id"])
     request_count = len(calls)
@@ -11631,7 +11631,7 @@ def test_confirmation_reports_artwork_failure_separately(client, cfg, monkeypatc
 
         monkeypatch.setattr(formats, "write_cover", deny)
     result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
-    assert "Tagged" in result.text
+    assert "Matched" in result.text
     assert (
         "no backup could be kept" if failure == "backup" else "artwork could not be written"
     ) in result.text

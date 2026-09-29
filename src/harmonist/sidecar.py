@@ -18,6 +18,7 @@ from .models import (
     CURRENT_SCHEMA_VERSION,
     SIDECAR_FILENAME,
     BandcampInfo,
+    FoundBy,
     MatchCandidate,
     Sidecar,
     TrackComparison,
@@ -441,6 +442,8 @@ def _candidate_to_dict(c: MatchCandidate) -> dict[str, Any]:
         out["mistag_release_group_mbid"] = c.mistag_release_group_mbid
     if c.unmatched_purchase:
         out["unmatched_purchase"] = True
+    if c.found_by is not None:
+        out["found_by"] = c.found_by.value
     return out
 
 
@@ -488,7 +491,21 @@ def _candidate_from_dict(d: dict[str, Any]) -> MatchCandidate:
         mistag_tagged_disambig=d.get("mistag_tagged_disambig"),
         mistag_release_group_mbid=d.get("mistag_release_group_mbid"),
         unmatched_purchase=bool(d.get("unmatched_purchase", False)),
+        found_by=_found_by(d.get("found_by")),
     )
+
+
+def _found_by(value: str | None) -> FoundBy | None:
+    """A candidate's `found_by`, or None for one this build doesn't know.
+
+    A sidecar written by a newer build may name a way of finding a release this
+    one has never heard of. It is a description of the suggestion, never what
+    the suggestion IS, so reading it as absent loses a phrase in History rather
+    than the album (sidecar skill, rule 2)."""
+    try:
+        return FoundBy(value) if value is not None else None
+    except ValueError:
+        return None
 
 
 def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:

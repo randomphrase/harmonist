@@ -233,6 +233,22 @@ class TrackComparison:
         return norm_title(self.file_title) != norm_title(self.mb_track_title)
 
 
+class FoundBy(StrEnum):
+    """How a suggested release was found (#639).
+
+    Only a suggestion carries it: once the user confirms one, the album's
+    History says how it was found, and the suggestion — and with it this — is
+    gone. A fact about a lookup that has already happened, so it cannot be
+    re-derived at confirm time.
+    """
+
+    STORE_URL = "store_url"
+    BARCODE = "barcode"
+    NAME_SEARCH = "name_search"
+    MBID = "mbid"  # pasted by the user
+    UNDO = "undo"  # the release an undone tagging unlinked
+
+
 @dataclass
 class MatchCandidate:
     """A proposed-but-not-confirmed MBID match for an album.
@@ -271,6 +287,10 @@ class MatchCandidate:
     # Load-bearing: drives that read-only render. Distinct from a mis-tag (where
     # the candidate is a *different*, confirmable release).
     unmatched_purchase: bool = False
+    # How this suggestion was found (#639). Load-bearing: the confirm's History
+    # entry says "found by barcode" from it, and nothing else knows by then.
+    # None on a suggestion written before it existed, which then says nothing.
+    found_by: FoundBy | None = None
 
     @property
     def title_mismatch_count(self) -> int:

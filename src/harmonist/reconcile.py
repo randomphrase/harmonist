@@ -35,7 +35,7 @@ from pathlib import Path
 
 from . import album_files, barcodes, formats, match, mb_cache, mb_search, url_recovery
 from . import sidecar as sidecar_mod
-from .models import Album, Sidecar, is_bandcamp_url
+from .models import Album, FoundBy, Sidecar, is_bandcamp_url
 
 log = logging.getLogger(__name__)
 
@@ -135,7 +135,12 @@ def _reconcile_untagged(
             release = mb_cache.fetch_release(results[0]["id"])
             if not mb_search.matches_barcode(release, evidence):
                 raise mb_search.MBSearchError("Release metadata changed since the barcode search")
-            sc = replace(sc, mb_match_candidate=match.assess_match(album_dir, release))
+            sc = replace(
+                sc,
+                mb_match_candidate=replace(
+                    match.assess_match(album_dir, release), found_by=FoundBy.BARCODE
+                ),
+            )
         if sidecar_mod.has_sidecar(album_dir):
             return None  # a user action adopted the album while the lookup ran
         sidecar_mod.write(album_dir, sc)

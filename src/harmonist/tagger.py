@@ -1664,6 +1664,10 @@ class TaggingOutcome:
     """
 
     files: int = 0
+    #: Whether any file's tags were written. A tagging against the release the
+    #: files already carry writes none, and its History entry says so (#639)
+    #: rather than a bare "Tagged" that reads as a record gone missing.
+    tags_changed: bool = False
     artwork: ArtworkOutcome = ArtworkOutcome()
     #: The artwork was left alone because the plan no longer matched the
     #: fingerprint a page carried back (#469).
@@ -1760,7 +1764,7 @@ def tag_and_artwork(
     # Reported as its own fact rather than as a withheld plan, which is a
     # warning about a stale preview and would be untrue here.
     if not artwork_included:
-        return TaggingOutcome(files=tagged, artwork_excluded=True)
+        return TaggingOutcome(files=tagged, tags_changed=wrote_something, artwork_excluded=True)
 
     # Tags are already validated and written. Attribute any artwork failure to
     # the album after that write, and let the caller finish its bookkeeping.
@@ -1789,7 +1793,7 @@ def tag_and_artwork(
             "Check file permissions and retry.",
             extra={"album_id": album_id, "album_label": label},
         )
-        return TaggingOutcome(files=tagged, artwork_unavailable=True)
+        return TaggingOutcome(files=tagged, tags_changed=wrote_something, artwork_unavailable=True)
     if scope is None:
         scope = artwork.Scope.ALL if overwrite_art else artwork.Scope.ADDITIONS
     withheld = expected_artwork is not None and art.fingerprint(scope) != expected_artwork
@@ -1803,7 +1807,7 @@ def tag_and_artwork(
             "writing any artwork. Review the Artwork section and apply it from there.",
             extra={"album_id": album_id, "album_label": label},
         )
-        return TaggingOutcome(files=tagged, artwork_withheld=True)
+        return TaggingOutcome(files=tagged, tags_changed=wrote_something, artwork_withheld=True)
 
     if art.preserves_per_track_art and wrote_something:
         # Attributed to the album (#260). This is a decision Harmonist made on
@@ -1841,7 +1845,7 @@ def tag_and_artwork(
             exc_info=True,
             extra={"album_id": album_id, "album_label": label},
         )
-        return TaggingOutcome(files=tagged, artwork_withheld=True)
+        return TaggingOutcome(files=tagged, tags_changed=wrote_something, artwork_withheld=True)
 
     if outcome.unkept:
         # #470: the replacement did not happen, and the reason is the user's to
@@ -1856,7 +1860,7 @@ def tag_and_artwork(
             "its" if len(outcome.unkept) == 1 else "their",
             extra={"album_id": album_id, "album_label": label},
         )
-    return TaggingOutcome(files=tagged, artwork=outcome)
+    return TaggingOutcome(files=tagged, tags_changed=wrote_something, artwork=outcome)
 
 
 @dataclass(frozen=True)

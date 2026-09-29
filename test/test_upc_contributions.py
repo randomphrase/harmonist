@@ -406,7 +406,9 @@ def test_reviewed_replacement_and_undo_preserve_original_upc(upc_library, monkey
     repeated = client.post(f"/confirm/{MBID}/accept?{query}", data=fields)
     assert "confirmation-applied" not in repeated.headers.get("HX-Trigger", "")
     assert after == {p: p.read_bytes() for p in before}
-    anchor = next(e.id for e in activity_store.album_history("digital") if e.message == "Tagged")
+    anchor = next(
+        e.id for e in activity_store.album_history("digital") if e.message.startswith("Matched")
+    )
     restored = client.post("/tags/restore/digital", data={"event_id": anchor})
     assert "Tags put back" in restored.text
     assert formats.read_owned(path)["barcode"] == OTHER_UPC

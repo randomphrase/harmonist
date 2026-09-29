@@ -73,7 +73,7 @@ def test_route_undo_after_rename_unlinks_sidecar(client, cfg, monkeypatch):
     response = client.post(f"/confirm/{aid}", data=test_web._confirmation_fields(preview.text))
     assert response.status_code == 200
     events = activity_store.album_history(release["id"])
-    anchor = next(e.id for e in events if e.message == "Tagged")
+    anchor = next(e.id for e in events if e.message.startswith("Matched"))
     files = [
         p.rename(root / f"renamed-{i}.m4a") for i, p in enumerate(album_files.audio_files(root))
     ]

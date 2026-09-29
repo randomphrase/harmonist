@@ -60,7 +60,7 @@ breadcrumbs ("matched via barcode on…") belong in `activity.db`.
 | `bandcamp_downloaded` | Harmonist itself downloaded these files. The only proof of download provenance that doesn't depend on tags; see [contributions](contributions.md). |
 | `mb_release_id` | The confirmed release. Its presence is what separates Needs MBID from everything after it. |
 | `temp_uid` | A stable ID until a release is confirmed. Exactly one of this and `mb_release_id` is set. |
-| `mb_match_candidate` | A suggested release awaiting the user, with the comparison that justified it. Also carries why it was suggested, when that's a possible mis-tag or a surrender. |
+| `mb_match_candidate` | A suggested release awaiting the user, with the comparison that justified it. Also carries why it was suggested, when that's a possible mis-tag or a surrender, and `found_by`: how it was found (store URL, barcode, name search, MBID, undo). That is the breadcrumb rule above, not an exception to it: the lookup and the confirm are separate requests, so the suggestion carries the fact until the confirm writes it to `activity.db`, and it goes with the suggestion (#639). |
 | `tagged_at` | When Harmonist last tagged the files, so a later change by another tool can be noticed. |
 | `added_at` | When Harmonist first met the album, shown on its page. |
 | `purchase_unavailable` | The user accepted that there is no Bandcamp purchase to link. Without it the album would be surrendered again on every full sync. |

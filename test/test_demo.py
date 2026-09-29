@@ -351,7 +351,7 @@ def test_demo_confirm_tags_album_end_to_end(demo_client):
     aid = next(a.id for a in albums if a.title == "Gimme Some Money")
     r = demo_client.post(f"/confirm/{aid}")
     assert r.status_code == 200, r.text
-    assert "Tagged" in r.text
+    assert "Matched" in r.text
     # Album should now be in DONE state (hidden from inbox)
     tasks_after = demo_client.get("/tasks").text
     assert "Gimme Some Money" not in tasks_after
