@@ -90,11 +90,11 @@ class CoverArtConfig(BaseModel):
     # How much disk the archive's own images may take once fetched (#439) — the
     # candidates the album page shows and Update artwork writes, kept beside the
     # artwork store. The page's check fills it just by browsing (#436), so it
-    # is capped; least recently used goes first. Far below the artwork store's
-    # cap because nothing here is irreplaceable: an evicted image is fetched
-    # again the next time its album is opened. 0 keeps none, so the album page
-    # cannot show the archive's picture or offer to write it.
-    image_cache_max_bytes: int = Field(default=100 * 1024 * 1024, ge=0)
+    # is capped; least recently used goes first. Nothing here is irreplaceable:
+    # an evicted image is fetched again the next time its album is opened. 0
+    # keeps none, so the album page cannot show the archive's picture or offer
+    # to write it.
+    image_cache_max_bytes: int = Field(default=1024 * 1024 * 1024, ge=0)
 
 
 class ArtworkStoreConfig(BaseModel):

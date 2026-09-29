@@ -8,7 +8,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
-- **Cover Art Archive images kept for album pages are capped at 100 MB**, least
+- **Cover Art Archive images kept for album pages are capped at 1 GB**, least
   recently viewed first; tune with `image_cache_max_bytes` under `[cover_art]`
   (#439).
 

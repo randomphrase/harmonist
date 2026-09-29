@@ -433,10 +433,12 @@ def _total_length(resp: httpx.Response) -> int | None:
 # question a user actually asks. Least recently used goes first, and eviction
 # here is housekeeping, not a broken promise.
 
-#: Default cap. Around a hundred archive originals — the albums somebody has
+#: Default cap. Around a thousand archive originals — the albums somebody has
 #: looked at lately, which are the ones whose pictures are worth having to hand.
-#: A fifth of `artwork_store`'s, because nothing here is irreplaceable.
-DEFAULT_CACHE_MAX_BYTES = 100 * 1024 * 1024
+#: A hundred was too few: browsing a large library would keep evicting and
+#: re-downloading the same images. Larger than `artwork_store`'s cap, which is
+#: sized for a different job (the only copies of replaced artwork).
+DEFAULT_CACHE_MAX_BYTES = 1024 * 1024 * 1024
 
 _caa_root: Path | None = None
 _caa_max_bytes: int = DEFAULT_CACHE_MAX_BYTES

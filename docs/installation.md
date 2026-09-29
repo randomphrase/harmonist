@@ -88,7 +88,7 @@ cache_ttl_seconds = 3600          # re-serve a fetched release for this long
 
 [cover_art]
 cache_ttl_seconds = 604800        # re-serve a stored archive answer for a week
-image_cache_max_bytes = 104857600 # disk for the archive's images (100 MB)
+image_cache_max_bytes = 1073741824 # disk for the archive's images (1 GB)
 
 [library]
 watch_settle_seconds = 5          # quiet time before a watched change rescans
@@ -136,7 +136,7 @@ checked** date with its own refresh button beside it.
 When the archive's cover is larger than anything the album has, the page
 downloads it so it can show it to you and **Update artwork** can write it. Those
 images are kept under `artwork/caa` in the config dir, capped by
-`[cover_art] image_cache_max_bytes` — **100 MB** by default, with the images you
+`[cover_art] image_cache_max_bytes` — **1 GB** by default, with the images you
 viewed least recently dropped first. Nothing there is irreplaceable: a dropped
 image is downloaded again the next time you open its album, and the whole
 directory is safe to delete at any time. `0` keeps none, so album pages can't
