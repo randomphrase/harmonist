@@ -63,7 +63,7 @@ both shared folders, applied to all subfolders.
 You've restricted `allowed_hosts` and are visiting Harmonist under a name
 that isn't in the list. Add the hostname you use (without the port) to
 `allowed_hosts`, or `HARMONIST_ALLOWED_HOSTS`, and restart. See
-[security](security.md#limit-the-hostnames-it-answers-to).
+[security](security.md#limiting-the-hostnames-it-answers-to).
 
 ### Changes to my files don't show up
 
@@ -118,7 +118,7 @@ their current tags until you confirm the new one.
 
 If the album is in the Library's **Possible mismatch** filter, its page
 explains why and lists the likely alternatives. See
-[giving back to MusicBrainz](how-it-works.md#giving-back-to-musicbrainz).
+[when the match might be wrong](how-it-works.md#when-the-match-might-be-wrong).
 
 ### The release was deleted from MusicBrainz
 

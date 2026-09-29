@@ -12,7 +12,7 @@ the file. Every setting is optional.
 
 | Key | Env | Default | |
 |---|---|---|---|
-| `music_dir` | `HARMONIST_MUSIC_DIR` | `/music` in Docker | Your music library. Use an absolute path. |
+| `music_dir` | `HARMONIST_MUSIC_DIR` | `/music` in Docker | Your music library, as an absolute path. |
 | | `HARMONIST_CONFIG_DIR` | `/config` in Docker | Where `harmonist.toml`, the Bandcamp cookies, `ignores.txt`, the activity history and kept artwork live. |
 
 Needs a restart.
@@ -31,7 +31,7 @@ tagged, so Harmonist won't see them.
 
 | Key | Env | Default | |
 |---|---|---|---|
-| `user_agent` | | `"Harmonist/1.0 ( … )"` | Identifies you to MusicBrainz. Use `Name/Version ( your-email )`. On the Settings page. |
+| `user_agent` | | `"Harmonist/1.0 ( … )"` | Identifies you to MusicBrainz, in the form `Name/Version ( your-email )`. On the Settings page. |
 | `cache_ttl_seconds` | | `3600` | How long a release fetched from MusicBrainz is reused before asking again. Each album's page has a refresh button to ask now. |
 
 ## `[cover_art]`
@@ -78,7 +78,7 @@ taggings; each album offers the change on its own page rather than all at once.
 |---|---|---|---|
 | `host` | `HARMONIST_HOST` | `127.0.0.1` (`0.0.0.0` in Docker) | Address to listen on. |
 | `port` | `HARMONIST_PORT` | `8000` | Port to listen on. |
-| `allowed_hosts` | `HARMONIST_ALLOWED_HOSTS` | `["*"]` | Hostnames Harmonist answers to. The env var is comma-separated. See [security](security.md#limit-the-hostnames-it-answers-to). |
+| `allowed_hosts` | `HARMONIST_ALLOWED_HOSTS` | `["*"]` | Hostnames Harmonist answers to. The env var is comma-separated. See [security](security.md#limiting-the-hostnames-it-answers-to). |
 
 Needs a restart.
 

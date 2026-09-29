@@ -19,7 +19,10 @@ then follow the conventions below.
   help someone solve a problem, so they **don't narrate the UI**: if a screen
   needs explaining, fix the screen. Change them when a change alters the
   background, adds a problem a user could hit, or adds a setting. Version history
-  belongs in `CHANGELOG.md`, not here.
+  belongs in `CHANGELOG.md`, not here. **Describe, don't command**: the reader
+  isn't ours to direct, so write "the correction belongs on MusicBrainz", not
+  "fix MusicBrainz". Only troubleshooting (and step-by-step procedures) is
+  prescriptive.
 - **`docs/design.md`** — the design spec and source of truth for *how it's meant
   to work*: use cases, the album **state machine** (states + transition diagram),
   the **sidecar schema**, the tagging contract, cover art, the **module map**,
