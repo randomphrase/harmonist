@@ -66,3 +66,28 @@ jobs:
           make css
           git diff --exit-code static/harmonist.css \
             || { echo "::error::static/harmonist.css is stale — run 'make css' and commit the result."; exit 1; }
+
+  # History stays linear: a PR lands on main by fast-forward, so a merge commit
+  # on the branch would land with it. The `linear-history` ruleset refuses one on
+  # main itself; this says so on the PR, while the branch can still be rebased.
+  linear:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The PR's own head, not the merge ref GitHub checks out by default,
+      # which is itself a merge commit.
+      - name: No merge commits
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          merges=$(git rev-list --merges "$BASE..$HEAD")
+          if [ -n "$merges" ]; then
+            git log --oneline --merges "$BASE..$HEAD"
+            echo "::error::Merge commits are not allowed — rebase onto main instead."
+            exit 1
+          fi

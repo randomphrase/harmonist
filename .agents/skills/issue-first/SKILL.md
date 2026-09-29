@@ -89,7 +89,7 @@ branch + PR for trivial work (no issue required).
    so GitHub marks the PR merged, and `Fixes #N` in the commit closes the issue on
    push. This is not a CI bypass — the gate is that those exact commits went green.
    GitHub automatically deletes merged head branches; leave that cleanup to it
-   without a deletion prompt (see `source-control` §5).
+   without a deletion prompt (see `source-control` §6).
 
 **Don't stack PRs.** A PR whose base is another branch gets **closed** — not
 retargeted — when that base is deleted on merge, and a closed PR can't be
