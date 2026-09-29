@@ -1025,14 +1025,20 @@ Contribution checks use two Library filters, **Possible mismatch** and **MB
 contributions** (#618), and an album-page section, separate from tag-update
 findings and their Ignore state. The release match is settled before any data
 edit is offered, so an album is in at most one of the two filters. Eligibility requires
-a confirmed MBID plus actual download provenance (`bandcamp_downloaded`), a
-Bandcamp URL in the files' comments, or consistent valid literal UPC tags on
-every file (#608). The scanner reads those tags through its existing single-open
-format readers; purchase ownership, owned BARCODE tags or a URL recovered from
-MusicBrainz alone cannot qualify a CD rip. Original UPC establishes digital-download
-provenance independently of BARCODE, which may describe a previous MB release.
-Missing, unreadable, invalid or conflicting UPC evidence cannot qualify. Merged
-albums require agreement across all parts; separate copies retain their own evidence.
+a confirmed MBID plus positive evidence that the files are a download
+(`contributions.downloaded`, #632): Harmonist's own Bandcamp download
+(`bandcamp_downloaded`), or a store's mark on any file — a Bandcamp URL in the
+comments, or a tag only that store writes (see *The tags Harmonist reads for
+provenance*) — with no AccurateRip tags on any file. Download and rip evidence
+together prove nothing. The scanner reads those tags through its existing
+single-open format readers; purchase ownership, owned BARCODE tags or a URL
+recovered from MusicBrainz alone cannot qualify a CD rip. A consistent valid
+literal UPC on every file is the original barcode a download was sold under,
+independent of BARCODE, which may describe a previous MB release — but never proof
+of a download by itself, since CD rippers write it too (#608 took it as such).
+Missing, unreadable, invalid or conflicting UPC evidence gives no original
+barcode. A merged album's UPC requires agreement across all parts; separate
+copies retain their own evidence.
 
 `contributions.assess` derives possible-media-mismatch and missing-store-URL
 observations from each local copy's evidence and an MB observation, plus missing
@@ -1383,6 +1389,28 @@ So this section is verified by **periodic manual audit against the Picard source
 
 **Everything above is still preserved.** "Not written" is not "removed": anything outside `Owned` is left exactly as found, so a library tagged by Picard with composers and performers keeps them through a Harmonist re-tag.
 
+### The tags Harmonist reads for provenance
+
+The other half of the split `Owned` draws (#632): tags read **only** as evidence of where an album's files came from. They are never written, never cleared and never compared with MusicBrainz. `formats.ProvenanceTags` holds them, apart from everything else the scanner reads, and `provenance.py` decides what each one proves. A tag joins only when an analysis reads it.
+
+Only positive evidence counts. A download needs a store's own mark, and a rip needs AccurateRip's verification. Neither, or both, is no answer.
+
+| Tag | Proves | Why |
+| --- | --- | --- |
+| `UPC` | Nothing on its own | The barcode a download was sold under, once something else proves it is one. CD rippers write it too: dBpoweramp does, from its metadata providers. |
+| Comment with a Bandcamp URL | Download (Bandcamp) | The first comment, as Bandcamp writes it. Names the release as well as the store (`url_recovery`). |
+| `QBZ:TID` | Download (Qobuz) | Qobuz's per-track id, in Vorbis and MP4. It survives XLD's FLAC → ALAC transcode. Never observed on an MP3. |
+| Comment `Amazon.com Song ID: …` | Download (Amazon) | In any comment frame. |
+| Comment `Purchased at Beatport.com` | Download (Beatport) | In any comment frame: Beatport's genre comment comes first. |
+| `AccurateRipResult`, `AccurateRipDiscID` | Rip | dBpoweramp's verification of a physical disc. Nothing but a rip produces one. |
+
+Deliberately not evidence:
+
+- **Hi-res audio** proves the files aren't from a CD, not that they were downloaded. Vinyl, SACD and Blu-ray rips are hi-res too.
+- **A CD table of contents** (`iTunes_CDDB_1`) is synthesized by XLD from the track lengths on any transcode, so a download can carry one.
+- **`MEDIA`** is owned: Picard and Harmonist write it from the release, so it describes the match, not the files.
+- **Juno's `artworkguid`** and **eMusic's terms-of-use frame** don't name their store clearly enough.
+
 ### A second correct spelling of the album title
 
 Picard has an option to append the release's **disambiguation comment** to the album title, so a library tagged with it on carries `Selected Ambient Works, Volume II (expanded edition)` where MusicBrainz's release title is `Selected Ambient Works, Volume II`. That is the same album by the user's own deliberate setting, and counting it as an update costs more than a wrong row on the album page: `album` would be one on *every* pass forever, and the classifier's Identity verdict would put the whole library in the Inbox on the gardener's first night (#283).
@@ -1576,6 +1604,7 @@ src/harmonist/
   album_files.py        The audio/video files in ONE directory (the album-wide question is Album.paths, #197)
   reconcile.py          Derive a sidecar from MBID tag + ©cmt + MB url-rels (orphan recovery)
   url_recovery.py       Recover an embedded Bandcamp URL from ©cmt (precise or artist-root; no scraping)
+  provenance.py         What a file's provenance tags prove: which store sold it (#632)
   bandcamp_hook.py      bandcampsync Syncer subclass: download cap, sidecar capture, purchase↔album linking
   pending_downloads.py  In-memory "potential downloads" (unmatched purchases awaiting a decision)
   redownloads.py        In-memory "archived, awaiting its replacement download" (#132)
@@ -1597,6 +1626,7 @@ src/harmonist/
                         owned.py names the tags Harmonist writes, per-album vs per-track
                         write_owned sets/removes a whole owned snapshot — what a revert needs
                         quality.py reads the stream itself — rate, depth, bitrate (#130)
+                        types.ProvenanceTags: the tags read only for provenance, never written (#632)
   tag_history.py        Invert per-file tag-change records into one row per field; build a revert plan
   artwork_store.py      Content-addressed copies of overwritten cover art (undo for #131)
   activity.py           In-memory ring-buffer log for the Activity tab

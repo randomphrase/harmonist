@@ -22,7 +22,7 @@ from mutagen.flac import Picture
 
 from . import quality
 from .owned import FLAG_TRUE, Owned, as_flag
-from .types import EmbeddedArt, ScanFields, TagSet, TrackTags
+from .types import EmbeddedArt, ProvenanceTags, ScanFields, TagSet, TrackTags
 
 # Vorbis comment keys (uppercase by convention; lookups are case-insensitive).
 KEY_ALBUM_ID = "MUSICBRAINZ_ALBUMID"
@@ -281,8 +281,15 @@ class VorbisTagger:
 
         return ScanFields(
             album_title=first(KEY_ALBUM),
-            comment=first(KEY_COMMENT),
-            source_upcs=tuple(str(v) for v in tags.get("UPC", [])),
+            # Vorbis field names are case-insensitive, and so is `tags.get`.
+            provenance=ProvenanceTags(
+                upcs=tuple(str(v) for v in tags.get("UPC", [])),
+                comments=tuple(str(v) for v in tags.get(KEY_COMMENT, []) if v),
+                qobuz_track_id=first("QBZ:TID"),
+                accuraterip=any(
+                    tags.get(key) for key in ("ACCURATERIPRESULT", "ACCURATERIPDISCID")
+                ),
+            ),
             barcodes=tuple(str(v) for key in (KEY_BARCODE, "UPC") for v in tags.get(key, [])),
             album_id=first(KEY_ALBUM_ID),
             artist=first(KEY_ARTIST),

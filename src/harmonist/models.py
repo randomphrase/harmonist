@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:  # type-only: `compare` pulls the whole field table in at runtime
     from .compare import Consensus
     from .contributions import Observation
+    from .provenance import Store
 
 # MusicBrainz JSON shapes. `musicbrainzngs` returns plain untyped dicts whose
 # schema varies with the `includes=` we request and is riddled with optional,
@@ -424,8 +425,9 @@ class Album:
     # Consistent embedded GTIN, derived during the scan. Drives discovery and
     # the barcode/Harmony controls; never copied into the sidecar.
     barcode: str | None = None
-    # Consistent literal UPC on every file, independent of owned BARCODE.
-    # Original download provenance for contributions; derived, never persisted.
+    # Consistent literal UPC on every file, independent of owned BARCODE. The
+    # barcode a download was sold under — but only once something else proves
+    # the files ARE a download (#632); derived, never persisted.
     source_upc: str | None = None
     # The release's track count as the FILES report it (#195) — `trkn`/`disk`
     # totals, written by the tagging from MusicBrainz. Scanner-derived, never
@@ -504,6 +506,11 @@ class Album:
     mb_version: str | None = None
     # File evidence from the scan, never inferred from purchase ownership or MB.
     bandcamp_comment_urls: tuple[str, ...] = ()
+    # Where the files came from, by their own tags (#632): the stores any file
+    # names besides Bandcamp (whose evidence is the URL above), and whether any
+    # carries AccurateRip's verification of a physical disc. Scan-derived.
+    download_stores: frozenset[Store] = frozenset()
+    ripped: bool = False
     # Rebuilt from the durable MB cache; conclusions are derived per local copy.
     contribution_observation: Observation | None = None
 

@@ -15,7 +15,7 @@ from mutagen.mp4 import MP4, MP4Cover
 
 from . import quality
 from .owned import Owned, as_flag
-from .types import EmbeddedArt, ScanFields, TagSet, TrackTags
+from .types import EmbeddedArt, ProvenanceTags, ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".m4a", ".mp4")
 
@@ -281,13 +281,7 @@ def read_scan_fields(path: Path) -> ScanFields:
     codec = _codec_label(audio)
     return ScanFields(
         album_title=_text_atom(audio, ATOM_ALBUM),
-        comment=_text_atom(audio, ATOM_COMMENT),
-        # Keep malformed values as invalid evidence instead of dropping one
-        # beside a valid value and falsely claiming complete agreement.
-        source_upcs=tuple(
-            bytes(v).decode("utf-8", "replace")
-            for v in (audio.get("----:com.apple.iTunes:UPC") or [])
-        ),
+        provenance=_provenance(audio),
         barcodes=tuple(
             value
             for key in (ATOM_BARCODE, "----:com.apple.iTunes:UPC")
@@ -308,6 +302,25 @@ def read_scan_fields(path: Path) -> ScanFields:
         # `bits_per_sample` for AAC too, and it describes the decoder's output
         # rather than the file — see `quality`.
         quality=quality.read(audio.info, lossless=codec == "ALAC"),
+    )
+
+
+def _provenance(audio: MP4) -> ProvenanceTags:
+    """The provenance tags (#632), off an already-open file."""
+    # Freeform names are case-sensitive in MP4 but not to the tools that write
+    # them, so match these ones as the tools think of them.
+    freeform = {
+        key.removeprefix(ATOM_PREFIX).casefold() for key in audio if key.startswith(ATOM_PREFIX)
+    }
+    return ProvenanceTags(
+        # Keep malformed values as invalid evidence instead of dropping one
+        # beside a valid value and falsely claiming complete agreement.
+        upcs=tuple(
+            bytes(v).decode("utf-8", "replace") for v in (audio.get(f"{ATOM_PREFIX}UPC") or [])
+        ),
+        comments=tuple(v for v in audio.get(ATOM_COMMENT) or [] if isinstance(v, str) and v),
+        qobuz_track_id=_binary_atom_str(audio, f"{ATOM_PREFIX}QBZ:TID"),
+        accuraterip=bool(freeform & {"accurateripresult", "accurateripdiscid"}),
     )
 
 

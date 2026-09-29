@@ -31,6 +31,11 @@ versions follow [semantic versioning](https://semver.org).
   how it works, troubleshooting, configuration and security replace the old
   usage, installation and deployment guides (#626).
 
+### Fixed
+
+- **A CD rip with a UPC tag is no longer treated as a download**: MB
+  contributions now need a store's own tags — Bandcamp, Qobuz, Amazon or Beatport (#632).
+
 ## [1.21.0] - 2026-09-27
 
 ### Added

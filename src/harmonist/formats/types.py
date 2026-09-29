@@ -18,6 +18,30 @@ from ..images import Size, digest, dimensions
 from .quality import AudioQuality
 
 
+class ProvenanceTags(NamedTuple):
+    """Tags read ONLY as evidence of where a file came from (#632).
+
+    The other half of a split: `Owned` is what Harmonist writes from
+    MusicBrainz, and these are never written, never cleared and never compared
+    with MusicBrainz. A tag joins only when an analysis reads it — what each
+    one proves is `provenance`'s to decide, and docs/design.md keeps the table.
+    """
+
+    # Literal UPC, as a store sells the files. Barcode evidence once a download
+    # is established, never proof of one: CD rippers write it too. Every value
+    # is kept, malformed ones included, so a bad one can't hide beside a good one.
+    upcs: tuple[str, ...] = ()
+    # Every non-empty comment, in order. The first may carry a Bandcamp URL; any
+    # may carry a store's purchase note — Beatport's follows its genre comment.
+    comments: tuple[str, ...] = ()
+    # Qobuz's per-track id (`QBZ:TID`), which XLD carries across a transcode.
+    qobuz_track_id: str | None = None
+    # dBpoweramp's AccurateRip tags: a verification of a physical disc, which
+    # nothing but a rip can produce. Unlike a CD table of contents
+    # (`iTunes_CDDB_1`), which XLD synthesizes on any transcode.
+    accuraterip: bool = False
+
+
 class ScanFields(NamedTuple):
     """The tag fields the scanner needs per file, read in a SINGLE file open
     (instead of one open per field). `codec` is the short format label;
@@ -80,12 +104,10 @@ class ScanFields(NamedTuple):
     # comparison is fetched. Empty for a file that wouldn't open, like every
     # other field on an unreadable one.
     quality: AudioQuality = AudioQuality()
-    comment: str | None = None
     # Preserve every alias/value until album-wide consistency is checked.
     barcodes: tuple[str, ...] = ()
-    # Literal UPC is unowned download evidence. BARCODE may have been replaced
-    # from a different MB edition, so contribution checks must read it separately.
-    source_upcs: tuple[str, ...] = ()
+    # Where the file came from, kept apart from everything above (#632).
+    provenance: ProvenanceTags = ProvenanceTags()
 
 
 @dataclass

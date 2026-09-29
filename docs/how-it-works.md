@@ -223,6 +223,12 @@ files carry evidence of which release you actually bought: the store's URL
 (Bandcamp puts it in the comments), or the album's barcode (UPC), which stores
 like Qobuz embed.
 
+An album counts as a download only when its files carry a store's own mark: a
+Bandcamp URL, Qobuz's track id, or Amazon's or Beatport's purchase note. These
+survive converting FLAC to ALAC with XLD. A barcode on its own isn't enough,
+because CD rippers write one too, and files with AccurateRip tags are treated as
+a CD rip even if they also carry a store's mark.
+
 Harmonist compares that evidence with every release in the group. An album goes
 into the **Possible mismatch** filter when the evidence points somewhere other
 than its current match, for example:

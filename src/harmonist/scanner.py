@@ -16,7 +16,16 @@ from pathlib import Path
 from stat import S_ISREG
 from typing import NamedTuple
 
-from . import album_files, barcodes, compare, contributions, formats, id_registry, url_recovery
+from . import (
+    album_files,
+    barcodes,
+    compare,
+    contributions,
+    formats,
+    id_registry,
+    provenance,
+    url_recovery,
+)
 from .formats import quality
 from .models import Album, AlbumState, InconsistentTrack, Sidecar, is_bandcamp_url
 from .sidecar import InvalidSidecarError, UnsupportedSchemaVersionError
@@ -579,6 +588,13 @@ def _display_artist(fields: list[formats.ScanFields]) -> str:
     return (fields[0].artist or "").strip()
 
 
+def _bandcamp_comment_urls(fields: list[formats.ScanFields]) -> tuple[str, ...]:
+    """Every distinct Bandcamp URL in the files' first comments — the one a
+    Bandcamp download writes."""
+    firsts = (f.provenance.comments[0] for f in fields if f.provenance.comments)
+    return tuple(sorted({url for c in firsts if (url := url_recovery.extract_bandcamp_url(c))}))
+
+
 def build_album(
     album_dir: Path,
     audio_files: list[Path],
@@ -616,11 +632,9 @@ def build_album(
         track_count=len(audio_files),
         state=state,
         sidecar=sidecar,
-        bandcamp_comment_urls=tuple(
-            sorted(
-                {url for f in fields if (url := url_recovery.extract_bandcamp_url(f.comment or ""))}
-            )
-        ),
+        bandcamp_comment_urls=_bandcamp_comment_urls(fields),
+        download_stores=frozenset().union(*(provenance.stores(f.provenance) for f in fields)),
+        ripped=any(f.provenance.accuraterip for f in fields),
         cover_path=io.cover_path,
         inconsistent_tracks=inconsistent_tracks,
         partial_tag_count=_partial_tag_count(sidecar, fields),

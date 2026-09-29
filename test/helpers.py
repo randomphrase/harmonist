@@ -6,8 +6,21 @@ name — conftest is loaded by pytest, not importable as `conftest` from a test.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+
+# Provenance tags as real files carry them (#632), for `write_provenance_tags`.
+# As dBpoweramp writes them on a secure rip.
+ACCURATERIP_TAGS = {
+    "AccurateRipResult": ("AccurateRip: Accurate (confidence 28)   [C9E5238D]",),
+    "AccurateRipDiscID": ("009-0015505c-009bc4be-790e0b09-1",),
+}
+# XLD writes this on a TRANSCODE too, built from the files' own lengths.
+TOC_TAGS = {"iTunes_CDDB_1": ("7C0C470A+235943+10+150+23565+42357+63165+86250+114193",)}
+QOBUZ_TAGS = {"QBZ:TID": ("79173707",)}
+AMAZON_TAGS = {"comment": ("Amazon.com Song ID: 207119654",)}
+# Beatport's genre comment comes first; the purchase note is a second frame.
+BEATPORT_TAGS = {"comment": ("Techno - Techno", "Purchased at Beatport.com")}
 
 
 def keep_one(data: bytes, *, mime: str | None = None) -> str | None:
@@ -41,6 +54,32 @@ def write_track_totals(
         audio = MP4(f)
         audio["trkn"] = [(i, track_total)]
         audio["disk"] = [(disc_num, disc_total)]
+        audio.save()
+
+
+def write_provenance_tags(album_dir: Path, ext: str, tags: Mapping[str, Sequence[str]]) -> None:
+    """Add tags to every track the way each format's own tools store them:
+    an MP4 freeform atom, an ID3 `TXXX` (or `COMM`, one frame per comment), a
+    Vorbis comment. The key "comment" means the format's comment tag."""
+    from mutagen import File
+    from mutagen.id3 import COMM, TXXX
+
+    for path in sorted(album_dir.glob(f"*{ext}")):
+        audio = File(path)
+        for key, values in tags.items():
+            if key == "comment" and ext == ".m4a":
+                audio["©cmt"] = list(values)
+            elif key == "comment" and ext == ".mp3":
+                for lang, value in zip(("XXX", "eng"), values, strict=False):
+                    audio.tags.add(COMM(encoding=3, lang=lang, desc="", text=[value]))
+            elif key == "comment":
+                audio["COMMENT"] = list(values)
+            elif ext == ".m4a":
+                audio[f"----:com.apple.iTunes:{key}"] = [v.encode() for v in values]
+            elif ext == ".mp3":
+                audio.tags.add(TXXX(encoding=3, desc=key, text=list(values)))
+            else:
+                audio[key] = list(values)
         audio.save()
 
 

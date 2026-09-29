@@ -16,6 +16,7 @@ from harmonist import activity_store, contributions, formats, mb_cache, mb_looku
 from harmonist.config import Config, PathsConfig
 from harmonist.models import Sidecar
 from harmonist.web.main import _library_page_vars, create_app
+from test.helpers import BEATPORT_TAGS, QOBUZ_TAGS, write_provenance_tags
 from test.test_contributions import MBID, before_dismissal, harmony_link, release
 from test.test_formats import FIXTURES, _tagset
 from test.test_gardener import _release
@@ -25,7 +26,10 @@ UPC = "0801061000332"
 OTHER_UPC = "0801061000639"
 
 
-def download(root, upcs=(UPC,), ext=".m4a", name="Download"):
+def download(root, upcs=(UPC,), ext=".m4a", name="Download", marks=None):
+    """A store download: its UPC, plus the store's own mark (#632) unless
+    `marks` says otherwise — Qobuz's track id, or Beatport's comment on MP3,
+    for which Qobuz's tag has never been observed."""
     folder = root / name
     folder.mkdir(parents=True)
     for i, values in enumerate(upcs, 1):
@@ -46,6 +50,9 @@ def download(root, upcs=(UPC,), ext=".m4a", name="Download"):
             else:
                 tags["UPC"] = list(values)
             tags.save()
+    if marks is None:
+        marks = BEATPORT_TAGS if ext == ".mp3" else QOBUZ_TAGS
+    write_provenance_tags(folder, ext, marks)
     sidecar.write(folder, Sidecar(mb_release_id=MBID))
     return folder
 
@@ -55,7 +62,7 @@ def remember(payload):
 
 
 @pytest.mark.parametrize("ext,fixture", FIXTURES)
-def test_original_upc_qualifies_even_when_owned_barcode_disagrees(
+def test_a_downloads_original_upc_stands_even_when_owned_barcode_disagrees(
     tmp_path, monkeypatch, ext, fixture
 ):
     activity_store.init(tmp_path / "activity.db")
@@ -69,6 +76,7 @@ def test_original_upc_qualifies_even_when_owned_barcode_disagrees(
     fetch = Mock(side_effect=AssertionError("scan and filter must use stored observations"))
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
     albums = scanner.scan(tmp_path / "music")
+    assert contributions.assess(albums[0]).source_upc == UPC
     assert contributions.assess(albums[0]).media_mismatch is True
     assert contributions.assess(albums[0]).store_url is None
     assert _library_page_vars(albums, 1, 30, filter_="possible-mismatch")["rows"] == albums
@@ -78,11 +86,14 @@ def test_original_upc_qualifies_even_when_owned_barcode_disagrees(
 @pytest.mark.parametrize(
     "upcs", [(None,), (UPC, None), (UPC, OTHER_UPC), ("bad",), ((UPC, OTHER_UPC),)]
 )
-def test_incomplete_or_conflicting_source_upcs_do_not_prove_download(tmp_path, upcs):
+def test_incomplete_or_conflicting_source_upcs_are_no_barcode_evidence(tmp_path, upcs):
     download(tmp_path, upcs)
     a = scanner.scan(tmp_path)[0]
     contributions.observe(a, release(("CD",)), None)
-    assert not contributions.assess(a).eligible
+    # Still a download, by its store's mark; just not one with a barcode.
+    assessment = contributions.assess(a)
+    assert assessment.eligible
+    assert assessment.source_upc is None
 
 
 def test_malformed_upc_value_cannot_be_hidden_by_a_readable_value(tmp_path):
@@ -93,7 +104,7 @@ def test_malformed_upc_value_cannot_be_hidden_by_a_readable_value(tmp_path):
     tags.save()
     a = scanner.scan(tmp_path)[0]
     contributions.observe(a, release(("CD",)), None)
-    assert not contributions.assess(a).eligible
+    assert contributions.assess(a).source_upc is None
 
 
 @pytest.mark.parametrize("second", [None, UPC, OTHER_UPC, "unreadable"])
@@ -114,7 +125,7 @@ def test_source_evidence_covers_all_parts_but_not_other_copies(tmp_path, second)
     for a in albums:
         contributions.observe(a, release(("CD",)), None)
         expected = second == UPC or (a.path == first.parent and len(albums) == 2)
-        assert contributions.assess(a).eligible is expected
+        assert contributions.assess(a).source_upc == (UPC if expected else None)
 
 
 @pytest.fixture
@@ -388,7 +399,7 @@ def test_reviewed_replacement_and_undo_preserve_original_upc(upc_library, monkey
     assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
     path = root / "Download" / "01.m4a"
     assert formats.read_owned(path)["barcode"] is None
-    assert formats.read_scan_fields(path).source_upcs == (UPC,)
+    assert formats.read_scan_fields(path).provenance.upcs == (UPC,)
     page = BeautifulSoup(client.get("/album/digital").text, "html.parser")
     assert page.select_one("#contribution-editions-digital") is not None
     after = {p: p.read_bytes() for p in before}
@@ -399,5 +410,5 @@ def test_reviewed_replacement_and_undo_preserve_original_upc(upc_library, monkey
     restored = client.post("/tags/restore/digital", data={"event_id": anchor})
     assert "Tags put back" in restored.text
     assert formats.read_owned(path)["barcode"] == OTHER_UPC
-    assert formats.read_scan_fields(path).source_upcs == (UPC,)
+    assert formats.read_scan_fields(path).provenance.upcs == (UPC,)
     assert fetch.call_count == 1

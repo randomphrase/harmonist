@@ -39,10 +39,11 @@ def evidence(fields: Sequence[ScanFields], *, source_only: bool = False) -> Evid
     Keep all barcode aliases until this decision: a BARCODE/UPC conflict within
     one file is as disqualifying as disagreement between two files.
 
-    For contribution review, literal UPC alone is original download evidence;
-    an owned BARCODE supplied by a previous MB tagging cannot contradict it.
+    `source_only` reads the literal UPC alone: the barcode a download was sold
+    under, which an owned BARCODE supplied by a previous MB tagging cannot
+    contradict. It says nothing about whether the files ARE a download (#632).
     """
-    values = [f.source_upcs if source_only else f.barcodes for f in fields]
+    values = [f.provenance.upcs if source_only else f.barcodes for f in fields]
     if not fields or any(f.unreadable for f in fields) or not all(values):
         return None
     codes = {normalise(value) for tags in values for value in tags}

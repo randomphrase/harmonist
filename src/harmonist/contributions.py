@@ -309,12 +309,26 @@ def release_url(url: str | None) -> str | None:
     return urlunsplit(("https", host.lower().removeprefix("www."), path, "", ""))
 
 
+def downloaded(album: Album) -> bool:
+    """Positive evidence the files are a download, and none that they're a rip.
+
+    Harmonist's own Bandcamp download settles it. Otherwise a store's mark in
+    the files — a Bandcamp URL, or a tag only that store writes — is the proof,
+    unless AccurateRip's verification of a disc contradicts it; conflicting
+    evidence proves nothing. A UPC alone never qualifies (#632).
+    """
+    sc = album.sidecar
+    if sc is not None and sc.bandcamp_downloaded:
+        return True
+    return bool(album.bandcamp_comment_urls or album.download_stores) and not album.ripped
+
+
 def _eligible(album: Album) -> bool:
     """A confirmed release plus download provenance: see docs/design.md #10."""
     sc = album.sidecar
     if sc is None or not sc.mb_release_id:
         return False
-    return sc.bandcamp_downloaded or bool(album.bandcamp_comment_urls) or bool(album.source_upc)
+    return downloaded(album)
 
 
 def assess(album: Album) -> Assessment:

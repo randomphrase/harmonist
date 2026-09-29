@@ -46,7 +46,7 @@ from mutagen.mp3 import MP3
 
 from . import quality
 from .owned import FLAG_TRUE, Owned, as_flag
-from .types import EmbeddedArt, ScanFields, TagSet, TrackTags
+from .types import EmbeddedArt, ProvenanceTags, ScanFields, TagSet, TrackTags
 
 EXTENSIONS = (".mp3",)
 
@@ -220,12 +220,7 @@ def read_scan_fields(path: Path) -> ScanFields:
     ufid = tags.get(f"UFID:{UFID_OWNER}") if tags is not None else None
     return ScanFields(
         album_title=_text(tags, "TALB"),
-        comment=_comment_text(tags),
-        source_upcs=tuple(
-            str(value)
-            for frame in (tags.getall("TXXX:UPC") if tags is not None else [])
-            for value in frame.text
-        ),
+        provenance=_provenance(tags),
         barcodes=tuple(
             str(value)
             for name in (TXXX_BARCODE, "UPC")
@@ -315,6 +310,21 @@ def _comment_text(tags: Any) -> str | None:
         if frame.text and frame.text[0]:
             return str(frame.text[0])
     return None
+
+
+def _provenance(tags: Any) -> ProvenanceTags:
+    """The provenance tags (#632), off already-read tags.
+
+    No Qobuz track id: Qobuz's MP3s have never been observed, so there is no
+    frame known to carry it."""
+    if tags is None:
+        return ProvenanceTags()
+    txxx = {frame.desc.casefold() for frame in tags.getall("TXXX")}
+    return ProvenanceTags(
+        upcs=tuple(str(value) for frame in tags.getall("TXXX:UPC") for value in frame.text),
+        comments=tuple(str(text) for frame in tags.getall("COMM") for text in frame.text if text),
+        accuraterip=bool(txxx & {"accurateripresult", "accurateripdiscid"}),
+    )
 
 
 def _cover_of(tags: Any) -> tuple[bytes, str] | None:
