@@ -7,6 +7,7 @@ templates render without crashing for each AlbumState.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import zipfile
@@ -1972,6 +1973,57 @@ def test_cover_returns_404_when_absent(client, cfg):
     aid = _id_for(cfg, d)
     r = client.get(f"/cover/{aid}")
     assert r.status_code == 404
+
+
+def test_a_replaced_folder_cover_is_served_rather_than_the_cached_one(client, cfg):
+    """#636: the cover's URL is the album's id, which a re-tag against the same
+    release leaves alone — so a browser holding the old image must be told to
+    ask again, and asking must get the new one. Heuristic freshness on a
+    months-old `cover.jpg` kept the replaced image on screen for days."""
+    d = _make_album(cfg, "Recovered")
+    cover = d / "cover.jpg"
+    cover.write_bytes(b"\xff\xd8\xff\xe0OLD-COVER")
+    aid = _id_for(cfg, d)
+
+    first = client.get(f"/cover/{aid}")
+    assert first.headers["cache-control"] == "no-cache"
+    etag = first.headers["etag"]
+    assert client.get(f"/cover/{aid}", headers={"If-None-Match": etag}).status_code == 304
+
+    cover.write_bytes(b"\xff\xd8\xff\xe0NEW-COVER-IMAGE")
+    later = cover.stat().st_mtime + 60
+    os.utime(cover, (later, later))
+    r = client.get(f"/cover/{aid}", headers={"If-None-Match": etag})
+    assert r.status_code == 200
+    assert r.content.endswith(b"NEW-COVER-IMAGE")
+    assert r.headers["etag"] != etag
+
+
+def test_replaced_embedded_art_is_served_rather_than_the_cached_one(client, cfg):
+    """#636, for an album with no folder cover: the image is extracted from the
+    tracks on each request, so its validator is the image itself."""
+    from mutagen.mp4 import MP4, MP4Cover
+
+    d = _make_album(cfg, "EmbeddedOnly")
+    track = d / "01 Track.m4a"
+
+    def embed(data: bytes) -> None:
+        audio = MP4(track)
+        audio["covr"] = [MP4Cover(data, imageformat=MP4Cover.FORMAT_JPEG)]
+        audio.save()
+
+    embed(b"\xff\xd8\xffOLD-ART")
+    aid = _id_for(cfg, d)
+
+    first = client.get(f"/cover/{aid}")
+    assert first.headers["cache-control"] == "no-cache"
+    etag = first.headers["etag"]
+    assert client.get(f"/cover/{aid}", headers={"If-None-Match": etag}).status_code == 304
+
+    embed(b"\xff\xd8\xffNEW-ART")
+    r = client.get(f"/cover/{aid}", headers={"If-None-Match": etag})
+    assert r.status_code == 200
+    assert r.content.endswith(b"NEW-ART")
 
 
 # ---------- library ----------

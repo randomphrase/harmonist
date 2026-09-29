@@ -2443,6 +2443,23 @@ def _embedded_cover(album_path: Path) -> tuple[bytes, str] | None:
     return formats.read_cover(files[0])
 
 
+#: The album's cover lives at its id, which outlives the image (#636): a re-tag
+#: against the same release replaces the cover under the same URL. Without this
+#: a browser applies heuristic freshness to the `Last-Modified` — a tenth of the
+#: file's age, days for an old `cover.jpg` — and keeps showing the replaced
+#: image without asking. So it asks every time, and `_not_modified` keeps the
+#: answer to a 304 when nothing changed.
+_REVALIDATE = {"Cache-Control": "no-cache"}
+
+
+def _not_modified(request: Request, etag: str) -> Response | None:
+    """A 304 when the browser already holds the image `etag` names, else None."""
+    held = {tag.strip() for tag in request.headers.get("if-none-match", "").split(",")}
+    if etag not in held:
+        return None
+    return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag, **_REVALIDATE})
+
+
 #: A sha256, as the artwork image route requires it to be spelled. Anything else
 #: never reaches a file read.
 _DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -6185,13 +6202,25 @@ def _register_routes(app: FastAPI) -> None:
         album = _find_album(request, album_id)
         if album.cover_path and album.cover_path.exists():
             media_type = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
-            return FileResponse(album.cover_path, media_type=media_type)
+            # Stat up front so the ETag exists before the response is sent: it
+            # is what a revalidation is answered against.
+            response = FileResponse(
+                album.cover_path,
+                media_type=media_type,
+                stat_result=album.cover_path.stat(),
+                headers=_REVALIDATE,
+            )
+            return _not_modified(request, response.headers["etag"]) or response
         # No folder cover — serve the art embedded in the tracks directly,
-        # extracted on the fly (no need to write a cover.* to disk).
+        # extracted on the fly (no need to write a cover.* to disk). The image
+        # is its own validator: it has no file of its own to take a date from.
         embedded = _embedded_cover(album.path)
         if embedded is not None:
             data, media_type = embedded
-            return Response(content=data, media_type=media_type)
+            etag = f'"{images.digest(data)}"'
+            return _not_modified(request, etag) or Response(
+                content=data, media_type=media_type, headers={"ETag": etag, **_REVALIDATE}
+            )
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no cover")
 
     @app.post("/reconcile/{album_id}", response_class=HTMLResponse)

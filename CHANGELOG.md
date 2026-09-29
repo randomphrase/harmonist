@@ -36,6 +36,9 @@ versions follow [semantic versioning](https://semver.org).
 - **A CD rip with a UPC tag is no longer treated as a download**: MB
   contributions now need a store's own tags — Bandcamp, Qobuz, Amazon or Beatport (#632).
 
+- **An album's cover updates as soon as its artwork changes**, rather than the
+  browser showing the old image for days (#636).
+
 ## [1.21.0] - 2026-09-27
 
 ### Added
