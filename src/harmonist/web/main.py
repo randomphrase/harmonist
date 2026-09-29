@@ -1863,6 +1863,21 @@ def _cleared_release(album: Album) -> str | None:
     return ids.pop() or None
 
 
+def _suggestion_waiting(album_dir: Path) -> bool:
+    """A suggestion the user hasn't resolved sits on the album (#638).
+
+    The barcode and store-URL lookups check this before asking MusicBrainz and
+    again before writing: they take seconds, and after the "wrong match" pencil
+    one landed on top of the other's suggestion while the user may have been
+    reviewing it. Nothing a user can press sends a lookup here — the search tools
+    are hidden until the suggestion is confirmed or dismissed — so a lookup that
+    arrives now is answered with nothing done. Read from disk, not the scan
+    snapshot, which may predate the suggestion the other lookup just wrote.
+    """
+    sc = sidecar_mod.read(album_dir)
+    return sc is not None and sc.mb_match_candidate is not None
+
+
 def _demote_to_needs_mbid(
     album_path: Path, sc: Sidecar, *, candidate: MatchCandidate | None
 ) -> None:
@@ -7070,6 +7085,8 @@ def _register_routes(app: FastAPI) -> None:
 
         request.state.skip_rescan = True
         album = _find_album(request, album_id)
+        if _suggestion_waiting(album.path):
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
         evidence = barcodes.evidence(
             [formats.read_scan_fields(f) for f in album_files.for_paths(album.folders)]
         )
@@ -7096,6 +7113,8 @@ def _register_routes(app: FastAPI) -> None:
                 current = sidecar_mod.read(album.path) or Sidecar(added_at=datetime.now(UTC))
                 if current.mb_release_id:
                     raise mb_search.MBSearchError("Album was matched while the lookup ran")
+                if current.mb_match_candidate is not None:
+                    return Response(status_code=status.HTTP_204_NO_CONTENT)  # #638
                 sidecar_mod.write(
                     album.path,
                     replace(
@@ -7153,6 +7172,8 @@ def _register_routes(app: FastAPI) -> None:
         sc = album.sidecar
         if sc is None or not sc.store_url:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no store URL on sidecar")
+        if _suggestion_waiting(album.path):
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
         try:
             results, total = mb_lookup.candidate_summaries_for_url(sc.store_url)
             if suggest and total == 1 and len(results) == 1:
@@ -7161,6 +7182,8 @@ def _register_routes(app: FastAPI) -> None:
                 current = sidecar_mod.read(album.path)
                 if current is None or current.mb_release_id or current.store_url != sc.store_url:
                     raise mb_lookup.MBError("Album changed while the lookup ran")
+                if current.mb_match_candidate is not None:
+                    return Response(status_code=status.HTTP_204_NO_CONTENT)  # #638
                 sidecar_mod.write(
                     album.path,
                     replace(

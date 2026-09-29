@@ -54,6 +54,11 @@ versions follow [semantic versioning](https://semver.org).
 - **An album's cover updates as soon as its artwork changes**, rather than the
   browser showing the old image for days (#636).
 
+- **A release suggestion stays put until you confirm or dismiss it**: a
+  barcode or store URL lookup no longer replaces one you may be reviewing, and a
+  lookup in progress says "Looking up on MusicBrainz…" rather than "Tagging…"
+  (#638).
+
 ## [1.21.0] - 2026-09-27
 
 ### Added

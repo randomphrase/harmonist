@@ -8,7 +8,7 @@ from mutagen.flac import FLAC
 from mutagen.mp4 import MP4
 
 from harmonist import mb_cache, mb_search, reconcile, scanner, sidecar
-from harmonist.models import Sidecar
+from harmonist.models import FoundBy, MatchCandidate, Sidecar
 from test import test_web
 
 cfg = test_web.cfg
@@ -242,10 +242,12 @@ def test_barcode_selection_requires_review_even_with_exact_lengths(client, cfg, 
     assert file.read_bytes() == before
 
 
-def test_barcode_search_failure_preserves_existing_suggestion(client, cfg, monkeypatch):
+def test_barcode_search_failure_is_reported_and_writes_nothing(client, cfg, monkeypatch):
+    """With no suggestion waiting — one that is waiting is never looked past at
+    all (test_a_lookup_never_replaces_a_suggestion_awaiting_the_user)."""
     path, _ = album(cfg.paths.music_dir)
     _, fetch = services(monkeypatch, [release()])
-    reconcile.reconcile_album(path, fetch_urls=lambda _: [])
+    sidecar.write(path, Sidecar())
     aid = scanner.scan(cfg.paths.music_dir)[0].id
     before = (path / ".harmonist.json").read_bytes()
     from harmonist.mb_lookup import MBError
@@ -297,3 +299,73 @@ def test_store_url_search_suggests_without_tagging(client, cfg, monkeypatch):
     assert file.read_bytes() == before
     assert fetch.call_args.kwargs["max_age"] == mb_cache.FRESH
     assert lookup.call_count == fetch.call_count == 1
+
+
+@pytest.mark.parametrize("lookup", ["barcode", "candidates"])
+def test_a_lookup_never_replaces_a_suggestion_awaiting_the_user(client, cfg, monkeypatch, lookup):
+    """#638: after the "wrong match" pencil, the barcode lookup and then the
+    store-URL lookup each wrote a suggestion, the second silently replacing the
+    first while the user may have been reviewing it.
+
+    The search tools are hidden while a suggestion waits, so a lookup arriving
+    then is not one the user asked for. It is answered without asking
+    MusicBrainz, and the suggestion stays as it was."""
+    path, _ = album(cfg.paths.music_dir)
+    waiting = MatchCandidate(
+        mb_release_id=OTHER,
+        confidence="approximate",
+        file_count=1,
+        track_count=1,
+        found_by=FoundBy.BARCODE,
+    )
+    sidecar.write(
+        path,
+        Sidecar(store_url="https://lfo.bandcamp.com/album/frequencies", mb_match_candidate=waiting),
+    )
+    aid = scanner.scan(cfg.paths.music_dir)[0].id
+    search, fetch = services(monkeypatch, [release()])
+    by_url = Mock(return_value=([{"id": MBID}], 1))
+    monkeypatch.setattr("harmonist.mb_lookup.candidate_summaries_for_url", by_url)
+    before = (path / ".harmonist.json").read_bytes()
+
+    response = client.post(f"/manual/{aid}/{lookup}", data={"suggest": "true"})
+
+    assert response.status_code == 204
+    assert (path / ".harmonist.json").read_bytes() == before
+    assert search.call_count == by_url.call_count == fetch.call_count == 0
+
+
+@pytest.mark.parametrize("lookup", ["barcode", "candidates"])
+def test_a_suggestion_written_while_a_lookup_runs_is_kept(client, cfg, monkeypatch, lookup):
+    """#638, the race: a lookup takes seconds against MusicBrainz, and the other
+    one can land its suggestion meanwhile. The later lookup must not write over
+    it."""
+    store_url = "https://lfo.bandcamp.com/album/frequencies"
+    path, _ = album(cfg.paths.music_dir)
+    sidecar.write(path, Sidecar(store_url=store_url))
+    aid = scanner.scan(cfg.paths.music_dir)[0].id
+    _, fetch = services(monkeypatch, [release()])
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.candidate_summaries_for_url",
+        Mock(return_value=([{"id": MBID}], 1)),
+    )
+    landed = MatchCandidate(
+        mb_release_id=OTHER,
+        confidence="approximate",
+        file_count=1,
+        track_count=1,
+        found_by=FoundBy.BARCODE if lookup == "candidates" else FoundBy.STORE_URL,
+    )
+    fetched = fetch.side_effect
+
+    def meanwhile(mbid, **kwargs):
+        sidecar.write(path, Sidecar(store_url=store_url, mb_match_candidate=landed))
+        return fetched(mbid, **kwargs)
+
+    fetch.side_effect = meanwhile
+
+    response = client.post(f"/manual/{aid}/{lookup}", data={"suggest": "true"})
+
+    assert response.status_code == 204
+    kept = sidecar.read(path).mb_match_candidate
+    assert kept is not None and kept.mb_release_id == OTHER

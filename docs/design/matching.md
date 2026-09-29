@@ -73,6 +73,12 @@ the same coin toss, and lists the releases for the user to choose.
 Only a first, exact, unique match is tagged unasked. Everything else, including
 every search the user runs, produces a suggestion to review.
 
+**A lookup never replaces a suggestion awaiting the user** (#638). The search
+tools are hidden while one waits, so a barcode or store-URL lookup arriving then
+isn't one the user asked for: it is answered without asking MusicBrainz, and
+checked again before writing, since a lookup takes seconds and another can land
+meanwhile. A suggestion changes only when the user confirms or dismisses it.
+
 ### Length ranks candidates, but is never a finding
 
 Track lengths decide confidence and rank competing releases. They are **not**

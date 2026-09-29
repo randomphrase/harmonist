@@ -40,7 +40,7 @@
               {# hx-preserve retains the form, but HTMX reinitializes its load
                  listener after inbox swaps. Retire only that automatic trigger. #}
               hx-on::before-request="this.setAttribute('hx-trigger', 'submit, change from:#barcode-mode-{{ album.id }}')"
-              hx-disabled-elt="find button" hx-indicator="#tagging-{{ album.id }}"
+              hx-disabled-elt="find button" hx-indicator="#lookup-progress-{{ album.id }}"
               {{ reload_unless_retargeted(on_album) }} class="flex items-center gap-2">
             <input type="hidden" name="on_album_page" value="{{ 'true' if on_album else 'false' }}">
             <span class="flex-1 text-xs text-muted">{{ album.barcode }}</span>
@@ -54,7 +54,7 @@
               hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML settle:0ms"
               hx-trigger="{% if not barcode_default and not prefer_name and not sc.mb_match_candidate %}load delay:1ms, {% endif %}submit, change from:#url-mode-{{ album.id }}"
               hx-on::before-request="this.setAttribute('hx-trigger', 'submit, change from:#url-mode-{{ album.id }}')"
-              hx-disabled-elt="find button" hx-indicator="#tagging-{{ album.id }}"
+              hx-disabled-elt="find button" hx-indicator="#lookup-progress-{{ album.id }}"
               {{ reload_unless_retargeted(on_album) }} class="flex items-center gap-2">
             <input type="hidden" name="on_album_page" value="{{ 'true' if on_album else 'false' }}">
             <input type="hidden" name="suggest" value="true">
@@ -63,4 +63,8 @@
         </form>
     </div>
     {% endif %}
+    {# A lookup reads MusicBrainz and writes nothing to the files, so it says
+       what it is doing rather than borrowing the card's "Tagging…" overlay
+       (#638), which claimed a tagging that wasn't happening. #}
+    <span id="lookup-progress-{{ album.id }}" class="hidden [&.htmx-request]:inline text-xs text-muted" role="status">Looking up on MusicBrainz…</span>
 </div>
