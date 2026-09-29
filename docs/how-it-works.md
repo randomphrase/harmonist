@@ -241,8 +241,14 @@ than its current match, for example:
   the matched one doesn't;
 - the matched release is a CD or other physical release.
 
+A CD rip whose ripping software wrote a barcode (UPC) is checked the same way,
+turned round: the other releases it could be are the group's CDs and other
+physical releases, and a match to a digital release is the suspect one. Its
+barcode came from the ripper's metadata lookup rather than off the disc, so it's
+used only to check the match, never offered to MusicBrainz.
+
 The album's page lists the reasons, then the matched release beside the other
-digital releases in the group, with the evidence that supports each. From
+releases in the group it could be, with the evidence that supports each. From
 there, the album can be switched to another release (after reviewing its tracks
 and artwork), the correct release can be added to MusicBrainz through Harmony,
 or **Don't warn me about this** records that the current match is the release

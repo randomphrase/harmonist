@@ -12,6 +12,10 @@ versions follow [semantic versioning](https://semver.org).
   Amazon, Beatport, CD or unknown — under Additional info, with the tags it rests
   on; the comment moves there from the Album section (#634).
 
+- **A CD rip with a UPC tag is checked for a possible mismatch** against the
+  release group's physical releases, as a download is against its digital ones
+  (#633).
+
 ### Changed
 
 - **Cover Art Archive images kept for album pages are capped at 1 GB**, least

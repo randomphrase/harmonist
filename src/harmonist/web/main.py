@@ -4829,7 +4829,7 @@ def _register_routes(app: FastAPI) -> None:
         error = None
         sc = album.sidecar
         if not contribution.eligible or sc is None or not sc.mb_release_id:
-            error = "No confirmed download with source evidence to check."
+            error = "No confirmed download or CD rip with source evidence to check."
         else:
             try:
                 release = mb_cache.stored_release(sc.mb_release_id)
@@ -6442,21 +6442,19 @@ def _register_routes(app: FastAPI) -> None:
                         selected, max_age=mb_cache.FRESH if reread else None
                     )
                 except mb_lookup.MBError as exc:
-                    raise _ReplacementUnavailable(
-                        f"Could not load the digital release: {exc}"
-                    ) from exc
+                    raise _ReplacementUnavailable(f"Could not load the release: {exc}") from exc
             group = (current.get("release-group") or {}).get("id") if current else None
-            media = (release.get("medium-list") or []) if release else []
+            # The candidates' own rule: a digital release for a download, a
+            # physical one for a CD rip (#633), so any candidate offered is usable.
             if (
                 not group
                 or not release
                 or release["id"] != selected
                 or (release.get("release-group") or {}).get("id") != group
-                or not media
-                or any(m.get("format") != "Digital Media" for m in media)
+                or not contributions.media_fit(release, contributions.assess(album).rip)
             ):
                 raise _ReplacementUnavailable(
-                    "The digital release is no longer available for this review. Close it and check again.",
+                    "The release is no longer available for this review. Close it and check again.",
                 )
             return MatchCandidate(
                 mb_release_id=selected,

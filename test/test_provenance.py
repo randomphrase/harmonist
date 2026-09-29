@@ -32,7 +32,9 @@ def test_a_ripped_cds_upc_is_not_download_evidence(tmp_path, ext, fixture):
     folder = download(tmp_path, ext=ext, marks={})
     write_provenance_tags(folder, ext, {**ACCURATERIP_TAGS, **TOC_TAGS})
     assessment = assessed(folder)
-    assert not assessment.eligible
+    # Checked as the CD rip it is (#633), and its CD match is no mismatch.
+    assert assessment.rip
+    assert assessment.media_mismatch is False
     assert not contributions.possible_mismatch(assessment)
 
 

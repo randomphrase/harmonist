@@ -42,6 +42,10 @@ class Observation:
 @dataclass(frozen=True)
 class Assessment:
     eligible: bool = False
+    # The files are a CD rip rather than a download (#633): their evidence is
+    # the ripper's UPC alone, it points at physical releases rather than
+    # digital ones, and it is never offered to MusicBrainz.
+    rip: bool = False
     private: bool = False
     store_url: str | None = None
     media_mismatch: bool | None = None
@@ -90,7 +94,9 @@ class SiblingCheck:
     local copy's evidence. Complete unless truncated or holding unspecified media;
     an incomplete one supports no finding at all."""
 
-    editions: list[dict[str, Any]]  # digital releases other than the current one
+    # Releases other than the current one that the files could be: digital ones
+    # for a download, physical ones for a rip.
+    editions: list[dict[str, Any]]
     store_linked: list[dict[str, Any]]  # other releases linking the store URL exactly
     # Other releases linking another page on the download's store, each with
     # those pages as `store_pages`.
@@ -164,7 +170,7 @@ def sibling_check(
             store_linked.append(mb_lookup.release_summary(release))
         elif pages:
             same_store.append({**mb_lookup.release_summary(release), "store_pages": pages})
-    editions, unknown = digital_editions(releases, assessment)
+    editions, unknown = candidate_editions(releases, assessment)
     editions = [e for e in editions if e["id"] != current_mbid]
     for edition in editions:
         # Evidence against the match only where the matched release lacks it:
@@ -214,8 +220,10 @@ def panel(assessment: Assessment, check: SiblingCheck) -> Panel | None:
     if assessment.media_mismatch is False and assessment.barcode_status == "different":
         reasons.append("barcode_different")
     # A download's UPC legitimately differs from an accepted physical release's
-    # barcode; comparing them would invite overwriting a correct one.
-    barcode = None if assessment.media_mismatch else assessment.barcode_status
+    # barcode; comparing them would invite overwriting a correct one. A rip's
+    # UPC came from the ripper's metadata provider, not off the disc, so it is
+    # evidence about the match and never a barcode to offer (#633).
+    barcode = None if assessment.media_mismatch or assessment.rip else assessment.barcode_status
     # With reasons, the finding is shown only once the user dismisses them.
     trusted = bool(reasons) or assessment.accepted
     finding: ContributionFinding | None = None
@@ -237,8 +245,10 @@ def panel(assessment: Assessment, check: SiblingCheck) -> Panel | None:
     return Panel(
         reasons=tuple(reasons),
         finding=finding,
+        # Harmony finds releases in digital stores, which can't add a CD.
         add_release=(
             bool(reasons)
+            and not assessment.rip
             and "source_match" not in reasons
             and not check.store_linked
             and not assessment.private
@@ -319,25 +329,46 @@ def downloaded(album: Album) -> bool:
     return provenance.origin(album) in provenance.STORES
 
 
+def _rip_with_upc(album: Album) -> bool:
+    """A CD rip whose ripper wrote a consistent UPC (#633): the one piece of
+    evidence a rip carries about which release it is. Without it there is
+    nothing to check."""
+    return provenance.origin(album) is provenance.Origin.CD and bool(album.source_upc)
+
+
 def _eligible(album: Album) -> bool:
-    """A confirmed release plus download provenance: see docs/design/contributions.md."""
+    """A confirmed release plus download provenance, or a CD rip with a UPC:
+    see docs/design/contributions.md."""
     sc = album.sidecar
     if sc is None or not sc.mb_release_id:
         return False
-    return downloaded(album)
+    return downloaded(album) or _rip_with_upc(album)
+
+
+def _media_mismatch(formats: tuple[str, ...], rip: bool) -> bool | None:
+    """Whether the matched release's media contradict what the files are: a
+    physical release for a download, a digital-only one for a CD rip. None
+    when media MusicBrainz hasn't specified leave that open."""
+    physical = any(f and f != "Digital Media" for f in formats)
+    known = bool(formats) and all(formats)
+    if rip:
+        return (not physical) if known else (False if physical else None)
+    return True if physical else (False if known else None)
 
 
 def assess(album: Album) -> Assessment:
     sc = album.sidecar
     if sc is None or not sc.mb_release_id or not _eligible(album):
         return Assessment()
+    rip = not downloaded(album)
     bandcamp = sc.bandcamp_downloaded or bool(album.bandcamp_comment_urls)
-    private = bool(sc.bandcamp and sc.bandcamp.is_private)
+    # A purchase link says nothing about where a rip's files came from.
+    private = not rip and bool(sc.bandcamp and sc.bandcamp.is_private)
     comments = {u for raw in album.bandcamp_comment_urls if (u := release_url(raw))}
     # An actual download records its own store URL. Otherwise prefer precise
     # file evidence over an MB-derived URL that may describe a nearby edition.
     url = release_url(sc.store_url) if sc.bandcamp_downloaded else None
-    if url is None:
+    if url is None and not rip:
         if len(comments) == 1:
             url = next(iter(comments))
         elif not comments and bandcamp:
@@ -348,10 +379,7 @@ def assess(album: Album) -> Assessment:
     media: bool | None = None
     missing: bool | None = None
     if observed is not None:
-        if any(f and f != "Digital Media" for f in observed.formats):
-            media = True
-        elif observed.formats and all(observed.formats):
-            media = False
+        media = _media_mismatch(observed.formats, rip)
         if url and not private:
             missing = url not in observed.urls
     barcode_status: BarcodeStatus | None = None
@@ -366,6 +394,7 @@ def assess(album: Album) -> Assessment:
             barcode_status = "different"
     assessment = Assessment(
         eligible=True,
+        rip=rip,
         private=private,
         store_url=url,
         media_mismatch=media,
@@ -379,7 +408,7 @@ def assess(album: Album) -> Assessment:
         return assessment
     # Everything `sibling_check` reads from this copy, so one classification
     # serves every render until the evidence or the stored browse changes.
-    key = (url, private, album.source_upc, barcode_status, sc.mb_release_id)
+    key = (url, private, rip, album.source_upc, barcode_status, sc.mb_release_id)
     check = observed.checks.get(key)
     if check is None:
         check = sibling_check(
@@ -437,18 +466,33 @@ def warm(album: Album) -> None:
         observe(album, snapshot.payload, snapshot.fetched_at)
 
 
-def digital_editions(
+def media_fit(release: Release, rip: bool) -> bool | None:
+    """Whether a release's media fit the files: digital only for a download,
+    anything physical for a CD rip (#633). None when a medium MusicBrainz hasn't
+    specified leaves it open. One rule for the candidates and for the review
+    that replaces the match with one, so every candidate offered can be used."""
+    formats = [m.get("format") for m in (release.get("medium-list") or [])]
+    physical = any(f and f != "Digital Media" for f in formats)
+    unspecified = not formats or not all(formats)
+    if physical:
+        return rip
+    return None if unspecified else not rip
+
+
+def candidate_editions(
     releases: list[Release], assessment: Assessment
 ) -> tuple[list[dict[str, Any]], int]:
-    """Digital candidates, never matches; retain uncertainty about missing media."""
+    """Candidates, never matches: the releases the files could be — digital ones
+    for a download, physical ones for a CD rip (#633). Retain uncertainty about
+    missing media: a release with a medium MusicBrainz hasn't specified can't be
+    ruled in or out, so it is counted instead."""
     editions = []
     unknown = 0
     for release in releases:
-        formats = [m.get("format") for m in (release.get("medium-list") or [])]
-        if any(f and f != "Digital Media" for f in formats):
-            continue
-        if not formats or not all(formats):
+        fit = media_fit(release, assessment.rip)
+        if fit is None:
             unknown += 1
+        if not fit:
             continue
         urls = {
             url

@@ -108,7 +108,7 @@
                 {% set elsewhere = check.same_store | rejectattr('id', 'in', row_ids) | list %}
                 <strong>Your download came from {{ check.store_host }}.</strong> The matched release has no link to that store; another release does.{% if elsewhere %} {{ release_links(elsewhere) }}{% endif %}
             {% elif reason == 'media' %}
-                <strong>Matched to a {{ contribution.observation.formats | join(' + ') }} release</strong>; your files are a download.
+                <strong>Matched to a {{ contribution.observation.formats | join(' + ') }} release</strong>; your files are {{ 'a CD rip' if contribution.rip else 'a download' }}.
             {% elif reason == 'barcode_different' %}
                 <strong>The matched release has barcode <span class="font-mono">{{ contribution.observation.barcode }}</span></strong>; your files have UPC <span class="font-mono">{{ contribution.source_upc }}</span>.
             {% endif %}

@@ -339,10 +339,15 @@ LIBRARY: list[dict[str, Any]] = [
         "fmt": "flac",
         "discs": True,
         # A secure rip: AccurateRip's per-track result, as dBpoweramp writes it
-        # (#634). See `_provenance_tags` for the per-track placeholders.
+        # (#634), and the UPC its metadata provider supplied. See
+        # `_provenance_tags` for the per-track placeholders.
         "provenance": {
             "AccurateRipResult": "AccurateRip: Accurate (confidence {conf})   [{crc}]",
+            "UPC": "036000291452",
         },
+        # The UPC belongs to another pressing in the release group, not the
+        # matched one, so the rip is a possible mismatch (#633).
+        "pressing": {"country": "GB", "barcode": "036000291452", "disambiguation": "UK pressing"},
     },
     {
         "artist": "The Soggy Bottom Boys",
@@ -445,6 +450,10 @@ def _catalogue() -> dict[str, Release]:
                 for disc, part in enumerate((tracks[:2], tracks[2:]), 1)
             ]
         releases[spec["mbid"]] = release
+        if pressing := spec.get("pressing"):
+            # Another release in the same group, reached only by browsing it.
+            other = f"{spec['mbid']}-{pressing['country'].lower()}"
+            releases[other] = {**release, "id": other, **pressing}
         spec["sidecar"] = {
             "mb_release_id": None
             if spec.get("unmatched") or spec in PENDING_PURCHASES

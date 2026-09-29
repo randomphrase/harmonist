@@ -19,13 +19,32 @@ themselves:
   which only a rip produces, and no second store's mark. Evidence pointing to
   more than one [origin](tagging.md#the-origin) proves nothing.
 
-Owning a Bandcamp purchase of the same album doesn't qualify a CD rip. Neither
-does a `BARCODE` tag, which may have been written from a previous MusicBrainz
-match. An original `UPC` tag, consistent across every file, is kept apart from
-`BARCODE` and survives tagging and undo, because it is the barcode a download
-was sold under. But it isn't proof of a download on its own: CD rippers write it
-too (#632). An album spread over several folders has an original barcode only if
-every folder agrees on it.
+Owning a Bandcamp purchase of the same album doesn't qualify a CD rip as a
+download. Neither does a `BARCODE` tag, which may have been written from a
+previous MusicBrainz match. An original `UPC` tag, consistent across every file,
+is kept apart from `BARCODE` and survives tagging and undo, because it is the
+barcode a download was sold under. But it isn't proof of a download on its own:
+CD rippers write it too (#632). An album spread over several folders has an
+original barcode only if every folder agrees on it.
+
+### CD rips
+
+A **CD rip whose ripper wrote a UPC** qualifies too (#633), for the match half
+only. The UPC is the one thing a rip carries about which release it is, so it
+gets the same check a download's does, turned round where the two differ:
+
+- Its candidates are the group's **physical** releases, not its digital ones,
+  and the review that switches the match accepts the same.
+- The media reason reverses: a download matched to a CD is suspect, and so is a
+  CD rip matched to a digital release.
+- Its UPC is **never a contribution**. It came from the ripper's metadata
+  provider, not off the disc, so it's evidence about the match and nothing to
+  offer MusicBrainz. And there's no **Add Release** through Harmony, which finds
+  releases in digital stores.
+
+A rip with no UPC has nothing to check. A disc ID would be a second kind of
+evidence, but a table of contents in the tags may have been synthesised by a
+transcoder, so only one recorded by the ripper itself would count.
 
 ## Settle the match first
 
@@ -37,8 +56,9 @@ Library filters.
 
 An album goes into **Possible mismatch** when its evidence points to a different
 release in the same release group than the one it's matched to: another release
-has its URL or barcode, the matched release is physical, or its barcode differs
-from the files' UPC. Each reason must be something the files have and the
+has its URL or barcode, the matched release's media don't fit the files
+(physical for a download, digital for a CD rip), or its barcode differs from the
+files' UPC. Each reason must be something the files have and the
 matched release lacks. A URL both releases link isn't evidence against either.
 
 Two cases are deliberately weaker:
