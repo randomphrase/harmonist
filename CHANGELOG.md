@@ -55,6 +55,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **Activity names the album whose artwork was updated**, as it does for other album actions; so do the notices that the Cover Art Archive was down during tagging and that a re-downloaded purchase is still ignored (#658).
+
 - **Suggested-match reviews show current artwork while the Cover Art Archive loads**, keeping the confirmation controls in place (#654).
 
 - **An open artwork viewer keeps its image, scale, position and focus when the background artwork check finishes** (#644).

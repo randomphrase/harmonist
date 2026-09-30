@@ -3792,6 +3792,7 @@ def _tag_with_release(
         activity.warning(
             "Cover Art Archive unavailable — tagged without its artwork",
             album_id=sidecar_mod.album_id_for(album_path),
+            album_label=tagger_mod.album_label(release, album_path),
         )
     outcome = tagger.tag_and_artwork(
         album_path,
@@ -5926,10 +5927,11 @@ def _register_routes(app: FastAPI) -> None:
             # is not this: an adopted album was never in the ignores file, and
             # nothing was blocking the download in the first place.)
             activity.warning(
-                f"{label}: couldn't take Bandcamp purchase {item_id} out of your ignores "
-                "file, so the sync may skip it. Restore it from Settings → Ignored, or "
-                "unzip the archive to put the album back.",
+                f"Couldn't take Bandcamp purchase {item_id} out of your ignores file, so "
+                "the sync may skip it. Restore it from Settings → Ignored, or unzip the "
+                "archive to put the album back.",
                 album_id=aid,
+                album_label=label,
             )
         try:
             request.app.state.sync_runner.start()
@@ -6243,10 +6245,13 @@ def _register_routes(app: FastAPI) -> None:
             )
             if names
         ]
+        album_id_now, label = _live_album_ref(album)
         if notes:
-            activity.warning(f"{message} — {'; '.join(notes)}", album_id=album.id)
+            activity.warning(
+                f"{message} — {'; '.join(notes)}", album_id=album_id_now, album_label=label
+            )
         else:
-            activity.info(message, album_id=album.id)
+            activity.info(message, album_id=album_id_now, album_label=label)
         return section()
 
     @app.post("/album/{album_id}/artwork/load-archive", response_class=HTMLResponse)

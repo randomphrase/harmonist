@@ -3508,6 +3508,13 @@ def test_retag_proceeds_when_the_cover_art_archive_is_unreachable(client, cfg, m
     assert len(unavailable) == 1, [e.message for e in unavailable]
     assert unavailable[0].level == "warning"
     assert unavailable[0].album_id, "attributed, so it reaches the album's History"
+    # …and named, since the feed's album column is drawn from the label alone
+    # (#658): the name the tagging itself is recorded under.
+    from harmonist import tagger as tagger_mod
+
+    assert unavailable[0].album_label == tagger_mod.album_label(
+        _release_for_match("rel-1", n_tracks=1), d
+    )
 
 
 def test_retagging_with_the_archive_down_stays_a_no_op_the_second_time(client, cfg, monkeypatch):
@@ -8845,6 +8852,26 @@ def test_redownload_unignores_the_purchase_in_bandcampsyncs_own_region(client, c
     assert "111" in remaining  # a genuine "don't download", left alone
 
 
+def test_redownload_names_the_album_when_the_purchase_stays_ignored(
+    client, cfg, quiet_sync, monkeypatch
+):
+    """The warning that the sync may skip the replacement is about one album, so
+    it carries that album in the feed's own column (#658) rather than as a
+    prefix in its prose, where it was neither a link nor lined up with the rest."""
+    d = _make_tagged_album(
+        cfg, "StillIgnored", mbid="rel-rd-9", tagged_at=datetime.now(UTC), item_id=909
+    )
+    monkeypatch.setattr("harmonist.web.main._remove_ignore_anywhere", lambda *a: "failed")
+
+    client.post(f"/library/{_id_for(cfg, d)}/redownload")
+
+    [entry] = [e for e in activity.recent(20) if "out of your ignores" in e.message]
+    archived = next(e for e in activity.recent(20) if e.message.startswith("Archived to"))
+    assert archived.album_label and entry.album_label == archived.album_label
+    assert entry.album_id == archived.album_id
+    assert entry.message.startswith("Couldn't take Bandcamp purchase 909")
+
+
 def test_redownload_approves_the_download_so_a_link_only_sync_still_fetches_it(
     client, cfg, quiet_sync
 ):
@@ -10188,6 +10215,22 @@ def test_apply_artwork_writes_only_what_the_page_showed(client, cfg):
     assert cover is not None and cover[0] == art
 
 
+def test_apply_artwork_names_its_album_in_the_feed(client, cfg):
+    """The feed's album column is drawn from the entry's label; the id only
+    makes it a link. An entry with the id and no label read "Updated artwork on
+    1 file", about nothing anyone could see (#658)."""
+    client.app.state.cfg.tagging.folder_cover = artwork.FolderCoverPolicy.IF_MISSING
+    d = _album_with_art(cfg, "Named", covers=[_png(1), None])
+    aid = _id_for(cfg, d)
+
+    shown = _form_value(client.get(f"/album/{aid}/artwork").text, "plan")
+    client.post(f"/album/{aid}/artwork/update", data={"plan": shown})
+
+    [entry] = [e for e in activity.recent(20) if e.message.startswith("Updated artwork")]
+    # Untagged files name no artist, so the album goes by its folder's title.
+    assert entry.album_label == "Named"
+
+
 def _archive_candidate(cfg, name: str, mbid: str, *, image: bytes, covers, folder) -> Path:
     """An album whose release has a cached archive candidate the size rule loses
     to — the state #472's override exists for."""
@@ -10434,8 +10477,9 @@ def test_apply_artwork_names_the_images_it_could_not_keep(client, cfg, tmp_path)
     client.post(f"/album/{aid}/artwork/update", data={"plan": shown})
 
     assert (d / "cover.jpg").read_bytes() == small  # left exactly as it was
-    notes = [e.message for e in activity.recent(20) if "could not be kept" in e.message]
-    assert notes and "cover.jpg" in notes[0], notes
+    notes = [e for e in activity.recent(20) if "could not be kept" in e.message]
+    assert notes and "cover.jpg" in notes[0].message, [e.message for e in notes]
+    assert notes[0].album_label == "NoRoom"  # the warning is named too (#658)
 
 
 def test_history_offers_undo_for_artwork_a_change_added(client, cfg):
