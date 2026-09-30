@@ -265,6 +265,10 @@ Once an album's release is settled, the same evidence can show what that
 release is missing on MusicBrainz: your store URL, or its barcode. Those albums
 are in the **MB contributions** filter.
 
+A store URL already linked from another release in the group is not offered,
+even when the current match is accepted. A store's tracklist can change over
+time while an older download still belongs to the original release.
+
 The album's page shows one finding at a time, with a link to the release's
 editor on MusicBrainz and the value ready to copy. After the edit is accepted,
 refreshing the album's MusicBrainz check moves on to the next finding, if there

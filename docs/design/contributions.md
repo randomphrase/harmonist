@@ -102,7 +102,10 @@ the next.
   with a download's UPC.
 - A **missing store link** is only suggested after a complete comparison of the
   group has found no other release linking that URL; otherwise the link may
-  belong to that other release.
+  belong to that other release. Accepting the current match does not override
+  this: a store can remove tracks or replace a download while keeping its URL,
+  so an older purchase can correctly match a different release from the one
+  sold there today. Other contributions remain available independently.
 
 Harmonist opens MusicBrainz's release editor with the value ready to copy.
 MusicBrainz's editor can only pre-fill links when *adding* a release, so the

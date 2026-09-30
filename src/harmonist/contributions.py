@@ -81,7 +81,6 @@ MismatchReason = Literal["source_match", "same_store", "media", "barcode_differe
 ContributionFinding = Literal[
     "barcode_different",
     "barcode_free",
-    "store_linked",
     "same_store",
     "missing_url",
     "barcode_missing",
@@ -200,9 +199,10 @@ def panel(assessment: Assessment, check: SiblingCheck) -> Panel | None:
     Release match comes first: data edits are offered only for a release the
     user accepted, or one with no mismatch evidence. Dismissing the warning is
     the user's word that this is the release they bought, so the contribution
-    then makes no further claim about other releases: it offers what the
-    matched release is missing. None while the check is incomplete, which can
-    authorize nothing.
+    then offers what the matched release is missing, except a store URL already
+    linked from another release: accepting the files' identity does not prove
+    that today's store page belongs to it. None while the check is incomplete,
+    which can authorize nothing.
     """
     if not check.complete:
         return None
@@ -230,16 +230,15 @@ def panel(assessment: Assessment, check: SiblingCheck) -> Panel | None:
     barcode = None if assessment.media_mismatch or assessment.rip else assessment.barcode_status
     # With reasons, the finding is shown only once the user dismisses them.
     trusted = bool(reasons) or assessment.accepted
+    linked_elsewhere = exact or bool(check.store_linked)
     finding: ContributionFinding | None = None
     if barcode == "different":
         finding = "barcode_different"
     elif barcode == "barcode_free":
         finding = "barcode_free"
-    elif assessment.missing_url and not check.current_linked:
+    elif assessment.missing_url and not check.current_linked and not linked_elsewhere:
         if trusted:
             finding = "missing_url"
-        elif check.store_linked:
-            finding = "store_linked"
         elif check.same_store:
             finding = "same_store"
         else:

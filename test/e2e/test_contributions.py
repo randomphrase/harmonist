@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 import pytest
 
@@ -48,8 +49,8 @@ def test_digital_store_link_waits_for_siblings(digital_contribution_server):
                 playwright_sync.expect(
                     results.get_by_role("listitem", name="Suggested digital release")
                 ).to_contain_text("Bandcamp download")
-                # The edit waits behind the warning until it is dismissed.
-                playwright_sync.expect(editor).to_be_hidden()
+                # Accepting the original release must not offer the URL again.
+                playwright_sync.expect(editor).to_have_count(0)
                 playwright_sync.expect(panel.get_by_role("link", name="Add Release")).to_have_count(
                     0
                 )
@@ -66,6 +67,38 @@ def test_digital_store_link_waits_for_siblings(digital_contribution_server):
                     editor.get_attribute("href") == f"https://musicbrainz.org/release/{ALBUM}/edit"
                 )
             assert len(pending) == visit + 1
+        browser.close()
+
+
+def test_dismissed_store_match_does_not_offer_a_duplicate_url(digital_contribution_server):
+    server, scenario = digital_contribution_server
+    if scenario != "linked":
+        pytest.skip("requires another release linking the exact URL")
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{server}/album/{ALBUM}")
+        panel = page.locator(f"#album-contributions-{ALBUM}")
+        box = panel.get_by_role("checkbox", name="Don't warn me about this")
+        reason = panel.get_by_text(
+            "Your store URL is linked from another release, not the matched one.", exact=True
+        )
+        editor = panel.get_by_role("link", name="Edit store link on MusicBrainz")
+        playwright_sync.expect(reason).to_be_visible()
+        with page.expect_response(lambda r: r.url.endswith("/release-accepted")) as saved:
+            box.check()
+        assert saved.value.ok
+        playwright_sync.expect(reason).to_be_hidden()
+        playwright_sync.expect(editor).to_have_count(0)
+        page.reload()
+        playwright_sync.expect(box).to_be_checked()
+        playwright_sync.expect(reason).to_be_hidden()
+        playwright_sync.expect(editor).to_have_count(0)
+        with page.expect_response(lambda r: r.url.endswith("/release-accepted")) as saved:
+            box.uncheck()
+        assert saved.value.ok
+        playwright_sync.expect(reason).to_be_visible()
+        playwright_sync.expect(editor).to_have_count(0)
         browser.close()
 
 
@@ -323,7 +356,8 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
             current_art.evaluate_all("els => els.map(e => e.src.split('?')[0].split('/').pop())")
         ) == {selected_digest}
         # Choosing and confirming the reissue said it is the release bought
-        # (#618): its warning starts dismissed, and the missing link is offered.
+        # (#618): its warning starts dismissed. The URL still belongs to the
+        # other release, so accepting this one must not offer a duplicate link.
         panel = page.locator("#album-contributions-demo-rel-dingoes-reissue")
         playwright_sync.expect(
             panel.get_by_role("checkbox", name="Don't warn me about this")
@@ -331,25 +365,22 @@ def test_contribution_check_and_library_filter(contribution_server: tuple[str, b
         playwright_sync.expect(
             panel.get_by_role("listitem", name="Suggested digital release")
         ).to_be_hidden()
-        playwright_sync.expect(panel).to_contain_text(
+        playwright_sync.expect(panel).not_to_contain_text(
             "Store URL missing from this release", use_inner_text=True
         )
         playwright_sync.expect(
             panel.get_by_role("link", name="Edit store link on MusicBrainz")
-        ).to_be_visible()
+        ).to_have_count(0)
         # A fresh observation still renders the same decision.
         page.get_by_role(
             "button", name="Read this release from MusicBrainz again", exact=True
         ).click()
         playwright_sync.expect(
             panel.get_by_role("link", name="Edit store link on MusicBrainz")
-        ).to_be_visible()
+        ).to_have_count(0)
         page.goto(f"{server}/?tab=library")
-        page.evaluate("window.__contributionNoReload = true")
-        page.get_by_role("navigation", name="Library filters").get_by_role(
-            "link", name="MB contributions"
-        ).click()
-        page.wait_for_url("**/*filter=mb-contributions*")
-        playwright_sync.expect(page.locator("#library-page")).to_contain_text("Little Bit o' Hoot")
-        assert page.evaluate("window.__contributionNoReload === true")
+        # Zero-count filters are text, not clickable links.
+        playwright_sync.expect(
+            page.get_by_role("navigation", name="Library filters")
+        ).to_contain_text(re.compile(r"MB contributions\s+0"))
         browser.close()

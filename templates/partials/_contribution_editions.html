@@ -137,9 +137,6 @@
     <h2 id="contribution-heading-{{ album.id }}" class="{{ heading }}">MB contributions</h2>
         {% if finding in ['barcode_different', 'barcode_free', 'barcode_missing'] %}
     {{ barcode_contribution(contribution, album) }}
-        {% elif finding == 'store_linked' %}
-    <p class="text-sm text-ink"><strong>Store URL already linked on MusicBrainz.</strong>
-        {{ release_links(check.store_linked) }}.</p>
         {% elif finding == 'same_store' %}
     <p class="text-sm text-ink"><strong>Your download came from {{ store_host }}, and another release links a page there.</strong></p>
     <ul class="text-xs space-y-0.5">

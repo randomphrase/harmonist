@@ -109,9 +109,8 @@ def test_missing_store_link_requires_complete_sibling_check(library, monkeypatch
     before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
     page = BeautifulSoup(client.get(f"/library/{MBID}/contributions/editions").text, "html.parser")
     editor = page.select_one(f'a[href="https://musicbrainz.org/release/{MBID}/edit"]')
-    # A sibling carrying the exact URL is a possible mismatch (#618): the edit is
-    # rendered, but only revealed once the user dismisses the warning.
-    assert bool(editor) is (kind in {"absent", "different-host", "linked", "ambiguous"})
+    # A URL already on another release is not a contribution, even behind a warning.
+    assert bool(editor) is (kind in {"absent", "different-host"})
     if editor:
         url_input = page.select_one('input[aria-label="Store URL to copy"]')
         assert url_input is not None and url_input["value"] == URL
@@ -131,11 +130,11 @@ def test_missing_store_link_requires_complete_sibling_check(library, monkeypatch
             assert "The check is incomplete" in page.text
             assert "Your store URL is linked from" not in page.text
         else:
-            assert "Store URL already linked on MusicBrainz" in page.text
+            assert page.select_one(f"#contribution-heading-{MBID}") is None
         assert not [a for a in page.select("a") if "Add Release" in a.text]
         if kind not in {"linked", "ambiguous"}:
             assert "Store URL missing from this release" not in page.text
-        if kind not in {"current-linked", "unknown-linked"}:
+        if kind in {"linked", "ambiguous"}:
             assert page.select_one('a[href="https://musicbrainz.org/release/sibling"]')
     suggestion = page.select_one('[role="listitem"][aria-label="Suggested digital release"]')
     assert bool(suggestion) is (kind == "linked")

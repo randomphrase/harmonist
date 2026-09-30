@@ -55,7 +55,7 @@ def observed(a, current_urls=(LABEL,), siblings=(), formats=("Digital Media",)):
         # Another store's page is no evidence either way.
         ((LABEL,), ("https://someone.bandcamp.com/album/record",), (), "missing_url"),
         # The exact URL on another digital release.
-        ((LABEL,), (URL,), ("source_match",), "missing_url"),
+        ((LABEL,), (URL,), ("source_match",), None),
         # ...which is no evidence against a match that links it too.
         ((URL,), (URL,), (), None),
     ],
@@ -68,9 +68,34 @@ def test_mismatch_reasons_and_the_contribution_behind_them(
     shown = contributions.panel(assessment, assessment.siblings)
     assert shown is not None
     assert shown.reasons == reasons
-    # Behind a warning, the contribution makes no further claim about other
-    # releases: dismissing it is the user's word that this is theirs.
+    # Accepting a match does not make another release's URL a contribution.
     assert shown.finding == finding
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+@pytest.mark.parametrize("sibling_format", ["Digital Media", "CD"])
+@pytest.mark.parametrize("source_upc", [None, "0801061000332"])
+def test_store_url_on_another_release_is_not_a_contribution(accepted, sibling_format, source_upc):
+    a = album()
+    a.track_count = 28
+    a.source_upc = source_upc
+    if accepted:
+        a.sidecar = replace(a.sidecar, accepted_release_id=MBID)
+    current = release()
+    current["medium-list"][0]["track-count"] = 28
+    sibling = release((sibling_format,), urls=(URL,), mbid="shorter-release")
+    sibling["medium-list"][0]["track-count"] = 25
+    contributions.observe(a, current, NOW)
+    contributions.observe_group(a, [current, sibling], 2)
+    assessment = contributions.assess(a)
+    assert assessment.siblings is not None
+    shown = contributions.panel(assessment, assessment.siblings)
+    assert shown is not None
+    assert shown.finding == ("barcode_missing" if source_upc else None)
+    mismatch = sibling_format == "Digital Media" and not accepted
+    assert contributions.possible_mismatch(assessment) is mismatch
+    assert contributions.contribution_due(assessment) is (bool(source_upc) and not mismatch)
+    assert a.sidecar.mb_release_id == MBID and a.track_count == 28
 
 
 def test_an_exact_store_url_match_is_the_only_reason_it_needs():
