@@ -56,7 +56,7 @@ Copies of artwork Harmonist has replaced, so you can undo the change.
 
 | Key | Env | Default | |
 |---|---|---|---|
-| `folder_cover` | `HARMONIST_TAGGING_FOLDER_COVER` | `"never"` | `"if_missing"` creates a `cover.jpg` for albums without one. An existing cover is still offered a better image either way. |
+| `folder_cover` | `HARMONIST_TAGGING_FOLDER_COVER` | `"never"` | `"if_missing"` creates a `cover.jpg` for albums without one. An existing cover is still offered a better image either way, and you can always choose an image for a missing one on the album's page. |
 | `transforms` | `HARMONIST_TAGGING_TRANSFORMS` | `[]` | Optional changes to what's written. The only one is `"album_disambiguation"`, which adds MusicBrainz's edition note to the album title, as Picard can: *Selected Ambient Works Volume II (expanded edition)*. |
 
 Both are on the Settings page under **Tagging**. A transform applies to future

@@ -18,14 +18,16 @@ def _settle(page) -> None:
 
 
 def _choose_archive(page) -> None:
+    """Load the archive's picture if it is not here yet, then press the
+    picker's Use button for whichever row it is on (#659)."""
     section = page.locator("#album-artwork")
-    load = section.locator('form[hx-post$="/artwork/load-archive"] button')
+    load = section.locator('button[hx-post$="/artwork/load-archive"]')
     if load.count():
         with page.expect_response(lambda r: r.url.endswith("/artwork/load-archive")):
             load.click()
         _settle(page)
-    with page.expect_response(lambda r: r.url.endswith("/artwork?use=archive")):
-        section.get_by_role("button", name="Use the Cover Art Archive's artwork").click()
+    with page.expect_response(lambda r: "pick=archive" in r.url):
+        section.locator("button.art-pick__use:visible").click()
     _settle(page)
 
 
@@ -59,8 +61,9 @@ def test_primary_action_honours_the_reviewed_artwork_scope(
         pw.expect(findings.get_by_role("button", name="Apply updates", exact=True)).to_have_count(1)
         inclusion.set_checked(included)
 
-        # Keep the exclusion even across a temporarily empty proposal.
-        page.locator('#album-artwork button[hx-get$="/artwork"]').click()
+        # Keep the exclusion even across a temporarily empty proposal — the ×
+        # on the row just chosen for leaves nothing to write.
+        page.locator("#album-artwork button.art-row__drop").first.click()
         _settle(page)
         _choose_archive(page)
         assert inclusion.is_checked() is included
@@ -119,7 +122,7 @@ def test_artwork_only_primary_appears_and_clears_with_the_proposal(demo_server: 
         page.on("dialog", lambda dialog: dialog.accept())
         with page.expect_response(lambda r: r.url.endswith("/artwork/update")) as response:
             primary.click()
-        assert parse_qs(response.value.request.post_data)["use"] == ["archive"]
+        assert "=archive" in parse_qs(response.value.request.post_data)["use"][0]
         _settle(page)
         pw.expect(primary).to_have_count(0)
         assert _covers(page) != before

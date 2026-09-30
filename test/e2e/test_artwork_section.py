@@ -139,25 +139,14 @@ def test_the_archive_is_asked_without_anyone_pressing_anything(demo_server: str)
 
 def test_the_archives_candidate_is_one_row_on_a_narrow_window(demo_server: str) -> None:
     """The archive's frame and the facts beside it stay one row below 56rem
-    (#577).
+    (#577), and the picker sits BENEATH the row it is for (#659).
 
-    Only a browser can see this, and the reason is worth stating: the markup was
-    always right and the stylesheet always *said* the right thing. Below 56rem
-    the row is a two-column grid, and the narrow block resets the frame's
-    `grid-column: 3` — which places it in the incoming half of the wide
-    four-column grid — back to `auto`. But the two selectors are identical, so a
-    media query gives the reset no extra weight and the unconditional rule won
-    on source order at every width. `grid-column: 3` against two columns makes an
-    *implicit* third, so the frame went hard against the right edge while its
-    facts, flowing on through `display: contents`, wrapped to a row of their own
-    back at the left. A picture of a broken image beside an unrelated caption.
-
-    Asserted geometrically rather than on a class, because the defect is
-    entirely in where the boxes land: every class involved was already correct.
-
-    The module's album: whether anything is being written makes no difference
-    down here, since #447's third column needs more width than this and the
-    archive is the trailing block either way.
+    Only a browser can see either, and #577 is why it is worth checking: the
+    markup was right and the stylesheet said the right thing, but a media query
+    adds no specificity, so the unconditional rule won on source order at every
+    width and the frame landed in an implicit third column away from its facts.
+    Asserted geometrically, because a defect like that is entirely in where the
+    boxes land: every class involved is correct either way.
     """
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -166,14 +155,14 @@ def test_the_archives_candidate_is_one_row_on_a_narrow_window(demo_server: str) 
         page = browser.new_page(viewport={"width": 760, "height": 1400})
 
         page.goto(f"{demo_server}/album/{ALBUM_ID}")
-        # The archive's block arrives with the out-of-band check, not with the
-        # section, so this waits for the answer rather than for the section.
-        page.wait_for_selector("#album-artwork .art-rows--muted")
+        # The picker arrives with the out-of-band check, not with the section,
+        # so this waits for the answer rather than for the section.
+        page.wait_for_selector("#album-artwork .art-pick__picker")
 
-        block = page.locator("#album-artwork .art-rows--muted")
-        # Whichever of the three states the frame is in: a form to fetch the
+        block = page.locator("#album-artwork .art-pick__candidate")
+        # Whichever of the three states the frame is in: a button to fetch the
         # picture, a placeholder, or the picture itself.
-        frame = block.locator(".art-row__load, .art-row__art").first
+        frame = block.locator(".art-row__art").first
         facts = block.locator(".art-row__facts").first
 
         f = frame.bounding_box()
@@ -182,14 +171,121 @@ def test_the_archives_candidate_is_one_row_on_a_narrow_window(demo_server: str) 
 
         # Beside, not above: the frame ends before its facts begin…
         assert f["x"] + f["width"] <= t["x"], "the archive's facts are not beside its frame"
-        # …and the two overlap vertically, which is what "one row" means. With
-        # the bug they shared no horizontal band at all.
+        # …and the two overlap vertically, which is what "one row" means.
         assert min(f["y"] + f["height"], t["y"] + t["height"]) > max(f["y"], t["y"]), (
             "the archive's frame and its facts are on separate rows"
         )
-        # And the pair sits at the block's left edge rather than out in a column
-        # that the two-column grid has no room for.
-        b = block.bounding_box()
-        assert b and f["x"] - b["x"] < 32, "the archive's frame is not at the block's left edge"
+        # And the picker is under the checked row — the first — not above it
+        # and not out in a column the one-column grid has no room for.
+        checked = page.locator("#album-artwork .art-row").first.bounding_box()
+        p = page.locator("#album-artwork .art-pick__picker").bounding_box()
+        assert checked and p
+        assert p["y"] >= checked["y"] + checked["height"] - 1, "the picker is not below its row"
+        assert abs(p["x"] - checked["x"]) < 32, "the picker is not under its row"
 
+        browser.close()
+
+
+def test_choosing_an_image_does_not_move_the_table(reset_demo_server: str) -> None:
+    """Pressing Use re-renders the section, and the table must stay where it
+    was under the pointer (#659).
+
+    It moved down by the section's spacing: the page's first render arrives
+    inside /compare's out-of-band wrapper, which stays in the page, while a
+    choice swaps the section's markup in directly — and `#album-artwork`'s
+    `space-y-3` spaced the wrapper in the one case and the heading in the
+    other. Only a browser lays either out, and only the page's own first render
+    takes the /compare path, so this starts from the album page itself.
+    """
+    settled = "() => !document.querySelector('.htmx-request, .htmx-settling')"
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 1400})
+        page.goto(f"{reset_demo_server}/album/{ALBUM_ID}")
+        page.wait_for_selector("#album-artwork .art-pick__picker")
+        page.wait_for_function(settled)
+
+        def table() -> float:
+            return page.evaluate(
+                """() => {
+                const section = document.getElementById('album-artwork');
+                const head = section.querySelector('.art-rows__head');
+                return head.getBoundingClientRect().top - section.getBoundingClientRect().top;
+            }"""
+            )
+
+        load = page.locator('#album-artwork button[hx-post$="/artwork/load-archive"]')
+        if load.count():
+            load.click()
+            page.wait_for_function(settled)
+        # …and open the page again: the archive has been asked and its picture
+        # loaded, so nothing re-renders the section before the press, and the
+        # layout measured is the first render's — /compare's, which is the one
+        # the user is looking at when they press Use.
+        page.goto(f"{reset_demo_server}/album/{ALBUM_ID}")
+        page.wait_for_selector("#album-artwork button.art-pick__use", state="attached")
+        page.wait_for_function(settled)
+        # Whichever row the archive's image can still go to.
+        use = page.locator("#album-artwork button.art-pick__use:visible")
+        rows = page.locator("#album-artwork .art-row")
+        for index in range(rows.count()):
+            rows.nth(index).locator(".art-row__select").click()
+            if use.count():
+                break
+        before = table()
+        with page.expect_response(lambda r: "pick=archive" in r.url):
+            use.click()
+        page.wait_for_function(settled)
+
+        assert table() == before, "the table moved when the section re-rendered"
+        browser.close()
+
+
+def test_the_picker_moves_to_the_row_that_is_checked(demo_server: str) -> None:
+    """Checking a row puts the picker beside it (#659), with no request: the
+    rows and the picker share one grid, and a rule the section generates per
+    row puts the picker on the checked row's line. Nothing in the Python
+    suite can see a grid line, and a rule scoped to the wrong id, or a
+    `--art-pick-row` that nothing reads, renders markup that looks perfect."""
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 1400})
+
+        page.goto(f"{demo_server}/album/{ALBUM_ID}")
+        page.wait_for_selector("#album-artwork .art-pick__picker")
+        rows = page.locator("#album-artwork .art-row")
+        assert rows.count() >= 2, "the module's album needs two rows to move between"
+        picker = page.locator("#album-artwork .art-pick__picker")
+        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
+        sent: list[str] = []
+        page.on("request", lambda r: sent.append(r.url))
+
+        def level_with(index: int) -> None:
+            box, at = rows.nth(index).bounding_box(), picker.bounding_box()
+            assert box and at
+            # Its top a margin below the row's, not a line further down.
+            assert abs(at["y"] - box["y"]) < 16, f"the picker is not level with row {index}"
+            assert at["x"] >= box["x"] + box["width"] - 1, "the picker is not beside the row"
+
+        # Clicking a row — on its name, which is where a reader would — selects
+        # it; the radio itself is drawn by the row, not shown.
+        rows.nth(1).locator(".art-row__select").click()
+        level_with(1)
+        # Measured while the picker is somewhere else…
+        alone = rows.nth(1).bounding_box()["y"]
+        rows.nth(0).locator(".art-row__select").click()
+        level_with(0)
+        # …because hanging down over the empty column below it, the picker never
+        # stretches the grid line it sits on: a panel taller than its row would
+        # otherwise push the next row down and leave a gap under this one.
+        assert rows.nth(1).bounding_box()["y"] == alone, "the picker pushed the next row down"
+
+        # …and the quiet ↓ and ↑ beside it step through the rows the same way.
+        page.get_by_role("button", name="Next row").click()
+        level_with(1)
+        page.get_by_role("button", name="Previous row").click()
+        level_with(0)
+
+        # Moving the picker is the stylesheet's: selecting a row asks nothing.
+        assert not [url for url in sent if "/artwork" in url]
         browser.close()

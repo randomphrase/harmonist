@@ -27,15 +27,18 @@ def test_public_smaller_candidate_is_explicit_and_undoable(public_demo_server):
         page.goto(f"{base}/album/demo-rel-barryjive")
         section = page.locator("#album-artwork")
         page.wait_for_selector("#album-artwork .art-row")
-        load = section.locator('form[hx-post$="/artwork/load-archive"] button')
+        load = section.locator('button[hx-post$="/artwork/load-archive"]')
         pw.expect(load).to_be_visible()
         load.click()
-        choose = section.get_by_role("button", name="Use the Cover Art Archive's artwork")
+        choose = section.get_by_role("button", name="Use for All 3 tracks")
         pw.expect(choose).to_be_visible()
         # Looking at a smaller candidate is not permission to replace anything.
         assert cover.read_bytes() == before
         assert [formats.read_cover(p) for p in files] == original
         choose.click()
+        # The folder cover is a row of its own (#659), chosen the same way.
+        section.locator("#art-row-cover .art-row__select").click()
+        section.get_by_role("button", name="Use for cover.png").click()
         apply = page.locator("#album-findings-demo-rel-barryjive").get_by_role(
             "button", name="Apply updates", exact=True
         )

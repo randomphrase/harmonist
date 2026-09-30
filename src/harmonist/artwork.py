@@ -30,6 +30,7 @@ write there. Neither is derived from the other.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -142,6 +143,61 @@ class Source(StrEnum):
     ARCHIVE = "archive"
 
 
+@dataclass(frozen=True)
+class Incoming:
+    """An image a plan writes, and where it comes from — which is where the
+    writer goes back to for its bytes."""
+
+    image: EmbeddedArt
+    source: Source
+
+
+class Choice(StrEnum):
+    """What the user picked for one carrier, over the size rule's suggestion
+    (#659)."""
+
+    #: Leave this carrier's image as it is, whatever the size rule suggested.
+    KEEP = "keep"
+    #: Put the Cover Art Archive's image here, however it measures.
+    ARCHIVE = "archive"
+
+
+#: The carrier a choice names for the folder cover (#659).
+COVER = "cover"
+#: …and for the tracks carrying no image at all. Every other carrier is the
+#: tracks sharing one image, named by its digest — which is how the section
+#: already tells its rows apart, and which no user can mistake for another row.
+GAP = "none"
+
+#: The user's choices, by carrier. A carrier with no entry takes the size
+#: rule's suggestion, so choosing for one row never drops another's.
+Choices = Mapping[str, Choice]
+
+_CARRIER = re.compile(rf"{COVER}|{GAP}|[0-9a-f]{{64}}")
+
+
+def parse_choices(text: str) -> dict[str, Choice]:
+    """Choices as a request carries them: `carrier=choice`, comma-separated.
+
+    Anything else is dropped rather than refused. It can only come from a
+    request no page of ours drew, and the ordinary plan is the safe reading of
+    one — the fingerprint still has to match whatever is left, so nothing is
+    written that the page did not show.
+    """
+    found: dict[str, Choice] = {}
+    for part in text.split(","):
+        carrier, _, value = part.partition("=")
+        if _CARRIER.fullmatch(carrier) and value in {c.value for c in Choice}:
+            found[carrier] = Choice(value)
+    return found
+
+
+def format_choices(choices: Choices) -> str:
+    """The spelling `parse_choices` reads — sorted, so one set of choices is one
+    string."""
+    return ",".join(f"{carrier}={choice.value}" for carrier, choice in sorted(choices.items()))
+
+
 class FolderCoverPolicy(StrEnum):
     """Whether a plan may create a `cover.*` the album has not got (#516).
 
@@ -222,31 +278,31 @@ class ArtworkPlan:
     #: none. Unreadable tracks are absent: a file nobody could open carries no
     #: evidence, and is never a target.
     before: Mapping[Path, str | None] = field(default_factory=dict)
-    #: The image the TRACKS should carry, and where it comes from. None when
-    #: nothing is written to them.
-    winner: EmbeddedArt | None = None
-    source: Source | None = None
-    #: …and the folder cover's own, which may be a different and larger image
-    #: (#479). `cover.*` is one file; embedded art is one copy per track, so a
-    #: library can sensibly keep a high-resolution cover beside modest embedded
-    #: images. Defaults to the tracks' image, which is the ordinary case.
-    cover_image: EmbeddedArt | None = None
-    cover_source: Source | None = None
+    #: Every image a change writes, by digest, and where it comes from.
+    #:
+    #: A TABLE rather than one image for the tracks and one for the folder
+    #: cover, which is what this was. The size rule never needs more than those
+    #: two — the folder cover can take a better image than the tracks keep
+    #: (#479) — but a user choosing row by row can put a different image on
+    #: every row (#659), and a compilation's rows are a dozen of them.
+    images: Mapping[str, Incoming] = field(default_factory=dict)
     changes: tuple[Change, ...] = ()
     #: The tracks carry differing images and are being left alone — a decision
     #: worth reporting rather than a silent no-op (#260).
     preserves_per_track_art: bool = False
+    #: The user's choices this plan honoured (#659): the ones naming a carrier
+    #: the album has, with an image in hand for them.
+    choices: Mapping[str, Choice] = field(default_factory=dict)
 
-    def image_for(self, change: Change) -> tuple[EmbeddedArt | None, Source | None]:
+    def image_for(self, change: Change) -> Incoming:
         """The image one change writes, and where it comes from.
 
-        The folder cover has its own (#479); every other target takes the
-        tracks' image. Asked by the writer and by the page alike, so a row
-        cannot show one image while the write puts another there.
+        Asked by the writer and by the page alike, so a row cannot show one
+        image while the write puts another there. Every change's `after` is in
+        the table — that is how the plan is built — so a miss is a bug, and
+        raises rather than writing nothing quietly.
         """
-        if change.folder_cover:
-            return self.cover_image, self.cover_source
-        return self.winner, self.source
+        return self.images[change.after]
 
     def scoped(self, scope: Scope) -> tuple[Change, ...]:
         """The changes `scope` permits."""
@@ -323,6 +379,124 @@ def cover_name_for(mime: str) -> str:
 
 
 def plan(
+    album_dir: Path,
+    tracks: Sequence[tuple[Path, EmbeddedArt | None]],
+    cover: FolderCover | None,
+    archive: EmbeddedArt | None = None,
+    *,
+    overwrite_art: bool = False,
+    cover_unreadable: bool = False,
+    chosen: Source | None = None,
+    choices: Choices | None = None,
+    folder_cover: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
+) -> ArtworkPlan:
+    """The size rule's suggestion (`_suggest`), with the user's choices made
+    over it carrier by carrier (#659).
+
+    A carrier the choices do not name keeps its suggestion, so choosing for one
+    row never quietly drops what the section proposed for another.
+
+    Choosing is consent, and it is scoped to what was chosen. Per-track
+    artwork is protected from the size rule because nobody has looked at it;
+    a user who picked an image for one of a compilation's rows has looked at
+    exactly that row, and only that row's tracks move.
+
+    `overwrite_art` and an unreadable folder cover take no choices. The first
+    is its own override; with the second nothing can be decided at all.
+    """
+    suggested = _suggest(
+        album_dir,
+        tracks,
+        cover,
+        archive,
+        overwrite_art=overwrite_art,
+        cover_unreadable=cover_unreadable,
+        chosen=chosen,
+        folder_cover=folder_cover,
+    )
+    if not choices or overwrite_art or cover_unreadable:
+        return suggested
+    return _with_choices(suggested, cover, archive, choices)
+
+
+def _with_choices(
+    suggested: ArtworkPlan,
+    cover: FolderCover | None,
+    archive: EmbeddedArt | None,
+    choices: Choices,
+) -> ArtworkPlan:
+    """`suggested`, with every carrier `choices` names taken over by the choice.
+
+    Only the choices that can be honoured are: a carrier the album has, and for
+    the archive's image, the image in hand. The plan records which, so the page
+    never claims a choice it could not act on (#472's rule, per carrier now).
+    """
+    album_dir = suggested.album_dir
+    before = suggested.before
+    # The folder cover is always a carrier, present or not. `folder` decides
+    # what the size rule SUGGESTS creating (#516); a user who chose an image
+    # for the missing file has asked for it, which is a different thing from
+    # three hundred albums being told they have an update (#659).
+    carriers = {digest or GAP for digest in before.values()} | {COVER}
+    honoured = {
+        carrier: choice
+        for carrier, choice in choices.items()
+        if carrier in carriers and (choice is Choice.KEEP or archive is not None)
+    }
+    if not honoured:
+        return suggested
+
+    def carrier_of(change: Change) -> str:
+        return COVER if change.folder_cover else (change.before or GAP)
+
+    # The suggestion's own changes, for the carriers nobody chose for — kept in
+    # the suggestion's order, which is the album's.
+    kept = {c.target: c for c in suggested.changes if carrier_of(c) not in honoured}
+    images = dict(suggested.images)
+    chosen: dict[Path, Change] = {}
+    if archive is not None and Choice.ARCHIVE in honoured.values():
+        images[archive.digest] = Incoming(archive, Source.ARCHIVE)
+        # Written only where the bytes differ: choosing the image a carrier
+        # already holds is a no-op, not a rewrite (*Far & Off*, #659).
+        for path, digest in before.items():
+            if honoured.get(digest or GAP) is Choice.ARCHIVE and digest != archive.digest:
+                chosen[path] = Change(target=path, before=digest, after=archive.digest)
+        if honoured.get(COVER) is Choice.ARCHIVE:
+            if cover is None:
+                target = album_dir / cover_name_for(archive.mime)
+                chosen[target] = Change(
+                    target=target, before=None, after=archive.digest, folder_cover=True
+                )
+            elif cover.image.digest != archive.digest:
+                target = cover.path or album_dir / cover.name
+                chosen[target] = Change(
+                    target=target,
+                    before=cover.image.digest,
+                    after=archive.digest,
+                    folder_cover=True,
+                )
+    # Tracks in album order, then the folder cover, as `_plan_for` lays them out.
+    changes = [
+        c
+        for path in before
+        if (c := chosen.get(path) or kept.get(path)) is not None and not c.folder_cover
+    ]
+    changes += [c for c in (*kept.values(), *chosen.values()) if c.folder_cover]
+    return ArtworkPlan(
+        album_dir=album_dir,
+        before=before,
+        images={c.after: images[c.after] for c in changes},
+        changes=tuple(changes),
+        # Still true only while no track is being written: a row somebody chose
+        # an image for is not being preserved, and the tagging's notice would
+        # say it was (#260).
+        preserves_per_track_art=suggested.preserves_per_track_art
+        and all(c.folder_cover for c in changes),
+        choices=honoured,
+    )
+
+
+def _suggest(
     album_dir: Path,
     tracks: Sequence[tuple[Path, EmbeddedArt | None]],
     cover: FolderCover | None,
@@ -483,12 +657,6 @@ def _plan_for(
     """
     for_cover = cover_image if cover_image is not None else winner
     for_cover_source = cover_source if cover_image is not None else source
-    # No folder cover, and none coming: the album has no such carrier, so it has
-    # no incoming image either (#516). Left as the winner it would say the
-    # archive was supplying a `cover.jpg` that is not going to exist —
-    # `archive_on_cover` reads exactly this, and the section draws its candidate
-    # row off that answer.
-    no_cover = cover is None and folder is FolderCoverPolicy.NEVER
     changes = [
         Change(target=path, before=digest, after=winner.digest)
         for path, digest in targets.items()
@@ -519,13 +687,16 @@ def _plan_for(
                 folder_cover=True,
             )
         )
+    images = {winner.digest: Incoming(winner, source)}
+    if for_cover_source is not None:
+        images.setdefault(for_cover.digest, Incoming(for_cover, for_cover_source))
     return ArtworkPlan(
         album_dir=album_dir,
         before=before if before is not None else targets,
-        winner=winner,
-        source=source,
-        cover_image=None if no_cover else for_cover,
-        cover_source=None if no_cover else for_cover_source,
+        # Only what a change writes. An image in the table is a claim that
+        # something is coming, and the view reads it as one — so a folder cover
+        # the policy will not create has no incoming image either (#516).
+        images={c.after: images[c.after] for c in changes},
         changes=tuple(changes),
         preserves_per_track_art=preserves,
     )
@@ -603,14 +774,9 @@ class ArchiveRow:
     #: whether theirs really is the better scan needs to see the other one.
     #:
     #: Its presence says nothing about whether it won. Winning is decided on
-    #: size and is not consulted here, so a loaded loser stays exactly what it
-    #: was: muted, unmarked, and not going to be written (#441).
+    #: size and is not consulted here; which rows it is going to is theirs to
+    #: say (#441, #659).
     image: EmbeddedArt | None = None
-    #: This image is ALREADY coming to the folder cover, and the row is here to
-    #: offer it to the tracks as well (#490). "Also considered" is past tense and
-    #: would be untrue of it, so the heading says so instead — the row is not an
-    #: also-ran, it is a candidate for the half of the album it is not going to.
-    also_coming: bool = False
 
     @property
     def loadable(self) -> bool:
@@ -715,9 +881,13 @@ class ArtRow:
     lost their artwork looks exactly like a healthy one if you only draw what is
     there.
 
-    `on_cover` is the folder cover's filename when this same image is also the
-    folder cover, so one row can say "All 12 tracks and cover.jpg" rather than
-    drawing one picture twice.
+    `folder` is the folder cover's filename on the folder cover's own row, which
+    every album has whether or not the file exists (#659). It used to share a
+    row with the tracks carrying the same picture — "All 12 tracks and
+    cover.jpg" (#400) — and that saved drawing one picture twice at the price of
+    rows that merged and split as their fates diverged (#479). A row is what a
+    choice is made on, and a row that split under the user the moment they
+    chose for it was not something they could choose on.
 
     `total_tracks` and `multi_disc` are the album context the label needs. Carried
     on the row rather than passed to `label` so the template can't render two rows
@@ -729,7 +899,7 @@ class ArtRow:
     outcome: Outcome
     total_tracks: int = 0
     multi_disc: bool = False
-    on_cover: str | None = None
+    folder: str | None = None
     #: What a re-tag would put here, named — the folder cover for a track row,
     #: and the album's own artwork for the folder cover's row when that is the
     #: better image (#410). None where nothing is written.
@@ -750,27 +920,42 @@ class ArtRow:
     #: no tense — a reader cannot tell whether it already happened — and the
     #: picture on the right under a dated heading is what settles that.
     written_image: EmbeddedArt | None = None
-    #: The name of a folder cover that does not exist and that the plan will
-    #: create (#457). A row rather than a sentence, because an absent carrier
-    #: about to gain an image is a gap like an artless track, and a gap is the
-    #: finding.
-    creates: str | None = None
+    #: The carriers a choice made on this row names (#659): its tracks' image
+    #: digest or `GAP`, or `COVER` on the folder cover's row. A choice is made
+    #: on the row, so it reaches everything the row stands for.
+    carriers: tuple[str, ...] = ()
+    #: This row's image IS the archive's, byte for byte — so choosing the
+    #: archive's image here would write nothing, and the picker says so
+    #: rather than offering it (*Far & Off*, #659).
+    has_archive: bool = False
+    #: …and the same of what this row is GETTING: the incoming image is the
+    #: archive's bytes, whichever carrier the plan reads them from. An album's
+    #: own image and the archive's are often the same file, and choosing the
+    #: one over the other would change nothing but the label.
+    takes_archive: bool = False
 
     @property
     def is_gap(self) -> bool:
-        return self.image is None
+        """The row for tracks with no embedded image."""
+        return self.image is None and self.folder is None
+
+    @property
+    def absent(self) -> bool:
+        """The folder cover's row, for a folder cover the album has not got.
+        A gap like an artless track, and drawn as one: an absent carrier is the
+        finding (#457)."""
+        return self.folder is not None and self.image is None
 
     @property
     def anchor(self) -> str:
         """The id a tracklist mark links to (#404).
 
-        The folder cover's OWN row takes an id of its own rather than its image's:
-        when the cover is about to diverge from the tracks it gets a second row
-        carrying the same picture as theirs (#479), and one page cannot hold two
-        elements with one id. No mark points here — the cover is not a track — so
-        the id is the section's alone, and it stays distinct.
+        The folder cover's row takes an id of its own rather than its image's: it
+        usually carries the same picture as a row of tracks, and one page cannot
+        hold two elements with one id. No mark points here — the cover is not a
+        track — so the id is the section's alone, and it stays distinct.
         """
-        if self.creates or (self.on_cover is not None and not self.tracks):
+        if self.folder is not None:
             return "art-row-cover"
         return row_anchor(self.image.digest if self.image else None)
 
@@ -811,15 +996,10 @@ class ArtRow:
         A track with no number at all falls back to a count: an unnumbered file
         cannot be pointed at by position.
         """
-        if self.creates:
-            return self.creates
+        if self.folder is not None:
+            return self.folder
         n = len(self.tracks)
-        carriers = []
-        if n:
-            carriers.append(self._track_label(n))
-        if self.on_cover:
-            carriers.append(self.on_cover)
-        return " and ".join(carriers) if carriers else "Not on any track"
+        return self._track_label(n) if n else "Not on any track"
 
     def _track_label(self, n: int) -> str:
         if n == self.total_tracks:
@@ -870,18 +1050,6 @@ class ArtworkView:
     #: what is already on disk, and the archive's answer is here to say whether
     #: it is worth taking.
     caa: CoverArtAnswer | None = None
-    #: Whether the archive's cover is what the TRACKS are getting — the case
-    #: where it is wholly the incoming value rather than an also-ran (#433).
-    #:
-    #: Split from the folder cover's own source (#490). One flag meaning "the
-    #: archive supplies either destination" read as a verdict on both, so an
-    #: album whose tracks keep their image while `cover.jpg` takes the archive's
-    #: (the ordinary #479 outcome) counted as a clean win — and the candidate
-    #: row vanished, taking the only **Use this artwork** override with it.
-    archive_on_tracks: bool = False
-    #: …and whether it is what the FOLDER COVER is getting, which is a different
-    #: question and the common one.
-    archive_on_cover: bool = False
     #: The archive's image itself, when a copy is held locally. Present for a
     #: WINNER, which is downloaded as part of the check, and for a loser someone
     #: has asked to see (#448) — so it says only "there is a copy of this on
@@ -900,6 +1068,17 @@ class ArtworkView:
     #: Set only where the choice could really be honoured, so the page never
     #: says it is showing an image it has not got.
     chosen: Source | None = None
+    #: The choices made row by row that the plan honoured (#659). What the
+    #: section's controls carry back, and what each of them changes by one row.
+    choices: Mapping[str, Choice] = field(default_factory=dict)
+
+    @property
+    def use(self) -> str:
+        """The choices shown, spelled as a request carries them. A control
+        that changes them sends what it changes alongside, and the route
+        composes the next set (`album_artwork`) — one place deciding what a
+        press means, rather than every button spelling out its outcome."""
+        return format_choices(self.choices)
 
     @property
     def images(self) -> tuple[ArtRow, ...]:
@@ -980,17 +1159,18 @@ class ArtworkView:
         # they wanted it for.
         if (archive_row := self.archive_row) is not None and archive_row.image is not None:
             out.setdefault(archive_row.image.digest, (archive_row.image, "Cover Art Archive"))
-        # …and the winner, wherever it came from. The incoming side of every
-        # written row points at it, and when it is the archive's it is on no
-        # row and no carrier, so nothing else above would emit its view.
-        if self.plan is not None and self.plan.winner is not None:
-            out.setdefault(
-                self.plan.winner.digest,
-                (
-                    self.plan.winner,
-                    _source_label(self.plan.source, self.cover) or "the incoming image",
-                ),
-            )
+        # …and every incoming image, wherever it came from. The incoming side of
+        # every written row points at one, and when it is the archive's it is on
+        # no row and no carrier, so nothing else above would emit its view.
+        if self.plan is not None:
+            for digest, incoming in self.plan.images.items():
+                out.setdefault(
+                    digest,
+                    (
+                        incoming.image,
+                        _source_label(incoming.source, self.cover) or "the incoming image",
+                    ),
+                )
         return tuple(out.values())
 
     @property
@@ -1016,20 +1196,14 @@ class ArtworkView:
         would report zero for that album and say nothing.
         """
         filled = sum(len(r.tracks) for r in self.rows if r.is_gap and r.writes)
-        # A row that writes and sits on the cover means the cover file changes,
-        # whether or not any track shares that image.
         improved = sum(len(r.tracks) for r in self.images if r.writes)
-        creates = next((r.creates for r in self.rows if r.creates and r.writes), None)
+        creates = next((r.folder for r in self.rows if r.absent and r.writes), None)
 
         carriers = []
         if improved:
             carriers.append(f"{improved} track{'' if improved == 1 else 's'}")
-        # The folder cover counts whether it shares a row with the tracks or has
-        # one of its own — since #479 it usually has one of its own, because it
-        # is often the only thing changing.
-        if self.cover is not None and any(
-            r.writes and (r.on_cover or (r.image is not None and not r.tracks)) for r in self.images
-        ):
+        # The folder cover is its own row, and often the only thing changing.
+        if self.cover is not None and any(r.writes and r.folder for r in self.images):
             carriers.append(self.cover.name)
 
         parts = []
@@ -1049,39 +1223,24 @@ class ArtworkView:
 
     @property
     def archive_row(self) -> ArchiveRow | None:
-        """The archive's cover as a row of facts, when it is not what would be
-        written.
+        """The archive's cover as a candidate: what the picker beside the rows
+        offers (#659). None when the archive has not been asked.
 
-        A row rather than a sentence, because it is one of the images this album
-        could carry and everything else in that category is a row (#433). Drawn
-        muted, with a placeholder where the picture would be and no hexagon: it
-        exists, and nothing is going to come of it.
+        Offered whether or not it is already coming. It used to vanish when it
+        won the tracks, which was right while it was an also-ran row — but the
+        picker is where a row's choice is made, including choosing it for a row
+        the size rule left alone, and a picker that disappeared whenever the
+        archive won one row would take the choice away from every other (#490
+        was this, one row at a time).
 
         The placeholder is honest rather than a stand-in. A losing candidate is
         deliberately never downloaded (#276) — measured with a 64 KB range and
-        forgotten — so there genuinely is no picture, and fetching one to show
-        would spend megabytes on an image nobody will use.
-
-        None when the archive's cover is going ONTO THE TRACKS: it is then the
-        incoming value everywhere it could be, and appears in that column with
-        the hexagon, which is where purple belongs.
-
-        Not when it merely wins the folder cover (#490). That is the ordinary
-        #479 outcome — one high-resolution `cover.jpg` beside modest embedded
-        art — and the tracks are keeping what they carry, so the archive's image
-        is still a candidate for them. This row is the only place **Use this
-        artwork** lives, and suppressing it there left the deliberate choice
-        reachable only by applying the folder-only change and coming back.
-
-        "Not what would be written" covers two cases and deliberately treats
-        them alike: a cover that is smaller than the album's own, and one that
-        is bigger but was never downloaded. The second is not a hole in the
-        model — the tagger reads the same cache, so an image that is not there
-        cannot be written whatever its measurement says, and a row stating its
-        size is the honest account of it.
+        forgotten — so there genuinely is no picture until someone asks to see
+        it (#448), and nothing can be chosen before then: choosing an image
+        nobody has seen is the guess this section exists to avoid.
         """
         answer = self.caa
-        if answer is None or self.archive_on_tracks:
+        if answer is None:
             return None
         if not answer.has_art:
             # A different word, because it is a different fact: there is nothing
@@ -1093,7 +1252,6 @@ class ArtworkView:
                 placeholder="not loaded",
                 meta="size could not be read",
                 image=self.archive,
-                also_coming=self.archive_on_cover,
             )
         return ArchiveRow(
             placeholder="not loaded",
@@ -1103,12 +1261,9 @@ class ArtworkView:
             # someone comparing editions may care that this one is the general
             # one rather than their pressing's.
             from_release_group=answer.from_release_group,
-            # The picture, when someone has asked for it (#448). Reaching this
-            # line at all means the archive's cover is not going onto the tracks
-            # — so an image here is either one a user fetched to look at, or the
-            # folder cover's incoming image offered to the tracks as well (#490).
+            # The picture, when it is here: a winner, downloaded by the check,
+            # or a loser someone asked to see (#448).
             image=self.archive,
-            also_coming=self.archive_on_cover,
         )
 
     @property
@@ -1120,7 +1275,9 @@ class ArtworkView:
         "1 image" sits above an album where a third of the tracks have none —
         true, and quietly missing the point.
         """
-        n = len(self.images)
+        # Distinct pictures, not rows: the folder cover has a row of its own
+        # and usually carries the tracks' picture (#659).
+        n = len({r.image.digest for r in self.images if r.image is not None})
         gaps = sum(len(r.tracks) for r in self.rows if r.is_gap)
         if not n:
             return None
@@ -1191,6 +1348,7 @@ def summarise(
     *,
     cover_unreadable: bool = False,
     chosen: Source | None = None,
+    choices: Choices | None = None,
     folder_cover: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
 ) -> ArtworkView:
     """Everything the section shows, from tags already read and a folder cover.
@@ -1210,6 +1368,9 @@ def summarise(
     the view as such: a section that said it was showing a chosen image it had
     not got would be describing a write nobody could make.
 
+    `choices` is the same thing row by row (#659), under the same rule — the
+    view carries only the choices the plan could honour.
+
     `folder_cover` is the user's policy on creating one the album lacks (#516).
     It is handed to the PLAN rather than applied to the rows, so the section
     never draws a row for a file the action would not write — the coupling #467
@@ -1224,19 +1385,18 @@ def summarise(
         archive,
         cover_unreadable=cover_unreadable,
         chosen=taken,
+        choices=choices,
         folder_cover=folder_cover,
     )
-    written = {c.target for c in the_plan.changes}
+    by_target = {c.target: c for c in the_plan.changes}
     cover_change = the_plan.cover_change(Scope.ALL)
-    # The two destinations, asked separately (#490). "Is the archive's image
-    # coming anywhere" was one flag, and it decided whether the candidate row —
-    # which carries the only explicit override — was drawn at all. An album whose
-    # tracks keep their own image while `cover.jpg` takes the archive's is the
-    # ORDINARY #479 outcome, and it hid the row on exactly the albums where the
-    # user most needs it: the image is there, better than what the tracks carry,
-    # and the size rule deliberately will not put it in them.
-    archive_on_tracks = the_plan.source is Source.ARCHIVE
-    archive_on_cover = the_plan.cover_source is Source.ARCHIVE
+    cover_incoming = the_plan.image_for(cover_change) if cover_change is not None else None
+
+    def incoming_for(paths: Iterable[Path]) -> Incoming | None:
+        """What a group of tracks becomes. One image for all of them: they
+        are one carrier, and a choice or the size rule treats a carrier whole."""
+        change = next((by_target[p] for p in paths if p in by_target), None)
+        return the_plan.image_for(change) if change is not None else None
 
     by_digest: dict[str, list[tuple[Path, TrackRef]]] = {}
     art_of: dict[str, EmbeddedArt] = {}
@@ -1262,93 +1422,66 @@ def summarise(
     def row(
         image: EmbeddedArt | None,
         carriers: Sequence[tuple[Path, TrackRef]],
-        writes: bool,
+        incoming: Incoming | None,
+        keys: tuple[str, ...],
         *,
-        on_cover: str | None = None,
-        creates: str | None = None,
-        folder: bool = False,
+        folder: str | None = None,
     ) -> ArtRow:
-        if writes:
+        # Each row shows ITS OWN incoming image (#479, #659). The folder cover
+        # can be taking a better one than the tracks are, and a user choosing
+        # row by row can give every row a different one, so nothing here is
+        # read off a single album-wide winner.
+        if incoming is not None:
             outcome = Outcome.FILLED if image is None else Outcome.REPLACED
         else:
-            outcome = Outcome.SAME if on_cover is not None else Outcome.KEPT
-        # Each carrier shows ITS OWN incoming image (#479). The folder cover can
-        # be taking a better one than the tracks are — that is the whole point
-        # of the asymmetry — so a row drawn from one shared winner would show
-        # the wrong picture on one side of it.
-        incoming, incoming_source = (
-            (the_plan.cover_image, the_plan.cover_source)
-            if folder
-            else (the_plan.winner, the_plan.source)
-        )
+            outcome = Outcome.SAME if folder is not None else Outcome.KEPT
+        from_archive = incoming is not None and incoming.source is Source.ARCHIVE
         return ArtRow(
             image=image,
             tracks=tuple(ref for _, ref in carriers),
             outcome=outcome,
             total_tracks=len(tracks),
             multi_disc=multi_disc,
-            on_cover=on_cover,
-            written_from=_source_label(incoming_source, cover) if writes else None,
-            written_image=incoming if writes else None,
-            from_archive=writes and incoming_source is Source.ARCHIVE,
+            folder=folder,
+            written_from=_source_label(incoming.source, cover) if incoming else None,
+            written_image=incoming.image if incoming else None,
+            from_archive=from_archive,
             # Read off the stored answer rather than the image: which listing
             # replied is a fact about where the picture came from, and the bytes
             # carry no trace of it (#496).
-            from_release_group=(
-                writes
-                and incoming_source is Source.ARCHIVE
-                and caa is not None
-                and caa.from_release_group
-            ),
-            creates=creates,
+            from_release_group=from_archive and caa is not None and caa.from_release_group,
+            carriers=keys,
+            has_archive=archive is not None
+            and image is not None
+            and image.digest == archive.digest,
+            takes_archive=archive is not None
+            and incoming is not None
+            and incoming.image.digest == archive.digest,
         )
 
-    def cover_written(digest: str) -> bool:
-        return cover_change is not None and cover_change.before == digest
-
-    rows = []
-    for digest, carriers in by_digest.items():
-        # The folder cover shares this row only while it shares this row's FATE
-        # (#479). Since the tracks and the cover can be taking different images
-        # — the tracks keeping theirs while the cover takes a better one — a row
-        # reading "All 12 tracks and cover.jpg" would have to show two incoming
-        # pictures at once. When they diverge the cover gets its own row below.
-        on_cover = (
-            cover.name
-            if cover is not None and cover.image.digest == digest and cover_change is None
-            else None
-        )
-        rows.append(
-            row(
-                art_of[digest],
-                carriers,
-                any(path in written for path, _ in carriers),
-                on_cover=on_cover,
-            )
-        )
-    # The folder cover is a carrier too, and gets a row of its own when no track
-    # already accounts for it (#400) — the album HAS this image, whatever the
-    # tracks carry, and a reader deciding what applying would do needs to see it
-    # beside the rest rather than only as something arriving from outside.
-    if cover is not None and (cover.image.digest not in by_digest or cover_change is not None):
-        existing: FolderCover = cover
-        rows.append(
-            row(
-                existing.image,
-                (),
-                cover_written(existing.image.digest),
-                on_cover=existing.name,
-                folder=True,
-            )
-        )
-    # …and when there is no folder cover and the plan makes one, that is a row
-    # too: an empty frame on the left, the image it will hold on the right. It
-    # was a sentence while nothing but a tagging could create it, because a row
-    # counts toward the section's action and that action could not (#457).
-    if cover is None and cover_change is not None:
-        rows.append(row(None, (), True, creates=cover_change.target.name, folder=True))
+    # One row per group of tracks sharing an image, then the tracks with none,
+    # then the folder cover — each a single carrier, so a choice made on a row
+    # reaches exactly that row and rows never merge or split under it (#659).
+    rows = [
+        row(art_of[digest], carriers, incoming_for(path for path, _ in carriers), (digest,))
+        for digest, carriers in by_digest.items()
+    ]
     if gap:
-        rows.append(row(None, gap, any(path in written for path, _ in gap)))
+        rows.append(row(None, gap, incoming_for(path for path, _ in gap), (GAP,)))
+    # The folder cover always has a row, whether or not the file exists (#659).
+    # Present, it is an image the album HAS, and the reader deciding what
+    # applying would do needs to see it beside the rest (#400). Absent, it is a
+    # carrier the user can choose an image for — an empty frame like an
+    # artless track's, with whatever the plan would create beside it (#457).
+    #
+    # Not when it exists and could not be read. That arrives here as no cover
+    # at all, and a row saying "not in the folder" would be the opposite of
+    # the truth (#112); the section says what really happened instead.
+    if cover is not None:
+        rows.append(row(cover.image, (), cover_incoming, (COVER,), folder=cover.name))
+    elif not cover_unreadable:
+        name = cover_change.target.name if cover_change is not None else "cover.jpg"
+        rows.append(row(None, (), cover_incoming, (COVER,), folder=name))
 
     return ArtworkView(
         rows=tuple(rows),
@@ -1356,10 +1489,9 @@ def summarise(
         total_tracks=len(tracks),
         unreadable=len(tracks) - len(readable),
         caa=caa,
-        archive_on_tracks=archive_on_tracks,
-        archive_on_cover=archive_on_cover,
         archive=archive,
         cover_unreadable=cover_unreadable,
         plan=the_plan,
         chosen=taken,
+        choices=the_plan.choices,
     )

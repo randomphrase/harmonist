@@ -187,9 +187,10 @@ Harmonist's rules:
 - For `cover.jpg`, the largest image wins, whether it comes from your files or
   the [Cover Art Archive](https://coverartarchive.org) (MusicBrainz's image
   library). When there's a bigger one, the album's page offers it. A missing
-  `cover.jpg` is only created when **Missing folder cover** is turned on in
-  Settings.
-- Albums where tracks have different images, such as compilations, keep them.
+  `cover.jpg` is only suggested when **Missing folder cover** is turned on in
+  Settings, though you can choose an image for it either way.
+- Albums where tracks have different images, such as compilations, keep them
+  unless you choose an image for one of them.
 
 ![The Artwork section, in two columns: Now and After Apply. "All 3 tracks,
 320×320" has nothing after it: the embedded art is kept. "cover.png, 320×320"
@@ -197,8 +198,10 @@ becomes "the Cover Art Archive, 960×960". Under "Also available" is the
 archive's image with a "Use this artwork" link, and an Apply artwork button sits
 at the bottom.](images/artwork.png)
 
-Bigger isn't always better, so **Use this artwork** on any image selects it
-regardless of size.
+Bigger isn't always better, so any row can take the Cover Art Archive's image
+regardless of size, or keep the image it has instead of the one suggested for
+it. A choice reaches only its own row, so a compilation's other covers stay as
+they are.
 
 ## Undo and history
 

@@ -189,6 +189,7 @@ def summarise(
     *,
     cover_unreadable: bool = False,
     chosen: artwork.Source | None = None,
+    choices: artwork.Choices | None = None,
     folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
 ) -> artwork.ArtworkView:
     """`artwork.summarise` for an album at `ALBUM`.
@@ -206,6 +207,7 @@ def summarise(
         archive,
         cover_unreadable=cover_unreadable,
         chosen=chosen,
+        choices=choices or {},
         folder_cover=folder_cover,
     )
 
@@ -231,16 +233,17 @@ def album(
 class TestOutcomes:
     """What a re-tag would do, per row — and which rows say nothing at all."""
 
-    def test_one_image_everywhere_is_a_single_row_that_writes_nothing(self) -> None:
-        """Tracks and folder cover carrying one picture is ONE thing to look at,
-        not a row plus an incoming copy of itself (#400)."""
+    def test_one_image_everywhere_is_two_rows_that_write_nothing(self) -> None:
+        """The tracks and the folder cover are a row each even when they carry
+        one picture (#659): a row is what a choice is made on, and one that
+        split the moment the two were given different images was not."""
         one = art_of(1)
         view = summarise(album(one, one, one), cover_of(one))
 
-        assert len(view.rows) == 1
-        assert view.rows[0].label == "All 3 tracks and cover.jpg"
+        assert [r.label for r in view.rows] == ["All 3 tracks", "cover.jpg"]
         assert view.writes is False
-        assert view.rows[0].writes is False
+        assert not any(r.writes for r in view.rows)
+        assert view.count == "1 image"  # one picture, however many rows
 
     def test_a_differing_folder_cover_gets_its_own_row(self) -> None:
         """It is a file the album HAS. Showing it only as an incoming value read
@@ -300,9 +303,10 @@ class TestOutcomes:
         one = art_of(1)
         view = summarise(album(one, None), None)
 
-        own, created, gap = view.rows
+        own, gap, created = view.rows
         assert own.outcome is artwork.Outcome.KEPT
-        assert (created.creates, created.outcome) == ("cover.png", artwork.Outcome.FILLED)
+        assert created.absent
+        assert (created.folder, created.outcome) == ("cover.png", artwork.Outcome.FILLED)
         assert (gap.is_gap, gap.outcome) == (True, artwork.Outcome.FILLED)
         assert created.written_image == one and gap.written_image == one
         assert view.operation is artwork.Operation.ADDITION
@@ -323,7 +327,7 @@ class TestLabels:
     def test_some_tracks_are_named_by_number(self) -> None:
         one, two = art_of(1), art_of(2)
         rows = summarise(album(one, two, one), None).rows
-        assert [r.label for r in rows] == ["Tracks 1, 3", "Track 2"]
+        assert [r.label for r in rows if r.tracks] == ["Tracks 1, 3", "Track 2"]
 
     def test_consecutive_tracks_collapse_to_a_range(self) -> None:
         one, two = art_of(1), art_of(2)
@@ -343,7 +347,7 @@ class TestLabels:
     def test_a_single_disc_album_does_not_mention_discs(self) -> None:
         one, two = art_of(1), art_of(2)
         rows = summarise(album(one, two, disc=1), None).rows
-        assert [r.label for r in rows] == ["Track 1", "Track 2"]
+        assert [r.label for r in rows if r.tracks] == ["Track 1", "Track 2"]
 
     def test_a_row_of_one_track_carries_its_title(self) -> None:
         """A number is a poor thing to recognise an image by; on a box set of
@@ -378,9 +382,19 @@ class TestRows:
 
     def test_a_cover_no_track_carries_is_a_row_with_no_tracks(self) -> None:
         view = summarise(album(None, None), cover_of(art_of(1)))
-        cover_row = next(r for r in view.rows if r.on_cover)
+        cover_row = next(r for r in view.rows if r.folder)
         assert cover_row.tracks == ()
         assert cover_row.label == "cover.jpg"
+
+    def test_a_missing_folder_cover_is_still_a_row(self) -> None:
+        """Always a row (#659), so it can be chosen for — even where the policy
+        means nothing is suggested for it (#516)."""
+        view = summarise(album(art_of(1)), None, folder_cover=artwork.FolderCoverPolicy.NEVER)
+
+        cover_row = view.rows[-1]
+        assert cover_row.absent and cover_row.label == "cover.jpg"
+        assert cover_row.writes is False
+        assert cover_row.carriers == (artwork.COVER,)
 
     def test_unreadable_files_vote_for_nothing(self) -> None:
         """A file Harmonist cannot open is not a file without artwork (#112)."""
@@ -393,7 +407,7 @@ class TestRows:
         assert view.unreadable == 1
         assert not any(r.is_gap for r in view.rows)
         # Not "All 3 tracks": the third was never read, so the row can't claim it.
-        assert view.rows[0].label == "Tracks 1–2 and cover.jpg"
+        assert view.rows[0].label == "Tracks 1–2"
 
 
 class TestHeadingCount:
@@ -629,28 +643,26 @@ class TestCoverArtArchiveNote:
 
         assert not any(r.from_release_group for r in view.rows)
 
-    def test_an_archive_cover_that_wins_the_tracks_needs_no_sentence(self) -> None:
+    def test_an_archive_cover_that_wins_the_tracks_is_marked_on_the_row(self) -> None:
         """It is the incoming value, shown in that column with the hexagon —
-        saying it in prose as well would say it twice (#433).
+        which the row says, so the picker can say it is coming rather than
+        offer it again (#433, #659).
 
-        WINNING means the tracks (#490). An archive image that is only upgrading
-        `cover.jpg` leaves the tracks their own under #479, and stays offerable
-        to them — the test below. Here the album has nothing embedded, so the
-        archive's image is what every target is getting and there is no half of
-        the album left to offer it to.
+        The picker still offers it: another row may want it, and a picker that
+        vanished whenever the archive won one row would take the choice away
+        from every other (#490).
         """
         # The cached IMAGE as well as the answer: an archive cover that was
         # never downloaded cannot be written, so it cannot win — the tagger
         # reads the same cache.
-        view = summarise(
-            album(None, None),
-            None,
-            self._Answer(1400, 1400),
-            archive=art_of(3, width=1400, height=1400),
-        )
+        theirs = art_of(3, width=1400, height=1400)
+        view = summarise(album(None, None), None, self._Answer(1400, 1400), archive=theirs)
 
-        assert view.plan is not None and view.plan.source is artwork.Source.ARCHIVE
-        assert view.archive_row is None  # not an also-ran; it won
+        gap = next(r for r in view.rows if r.tracks)
+        assert gap.from_archive is True
+        assert gap.written_image == theirs
+        row = view.archive_row
+        assert row is not None and row.image == theirs
 
     def test_a_cover_only_upgrade_still_offers_the_archive_to_the_tracks(self) -> None:
         """The archive's image can be the best thing going for the FOLDER cover
@@ -770,7 +782,7 @@ class TestArchiveWins:
         # The tracks keep theirs (#479); the folder cover the album lacked is
         # created from the archive's, because that is the best image going.
         assert (tracks.outcome, tracks.writes) == (artwork.Outcome.KEPT, False)
-        assert created.creates == "cover.png"
+        assert created.absent and created.folder == "cover.png"
         assert created.written_from == "the Cover Art Archive"
         assert created.written_image == archive
         assert created.from_archive is True
@@ -790,7 +802,7 @@ class TestArchiveWins:
             assert not any(r.writes for r in view.rows if r.tracks)
             # The folder cover it lacks is created from its own image — the
             # winner, and so the largest thing on offer.
-            created = next(r for r in view.rows if r.creates)
+            created = next(r for r in view.rows if r.absent)
             assert created.written_image == mine
 
     def test_per_track_artwork_survives_having_no_folder_cover(self) -> None:
@@ -807,7 +819,7 @@ class TestArchiveWins:
         )
 
         assert not any(r.writes for r in view.rows if r.tracks)
-        created = next(r for r in view.rows if r.creates)
+        created = next(r for r in view.rows if r.absent)
         assert created.from_archive is True
 
 
@@ -916,7 +928,9 @@ class TestTheFolderCoverThatWillBeCreated:
 
     @staticmethod
     def created(view: artwork.ArtworkView) -> artwork.ArtRow | None:
-        return next((r for r in view.rows if r.creates), None)
+        """The missing cover's row, when the plan writes to it. The row itself
+        is always there since #659; a row that CREATES the file is this."""
+        return next((r for r in view.rows if r.absent and r.writes), None)
 
     def test_an_album_with_a_cover_has_no_such_row(self) -> None:
         one = art_of(1)
@@ -960,7 +974,8 @@ class TestTheFolderCoverThatWillBeCreated:
         """The file IS there, unread. A plan that treated it as absent would
         create a second cover beside it (#112)."""
         view = summarise(album(art_of(1)), None, cover_unreadable=True)
-        assert self.created(view) is None
+        # Not even a row saying it is missing: it isn't.
+        assert not any(r.folder for r in view.rows)
         assert view.writes is False
 
     def test_it_puts_the_apply_button_on_the_page(self) -> None:
@@ -972,6 +987,179 @@ class TestTheFolderCoverThatWillBeCreated:
         assert view.writes is True
         assert view.operation is artwork.Operation.ADDITION
         assert view.summary == "There is no cover.png."
+
+
+class TestRowChoices:
+    """Choosing an image row by row (#659), over the size rule's suggestions.
+
+    A choice names CARRIERS: the tracks sharing one image (by its digest), the
+    tracks with none (`GAP`), and the folder cover (`COVER`). What it does not
+    name is left to the size rule, so choosing for one row never quietly drops
+    what the section suggested for another.
+    """
+
+    def test_a_row_takes_the_archive_image_and_the_other_rows_keep_theirs(self) -> None:
+        """A compilation's sleeves are protected from the size rule — and a
+        person choosing an image for one of them, having seen both, is the
+        consent that protection waits for. Only that row's tracks move."""
+        first, second = art_of(1), art_of(2)
+        theirs = art_of(3, width=500, height=500)
+
+        view = summarise(
+            album(first, first, second),
+            None,
+            archive=theirs,
+            choices={first.digest: artwork.Choice.ARCHIVE},
+            folder_cover=artwork.FolderCoverPolicy.NEVER,
+        )
+
+        plan = view.plan
+        assert plan is not None
+        assert {(c.target.name, c.after) for c in plan.changes} == {
+            ("01 Track.m4a", theirs.digest),
+            ("02 Track.m4a", theirs.digest),
+        }
+        assert all(plan.image_for(c).source is artwork.Source.ARCHIVE for c in plan.changes)
+
+    def test_two_rows_can_take_two_different_images_in_one_plan(self) -> None:
+        """The case one incoming image per plan could not hold: the gap keeps
+        the size rule's suggestion (the album's own image) while the row that
+        HAS that image takes the archive's instead."""
+        mine = art_of(1)
+        theirs = art_of(2, width=500, height=500)
+
+        view = summarise(
+            album(mine, None),
+            None,
+            archive=theirs,
+            choices={mine.digest: artwork.Choice.ARCHIVE},
+            folder_cover=artwork.FolderCoverPolicy.NEVER,
+        )
+
+        plan = view.plan
+        assert plan is not None
+        by_name = {c.target.name: plan.image_for(c) for c in plan.changes}
+        assert by_name["01 Track.m4a"].image == theirs
+        assert by_name["01 Track.m4a"].source is artwork.Source.ARCHIVE
+        assert by_name["02 Track.m4a"].image == mine
+        assert by_name["02 Track.m4a"].source is artwork.Source.ALBUM
+
+    def test_keep_drops_the_suggestion_for_that_row_only(self) -> None:
+        mine = art_of(1)
+
+        view = summarise(album(mine, None), None, choices={artwork.GAP: artwork.Choice.KEEP})
+
+        plan = view.plan
+        assert plan is not None
+        assert [c.folder_cover for c in plan.changes] == [True]  # the created cover stays
+
+    def test_choosing_for_the_folder_cover_touches_nothing_else(self) -> None:
+        mine = art_of(1)
+        theirs = art_of(2, width=500, height=500)
+
+        view = summarise(
+            album(mine, mine),
+            cover_of(art_of(3)),
+            archive=theirs,
+            choices={artwork.COVER: artwork.Choice.ARCHIVE},
+        )
+
+        plan = view.plan
+        assert plan is not None
+        (change,) = plan.changes
+        assert change.folder_cover and change.after == theirs.digest
+
+    def test_choosing_the_image_already_there_writes_nothing(self) -> None:
+        """*Far & Off* (#659): the archive's front was already on every track
+        and in `cover.jpg`, so choosing it could only ever be a no-op — and the
+        row says so rather than offering an Apply that is not there."""
+        same = art_of(1)
+
+        view = summarise(
+            album(same, same),
+            cover_of(same),
+            archive=same,
+            choices={same.digest: artwork.Choice.ARCHIVE, artwork.COVER: artwork.Choice.ARCHIVE},
+        )
+
+        assert view.writes is False
+        assert all(r.has_archive for r in view.rows)
+
+    def test_a_choice_on_the_tracks_leaves_the_folder_cover_alone(self) -> None:
+        """Each row is one carrier (#659), so the tracks taking the archive's
+        image says nothing about `cover.jpg`, however alike the two were — and
+        the rows stay as they were drawn, rather than splitting under the user
+        the moment their fates differ."""
+        mine = art_of(1)
+        theirs = art_of(2, width=500, height=500)
+
+        view = summarise(
+            album(mine, mine),
+            cover_of(mine),
+            archive=theirs,
+            choices={mine.digest: artwork.Choice.ARCHIVE},
+        )
+
+        tracks, cover = view.rows
+        assert (tracks.label, tracks.written_image) == ("All 2 tracks", theirs)
+        assert (cover.label, cover.writes) == ("cover.jpg", False)
+        assert tracks.carriers == (mine.digest,) and cover.carriers == (artwork.COVER,)
+
+    def test_a_missing_cover_can_be_chosen_for_whatever_the_policy(self) -> None:
+        """The policy decides what is SUGGESTED (#516); an image the user chose
+        for the missing file is something they asked for (#659)."""
+        mine = art_of(1)
+        theirs = art_of(2, width=500, height=500)
+
+        view = summarise(
+            album(mine),
+            None,
+            archive=theirs,
+            choices={artwork.COVER: artwork.Choice.ARCHIVE},
+            folder_cover=artwork.FolderCoverPolicy.NEVER,
+        )
+
+        cover = view.rows[-1]
+        assert cover.absent and cover.written_image == theirs
+        assert view.operation is artwork.Operation.ADDITION
+
+    def test_a_choice_of_an_image_not_in_hand_is_not_honoured(self) -> None:
+        """Nothing to write: the plan is the size rule's, and the view does not
+        claim a choice it could not act on."""
+        mine = art_of(1)
+
+        view = summarise(
+            album(mine, mine), cover_of(mine), choices={mine.digest: artwork.Choice.ARCHIVE}
+        )
+
+        assert view.writes is False
+        assert view.choices == {}
+
+    def test_a_suggestion_that_is_the_archives_image_is_not_offered_again(self) -> None:
+        """The gap is being filled from the album's own image, and that image is
+        byte for byte the archive's. Choosing the archive's for it would change
+        the label and nothing else, so the row says it is already getting it."""
+        same = art_of(1)
+
+        view = summarise(album(same, None), None, archive=same)
+
+        gap = next(r for r in view.rows if r.is_gap and r.tracks)
+        assert gap.written_from == "the album's own artwork"
+        assert gap.takes_archive is True
+
+    def test_choices_survive_the_round_trip_through_a_form(self) -> None:
+        digest = art_of(1).digest
+        choices = {digest: artwork.Choice.ARCHIVE, artwork.COVER: artwork.Choice.KEEP}
+
+        assert artwork.parse_choices(artwork.format_choices(choices)) == choices
+
+    def test_a_hand_made_choice_is_read_as_no_choice(self) -> None:
+        """Unknown carriers and unknown choices come only from a request nobody's
+        page sent. Ignored, as `_chosen` ignored an unknown name: the ordinary
+        plan is the safe reading, and the fingerprint still has to match."""
+        assert artwork.parse_choices("../etc=archive,cover=everything,none=keep") == {
+            artwork.GAP: artwork.Choice.KEEP
+        }
 
 
 class TestTheFolderCoverPolicy:
@@ -1001,14 +1189,15 @@ class TestTheFolderCoverPolicy:
         can take."""
         view = summarise(album(art_of(1)), None, self.Answer(art=True), folder_cover=self.NEVER)
 
-        assert next((r for r in view.rows if r.creates), None) is None
+        # The missing cover is still a row (#659) — but nothing is suggested for it.
+        assert not any(r.writes for r in view.rows)
         assert view.writes is False
         assert view.operation is None
 
     def test_the_archive_is_not_advertised_as_coming_to_a_file_that_is_not(self) -> None:
-        """`archive_on_cover` is what the candidate row reads to say the image
-        is already on its way. With no cover coming it is on its way nowhere,
-        and saying otherwise describes a write nobody can make."""
+        """What the picker reads to say the image is already on its way is the
+        rows' incoming side. With no cover coming it is on its way nowhere, and
+        saying otherwise describes a write nobody can make."""
         archive = art_of(2, width=3000, height=3000)
         view = summarise(
             album(art_of(1)),
@@ -1018,9 +1207,9 @@ class TestTheFolderCoverPolicy:
             folder_cover=self.NEVER,
         )
 
-        assert view.archive_on_cover is False
+        assert not any(r.from_archive for r in view.rows)
         assert view.plan is not None
-        assert view.plan.cover_image is None
+        assert view.plan.images == {}  # nothing claims to be coming anywhere
 
     def test_an_explicit_choice_does_not_reach_round_it(self) -> None:
         """**Use this artwork** overrides the SIZE RULE (#472), not the user's
@@ -1076,7 +1265,7 @@ class TestPlan:
 
         view = summarise(album(mine, None), cover_of(unknown))
 
-        tracks, cover_row, gap = view.rows
+        tracks, gap, cover_row = view.rows
         assert tracks.outcome is artwork.Outcome.KEPT
         assert cover_row.writes is False  # an unknown size is never written over
         assert gap.written_image == mine

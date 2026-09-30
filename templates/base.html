@@ -8,13 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code&family=Inter:wght@400;500;600;700;800;900&display=swap">
-    <link rel="stylesheet" href="/static/harmonist.css?v={{ css_version() }}">
+    <link rel="stylesheet" href="/static/harmonist.css?v={{ static_version('harmonist.css') }}">
     <script src="https://unpkg.com/htmx.org@2.0.0"></script>
     {# Idiomorph: DOM-diffing swaps for the inbox (#task-list) so a rescan-driven
        re-render morphs changed nodes instead of replacing the whole list — no
        flicker, and an in-progress match search keeps focus/scroll. #}
     <script src="https://unpkg.com/idiomorph@0.7.4/dist/idiomorph-ext.min.js"></script>
-    <script src="/static/artwork-viewer.js" defer></script>
+    <script src="/static/artwork-viewer.js?v={{ static_version('artwork-viewer.js') }}" defer></script>
 </head>
 <body class="bg-white text-ink font-sans" hx-ext="morph">
 

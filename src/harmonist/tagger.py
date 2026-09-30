@@ -169,6 +169,7 @@ class Tagger(Protocol):
         scope: artwork.Scope | None = None,
         artwork_included: bool = True,
         chosen: artwork.Source | None = None,
+        choices: artwork.Choices | None = None,
         assignment: dict[Path, int] | None = None,
         folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
         transforms: frozenset[TagTransform] = frozenset(),
@@ -194,6 +195,7 @@ class PicardCompatibleTagger:
         scope: artwork.Scope | None = None,
         artwork_included: bool = True,
         chosen: artwork.Source | None = None,
+        choices: artwork.Choices | None = None,
         assignment: dict[Path, int] | None = None,
         folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
         transforms: frozenset[TagTransform] = frozenset(),
@@ -210,6 +212,7 @@ class PicardCompatibleTagger:
             scope=scope,
             artwork_included=artwork_included,
             chosen=chosen,
+            choices=choices,
             assignment=assignment,
             folder_cover=folder_cover,
             transforms=transforms,
@@ -437,9 +440,7 @@ def plan_album(
             # `tag_album` hands `write_tags`. Every file differing from the
             # winner used to be reported here, including the ones a tagging
             # leaves alone since #418.
-            prep.art.winner.digest
-            if prep.art.winner is not None and file_path in prep.art_targets
-            else None,
+            prep.art_after.get(file_path),
         ):
             changes[file_path] = file_changes
     for path, target in prep.unassigned.items():
@@ -608,11 +609,10 @@ class _Prepared:
     #: The album's artwork plan, whole. What this tagging writes of it is
     #: `art_targets` and `cover_change`.
     art: artwork.ArtworkPlan
-    #: The winning image's bytes, loaded only when this tagging writes it —
-    #: None to leave every file's own art alone.
-    cover: bytes | None
-    #: …and its digest, for the per-file records.
-    art_after: str | None
+    #: The image each file in `art_targets` would take, by digest, for the
+    #: per-file records — a file each, because a user choosing row by row can
+    #: give two rows two different images (#659). Empty when nothing is written.
+    art_after: Mapping[Path, str]
     media_total: int
     #: Every album title that counts as already correct: MusicBrainz's, plus
     #: Picard's disambiguated spelling of it where the release carries a
@@ -639,7 +639,6 @@ class _Prepared:
     #: and the image it gets — its own, which may be better than the tracks'
     #: (#479).
     cover_change: artwork.Change | None = None
-    folder_image: bytes | None = None
     #: The page's preview no longer matches the plan, so this tagging writes no
     #: artwork at all (#469).
     art_withheld: bool = False
@@ -654,6 +653,7 @@ def decide_artwork(
     overwrite_art: bool = False,
     consider: bool = True,
     chosen: artwork.Source | None = None,
+    choices: artwork.Choices | None = None,
     folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
 ) -> artwork.ArtworkPlan:
     """The album's artwork plan, read from its files (#418, #469).
@@ -686,6 +686,9 @@ def decide_artwork(
     image from the one the page showed — silently, and only when the user had
     overridden the rule.
 
+    `choices` are the same, made row by row (#659), and ride here for the same
+    reason.
+
     `folder_cover` is the user's policy on creating one the album has not got
     (#516), and it rides here for the reason `chosen` does: the plan is rebuilt
     at write time, so a caller that dropped it would rebuild the plan the
@@ -707,6 +710,7 @@ def decide_artwork(
         formats.EmbeddedArt.of(archive.data, archive.mime) if archive is not None else None,
         overwrite_art=overwrite_art,
         chosen=chosen,
+        choices=choices,
         folder_cover=folder_cover,
     )
 
@@ -834,20 +838,13 @@ def _prepare(
     withheld = expected_artwork is not None and art.fingerprint(scope) != expected_artwork
     art_targets = frozenset() if withheld else art.track_targets(scope)
     cover_change = None if withheld else art.cover_change(scope)
-    # The bytes only when something is really written. With `cover=None`
-    # write_tags leaves the existing art alone, so an album that needs nothing
-    # costs no second read of its winner (#44, #74).
-    cover: bytes | None = None
-    folder_image: bytes | None = None
-    if art_targets or cover_change is not None:
+    # The images are READ only when something would really be written, and
+    # read to prove they are still where the plan found them: an album that
+    # needs nothing costs no second read of its winner (#44, #74).
+    written = () if withheld else art.scoped(scope)
+    if written:
         try:
-            if art_targets:
-                cover = _image_bytes(art, art.winner, art.source, cover_path, archive)
-            if cover_change is not None:
-                # Its own image, which may be the better one (#479).
-                folder_image = _image_bytes(
-                    art, art.cover_image, art.cover_source, cover_path, archive
-                )
+            _load_images(art, written, cover_path, archive)
         except ArtworkChangedError:
             # Between reading the album and loading the image, the image moved.
             # Tag without it rather than write something the plan never named.
@@ -859,19 +856,16 @@ def _prepare(
                 extra={"album_id": sidecar_mod.album_id_for(album_dir)},
             )
             art_targets, cover_change = frozenset(), None
-            cover, folder_image = None, None
 
     return _Prepared(
         files=files,
         pairs=pairs,
         unassigned=unassigned,
         art=art,
-        cover=cover,
-        folder_image=folder_image,
         # Only now is it settled that the embed is really happening — the
         # per-track-art guard may have cancelled it, and the preview check may
         # have withheld it.
-        art_after=art.winner.digest if cover is not None and art.winner is not None else None,
+        art_after={c.target: c.after for c in art.changes if c.target in art_targets},
         art_targets=art_targets,
         cover_change=cover_change,
         art_withheld=withheld,
@@ -998,8 +992,7 @@ class ArtworkChangedError(Exception):
 
 def _image_bytes(
     plan: artwork.ArtworkPlan,
-    image: formats.EmbeddedArt | None,
-    source: artwork.Source | None,
+    incoming: artwork.Incoming,
     cover_path: Path | None,
     archive: cover_art.Front | None,
 ) -> bytes:
@@ -1012,12 +1005,9 @@ def _image_bytes(
     moment — and anything that has moved since the plan was made is refused
     rather than written.
 
-    Asked once per distinct image an action writes. Usually that is one; an
-    album whose folder cover is deliberately better than its embedded art has
-    two (#479), and they are read the same way.
+    Asked once per distinct image an action writes (`_load_images`).
     """
-    if image is None:
-        raise ArtworkChangedError("the plan writes no image")
+    image, source = incoming.image, incoming.source
     data: bytes | None = None
     try:
         if source is artwork.Source.FOLDER and cover_path is not None:
@@ -1033,6 +1023,28 @@ def _image_bytes(
     if data is None or images.digest(data) != image.digest:
         raise ArtworkChangedError("the winning image is no longer where the plan found it")
     return data
+
+
+def _load_images(
+    plan: artwork.ArtworkPlan,
+    changes: Sequence[artwork.Change],
+    cover_path: Path | None,
+    archive: cover_art.Front | None,
+) -> dict[str, bytes]:
+    """The bytes of every distinct image `changes` write, by digest — all of
+    them before anything is written.
+
+    Usually one image; an album whose folder cover is deliberately better than
+    its embedded art has two (#479), and a user choosing row by row can give
+    every row its own (#659). All loaded up front for two reasons: a failure
+    then costs nothing, and an image read from the album's own tracks has to be
+    read before the write that replaces those tracks' copies.
+    """
+    loaded: dict[str, bytes] = {}
+    for change in changes:
+        if change.after not in loaded:
+            loaded[change.after] = _image_bytes(plan, plan.image_for(change), cover_path, archive)
+    return loaded
 
 
 class _Wrote(StrEnum):
@@ -1559,28 +1571,24 @@ def apply_artwork(
     tracks = [c for c in changes if not c.folder_cover]
     cover_change = plan.cover_change(scope)
 
-    # UP TO TWO IMAGES (#479): the tracks' and the folder cover's own, which may
-    # be the better one. Loaded before anything is written, and only the ones
-    # this action really writes — a plan that touches no track reads no track.
-    track_image = (
-        _image_bytes(plan, plan.winner, plan.source, cover_path, archive) if tracks else None
-    )
-    folder_image = (
-        _image_bytes(plan, plan.cover_image, plan.cover_source, cover_path, archive)
-        if cover_change is not None
-        else None
-    )
+    # Every image this action writes — the tracks' and the folder cover's own,
+    # which may be the better one (#479), and one per row a user chose for
+    # (#659). Loaded before anything is written, and only the ones this action
+    # really writes — a plan that touches no track reads no track.
+    loaded = _load_images(plan, changes, cover_path, archive)
+    track_digests = list(dict.fromkeys(c.after for c in tracks))
 
     # Before anything is written, and for the same reason `tag_album` records
     # its `tag.album` line first: a crash part-way through leaves evidence of
-    # what was attempted rather than silence.
+    # what was attempted rather than silence. `digest` names each image the
+    # tracks take, in album order; usually that is one.
     audit.record(
         "artwork.update",
         album_id=album_id,
         album=album_dir,
         files=len(tracks),
-        digest=plan.winner.digest if tracks and plan.winner else "-",
-        cover=plan.cover_image.digest if cover_change is not None and plan.cover_image else "-",
+        digest=",".join(track_digests) or "-",
+        cover=cover_change.after if cover_change is not None else "-",
         scope=scope.value,
     )
     # Keep whatever is about to be destroyed — every track AND the folder cover,
@@ -1603,9 +1611,8 @@ def apply_artwork(
         if change.before is not None and change.before not in kept:
             unkept.append(name)
             continue
-        assert track_image is not None  # there are track changes, so it loaded
         try:
-            formats.write_cover(change.target, track_image)
+            formats.write_cover(change.target, loaded[change.after])
         except formats.WRITE_ERRORS:
             # One file's failure, not the tagging's (#494). Artwork is written
             # AFTER the tags, so letting this propagate threw away the report of
@@ -1630,9 +1637,14 @@ def apply_artwork(
                 event_id, file=name, changes={owned.ARTWORK: [change.before, change.after]}
             )
 
-    if cover_change is not None and folder_image is not None:
+    if cover_change is not None:
         wrote = _write_folder_cover(
-            album_dir, cover_change, folder_image, plan.cover_source, album_id, kept
+            album_dir,
+            cover_change,
+            loaded[cover_change.after],
+            plan.image_for(cover_change).source,
+            album_id,
+            kept,
         )
         if wrote is _Wrote.WRITTEN:
             changed += 1
@@ -1697,6 +1709,7 @@ def tag_and_artwork(
     scope: artwork.Scope | None = None,
     artwork_included: bool = True,
     chosen: artwork.Source | None = None,
+    choices: artwork.Choices | None = None,
     assignment: dict[Path, int] | None = None,
     folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
     transforms: frozenset[TagTransform] = frozenset(),
@@ -1770,7 +1783,8 @@ def tag_and_artwork(
     # the album after that write, and let the caller finish its bookkeeping.
     album_id = sidecar_mod.album_id_for(album_dir)
     label = album_label(release, album_dir)
-    # `chosen` rides along with the fingerprint, never instead of it (#488): the
+    # `chosen` — and `choices`, the same made row by row (#659) — rides along
+    # with the fingerprint, never instead of it (#488): the
     # plan is rebuilt here, so a choice the page made must be made again or the
     # rebuilt plan is a different one — matching its own fingerprint, and writing
     # the image the size rule prefers over the image the user picked.
@@ -1783,6 +1797,7 @@ def tag_and_artwork(
             archive=archive,
             overwrite_art=overwrite_art,
             chosen=chosen,
+            choices=choices,
             folder_cover=folder_cover,
         )
     except OSError:

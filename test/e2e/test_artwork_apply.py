@@ -129,10 +129,11 @@ def test_apply_artwork_writes_what_the_section_showed(demo_server: str) -> None:
 
         # …and it matched: the section redrew from the files it just wrote, with
         # nothing left to apply, rather than coming back to say the album had
-        # changed under it.
+        # changed under it. The Apply button going is the sign — the After
+        # Apply heading stays while the picker is there to choose with (#659).
         page.wait_for_function(
-            "() => !document.querySelector('#album-artwork')"
-            ".innerText.toLowerCase().includes('after apply')"
+            """() => !document.querySelector(
+                '#album-artwork form[hx-post$="/artwork/update"]')"""
         )
         assert "changed after the page showed it" not in section.inner_text().lower()
 

@@ -736,14 +736,20 @@ def create_app(
     # Evaluated per-render (callable, not a constant) so the header's
     # Sync/Set-up button flips the moment cookies are saved.
     templates.env.globals["bandcamp_configured"] = lambda: _bandcamp_configured(cfg)
-    # Cache-bust the CSS link by the bundle's mtime, so a rebuilt stylesheet is
-    # always re-fetched — a newly-added utility class can't be missed because
-    # the browser served a stale bundle. Re-read per render (cheap stat) so a
-    # `make css` during dev takes effect without a server restart.
-    css_file = static_dir / "harmonist.css"
-    templates.env.globals["css_version"] = lambda: (
-        int(css_file.stat().st_mtime) if css_file.exists() else 0
-    )
+
+    # Cache-bust the static links by each file's mtime, so a rebuilt stylesheet
+    # or a changed script is always re-fetched — a newly-added utility class
+    # can't be missed because the browser served a stale bundle. The script
+    # needs it as much as the stylesheet: with no Cache-Control, Safari reuses a
+    # file by heuristic for a long time, and served an `artwork-viewer.js` that
+    # predated the Artwork section's row controls, which then did nothing
+    # (#659). Re-read per render (cheap stat) so a `make css` during dev takes
+    # effect without a server restart.
+    def static_version(name: str) -> int:
+        path = static_dir / name
+        return int(path.stat().st_mtime) if path.exists() else 0
+
+    templates.env.globals["static_version"] = static_version
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -2597,15 +2603,15 @@ def _widest(view: artwork.ArtworkView) -> int:
     return max((r.image.size.width for r in view.images if r.image and r.image.size), default=0)
 
 
-def _chosen(use: str) -> artwork.Source | None:
-    """The candidate a request names, or None for the size rule's answer (#472).
-
-    One spelling, read by the section's render and by the action that follows,
-    so the plan the fingerprint was taken from is the plan that gets applied.
-    An unknown name is no choice at all rather than an error: it can only come
-    from a hand-made request, and the ordinary section is the safe answer.
-    """
-    return artwork.Source.ARCHIVE if use == "archive" else None
+def _selected_row(view: artwork.ArtworkView, carriers: Sequence[str], fallback: int) -> int:
+    """Which row the Artwork section's picker sits beside (#659): the first row
+    standing for any of `carriers`, or `fallback` when none does — clamped, so
+    an index from a page with more rows never selects nothing at all."""
+    wanted = set(carriers)
+    found = next((i for i, r in enumerate(view.rows) if wanted & set(r.carriers)), None)
+    if found is not None:
+        return found
+    return fallback if 0 <= fallback < len(view.rows) else 0
 
 
 def _folder_cover_policy(request: Request) -> artwork.FolderCoverPolicy:
@@ -2643,6 +2649,7 @@ def _artwork_view(
     *,
     folder_cover: artwork.FolderCoverPolicy,
     chosen: artwork.Source | None = None,
+    choices: artwork.Choices | None = None,
     tracks: _FileTags | None = None,
 ) -> artwork.ArtworkView:
     """What the album page's Artwork section shows (#155).
@@ -2685,7 +2692,14 @@ def _artwork_view(
             tracks = [(f, formats.read_tags(f)) for f in files]
     if album.cover_path is None or not album.cover_path.exists():
         return artwork.summarise(
-            album.path, tracks, None, caa, archive, chosen=chosen, folder_cover=folder_cover
+            album.path,
+            tracks,
+            None,
+            caa,
+            archive,
+            chosen=chosen,
+            choices=choices,
+            folder_cover=folder_cover,
         )
     try:
         data = album.cover_path.read_bytes()
@@ -2703,6 +2717,7 @@ def _artwork_view(
             archive,
             cover_unreadable=True,
             chosen=chosen,
+            choices=choices,
             folder_cover=folder_cover,
         )
     mime = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
@@ -2712,7 +2727,14 @@ def _artwork_view(
         path=album.cover_path,
     )
     return artwork.summarise(
-        album.path, tracks, cover, caa, archive, chosen=chosen, folder_cover=folder_cover
+        album.path,
+        tracks,
+        cover,
+        caa,
+        archive,
+        chosen=chosen,
+        choices=choices,
+        folder_cover=folder_cover,
     )
 
 
@@ -3642,6 +3664,7 @@ def _tag_with_release(
     artwork_included: bool = True,
     scope: artwork.Scope | None = None,
     chosen: artwork.Source | None = None,
+    choices: artwork.Choices | None = None,
     expected_release: str | None = None,
     assignment_draft: track_assignment.Draft | None = None,
     release_artwork_only: bool = False,
@@ -3809,8 +3832,10 @@ def _tag_with_release(
         artwork_included=artwork_included,
         scope=scope,
         # The candidate the user chose, so the plan rebuilt at write time is the
-        # one they were shown rather than the one the size rule prefers (#488).
+        # one they were shown rather than the one the size rule prefers (#488) —
+        # and the ones chosen row by row, for the same reason (#659).
         chosen=chosen,
+        choices=choices,
         assignment=assignment,
         # The album page built its preview under this same policy, so the plan
         # rebuilt at write time is the one the fingerprint was taken of (#516).
@@ -5473,11 +5498,11 @@ def _register_routes(app: FastAPI) -> None:
         loaded — the re-tag then writes what its own plan says, as every
         tagging without a page does.
 
-        `use` is the candidate the user chose, spelled as the Artwork section's
-        own render spells it (#472, #488). The plan is REBUILT here, so the
-        choice has to be made again: without it the rebuilt plan is the size
-        rule's, which matches its own fingerprint and writes the image the user
-        had just overridden. It arrives with `art_plan` and
+        `use` is the choices the user made row by row, spelled as the Artwork
+        section's own render spells them (#472, #488, #659). The plan is
+        REBUILT here, so the choices have to be made again: without them the
+        rebuilt plan is the size rule's, which matches its own fingerprint and
+        writes the image the user had just overridden. It arrives with `art_plan` and
         `artwork_scope` from the section's own element, which is what keeps all
         three describing one plan.
 
@@ -5542,10 +5567,10 @@ def _register_routes(app: FastAPI) -> None:
                 # only come from a hand-made request, and a tagging that fills
                 # gaps is the safe reading of one (#482).
                 scope=(artwork.Scope.ALL if artwork_scope == "all" else artwork.Scope.ADDITIONS),
-                # …and an unknown candidate name is no choice at all, for the
-                # same reason — `_chosen` is the one spelling the section's
-                # render and this share (#472).
-                chosen=_chosen(use),
+                # …and a choice nobody's page drew is no choice at all, for the
+                # same reason — `parse_choices` is the one spelling the
+                # section's render and this share (#472, #659).
+                choices=artwork.parse_choices(use),
             )
         except mb_lookup.ReleaseGoneError:
             # Not a failure to report as one: MusicBrainz has deleted the release
@@ -6022,6 +6047,10 @@ def _register_routes(app: FastAPI) -> None:
         check: bool = False,
         reread: bool = False,
         use: str = "",
+        row: str = "",
+        pick: str = "",
+        drop: str = "",
+        selected: int = 0,
     ) -> Response:
         """The Artwork section (#155), fetched after the page paints.
 
@@ -6045,10 +6074,19 @@ def _register_routes(app: FastAPI) -> None:
         Both asking forms go through `caa_cache`, so a forced check still
         refreshes the stored row and still sends the stored etag.
 
-        `?use=archive` previews the archive's image as the chosen one (#472),
-        however it measures. It WRITES NOTHING: choosing is a render, and the
-        Apply button in that state carries the choice back with the fingerprint
-        of the plan this response showed.
+        `?use=` previews the choices made row by row (#472, #659) — the
+        archive's image on a row however it measures, or a row kept as it is
+        over the size rule's suggestion. It WRITES NOTHING: choosing is a
+        render, and the Apply button in that state carries the choices back
+        with the fingerprint of the plan this response showed.
+
+        The picker's form sends the rest: `row`, the checked row's carriers;
+        `pick`, the image pressed for it; and `drop`, the carriers of a row
+        whose incoming image was removed. The next set of choices is composed
+        HERE, from those, rather than spelled out by each button — one place
+        decides what a press means, and the page stays a form of plain values.
+        `selected` is which row the picker was on, for a response that has no
+        `row` to find it by (the out-of-band archive check).
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
@@ -6061,17 +6099,29 @@ def _register_routes(app: FastAPI) -> None:
             )
         caa = caa_cache.stored(mbid) if mbid else None
         archive = _archive_image(mbid)
+        choices = artwork.parse_choices(use)
+        # Composed through `parse_choices` like everything else a request
+        # carries, so a carrier nobody's page drew is dropped the same way.
+        if pick:
+            choices |= artwork.parse_choices(",".join(f"{c}={pick}" for c in row.split()))
+        if drop:
+            choices |= artwork.parse_choices(",".join(f"{c}=keep" for c in drop.split()))
         view = _artwork_view(
-            album, caa, archive, chosen=_chosen(use), folder_cover=_folder_cover_policy(request)
+            album, caa, archive, choices=choices, folder_cover=_folder_cover_policy(request)
         )
         ctx = _ctx(
             request,
             album=album,
             artwork=view,
+            # The picker stays on the row it was on. Rows are re-derived from the
+            # new plan and can merge or split (#479), so it is found again by
+            # what it stands for rather than by position.
+            artwork_selected=_selected_row(view, row.split(), selected),
             # Asked for an image that is not here — the cache dropped it, or it
             # was never loaded. Said rather than quietly showing the ordinary
             # plan instead, which would be the unannounced fallback #472 forbids.
-            artwork_choice_unavailable=bool(use) and archive is None,
+            artwork_choice_unavailable=artwork.Choice.ARCHIVE in choices.values()
+            and archive is None,
             # Whether this response should ask the browser to come back and put
             # the question to the archive (#436). Never on a response that has
             # just tried: a check that failed leaves the answer stale, and a
@@ -6167,10 +6217,10 @@ def _register_routes(app: FastAPI) -> None:
         else. No MusicBrainz request either way: the archive's image comes from
         the same local cache the page read.
 
-        `use` is the candidate the user chose, when they chose one (#472). The
-        plan is rebuilt with that same choice, so the fingerprint compared here
-        is the one the page showed — a choice that has since become impossible
-        simply fails the comparison, and the section comes back to be looked at.
+        `use` is the choices the user made, row by row (#472, #659). The plan is
+        rebuilt with those same choices, so the fingerprint compared here is the
+        one the page showed — a choice that has since become impossible simply
+        fails the comparison, and the section comes back to be looked at.
 
         Re-renders the section, so what the page shows afterwards is what is now
         on disk rather than what was proposed a moment ago.
@@ -6178,12 +6228,11 @@ def _register_routes(app: FastAPI) -> None:
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
         caa = caa_cache.stored(mbid) if mbid else None
-        chosen = _chosen(use)
         view = _artwork_view(
             album,
             caa,
             _archive_image(mbid),
-            chosen=chosen,
+            choices=artwork.parse_choices(use),
             folder_cover=_folder_cover_policy(request),
         )
 
@@ -6255,7 +6304,9 @@ def _register_routes(app: FastAPI) -> None:
         return section()
 
     @app.post("/album/{album_id}/artwork/load-archive", response_class=HTMLResponse)
-    def album_load_archive_image(request: Request, album_id: str) -> Response:
+    def album_load_archive_image(
+        request: Request, album_id: str, use: str = Form(""), row: str = Form("")
+    ) -> Response:
         """Fetch the archive's cover so it can be looked at, even though it lost
         on size (#448).
 
@@ -6273,6 +6324,10 @@ def _register_routes(app: FastAPI) -> None:
         LOUD on failure, unlike the page-open check (#436). That one is silent
         because nobody asked for it; somebody pressed this and is waiting for a
         picture.
+
+        `use` and `row` are the picker's form, which this button sits in
+        (#659): the choices already made and the row the picker is on, both
+        kept, so loading the picture does not undo what was chosen before it.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
@@ -6298,15 +6353,21 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "Couldn't load the archive's cover", str(e), level=Level.ERROR, tasks_changed=False
             )
+        view = _artwork_view(
+            album,
+            answer,
+            _archive_image(mbid),
+            choices=artwork.parse_choices(use),
+            folder_cover=_folder_cover_policy(request),
+        )
         return _templates(request).TemplateResponse(
             request,
             "partials/_artwork.html",
             _ctx(
                 request,
                 album=album,
-                artwork=_artwork_view(
-                    album, answer, _archive_image(mbid), folder_cover=_folder_cover_policy(request)
-                ),
+                artwork=view,
+                artwork_selected=_selected_row(view, row.split(), 0),
                 # Nothing was asked of the archive's LISTING, so its timestamp
                 # has not moved and this response has no reason to send anyone
                 # back to ask (#436).

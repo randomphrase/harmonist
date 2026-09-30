@@ -36,6 +36,16 @@
    take the hexagon — that mark means MusicBrainz specifically, and a folder
    cover may have come from a Bandcamp download. It arrives with #276, where the
    winning image really can be the Cover Art Archive's. #}
+{#- One container for everything the section draws, with its own spacing. The
+    section reaches this markup two ways — straight into `#album-artwork`, or
+    inside the out-of-band wrapper /compare sends (`_artwork_section.html`),
+    which stays in the page — and `#album-artwork`'s own `space-y-3` spaced its
+    children in the one case and the wrapper in the other. The heading gained
+    a margin the moment a choice re-rendered the section, and the whole table
+    moved down under the user's pointer (#659). With one container the layout
+    is the same however the section arrived. The out-of-band elements at the
+    foot stay outside it: htmx only finds them at the top level. -#}
+<div class="space-y-3">
 <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
     Artwork
     {% if artwork.count %}
@@ -65,23 +75,6 @@
 </p>
 {% endif %}
 
-{# The image the user chose, previewed (#472). Nothing is written yet: this is
-   the same section drawn against a different winner, and Apply below is still
-   the press that writes. Said plainly, because the rows underneath otherwise
-   look like the size rule's answer — and this is deliberately not it. #}
-{% if artwork.chosen %}
-<p class="text-sm text-muted">
-    Showing what applying the <strong>Cover Art Archive's</strong> image would
-    do, because you chose it — whatever its size. Nothing is written until you
-    apply it.
-    <button type="button"
-            hx-get="/album/{{ album.id }}/artwork"
-            hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
-            class="art-row__choose"
-            aria-label="Go back to the best image">use the best image instead</button>
-</p>
-{% endif %}
-
 {# Asked for a chosen image that is not here any more. The section below is the
    ordinary plan, and saying so is the point: falling back to it in silence
    would write something other than what was asked for. #}
@@ -108,20 +101,52 @@
     {% endif %}
 {% endmacro %}
 
-{# The three things a reader is weighing are what the album HAS, what a re-tag
-   would WRITE, and what the archive HOLDS (#447). The first two are this
-   block's own columns; the third is the block after it, and this wrapper is
-   what stands them side by side — a column each, headings level, rather than
-   the third stranded low and to the right under rows it is a peer of.
+{# The three things a reader is weighing are what the album HAS, what applying
+   would WRITE, and what the archive HOLDS (#447): Now, After Apply, and the
+   picker beside them (#659).
 
-   Side by side ONLY when there is something in the middle column. An album
-   where nothing would be written has no three-way comparison to draw, and the
-   archive's block is fine trailing the rows there. The wrapper is emitted
-   either way, so the two blocks keep one spacing rule between them. #}
-<div class="art-compare{% if artwork.writes and artwork.archive_row %} art-compare--split{% endif %}">
+   The picker belongs to ONE ROW AT A TIME, the one whose radio is checked, and
+   sits beside it — the way MusicBrainz's own recording picker does — so its
+   button can name what it is about to change ("Use for Tracks 1–8") rather than
+   leave the reader to work out which row an arrow points at. Moving it is CSS
+   alone: the rows and the picker are items of one grid, and the rules below
+   put the picker on the checked row's grid line. The radios keep their native
+   keyboard behaviour — arrow keys move between rows — and the picker's own ↑
+   and ↓ only move the check.
+
+   ONE FORM around all of it, and every control in it a submit button carrying
+   its own name and value: htmx sends the submitter, so the server gets the
+   choices already made (`use`), the selected row (`row`), and what was pressed
+   (`pick` or `drop`), and composes the next set itself. Choosing is a GET,
+   because it is a RENDER — it writes nothing, and Apply below is still the
+   press that does. `hx-trigger` is not written, so the form keeps its default
+   `submit` (web-ui rule 2b).
+
+   Without a candidate there is nothing to pick, and the section is the plain
+   two columns it always was: no radios, no picker, nothing in the form that
+   submits it. #}
+{% set picker = artwork.archive_row %}
+{% set selected = artwork_selected|default(0) %}
+<form id="art-pick-{{ album.id }}"
+      class="art-compare{% if picker %} art-compare--pick{% endif %}"
+      hx-get="/album/{{ album.id }}/artwork"
+      hx-target="#album-artwork" hx-swap="innerHTML settle:0ms">
+{% if picker %}
+<input type="hidden" name="use" value="{{ artwork.use }}">
+{#- Where the picker sits, one rule per row: the checked row's grid line, and
+    which of its Use buttons is the checked row's. Generated because a row
+    count is not something a stylesheet knows; scoped to this album's form so
+    two sections could never move each other's picker. -#}
+<style>
+{% for r in artwork.rows %}
+#art-pick-{{ album.id }}:has(#art-sel-{{ album.id }}-{{ loop.index }}:checked) .art-pick__picker { --art-pick-row: {{ loop.index + 1 }}; }
+#art-pick-{{ album.id }}:has(#art-sel-{{ album.id }}-{{ loop.index }}:checked) .art-pick__for[data-row="{{ loop.index }}"] { display: block; }
+{% endfor %}
+</style>
+{% endif %}
 {% if artwork.rows %}
 <div class="art-rows">
-    {% if artwork.writes %}
+    {% if artwork.writes or picker %}
     <div class="art-rows__head">
         <span>Now</span>
         <span>After Apply</span>
@@ -136,17 +161,35 @@
         <div class="art-row__side">
         {{ image_cell(r.image, album.id, r.label) }}
         <div class="art-row__facts">
+            {% if picker %}
+            {# Selecting a row is clicking it — anywhere on it: the label is
+               stretched over the whole row (`.art-row__select::after`), and the
+               row's own buttons sit above it. The radio is there for the
+               keyboard and for assistive technology, and drawn by the row
+               instead: a bar down its edge and its name in the picker's colour.
+               `row` names the row's carriers — what a choice made here reaches.
+               Selecting changes no choice and no suggestion; it only says which
+               row the picker is offering for. #}
+            <label class="art-row__who art-row__select">
+                <input type="radio" name="row" value="{{ r.carriers|join(' ') }}"
+                       id="art-sel-{{ album.id }}-{{ loop.index }}" class="art-row__radio"
+                       {% if loop.index0 == selected %}checked{% endif %}>
+                {{ r.label }}
+            </label>
+            {% else %}
             <span class="art-row__who">{{ r.label }}</span>
+            {% endif %}
             {# The track's own name, where the row is one track: a number is a
                poor thing to recognise an image by, and on a box set of episodes
                the title is how you know which one this is. #}
             {% if r.title %}<span class="art-row__title">{{ r.title }}</span>{% endif %}
             {% if r.image %}
             <span class="art-row__meta">{{ describe_image(r.image) }}</span>
-            {% elif r.creates %}
-            {# A folder cover the album does not have yet (#457): the empty
-               frame is the finding, the picture beside it what will fill it. #}
-            <span class="art-row__meta-plain">not in the folder yet</span>
+            {% elif r.absent %}
+            {# A folder cover the album does not have (#457, #659): the empty
+               frame is the finding, and the row is there to be chosen for
+               whether or not anything is suggested for it. #}
+            <span class="art-row__meta-plain">not in the folder</span>
             {% else %}
             {# Named, not counted: the remedy is per file, so the user needs to
                know which files to look at. #}
@@ -187,7 +230,28 @@
                 {% if r.from_release_group %}
                 <span class="art-row__meta-plain">for the release group, not this release</span>
                 {% endif %}
+                {# The way to keep what the row has instead (#659), whether the
+                   size rule suggested this or the user chose it: either way it is
+                   the incoming image, and this drops it. Beside the image it drops
+                   rather than in the picker, because it is about this row
+                   whichever row the picker is on. A small ×, named for what it
+                   does: its accessible name says which row it keeps. #}
+                {% if picker %}
+                <button type="submit" name="drop" value="{{ r.carriers|join(' ') }}"
+                        class="art-row__drop" title="Remove: keep the image this row has now"
+                        aria-label="Keep the current artwork for {{ r.label }}"><svg
+                    viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor"
+                    stroke-width="2.2" stroke-linecap="round" aria-hidden="true"
+                    ><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+                {% endif %}
             </div>
+        </div>
+        {% elif picker and not r.has_archive %}
+        {# Where the picker's image would land, on the checked row only: the
+           arrow beside the picker points at this. Not on a row that already
+           has the image, where nothing would land at all. #}
+        <div class="art-row__side art-row__side--after">
+            <span class="art-row__slot" aria-hidden="true"></span>
         </div>
         {% endif %}
     </div>
@@ -195,114 +259,106 @@
 </div>
 {% endif %}
 
-{# The archive's cover when it is not what would be written (#433) — a candidate
-   like any other, with a placeholder where the picture would be.
+{# What the archive has, offered to the checked row (#659). A candidate from
+   outside the album, so it is never one of the rows — the column says WHERE an
+   image comes from, and the rows' own marks say whether it is coming (#441).
 
-   The placeholder is honest rather than a stand-in: a losing candidate is never
-   downloaded, so there genuinely is no image to show, and fetching one would
-   spend megabytes on a picture nobody will use.
+   Its heading is a grid item of its own so it lines up with Now and After
+   Apply; the picker below it moves, the heading does not. #}
+{% macro candidate_facts(candidate) %}
+<div class="art-row__facts">
+    <span class="art-row__who">Cover Art Archive</span>
+    <span class="art-row__meta">{{ candidate.meta }}</span>
+    {# Whose cover it is, when it is not this release's (#434). #}
+    {% if candidate.from_release_group %}
+    <span class="art-row__meta-plain">for the release group, not this release</span>
+    {% endif %}
+</div>
+{% endmacro %}
+{% if picker %}
+<span class="art-pick__head">Available</span>
+<div class="art-pick__picker">
+    {# Outside the panel's edge, facing the rows: previous row, the arrow that
+       sends this image to the checked row, next row. The arrow IS the Use
+       button, so the direction it points is the thing it does — into the
+       checked row's After Apply.
 
-   IN THE INCOMING COLUMN, with an empty cell beside it (#441). It was drawn on
-   the left, among the images the album HAS — which is what an album with a
-   matching archive cover made unreadable: two rows stating identical facts, one
-   of them with an empty frame, which reads as owning the picture twice and
-   failing to load one of them. It is not one of the album's images. It is a
-   candidate from outside, and outside is what this column means.
+       One arrow per row, and the generated rules above show the checked row's:
+       its accessible name says which row it writes to, and its state is that
+       row's. A ✓ where the row already has this image or is getting it: a Use
+       there would be a press that changes nothing (*Far & Off*, #659). Only once
+       the picture is here: choosing an image nobody has seen is the guess this
+       section exists to avoid (#472).
 
-   That leaves the column saying WHERE an image came from and the marks saying
-   whether it is coming: the hexagon and the purple facts go on the archive's
-   cover when it wins and are absent here, exactly as the Tags panel marks a
-   value MusicBrainz would write and leaves an agreeing one plain. Before this
-   the column had to carry both meanings, and could only carry one.
-
-   Its own heading, because "After Apply" above is a promise and this is the
-   one image on the page that certainly is not coming. "Also considered" is past
-   tense on purpose: it says the thing was weighed and lost, which is also why
-   there is no picture to show.
-
-   And a column of its own beside the rows, where there is a middle column to
-   make the comparison three-way and the width to draw it (#447). It is a peer
-   of the rows, not a postscript to them — see `.art-compare` above. Below that
-   width it is the trailing block it has always been, so BOTH arrangements are
-   live and this markup has to serve each: the empty heading span and the
-   `grid-column: 3` are the narrow one's, and the wide one overrides them.
-
-   …except when it is partly coming (#490). An archive cover can be the best
-   image for `cover.jpg` while the tracks keep their own, and the row is then
-   here to offer it to the tracks as well — so it is not an also-ran and must not
-   say it was. The heading is the only thing that changes: the picture stays
-   shown, because this row is where the choice is made and choosing an image you
-   cannot see is the guess this section exists to avoid. #}
-{% if artwork.archive_row %}
-<div class="art-rows art-rows--muted">
-    <div class="art-rows__head">
-        {# Empty, and not omitted: while this block trails the rows, the heading
-           row is their grid and the first span is what holds the album's own
-           column open so the second lands over the incoming one. In a column of
-           its own there is nothing to hold open, and it is hidden (#447). #}
-        <span></span>
-        <span>{{ "Also available" if artwork.archive_row.also_coming else "Also considered" }}</span>
-    </div>
-    <div class="art-row">
-        <div class="art-row__side art-row__side--after">
-            {# Three states in this frame, and the word distinguishes the two
-               that have no picture: an image that exists and was never
-               downloaded because it lost, and a release the archive holds
-               nothing for.
-
-               The first of those is now a BUTTON rather than a statement
-               (#448). "Not loaded" is true and useless on its own: bigger is
-               the only thing Harmonist can measure, and a cover that loses on
-               pixels may still be the better scan — so the frame that says
-               there is no picture is also the way to go and get one. The other
-               two states are not buttons, because there is nothing to fetch and
-               because the picture is already here. #}
-            {% if artwork.archive_row.image %}
-            {{ thumbnail(artwork.archive_row.image, album.id, "the Cover Art Archive's cover") }}
-            {% elif artwork.archive_row.loadable %}
-            {# `hx-disabled-elt` because this is a real download of up to five
-               megabytes from a service that answers slowly, and a second press
-               would spend it twice. No `hx-confirm`: it writes nothing of the
-               user's and can be undone by ignoring it. #}
-            <form hx-post="/album/{{ album.id }}/artwork/load-archive"
-                  hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
-                  hx-disabled-elt="find button" class="art-row__load">
-                <button type="submit" class="art-row__art art-row__art--absent"
-                        title="Download this cover from the Cover Art Archive so you can look at it. It is bigger that decides what a re-tag writes, and this is how you tell whether bigger is better."
-                        aria-label="Load the Cover Art Archive's cover">load</button>
-            </form>
+       ↑ and ↓ are quiet on purpose: clicking a row does the same. They move
+       the check between radios, which is a script's job (artwork-viewer.js) —
+       no request, and no `onclick` (web-ui rule 2a). #}
+    <div class="art-pick__ctl">
+        <button type="button" class="art-pick__step" data-art-step="-1"
+                aria-label="Previous row"><svg viewBox="0 0 16 16" width="12" height="12"
+            fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"
+            ><path d="M4 10l4-4 4 4"/></svg></button>
+        {% for r in artwork.rows %}
+        <div class="art-pick__for" data-row="{{ loop.index }}">
+            {% if not picker.image %}
+            {% elif r.has_archive or r.takes_archive %}
+            <span class="art-pick__use art-pick__use--done" role="img"
+                  aria-label="{{ 'Already on' if r.has_archive else 'Coming to' }} {{ r.label }}"
+                  title="{{ 'Already on' if r.has_archive else 'Coming to' }} {{ r.label }}">✓</span>
             {% else %}
-            <span class="art-row__art art-row__art--absent" aria-hidden="true">{{ artwork.archive_row.placeholder }}</span>
+            <button type="submit" name="pick" value="archive" class="art-pick__use"
+                    aria-label="Use for {{ r.label }}"
+                    title="Show what applying this image to {{ r.label }} would do. Nothing is written until you apply it.">Use</button>
             {% endif %}
-            <div class="art-row__facts">
-                <span class="art-row__who">Cover Art Archive</span>
-                <span class="art-row__meta">{{ artwork.archive_row.meta }}</span>
-                {# Whose cover it is, when it is not this release's (#434). #}
-                {% if artwork.archive_row.from_release_group %}
-                <span class="art-row__meta-plain">for the release group, not this release</span>
-                {% endif %}
-                {# …and the way to take it anyway (#472). Offered only once the
-                   picture is here to be looked at: choosing an image nobody has
-                   seen is the guess this whole section exists to avoid.
-
-                   A GET, because choosing is a RENDER — it re-draws the section
-                   with this image as the winner and writes nothing. Apply is
-                   still a separate press, and still carries the fingerprint of
-                   what that render showed. #}
-                {% if artwork.archive_row.image %}
-                <button type="button"
-                        hx-get="/album/{{ album.id }}/artwork?use=archive"
-                        hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
-                        class="art-row__choose"
-                        title="Show what applying this image would do. Bigger is the only thing Harmonist can measure, and bigger is not always better."
-                        aria-label="Use the Cover Art Archive's artwork">Use this artwork</button>
-                {% endif %}
-            </div>
         </div>
+        {% endfor %}
+        <button type="button" class="art-pick__step" data-art-step="1"
+                aria-label="Next row"><svg viewBox="0 0 16 16" width="12" height="12"
+            fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"
+            ><path d="M4 6l4 4 4-4"/></svg></button>
+    </div>
+    <div class="art-pick__candidate">
+        {# Three states in this frame, and the word distinguishes the two that
+           have no picture: an image that exists and was never downloaded
+           because it lost, and a release the archive holds nothing for.
+
+           The first is a BUTTON (#448). "Not loaded" is true and useless on its
+           own: bigger is the only thing Harmonist can measure, and a cover that
+           loses on pixels may still be the better scan — so the frame that says
+           there is no picture is also the way to go and get one. A plain button
+           rather than the form it was: it sits inside the picker's form now,
+           and forms do not nest. `hx-disabled-elt` because this is a real
+           download of up to five megabytes from a service that answers slowly.
+           No `hx-confirm`: it writes nothing of the user's. #}
+        {% if picker.image %}
+        {{ thumbnail(picker.image, album.id, "the Cover Art Archive's cover") }}
+        {% elif picker.loadable %}
+        <button type="button" class="art-row__art art-row__art--absent"
+                hx-post="/album/{{ album.id }}/artwork/load-archive"
+                hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
+                hx-disabled-elt="this"
+                title="Download this cover from the Cover Art Archive so you can look at it before choosing it."
+                aria-label="Load the Cover Art Archive's cover">load</button>
+        {% else %}
+        <span class="art-row__art art-row__art--absent" aria-hidden="true">{{ picker.placeholder }}</span>
+        {% endif %}
+        {{ candidate_facts(picker) }}
+    </div>
+</div>
+{# The picker's invisible double, on the last row's line: what reserves the
+   room for the picker to hang from any row, since the picker itself takes no
+   part in sizing the rows (see `.art-pick__ghost`). The same frame and the
+   same facts, so it is the same height; no controls, and nothing in it can be
+   reached. #}
+<div class="art-pick__ghost" aria-hidden="true" inert
+     style="--art-pick-last: {{ artwork.rows|length + 1 }}">
+    <div class="art-pick__candidate">
+        <span class="art-row__art"></span>
+        {{ candidate_facts(picker) }}
     </div>
 </div>
 {% endif %}
-</div>
+</form>
 
 {# The action, when there is something for it to do (#418). Beside the images
    rather than up with Re-tag, so what is being accepted is on screen — and
@@ -326,9 +382,9 @@
       {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
       class="pt-1">
     <input type="hidden" name="plan" value="{{ artwork.fingerprint }}">
-    {# The choice travels with the press, so the server rebuilds the same plan
-       this section was drawn from (#472). #}
-    {% if artwork.chosen %}<input type="hidden" name="use" value="archive">{% endif %}
+    {# The choices travel with the press, so the server rebuilds the same plan
+       this section was drawn from (#472, #659). #}
+    <input type="hidden" name="use" value="{{ artwork.use }}">
     <button type="submit"
             class="text-2xs uppercase tracking-widest font-bold px-3 py-1.5 rounded
                    border border-mb-purple/40 text-mb-purple hover:bg-mb-purple/10 transition"
@@ -376,11 +432,16 @@
    check is in flight, the album page rejects this older response (#477).
    settle:0ms processes replacement controls immediately; the default settling
    delay otherwise leaves visible forms capable of submitting natively. #}
+{# `hidden`, so it takes no part in the section's spacing: it is there on one
+   render and gone on the next, and a box that comes and goes moves what
+   follows it. #}
 {% if caa_check_due %}
-<div hx-get="/album/{{ album.id }}/artwork?check=1{% if artwork.chosen %}&use=archive{% endif %}"
+<div class="hidden"
+     hx-get="/album/{{ album.id }}/artwork?check=1{% if artwork.use %}&amp;use={{ artwork.use|urlencode }}{% endif %}{% if selected %}&amp;selected={{ selected }}{% endif %}"
      hx-trigger="load"
      hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"></div>
 {% endif %}
+</div>
 
 {# The panel's dates, refreshed alongside — this response may have just asked
    the archive, and the "CAA checked" row it updates lives up in the panel.

@@ -9,18 +9,23 @@ album carries, and every place it could go.
 ## One plan decides everything
 
 A single **artwork plan** is built from what the album carries (each track's
-embedded image, the folder cover) and the Cover Art Archive's candidate. It names
-every write needed to put the winning image in place: the target, what it holds
-now, and what it will hold.
+embedded image, the folder cover), the Cover Art Archive's candidate, and any
+choices the user made over it. It names every write needed to put the winning
+image in place: the target, what it holds now, and what it will hold.
 
 The album page draws its Artwork section from the plan, and every action that
 writes artwork carries it out. Nothing decides twice. The page used to carry its
 own copy of the size rule, and the two drifted: the page promised to replace
 images the writer then only filled in (#469).
 
-The unit on the page is the **distinct image**, not the file: twelve tracks and a
-folder cover showing one picture are one row, because that's one thing to look
-at.
+The unit on the page is the **distinct image** carried by tracks, not the file:
+twelve tracks showing one picture are one row, because that's one thing to look
+at. The folder cover is always a row of its own, even when it shows the same
+picture, and even when the file doesn't exist (#659). It used to share the
+tracks' row while their fates agreed (#400), which saved drawing one picture
+twice at the price of rows that merged and split as the plan changed. A row is
+what a choice is made on, and one that split the moment the user chose for it
+was not something they could choose on.
 
 ## Which image wins
 
@@ -38,13 +43,27 @@ a high-resolution cover. A bigger folder cover therefore proposes nothing for th
 tracks (#479). Tracks with *no* art are still filled, and from the album's own
 image where it has one, so the filled track matches its neighbours.
 
-**Different images on different tracks are never replaced.** That's what a
-compilation correctly looks like.
+**Different images on different tracks are never replaced by the size rule.**
+That's what a compilation correctly looks like.
 
-**The user can choose any image** regardless of size (#472). A larger scan can be
-softer, badly cropped, or another pressing's sleeve, and only a person looking at
-both can tell. Choosing only redraws the section with that image as the winner;
-nothing is written until the user applies it.
+**The user can choose any image, row by row,** regardless of size (#472, #659).
+A larger scan can be softer, badly cropped, or another pressing's sleeve, and
+only a person looking at both can tell. The choice is made on a row, because the
+row is the thing looked at, and reaches that row's carriers only: every other row
+keeps the size rule's suggestion, and a suggestion the user doesn't want can be
+dropped the same way. Choosing is therefore also the consent the per-track
+protection waits for, scoped to exactly the sleeves that were looked at.
+Choosing only redraws the section; nothing is written until the user applies it.
+
+So the plan holds an image per write rather than one for the tracks and one for
+the folder cover. The size rule never needs more than those two, but a user
+choosing row by row can put a different image on every row, and a compilation's
+rows are a dozen of them.
+
+**A choice that changes nothing says so.** Choosing an image a row already
+carries, byte for byte, is a no-op, and the picker says the row already has it
+rather than offering a press that writes nothing. Offering it anyway once left an
+album with a preview, no After Apply column and no button, which read as broken.
 
 ## Additions and replacements
 
@@ -58,13 +77,15 @@ Every write is one of two kinds, and the difference is whether anything is lost:
 only through an action where the user has seen what will be replaced: applying
 updates, applying artwork, or confirming a release with artwork included.
 
-**A missing folder cover is created only if the user turns that on**, and it
+**A missing folder cover is suggested only if the user turns that on**, and it
 ships off. The two mistakes don't cost the same. An album without the file still
 plays correctly everywhere, since Plex and Navidrome read embedded art first. The
 other way round writes megabytes into thousands of folders, and when it was the
 default it made hundreds of albums look like they had an update whose only content
-was the missing file. The setting governs creation only; an existing folder cover
-is weighed like any other image either way.
+was the missing file. The setting governs suggesting the file only: an existing
+folder cover is weighed like any other image either way, and a user who chooses an
+image for the missing one has asked for it, which is a different thing from three
+hundred albums being told they have an update (#659).
 
 A compilation's folder cover comes only from the archive, since its first track's
 sleeve isn't the album's cover.

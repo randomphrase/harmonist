@@ -3039,6 +3039,38 @@ def test_the_artwork_action_leaves_an_image_changed_since_its_plan(album_with_tr
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == cover.read_bytes()
 
 
+def test_rows_chosen_separately_take_different_images_in_one_apply(album_with_tracks, tmp_path):
+    """One plan, two images for the tracks (#659): track 1 chose the archive's
+    image, and track 2's gap keeps the size rule's suggestion — the album's own
+    image, which is track 1's. That image has to be read off track 1 BEFORE
+    track 1 is overwritten, or the fill finds the archive's bytes there and
+    refuses as if the album had changed under it."""
+    from harmonist import activity_store, artwork, artwork_store, cover_art, images
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(400, 400)
+    theirs = _sized_jpeg(300, 300) + b"_archive"
+    _embed_cover(album_dir / "01 Track 1.m4a", mine)  # track 2 has none
+    files = sorted(album_dir.glob("*.m4a"))
+    archive = cover_art.Front(data=theirs, mime="image/jpeg")
+    plan = tagger.decide_artwork(
+        album_dir,
+        files,
+        None,
+        archive=archive,
+        choices={images.digest(mine): artwork.Choice.ARCHIVE},
+        folder_cover=artwork.FolderCoverPolicy.NEVER,
+    )
+
+    outcome = tagger.apply_artwork(album_dir, plan, files=files, cover_path=None, archive=archive)
+
+    assert outcome.changed == 2 and not outcome.stale
+    assert bytes(MP4(album_dir / "01 Track 1.m4a")[ATOM_COVER][0]) == theirs
+    assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine
+
+
 def test_a_track_whose_image_cannot_be_written_is_named_not_raised(
     album_with_tracks, tmp_path, monkeypatch
 ):

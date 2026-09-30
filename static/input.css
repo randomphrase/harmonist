@@ -1095,55 +1095,229 @@ dialog::backdrop {
    --------------------------------------------------------------------------- */
 .art-rows { display: flex; flex-direction: column; }
 
-/* The three-way comparison (#447): what the album HAS, what a re-tag would
-   WRITE, and what the archive HOLDS. The first two are the rows' own columns.
-   The third cannot be — `.art-rows` is a flex column and each `.art-row` is its
-   own grid, so there is no grid spanning the rows for a cell to line up in —
-   and it used to be a postscript under them, a lone box low and to the right
-   beneath rows it is a peer of.
+/* The three-way comparison (#447, #659): what the album HAS, what applying would
+   WRITE, and what the archive HOLDS. The first two are the rows' own columns;
+   the third is the picker, which sits beside ONE row — the checked one.
 
-   So the archive gets a column of THIS box instead. The two blocks line up on
-   the one thing that has to line up: their headings, each a single line of the
-   same size starting at the same top, which puts their bottom borders on one
-   edge without either block knowing about the other.
-
-   Unsplit it is the stack it was, and the gap is its own: the section's
-   `space-y-3` reaches these blocks only when the section fetches itself, and
-   not on the /compare path, where the out-of-band wrapper survives in the DOM
-   and leaves `space-y-3` one child to space. Setting it here makes the two
-   blocks sit the same distance apart however the section arrived. */
+   Without a candidate this is the plain stack of rows it always was. The
+   section's own spacing comes from the one container `_artwork.html` draws
+   everything in, so it is the same whichever way the section arrived. */
 .art-compare { display: flex; flex-direction: column; gap: .75rem; }
 
-@media (min-width: 64rem) {
-  /* Split only where three images and three sets of facts fit. The archive's
-     column is capped rather than sized to its content: "for the release group,
-     not this edition" is the widest thing it can say, and letting that set the
-     track would take a third of the section for an aside. That one wraps; the
-     cap is set so the SIZE line does not, since a measurement broken across two
-     lines is the thing a reader is here to compare. */
-  .art-compare--split {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
-    column-gap: 1.6rem;
-    align-items: start;
-  }
+/* With a candidate, the rows and the picker are items of ONE grid, so the
+   picker can be put on the checked row's line: `.art-rows` stops generating a
+   box, and every row is placed in the first column by the auto-placement the
+   picker's explicit row steps around. `--art-pick-row` is that line, set by the
+   rules the section generates per row — a row count is not something a
+   stylesheet knows.
 
-  /* In its own column the archive is a two-track grid of its own — image, then
-     facts. The empty heading span and the `grid-column: 3` below are both about
-     sitting INSIDE the rows' four-track grid, in the incoming half with the
-     album's own half held open to its left (#441). Here there is no left half
-     to step over, so the span goes and the placement is reset. */
-  .art-compare--split .art-rows--muted .art-rows__head,
-  .art-compare--split .art-rows--muted .art-row {
-    grid-template-columns: 6.5rem minmax(0, 1fr);
+   Narrower, there is one column and the picker takes the line AFTER the
+   checked row, pushing the rest down: beside becomes beneath, which is where it
+   belongs on a phone. Which line that is depends on whether the heading row is
+   drawn, so it is said per width: here the headings are still there, the
+   narrow layout below hides them, and beside needs no step at all. */
+.art-compare--pick {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  align-items: start;
+}
+.art-compare--pick > .art-rows { display: contents; }
+/* Not dimmed while a choice is re-rendered. The global in-flight dim (see
+   `.htmx-request` above) is for work the user is waiting on; choosing an image
+   is a quick redraw of the same section, and dimming all of it for that long
+   read as the whole section flickering at every Use and ×. The cursor still
+   says something is happening, for the album on a slow share. */
+.art-compare.htmx-request { opacity: 1; }
+.art-compare--pick .art-rows__head,
+.art-compare--pick .art-row { grid-column: 1; padding-inline: .6rem; }
+.art-pick__head { display: none; }
+/* Its own panel, outlined in the picker's colour: a thing beside the table,
+   not a row of it. The tint that used to join it to the checked row made the
+   two read as one misaligned row instead. */
+.art-pick__picker {
+  grid-column: 1;
+  grid-row: calc(var(--art-pick-row, 2) + 1);
+  position: relative;
+}
+/* The panel's box — and its invisible double's, which has to be exactly as
+   tall, and which only the wide layout needs (below). */
+.art-pick__picker,
+.art-pick__ghost {
+  margin: .5rem 0;
+  padding: .6rem;
+  border: 1.5px solid var(--color-mb-purple);
+  border-radius: 8px;
+  background: #fff;
+}
+.art-pick__ghost { display: none; }
+/* A thumbnail and its facts side by side while the picker is the full width
+   of the section; the picture fills the panel once it is a column of its own
+   (below), where there is room to look at it and nothing else to fill. */
+.art-pick__candidate {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  column-gap: .85rem;
+  align-items: start;
+}
+
+/* Selecting a row is clicking anywhere on it. The label is stretched over the
+   row, and the row's own buttons — the thumbnails, remove — sit above it. The
+   radio is kept for the keyboard and assistive technology, and drawn by the
+   row: a bar down its edge, its name in the picker's colour, and a ring when
+   it has focus. */
+.art-compare--pick .art-row { position: relative; cursor: pointer; }
+.art-row__select::after { content: ""; position: absolute; inset: 0; }
+.art-compare--pick .art-row button { position: relative; z-index: 1; }
+.art-row__radio { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.art-compare--pick .art-row:has(.art-row__radio:checked)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .55rem;
+  bottom: .55rem;
+  width: 3px;
+  background: var(--color-mb-purple);
+}
+.art-compare--pick .art-row:has(.art-row__radio:checked) .art-row__select {
+  color: var(--color-mb-purple);
+}
+.art-compare--pick .art-row:has(.art-row__radio:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+/* Where the picker's image would land, on the checked row only. */
+.art-row__slot {
+  display: none;
+  width: 6.5rem;
+  height: 6.5rem;
+  border: 1.5px dashed color-mix(in srgb, var(--color-mb-purple) 55%, transparent);
+  border-radius: 4px;
+}
+.art-row:has(.art-row__radio:checked) .art-row__slot { display: block; }
+
+/* Remove: a small ×, under the incoming image's facts. */
+.art-row__drop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: .2rem;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.art-row__drop:hover { border-color: var(--color-accent); color: var(--color-ink); }
+
+/* Previous row, Use, next row. Above the image while the picker sits under its
+   row; outside its edge, facing the rows, once it sits beside them (below). */
+.art-pick__ctl { display: flex; align-items: center; gap: .25rem; margin-bottom: .5rem; }
+/* One Use per row, and the section's generated rules show the checked row's. */
+.art-pick__for { display: none; }
+.art-pick__use {
+  display: block;
+  height: 1.9rem;
+  padding: 0 .75rem;
+  border: 0;
+  border-radius: 4px;
+  background: var(--color-mb-purple);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 700;
+  line-height: 1.9rem;
+  cursor: pointer;
+}
+.art-pick__use:hover { background: color-mix(in srgb, var(--color-mb-purple) 85%, #000); }
+.art-pick__use--done { background: var(--color-line); color: var(--color-muted); cursor: default; }
+.art-pick__use--done:hover { background: var(--color-line); }
+/* Quiet, because clicking a row does the same. */
+.art-pick__step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-muted);
+  opacity: .55;
+  cursor: pointer;
+}
+.art-pick__step:hover { opacity: 1; background: var(--color-surface); color: var(--color-ink); }
+
+@media (min-width: 64rem) {
+  /* Beside, where three images and three sets of facts fit — with a gutter
+     wide enough for the controls to stand in, clear of both the rows and the
+     panel's border.
+
+     The picker hangs from the checked row's line, and takes NO PART in sizing
+     the rows: absolutely positioned, with its grid area as its containing
+     block. As an ordinary grid item it made the rows it overlapped taller, and
+     which rows those were depended on where it sat — so the spacing between
+     rows changed as the user moved from one to the next.
+
+     The room it needs is reserved instead by its ghost (`.art-pick__ghost`):
+     the same panel, invisible, on the LAST row's line. The last row is the
+     worst case — a panel hanging from it has nothing below it to overlap — so
+     room for it there is room for it from every row, and it is the same room
+     whichever row is checked. */
+  .art-compare--pick {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 13.5rem);
+    column-gap: 5rem;
   }
-  .art-compare--split .art-rows--muted .art-rows__head > :first-child { display: none; }
-  .art-compare--split .art-rows--muted .art-rows__head > :last-child {
-    grid-column: 1 / span 2;
-    margin-left: 0;
+  .art-pick__picker {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    grid-column: 2;
+    grid-row: var(--art-pick-row, 2);
   }
-  .art-compare--split .art-rows--muted .art-row__side--after > * { margin-left: 0; }
-  .art-compare--split .art-rows--muted .art-row__side--after > :first-child { grid-column: 1; }
+  .art-pick__ghost {
+    display: block;
+    visibility: hidden;
+    grid-column: 2;
+    grid-row: var(--art-pick-last, 2);
+  }
+  .art-pick__candidate { display: flex; flex-direction: column; gap: .5rem; }
+  .art-pick__candidate .art-row__art { width: 100%; height: auto; aspect-ratio: 1; }
+  .art-pick__ctl {
+    position: absolute;
+    top: .35rem;
+    right: calc(100% + .6rem);
+    flex-direction: column;
+    align-items: flex-end;
+    margin: 0;
+  }
+  .art-pick__step { margin-right: .4rem; }
+  /* The arrow IS the Use button, pointing into the checked row's After Apply:
+     the direction it points is the thing it does. */
+  .art-pick__use {
+    padding: 0 .7rem 0 1.15rem;
+    border-radius: 0 4px 4px 0;
+    clip-path: polygon(.8rem 0, 100% 0, 100% 100%, .8rem 100%, 0 50%);
+  }
+  /* Its heading lines up with Now and After Apply, on the heading row. */
+  .art-pick__head {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0 .6rem .4rem;
+    border-bottom: 1px solid var(--color-line);
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    font-weight: 700;
+    color: var(--color-muted);
+  }
 }
 
 /* What the row is now, and what a re-tag would make it (#413). The second half
@@ -1229,22 +1403,6 @@ dialog::backdrop {
 /* A plain-language aside under the facts — whose cover it is, when that is not
    this edition's (#434). Not the mono facts line: it is prose, not a value. */
 .art-row__meta-plain { font-size: .72rem; color: var(--color-muted); }
-/* Take this image anyway (#472) — and go back to the best one. Quiet: it sits
-   under the facts of a candidate that lost, and it is a choice, not the
-   section's main action. Underlined so it reads as something to press without
-   spending a button's weight on it. */
-.art-row__choose {
-  font-size: .72rem;
-  color: var(--color-mb-purple);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-  background: none;
-  border: 0;
-  padding: 0;
-  text-align: left;
-}
-.art-row__choose:hover { color: var(--color-ink); }
 .art-row__meta {
   font-family: var(--font-mono);
   font-size: .68rem;
@@ -1283,56 +1441,24 @@ dialog::backdrop {
 }
 .art-rows__disc span { font-weight: 400; text-transform: none; letter-spacing: 0; }
 
-/* A candidate that exists and is not going to be used (#433): the Cover Art
-   Archive's cover when it is not the winner. Greyed as a whole, so it reads as
-   an also-ran beside the rows above rather than as something pending. */
-/* The candidate is muted; its HEADING is not. Opacity on the block dimmed the
-   column label too, which left "Also considered" reading as a lesser thing than
-   "Now" and "After Apply" beside it — and a heading is a label, not a candidate.
-   It has to move rather than be turned back up: opacity makes a stacking
-   context, so nothing inside a faded box can be less faded than the box. */
-.art-rows--muted .art-row { opacity: .62; border-bottom: 0; }
+/* The narrow layout, and it has to be LAST (#577): every rule in here overrides
+   one of the rules above with a selector of the same shape, so it wins on
+   source order and nothing else — a media query adds no specificity.
 
-/* It sits in the INCOMING column with nothing beside it (#441), and `display:
-   contents` on the side means its cells flow into the grid themselves — with no
-   left half to precede them they would land in column 1, back among the images
-   the album actually has. Placing the first cell is enough; the facts follow it. */
-.art-rows--muted .art-row__side--after > :first-child { grid-column: 3; }
-
-/* The narrow layout, and it has to be LAST (#577).
-
-   Every rule in here overrides one of the rules above with a selector of the
-   same shape, so it wins on source order and nothing else — a media query adds
-   no specificity. Sitting above `grid-column: 3` it lost to it at every width,
-   which put the archive's frame in an implicit THIRD column of a two-column
-   grid, hard against the right edge, with its facts wrapped onto a row of their
-   own back at the left. It read as a broken image beside an unrelated caption.
-
-   So: two columns, no headings to label them, and the also-ran block is simply
-   the last row rather than a column of its own — there is nowhere else for it
-   to go down here, and #447's third column needs more width than this. */
+   Two columns and no headings to label them. The picker, where there is one,
+   drops beneath the checked row (see `.art-compare--pick`) — and with the
+   heading row gone the rows start on line 1, so the checked row's line plus
+   one is the very `--art-pick-row` the wide layout puts it beside. */
 @media (max-width: 56rem) {
   .art-rows__head { display: none; }
   .art-row { grid-template-columns: 6.5rem minmax(0, 1fr); row-gap: .7rem; }
   .art-row__side--after > * { margin-left: 0; }
   .art-row__side--after > .art-row__art { margin-left: 1.5rem; }
-  .art-rows--muted .art-row__side--after > :first-child { grid-column: auto; }
-  /* …except the also-ran's frame, which is flush. That indent offsets an
-     incoming image from the album's own image on the SAME row; this block has
-     no row above it to offset from, and the indent only landed on it at all
-     when the frame was a plain span — a loadable cover's frame is a `<form>`
-     (#448), which is not `.art-row__art` and so sat 1.5rem to its left. One
-     block, one left edge, whichever of the three states it is in. */
-  .art-rows--muted .art-row__side--after > .art-row__art { margin-left: 0; }
+  .art-pick__picker { grid-row: var(--art-pick-row, 2); }
 }
 
-/* The frame is a form when it is the way to fetch the picture (#448). The form
-   IS the grid cell — deliberately not `display: contents`, which was the first
-   attempt and put the row back in column 1: a box that generates no box cannot
-   be placed, so `grid-column` on it did nothing and its button flowed into the
-   first free track. Only a browser showed that; the markup reads correctly. */
-.art-row__load { display: block; }
-/* …and it is a button, so it says so on hover. The dashed frame is otherwise
+/* The frame is a button when it is the way to fetch the picture (#448), and
+   it says so on hover. The dashed frame is otherwise
    identical to the one that is only ever a statement. */
 button.art-row__art--absent { cursor: pointer; }
 button.art-row__art--absent:hover {

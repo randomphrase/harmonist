@@ -255,7 +255,7 @@ The usual causes:
 - **No image anywhere.** The Library's **No artwork** filter lists these. The
   album's page offers the Cover Art Archive's image, if there is one.
 - **Embedded and `cover.jpg` disagree.** Your player is reading the one you
-  don't want. Choose the image you want with **Use this artwork**, then
+  don't want. Select the row, choose the image you want for it, then
   **Apply artwork**.
 - **Some tracks have no image.** Applying updates fills them from the album's
   artwork.

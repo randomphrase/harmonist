@@ -6,6 +6,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **Artwork is chosen row by row**: select a row and the Cover Art Archive's
+  image is offered beside it; `cover.jpg` always has a row of its own (#659).
+
 ## [1.22.0] - 2026-10-01
 
 ### Added

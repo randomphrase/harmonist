@@ -36,7 +36,7 @@
            value="{{ artwork.fingerprint }}">
     <input type="hidden" class="apply-art-{{ album.id }}" name="artwork_scope" value="all">
     <input type="hidden" class="apply-art-{{ album.id }}" name="use"
-           value="{{ 'archive' if artwork.chosen else '' }}">
+           value="{{ artwork.use }}">
     <input type="hidden" class="apply-art-{{ album.id }}" name="plan"
            value="{{ artwork.fingerprint }}">
 </div>

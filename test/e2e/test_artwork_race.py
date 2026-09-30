@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from urllib.parse import parse_qs
 
 import pytest
@@ -46,7 +47,7 @@ def test_apply_immediately_after_choosing_is_an_htmx_post(reset_demo_server, pri
             htmx.config.defaultSettleDelay = 500;
             document.body.addEventListener('htmx:afterSwap', function choose(e) {
                 if (e.target.id !== 'album-artwork' ||
-                    !e.detail.requestConfig.path.endsWith('?use=archive')) return;
+                    !e.detail.xhr.responseURL.includes('pick=archive')) return;
                 document.body.removeEventListener('htmx:afterSwap', choose);
                 setTimeout(() => {
                     const selector = primary ? '.album-artwork-apply button' :
@@ -60,10 +61,10 @@ def test_apply_immediately_after_choosing_is_an_htmx_post(reset_demo_server, pri
         with page.expect_response(
             lambda r: r.url.endswith("/artwork/update"), timeout=5000
         ) as applied:
-            page.get_by_role("button", name="Use the Cover Art Archive's artwork").click()
+            page.locator("#album-artwork button.art-pick__use:visible").click()
         assert applied.value.request.method == "POST"
         assert applied.value.request.headers.get("hx-request") == "true"
-        assert parse_qs(applied.value.request.post_data)["use"] == ["archive"]
+        assert "=archive" in parse_qs(applied.value.request.post_data)["use"][0]
         page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         assert page.url == f"{reset_demo_server}/album/{aid}"
         after = page.locator(
@@ -89,19 +90,21 @@ def test_late_archive_check_cannot_erase_a_newer_choice(reset_demo_server):
         page.route("**/artwork?reread=1", hold)
         page.locator('[hx-target="#album-artwork"][hx-get$="?reread=1"]').click()
         page.wait_for_function("window.archiveResponseHeld === true")
-        page.get_by_role("button", name="Use the Cover Art Archive's artwork").click()
-        chosen = page.get_by_role("button", name="Go back to the best image")
-        pw.expect(chosen).to_be_visible()
+        page.locator("#album-artwork button.art-pick__use:visible").click()
+        # The choice is what the section carries: the field the combined
+        # action and the Apply button send back.
+        chosen = page.locator(".apply-art-" + aid + '[name="use"]')
+        pw.expect(chosen).to_have_value(re.compile("=archive"))
         # The checked date and artwork finding ride on this response out of
         # band; rejecting only its main fragment would still corrupt the scope.
         route, response = held.pop()
         with page.expect_response(lambda r: r.url.endswith("?reread=1")):
             route.fulfill(response=response)
         page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
-        pw.expect(chosen).to_be_visible()
-        assert page.locator(".apply-art-" + aid + '[name="use"]').input_value() == "archive"
+        # The stale ordinary preview did not replace the newer choice.
+        pw.expect(chosen).to_have_value(re.compile("=archive"))
         page.on("dialog", lambda dialog: dialog.accept())
         with page.expect_response(lambda r: r.url.endswith("/artwork/update")) as applied:
             page.get_by_role("button", name="Apply this album's artwork").click()
-        assert parse_qs(applied.value.request.post_data)["use"] == ["archive"]
+        assert "=archive" in parse_qs(applied.value.request.post_data)["use"][0]
         browser.close()

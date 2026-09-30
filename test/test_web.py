@@ -9774,7 +9774,7 @@ def test_artwork_section_shows_the_folder_cover_it_would_create(client, cfg):
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
 
     # Named for the image it will hold: the tracks' own art is a PNG.
-    assert "not in the folder yet" in rendered
+    assert "not in the folder" in rendered
     assert "the album&#39;s own artwork" in rendered
     assert "Apply artwork" in rendered
     # The Addition/Replacement chip is the FINDING's, and since #491 the finding
@@ -9791,7 +9791,7 @@ def test_artwork_section_does_not_announce_a_cover_the_album_already_has(client,
 
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
 
-    assert "Re-tagging creates one from" not in rendered
+    assert "not in the folder" not in rendered
 
 
 def test_artwork_section_promises_no_overwrite_where_art_is_preserved(client, cfg):
@@ -10252,6 +10252,34 @@ def _archive_candidate(cfg, name: str, mbid: str, *, image: bytes, covers, folde
     return d
 
 
+def _pick(client, aid: str, html: str, *, row: int = 0, pick: str = "archive") -> str:
+    """Press the picker's Use button with the `row`th row checked, sending what
+    the browser sends: the picker form's own fields, plus the submitter (#659).
+
+    Read off the rendered page rather than spelled here, so a radio that names
+    the wrong carriers — or a picker form that lost its `use` — fails this
+    rather than being papered over by a hand-made URL.
+    """
+    import re
+
+    rows = re.findall(r'name="row" value="([^"]*)"', html)
+    assert rows, "no picker rows in the response"
+    use = re.search(r'<form id="art-pick-[^"]*"[\s\S]*?name="use" value="([^"]*)"', html)
+    assert use, "no choices carried by the picker form"
+    return client.get(
+        f"/album/{aid}/artwork", params={"use": use.group(1), "row": rows[row], "pick": pick}
+    ).text
+
+
+def _carried_use(html: str) -> str:
+    """The choices the section's Apply artwork form carries back."""
+    import re
+
+    match = re.search(r'artwork/update"[\s\S]*?name="use" value="([^"]*)"', html)
+    assert match, "no choices on the Apply artwork form"
+    return match.group(1)
+
+
 def test_the_archive_image_can_be_chosen_whatever_its_size(client, cfg):
     """The size rule keeps the album's own larger image, and says so. Choosing
     the archive's smaller one previews it — writing nothing — and applying then
@@ -10268,23 +10296,103 @@ def test_the_archive_image_can_be_chosen_whatever_its_size(client, cfg):
 
     ordinary = client.get(f"/album/{aid}/artwork").text
     assert "Apply artwork" not in ordinary  # the album's own image wins on size
-    assert "Use this artwork" in ordinary
+    assert 'aria-label="Use for All 2 tracks"' in ordinary
 
-    chosen = client.get(f"/album/{aid}/artwork?use=archive").text
+    # The tracks and the folder cover are a row each (#659), so each is chosen.
+    chosen = _pick(client, aid, _pick(client, aid, ordinary, row=0), row=1)
 
-    assert "because you chose it" in " ".join(chosen.split())
     assert "Apply artwork" in chosen
     assert (d / "cover.jpg").read_bytes() == mine  # looking wrote nothing
 
     client.post(
         f"/album/{aid}/artwork/update",
-        data={"plan": _form_value(chosen, "plan"), "use": "archive"},
+        data={"plan": _form_value(chosen, "plan"), "use": _carried_use(chosen)},
     )
 
     assert (d / "cover.jpg").read_bytes() == theirs
     for track in ("01 Track.m4a", "02 Track.m4a"):
         art = formats.read_cover(d / track)
         assert art is not None and art[0] == theirs
+
+
+def test_the_picker_says_when_a_row_already_has_the_archives_image(client, cfg):
+    """*Far & Off* (#659): the archive's front was already on every track and in
+    `cover.jpg`. Choosing it could only ever be a no-op, and the old section
+    offered it anyway — then drew a preview with no After Apply column and no
+    button, which read as a broken page. The picker says so instead."""
+    from test.test_artwork import png_bytes
+
+    same = png_bytes(300, 300) + b"\x01"
+    d = _archive_candidate(
+        cfg, "FarAndOff", "rel-far-off", image=same, covers=[same, same], folder=same
+    )
+
+    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+
+    assert 'aria-label="Already on All 2 tracks"' in rendered
+    assert 'aria-label="Already on cover.jpg"' in rendered
+    assert 'name="pick"' not in rendered
+
+
+def test_a_choice_reaches_only_the_row_it_was_made_on(client, cfg):
+    """Use on one row leaves the others as the size rule has them (#659): here
+    a gap the rule fills from the album's own image keeps that suggestion while
+    the row that HAS the image takes the archive's — and applying writes both,
+    two different images in one press."""
+    from harmonist import formats
+    from test.test_artwork import png_bytes
+
+    mine = png_bytes(900, 900) + b"\x01"
+    theirs = png_bytes(300, 300) + b"\x02"
+    d = _archive_candidate(
+        cfg, "OneRow", "rel-one-row", image=theirs, covers=[mine, None], folder=None
+    )
+    aid = _id_for(cfg, d)
+    ordinary = client.get(f"/album/{aid}/artwork").text
+
+    chosen = _pick(client, aid, ordinary, row=0)  # Track 1, which has `mine`
+    press = {"plan": _form_value(chosen, "plan"), "use": _carried_use(chosen)}
+    client.post(f"/album/{aid}/artwork/update", data=press)
+
+    first = formats.read_cover(d / "01 Track.m4a")
+    second = formats.read_cover(d / "02 Track.m4a")
+    assert first is not None and first[0] == theirs
+    assert second is not None and second[0] == mine
+
+    # The same press again is a no-op. Not because the choices are: they name
+    # carriers by the image they hold NOW, and Track 2 holds `mine` now, so
+    # rebuilt from them the plan would move Track 2 as well. The fingerprint is
+    # what stops it — it describes the plan the page showed, which is gone.
+    again = client.post(f"/album/{aid}/artwork/update", data=press)
+    assert "changed after the page showed it" in " ".join(again.text.split())
+    second = formats.read_cover(d / "02 Track.m4a")
+    assert second is not None and second[0] == mine
+
+
+def test_removing_a_suggestion_keeps_what_the_row_has(client, cfg):
+    """**remove** on a row's incoming image drops it, suggestion or choice
+    alike (#659) — the escape hatch out of a proposal the user does not want,
+    short of turning a setting off for the whole library."""
+    from test.test_artwork import png_bytes
+
+    mine = png_bytes(900, 900) + b"\x01"
+    d = _archive_candidate(
+        cfg,
+        "Removed",
+        "rel-removed",
+        image=png_bytes(300, 300) + b"\x02",
+        covers=[mine, None],
+        folder=mine,
+    )
+    aid = _id_for(cfg, d)
+    ordinary = client.get(f"/album/{aid}/artwork").text
+    assert "Apply artwork" in ordinary  # the gap is suggested a fill
+    drop = re.search(r'name="drop" value="([^"]*)"', ordinary)
+    assert drop is not None
+
+    kept = client.get(f"/album/{aid}/artwork", params={"drop": drop.group(1)}).text
+
+    assert "Apply artwork" not in kept
 
 
 def test_applying_a_chosen_plan_without_the_choice_writes_nothing(client, cfg):
@@ -10303,7 +10411,7 @@ def test_applying_a_chosen_plan_without_the_choice_writes_nothing(client, cfg):
         folder=mine,
     )
     aid = _id_for(cfg, d)
-    chosen = client.get(f"/album/{aid}/artwork?use=archive").text
+    chosen = _pick(client, aid, client.get(f"/album/{aid}/artwork").text)
 
     r = client.post(f"/album/{aid}/artwork/update", data={"plan": _form_value(chosen, "plan")})
 
@@ -10343,12 +10451,20 @@ def test_a_chosen_release_group_cover_still_says_whose_it_is(client, cfg):
     aid = _id_for(cfg, d)
 
     ordinary = " ".join(client.get(f"/album/{aid}/artwork").text.split())
-    chosen = " ".join(client.get(f"/album/{aid}/artwork?use=archive").text.split())
+    chosen = " ".join(_pick(client, aid, ordinary).split())
 
-    # The candidate row says it while the image is only a candidate…
-    assert "for the release group, not this release" in ordinary
-    # …and the incoming preview must keep saying it once it is the one coming in.
-    assert "for the release group, not this release" in chosen
+    note = "for the release group, not this release"
+
+    def shown(html: str) -> str:
+        """Without the picker's invisible double, which repeats its facts only
+        to be as tall as it is."""
+        return re.sub(r'<div class="art-pick__ghost".*?</div>\s*</div>\s*</div>', "", html)
+
+    # The picker says it while the image is only a candidate…
+    assert shown(ordinary).count(note) == 1
+    # …and the incoming preview says it too once it is the one coming in — the
+    # picker is still there beside it, so that is twice.
+    assert shown(chosen).count(note) == 2
 
 
 def test_choosing_an_image_that_is_no_longer_here_says_so(client, cfg):
@@ -10357,7 +10473,7 @@ def test_choosing_an_image_that_is_no_longer_here_says_so(client, cfg):
     were the chosen one (#472)."""
     d = _release_backed_album_with_art(cfg, "Gone", "rel-gone", covers=[_png(1)], folder=_png(2))
 
-    r = client.get(f"/album/{_id_for(cfg, d)}/artwork?use=archive")
+    r = client.get(f"/album/{_id_for(cfg, d)}/artwork", params={"use": "cover=archive"})
 
     assert "load it again to choose it" in " ".join(r.text.split())
 
@@ -10409,10 +10525,14 @@ def test_apply_updates_applies_the_image_the_user_chose(client, cfg, monkeypatch
     # Drawn against the ordinary plan: the album's own image wins on size.
     assert _carried_artwork(page, aid)["use"] == ""
 
-    chosen = client.get(f"/album/{aid}/artwork?use=archive").text
+    # The tracks, then the folder cover: a row each (#659).
+    tracks = _pick(client, aid, client.get(f"/album/{aid}/artwork").text, row=0)
+    chosen = _pick(client, aid, tracks, row=1)
     carried = _carried_artwork(chosen, aid)
 
-    assert carried["use"] == "archive", "the choice must reach the combined control"
+    assert carried["use"] == _carried_use(chosen) != "", (
+        "the choice must reach the combined control"
+    )
     r = client.post(
         f"/retag/{aid}",
         data={
@@ -10659,9 +10779,10 @@ def test_the_artwork_note_is_cleared_when_nothing_would_change(client, cfg):
     assert 'href="#album-artwork"' not in rendered  # …and is empty
 
 
-def test_a_losing_archive_cover_is_drawn_as_a_muted_row(client, cfg):
+def test_a_losing_archive_cover_is_offered_not_written(client, cfg):
     """Not a purple sentence: purple means the value about to be written, and
-    this one certainly is not (#433)."""
+    this one certainly is not (#433). It is the picker's candidate (#659) — and
+    with no picture to look at yet, there is nothing to choose it for."""
     from harmonist import activity_store, formats
 
     d = _make_tagged_album(cfg, "Loser", mbid="rel-loser", tagged_at=datetime.now(UTC))
@@ -10690,7 +10811,9 @@ def test_a_losing_archive_cover_is_drawn_as_a_muted_row(client, cfg):
     # to go and get one rather than a statement about not having it (#448).
     assert f'hx-post="/album/{_id_for(cfg, d)}/artwork/load-archive"' in rendered
     assert "10×10" in rendered
-    assert "art-rows--muted" in rendered
+    assert "art-pick__picker" in rendered
+    # Choosing waits for the picture: an image nobody has seen is a guess.
+    assert 'name="pick"' not in rendered
     # …and none of the "about to be written" vocabulary. Scoped to the note's
     # own class rather than the bare colour, which also appears on the refresh
     # button's hover state further up the page.
@@ -10698,13 +10821,13 @@ def test_a_losing_archive_cover_is_drawn_as_a_muted_row(client, cfg):
     assert 'class="text-sm text-mb-purple"' not in rendered
 
 
-def test_a_losing_archive_cover_sits_in_the_incoming_column(client, cfg):
+def test_a_losing_archive_cover_sits_in_a_column_of_its_own(client, cfg):
     """Where an image came from is the column; whether it is coming is the mark
     (#441).
 
-    Drawn on the left it was among the images the album HAS, which on an album
-    whose archive cover matches its own read as two copies of one picture with
-    one of them broken.
+    Drawn among the rows it was one of the images the album HAS, which on an
+    album whose archive cover matches its own read as two copies of one picture
+    with one of them broken. It is the picker's now (#659), beside the rows.
     """
     from harmonist import formats
 
@@ -10725,33 +10848,30 @@ def test_a_losing_archive_cover_sits_in_the_incoming_column(client, cfg):
     )
 
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
-    muted = rendered[rendered.index("art-rows--muted") :]
+    picker = rendered[rendered.index('class="art-pick__head"') : rendered.index("</form>")]
 
-    # The incoming column, under a heading that is not the promise "After
-    # Apply" makes.
-    assert "art-row__side--after" in muted
-    assert "Also considered" in muted
-    assert "After Apply" not in muted
+    # Its own column, under a heading that is not the promise "After Apply"
+    # makes.
+    assert "Available" in picker
+    assert "Cover Art Archive" in picker
+    assert "After Apply" not in picker
     # Neither mark: both say "this is what would be put on your files", and a
     # winning archive cover carries both — see
     # `test_a_winning_archive_cover_is_marked_as_the_one_being_written`.
-    assert "mb-mark" not in muted
-    assert "art-row__facts--mb" not in muted
-    # …and no third column, because there is no middle one to make the
-    # comparison three-way: this album is not being written to, so "what a
-    # re-tag would do" has nothing to say and the archive's block trails the
-    # rows as it always has (#447).
-    assert "art-compare--split" not in rendered
+    assert "mb-mark" not in picker
+    assert "art-row__facts--mb" not in picker
 
 
-def test_the_archive_gets_a_column_when_there_is_something_to_compare(client, cfg):
+def test_the_archive_gets_a_column_beside_the_rows(client, cfg):
     """Three things are being weighed — what the album has, what a re-tag would
     write, and what the archive holds — so the third is a column beside the
     other two rather than a stub below them (#447).
 
-    Only when the middle column exists. `.art-compare--split` is what the
-    stylesheet hangs the three-column grid off; the arrangement itself lives in
-    a media query and is the browser's business, not this rung's.
+    Whether or not anything is being written: the picker is where a row's
+    choice is made (#659), including for a row the size rule left alone.
+    `.art-compare--pick` is what the stylesheet hangs the grid off; the
+    arrangement itself lives in a media query and is the browser's business,
+    not this rung's.
     """
     from test.test_artwork import png_bytes
 
@@ -10775,8 +10895,8 @@ def test_the_archive_gets_a_column_when_there_is_something_to_compare(client, cf
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
 
     assert "After Apply" in rendered  # the middle column is there…
-    assert "art-rows--muted" in rendered  # …and so is the archive's candidate
-    assert "art-compare--split" in rendered
+    assert "art-pick__picker" in rendered  # …and so is the archive's candidate
+    assert "art-compare--pick" in rendered
 
 
 def test_a_winning_archive_cover_is_marked_as_the_one_being_written(client, cfg):
@@ -10812,7 +10932,8 @@ def test_a_winning_archive_cover_is_marked_as_the_one_being_written(client, cfg)
 
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
 
-    assert "art-rows--muted" not in rendered  # it won, so it is not an also-ran
+    # It won, so the picker says it is coming rather than offering it again.
+    assert "Coming to" in rendered
     assert "art-row__facts--mb" in rendered
     assert "From the Cover Art Archive" in rendered  # the hexagon's label
     assert "Apply artwork" in rendered
@@ -10820,13 +10941,13 @@ def test_a_winning_archive_cover_is_marked_as_the_one_being_written(client, cfg)
 
 def test_the_archive_stays_offerable_when_it_only_upgrades_the_folder_cover(client, cfg):
     """The ordinary #479 outcome — modest embedded art beside a better archive
-    cover — must still offer **Use this artwork** for the tracks (#490).
+    cover — must still offer the archive's image for the tracks (#490, #659).
 
     Both halves belong on the page at once: the archive's image marked as the
-    one coming to `cover.jpg`, and the same image still offered for the tracks,
-    under a heading that does not call it an also-ran. It was suppressed
-    entirely, so the only way to put that image into the tracks was to apply the
-    folder change first and come back once the row reappeared.
+    one coming to `cover.jpg`, and the same image still offered for the tracks.
+    It was suppressed entirely, so the only way to put that image into the
+    tracks was to apply the folder change first and come back once the row
+    reappeared.
     """
     from harmonist import cover_art, formats
     from test.test_artwork import png_bytes
@@ -10852,10 +10973,7 @@ def test_the_archive_stays_offerable_when_it_only_upgrades_the_folder_cover(clie
     # Coming to the folder cover, and marked as the archive's…
     assert "From the Cover Art Archive" in rendered
     # …and still on offer for the tracks, which keep their own image under #479.
-    assert "Use this artwork" in rendered
-    # Not past tense: it was not weighed and dropped, it is partly coming.
-    assert "Also available" in rendered
-    assert "Also considered" not in rendered
+    assert "Use for The only track" in rendered
 
 
 def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
@@ -10872,7 +10990,7 @@ def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
 
     assert "no front cover for this release" in rendered
-    assert "art-rows--muted" in rendered
+    assert "art-pick__picker" in rendered
     assert "not loaded" not in rendered  # nothing to load, so not that word
     assert 'class="text-sm text-mb-purple"' not in rendered
 
@@ -11212,7 +11330,9 @@ def test_loading_the_archives_cover_does_not_make_it_the_winner(client, cfg, mon
 
     rendered = " ".join(client.post(f"/album/{_id_for(cfg, d)}/artwork/load-archive").text.split())
 
-    assert "art-rows--muted" in rendered  # still an also-ran
+    # Choosable now it can be seen (#659) — offered, not coming.
+    assert 'name="pick"' in rendered
+    assert "Coming to" not in rendered
     assert "mb-mark" not in rendered  # and still unmarked
     assert "Apply artwork" not in rendered  # nothing to write
 
@@ -11515,7 +11635,7 @@ def test_confirmation_checkbox_controls_the_actual_write(client, cfg, monkeypatc
     assert calls.count(("image", release["id"])) == 1
     # The excluded candidate is still available for the album-page override.
     if not included:
-        assert "Use this artwork" in client.get(f"/album/{release['id']}/artwork").text
+        assert 'name="pick"' in client.get(f"/album/{release['id']}/artwork").text
 
 
 @pytest.mark.parametrize("archive_status", ["absent", "failed"])

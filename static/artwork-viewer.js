@@ -118,4 +118,19 @@
         if (event.target instanceof HTMLImageElement && event.target.closest('.art-full')) renderOpen();
     }, true);
     window.addEventListener('resize', renderOpen);
+
+    // The Artwork section's previous/next row controls (#659). They move the
+    // check between the rows' radios; the stylesheet does the rest, so this
+    // makes no request. Stops at either end rather than wrapping: the picker
+    // jumping from the last row back to the first reads as a page that moved.
+    document.addEventListener('click', event => {
+        const step = event.target.closest('[data-art-step]');
+        if (!step) return;
+        const radios = Array.from(step.form.querySelectorAll('input[name="row"]'));
+        const at = radios.findIndex(radio => radio.checked);
+        const next = radios[at + Number(step.dataset.artStep)];
+        // A click rather than setting `checked`, so the row is selected exactly
+        // as a click on it would select it — events and all.
+        if (next) next.click();
+    });
 })();

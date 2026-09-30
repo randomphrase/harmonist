@@ -251,9 +251,7 @@ def test_confirmation_applies_only_included_artwork(reset_demo_server, on_album,
         assert current
         assert set(current) == ({candidate_digest} if included else set(before))
         if not included:
-            pw.expect(
-                page.get_by_role("button", name="Use the Cover Art Archive's artwork")
-            ).to_be_visible()
+            pw.expect(page.locator("#album-artwork button.art-pick__use:visible")).to_be_visible()
         browser.close()
 
 
