@@ -52,9 +52,9 @@ def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
             pw.expect(artwork).not_to_contain_text("Selected-release image already present")
             if writes:
                 current = artwork.get_by_alt_text(
-                    "Current artwork: cover.png"
+                    "Current artwork: Track 1 and cover.png"
                     if scenario == "protected-folder"
-                    else "Current artwork: All 3 tracks",
+                    else "Current artwork: All 3 tracks and cover.png",
                     exact=True,
                 )
                 assert candidate.bounding_box()["y"] == pytest.approx(
@@ -117,6 +117,9 @@ def _suggest(page, base):
     headers = {"HX-Request": "true"}
     assert page.request.post(f"{base}/library/demo-rel-dingoes/rematch", headers=headers).ok
     page.goto(base)
+    # Let the card's automatic candidate lookup finish before choosing a
+    # different release, so that response cannot overwrite the test's choice.
+    page.wait_for_load_state("networkidle")
     card = page.locator('div[id^="task-"].relative').filter(
         has_text="Little Bit o' Hoot, Whole Lotta Nanny"
     )
@@ -272,6 +275,51 @@ def test_pending_artwork_does_not_block_tags_only_acceptance(reset_demo_server):
         assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
         for route in pending:
             route.abort()
+        browser.close()
+
+
+@pytest.mark.parametrize("width", [1280, 650, 390])
+@pytest.mark.parametrize("on_album", [False, True])
+def test_current_artwork_keeps_actions_in_place_while_loading(
+    reset_public_demo_server, width, on_album
+):
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": width, "height": 1000})
+        base = reset_public_demo_server
+        aid = _suggest(page, base)
+        pending = []
+        page.route("**/assignments/*/artwork?*", lambda route: pending.append(route))
+        page.goto(f"{base}/album/{aid}" if on_album else base)
+        host = page.locator("main") if on_album else page.locator(f"#task-{aid}")
+        review = host.locator(".assignment-editor")
+        artwork = review.locator(".assignment-artwork")
+        pw.expect(artwork).to_contain_text("Loading artwork")
+        current = artwork.locator('img[alt^="Current artwork:"]')
+        pw.expect(current.first).to_be_visible()
+        pw.expect(current.first).to_have_js_property("complete", True)
+        assert current.first.evaluate("e => e.naturalWidth") > 0
+        # Document coordinates avoid confusing browser scroll anchoring with
+        # actual layout stability, even when the controls are below the fold.
+        actions = review.get_by_role("button", name="Confirm suggestion", exact=True)
+        before = actions.evaluate("e => e.getBoundingClientRect().top + window.scrollY")
+        thumb = artwork.locator("button[popovertarget]").first
+        thumb.focus()
+        page.keyboard.press("Enter")
+        viewer = page.locator(f"#{thumb.get_attribute('popovertarget')}")
+        pw.expect(viewer).to_be_visible()
+        viewer.get_by_role("combobox", name="Viewing scale").select_option("native")
+        assert pending
+        for route in pending:
+            route.continue_()
+        pw.expect(artwork.get_by_alt_text("Artwork for selected release")).to_be_visible()
+        pw.expect(artwork).to_contain_text("CAA checked")
+        pw.expect(viewer).to_be_visible()
+        pw.expect(viewer.get_by_role("combobox", name="Viewing scale")).to_have_value("native")
+        page.keyboard.press("Escape")
+        pw.expect(thumb).to_be_focused()
+        after = actions.evaluate("e => e.getBoundingClientRect().top + window.scrollY")
+        assert after == pytest.approx(before, abs=1)
         browser.close()
 
 

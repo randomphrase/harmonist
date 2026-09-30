@@ -18,6 +18,9 @@ def _open(page, base, review):
         host = page.get_by_role("region", name="Review suggested release").locator(
             ".assignment-artwork"
         )
+        # These tests inspect the complete gallery. Current images are already
+        # usable before the asynchronous selected-release image arrives.
+        pw.expect(host.get_by_alt_text("Artwork for selected release", exact=True)).to_be_visible()
     else:
         host = page.locator("#album-artwork")
     pw.expect(host.locator("button.art-row__art").first).to_be_visible()

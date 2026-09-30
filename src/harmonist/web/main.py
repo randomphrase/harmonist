@@ -6578,6 +6578,11 @@ def _register_routes(app: FastAPI) -> None:
                 assignment_changes=assignment_changes,
                 assignment_error=assignment_error,
                 review_draft=review_draft,
+                artwork=(
+                    _artwork_view(album, folder_cover=_folder_cover_policy(request))
+                    if panel is not None and not album_tracks
+                    else None
+                ),
                 field_label=tag_history.label_for,
                 display_tag=tag_history.display,
             ),
@@ -6683,6 +6688,10 @@ def _register_routes(app: FastAPI) -> None:
         except cover_art.CoverArtError:
             log.exception("could not load assignment artwork", extra=_LOG_ONLY)
             error = "Artwork could not be loaded. You can still apply tags and keep your images."
+        if view is None:
+            # A failed remote check does not erase the local images already
+            # shown in the review. The error remains visible beside them.
+            view = _artwork_view(album, folder_cover=_folder_cover_policy(request))
         return _templates(request).TemplateResponse(
             request,
             "partials/_assignment_artwork.html",

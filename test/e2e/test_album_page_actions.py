@@ -110,7 +110,7 @@ def test_a_card_links_to_its_album_page_and_the_decision_can_be_taken_there(
 
         page.goto(reset_demo_server)
         # The inbox is pulled into the page after load, so wait for the card.
-        link = page.get_by_role("link", name=ALBUM_TITLE)
+        link = page.locator('a[href^="/album/"]').filter(has_text=ALBUM_TITLE)
         link.wait_for(timeout=20_000)
         link.click()
 

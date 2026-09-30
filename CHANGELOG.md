@@ -55,6 +55,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **Suggested-match reviews show current artwork while the Cover Art Archive loads**, keeping the confirmation controls in place (#654).
+
 - **An open artwork viewer keeps its image, scale, position and focus when the background artwork check finishes** (#644).
 
 - **A CD rip with a UPC tag is no longer treated as a download**: MB

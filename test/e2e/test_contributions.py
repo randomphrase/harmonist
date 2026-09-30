@@ -126,14 +126,28 @@ def test_sibling_without_release_cover_keeps_local_artwork(sibling_artwork_serve
         browser = pw.chromium.launch()
         page = browser.new_page()
         page.goto(f"{server}/album/{ALBUM}")
+        pending = []
+        page.route("**/assignments/*/artwork?*", lambda route: pending.append(route))
         results = page.locator(f"#contribution-editions-{ALBUM}")
         results.get_by_role("listitem", name="Suggested digital release").get_by_role(
             "button", name="Use", exact=True
         ).click()
         review = page.get_by_role("region", name="Review suggested release")
         artwork = review.locator(".assignment-artwork")
+        local = artwork.locator('img[alt^="Current artwork:"]')
+        playwright_sync.expect(local.first).to_be_visible()
+        confirm = review.get_by_role("button", name="Confirm suggestion", exact=True)
+        before_y = confirm.evaluate("e => e.getBoundingClientRect().top + window.scrollY")
+        assert pending
+        for route in pending:
+            route.continue_()
+        page.unroute("**/assignments/*/artwork?*")
         expected = "Artwork could not be loaded" if scenario == "failure" else "No front cover"
         playwright_sync.expect(artwork).to_contain_text(expected)
+        playwright_sync.expect(local.first).to_be_visible()
+        assert confirm.evaluate(
+            "e => e.getBoundingClientRect().top + window.scrollY"
+        ) == pytest.approx(before_y, abs=1)
         playwright_sync.expect(
             artwork.get_by_role("checkbox", name="Use artwork from the selected release")
         ).to_have_count(0)

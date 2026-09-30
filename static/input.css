@@ -1362,6 +1362,9 @@ button.art-row__art--absent:hover {
 .assignment-artwork__image { display: flex; align-items: start; gap: .5rem; }
 .assignment-artwork__image > :last-child { min-width: 0; overflow-wrap: anywhere; }
 .assignment-artwork__comparison { display: grid; gap: .5rem 1rem; align-items: start; }
+/* Reserve the same thumbnail height while CAA answers, including when the
+   columns stack on a narrow screen or there is no current image. */
+.assignment-artwork__result { min-height: 6.5rem; }
 @media (min-width: 40rem) {
   .assignment-artwork__comparison { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .assignment-artwork__current { grid-column: 1; grid-row: var(--art-review-row); }

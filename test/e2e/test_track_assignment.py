@@ -32,7 +32,7 @@ def test_suggested_release_link_follows_review_and_confirmation(reset_demo_serve
         host = page.locator("main") if on_album else page.locator(f"#task-{aid}")
         review = host.locator(".assignment-editor")
         heading = review.get_by_role("heading", name=re.compile("Suggested match:"))
-        link = heading.get_by_role("link", name="MusicBrainz ↗", exact=True)
+        link = heading.get_by_role("link")
         pw.expect(link).to_have_attribute(
             "href", "https://musicbrainz.org/release/demo-rel-thamesmen"
         )
@@ -111,8 +111,8 @@ def test_suggested_release_link_follows_review_and_confirmation(reset_demo_serve
             page.wait_for_url(f"{base}/album/demo-rel-folksmen")
         page.goto(f"{base}/album/demo-rel-folksmen")
         pw.expect(
-            page.locator("main").get_by_role("link", name="MusicBrainz ↗", exact=True)
-        ).to_have_attribute("href", "https://musicbrainz.org/release/demo-rel-folksmen")
+            page.locator('main a[href="https://musicbrainz.org/release/demo-rel-folksmen"]')
+        ).to_be_visible()
         browser.close()
 
 

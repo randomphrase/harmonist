@@ -2,29 +2,38 @@
 {% from 'macros.html' import review_url %}
 {% from 'partials/_caa_checked.html' import caa_checked with context %}
 {% set image_prefix = 'assignment-art-' ~ album.id ~ '-' %}
+{% set artwork_pending = artwork_pending|default(false) %}
 <div class="space-y-3">
     <div class="flex items-center justify-between gap-3">
         <h3 class="text-sm font-bold">Artwork</h3>
+        {% if not artwork_pending %}
         <dl class="grid grid-cols-[auto_auto_auto] items-center gap-x-2 text-xs">
             {{ caa_checked(caa.fetched_at if caa else none,
                 review_url('/assignments/' ~ album.id ~ '/artwork?release_fingerprint=' ~ release_fingerprint ~ '&reread=true', replacement),
                 'closest .assignment-artwork') }}
         </dl>
+        {% endif %}
     </div>
-    {% if artwork_error %}<p role="alert" class="text-sm text-amber-700">{{ artwork_error }}</p>{% endif %}
     {% if artwork %}
     {% set same_images = artwork.images|selectattr('image.digest', 'equalto', archive_image.digest)|list if archive_image else [] %}
     {% set selected = namespace(row=2, found=false) %}
     <div class="assignment-artwork__comparison group/artwork-choice text-xs">
         <h4 class="assignment-artwork__current text-muted font-semibold" style="--art-review-row: 1">Current</h4>
-        {% for row in artwork.images %}
-        {% if row.writes and not selected.found %}{% set selected.row = loop.index + 1 %}{% set selected.found = true %}{% endif %}
+        {# The write plan can split one image between tracks and folder cover.
+           Current images must keep the same rows before and after CAA answers. #}
+        {% for row in artwork.images|unique(attribute='image.digest') %}
+        {% set image = row.image %}
+        {% set rows = artwork.images|selectattr('image.digest', 'equalto', image.digest)|list %}
+        {% set label = rows|map(attribute='label')|join(' and ') %}
+        {% if rows|selectattr('writes')|list and not selected.found %}{% set selected.row = loop.index + 1 %}{% set selected.found = true %}{% endif %}
         <div class="assignment-artwork__current assignment-artwork__image" style="--art-review-row: {{ loop.index + 1 }}">
-            {{ thumbnail(row.image, album.id, 'current ' ~ row.label, image_prefix, 'Current artwork: ' ~ row.label) }}
-            <span>{{ row.label }}<br><span class="text-muted">{{ describe_image(row.image) }}</span></span>
+            {{ thumbnail(image, album.id, 'current ' ~ label, image_prefix, 'Current artwork: ' ~ label) }}
+            <span>{{ label }}<br><span class="text-muted">{{ describe_image(image) }}</span></span>
         </div>
         {% else %}<p class="assignment-artwork__current text-muted" style="--art-review-row: 2">No readable artwork.</p>{% endfor %}
-        {% if archive_image and artwork.writes %}
+        {% if artwork_pending %}
+        <h4 class="assignment-artwork__selected font-semibold" style="--art-review-row: 1">Selected release</h4>
+        {% elif archive_image and artwork.writes %}
         <input type="hidden" name="art_plan" value="{{ artwork.fingerprint }}">
         <h4 class="assignment-artwork__selected font-semibold" style="--art-review-row: 1">
             <label class="flex items-start gap-2">
@@ -35,8 +44,12 @@
         {% else %}
         <h4 class="assignment-artwork__selected font-semibold" style="--art-review-row: 1">Keep existing artwork</h4>
         {% endif %}
-        <div class="assignment-artwork__selected space-y-2" style="--art-review-row: {{ selected.row }}">
-            {% if same_images %}
+        <div class="assignment-artwork__selected assignment-artwork__result flex flex-col gap-2" style="--art-review-row: {{ selected.row }}">
+            {% if artwork_pending %}
+            <p class="text-muted" role="status">Loading artwork… You can apply tags while keeping your images.</p>
+            {% elif artwork_error %}
+            <p role="alert" class="text-amber-700">{{ artwork_error }}</p>
+            {% elif same_images %}
             <p class="text-muted">Selected-release image already present: {{ same_images|map(attribute='label')|join('; ') }}.</p>
             {% elif archive_image %}
             <div class="assignment-artwork__image">
@@ -45,8 +58,8 @@
             </div>
             {% else %}<p class="text-muted">No front cover is available. Existing images will be kept.</p>{% endif %}
             {% if archive_image and artwork.writes %}
-            <div aria-live="polite">
-                <p class="hidden group-has-checked/artwork-choice:block">Will update: {{ artwork.write_targets }}.</p>
+            <div aria-live="polite" class="hidden group-has-checked/artwork-choice:block">
+                <p>Will update: {{ artwork.write_targets }}.</p>
             </div>
             {% endif %}
             {% if caa and caa.from_release_group %}<p class="text-muted">For the release group, not this release.</p>{% endif %}
@@ -55,7 +68,7 @@
     {% if artwork.cover_unreadable %}<p class="text-xs text-amber-700">The folder cover could not be read. It will be left alone.</p>{% endif %}
     {% if artwork.plan.preserves_per_track_art %}<p class="text-xs text-muted">Differing per-track artwork is preserved.</p>{% endif %}
     {% for image, who in artwork.distinct %}
-        {{ full_size(image, album.id, who, image_prefix, replacement if archive_image and image.digest == archive_image.digest else '', gallery=artwork.distinct) }}
+        {{ full_size(image, album.id, who, image_prefix, replacement if archive_image and image.digest == archive_image.digest and not same_images else '', gallery=artwork.distinct) }}
     {% endfor %}
     {% endif %}
 </div>

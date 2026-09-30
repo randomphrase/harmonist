@@ -11483,6 +11483,13 @@ def test_confirmation_without_a_candidate_still_tags_and_keeps_art(
     )
     aid = _id_for(cfg, d)
     preview, artwork, fields = _review_with_artwork(client, aid)
+    from bs4 import BeautifulSoup
+
+    for response in (preview, artwork):
+        current = BeautifulSoup(response.text, "html.parser").select('img[alt^="Current artwork:"]')
+        assert current
+        for image in current:
+            assert client.get(image["src"]).content == big
     assert (
         "could not be loaded" if archive_status == "failed" else "No front cover"
     ) in artwork.text

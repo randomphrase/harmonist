@@ -171,6 +171,13 @@ def public_demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tup
         yield base, root / "harmonist-demo"
 
 
+@pytest.fixture
+def reset_public_demo_server(public_demo_server: tuple[str, Path]) -> str:
+    base, _root = public_demo_server
+    _reset_demo_library(base)
+    return base
+
+
 def _run_demo_server(
     root: Path,
     *,

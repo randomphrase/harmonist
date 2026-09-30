@@ -190,8 +190,11 @@
             <div id="assignment-artwork-{{ album.id }}-{{ release_fingerprint }}" hx-preserve
                  class="assignment-artwork py-3 border-t border-line">
                 <div hx-get="{{ review_url('/assignments/' ~ album.id ~ '/artwork?release_fingerprint=' ~ release_fingerprint, replacement) }}"
-                     hx-trigger="load" hx-target="closest .assignment-artwork" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this">
-                    <p class="text-xs text-muted" role="status">Loading artwork… You can apply tags while keeping your images.</p>
+                     hx-trigger="load" hx-target="closest .assignment-artwork" hx-swap="innerHTML settle:0ms"
+                     hx-indicator="find [role='status']" hx-disabled-elt="this">
+                    {% with artwork_pending=true %}
+                        {% include 'partials/_assignment_artwork.html' %}
+                    {% endwith %}
                 </div>
             </div>
             {% endif %}
