@@ -213,7 +213,11 @@ def panel(assessment: Assessment, check: SiblingCheck) -> Panel | None:
         reasons.append("source_match")
     # Evidence against the match only while it links nothing on that store: a
     # release sold from both label and artist pages may link another page too.
-    if check.same_store and not check.current_on_store:
+    # And only while no release links the exact URL, which settles it: another
+    # page on the store is the weaker evidence, and stating both equivocates
+    # over an answer already given (#652).
+    exact = any(e["url_evidence"] for e in check.source_matches)
+    if check.same_store and not check.current_on_store and not exact:
         reasons.append("same_store")
     if assessment.media_mismatch:
         reasons.append("media")

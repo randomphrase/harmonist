@@ -73,6 +73,20 @@ def test_mismatch_reasons_and_the_contribution_behind_them(
     assert shown.finding == finding
 
 
+def test_an_exact_store_url_match_is_the_only_reason_it_needs():
+    """#652: another release linking the download's exact URL settles which
+    release it is. A third linking another page on that store is weaker
+    evidence, and stating it too only muddied the answer — it keeps its row in
+    the list, but adds no reason."""
+    exact = release(urls=(URL,), mbid="exact")
+    other_page = release(urls=(RENAMED,), mbid="other-page")
+    assessment = observed(album(), (LABEL,), [exact, other_page])
+    shown = contributions.panel(assessment, assessment.siblings)
+    assert shown is not None
+    assert shown.reasons == ("source_match",)
+    assert [r["id"] for r in assessment.siblings.same_store] == ["other-page"]
+
+
 @pytest.mark.parametrize(("current", "reasons"), [("0801061000332", ()), (None, ("source_match",))])
 def test_a_reused_barcode_is_evidence_only_where_the_match_lacks_it(current, reasons):
     a = album()

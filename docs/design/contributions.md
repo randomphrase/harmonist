@@ -66,7 +66,9 @@ Two cases are deliberately weaker:
 - **Another page on the same Bandcamp store** may be the same product under a
   renamed page, or a different product the store also sells. One Bandcamp item
   can even back two releases once tracks are added to it. So it's shown as a
-  reason to look, never as a match.
+  reason to look, never as a match — and not at all when another release links
+  the exact URL, which already settles it. Offering the weaker evidence beside
+  the stronger only equivocates (#652).
 - **Private downloads** can still be checked for the right media, but their URLs
   are never offered as links or sent to Harmony, and the public release may be a
   different mix. Privacy is known only when Bandcamp says so; a URL's spelling
