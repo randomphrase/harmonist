@@ -600,3 +600,99 @@ def test_failed_invalidation_cannot_publish_a_new_measurement(caa_cache, monkeyp
     with pytest.raises(CoverArtError, match="could not retire"):
         cover_art.check_front("rel-1", keep_if_wider_than=100, client=_client(handler))
     assert cover_art.cached_front("rel-1") == Front(old, "image/jpeg")
+
+
+# ---------- every image the archive lists: fetch_listing (#659) ----------
+#
+# The picker offers more than the one front cover `check_front` measures: every
+# image the archive lists for a release or a release group, as candidates a
+# person can look at and choose. Listed, not downloaded — a candidate is shown
+# from the archive's own thumbnail, and its original is fetched only when chosen.
+
+LISTING = {
+    "images": [
+        {
+            "id": 1,
+            "types": ["Front"],
+            "front": True,
+            "image": "http://coverartarchive.org/release/r/1.jpg",
+            "thumbnails": {
+                "250": "http://coverartarchive.org/release/r/1-250.jpg",
+                "500": "http://coverartarchive.org/release/r/1-500.jpg",
+                "1200": "http://coverartarchive.org/release/r/1-1200.jpg",
+            },
+        },
+        {
+            "id": 2,
+            "types": ["Back"],
+            "front": False,
+            "image": "http://coverartarchive.org/release/r/2.jpg",
+            "thumbnails": {"small": "http://coverartarchive.org/release/r/2-250.jpg"},
+        },
+        # The three types Picard never takes, and neither does Harmonist —
+        # including on an image that is ALSO a front: a watermarked front is not
+        # a cover to embed in anyone's files.
+        {"id": 3, "types": ["Matrix/Runout"], "front": False, "image": "http://x/3.jpg"},
+        {"id": 4, "types": ["Front", "Watermark"], "front": True, "image": "http://x/4.jpg"},
+        {"id": 5, "types": ["Raw/Unedited"], "front": False, "image": "http://x/5.jpg"},
+        # No types and no thumbnails at all: still an image, shown from itself.
+        {"id": 6, "types": [], "front": False, "image": "http://coverartarchive.org/r/6.png"},
+    ]
+}
+
+
+def _listing_client(status: int = 200, payload: object = LISTING):
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        if status != 200:
+            return httpx.Response(status)
+        return httpx.Response(200, json=payload)
+
+    return _client(handler), seen
+
+
+def test_a_listing_offers_every_image_but_the_three_never_offered():
+    client, seen = _listing_client()
+
+    found = cover_art.fetch_listing("release", "r", client=client)
+
+    assert [c.image_id for c in found] == ["1", "2", "6"]
+    assert seen == ["https://coverartarchive.org/release/r"]
+
+
+def test_a_listing_says_which_images_are_fronts_and_where_to_see_them():
+    """Shown from a thumbnail, never the original: a candidate nobody chooses
+    should cost a thumbnail and no more. Over TLS, because the page they end
+    up behind is."""
+    client, _ = _listing_client()
+
+    first, back, untyped = cover_art.fetch_listing("release", "r", client=client)
+
+    assert (first.front, first.types) == (True, ("front",))
+    assert first.thumbnail_url == "https://coverartarchive.org/release/r/1-500.jpg"
+    assert first.image_url == "https://coverartarchive.org/release/r/1.jpg"
+    assert (back.front, back.thumbnail_url) == (
+        False,
+        "https://coverartarchive.org/release/r/2-250.jpg",
+    )
+    assert untyped.thumbnail_url == untyped.image_url == "https://coverartarchive.org/r/6.png"
+
+
+def test_a_listing_the_archive_has_nothing_for_is_empty():
+    """A 404 is an answer — the archive has no images for this one — and the
+    caller may keep it, which is what the TTL makes safe (#436)."""
+    client, _ = _listing_client(status=404)
+
+    assert cover_art.fetch_listing("release-group", "rg", client=client) == []
+
+
+def test_a_listing_that_could_not_be_asked_raises():
+    """ "I could not ask" is not "there is nothing there" (#458)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    with pytest.raises(CoverArtError):
+        cover_art.fetch_listing("release", "r", client=_client(handler))

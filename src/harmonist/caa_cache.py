@@ -102,9 +102,14 @@ def _fresh(known: activity_store.CachedCoverArt, max_age: timedelta) -> bool:
     helper: the two caches store different types, and neither module has any
     other reason to import the other.
     """
+    return _fresh_since(known.fetched_at, max_age)
+
+
+def _fresh_since(fetched_at: datetime, max_age: timedelta) -> bool:
+    """`_fresh`, for anything stored with a date — the listings below too."""
     if max_age <= timedelta(0):
         return False
-    age = datetime.now(UTC) - known.fetched_at
+    age = datetime.now(UTC) - fetched_at
     return timedelta(0) <= age < max_age
 
 
@@ -198,3 +203,64 @@ def front(
         answer = replace(answer, source="release")
     activity_store.store_cover_art(mbid, answer)
     return answer
+
+
+# ---------------------------------------------------------------------------
+# Every image a listing offers (#659)
+# ---------------------------------------------------------------------------
+#
+# The picker's candidates: every image the archive lists for a release or a
+# release group, not just the front `front` measures. Same rules as above — ask
+# when the stored answer is missing or past its TTL, serve it otherwise, and
+# never store a failure — and the same reason the empty answer may be kept: it
+# expires.
+#
+# Kept in the generic payload store (`mb_release_cache`) under a key of their
+# own, as the release-group browse is: every reader of that table asks by key,
+# so a listing can never be served as a release, and it needs no table of its
+# own for a JSON blob and a date.
+
+
+def _listing_key(kind: str) -> str:
+    return f"caa-listing:{kind}"
+
+
+def stored_listing(kind: str, mbid: str) -> list[cover_art.Candidate] | None:
+    """The candidates last listed for this release or release group, or None if
+    it has never been asked. **Never the network**, whatever the age — what the
+    section renders from."""
+    known = activity_store.cached_release(mbid, _listing_key(kind))
+    return cover_art.parse_listing(known.payload) if known is not None else None
+
+
+def listing(kind: str, mbid: str, *, max_age: timedelta | None = None) -> list[cover_art.Candidate]:
+    """`cover_art.fetch_listing`, served from the store when it is fresh enough.
+
+    `CoverArtError` propagates and nothing is stored: "could not ask" must
+    never be recorded as "the archive has no images".
+    """
+    known = activity_store.cached_release(mbid, _listing_key(kind))
+    if known is not None and _fresh_since(known.fetched_at, _ttl if max_age is None else max_age):
+        return cover_art.parse_listing(known.payload)
+    with timing.warn_if_slow("Cover Art Archive listing", _SLOW_CHECK, mbid=mbid):
+        # Through the module attribute, so demo mode's patch lands.
+        candidates = cover_art.fetch_listing(kind, mbid)
+    activity_store.store_release(mbid, _listing_key(kind), _as_listing(candidates))
+    return candidates
+
+
+def _as_listing(candidates: list[cover_art.Candidate]) -> dict[str, object]:
+    """Candidates in the shape `cover_art.parse_listing` reads, so a stored
+    listing and a fetched one are parsed by the same code."""
+    return {
+        "images": [
+            {
+                "id": c.image_id,
+                "image": c.image_url,
+                "thumbnails": {"500": c.thumbnail_url},
+                "types": list(c.types),
+                "front": c.front,
+            }
+            for c in candidates
+        ]
+    }

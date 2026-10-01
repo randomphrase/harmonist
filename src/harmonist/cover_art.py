@@ -398,6 +398,103 @@ def _front_url(listing: httpx.Response) -> str | None:
     return None
 
 
+#: Image types never offered as a candidate, whatever the picker is asked for:
+#: the three Picard always leaves out (#659). Stricter than Picard on one
+#: point, deliberately — an image carrying any of them is dropped even if it is
+#: also marked Front, since a watermarked front is not a cover to embed.
+EXCLUDED_TYPES = frozenset({"matrix/runout", "raw/unedited", "watermark"})
+
+#: Which of the archive's thumbnails a candidate is shown from, best first. The
+#: archive names them by size and, on older entries, by "small" and "large".
+_THUMBNAIL_PREFERENCE = ("500", "large", "250", "small", "1200")
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """One image the archive lists, offered to the picker (#659).
+
+    Described, not downloaded: `thumbnail_url` is what it is shown from, and
+    `image_url` — the original — is fetched only once it is chosen. Both URLs
+    come from the archive's own listing and from nowhere else, so a server-side
+    fetch of either can never be pointed somewhere by a request.
+    """
+
+    image_id: str
+    image_url: str
+    thumbnail_url: str
+    types: tuple[str, ...]
+    front: bool
+
+
+def fetch_listing(kind: str, mbid: str, *, client: httpx.Client | None = None) -> list[Candidate]:
+    """Every image the archive lists for a release or a release group (#659).
+
+    `kind` is "release" or "release-group", as the archive spells its paths.
+    An empty list for a 404: the archive has nothing for it, which is an
+    answer. Raises `CoverArtError` when it could not be asked (#458).
+
+    One request, and no image is fetched: the listing says where each one and
+    its thumbnails are.
+    """
+    owns_client = client is None
+    http = client or httpx.Client(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
+    try:
+        try:
+            resp = http.get(f"{CAA_BASE}/{kind}/{mbid}")
+        except httpx.HTTPError as e:
+            raise CoverArtError(f"CAA listing request failed for {kind}/{mbid}: {e}") from e
+        if resp.status_code == 404:
+            return []
+        if not resp.is_success:
+            raise CoverArtError(f"CAA returned {resp.status_code} for {kind}/{mbid}")
+        try:
+            payload = resp.json()
+        except ValueError as e:
+            raise CoverArtError(f"CAA listing for {kind}/{mbid} was not JSON: {e}") from e
+        return parse_listing(payload)
+    finally:
+        if owns_client:
+            http.close()
+
+
+def parse_listing(payload: object) -> list[Candidate]:
+    """The candidates in an archive listing, in the archive's order, without
+    the types never offered. Entries that are not shaped like an image are
+    skipped rather than guessed at."""
+    images_ = payload.get("images") if isinstance(payload, dict) else None
+    if not isinstance(images_, list):
+        return []
+    found = []
+    for entry in images_:
+        if not isinstance(entry, dict) or not isinstance(entry.get("image"), str):
+            continue
+        types = tuple(str(t).lower() for t in entry.get("types") or () if isinstance(t, str))
+        if EXCLUDED_TYPES.intersection(types):
+            continue
+        image_url = _https(entry["image"])
+        listed = entry.get("thumbnails")
+        thumbs: dict[str, object] = listed if isinstance(listed, dict) else {}
+        thumbnail = next(
+            (t for k in _THUMBNAIL_PREFERENCE if isinstance(t := thumbs.get(k), str)), None
+        )
+        found.append(
+            Candidate(
+                image_id=str(entry.get("id")),
+                image_url=image_url,
+                thumbnail_url=_https(thumbnail) if thumbnail else image_url,
+                types=types,
+                front=bool(entry.get("front")),
+            )
+        )
+    return found
+
+
+def _https(url: str) -> str:
+    """The archive's listing states http; the page these end up behind is
+    served over TLS."""
+    return url.replace("http://", "https://", 1)
+
+
 def _total_length(resp: httpx.Response) -> int | None:
     """The full image's byte length, however the server answered the range."""
     content_range = resp.headers.get("content-range", "")

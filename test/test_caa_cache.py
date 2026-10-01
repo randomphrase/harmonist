@@ -272,3 +272,84 @@ def test_a_winner_is_not_fetched_with_the_image_cache_switched_off(evicted_winne
     caa_cache.front(MBID, keep_if_wider_than=500)
 
     assert evicted_winner == []
+
+
+# ---------- every image a listing offers (#659) ----------
+
+CANDIDATES = [
+    cover_art.Candidate(
+        image_id="1",
+        image_url="https://caa.example/1.jpg",
+        thumbnail_url="https://caa.example/1-500.jpg",
+        types=("front",),
+        front=True,
+    ),
+    cover_art.Candidate(
+        image_id="2",
+        image_url="https://caa.example/2.jpg",
+        thumbnail_url="https://caa.example/2.jpg",
+        types=(),
+        front=False,
+    ),
+]
+
+
+class _Lister:
+    """A stand-in listing that records how many times the archive was asked."""
+
+    def __init__(self, answer: list[cover_art.Candidate] | Exception = CANDIDATES):
+        self.answer = answer
+        self.calls: list[tuple[str, str]] = []
+
+    def __call__(self, kind, mbid, *, client=None):
+        self.calls.append((kind, mbid))
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+def test_a_listing_is_asked_for_once_inside_the_ttl(monkeypatch):
+    lister = _Lister()
+    monkeypatch.setattr(cover_art, "fetch_listing", lister)
+
+    first = caa_cache.listing("release", MBID)
+    second = caa_cache.listing("release", MBID)
+
+    assert lister.calls == [("release", MBID)]
+    assert first == second == CANDIDATES
+
+
+def test_a_release_and_its_group_are_listed_separately(monkeypatch):
+    """One id can name a release and, in a test at least, a release group —
+    the listings are different resources and must not answer for each other."""
+    lister = _Lister()
+    monkeypatch.setattr(cover_art, "fetch_listing", lister)
+
+    caa_cache.listing("release", MBID)
+    caa_cache.listing("release-group", MBID)
+
+    assert lister.calls == [("release", MBID), ("release-group", MBID)]
+
+
+def test_a_stored_listing_is_read_without_asking(monkeypatch):
+    """What the page renders from: never the network, however old (#436)."""
+    lister = _Lister()
+    monkeypatch.setattr(cover_art, "fetch_listing", lister)
+
+    assert caa_cache.stored_listing("release", MBID) is None
+    caa_cache.listing("release", MBID)
+    caa_cache.configure(timedelta(0))  # everything is stale now
+
+    assert caa_cache.stored_listing("release", MBID) == CANDIDATES
+    assert lister.calls == [("release", MBID)]
+
+
+def test_a_listing_that_could_not_be_asked_stores_nothing(monkeypatch):
+    """An outage is not "the archive has no images" (#458): the failure
+    propagates, and the previous answer — here, none — stays."""
+    monkeypatch.setattr(cover_art, "fetch_listing", _Lister(cover_art.CoverArtError("down")))
+
+    with pytest.raises(cover_art.CoverArtError):
+        caa_cache.listing("release", MBID)
+
+    assert caa_cache.stored_listing("release", MBID) is None
