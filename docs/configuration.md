@@ -23,8 +23,10 @@ Needs a restart.
 |---|---|---|---|
 | `download_format` | `HARMONIST_DOWNLOAD_FORMAT` | `"flac"` | Format to download: `flac`, `alac`, `mp3-320`, `mp3-v0`, `aac-hi` or `vorbis`. |
 | `max_downloads_per_sync` | `HARMONIST_MAX_DOWNLOADS_PER_SYNC` | `5` | New purchases downloaded per sync; the rest wait for the next one. `0` pauses downloads. |
+| `cookies_file` | | `cookies.txt` in the config folder | Your Bandcamp login cookies, in Netscape `cookies.txt` format. |
+| `ignores_file` | | `ignores.txt` in the config folder | Bandcamp purchases Harmonist won't download. |
 
-Both are on the Settings page. Bandcamp's `wav` and `aiff` downloads can't be
+The first two are on the Settings page. Bandcamp's `wav` and `aiff` downloads can't be
 tagged, so Harmonist won't see them.
 
 ## `[musicbrainz]`

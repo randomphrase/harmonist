@@ -6,71 +6,64 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-10-01
+
 ### Added
 
 - **An album's page shows where its files came from** — Bandcamp, Qobuz,
-  Amazon, Beatport, CD or unknown — under Additional info, with the tags it rests
-  on; the comment moves there from the Album section (#634).
+  Amazon, Beatport, CD or unknown — under Additional info (#634).
 
-- **A CD rip with a UPC tag is checked for a possible mismatch** against the
-  release group's physical releases, as a download is against its digital ones
-  (#633).
+- **A CD rip with a UPC tag is checked for a possible mismatch**, as a download
+  is (#633).
 
 ### Changed
 
-- **Cover Art Archive images kept for album pages are capped at 1 GB**, least
-  recently viewed first; tune with `image_cache_max_bytes` under `[cover_art]`
-  (#439).
-
-- **Settings shows where the background update check is**, in its own
-  Background checks section: albums checked this week, how many are waiting, and
-  when the next batch runs. It replaces **Check now**, which only ran one small
-  batch (#623).
-
 - **A possibly mismatched download gets its own Library filter, Possible
-  mismatch, before any MB contributions**: the album page says why the match is
-  in doubt, lists the matched release beside the others, and **Don't warn me
-  about this** accepts it and shows what MusicBrainz is missing from it (#618).
-  Both filters fill in as albums are opened or checked in the background after
-  upgrading.
+  mismatch**, separate from MB contributions; **Don't warn me about this**
+  accepts the match (#618). Both filters fill in as albums are opened or checked
+  in the background after upgrading.
+
+- **Settings shows where the background update check is** — albums checked this
+  week, how many are waiting, when the next batch runs — replacing **Check now**
+  (#623).
+
+- **An album's History records the match you confirm and how it was found**,
+  not each suggestion before it (#639).
+
+- **Clearing a MusicBrainz match with the pencil can be undone** from the
+  album's History (#639).
+
+- **A suggested or tagged release is named, disambiguation included**, rather
+  than shown as a bare MusicBrainz link (#635).
 
 - **Release titles in release choices link to MusicBrainz**, replacing the
   separate MB button (#618).
 
+- **Cover Art Archive images kept for album pages are capped at 1 GB**; tune
+  with `image_cache_max_bytes` under `[cover_art]` (#439).
+
 - **The documentation is rewritten around solving problems**: getting started,
-  how it works, troubleshooting, configuration and security replace the old
-  usage, installation and deployment guides (#626).
-
-- **An album's History records the match you confirm, not the suggestions
-  before it**: the entry names the release and how it was found — by store URL,
-  barcode, name search or MBID — and says when the tags already matched (#639).
-
-- **Clearing a MusicBrainz match with the pencil can be undone** from the
-  album's History, putting back the release its files still carry (#639).
-
-- **A suggested or tagged release is named, disambiguation included**, rather
-  than shown as a bare MusicBrainz link, so "Far & Off" and "Far & Off (24bits)"
-  no longer look the same; inbox cards show the disambiguation beside the
-  MusicBrainz link (#635).
+  how it works, troubleshooting, configuration and security (#626).
 
 ### Fixed
 
-- **Activity names the album whose artwork was updated**, as it does for other album actions; so do the notices that the Cover Art Archive was down during tagging and that a re-downloaded purchase is still ignored (#658).
-
-- **Suggested-match reviews show current artwork while the Cover Art Archive loads**, keeping the confirmation controls in place (#654).
-
-- **An open artwork viewer keeps its image, scale, position and focus when the background artwork check finishes** (#644).
-
 - **A CD rip with a UPC tag is no longer treated as a download**: MB
-  contributions now need a store's own tags — Bandcamp, Qobuz, Amazon or Beatport (#632).
+  contributions now need a store's own tags (#632).
+
+- **A release suggestion stays put until you confirm or dismiss it**, rather
+  than being replaced by a later lookup (#638).
 
 - **An album's cover updates as soon as its artwork changes**, rather than the
   browser showing the old image for days (#636).
 
-- **A release suggestion stays put until you confirm or dismiss it**: a
-  barcode or store URL lookup no longer replaces one you may be reviewing, and a
-  lookup in progress says "Looking up on MusicBrainz…" rather than "Tagging…"
-  (#638).
+- **An open artwork viewer no longer closes when the background artwork check
+  finishes** (#644).
+
+- **Suggested-match reviews show current artwork while the Cover Art Archive
+  loads**, keeping the confirm controls in place (#654).
+
+- **Activity names the album whose artwork was updated**, as it does for other
+  album actions (#658).
 
 ## [1.21.0] - 2026-09-27
 
