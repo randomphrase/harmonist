@@ -29,6 +29,15 @@ sentences and controls can contradict one another when assembled.
 
 ### Every sentence must help the current decision
 
+- **Ask before adding any explanatory text.** A sentence that explains what the
+  screen is doing ("Showing your choices instead of the suggested artwork.
+  Nothing is written until you apply them.") is almost never wanted, and it
+  costs more than its words: it shifts the layout under the controls, and it
+  is the thing the user will ask to have taken out. If a screen seems to need
+  one, show the user the screen and ask; the fix is usually the screen. This
+  covers status lines, hints and "go back" links added beside them as much as
+  paragraphs. #659 shipped one, with a "back to the suggestions" link, and both
+  came out on review.
 - **Show only the problem domain or actionable analysis.** Every line is either
   a fact about the user's music and its releases, or analysis they can act on.
   Never reassurance that the software did its job: "Nothing to add to
