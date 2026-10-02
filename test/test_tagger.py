@@ -858,14 +858,15 @@ def test_tag_album_preserves_per_track_artwork(album_with_tracks, tmp_path):
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == art_b  # preserved
 
 
-def test_preserved_per_track_artwork_reaches_the_album_history(album_with_tracks, tmp_path):
-    """#260: declining to overwrite the user's artwork is a decision Harmonist
-    made about their files, so it belongs in that album's own History — not only
-    in the global feed as an unattributed mirrored warning.
+def test_keeping_per_track_artwork_is_not_a_warning(album_with_tracks, tmp_path):
+    """#670: per-track artwork is user data and nothing overwrites it, so a
+    tagging that keeps it has done what it promises — not found something wrong.
 
-    The `art=preserved` token on the `tag.album` audit line is not this: it shows
-    only with "Show details" ticked, as one token among a dozen. This is the
-    sentence that says it.
+    It used to warn on every tagging that wrote tags (#260, #272), naming a
+    "replace artwork" remedy no page offers and claiming a folder cover was
+    written when the album already had one. A tags-only re-tag of a compilation
+    put that in the album's History each time. The album's Artwork section, and
+    a confirmation's artwork review, are where the kept sleeves are shown.
     """
     from datetime import UTC, datetime
 
@@ -881,64 +882,12 @@ def test_preserved_per_track_artwork_reaches_the_album_history(album_with_tracks
     )
     _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())
     _embed_cover(album_dir / "02 Track 2.m4a", _minimal_jpeg() + b"_different")
-    new_cover = tmp_path / "cover.jpg"
-    new_cover.write_bytes(b"\xff\xd8\xff\xe0NEW_ALBUM_COVER\xff\xd9")
+    (album_dir / "cover.jpg").write_bytes(_minimal_jpeg())
 
-    tagger.tag_and_artwork(album_dir, _release_2_tracks(), cover_path=new_cover)
+    outcome = tagger.tag_and_artwork(album_dir, _release_2_tracks())
 
-    entry = next(
-        e
-        for e in activity_store.album_history("rel-aaa")
-        if "per-track embedded artwork" in e.message
-    )
-    assert entry.level == "warning"
-    assert entry.album_label == "Test Artist — Test Album"
-
-
-def test_the_preserved_artwork_notice_is_not_repeated_by_a_no_op_re_tag(
-    album_with_tracks, tmp_path
-):
-    """#272: the notice reports a decision that recurs identically, not a change,
-    so a re-tag that finds the files already correct used to say it again — and
-    under #32's nightly pass that is one warning per night forever on every
-    compilation, which is a History nobody can read.
-
-    It rides on the write instead: `_record_changes` already takes the position
-    that "a re-tag that finds MusicBrainz unchanged is a no-op the user should
-    not have to scroll past", and this line joins it.
-    """
-    from datetime import UTC, datetime
-
-    from harmonist import activity, activity_store
-    from harmonist import sidecar as sidecar_mod
-    from harmonist.models import Sidecar
-
-    activity_store.init(tmp_path / "activity.db")
-    activity.install_log_handler()
-    album_dir = album_with_tracks(2)
-    sidecar_mod.write(
-        album_dir, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime(2026, 1, 1, tzinfo=UTC))
-    )
-    _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())
-    _embed_cover(album_dir / "02 Track 2.m4a", _minimal_jpeg() + b"_different")
-    new_cover = tmp_path / "cover.jpg"
-    new_cover.write_bytes(b"\xff\xd8\xff\xe0NEW_ALBUM_COVER\xff\xd9")
-
-    def notices() -> int:
-        return sum(
-            "per-track embedded artwork" in e.message
-            for e in activity_store.album_history("rel-aaa")
-        )
-
-    # The first pass writes the tags, so it reports the decision it made on the
-    # way — that is #260, and it stays.
-    tagger.tag_and_artwork(album_dir, _release_2_tracks(), cover_path=new_cover)
-    assert notices() == 1
-
-    # The second finds every file already carrying what MusicBrainz says and
-    # writes nothing at all. Silence is the feature.
-    tagger.tag_and_artwork(album_dir, _release_2_tracks(), cover_path=new_cover)
-    assert notices() == 1
+    assert outcome.tags_changed  # the tagging that used to announce it
+    assert [e.message for e in activity_store.album_history("rel-aaa") if e.level != "info"] == []
 
 
 def test_tag_album_overwrite_art_forces_replacement(album_with_tracks, tmp_path):
@@ -1715,11 +1664,10 @@ def test_plan_reports_the_artwork_it_would_embed(album_with_tracks, tmp_path):
     assert now == hashlib.sha256(_minimal_jpeg()).hexdigest()
 
 
-def test_plan_reports_per_track_artwork_it_would_preserve(album_with_tracks, tmp_path):
+def test_plan_reports_no_artwork_change_over_per_track_artwork(album_with_tracks, tmp_path):
     """The dry run reaches the same DATA SAFETY verdict a tagging does — keep the
-    per-track images, don't embed the album cover — and reports it instead of
-    logging it. #272 needs that: the decision recurs identically on every pass, so
-    only the pass that actually writes may announce it."""
+    per-track images, don't embed the album cover — so it plans no artwork
+    change for any track."""
     album_dir = album_with_tracks(2)
     _embed_cover(album_dir / "01 Track 1.m4a", _minimal_jpeg())
     _embed_cover(album_dir / "02 Track 2.m4a", _minimal_jpeg() + b"_different")
@@ -1728,7 +1676,7 @@ def test_plan_reports_per_track_artwork_it_would_preserve(album_with_tracks, tmp
 
     plan = tagger.plan_album(album_dir, _release_2_tracks(), cover_path=cover)
 
-    assert plan.preserves_per_track_art
+    assert plan.changes  # the tags still change; only the artwork stays
     assert not any(owned.ARTWORK in c for c in plan.changes.values())
 
 

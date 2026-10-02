@@ -18,6 +18,10 @@ versions follow [semantic versioning](https://semver.org).
 
 - Album pages use aligned label/value details, keep dates at the top right, place refresh controls beside section headings, and group Additional tags before Artwork (#665).
 
+### Fixed
+
+- Tagging an album whose tracks carry their own artwork no longer warns that the artwork was kept — it always is, and the "replace artwork" the warning pointed to isn't offered (#670).
+
 ## [1.22.0] - 2026-10-01
 
 ### Added

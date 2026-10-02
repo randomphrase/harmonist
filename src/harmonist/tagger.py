@@ -451,7 +451,6 @@ def plan_album(
             changes[path] = file_changes
     return AlbumPlan(
         changes=changes,
-        preserves_per_track_art=prep.art.preserves_per_track_art,
         accepted_album_titles=prep.accepted_album_titles,
         accepted_countries=prep.accepted_countries,
     )
@@ -480,12 +479,6 @@ class AlbumPlan:
     """
 
     changes: dict[Path, dict[str, list[Any]]]
-    #: True when the album's tracks carry differing embedded art, so a tagging
-    #: would keep it and NOT embed the album cover. Not a change — it is the
-    #: absence of one — but the caller needs it to explain why the artwork the
-    #: user expected didn't move (#260), and #272 needs it to stop announcing
-    #: that decision on a pass that wrote nothing.
-    preserves_per_track_art: bool
     #: Every album title that is already correct for this release: MusicBrainz's
     #: and Picard's disambiguated spelling of it (#283). Carried on the plan
     #: because the flag has to ask — `gardener` holds a plan, not a release, and
@@ -1857,27 +1850,10 @@ def tag_and_artwork(
         )
         return TaggingOutcome(files=tagged, tags_changed=wrote_something, artwork_withheld=True)
 
-    if art.preserves_per_track_art and wrote_something:
-        # Attributed to the album (#260). This is a decision Harmonist made on
-        # the user's behalf about their files, so it has to reach that album's
-        # own History — and the feed's log mirror drops any record that doesn't
-        # say which album it means.
-        #
-        # Only if the tagging wrote (#272). The decision recurs identically on
-        # every re-tag — preserving the user's artwork is the outcome every time
-        # — so announcing it unconditionally reports a decision rather than a
-        # change, and under #32's nightly pass that is one warning per night
-        # forever on every compilation.
-        #
-        # The album's name is NOT repeated into the message; it rides in its own
-        # column, which is where the feed and the History both render it.
-        log.warning(
-            "tracks have per-track embedded artwork — keeping it, NOT embedding "
-            "the album cover (folder cover.* is still written). Re-tag with "
-            "'replace artwork' to override.",
-            extra={"album_id": album_id, "album_label": label},
-        )
-
+    # Kept per-track artwork is not announced (#670). Nothing overwrites it, so
+    # keeping it is the promise kept rather than a finding; the album's Artwork
+    # section shows the sleeves, and a warning on every tagging that wrote
+    # (#260, #272) named a "replace artwork" remedy no page offers.
     try:
         outcome = apply_artwork(
             album_dir,
