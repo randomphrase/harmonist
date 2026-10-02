@@ -100,6 +100,27 @@ Filing the issue and *then* immediately doing the work in the same session is fi
 and expected — the point is the durable record and CI validation, not a waiting
 period.
 
+### A bug in unreleased work: reopen its issue rather than file a new one
+
+When the bug exists **only in unreleased code** (its Since line would read
+*unreleased*, see below), and an issue is **directly related** to it, reopen
+that issue instead of filing a new one. Directly related means the issue whose
+work introduced the defect, or whose behaviour it breaks, which is usually the
+feature's own issue, closed by the merge that shipped it to `main`. A loosely
+related issue doesn't qualify; file a new one then.
+
+- **Reopen with a comment** carrying what a new issue would: the symptom, the
+  root cause, and the fix. `gh issue reopen N --comment "…"`.
+- **Branch and commit as for any issue:** the branch carries its number, and the
+  commit says `Fixes #N` again, so the landing closes it a second time.
+- **A released bug always gets its own issue.** It owes a changelog entry and a
+  Since line of its own; folding it into an old issue would hide both.
+
+Why: a feature and the bugs found in it before release are one story, and its
+issue is where someone will look for it. A bug in unreleased work owes no
+changelog entry (`changelog` skill), so a separate issue would only be one more
+record for the release audit to classify as invisible to users.
+
 ### Referencing an issue *without* closing it
 
 Only use a closing keyword (`Fixes`/`Closes`/`Resolves #N`) when the merge should
