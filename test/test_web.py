@@ -12107,18 +12107,30 @@ def test_confirmation_preview_is_read_only_and_uses_the_selected_release_cache(
     assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
 
 
-@pytest.mark.parametrize("kind", ["identical", "same-size", "protected", "protected-folder"])
+@pytest.mark.parametrize(
+    "kind",
+    ["identical", "same-size", "protected", "protected-folder", "partial", "partial-kept"],
+)
 def test_confirmation_names_artwork_outcome_and_exact_identity(client, cfg, monkeypatch, kind):
+    """`partial` matches Track 2's own image while the folder cover differs and
+    is still written; `partial-kept` matches it with nothing left to write."""
     from bs4 import BeautifulSoup
 
-    from harmonist import cover_art
+    from harmonist import cover_art, images
 
+    per_track = kind.startswith(("protected", "partial"))
     d, release, original, _small, _calls = _confirmation_setup(
-        cfg, monkeypatch, per_track=kind.startswith("protected")
+        cfg, monkeypatch, per_track=per_track
     )
-    if kind == "protected":
+    if kind in {"protected", "partial-kept"}:
         (d / "cover.jpg").unlink()
-    candidate = original if kind == "identical" else _png_sized(99, 800)
+    candidate = (
+        original
+        if kind == "identical"
+        else _png(43)
+        if kind.startswith("partial")
+        else _png_sized(99, 800)
+    )
     monkeypatch.setattr(
         cover_art,
         "fetch_image",
@@ -12126,18 +12138,42 @@ def test_confirmation_names_artwork_outcome_and_exact_identity(client, cfg, monk
     )
     _, response, _fields = _review_with_artwork(client, _id_for(cfg, d))
     page = BeautifulSoup(response.text, "html.parser")
-    assert ("Keep existing artwork" in page.text) is (kind in {"identical", "protected"})
-    assert ("Selected-release image already present" in page.text) is (kind == "identical")
+
+    def row(element):
+        cell = element.find_parent(style=re.compile("--art-review-row"))
+        return int(re.search(r"--art-review-row: (\d+)", cell["style"]).group(1))
+
+    current = {
+        row(img): img["src"].rsplit("/", 1)[-1]
+        for img in page.select('img[alt^="Current artwork: "]')
+    }
+    writes = kind in {"same-size", "protected-folder", "partial"}
+    assert ("Keep existing artwork" in page.text) is not writes
+    # Identity is the exact digest, marked beside the carrier holding it: a
+    # match to one carrier says nothing about the others.
+    identical = [
+        cell
+        for cell in page.select(".assignment-artwork__selected")
+        if "Identical to existing artwork" in cell.text
+    ]
+    matching = {r for r, digest in current.items() if digest == images.digest(candidate)}
+    assert {row(cell.p) for cell in identical} == matching
+    assert bool(matching) is (kind == "identical" or kind.startswith("partial"))
+    if kind.startswith("partial"):
+        assert "Track 2" in identical[0].text
     candidate_preview = page.find("img", alt="Artwork for selected release")
-    assert bool(candidate_preview) is (kind != "identical")
+    assert bool(candidate_preview) is (not matching or writes)
+    if candidate_preview and writes:
+        # Beside an image it would replace, never beside its identical twin.
+        assert current[row(candidate_preview)] != images.digest(candidate)
     checkbox = page.select_one('[name="include_artwork"]')
-    assert bool(checkbox) is (kind in {"same-size", "protected-folder"})
+    assert bool(checkbox) is writes
     if kind == "same-size":
         assert "embedded artwork in 2 tracks and folder cover (cover.jpg)" in page.text
-    elif kind == "protected-folder":
+    elif kind in {"protected-folder", "partial"}:
         assert "Will update: folder cover (cover.jpg)" in page.text
         assert "Will update: embedded" not in page.text
-    if kind.startswith("protected"):
+    if per_track:
         assert "Differing per-track artwork is preserved" in page.text
     assert sc.read(d).mb_release_id != release["id"]
 

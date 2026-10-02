@@ -47,21 +47,29 @@ def test_review_outcome_matches_the_images_written(confirmation_outcome_server, 
         else:
             pw.expect(keep).to_be_visible()
         candidate = artwork.get_by_alt_text("Artwork for selected release", exact=True)
-        if scenario in {"identical", "tracks-only"}:
+        identical = artwork.get_by_text("Identical to existing artwork")
+
+        def beside(element, label):
+            current = artwork.get_by_alt_text(f"Current artwork: {label}", exact=True)
+            assert element.bounding_box()["y"] == pytest.approx(current.bounding_box()["y"], abs=1)
+
+        if scenario == "identical":
             pw.expect(candidate).to_have_count(0)
-            pw.expect(artwork).to_contain_text("Selected-release image already present")
+            beside(identical, "All 3 tracks and cover.png")
+        elif scenario == "tracks-only":
+            # The folder cover is the selected release's image; the tracks'
+            # differs, and the candidate stands beside what it would replace.
+            beside(identical, "cover.png")
+            beside(candidate, "All 3 tracks")
         else:
             pw.expect(candidate).to_be_visible()
-            pw.expect(artwork).not_to_contain_text("Selected-release image already present")
+            pw.expect(identical).to_have_count(0)
             if writes:
-                current = artwork.get_by_alt_text(
-                    "Current artwork: Track 1 and cover.png"
+                beside(
+                    candidate,
+                    "Track 1 and cover.png"
                     if scenario == "protected-folder"
-                    else "Current artwork: All 3 tracks and cover.png",
-                    exact=True,
-                )
-                assert candidate.bounding_box()["y"] == pytest.approx(
-                    current.bounding_box()["y"], abs=1
+                    else "All 3 tracks and cover.png",
                 )
             # These are different pictures despite having the same dimensions.
             original = before[paths[0]]

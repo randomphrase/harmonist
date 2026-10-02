@@ -19,6 +19,9 @@ versions follow [semantic versioning](https://semver.org).
 - Album pages use aligned label/value details, keep dates at the top right, place refresh controls beside section headings, and group Additional tags before Artwork (#665).
 - **Activity names the album when a scan starts tracking just one**, linking
   to it, instead of "Started tracking 1 album" (#672).
+- **Release review marks artwork "Identical to existing artwork"** beside the
+  image it matches byte for byte. When only some images match, the selected
+  release's artwork now sits beside the one it would replace (#595).
 
 ### Fixed
 
