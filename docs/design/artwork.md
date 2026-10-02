@@ -105,6 +105,31 @@ with a preview, no After Apply column and no button, which read as broken. Until
 the original is fetched, only the thumbnail is known, and a thumbnail's bytes
 say nothing about the original's.
 
+## A stand-in gives way
+
+When a release has no front of its own, the artwork Harmonist writes can come
+from another listing: the release group's front, which a tagging falls back to
+(#434), or one the user picked from the group or another release. That image is
+a **stand-in**: the release's own cover would have been used if it existed. If
+someone later uploads one, it should replace the stand-in whatever its size,
+because it's this release's cover. The size rule would otherwise keep a borrowed
+3000px image over the release's new 1200px front for ever (#663).
+
+What can't be worked out later is *why* the album carries another listing's
+image. Borrowed for want of a front and chosen over an existing one look
+identical on disk, and only the first should give way. So the stand-in is
+recorded in the sidecar when it's written, and only then: an image chosen while
+the release had a front of its own is a choice, and isn't offered back. The
+record is kept only while the album carries the image and is matched to the
+release it stood in for, so choosing something else, or rematching, lapses it.
+
+The album page reads it. A row carrying a stand-in says where it was borrowed
+from, and once the page's archive check finds the release has a front of its
+own, those rows take it as though it had been chosen for them, so the row's ×
+can still keep the stand-in. The check downloads that front however it measures,
+since it wins regardless. The background update check doesn't read the record
+yet: it doesn't look at artwork at all, which is #269's to change.
+
 ## Additions and replacements
 
 Every write is one of two kinds, and the difference is whether anything is lost:

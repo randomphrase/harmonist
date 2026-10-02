@@ -516,6 +516,11 @@ def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
         accepted_release_id=next(
             (s.accepted_release_id for s in present if s.accepted_release_id == mbid), None
         ),
+        # Every part's stand-ins for THIS release, once each (#663): a cover
+        # borrowed onto one disc's folder is the album's.
+        borrowed_artwork=tuple(
+            dict.fromkeys(b for s in present for b in s.borrowed_artwork if b.release == mbid)
+        ),
     )
 
 

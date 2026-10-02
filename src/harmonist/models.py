@@ -327,6 +327,31 @@ class Sidecar:
     video_media: tuple[int, ...] | None = None
     # Accepted only while it equals `mb_release_id`, so a rematch lapses it.
     accepted_release_id: str | None = None
+    # Archive images written as stand-ins for a release with no front of its
+    # own (#663). Each is held only while its `release` is `mb_release_id`.
+    borrowed_artwork: tuple[BorrowedArtwork, ...] = ()
+
+
+@dataclass(frozen=True)
+class BorrowedArtwork:
+    """A cover written from another listing because the release had no front of
+    its own (#663): the release group's, or another release's in the group.
+
+    Recorded because nothing else can say WHY an album carries an image that
+    isn't its release's — borrowed for want of one, or chosen over it — and only
+    a borrowed one should give way when the release gets its own front.
+    """
+
+    #: The image, as the album carries it.
+    digest: str
+    #: Which listing it came from: `release-group` or `release` (another one).
+    source: str
+    #: The release group's or other release's MBID.
+    source_mbid: str
+    #: The release it stood in for. A rematch lapses the record by construction.
+    release: str
+    #: The archive's id for it, when the listing named one.
+    image_id: str | None = None
 
 
 @dataclass

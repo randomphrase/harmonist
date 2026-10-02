@@ -18,6 +18,7 @@ from .models import (
     CURRENT_SCHEMA_VERSION,
     SIDECAR_FILENAME,
     BandcampInfo,
+    BorrowedArtwork,
     FoundBy,
     MatchCandidate,
     Sidecar,
@@ -280,6 +281,9 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
       * `accepted_release_id` — the user's word that this is the release they
         bought (#618). Moves the album between the Possible mismatch and MB
         contributions filters, and nothing on disk could reconstruct it.
+      * `borrowed_artwork` — which images stand in for a release with no front
+        of its own (#663). Provenance nothing else records, and it decides what
+        the album page suggests once the release gets its own front.
 
     Deliberately NOT audited, so the narrowness here is a choice rather than an
     oversight:
@@ -325,6 +329,14 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
         changes["video_media"] = f"{old.video_media}->{new.video_media}"
     if old.accepted_release_id != new.accepted_release_id:
         changes["accepted_release_id"] = f"{old.accepted_release_id}->{new.accepted_release_id}"
+    if old.borrowed_artwork != new.borrowed_artwork:
+
+        def short(records: tuple[BorrowedArtwork, ...]) -> str:
+            return "[" + ",".join(f"{b.digest[:12]}@{b.source}" for b in records) + "]"
+
+        changes["borrowed_artwork"] = (
+            f"{short(old.borrowed_artwork)}->{short(new.borrowed_artwork)}"
+        )
     if changes:
         audit.record("sidecar.update", album_id=album_id, album=album_dir, **changes)
 
@@ -410,7 +422,50 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
         d["video_media"] = list(s.video_media)
     if s.accepted_release_id:
         d["accepted_release_id"] = s.accepted_release_id
+    if s.borrowed_artwork:
+        d["borrowed_artwork"] = [_borrowed_to_dict(b) for b in s.borrowed_artwork]
     return d
+
+
+def _borrowed_to_dict(b: BorrowedArtwork) -> dict[str, str]:
+    out = {
+        "digest": b.digest,
+        "source": b.source,
+        "source_mbid": b.source_mbid,
+        "release": b.release,
+    }
+    if b.image_id:
+        out["image_id"] = b.image_id
+    return out
+
+
+def _borrowed_from(raw: object) -> tuple[BorrowedArtwork, ...]:
+    """The recorded stand-in covers (#663), or none.
+
+    An entry missing a part is dropped rather than refusing the sidecar: the
+    record only ever suggests artwork, and losing one costs a suggestion, while
+    an InvalidSidecarError would hide the whole album."""
+    if not isinstance(raw, list):
+        return ()
+    found: list[BorrowedArtwork] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        parts = [entry.get(k) for k in ("digest", "source", "source_mbid", "release")]
+        if not all(isinstance(p, str) and p for p in parts):
+            continue
+        digest, source, source_mbid, release = (str(p) for p in parts)
+        image_id = entry.get("image_id")
+        found.append(
+            BorrowedArtwork(
+                digest=digest,
+                source=source,
+                source_mbid=source_mbid,
+                release=release,
+                image_id=image_id if isinstance(image_id, str) and image_id else None,
+            )
+        )
+    return tuple(found)
 
 
 def _candidate_to_dict(c: MatchCandidate) -> dict[str, Any]:
@@ -568,6 +623,7 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
         tracks_unavailable=bool(d.get("tracks_unavailable", False)),
         video_media=_int_tuple(d.get("video_media")),
         accepted_release_id=d.get("accepted_release_id") or None,
+        borrowed_artwork=_borrowed_from(d.get("borrowed_artwork")),
     )
 
 

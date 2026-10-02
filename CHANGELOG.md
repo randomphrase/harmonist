@@ -11,6 +11,8 @@ versions follow [semantic versioning](https://semver.org).
 - **Artwork is chosen row by row** from every image the Cover Art Archive has
   for the release, its release group and the group's other releases;
   `cover.jpg` always has a row of its own (#659).
+- **A cover borrowed from the release group or another release gives way** to
+  the release's own front once it has one, whatever its size (#663).
 
 ### Changed
 

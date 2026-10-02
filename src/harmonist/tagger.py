@@ -1551,6 +1551,9 @@ class ArtworkOutcome:
     unkept: tuple[str, ...] = ()
     #: Targets that could not be read or written, already logged.
     failed: tuple[str, ...] = ()
+    #: The images actually written, by digest, once each — what a stand-in
+    #: record is made from (#663), since only a written image can be one.
+    written: tuple[str, ...] = ()
 
 
 def apply_artwork(
@@ -1623,6 +1626,7 @@ def apply_artwork(
     stale: list[str] = []
     unkept: list[str] = []
     failed: list[str] = []
+    written: list[str] = []
     for change in tracks:
         name = naming.name_of(change.target)
         current = formats.read_cover(change.target)
@@ -1649,6 +1653,7 @@ def apply_artwork(
             failed.append(name)
             continue
         changed += 1
+        written.append(change.after)
         # Recorded in the shape a tagged file's artwork change takes, which is
         # what puts an Undo on it: `tag_history.artwork_revert_plan` reads that
         # pair and `restore_artwork` writes it back.
@@ -1669,6 +1674,7 @@ def apply_artwork(
         )
         if wrote is _Wrote.WRITTEN:
             changed += 1
+            written.append(cover_change.after)
         elif wrote is _Wrote.STALE:
             stale.append(cover_change.target.name)
         elif wrote is _Wrote.UNKEPT:
@@ -1676,7 +1682,11 @@ def apply_artwork(
         else:
             failed.append(cover_change.target.name)
     return ArtworkOutcome(
-        changed=changed, stale=tuple(stale), unkept=tuple(unkept), failed=tuple(failed)
+        changed=changed,
+        stale=tuple(stale),
+        unkept=tuple(unkept),
+        failed=tuple(failed),
+        written=tuple(dict.fromkeys(written)),
     )
 
 

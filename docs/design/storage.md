@@ -67,6 +67,7 @@ breadcrumbs ("matched via barcode on…") belong in `activity.db`.
 | `tracks_unavailable` | The user accepted an incomplete album as finished ("Don't warn me about this"). It removes the album from the Incomplete filter but doesn't change the state: the album really is short. The label describes what the control does rather than claiming the tracks can't be had, because the user can't know that (#245). |
 | `accepted_release_id` | The release the user says they bought, when the evidence suggested another. Keyed to the release rather than a flag, so matching a different release lapses it by construction. |
 | `video_media` | Which of the release's media are video, the one release fact the files can't carry, since the missing discs have no files. `null` means not asked and `[]` means asked and none, a distinction that stops a video-free release being asked about forever. |
+| `borrowed_artwork` | Archive images Harmonist wrote as stand-ins because the release had no front of its own: the release group's or another release's, each with the listing it came from and the release it stood in for. The bytes look the same whether an image was borrowed for want of one or chosen over the release's own, and only a borrowed one should give way when the release gets a front (see [artwork](artwork.md#a-stand-in-gives-way)). Held only while the album carries the image and is matched to that release, so a rematch or a different choice lapses it. |
 | `downloaded_at`, `notes` | Legacy. Written and carried, but nothing reads them. |
 
 ### Which fields are audited

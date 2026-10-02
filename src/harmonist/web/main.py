@@ -84,6 +84,7 @@ from harmonist.models import (
     Album,
     AlbumState,
     BandcampInfo,
+    BorrowedArtwork,
     FoundBy,
     MatchCandidate,
     Release,
@@ -2609,7 +2610,12 @@ def _widest(view: artwork.ArtworkView) -> int:
     One answer for the check and for `caa_cache.due`, which must agree about
     what a winner is — or a page would be sent to fetch a picture the check then
     declines to download, on every open (#439).
+
+    Zero, too, for an album carrying a stand-in cover (#663): the release's
+    own front takes its place whatever it measures, and has to be in hand to.
     """
+    if view.borrowed:
+        return 0
     return max((r.image.size.width for r in view.images if r.image and r.image.size), default=0)
 
 
@@ -2623,6 +2629,8 @@ class _Listed(NamedTuple):
 
     origin: str
     listing: cover_art.Candidate
+    #: The MBID of the release or release group whose listing it is.
+    source: str
     release: str | None = None
 
 
@@ -2668,20 +2676,23 @@ def _listings(mbid: str | None) -> list[_Listed]:
     if mbid is None:
         return []
     listed = [
-        _Listed(artwork.Candidate.RELEASE, c)
+        _Listed(artwork.Candidate.RELEASE, c, mbid)
         for c in caa_cache.stored_listing("release", mbid) or []
     ]
     group = _group_of(mbid)
     if group is None:
         return listed
     listed += [
-        _Listed(artwork.Candidate.RELEASE_GROUP, c)
+        _Listed(artwork.Candidate.RELEASE_GROUP, c, group)
         for c in caa_cache.stored_listing("release-group", group) or []
     ]
     for release in _other_releases(mbid, group):
-        stored = caa_cache.stored_listing("release", str(release["id"]), fresh=True)
+        release_id = str(release["id"])
+        stored = caa_cache.stored_listing("release", release_id, fresh=True)
         label = _release_label(release)
-        listed += [_Listed(artwork.Candidate.OTHER_RELEASE, c, label) for c in stored or []]
+        listed += [
+            _Listed(artwork.Candidate.OTHER_RELEASE, c, release_id, label) for c in stored or []
+        ]
     return listed
 
 
@@ -2887,6 +2898,98 @@ def _offered(
     return tuple(candidates), picks
 
 
+def _has_own_front(mbid: str) -> bool:
+    """Whether the release has a front of its own on the archive, as far as
+    what is stored says (#663) — its own listing names one, or the archive
+    check's answer came from the release rather than its group."""
+    if any(c.front for c in caa_cache.stored_listing("release", mbid) or []):
+        return True
+    caa = caa_cache.stored(mbid)
+    return caa is not None and caa.image_url is not None and not caa.from_release_group
+
+
+def _borrowable(mbid: str) -> dict[str, BorrowedArtwork]:
+    """The archive images in hand that would be stand-ins if written now (#663):
+    the release group's and other releases', by digest, as their record would
+    read. The release's own images are not, and neither is anything not in hand
+    — an image is written only once its original is.
+    """
+    found: dict[str, BorrowedArtwork] = {}
+    for listed in _listings(mbid):
+        if listed.origin == artwork.Candidate.RELEASE:
+            continue
+        original = _in_hand(mbid, listed.listing)
+        if original is None:
+            continue
+        found.setdefault(
+            images.digest(original.data),
+            BorrowedArtwork(
+                digest=images.digest(original.data),
+                source="release-group"
+                if listed.origin == artwork.Candidate.RELEASE_GROUP
+                else "release",
+                source_mbid=listed.source,
+                release=mbid,
+                image_id=listed.listing.image_id,
+            ),
+        )
+    # The archive check's own answer when it came from the group: the fallback
+    # a tagging has written since #434, measured before any listing was kept.
+    caa = caa_cache.stored(mbid)
+    group = _group_of(mbid)
+    if (
+        caa is not None
+        and caa.from_release_group
+        and group is not None
+        and (front := cover_art.cached_front(mbid)) is not None
+    ):
+        digest = images.digest(front.data)
+        found.setdefault(digest, BorrowedArtwork(digest, "release-group", group, mbid))
+    return found
+
+
+def _stand_ins_after(
+    album_path: Path,
+    files: Sequence[Path],
+    mbid: str,
+    recorded: Sequence[BorrowedArtwork],
+    written: Sequence[str],
+) -> tuple[BorrowedArtwork, ...]:
+    """The album's stand-in covers once an action has written `written` (#663).
+
+    Kept: what was recorded for this release that the album still carries —
+    so a rematch lapses the record, and replacing a stand-in (with the
+    release's own front, or anything else) clears it. Added: a written image
+    borrowed from another listing, but only while the release has no front of
+    its own; one chosen over the release's own front is a choice, not a
+    stand-in, and is never offered back.
+
+    Reads the album's images only when something was written: an action that
+    wrote none changed nothing they carry.
+    """
+    current = tuple(b for b in recorded if b.release == mbid)
+    if not written:
+        return current
+    try:
+        carried = {
+            images.digest(art[0]) for f in files if (art := formats.read_cover(f)) is not None
+        }
+        if (cover := cover_art.cached_cover(album_path)) is not None:
+            carried.add(images.digest(cover.read_bytes()))
+    except formats.READ_ERRORS:
+        # Could not tell what the album carries now, so nothing recorded is
+        # dropped on the strength of it; it lapses on the next write instead.
+        log.warning("could not read %s's artwork after writing it", album_path, exc_info=True)
+        kept = list(current)
+    else:
+        kept = [b for b in current if b.digest in carried]
+    if not _has_own_front(mbid):
+        borrowable = _borrowable(mbid)
+        held = {b.digest for b in kept}
+        kept += [borrowable[d] for d in written if d in borrowable and d not in held]
+    return tuple(kept)
+
+
 def _artwork_view(
     album: Album,
     caa: activity_store.CachedCoverArt | None = None,
@@ -2965,6 +3068,13 @@ def _summarised_view(
         ):
             tracks = [(f, formats.read_tags(f)) for f in files]
     candidates, picks = _offered(_release_of(album), choices)
+    # The album's stand-in covers, for the release it is matched to now (#663).
+    sc = album.sidecar
+    borrowed = {
+        b.digest: b.source
+        for b in (sc.borrowed_artwork if sc else ())
+        if sc is not None and b.release == sc.mb_release_id
+    }
     if album.cover_path is None or not album.cover_path.exists():
         return artwork.summarise(
             album.path,
@@ -2976,6 +3086,7 @@ def _summarised_view(
             choices=choices,
             picks=picks,
             candidates=candidates,
+            borrowed=borrowed,
             folder_cover=folder_cover,
         )
     try:
@@ -2997,6 +3108,7 @@ def _summarised_view(
             choices=choices,
             picks=picks,
             candidates=candidates,
+            borrowed=borrowed,
             folder_cover=folder_cover,
         )
     mime = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
@@ -3015,6 +3127,7 @@ def _summarised_view(
         choices=choices,
         picks=picks,
         candidates=candidates,
+        borrowed=borrowed,
         folder_cover=folder_cover,
     )
 
@@ -4166,6 +4279,14 @@ def _tag_with_release(
         video_media=mb_lookup.video_media_of(release),
         accepted_release_id=_accepted_after_tagging(
             base.accepted_release_id, requested_mbid, mbid, accept=accept_release
+        ),
+        # Folded into the same write rather than a second one after it (#663).
+        borrowed_artwork=_stand_ins_after(
+            album_path,
+            album_files.for_paths(paths) if paths else album_files.audio_files(album_path),
+            mbid,
+            base.borrowed_artwork,
+            outcome.artwork.written,
         ),
     )
     sidecar_mod.write(album_path, new)
@@ -6619,13 +6740,16 @@ def _register_routes(app: FastAPI) -> None:
         if view.plan is None or plan != view.fingerprint:
             log.info("artwork for %s changed since the page was drawn; not applying", album.path)
             return section(changed_since=True)
+        files = (
+            album_files.for_paths(album.folders)
+            if album.folders
+            else album_files.audio_files(album.path)
+        )
         try:
             outcome = tagger_mod.apply_artwork(
                 album.path,
                 view.plan,
-                files=album_files.for_paths(album.folders)
-                if album.folders
-                else album_files.audio_files(album.path),
+                files=files,
                 cover_path=album.cover_path,
                 archive=cover_art.cached_front(mbid) if mbid else None,
                 picks=_picked_originals(mbid, view.choices),
@@ -6633,6 +6757,15 @@ def _register_routes(app: FastAPI) -> None:
         except tagger_mod.ArtworkChangedError:
             log.info("the winning image for %s moved before it was written", album.path)
             return section(changed_since=True)
+        # Which images now stand in for the release's own front (#663). Re-read
+        # rather than the scan's copy, and written only if that changed.
+        sc = sidecar_mod.read(album.path) if mbid else None
+        if mbid and sc is not None and sc.mb_release_id == mbid:
+            stand_ins = _stand_ins_after(
+                album.path, files, mbid, sc.borrowed_artwork, outcome.written
+            )
+            if stand_ins != sc.borrowed_artwork:
+                sidecar_mod.write(album.path, replace(sc, borrowed_artwork=stand_ins))
         changed = outcome.changed
         message = (
             f"Updated artwork on {changed} file{'s' if changed != 1 else ''}"

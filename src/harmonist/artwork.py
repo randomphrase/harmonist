@@ -400,10 +400,17 @@ def plan(
     chosen: Source | None = None,
     choices: Choices | None = None,
     picks: Mapping[str, EmbeddedArt] | None = None,
+    stand_ins: frozenset[str] = frozenset(),
     folder_cover: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
 ) -> ArtworkPlan:
     """The size rule's suggestion (`_suggest`), with the user's choices made
     over it carrier by carrier (#659).
+
+    `stand_ins` are images borrowed for want of the release's own front (#663),
+    and `archive` is that front now it exists. Every carrier still holding a
+    stand-in is planned as if the front had been chosen for it, so it wins
+    whatever it measures, and a choice the user made for the carrier — keeping
+    the stand-in included — still has the last word.
 
     `picks` are the archive images a choice may name by id, each with its
     original in hand.
@@ -429,7 +436,20 @@ def plan(
         chosen=chosen,
         folder_cover=folder_cover,
     )
-    if not choices or overwrite_art or cover_unreadable:
+    if overwrite_art or cover_unreadable:
+        return suggested
+    if stand_ins and archive is not None:
+        # A carrier is the tracks' image's digest, or the folder cover itself.
+        waiting = stand_ins - {archive.digest}
+        given: dict[str, str] = {
+            art.digest: Choice.ARCHIVE
+            for _, art in tracks
+            if art is not None and art.digest in waiting
+        }
+        if cover is not None and cover.image.digest in waiting:
+            given[COVER] = Choice.ARCHIVE
+        choices = {**given, **(choices or {})}
+    if not choices:
         return suggested
     return _with_choices(suggested, cover, archive, choices, picks or {})
 
@@ -956,6 +976,9 @@ class ArtRow:
     #: …or another release's in the group (#659): a different pressing's sleeve,
     #: which may be exactly the one wanted and is still not this one's.
     from_other_release: bool = False
+    #: The image the row HAS was borrowed for want of the release's own front
+    #: (#663): which listing it came from, `release-group` or `release`.
+    borrowed_from: str | None = None
     #: …and the image itself, so the row can SHOW what it would become rather
     #: than only assert it (#413). "Replaced by the album's own artwork" carries
     #: no tense — a reader cannot tell whether it already happened — and the
@@ -1118,6 +1141,9 @@ class ArtworkView:
     #: Whether a step past the last candidate could find another release's
     #: images: decided by the caller, which knows what the page has browsed.
     other_releases: bool = False
+    #: The album's stand-in covers for its release (#663), by digest, with the
+    #: listing each came from.
+    borrowed: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def front_only(self) -> bool:
@@ -1364,6 +1390,7 @@ def summarise(
     choices: Choices | None = None,
     picks: Mapping[str, EmbeddedArt] | None = None,
     candidates: Sequence[Candidate] = (),
+    borrowed: Mapping[str, str] | None = None,
     folder_cover: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
 ) -> ArtworkView:
     """Everything the section shows, from tags already read and a folder cover.
@@ -1390,9 +1417,16 @@ def summarise(
     It is handed to the PLAN rather than applied to the rows, so the section
     never draws a row for a file the action would not write — the coupling #467
     went to some trouble to establish in the other direction.
+
+    `borrowed` is the album's recorded stand-ins (#663): images written from
+    the release group's or another release's listing because this release had
+    no front, by digest, with the listing each came from. A row carrying one
+    says so. Once the archive's answer is the release's OWN front, in hand,
+    those rows take it whatever it measures — it was only ever waited for.
     """
     readable = [(path, t) for path, t in tracks if not t.unreadable]
     taken = chosen if chosen is Source.ARCHIVE and archive is not None else None
+    own_front = archive if caa is not None and not caa.from_release_group else None
     the_plan = plan(
         album_dir,
         [(path, t.art) for path, t in readable],
@@ -1402,6 +1436,7 @@ def summarise(
         chosen=taken,
         choices=choices,
         picks=picks,
+        stand_ins=frozenset(borrowed or ()) if own_front is not None else frozenset(),
         folder_cover=folder_cover,
     )
     by_target = {c.target: c for c in the_plan.changes}
@@ -1490,6 +1525,10 @@ def summarise(
             and incoming is not None
             and listed_by.get(incoming.image.digest) == Candidate.OTHER_RELEASE,
             carriers=keys,
+            # Not once the release's own front IS that image: nothing borrowed.
+            borrowed_from=(borrowed or {}).get(image.digest)
+            if image is not None and (own_front is None or image.digest != own_front.digest)
+            else None,
             has_archive=archive is not None
             and image is not None
             and image.digest == archive.digest,
@@ -1534,4 +1573,5 @@ def summarise(
         chosen=taken,
         choices=the_plan.choices,
         candidates=tuple(candidates),
+        borrowed=dict(borrowed or {}),
     )

@@ -212,6 +212,11 @@
             {% if r.title %}<span class="art-row__title">{{ r.title }}</span>{% endif %}
             {% if r.image %}
             <span class="art-row__meta">{{ describe_image(r.image) }}</span>
+            {# A stand-in for the release's own front, which it had none of when
+               this was written (#663): it gives way once the release has one. #}
+            {% if r.borrowed_from %}
+            <span class="art-row__meta-plain">borrowed from {{ 'the release group' if r.borrowed_from == 'release-group' else 'another release' }}</span>
+            {% endif %}
             {% elif r.absent %}
             {# A folder cover the album does not have (#457, #659): the empty
                frame is the finding, and the row is there to be chosen for

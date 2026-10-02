@@ -10827,6 +10827,209 @@ def test_an_offered_images_full_size_view_fetches_its_original_once(client, cfg,
     assert client.get(f"/artwork/candidate/{aid}/88/original").status_code == 404
 
 
+_BORROW_MBID = "rel-borrow"
+_OWN_URL = f"https://coverartarchive.org/release/{_BORROW_MBID}/2.png"
+
+
+def _borrowing_album(cfg) -> tuple[Path, bytes]:
+    """A tagged album whose release has no front of its own (#663): its tracks
+    carry a 900px image of their own, and the archive lists one front for the
+    release GROUP, `9`, whose original is in hand. Returns the album and that
+    image."""
+    from harmonist import cover_art, mb_cache
+    from test.test_artwork import png_bytes
+
+    mine = png_bytes(900, 900) + b"\x01"
+    theirs = png_bytes(300, 300) + b"\x02"
+    d = _release_backed_album_with_art(
+        cfg, "Borrow", _BORROW_MBID, covers=[mine, mine], folder=None
+    )
+    activity_store.store_release(
+        _BORROW_MBID,
+        mb_cache._key(mb_lookup.RELEASE_INCLUDES),
+        {"id": _BORROW_MBID, "release-group": {"id": "rg-b"}},
+    )
+    activity_store.store_cover_art(
+        _BORROW_MBID, activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    )
+    _listed(_BORROW_MBID)  # the release lists nothing
+    _listed(
+        "rg-b",
+        ("9", "https://coverartarchive.org/release/elsewhere/9.png", True),
+        kind="release-group",
+    )
+    cover_art.cache_image("image-9", theirs, "image/png")
+    return d, theirs
+
+
+def _apply_shown(client, aid: str, html: str) -> None:
+    """Press Apply artwork on the section `html` is."""
+    client.post(
+        f"/album/{aid}/artwork/update",
+        data={"plan": _form_value(html, "plan"), "use": _carried_use(html)},
+    )
+
+
+def _gains_its_own_front(own: bytes) -> None:
+    """The release gets a front of its own on the archive, and the page's
+    check has fetched it — smaller than anything the album has."""
+    from harmonist import cover_art
+
+    _listed(_BORROW_MBID, ("2", _OWN_URL, True))
+    activity_store.store_cover_art(
+        _BORROW_MBID,
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url=_OWN_URL,
+            width=200,
+            height=200,
+            mime="image/png",
+            source="release",
+        ),
+    )
+    cover_art.cache_image(_BORROW_MBID, own, "image/png")
+
+
+def test_applying_the_groups_cover_records_it_as_a_stand_in(client, cfg):
+    """The release has no front of its own, so the group's is a stand-in, and
+    the album says so (#663) — the one thing about the image its bytes can't."""
+    from harmonist import images
+    from harmonist.models import BorrowedArtwork
+
+    d, theirs = _borrowing_album(cfg)
+    aid = _id_for(cfg, d)
+
+    _apply_shown(client, aid, _pick(client, aid, client.get(f"/album/{aid}/artwork").text))
+
+    assert sc.read(d).borrowed_artwork == (
+        BorrowedArtwork(
+            digest=images.digest(theirs),
+            source="release-group",
+            source_mbid="rg-b",
+            release=_BORROW_MBID,
+            image_id="9",
+        ),
+    )
+    assert "borrowed from the release group" in client.get(f"/album/{aid}/artwork").text
+
+
+def test_the_groups_cover_chosen_over_the_releases_own_is_not_a_stand_in(client, cfg):
+    """With a front of its own on the archive, taking the group's is a choice,
+    and a choice is never offered back (#663)."""
+    d, _ = _borrowing_album(cfg)
+    _listed(_BORROW_MBID, ("1", f"https://coverartarchive.org/release/{_BORROW_MBID}/1.png", True))
+    aid = _id_for(cfg, d)
+    page = client.get(f"/album/{aid}/artwork").text
+
+    _apply_shown(client, aid, _pick(client, aid, page, candidate="9"))
+
+    assert sc.read(d).borrowed_artwork == ()
+    assert "borrowed from" not in client.get(f"/album/{aid}/artwork").text
+
+
+def test_a_stand_in_gives_way_to_the_releases_own_front(client, cfg):
+    """Once the release has a front of its own, the rows still carrying the
+    stand-in take it, though it is smaller than anything the album has — it is
+    this release's cover, and the stand-in only ever held its place (#663).
+    Applying it clears the record."""
+    from harmonist import formats, images
+    from test.test_artwork import png_bytes
+
+    d, _ = _borrowing_album(cfg)
+    aid = _id_for(cfg, d)
+    _apply_shown(client, aid, _pick(client, aid, client.get(f"/album/{aid}/artwork").text))
+    own = png_bytes(200, 200) + b"\x03"
+    _gains_its_own_front(own)
+
+    page = client.get(f"/album/{aid}/artwork").text
+
+    assert "Apply artwork" in page
+    assert f"/artwork/image/{aid}/{images.digest(own)}" in page
+    _apply_shown(client, aid, page)
+    for track in ("01 Track.m4a", "02 Track.m4a"):
+        art = formats.read_cover(d / track)
+        assert art is not None and art[0] == own
+    assert sc.read(d).borrowed_artwork == ()
+
+
+def test_a_stand_in_sends_the_page_for_the_releases_own_front_however_small(client, cfg):
+    """The archive check downloads a front only when it beats what the album
+    has — but over a stand-in it wins whatever it measures, so it has to be in
+    hand: the page is sent to fetch it (#663)."""
+    d, _ = _borrowing_album(cfg)
+    aid = _id_for(cfg, d)
+    _apply_shown(client, aid, _pick(client, aid, client.get(f"/album/{aid}/artwork").text))
+    _listed(_BORROW_MBID, ("2", _OWN_URL, True))
+    activity_store.store_cover_art(
+        _BORROW_MBID,
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC), image_url=_OWN_URL, width=200, height=200
+        ),
+    )
+
+    page = client.get(f"/album/{aid}/artwork").text
+
+    assert f'hx-get="/album/{aid}/artwork?check=1' in page
+
+
+def test_a_stand_in_that_turns_out_to_be_the_releases_own_is_not_borrowed(client, cfg):
+    """The release's new front can be the very image that stood in for it —
+    the group's front was its own all along. Then nothing was borrowed, and
+    nothing is said or offered (#663)."""
+    d, theirs = _borrowing_album(cfg)
+    aid = _id_for(cfg, d)
+    _apply_shown(client, aid, _pick(client, aid, client.get(f"/album/{aid}/artwork").text))
+    assert "borrowed from the release group" in client.get(f"/album/{aid}/artwork").text
+
+    _gains_its_own_front(theirs)
+    page = client.get(f"/album/{aid}/artwork").text
+
+    assert "borrowed from" not in page
+    assert "Apply artwork" not in page
+
+
+def test_keeping_a_stand_in_is_the_users_to_say(client, cfg):
+    """The release's own front is a suggestion like any other: the row's ×
+    keeps the stand-in, and the record stays, so it is still said (#663)."""
+    from test.test_artwork import png_bytes
+
+    d, _ = _borrowing_album(cfg)
+    aid = _id_for(cfg, d)
+    _apply_shown(client, aid, _pick(client, aid, client.get(f"/album/{aid}/artwork").text))
+    _gains_its_own_front(png_bytes(200, 200) + b"\x03")
+    page = client.get(f"/album/{aid}/artwork").text
+    row = re.search(r'name="drop" value="([^"]*)"', page)
+    assert row
+
+    kept = client.get(
+        f"/album/{aid}/artwork", params={"use": _carried_use(page), "drop": row.group(1)}
+    ).text
+
+    assert "Apply artwork" not in kept
+    assert "borrowed from the release group" in kept
+
+
+def test_a_rematch_lapses_a_stand_in(client, cfg):
+    """A stand-in is for one release: matched to another, the album's record
+    says nothing about it (#663)."""
+    d, _ = _borrowing_album(cfg)
+    aid = _id_for(cfg, d)
+    _apply_shown(client, aid, _pick(client, aid, client.get(f"/album/{aid}/artwork").text))
+    record = sc.read(d)
+    assert record is not None and record.borrowed_artwork  # there is one to lapse
+    sc.write(
+        d,
+        replace(
+            record,
+            borrowed_artwork=tuple(
+                replace(b, release="rel-some-other") for b in record.borrowed_artwork
+            ),
+        ),
+    )
+
+    assert "borrowed from" not in client.get(f"/album/{_id_for(cfg, d)}/artwork").text
+
+
 def _carried_artwork(html: str, album_id: str) -> dict[str, str]:
     """The artwork fields the combined **Apply updates** control would submit.
 
