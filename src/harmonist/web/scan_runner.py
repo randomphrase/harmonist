@@ -555,9 +555,14 @@ class ScanRunner:
             if not fresh:
                 return
             with activity_store.action():
-                activity.info(
-                    f"Started tracking {len(fresh)} album{'s' if len(fresh) != 1 else ''}"
-                )
+                if len(fresh) == 1:
+                    # One album: name it in the album column, as every other
+                    # line about one album does, rather than counting it (#672).
+                    activity.info(
+                        "Started tracking", album_id=fresh[0].id, album_label=fresh[0].label
+                    )
+                else:
+                    activity.info(f"Started tracking {len(fresh)} albums")
                 for a in fresh:
                     # `album` (the path) rather than only the id, so the row still
                     # names which album it was about if that album is later moved

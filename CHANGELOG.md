@@ -17,6 +17,8 @@ versions follow [semantic versioning](https://semver.org).
 ### Changed
 
 - Album pages use aligned label/value details, keep dates at the top right, place refresh controls beside section headings, and group Additional tags before Artwork (#665).
+- **Activity names the album when a scan starts tracking just one**, linking
+  to it, instead of "Started tracking 1 album" (#672).
 
 ### Fixed
 

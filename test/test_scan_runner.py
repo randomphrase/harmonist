@@ -288,8 +288,8 @@ def test_an_album_with_a_sidecar_is_never_recorded_as_discovered(tmp_path):
     assert len(rows) == 1, [r.message for r in rows]
     assert "Untouched" in rows[0].message
     assert not any("AlreadyKnown" in r.message for r in rows)
-    entries = [e.message for e in activity.recent(20)]
-    assert any("Started tracking 1 album" in m for m in entries), entries
+    entries = [(e.message, e.album_label) for e in activity.recent(20)]
+    assert ("Started tracking", "Untouched") in entries, entries
 
 
 def test_an_album_added_later_is_recorded_once_and_only_once(tmp_path):
@@ -367,6 +367,32 @@ def test_the_discovery_entry_carries_its_albums_as_what_changed(tmp_path):
     detail = activity_store.audit_by_action([entry.action_id])[entry.action_id]
     assert len(detail) == 2  # one line per album, not one entry per album
     assert all(r.message.startswith(activity_store.DISCOVERY_EVENT) for r in detail)
+    assert entry.album_id is None and entry.album_label is None  # several: none is "the" album
+
+
+def test_a_lone_discovered_album_is_named_in_the_feed(tmp_path):
+    """#672: "Started tracking 1 album" named no album, while every other line
+    in the feed beside it did. With exactly one there is an album to name, so
+    the entry carries it in the album column and links to its page."""
+    from harmonist import activity, activity_store, id_registry
+
+    music = tmp_path / "music"
+    _album(music, "Adopted")
+    activity_store.init(tmp_path / "activity.db")
+    activity_store.clear()
+    id_registry.set_library_root(music)
+    runner = ScanRunner(music)
+
+    async def go() -> None:
+        runner.attach_loop()
+        await _wait(lambda: len(_discovery_rows()) == 1)
+
+    asyncio.run(go())
+
+    album = runner.albums()[0]
+    entry = next(e for e in activity.recent(20) if e.message.startswith("Started tracking"))
+    assert entry.message == "Started tracking"
+    assert (entry.album_id, entry.album_label) == (album.id, album.label)
 
 
 # ---------------------------------------------------------------------------
