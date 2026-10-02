@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import zlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -951,6 +952,35 @@ def fetch_image(release_mbid: str, url: str, *, client: Any = None) -> Path | No
     return cover_art.cache_image(release_mbid, data, "image/jpeg")
 
 
+def fetch_listing(kind: str, mbid: str, *, client: Any = None) -> list[Any]:
+    """The archive's listing, agreeing with `check_front` (#659): a release
+    lists the one front that answer names, by the same URL, so the picker
+    offers the image these recordings were made with. A release group lists
+    nothing — this catalogue has no second picture to show."""
+    from harmonist import cover_art
+
+    if kind != "release":
+        return []
+    url = f"https://coverartarchive.org/release/{mbid}/front"
+    return [
+        cover_art.Candidate(
+            image_id=str(zlib.crc32(url.encode())),
+            image_url=url,
+            thumbnail_url=url,
+            types=("Front",),
+            front=True,
+        )
+    ]
+
+
+def fetch_bytes(url: str, *, client: Any = None) -> tuple[bytes, str]:
+    """Any image the listing above names: the bytes `fetch_image` caches, so a
+    thumbnail, an original fetched on Use and the archive check's own download
+    are the same picture."""
+    placeholder = ASSETS_DIR / "cover-3.jpg"
+    return placeholder.read_bytes() + b"demo-cover-art-archive", "image/jpeg"
+
+
 def install(monkeypatch):
     for name in (
         "LIBRARY",
@@ -964,5 +994,7 @@ def install(monkeypatch):
         "front_image",
         "check_front",
         "fetch_image",
+        "fetch_listing",
+        "fetch_bytes",
     ):
         monkeypatch.setattr(demo, name, globals()[name])

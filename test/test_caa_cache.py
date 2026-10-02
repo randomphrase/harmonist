@@ -47,10 +47,15 @@ class _Counter:
         )
 
 
-def _stored(age: timedelta, **kw) -> None:
+def _stored(age: timedelta, *, listed: bool = True, **kw) -> None:
+    """A stored front answer — and, unless `listed=False`, the listing a check
+    since #659 stores beside it, so a test of the front is not also a test of
+    a listing nobody asked for."""
     activity_store.store_cover_art(
         MBID, activity_store.CachedCoverArt(fetched_at=datetime.now(UTC) - age, **kw)
     )
+    if listed:
+        activity_store.store_release(MBID, "caa-listing:release", {"images": []})
 
 
 def test_a_second_look_inside_the_ttl_does_not_ask_the_archive(monkeypatch):
@@ -342,6 +347,18 @@ def test_a_stored_listing_is_read_without_asking(monkeypatch):
 
     assert caa_cache.stored_listing("release", MBID) == CANDIDATES
     assert lister.calls == [("release", MBID)]
+
+
+def test_a_fresh_answer_that_was_never_listed_is_due(monkeypatch):
+    """An answer stored before the picker existed has a front and no listing
+    (#659): it is asked again now, rather than offering nothing for a week."""
+    _stored(timedelta(hours=1), listed=False, image_url="https://caa.example/front.jpg", width=100)
+    assert caa_cache.due(MBID, keep_if_wider_than=1000) is True
+
+    monkeypatch.setattr(cover_art, "fetch_listing", _Lister())
+    caa_cache.listing("release", MBID)
+
+    assert caa_cache.due(MBID, keep_if_wider_than=1000) is False
 
 
 def test_a_listing_that_could_not_be_asked_stores_nothing(monkeypatch):

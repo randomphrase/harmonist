@@ -1157,15 +1157,53 @@ dialog::backdrop {
   background: #fff;
 }
 .art-pick__ghost { display: none; }
-/* A thumbnail and its facts side by side while the picker is the full width
-   of the section; the picture fills the panel once it is a column of its own
-   (below), where there is room to look at it and nothing else to fill. */
-.art-pick__candidate {
+
+/* The carousel (#659): one image at a time — the one whose radio is checked —
+   and, while Front only is ticked, never one that is not a front. A thumbnail
+   and its facts side by side while the picker is the full width of the
+   section; the picture fills the panel once it is a column of its own (below),
+   where there is room to look at it and nothing else to fill. */
+.art-pick__carousel { position: relative; container-type: inline-size; }
+.art-pick__slide { display: none; cursor: default; }
+.art-pick__slide:has(input:checked),
+.art-pick__ghost .art-pick__slide {
   display: grid;
   grid-template-columns: 6.5rem minmax(0, 1fr);
   column-gap: .85rem;
   align-items: start;
 }
+.art-compare--pick:has(.art-pick__front-only input:checked) .art-pick__slide[data-front="false"] {
+  display: none;
+}
+.art-pick__image img { display: block; width: 100%; height: 100%; object-fit: contain; }
+/* ‹ and ›, over the image's edges: the image is what they change. */
+.art-pick__turn {
+  position: absolute;
+  top: 2.25rem;
+  width: 1.6rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, #fff 82%, transparent);
+  color: var(--color-ink);
+  font-size: 1.1rem;
+  line-height: 2rem;
+  cursor: pointer;
+}
+.art-pick__turn:hover { background: #fff; }
+.art-pick__turn--back { left: .2rem; }
+.art-pick__turn--on { left: calc(6.5rem - 1.8rem); }
+.art-pick__front-only {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-top: .55rem;
+  font-size: .72rem;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.art-pick__front-only input { accent-color: var(--color-mb-purple); margin: 0; }
 
 /* Selecting a row is clicking anywhere on it. The label is stretched over the
    row, and the row's own buttons — the thumbnails, remove — sit above it. The
@@ -1201,6 +1239,20 @@ dialog::backdrop {
   border-radius: 4px;
 }
 .art-row:has(.art-row__radio:checked) .art-row__slot { display: block; }
+/* …and in its place, where the row already has the image the picker shows,
+   the reason there is nothing to press (#659). The section's generated rules
+   decide which, per row and image. */
+.art-row__unchanged {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 6.5rem;
+  height: 6.5rem;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  font-size: .72rem;
+  color: var(--color-muted);
+}
 
 /* Remove: a small ×, under the incoming image's facts. */
 .art-row__drop {
@@ -1239,7 +1291,14 @@ dialog::backdrop {
   cursor: pointer;
 }
 .art-pick__use:hover { background: color-mix(in srgb, var(--color-mb-purple) 85%, #000); }
-.art-pick__use--done { background: var(--color-line); color: var(--color-muted); cursor: default; }
+/* The ✓ is hidden until the section's generated rules show it, for a row
+   that already has the image the picker shows. */
+.art-pick__use--done {
+  display: none;
+  background: var(--color-line);
+  color: var(--color-muted);
+  cursor: default;
+}
 .art-pick__use--done:hover { background: var(--color-line); }
 /* Quiet, because clicking a row does the same. */
 .art-pick__step {
@@ -1293,8 +1352,12 @@ dialog::backdrop {
     grid-column: 2;
     grid-row: var(--art-pick-last, 2);
   }
-  .art-pick__candidate { display: flex; flex-direction: column; gap: .5rem; }
-  .art-pick__candidate .art-row__art { width: 100%; height: auto; aspect-ratio: 1; }
+  .art-pick__slide:has(input:checked),
+  .art-pick__ghost .art-pick__slide { display: flex; flex-direction: column; gap: .5rem; }
+  .art-pick__carousel .art-pick__image { width: 100%; height: auto; aspect-ratio: 1; }
+  /* Centred on the image, which is as tall as the panel is wide. */
+  .art-pick__turn { top: calc(50cqw - 1rem); }
+  .art-pick__turn--on { left: auto; right: .2rem; }
   .art-pick__ctl {
     position: absolute;
     top: .35rem;

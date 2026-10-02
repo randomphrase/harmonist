@@ -159,9 +159,8 @@ def test_the_archives_candidate_is_one_row_on_a_narrow_window(demo_server: str) 
         # so this waits for the answer rather than for the section.
         page.wait_for_selector("#album-artwork .art-pick__picker")
 
-        block = page.locator("#album-artwork .art-pick__candidate")
-        # Whichever of the three states the frame is in: a button to fetch the
-        # picture, a placeholder, or the picture itself.
+        # The image the carousel is showing (#659).
+        block = page.locator("#album-artwork .art-pick__picker .art-pick__slide:visible")
         frame = block.locator(".art-row__art").first
         facts = block.locator(".art-row__facts").first
 
@@ -214,14 +213,10 @@ def test_choosing_an_image_does_not_move_the_table(reset_demo_server: str) -> No
             }"""
             )
 
-        load = page.locator('#album-artwork button[hx-post$="/artwork/load-archive"]')
-        if load.count():
-            load.click()
-            page.wait_for_function(settled)
-        # …and open the page again: the archive has been asked and its picture
-        # loaded, so nothing re-renders the section before the press, and the
-        # layout measured is the first render's — /compare's, which is the one
-        # the user is looking at when they press Use.
+        # …and open the page again: the archive has been asked and listed, so
+        # nothing re-renders the section before the press, and the layout
+        # measured is the first render's — /compare's, which is the one the
+        # user is looking at when they press Use.
         page.goto(f"{reset_demo_server}/album/{ALBUM_ID}")
         page.wait_for_selector("#album-artwork button.art-pick__use", state="attached")
         page.wait_for_function(settled)
@@ -233,7 +228,7 @@ def test_choosing_an_image_does_not_move_the_table(reset_demo_server: str) -> No
             if use.count():
                 break
         before = table()
-        with page.expect_response(lambda r: "pick=archive" in r.url):
+        with page.expect_response(lambda r: "pick=1" in r.url):
             use.click()
         page.wait_for_function(settled)
 

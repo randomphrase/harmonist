@@ -21,10 +21,20 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Annotated, Any, Literal, Protocol
 from urllib.parse import parse_qsl, quote, urlencode
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -2603,6 +2613,47 @@ def _widest(view: artwork.ArtworkView) -> int:
     return max((r.image.size.width for r in view.images if r.image and r.image.size), default=0)
 
 
+def _release_of(album: Album) -> str | None:
+    return album.sidecar.mb_release_id if album.sidecar else None
+
+
+def _listings(mbid: str | None) -> list[tuple[str, cover_art.Candidate]]:
+    """Every image the archive lists for this release and its group, by origin
+    — from what is stored, never the network (#659)."""
+    if mbid is None:
+        return []
+    listed = [("release", c) for c in caa_cache.stored_listing("release", mbid) or []]
+    stored = mb_cache.stored_release(mbid)
+    group = (stored.get("release-group") or {}).get("id") if stored else None
+    if isinstance(group, str):
+        listed += [
+            ("release-group", c) for c in caa_cache.stored_listing("release-group", group) or []
+        ]
+    return listed
+
+
+def _listed_candidate(mbid: str | None, image_id: str) -> cover_art.Candidate | None:
+    """The image this release's listings name `image_id`, or None.
+
+    The ONLY way an image id from a request reaches a fetch: what is fetched is
+    the URL the archive's own listing gave for it, so a request can never point
+    a server-side fetch anywhere else."""
+    return next((c for _, c in _listings(mbid) if c.image_id == image_id), None)
+
+
+def _picked_originals(mbid: str | None, choices: artwork.Choices) -> dict[str, cover_art.Front]:
+    """The originals of the archive images `choices` name by id, as
+    `_in_hand` finds them — what an apply writes them from (#659). One not in
+    hand is simply absent, and the plan rebuilt without it fails the page's
+    fingerprint."""
+    found: dict[str, cover_art.Front] = {}
+    for choice in choices.values():
+        listing = _listed_candidate(mbid, choice) if choice.isdigit() else None
+        if listing is not None and (front := _in_hand(mbid, listing)) is not None:
+            found[choice] = front
+    return found
+
+
 def _selected_row(view: artwork.ArtworkView, carriers: Sequence[str], fallback: int) -> int:
     """Which row the Artwork section's picker sits beside (#659): the first row
     standing for any of `carriers`, or `fallback` when none does — clamped, so
@@ -2640,6 +2691,51 @@ def _transforms(request: Request) -> frozenset[TagTransform]:
     """
     cfg: config_mod.Config = request.app.state.cfg
     return frozenset(cfg.tagging.transforms)
+
+
+def _in_hand(mbid: str | None, listing: cover_art.Candidate) -> cover_art.Front | None:
+    """A listed image's original, if it is already here (#659) — never the
+    network. Here once it was chosen, which fetched it under its id; or when
+    it is the release's own front, which the archive check downloads itself
+    and keeps under the release's id instead."""
+    if (front := cover_art.cached_candidate_image(listing.image_id)) is not None:
+        return front
+    caa = caa_cache.stored(mbid) if mbid else None
+    if mbid is not None and caa is not None and caa.image_url == listing.image_url:
+        return cover_art.cached_front(mbid)
+    return None
+
+
+def _offered(
+    mbid: str | None,
+) -> tuple[tuple[artwork.Candidate, ...], dict[str, formats.EmbeddedArt]]:
+    """What the picker offers this album, and the originals already in hand
+    (#659): every image the archive lists for its release and then its release
+    group, each once.
+
+    From what is stored, never the network — the listings the archive check
+    keeps, and the release payload the page already read for the group's id.
+    """
+    candidates: list[artwork.Candidate] = []
+    picks: dict[str, formats.EmbeddedArt] = {}
+    for origin, listing in _listings(mbid):
+        # The group's front is very often one of the release's own images.
+        if any(c.image_id == listing.image_id for c in candidates):
+            continue
+        original = _in_hand(mbid, listing)
+        image = formats.EmbeddedArt.of(original.data, original.mime) if original else None
+        if image is not None:
+            picks[listing.image_id] = image
+        candidates.append(
+            artwork.Candidate(
+                image_id=listing.image_id,
+                origin=origin,
+                front=listing.front,
+                types=listing.types,
+                image=image,
+            )
+        )
+    return tuple(candidates), picks
 
 
 def _artwork_view(
@@ -2690,6 +2786,7 @@ def _artwork_view(
             "album artwork read", _SLOW_ALBUM_READ, album=album.path, files=len(files)
         ):
             tracks = [(f, formats.read_tags(f)) for f in files]
+    candidates, picks = _offered(_release_of(album))
     if album.cover_path is None or not album.cover_path.exists():
         return artwork.summarise(
             album.path,
@@ -2699,6 +2796,8 @@ def _artwork_view(
             archive,
             chosen=chosen,
             choices=choices,
+            picks=picks,
+            candidates=candidates,
             folder_cover=folder_cover,
         )
     try:
@@ -2718,6 +2817,8 @@ def _artwork_view(
             cover_unreadable=True,
             chosen=chosen,
             choices=choices,
+            picks=picks,
+            candidates=candidates,
             folder_cover=folder_cover,
         )
     mime = "image/png" if album.cover_path.suffix.lower() == ".png" else "image/jpeg"
@@ -2734,6 +2835,8 @@ def _artwork_view(
         archive,
         chosen=chosen,
         choices=choices,
+        picks=picks,
+        candidates=candidates,
         folder_cover=folder_cover,
     )
 
@@ -3836,6 +3939,7 @@ def _tag_with_release(
         # and the ones chosen row by row, for the same reason (#659).
         chosen=chosen,
         choices=choices,
+        picks=_picked_originals(mbid, choices or {}),
         assignment=assignment,
         # The album page built its preview under this same policy, so the plan
         # rebuilt at write time is the one the fingerprint was taken of (#516).
@@ -6046,6 +6150,8 @@ def _register_routes(app: FastAPI) -> None:
         pick: str = "",
         drop: str = "",
         selected: int = 0,
+        candidate: str = "",
+        front_only: Annotated[list[str], Query()] = [],  # noqa: B006 — FastAPI copies it
     ) -> Response:
         """The Artwork section (#155), fetched after the page paints.
 
@@ -6082,6 +6188,14 @@ def _register_routes(app: FastAPI) -> None:
         decides what a press means, and the page stays a form of plain values.
         `selected` is which row the picker was on, for a response that has no
         `row` to find it by (the out-of-band archive check).
+
+        `candidate` is the archive image the picker is showing (#659), and a
+        press of Use (`pick=1`) chooses it for the row — fetching its original
+        first, because a choice is previewed as the plan it makes and a plan is
+        made of the image's exact bytes. `pick=archive` still names the
+        release's own front. `front_only` is the picker's checkbox, posted as a
+        hidden `0` ahead of a checkbox `1` so its last value is the answer, and
+        absent on a render nobody's form asked for.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
@@ -6095,10 +6209,31 @@ def _register_routes(app: FastAPI) -> None:
         caa = caa_cache.stored(mbid) if mbid else None
         archive = _archive_image(mbid)
         choices = artwork.parse_choices(use)
+        # What a press of Use names: the image the picker shows, by archive id,
+        # or — as the section spelled it before #659 — the release's own front.
+        picked = "archive" if pick == "archive" else candidate if pick else ""
+        if picked and picked != "archive":
+            listed = _listed_candidate(mbid, picked)
+            if listed is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image for this album")
+            try:
+                # Fetched only if it is not here already — the release's own
+                # front usually is, downloaded by the archive check.
+                if _in_hand(mbid, listed) is None:
+                    cover_art.candidate_image(listed)
+            except cover_art.CoverArtError as e:
+                # Loud: somebody pressed this and is waiting for a picture.
+                log.exception("could not fetch archive image %s", picked, extra=_LOG_ONLY)
+                return _flash_response(
+                    "Couldn't fetch that image from the Cover Art Archive",
+                    str(e),
+                    level=Level.ERROR,
+                    tasks_changed=False,
+                )
         # Composed through `parse_choices` like everything else a request
         # carries, so a carrier nobody's page drew is dropped the same way.
-        if pick:
-            choices |= artwork.parse_choices(",".join(f"{c}={pick}" for c in row.split()))
+        if picked:
+            choices |= artwork.parse_choices(",".join(f"{c}={picked}" for c in row.split()))
         if drop:
             choices |= artwork.parse_choices(",".join(f"{c}=keep" for c in drop.split()))
         view = _artwork_view(
@@ -6112,11 +6247,16 @@ def _register_routes(app: FastAPI) -> None:
             # new plan and can merge or split (#479), so it is found again by
             # what it stands for rather than by position.
             artwork_selected=_selected_row(view, row.split(), selected),
+            # …and on the image it was showing, with the front-only box as the
+            # user left it.
+            artwork_candidate=candidate,
+            artwork_front_only=front_only[-1] == "1" if front_only else view.front_only,
             # Asked for an image that is not here — the cache dropped it, or it
             # was never loaded. Said rather than quietly showing the ordinary
             # plan instead, which would be the unannounced fallback #472 forbids.
-            artwork_choice_unavailable=artwork.Choice.ARCHIVE in choices.values()
-            and archive is None,
+            artwork_choice_unavailable=any(
+                c != artwork.Choice.KEEP and view.choices.get(k) != c for k, c in choices.items()
+            ),
             # Whether this response should ask the browser to come back and put
             # the question to the archive (#436). Never on a response that has
             # just tried: a check that failed leaves the answer stale, and a
@@ -6160,6 +6300,12 @@ def _register_routes(app: FastAPI) -> None:
                 keep_if_wider_than=_widest(current),
                 max_age=max_age,
             )
+            # …and every image the picker offers (#659): the release's listing
+            # and its group's, on the same TTL and the same terms — a check that
+            # fails part-way leaves what was stored before.
+            caa_cache.listing("release", mbid, max_age=max_age)
+            if isinstance(group, str):
+                caa_cache.listing("release-group", group, max_age=max_age)
         except cover_art.CoverArtError:
             # `_LOG_ONLY`, because the docstring above is the design and the feed
             # is part of the UI (#464). At ERROR this was mirrored into the
@@ -6257,6 +6403,7 @@ def _register_routes(app: FastAPI) -> None:
                 else album_files.audio_files(album.path),
                 cover_path=album.cover_path,
                 archive=cover_art.cached_front(mbid) if mbid else None,
+                picks=_picked_originals(mbid, view.choices),
             )
         except tagger_mod.ArtworkChangedError:
             log.info("the winning image for %s moved before it was written", album.path)
@@ -6291,77 +6438,39 @@ def _register_routes(app: FastAPI) -> None:
             activity.info(message, album_id=album_id_now, album_label=label)
         return section()
 
-    @app.post("/album/{album_id}/artwork/load-archive", response_class=HTMLResponse)
-    def album_load_archive_image(
-        request: Request, album_id: str, use: str = Form(""), row: str = Form("")
-    ) -> Response:
-        """Fetch the archive's cover so it can be looked at, even though it lost
-        on size (#448).
+    # No `/album/{id}/artwork/load-archive`. It fetched the archive's one front
+    # cover when it lost on size, so it could be looked at (#448); since #659
+    # every image the archive lists is shown from its thumbnail and fetched
+    # whole only when it is used, so there is nothing left to load.
 
-        A losing candidate is measured with a 64 KB range and never downloaded
-        (#276), which is the right default and a dead end: bigger is the only
-        thing Harmonist can measure, and a 900px scan can be softer, worse
-        cropped, or a different pressing's sleeve than a 500px one. This is the
-        way to find out.
+    @app.get("/artwork/candidate/{album_id}/{image_id}")
+    def artwork_candidate(request: Request, album_id: str, image_id: str) -> Response:
+        """A picker candidate's thumbnail (#659), by archive image id.
 
-        It settles nothing about what gets written. The image being on disk is
-        not a claim about its size, which destination it wins never consults
-        this, and the row stays muted and unmarked — see #441 for why the marks
-        and not the column carry that.
+        Served from Harmonist rather than linked to, as the archive's cover
+        always has been (#276): the page talks to one host, so opening an album
+        cannot tell the Internet Archive which records this user owns. Only an
+        image this album's own listings name — `_listed_candidate` — so the id
+        can never steer the fetch anywhere else.
 
-        LOUD on failure, unlike the page-open check (#436). That one is silent
-        because nobody asked for it; somebody pressed this and is waiting for a
-        picture.
-
-        `use` and `row` are the picker's form, which this button sits in
-        (#659): the choices already made and the row the picker is on, both
-        kept, so loading the picture does not undo what was chosen before it.
+        Immutable: an archive image id names one image for good, and the picker
+        shows several, so each is fetched once per browser.
         """
-        album = _refreshed_from_disk(request, _find_album(request, album_id))
-        mbid = album.sidecar.mb_release_id if album.sidecar else None
-        answer = caa_cache.stored(mbid) if mbid else None
-        # The URL comes from the stored answer, never from the request: this is
-        # a server-side fetch, and a caller-supplied address would make it one
-        # anybody could point anywhere.
-        if mbid is None or answer is None or not answer.image_url:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "no archive cover is known for this album"
-            )
+        if not image_id.isdigit():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
+        listed = _listed_candidate(_release_of(_find_album(request, album_id)), image_id)
+        if listed is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
         try:
-            cover_art.fetch_image(mbid, answer.image_url)
+            thumb = cover_art.candidate_thumbnail(listed)
         except cover_art.CoverArtError as e:
-            # `_LOG_ONLY` for the opposite reason to the check above: here a feed
-            # entry IS wanted, because someone pressed a button — but
-            # `_flash_response` is the authoritative writer of it, and at ERROR
-            # this line was mirrored in beside it as a second copy naming an
-            # MBID and attributed to nothing (#464). One press, one entry.
-            log.exception(
-                "could not load the Cover Art Archive image for %s", mbid, extra=_LOG_ONLY
+            # A broken thumbnail in the carousel is the visible signal; the log
+            # has why. Not the feed: nobody pressed anything.
+            log.warning(
+                "could not fetch archive thumbnail %s", image_id, exc_info=True, extra=_LOG_ONLY
             )
-            return _flash_response(
-                "Couldn't load the archive's cover", str(e), level=Level.ERROR, tasks_changed=False
-            )
-        view = _artwork_view(
-            album,
-            answer,
-            _archive_image(mbid),
-            choices=artwork.parse_choices(use),
-            folder_cover=_folder_cover_policy(request),
-        )
-        return _templates(request).TemplateResponse(
-            request,
-            "partials/_artwork.html",
-            _ctx(
-                request,
-                album=album,
-                artwork=view,
-                artwork_selected=_selected_row(view, row.split(), 0),
-                # Nothing was asked of the archive's LISTING, so its timestamp
-                # has not moved and this response has no reason to send anyone
-                # back to ask (#436).
-                caa_check_due=False,
-            ),
-        )
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "thumbnail unavailable") from e
+        return Response(content=thumb.data, media_type=thumb.mime, headers=_IMMUTABLE)
 
     @app.get("/artwork/image/{album_id}/{digest}")
     def artwork_image(request: Request, album_id: str, digest: str) -> Response:

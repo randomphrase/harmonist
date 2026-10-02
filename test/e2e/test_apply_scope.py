@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from urllib.parse import parse_qs
 
 import pytest
@@ -18,15 +19,11 @@ def _settle(page) -> None:
 
 
 def _choose_archive(page) -> None:
-    """Load the archive's picture if it is not here yet, then press the
-    picker's Use button for whichever row it is on (#659)."""
+    """Press the picker's Use button for whichever row it is on, once the
+    archive's listing has put a picker there (#659)."""
     section = page.locator("#album-artwork")
-    load = section.locator('button[hx-post$="/artwork/load-archive"]')
-    if load.count():
-        with page.expect_response(lambda r: r.url.endswith("/artwork/load-archive")):
-            load.click()
-        _settle(page)
-    with page.expect_response(lambda r: "pick=archive" in r.url):
+    section.locator(".art-pick__picker").wait_for()
+    with page.expect_response(lambda r: "pick=1" in r.url):
         section.locator("button.art-pick__use:visible").click()
     _settle(page)
 
@@ -122,7 +119,8 @@ def test_artwork_only_primary_appears_and_clears_with_the_proposal(demo_server: 
         page.on("dialog", lambda dialog: dialog.accept())
         with page.expect_response(lambda r: r.url.endswith("/artwork/update")) as response:
             primary.click()
-        assert "=archive" in parse_qs(response.value.request.post_data)["use"][0]
+        # A choice names the archive image by its id (#659).
+        assert re.search(r"=[0-9]+", parse_qs(response.value.request.post_data)["use"][0])
         _settle(page)
         pw.expect(primary).to_have_count(0)
         assert _covers(page) != before

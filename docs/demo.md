@@ -116,9 +116,10 @@ batch runs.
    deserve review, or Dingoes to demonstrate filling a gap without replacing
    artwork that is already present.
 
-For an explicit artwork choice, open Barry Jive and load the archive candidate.
-Merely inspecting it changes nothing. Choose **use this artwork**, then apply
-the proposal: the smaller alternative is allowed because you chose it. Undo
+For an explicit artwork choice, open Barry Jive: the archive's images are under
+**Available**. Merely looking at them changes nothing. Press **Use** beside a
+row, then apply the proposal: the smaller alternative is allowed because you
+chose it. Undo
 restores the previous images. To demonstrate a combined action, first undo
 Barry's seeded date update, then choose the candidate. **Include artwork** on
 **Apply updates** starts ticked; you can exclude it. Tag and artwork changes

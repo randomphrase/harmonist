@@ -198,10 +198,10 @@ becomes "the Cover Art Archive, 960×960". Under "Also available" is the
 archive's image with a "Use this artwork" link, and an Apply artwork button sits
 at the bottom.](images/artwork.png)
 
-Bigger isn't always better, so any row can take the Cover Art Archive's image
-regardless of size, or keep the image it has instead of the one suggested for
-it. A choice reaches only its own row, so a compilation's other covers stay as
-they are.
+Bigger isn't always better, so any row can take any image the Cover Art Archive
+has for the release or its release group, regardless of size, or keep the image
+it has instead of the one suggested for it. A choice reaches only its own row, so
+a compilation's other covers stay as they are.
 
 ## Undo and history
 

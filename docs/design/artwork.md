@@ -60,10 +60,31 @@ the folder cover. The size rule never needs more than those two, but a user
 choosing row by row can put a different image on every row, and a compilation's
 rows are a dozen of them.
 
+**Any image the archive has is a candidate, not only the front it would pick.**
+The picker offers every image the archive lists for the release, then for its
+release group (#659). The front the size rule weighs is one archive image among
+many, and the image a user wants is often another: a different scan, or the
+group's cover when this release has none. A back cover or a booklet page is
+rarely wanted, so **Front only** narrows the carousel, ticked unless the archive
+lists no fronts. It is a property of what's being looked at, not a preference:
+Picard's equivalent is a setting that applies to every album, and a setting
+would hide the one back cover a user came looking for. Matrix/runout,
+raw/unedited and watermarked images are never offered, even when also marked
+Front, because none of them is artwork anyone puts on a sleeve.
+
+The carousel shows the archive's thumbnails, fetched through Harmonist like
+every other image on the page. The original is fetched only when the user
+presses Use, since that's when the plan needs its bytes. A request names an
+image by the id the archive's listing gave it, never by URL, so nothing a page
+sends can point a fetch anywhere the archive didn't.
+
 **A choice that changes nothing says so.** Choosing an image a row already
-carries, byte for byte, is a no-op, and the picker says the row already has it
-rather than offering a press that writes nothing. Offering it anyway once left an
-album with a preview, no After Apply column and no button, which read as broken.
+carries, byte for byte, is a no-op, and once the original is in hand the row
+says **Unchanged** where the incoming image would go, and Use becomes a ✓, rather
+than offering a press that writes nothing. Offering it anyway once left an album
+with a preview, no After Apply column and no button, which read as broken. Until
+the original is fetched, only the thumbnail is known, and a thumbnail's bytes
+say nothing about the original's.
 
 ## Additions and replacements
 

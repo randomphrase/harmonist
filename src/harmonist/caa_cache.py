@@ -149,6 +149,9 @@ def due(mbid: str, *, keep_if_wider_than: int) -> bool:
         # A winner whose picture the image cache has since evicted (#439).
         # `front` fetches only the picture, but it has to be sent to.
         or cover_art.unfetched_winner(mbid, known, keep_if_wider_than) is not None
+        # Never listed: an answer stored before the picker offered every image
+        # (#659), which would otherwise wait out its TTL with nothing to offer.
+        or stored_listing("release", mbid) is None
     )
 
 

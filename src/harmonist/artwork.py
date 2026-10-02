@@ -783,40 +783,34 @@ class FolderCover:
 
 
 @dataclass(frozen=True)
-class ArchiveRow:
-    """The Cover Art Archive's answer, drawn as a row rather than a sentence.
+class Candidate:
+    """One image the picker offers (#659): listed by the Cover Art Archive for
+    the release or its release group.
 
-    Every answer it can give is one of these, because the archive's cover is one
-    of the images this album could carry and everything in that category is a row
-    (#433). `placeholder` is the word in the frame where a picture would be, and
-    it distinguishes the two ways there isn't one: *not loaded* for an image that
-    exists and was never downloaded because it lost, *none* for a release the
-    archive holds nothing for.
+    `image` is its original once it is in hand — fetched when it was chosen,
+    or the release's own front the archive check downloaded — and None while
+    it is only listed. Only an image in hand can be compared with what a row
+    has, so only then can the picker know a Use would change nothing.
     """
 
-    placeholder: str
-    meta: str
-    #: Whether the archive keeps this cover against the RELEASE GROUP rather than
-    #: this edition (#434) — true of a great many albums, and worth saying.
-    from_release_group: bool = False
-    #: The picture itself, once someone has asked for it (#448). A losing
-    #: candidate is never downloaded on its own, because bigger is the only thing
-    #: Harmonist can measure and a loser by that measure is not worth the
-    #: megabytes — but bigger is not the same as better, and a reader deciding
-    #: whether theirs really is the better scan needs to see the other one.
-    #:
-    #: Its presence says nothing about whether it won. Winning is decided on
-    #: size and is not consulted here; which rows it is going to is theirs to
-    #: say (#441, #659).
+    image_id: str
+    #: "release" or "release-group": which listing offered it.
+    origin: str
+    front: bool
+    types: tuple[str, ...]
     image: EmbeddedArt | None = None
 
     @property
-    def loadable(self) -> bool:
-        """Whether there is a picture to go and get: the archive has one, and it
-        is not here yet. False for a release the archive holds nothing for —
-        there is nothing to load, which is a different fact from not having
-        loaded it (#433)."""
-        return self.image is None and self.placeholder != "none"
+    def meta(self) -> str | None:
+        """The facts line, once there are facts: the original's size and
+        type. A thumbnail says nothing about the original."""
+        return describe(self.image) if self.image is not None else None
+
+
+# No `ArchiveRow`: the archive's one front cover was drawn as a row of its own,
+# with a "load" frame for a loser nobody had downloaded (#433, #448). Since
+# #659 the picker offers every image the archive lists, each shown from its
+# thumbnail — so there is no loser to load, and no single archive row.
 
 
 #: The id of the Artwork row for tracks carrying no image at all.
@@ -1103,6 +1097,27 @@ class ArtworkView:
     #: The choices made row by row that the plan honoured (#659). What the
     #: section's controls carry back, and what each of them changes by one row.
     choices: Mapping[str, str] = field(default_factory=dict)
+    #: What the picker offers, in order: the release's images, then its release
+    #: group's (#659).
+    candidates: tuple[Candidate, ...] = ()
+
+    @property
+    def front_only(self) -> bool:
+        """Whether the picker opens showing fronts only — Picard's default —
+        which it does unless there are none, when it would open on nothing."""
+        return any(c.front for c in self.candidates)
+
+    def unchanged(self, row: ArtRow, candidate: Candidate) -> bool:
+        """Whether using `candidate` on `row` would change nothing: the row
+        already has it, or is already getting it, byte for byte. Unknowable for
+        an image not yet in hand, so False there — Use stays on offer, and the
+        plan writes nothing if the bytes turn out to match."""
+        if candidate.image is None:
+            return False
+        digest = candidate.image.digest
+        return (row.image is not None and row.image.digest == digest) or (
+            row.written_image is not None and row.written_image.digest == digest
+        )
 
     @property
     def use(self) -> str:
@@ -1184,13 +1199,6 @@ class ArtworkView:
             out.setdefault(row.image.digest, (row.image, row.label))
         if self.cover is not None:
             out.setdefault(self.cover.image.digest, (self.cover.image, self.cover.name))
-        # …and the archive's, once it is here to be looked at (#448). It is not
-        # one of `self.rows` — it is on no row, because it is not on the album —
-        # so without this the one image a user pressed a button to SEE would be
-        # the only one that could not be opened full size, which is most of what
-        # they wanted it for.
-        if (archive_row := self.archive_row) is not None and archive_row.image is not None:
-            out.setdefault(archive_row.image.digest, (archive_row.image, "Cover Art Archive"))
         # …and every incoming image, wherever it came from. The incoming side of
         # every written row points at one, and when it is the archive's it is on
         # no row and no carrier, so nothing else above would emit its view.
@@ -1252,51 +1260,6 @@ class ArtworkView:
         # Capitalised from whichever clause leads, since either can.
         line = ", and ".join(parts)
         return line[0].upper() + line[1:] + "."
-
-    @property
-    def archive_row(self) -> ArchiveRow | None:
-        """The archive's cover as a candidate: what the picker beside the rows
-        offers (#659). None when the archive has not been asked.
-
-        Offered whether or not it is already coming. It used to vanish when it
-        won the tracks, which was right while it was an also-ran row — but the
-        picker is where a row's choice is made, including choosing it for a row
-        the size rule left alone, and a picker that disappeared whenever the
-        archive won one row would take the choice away from every other (#490
-        was this, one row at a time).
-
-        The placeholder is honest rather than a stand-in. A losing candidate is
-        deliberately never downloaded (#276) — measured with a 64 KB range and
-        forgotten — so there genuinely is no picture until someone asks to see
-        it (#448), and nothing can be chosen before then: choosing an image
-        nobody has seen is the guess this section exists to avoid.
-        """
-        answer = self.caa
-        if answer is None:
-            return None
-        if not answer.has_art:
-            # A different word, because it is a different fact: there is nothing
-            # to load, rather than something not loaded (#433).
-            return ArchiveRow(placeholder="none", meta="no front cover for this release")
-        size = Size(answer.width, answer.height) if answer.width and answer.height else None
-        if size is None:
-            return ArchiveRow(
-                placeholder="not loaded",
-                meta="size could not be read",
-                image=self.archive,
-            )
-        return ArchiveRow(
-            placeholder="not loaded",
-            meta=describe_parts(size, answer.mime, answer.length),
-            # Whose cover it is, when that is not this edition's (#434). A
-            # release group's artwork stands for every edition of the album, and
-            # someone comparing editions may care that this one is the general
-            # one rather than their pressing's.
-            from_release_group=answer.from_release_group,
-            # The picture, when it is here: a winner, downloaded by the check,
-            # or a loser someone asked to see (#448).
-            image=self.archive,
-        )
 
     @property
     def count(self) -> str | None:
@@ -1382,6 +1345,7 @@ def summarise(
     chosen: Source | None = None,
     choices: Choices | None = None,
     picks: Mapping[str, EmbeddedArt] | None = None,
+    candidates: Sequence[Candidate] = (),
     folder_cover: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
 ) -> ArtworkView:
     """Everything the section shows, from tags already read and a folder cover.
@@ -1425,6 +1389,18 @@ def summarise(
     by_target = {c.target: c for c in the_plan.changes}
     cover_change = the_plan.cover_change(Scope.ALL)
     cover_incoming = the_plan.image_for(cover_change) if cover_change is not None else None
+
+    listed_by = {c.image.digest: c.origin for c in candidates if c.image is not None}
+
+    def _from_group(digest: str) -> bool:
+        """Whether an archive image is the release GROUP's (#434, #496): by
+        where the picker found it, and for the one image no listing names —
+        the release's front, measured before any listing was kept — by which
+        listing answered the archive check. Read off the listings rather than
+        the bytes, which carry no trace of it."""
+        if digest in listed_by:
+            return listed_by[digest] == "release-group"
+        return caa is not None and caa.from_release_group
 
     def incoming_for(paths: Iterable[Path]) -> Incoming | None:
         """What a group of tracks becomes. One image for all of them: they
@@ -1483,7 +1459,9 @@ def summarise(
             # Read off the stored answer rather than the image: which listing
             # replied is a fact about where the picture came from, and the bytes
             # carry no trace of it (#496).
-            from_release_group=from_archive and caa is not None and caa.from_release_group,
+            from_release_group=from_archive
+            and incoming is not None
+            and _from_group(incoming.image.digest),
             carriers=keys,
             has_archive=archive is not None
             and image is not None
@@ -1528,4 +1506,5 @@ def summarise(
         plan=the_plan,
         chosen=taken,
         choices=the_plan.choices,
+        candidates=tuple(candidates),
     )

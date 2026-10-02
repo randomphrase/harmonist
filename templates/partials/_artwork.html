@@ -120,22 +120,43 @@
    Without a candidate there is nothing to pick, and the section is the plain
    two columns it always was: no radios, no picker, nothing in the form that
    submits it. #}
-{% set picker = artwork.archive_row %}
+{% set picker = artwork.candidates %}
 {% set selected = artwork_selected|default(0) %}
+{% set front_only = artwork_front_only if artwork_front_only is defined else artwork.front_only %}
+{#- The image the picker shows: the one it showed before this render, or the
+    first the front-only box lets it show. -#}
+{% set shown = namespace(id=none) %}
+{% for c in picker %}
+{% if shown.id is none and (c.image_id == artwork_candidate|default('') or false) %}{% set shown.id = c.image_id %}{% endif %}
+{% endfor %}
+{% for c in picker %}
+{% if shown.id is none and (c.front or not front_only) %}{% set shown.id = c.image_id %}{% endif %}
+{% endfor %}
 <form id="art-pick-{{ album.id }}"
       class="art-compare{% if picker %} art-compare--pick{% endif %}"
       hx-get="/album/{{ album.id }}/artwork"
       hx-target="#album-artwork" hx-swap="innerHTML settle:0ms">
 {% if picker %}
 <input type="hidden" name="use" value="{{ artwork.use }}">
-{#- Where the picker sits, one rule per row: the checked row's grid line, and
-    which of its Use buttons is the checked row's. Generated because a row
-    count is not something a stylesheet knows; scoped to this album's form so
-    two sections could never move each other's picker. -#}
+{#- Generated, because a row or image count is not something a stylesheet
+    knows; scoped to this album's form so two sections could never move each
+    other's picker. Per row: where the picker sits, and which row's Use is
+    shown. Per row and image that would change nothing — the row already has
+    it, or is already getting it (#659): a ✓ in place of Use, and Unchanged
+    in place of the row's empty slot. -#}
+{% set form = '#art-pick-' ~ album.id %}
 <style>
 {% for r in artwork.rows %}
-#art-pick-{{ album.id }}:has(#art-sel-{{ album.id }}-{{ loop.index }}:checked) .art-pick__picker { --art-pick-row: {{ loop.index + 1 }}; }
-#art-pick-{{ album.id }}:has(#art-sel-{{ album.id }}-{{ loop.index }}:checked) .art-pick__for[data-row="{{ loop.index }}"] { display: block; }
+{% set row = form ~ ':has(#art-sel-' ~ album.id ~ '-' ~ loop.index ~ ':checked)' %}
+{{ row }} .art-pick__picker { --art-pick-row: {{ loop.index + 1 }}; }
+{{ row }} .art-pick__for[data-row="{{ loop.index }}"] { display: block; }
+{% set row_index = loop.index %}
+{% for c in picker if artwork.unchanged(r, c) %}
+{{ row }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) .art-pick__for[data-row="{{ row_index }}"] .art-pick__use--go { display: none; }
+{{ row }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) .art-pick__for[data-row="{{ row_index }}"] .art-pick__use--done { display: block; }
+{{ row }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) #{{ r.anchor }} .art-row__slot { display: none; }
+{{ row }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) #{{ r.anchor }} .art-row__unchanged { display: flex; }
+{% endfor %}
 {% endfor %}
 </style>
 {% endif %}
@@ -241,12 +262,15 @@
                 {% endif %}
             </div>
         </div>
-        {% elif picker and not r.has_archive %}
+        {% elif picker %}
         {# Where the picker's image would land, on the checked row only: the
-           arrow beside the picker points at this. Not on a row that already
-           has the image, where nothing would land at all. #}
+           arrow beside the picker points at this. Unchanged instead, where the
+           row already has the image the picker shows — so a ✓ in place of Use
+           says why there is nothing to press. The generated rules above decide
+           which, per row and image. #}
         <div class="art-row__side art-row__side--after">
             <span class="art-row__slot" aria-hidden="true"></span>
+            <span class="art-row__unchanged">Unchanged</span>
         </div>
         {% endif %}
     </div>
@@ -254,20 +278,24 @@
 </div>
 {% endif %}
 
-{# What the archive has, offered to the checked row (#659). A candidate from
-   outside the album, so it is never one of the rows — the column says WHERE an
-   image comes from, and the rows' own marks say whether it is coming (#441).
+{# What the archive has, offered to the checked row (#659): every image it
+   lists for the release, then for its release group. Candidates from outside
+   the album, so never among the rows — the column says WHERE an image comes
+   from, and the rows' own marks say whether it is coming (#441).
 
    Its heading is a grid item of its own so it lines up with Now and After
    Apply; the picker below it moves, the heading does not. #}
 {% macro candidate_facts(candidate) %}
 <div class="art-row__facts">
-    <span class="art-row__who">Cover Art Archive</span>
-    <span class="art-row__meta">{{ candidate.meta }}</span>
-    {# Whose cover it is, when it is not this release's (#434). #}
-    {% if candidate.from_release_group %}
-    <span class="art-row__meta-plain">for the release group, not this release</span>
+    {# Whose image it is — this release's, or the group's, which stands for
+       every release of the album (#434) — and what kind, when it is not
+       simply the front. #}
+    <span class="art-row__who">{{ 'This release' if candidate.origin == 'release' else 'Release group' }}</span>
+    {% set kinds = candidate.types|reject('equalto', 'front')|list %}
+    {% if kinds or not candidate.front %}
+    <span class="art-row__meta-plain">{{ (kinds|join(', ') or 'untyped')|capitalize }}</span>
     {% endif %}
+    {% if candidate.meta %}<span class="art-row__meta">{{ candidate.meta }}</span>{% endif %}
 </div>
 {% endmacro %}
 {% if picker %}
@@ -279,78 +307,88 @@
        checked row's After Apply.
 
        One arrow per row, and the generated rules above show the checked row's:
-       its accessible name says which row it writes to, and its state is that
-       row's. A ✓ where the row already has this image or is getting it: a Use
-       there would be a press that changes nothing (*Far & Off*, #659). Only once
-       the picture is here: choosing an image nobody has seen is the guess this
-       section exists to avoid (#472).
+       its accessible name says which row it writes to. Use sends the image the
+       carousel shows (`candidate`), and the server fetches its original before
+       previewing it. A ✓ instead where that image is already the row's, or
+       already coming to it: a Use there would be a press that changes nothing
+       (*Far & Off*, #659).
 
        ↑ and ↓ are quiet on purpose: clicking a row does the same. They move
        the check between radios, which is a script's job (artwork-viewer.js) —
        no request, and no `onclick` (web-ui rule 2a). #}
     <div class="art-pick__ctl">
-        <button type="button" class="art-pick__step" data-art-step="-1"
+        <button type="button" class="art-pick__step" data-art-step="-1" data-art-group="row"
                 aria-label="Previous row"><svg viewBox="0 0 16 16" width="12" height="12"
             fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"
             ><path d="M4 10l4-4 4 4"/></svg></button>
         {% for r in artwork.rows %}
         <div class="art-pick__for" data-row="{{ loop.index }}">
-            {% if not picker.image %}
-            {% elif r.has_archive or r.takes_archive %}
-            <span class="art-pick__use art-pick__use--done" role="img"
-                  aria-label="{{ 'Already on' if r.has_archive else 'Coming to' }} {{ r.label }}"
-                  title="{{ 'Already on' if r.has_archive else 'Coming to' }} {{ r.label }}">✓</span>
-            {% else %}
-            <button type="submit" name="pick" value="archive" class="art-pick__use"
+            <button type="submit" name="pick" value="1" class="art-pick__use art-pick__use--go"
                     aria-label="Use for {{ r.label }}"
                     title="Show what applying this image to {{ r.label }} would do. Nothing is written until you apply it.">Use</button>
-            {% endif %}
+            <span class="art-pick__use art-pick__use--done" role="img"
+                  aria-label="Unchanged: {{ r.label }} already has this image"
+                  title="{{ r.label }} already has this image">✓</span>
         </div>
         {% endfor %}
-        <button type="button" class="art-pick__step" data-art-step="1"
+        <button type="button" class="art-pick__step" data-art-step="1" data-art-group="row"
                 aria-label="Next row"><svg viewBox="0 0 16 16" width="12" height="12"
             fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"
             ><path d="M4 6l4 4 4-4"/></svg></button>
     </div>
-    <div class="art-pick__candidate">
-        {# Three states in this frame, and the word distinguishes the two that
-           have no picture: an image that exists and was never downloaded
-           because it lost, and a release the archive holds nothing for.
-
-           The first is a BUTTON (#448). "Not loaded" is true and useless on its
-           own: bigger is the only thing Harmonist can measure, and a cover that
-           loses on pixels may still be the better scan — so the frame that says
-           there is no picture is also the way to go and get one. A plain button
-           rather than the form it was: it sits inside the picker's form now,
-           and forms do not nest. `hx-disabled-elt` because this is a real
-           download of up to five megabytes from a service that answers slowly.
-           No `hx-confirm`: it writes nothing of the user's. #}
-        {% if picker.image %}
-        {{ thumbnail(picker.image, album.id, "the Cover Art Archive's cover") }}
-        {% elif picker.loadable %}
-        <button type="button" class="art-row__art art-row__art--absent"
-                hx-post="/album/{{ album.id }}/artwork/load-archive"
-                hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
-                hx-disabled-elt="this"
-                title="Download this cover from the Cover Art Archive so you can look at it before choosing it."
-                aria-label="Load the Cover Art Archive's cover">load</button>
-        {% else %}
-        <span class="art-row__art art-row__art--absent" aria-hidden="true">{{ picker.placeholder }}</span>
+    {# The carousel: one image at a time, ‹ and › stepping through them — and
+       through the fronts only while that box is ticked, which it is unless
+       there are none (Picard's default). Each image is a radio, as the rows
+       are, so the one shown is a plain form value and the keyboard steps
+       through them natively. Shown from the archive's thumbnail, through
+       Harmonist; the original is fetched only when it is used. #}
+    <div class="art-pick__carousel">
+        {% for c in picker %}
+        <label class="art-pick__slide" data-front="{{ 'true' if c.front else 'false' }}">
+            <input type="radio" name="candidate" value="{{ c.image_id }}"
+                   id="art-cand-{{ album.id }}-{{ c.image_id }}" class="art-row__radio"
+                   {% if c.image_id == shown.id %}checked{% endif %}>
+            <span class="art-row__art art-pick__image">
+                <img src="/artwork/candidate/{{ album.id }}/{{ c.image_id }}" alt="" loading="lazy">
+            </span>
+            {{ candidate_facts(c) }}
+        </label>
+        {% endfor %}
+        {% if picker|length > 1 %}
+        <button type="button" class="art-pick__turn art-pick__turn--back" data-art-step="-1"
+                data-art-group="candidate" aria-label="Previous image">‹</button>
+        <button type="button" class="art-pick__turn art-pick__turn--on" data-art-step="1"
+                data-art-group="candidate" aria-label="Next image">›</button>
         {% endif %}
-        {{ candidate_facts(picker) }}
     </div>
+    {% if picker|selectattr('front')|list and picker|rejectattr('front')|list %}
+    <label class="art-pick__front-only">
+        <input type="hidden" name="front_only" value="0">
+        <input type="checkbox" name="front_only" value="1" {% if front_only %}checked{% endif %}>
+        Front only
+    </label>
+    {% endif %}
 </div>
 {# The picker's invisible double, on the last row's line: what reserves the
    room for the picker to hang from any row, since the picker itself takes no
-   part in sizing the rows (see `.art-pick__ghost`). The same frame and the
-   same facts, so it is the same height; no controls, and nothing in it can be
-   reached. #}
+   part in sizing the rows (see `.art-pick__ghost`). The same frame, with the
+   tallest facts any image can have, so it is at least as tall as whichever
+   image is shown; nothing in it can be reached. #}
 <div class="art-pick__ghost" aria-hidden="true" inert
      style="--art-pick-last: {{ artwork.rows|length + 1 }}">
-    <div class="art-pick__candidate">
-        <span class="art-row__art"></span>
-        {{ candidate_facts(picker) }}
+    <div class="art-pick__carousel">
+        <span class="art-pick__slide">
+            <span class="art-row__art art-pick__image"></span>
+            <span class="art-row__facts">
+                <span class="art-row__who">Release group</span>
+                <span class="art-row__meta-plain">Back</span>
+                <span class="art-row__meta">0×0 · JPEG · 0 KB</span>
+            </span>
+        </span>
     </div>
+    {% if picker|selectattr('front')|list and picker|rejectattr('front')|list %}
+    <span class="art-pick__front-only">Front only</span>
+    {% endif %}
 </div>
 {% endif %}
 </form>

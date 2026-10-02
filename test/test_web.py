@@ -10231,30 +10231,56 @@ def test_apply_artwork_names_its_album_in_the_feed(client, cfg):
     assert entry.album_label == "Named"
 
 
+def _listed(mbid: str, *images: tuple[str, str, bool], kind: str = "release") -> None:
+    """The archive's listing for `mbid`, as the check stores it beside its
+    front answer (#659): `(image id, image URL, is a front)` per image."""
+    activity_store.store_release(
+        mbid,
+        f"caa-listing:{kind}",
+        {
+            "images": [
+                {
+                    "id": image_id,
+                    "image": url,
+                    "thumbnails": {},
+                    "types": ["Front"] if front else ["Back"],
+                    "front": front,
+                }
+                for image_id, url, front in images
+            ]
+        },
+    )
+
+
 def _archive_candidate(cfg, name: str, mbid: str, *, image: bytes, covers, folder) -> Path:
     """An album whose release has a cached archive candidate the size rule loses
-    to — the state #472's override exists for."""
+    to — the state #472's override exists for — listed as the archive lists it,
+    so the picker offers it (#659)."""
     from harmonist import cover_art
     from harmonist.activity_store import CachedCoverArt
 
     d = _release_backed_album_with_art(cfg, name, mbid, covers=covers, folder=folder)
     cover_art.cache_image(mbid, image, "image/png")
+    url = f"https://coverartarchive.org/release/{mbid}/front"
     activity_store.store_cover_art(
         mbid,
         CachedCoverArt(
             fetched_at=datetime.now(UTC),
-            image_url=f"https://coverartarchive.org/release/{mbid}/front",
+            image_url=url,
             width=300,
             height=300,
             mime="image/png",
         ),
     )
+    _listed(mbid, ("1", url, True))
     return d
 
 
-def _pick(client, aid: str, html: str, *, row: int = 0, pick: str = "archive") -> str:
-    """Press the picker's Use button with the `row`th row checked, sending what
-    the browser sends: the picker form's own fields, plus the submitter (#659).
+def _pick(client, aid: str, html: str, *, row: int = 0, candidate: str | None = None) -> str:
+    """Press the picker's Use button with the `row`th row checked and the
+    carousel on `candidate` — the image it shows, unless told otherwise —
+    sending what the browser sends: the picker form's own fields, plus the
+    submitter (#659).
 
     Read off the rendered page rather than spelled here, so a radio that names
     the wrong carriers — or a picker form that lost its `use` — fails this
@@ -10266,8 +10292,15 @@ def _pick(client, aid: str, html: str, *, row: int = 0, pick: str = "archive") -
     assert rows, "no picker rows in the response"
     use = re.search(r'<form id="art-pick-[^"]*"[\s\S]*?name="use" value="([^"]*)"', html)
     assert use, "no choices carried by the picker form"
+    if candidate is None:
+        shown = re.search(
+            r'name="candidate" value="([^"]*)"\s+id="[^"]*"\s+class="[^"]*"\s+checked', html
+        )
+        assert shown, "the carousel shows no image"
+        candidate = shown.group(1)
     return client.get(
-        f"/album/{aid}/artwork", params={"use": use.group(1), "row": rows[row], "pick": pick}
+        f"/album/{aid}/artwork",
+        params={"use": use.group(1), "row": rows[row], "pick": "1", "candidate": candidate},
     ).text
 
 
@@ -10327,11 +10360,18 @@ def test_the_picker_says_when_a_row_already_has_the_archives_image(client, cfg):
         cfg, "FarAndOff", "rel-far-off", image=same, covers=[same, same], folder=same
     )
 
-    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+    aid = _id_for(cfg, d)
+    rendered = " ".join(client.get(f"/album/{aid}/artwork").text.split())
 
-    assert 'aria-label="Already on All 2 tracks"' in rendered
-    assert 'aria-label="Already on cover.jpg"' in rendered
-    assert 'name="pick"' not in rendered
+    # Which of Use and ✓ shows is the stylesheet's, per row and image — so it
+    # is the generated rule that says this image is already on both rows.
+    for row in (1, 2):
+        shown = (
+            f"#art-pick-{aid}:has(#art-sel-{aid}-{row}:checked):has(#art-cand-{aid}-1:checked)"
+            f' .art-pick__for[data-row="{row}"] .art-pick__use--done {{ display: block; }}'
+        )
+        assert shown in rendered, row
+    assert ".art-row__unchanged { display: flex; }" in rendered
 
 
 def test_a_choice_reaches_only_the_row_it_was_made_on(client, cfg):
@@ -10428,7 +10468,7 @@ def test_a_chosen_release_group_cover_still_says_whose_it_is(client, cfg):
     preview of what they are about to write, and a cover standing for every
     pressing of the album now reads as verified artwork for theirs.
     """
-    from harmonist import cover_art
+    from harmonist import cover_art, mb_cache, mb_lookup
     from test.test_artwork import png_bytes
 
     mine = png_bytes(900, 900) + b"\x01"
@@ -10436,35 +10476,34 @@ def test_a_chosen_release_group_cover_still_says_whose_it_is(client, cfg):
     d = _release_backed_album_with_art(
         cfg, "GroupCover", "rel-group-cover", covers=[mine, mine], folder=mine
     )
-    cover_art.cache_image("rel-group-cover", theirs, "image/png")
-    activity_store.store_cover_art(
+    # The release names its group in the payload the page already stored, and
+    # the archive lists the cover against the group, not the release (#659).
+    activity_store.store_release(
         "rel-group-cover",
-        activity_store.CachedCoverArt(
-            fetched_at=datetime.now(UTC),
-            image_url="https://coverartarchive.org/release-group/rg-1/front",
-            width=300,
-            height=300,
-            mime="image/png",
-            source="release-group",
-        ),
+        mb_cache._key(mb_lookup.RELEASE_INCLUDES),
+        {"id": "rel-group-cover", "release-group": {"id": "rg-1"}},
     )
+    activity_store.store_cover_art(
+        "rel-group-cover", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    )
+    _listed("rel-group-cover")
+    _listed(
+        "rg-1",
+        ("9", "https://coverartarchive.org/release/sibling/9.png", True),
+        kind="release-group",
+    )
+    cover_art.cache_image("image-9", theirs, "image/png")
     aid = _id_for(cfg, d)
 
     ordinary = " ".join(client.get(f"/album/{aid}/artwork").text.split())
     chosen = " ".join(_pick(client, aid, ordinary).split())
 
-    note = "for the release group, not this release"
-
-    def shown(html: str) -> str:
-        """Without the picker's invisible double, which repeats its facts only
-        to be as tall as it is."""
-        return re.sub(r'<div class="art-pick__ghost".*?</div>\s*</div>\s*</div>', "", html)
-
-    # The picker says it while the image is only a candidate…
-    assert shown(ordinary).count(note) == 1
-    # …and the incoming preview says it too once it is the one coming in — the
-    # picker is still there beside it, so that is twice.
-    assert shown(chosen).count(note) == 2
+    # The picker says whose it is while it is only a candidate — on its own
+    # slide, not the ghost's placeholder, which says the same words…
+    slides = re.findall(r'<label class="art-pick__slide".*?</label>', ordinary)
+    assert len(slides) == 1 and "Release group" in slides[0]
+    # …and the incoming preview keeps saying it once it is the one coming in.
+    assert "for the release group, not this release" in chosen
 
 
 def test_choosing_an_image_that_is_no_longer_here_says_so(client, cfg):
@@ -10781,8 +10820,9 @@ def test_the_artwork_note_is_cleared_when_nothing_would_change(client, cfg):
 
 def test_a_losing_archive_cover_is_offered_not_written(client, cfg):
     """Not a purple sentence: purple means the value about to be written, and
-    this one certainly is not (#433). It is the picker's candidate (#659) — and
-    with no picture to look at yet, there is nothing to choose it for."""
+    this one certainly is not (#433). It is the picker's candidate (#659),
+    shown from its thumbnail — never downloaded whole until it is used — and
+    offered for the rows."""
     from harmonist import activity_store, formats
 
     d = _make_tagged_album(cfg, "Loser", mbid="rel-loser", tagged_at=datetime.now(UTC))
@@ -10791,29 +10831,26 @@ def test_a_losing_archive_cover_is_offered_not_written(client, cfg):
         formats.write_cover(track, good)
     (d / "cover.jpg").write_bytes(good)
     # The archive has one, and it is smaller than what the album carries.
+    url = "https://coverartarchive.org/release/rel-loser/1.jpg"
     activity_store.store_cover_art(
         "rel-loser",
         activity_store.CachedCoverArt(
             fetched_at=datetime.now(UTC),
-            image_url="https://coverartarchive.org/release/rel-loser/1.jpg",
+            image_url=url,
             width=10,
             height=10,
             length=1024,
             mime="image/jpeg",
         ),
     )
+    _listed("rel-loser", ("1", url, True))
+    aid = _id_for(cfg, d)
 
-    r = client.get(f"/album/{_id_for(cfg, d)}/artwork")
+    r = client.get(f"/album/{aid}/artwork")
     rendered = " ".join(r.text.split())
 
-    assert "Cover Art Archive" in rendered
-    # Never downloaded, so there is no picture — and the empty frame is the way
-    # to go and get one rather than a statement about not having it (#448).
-    assert f'hx-post="/album/{_id_for(cfg, d)}/artwork/load-archive"' in rendered
-    assert "10×10" in rendered
-    assert "art-pick__picker" in rendered
-    # Choosing waits for the picture: an image nobody has seen is a guess.
-    assert 'name="pick"' not in rendered
+    assert f'src="/artwork/candidate/{aid}/1"' in rendered
+    assert 'name="pick"' in rendered
     # …and none of the "about to be written" vocabulary. Scoped to the note's
     # own class rather than the bare colour, which also appears on the refresh
     # button's hover state further up the page.
@@ -10846,6 +10883,7 @@ def test_a_losing_archive_cover_sits_in_a_column_of_its_own(client, cfg):
             mime="image/jpeg",
         ),
     )
+    _listed("rel-side", ("1", "https://coverartarchive.org/release/rel-side/1.jpg", True))
 
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
     picker = rendered[rendered.index('class="art-pick__head"') : rendered.index("</form>")]
@@ -10853,7 +10891,7 @@ def test_a_losing_archive_cover_sits_in_a_column_of_its_own(client, cfg):
     # Its own column, under a heading that is not the promise "After Apply"
     # makes.
     assert "Available" in picker
-    assert "Cover Art Archive" in picker
+    assert "This release" in picker
     assert "After Apply" not in picker
     # Neither mark: both say "this is what would be put on your files", and a
     # winning archive cover carries both — see
@@ -10891,6 +10929,7 @@ def test_the_archive_gets_a_column_beside_the_rows(client, cfg):
             mime="image/png",
         ),
     )
+    _listed("rel-three", ("1", "https://coverartarchive.org/release/rel-three/1.jpg", True))
 
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
 
@@ -10929,11 +10968,16 @@ def test_a_winning_archive_cover_is_marked_as_the_one_being_written(client, cfg)
             mime="image/png",
         ),
     )
+    _listed("rel-win", ("1", "https://coverartarchive.org/release/rel-win/1.jpg", True))
+    aid = _id_for(cfg, d)
 
-    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+    rendered = " ".join(client.get(f"/album/{aid}/artwork").text.split())
 
-    # It won, so the picker says it is coming rather than offering it again.
-    assert "Coming to" in rendered
+    # It won, so for the row it is coming to the picker shows ✓, not Use.
+    assert (
+        f':has(#art-cand-{aid}-1:checked) .art-pick__for[data-row="1"] .art-pick__use--done'
+        in rendered
+    )
     assert "art-row__facts--mb" in rendered
     assert "From the Cover Art Archive" in rendered  # the hexagon's label
     assert "Apply artwork" in rendered
@@ -10957,27 +11001,37 @@ def test_the_archive_stays_offerable_when_it_only_upgrades_the_folder_cover(clie
         formats.write_cover(track, png_bytes(300, 300))
     (d / "cover.jpg").write_bytes(png_bytes(1000, 1000))
     cover_art.cache_image("rel-cover-only", png_bytes(2000, 2000), "image/png")
+    url = "https://coverartarchive.org/release/rel-cover-only/1.jpg"
     activity_store.store_cover_art(
         "rel-cover-only",
         activity_store.CachedCoverArt(
             fetched_at=datetime.now(UTC),
-            image_url="https://coverartarchive.org/release/rel-cover-only/1.jpg",
+            image_url=url,
             width=2000,
             height=2000,
             mime="image/png",
         ),
     )
+    _listed("rel-cover-only", ("1", url, True))
+    aid = _id_for(cfg, d)
 
-    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
+    rendered = " ".join(client.get(f"/album/{aid}/artwork").text.split())
 
-    # Coming to the folder cover, and marked as the archive's…
+    def done(row: int) -> str:
+        return (
+            f':has(#art-cand-{aid}-1:checked) .art-pick__for[data-row="{row}"] .art-pick__use--done'
+        )
+
+    # Coming to the folder cover — row 2, marked as the archive's, ✓ there…
     assert "From the Cover Art Archive" in rendered
+    assert done(2) in rendered
     # …and still on offer for the tracks, which keep their own image under #479.
-    assert "Use for The only track" in rendered
+    assert done(1) not in rendered
 
 
-def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
-    """A different word from "not loaded": there is nothing to load (#433)."""
+def test_an_archive_with_nothing_offers_no_picker(client, cfg):
+    """Nothing listed, nothing to pick (#659): the section is its plain two
+    columns, with no panel standing empty beside them."""
     from harmonist import activity_store, formats
 
     d = _make_tagged_album(cfg, "NoArt", mbid="rel-noart", tagged_at=datetime.now(UTC))
@@ -10986,13 +11040,12 @@ def test_an_archive_with_nothing_gets_its_own_placeholder(client, cfg):
     activity_store.store_cover_art(
         "rel-noart", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
     )
+    _listed("rel-noart")
 
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
 
-    assert "no front cover for this release" in rendered
-    assert "art-pick__picker" in rendered
-    assert "not loaded" not in rendered  # nothing to load, so not that word
-    assert 'class="text-sm text-mb-purple"' not in rendered
+    assert "art-pick__picker" not in rendered
+    assert "art-compare--pick" not in rendered
 
 
 @pytest.mark.parametrize(
@@ -11098,6 +11151,7 @@ def test_a_stored_archive_answer_inside_the_ttl_sends_nobody_back(client, cfg):
     activity_store.store_cover_art(
         "rel-asked", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
     )
+    _listed("rel-asked")  # …and listed, as every check since #659 is
 
     rendered = " ".join(client.get(f"/album/{album_id}/artwork").text.split())
 
@@ -11120,6 +11174,7 @@ def test_a_fresh_winner_whose_picture_was_evicted_sends_the_page_for_it(client, 
             fetched_at=datetime.now(UTC), image_url="https://caa.example/front.jpg", width=5000
         ),
     )
+    _listed("rel-evicted")
     assert cover_art.cached_image("rel-evicted") is None
 
     def no_check(mbid, **kw):
@@ -11258,138 +11313,86 @@ def test_the_comparison_keeps_the_archive_date_it_swaps_over(client, cfg, monkey
     assert "not yet" not in rendered
 
 
-def test_the_archives_losing_cover_can_be_loaded_and_then_looked_at(client, cfg, monkeypatch):
-    """Bigger is the only thing Harmonist can measure, and it is not the same as
-    better — so a cover that lost on pixels can still be fetched and looked at
-    (#448)."""
-    from harmonist import cover_art, formats
-    from test.test_artwork import png_bytes
+def _listed_album(cfg, name: str, mbid: str) -> tuple[Path, str]:
+    """A tagged album whose release the archive lists one image for, by a URL
+    nothing has fetched (#659). Returns the album and that URL."""
+    from harmonist import formats
 
-    d = _make_tagged_album(cfg, "Curious", mbid="rel-curious", tagged_at=datetime.now(UTC))
+    d = _make_tagged_album(cfg, name, mbid=mbid, tagged_at=datetime.now(UTC))
     for track in d.glob("*.m4a"):
         formats.write_cover(track, _png(1))
-    (d / "cover.jpg").write_bytes(_png(1))
-    theirs = png_bytes(10, 10)
+    url = f"https://coverartarchive.org/release/{mbid}/5.png"
     activity_store.store_cover_art(
-        "rel-curious",
-        activity_store.CachedCoverArt(
-            fetched_at=datetime.now(UTC),
-            image_url="https://coverartarchive.org/release/rel-curious/1.jpg",
-            width=10,
-            height=10,
-            mime="image/png",
-        ),
+        mbid, activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
     )
+    _listed(mbid, ("5", url, True))
+    return d, url
+
+
+def test_use_fetches_an_images_original_once(client, cfg, monkeypatch):
+    """A candidate is shown from its thumbnail; its original is fetched when it
+    is used, because the preview is the plan it makes, and only then (#659) —
+    once: a second look at the same choice reads it from the cache."""
+    from harmonist import cover_art
+    from test.test_artwork import png_bytes
+
+    d, url = _listed_album(cfg, "Curious", "rel-curious")
+    aid = _id_for(cfg, d)
     asked: list[str] = []
 
-    def fake_fetch(mbid, url, **kw):
-        asked.append(url)
-        return cover_art.cache_image(mbid, theirs, "image/png")
+    def fetch(u, **kw):
+        asked.append(u)
+        return png_bytes(500, 500), "image/png"
 
-    monkeypatch.setattr(cover_art, "fetch_image", fake_fetch)
+    monkeypatch.setattr(cover_art, "fetch_bytes", fetch)
 
-    r = client.post(f"/album/{_id_for(cfg, d)}/artwork/load-archive")
-    rendered = " ".join(r.text.split())
+    chosen = _pick(client, aid, client.get(f"/album/{aid}/artwork").text)
+    client.get(f"/album/{aid}/artwork", params={"use": _carried_use(chosen)})
 
-    assert asked == ["https://coverartarchive.org/release/rel-curious/1.jpg"]
-    # The picture is on the page now, and openable full size like every other
-    # image — which is most of what loading it was for.
-    from harmonist import images
-
-    assert f"/artwork/image/{_id_for(cfg, d)}/{images.digest(theirs)}" in rendered
-    assert f'popovertarget="art-{images.digest(theirs)[:12]}"' in rendered
+    assert asked == [url]
+    assert "Apply artwork" in chosen
 
 
-def test_loading_the_archives_cover_does_not_make_it_the_winner(client, cfg, monkeypatch):
-    """The image being on disk is not a claim about its size. `archive_wins` is
-    decided on pixels and never consults the cache, so a loaded loser stays
-    muted, unmarked, and not going to be written (#441, #448)."""
-    from harmonist import cover_art, formats
-    from test.test_artwork import png_bytes
-
-    d = _make_tagged_album(cfg, "Unmoved", mbid="rel-unmoved", tagged_at=datetime.now(UTC))
-    big = png_bytes(1400, 1400)
-    for track in d.glob("*.m4a"):
-        formats.write_cover(track, big)
-    (d / "cover.jpg").write_bytes(big)
-    activity_store.store_cover_art(
-        "rel-unmoved",
-        activity_store.CachedCoverArt(
-            fetched_at=datetime.now(UTC),
-            image_url="https://coverartarchive.org/release/rel-unmoved/1.jpg",
-            width=10,
-            height=10,
-            mime="image/png",
-        ),
-    )
-    monkeypatch.setattr(
-        cover_art,
-        "fetch_image",
-        lambda mbid, url, **kw: cover_art.cache_image(mbid, png_bytes(10, 10), "image/png"),
-    )
-
-    rendered = " ".join(client.post(f"/album/{_id_for(cfg, d)}/artwork/load-archive").text.split())
-
-    # Choosable now it can be seen (#659) — offered, not coming.
-    assert 'name="pick"' in rendered
-    assert "Coming to" not in rendered
-    assert "mb-mark" not in rendered  # and still unmarked
-    assert "Apply artwork" not in rendered  # nothing to write
-
-
-def test_a_failed_load_of_the_archives_cover_says_so(client, cfg, monkeypatch):
+def test_a_use_whose_image_cannot_be_fetched_says_so(client, cfg, monkeypatch):
     """Loud, unlike the page-open check (#436): nobody asked for that one, and
     somebody pressed this and is waiting for a picture."""
-    from harmonist import cover_art, formats
+    from harmonist import cover_art
 
-    d = _make_tagged_album(cfg, "Downed", mbid="rel-down", tagged_at=datetime.now(UTC))
-    for track in d.glob("*.m4a"):
-        formats.write_cover(track, _png(1))
-    activity_store.store_cover_art(
-        "rel-down",
-        activity_store.CachedCoverArt(
-            fetched_at=datetime.now(UTC),
-            image_url="https://coverartarchive.org/release/rel-down/1.jpg",
-            width=10,
-            height=10,
-        ),
-    )
+    d, _ = _listed_album(cfg, "Downed", "rel-down")
+    aid = _id_for(cfg, d)
 
-    def boom(mbid, url, **kw):
+    def boom(u, **kw):
         raise cover_art.CoverArtError("the archive is down")
 
-    monkeypatch.setattr(cover_art, "fetch_image", boom)
+    monkeypatch.setattr(cover_art, "fetch_bytes", boom)
 
-    r = client.post(f"/album/{_id_for(cfg, d)}/artwork/load-archive")
+    r = client.get(
+        f"/album/{aid}/artwork", params={"row": "none cover", "pick": "1", "candidate": "5"}
+    )
 
     assert r.status_code == 200
-    # Asserted around the apostrophe rather than through it: the escape it
-    # renders as is Jinja's business, not this feature's.
-    assert "load the archive" in r.text
+    assert "fetch that image" in r.text
     assert "the archive is down" in r.text  # …and what actually went wrong
-    # ONE feed entry, not two (#464). The user pressed a button, so an entry is
-    # wanted — but `_flash_response` is the authoritative writer, and the ERROR
-    # log beside it was mirrored in as a second, unattributed copy naming an
-    # MBID. Same shape as #461, one route along.
+    # ONE feed entry, not two (#464): `_flash_response` writes it, and the log
+    # line beside it stays out of the feed.
     archive_lines = [e for e in activity.recent(20) if "archive" in e.message.lower()]
     assert len(archive_lines) == 1, [e.message for e in archive_lines]
 
 
-def test_loading_is_refused_when_the_archive_has_nothing_to_load(client, cfg):
-    """ "There is nothing there" and "I haven't fetched it" are different facts
-    (#433), and only the second has anything to fetch."""
-    d = _make_tagged_album(cfg, "Empty", mbid="rel-empty", tagged_at=datetime.now(UTC))
-    activity_store.store_cover_art(
-        "rel-empty", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+def test_use_names_only_an_image_the_albums_listings_name(client, cfg, monkeypatch):
+    """The id in the request picks an image the archive LISTED for this album;
+    it never becomes a URL of its own (#659)."""
+    from harmonist import cover_art
+
+    d, _ = _listed_album(cfg, "Guarded", "rel-guarded")
+    monkeypatch.setattr(cover_art, "fetch_bytes", lambda u, **kw: pytest.fail(f"fetched {u}"))
+
+    r = client.get(
+        f"/album/{_id_for(cfg, d)}/artwork",
+        params={"row": "none", "pick": "1", "candidate": "999"},
     )
 
-    r = client.post(f"/album/{_id_for(cfg, d)}/artwork/load-archive")
-
-    assert r.status_code == 400
-    # …and the row offers no way to try, since there is nothing to try for.
-    rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
-    assert "load-archive" not in rendered
-    assert "no front cover for this release" in rendered
+    assert r.status_code == 404
 
 
 def test_retag_reports_unreadable_art_and_finishes_bookkeeping(client, cfg, monkeypatch):
@@ -11633,8 +11636,10 @@ def test_confirmation_checkbox_controls_the_actual_write(client, cfg, monkeypatc
     assert calls.count(("mb", release["id"])) == 1
     assert calls.count(("caa", release["id"])) == 1
     assert calls.count(("image", release["id"])) == 1
-    # The excluded candidate is still available for the album-page override.
+    # The excluded candidate is still available for the album-page override,
+    # once the archive's listing names it (#659).
     if not included:
+        _listed(release["id"], ("1", "https://example.com/selected.png", True))
         assert 'name="pick"' in client.get(f"/album/{release['id']}/artwork").text
 
 

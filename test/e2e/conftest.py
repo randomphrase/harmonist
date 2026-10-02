@@ -120,6 +120,14 @@ def sibling_artwork_server(tmp_path, monkeypatch, request):
         yield base, request.param
 
 
+@pytest.fixture(scope="module")
+def carousel_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """Every release lists a front, a back and a second front (#659)."""
+    yield from _run_demo_server(
+        tmp_path_factory.mktemp("e2e-carousel"), app_module="test.e2e.artwork_carousel_app:app"
+    )
+
+
 @pytest.fixture(
     params=[
         "identical",

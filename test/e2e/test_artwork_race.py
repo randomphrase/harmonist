@@ -21,12 +21,14 @@ def _ready(page, base):
     )
     page.goto(f"{base}/album/{aid}")
     page.wait_for_selector("#album-artwork .art-row")
+    # The archive's listing arrives with the page's own check (#659).
+    page.wait_for_selector("#album-artwork .art-pick__picker")
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
-    load = page.get_by_role("button", name="Load the Cover Art Archive's cover")
-    if load.count():
-        load.click()
-        page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     return aid
+
+
+# A choice names the archive image by its id (#659).
+CHOSEN = re.compile(r"=[0-9]+")
 
 
 @pytest.mark.parametrize("primary", [False, True])
@@ -47,7 +49,7 @@ def test_apply_immediately_after_choosing_is_an_htmx_post(reset_demo_server, pri
             htmx.config.defaultSettleDelay = 500;
             document.body.addEventListener('htmx:afterSwap', function choose(e) {
                 if (e.target.id !== 'album-artwork' ||
-                    !e.detail.xhr.responseURL.includes('pick=archive')) return;
+                    !e.detail.xhr.responseURL.includes('pick=1')) return;
                 document.body.removeEventListener('htmx:afterSwap', choose);
                 setTimeout(() => {
                     const selector = primary ? '.album-artwork-apply button' :
@@ -64,7 +66,7 @@ def test_apply_immediately_after_choosing_is_an_htmx_post(reset_demo_server, pri
             page.locator("#album-artwork button.art-pick__use:visible").click()
         assert applied.value.request.method == "POST"
         assert applied.value.request.headers.get("hx-request") == "true"
-        assert "=archive" in parse_qs(applied.value.request.post_data)["use"][0]
+        assert CHOSEN.search(parse_qs(applied.value.request.post_data)["use"][0])
         page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         assert page.url == f"{reset_demo_server}/album/{aid}"
         after = page.locator(
@@ -94,7 +96,7 @@ def test_late_archive_check_cannot_erase_a_newer_choice(reset_demo_server):
         # The choice is what the section carries: the field the combined
         # action and the Apply button send back.
         chosen = page.locator(".apply-art-" + aid + '[name="use"]')
-        pw.expect(chosen).to_have_value(re.compile("=archive"))
+        pw.expect(chosen).to_have_value(CHOSEN)
         # The checked date and artwork finding ride on this response out of
         # band; rejecting only its main fragment would still corrupt the scope.
         route, response = held.pop()
@@ -102,9 +104,9 @@ def test_late_archive_check_cannot_erase_a_newer_choice(reset_demo_server):
             route.fulfill(response=response)
         page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         # The stale ordinary preview did not replace the newer choice.
-        pw.expect(chosen).to_have_value(re.compile("=archive"))
+        pw.expect(chosen).to_have_value(CHOSEN)
         page.on("dialog", lambda dialog: dialog.accept())
         with page.expect_response(lambda r: r.url.endswith("/artwork/update")) as applied:
             page.get_by_role("button", name="Apply this album's artwork").click()
-        assert "=archive" in parse_qs(applied.value.request.post_data)["use"][0]
+        assert CHOSEN.search(parse_qs(applied.value.request.post_data)["use"][0])
         browser.close()

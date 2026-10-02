@@ -191,6 +191,7 @@ def summarise(
     chosen: artwork.Source | None = None,
     choices: artwork.Choices | None = None,
     picks: dict[str, EmbeddedArt] | None = None,
+    candidates: Sequence[artwork.Candidate] = (),
     folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
 ) -> artwork.ArtworkView:
     """`artwork.summarise` for an album at `ALBUM`.
@@ -210,6 +211,7 @@ def summarise(
         chosen=chosen,
         choices=choices or {},
         picks=picks or {},
+        candidates=candidates,
         folder_cover=folder_cover,
     )
 
@@ -604,9 +606,6 @@ class TestCoverArtArchiveNote:
         def from_release_group(self) -> bool:
             return self._release_group
 
-    def test_nothing_said_until_it_has_been_asked(self) -> None:
-        assert summarise(album(art_of(1)), None).archive_row is None
-
     def test_a_release_group_cover_says_so_where_it_is_coming_in(self) -> None:
         """The archive often keeps a cover against the RELEASE GROUP rather than
         this edition (#434), and that is exactly what a reader approving an image
@@ -647,13 +646,7 @@ class TestCoverArtArchiveNote:
 
     def test_an_archive_cover_that_wins_the_tracks_is_marked_on_the_row(self) -> None:
         """It is the incoming value, shown in that column with the hexagon —
-        which the row says, so the picker can say it is coming rather than
-        offer it again (#433, #659).
-
-        The picker still offers it: another row may want it, and a picker that
-        vanished whenever the archive won one row would take the choice away
-        from every other (#490).
-        """
+        which the row says (#433, #659)."""
         # The cached IMAGE as well as the answer: an archive cover that was
         # never downloaded cannot be written, so it cannot win — the tagger
         # reads the same cache.
@@ -663,19 +656,11 @@ class TestCoverArtArchiveNote:
         gap = next(r for r in view.rows if r.tracks)
         assert gap.from_archive is True
         assert gap.written_image == theirs
-        row = view.archive_row
-        assert row is not None and row.image == theirs
 
-    def test_a_cover_only_upgrade_still_offers_the_archive_to_the_tracks(self) -> None:
+    def test_a_cover_only_upgrade_leaves_the_tracks_their_own(self) -> None:
         """The archive's image can be the best thing going for the FOLDER cover
-        while #479 leaves the tracks the image they carry (#490).
-
-        The candidate row is the only place **Use this artwork** lives, and it
-        was suppressed as soon as the archive supplied either destination — so
-        an album whose tracks keep modest art beside a better archive cover had
-        no way to put that image into the tracks at all, short of applying the
-        folder-only change and coming back once the row reappeared.
-        """
+        while #479 leaves the tracks the image they carry (#490) — and the
+        picker still offers it for them, being every image listed (#659)."""
         mine = art_of(1, width=300, height=300)
         folder = art_of(2, width=1000, height=1000)
         theirs = art_of(3, width=2000, height=2000)
@@ -684,39 +669,9 @@ class TestCoverArtArchiveNote:
             album(mine, mine), cover_of(folder), self._Answer(2000, 2000), archive=theirs
         )
 
-        # The ordinary plan upgrades the folder cover and nothing else (#479)…
+        # The ordinary plan upgrades the folder cover and nothing else (#479).
         assert view.plan is not None
         assert [c.folder_cover for c in view.plan.changes] == [True]
-        # …and the archive's image is still there to be chosen for the tracks.
-        row = view.archive_row
-        assert row is not None
-        assert row.image == theirs
-
-    def test_a_losing_archive_cover_is_a_row_of_facts_not_a_sentence(self) -> None:
-        """Drawn as the candidate it is, muted, with no picture — a losing image
-        is never downloaded, so there genuinely is none to show (#433)."""
-        big = art_of(1, width=3000, height=3000)
-        small = art_of(2, width=500, height=500)
-
-        view = summarise(album(big), cover_of(small), self._Answer(2000, 2000))
-
-        row = view.archive_row
-        assert row is not None
-        assert (row.placeholder, row.meta) == ("not loaded", "2000×2000 · JPEG · 701 KB")
-
-    def test_the_archive_having_nothing_is_its_own_placeholder(self) -> None:
-        """A different word from "not loaded": there is nothing to load, rather
-        than something that was not loaded (#433)."""
-        view = summarise(album(art_of(1)), None, self._Answer(art=False))
-        row = view.archive_row
-        assert row is not None
-        assert (row.placeholder, row.meta) == ("none", "no front cover for this release")
-
-    def test_an_unmeasurable_archive_cover_says_so(self) -> None:
-        view = summarise(album(art_of(1)), None, self._Answer())
-        row = view.archive_row
-        assert row is not None
-        assert row.meta == "size could not be read"
 
 
 class TestArchiveWins:
@@ -1197,6 +1152,88 @@ class TestRowChoices:
         """The archive's ids are numbers; anything else in that place is no
         choice at all."""
         assert artwork.parse_choices("cover=12345,none=12a,") == {artwork.COVER: "12345"}
+
+
+class TestCandidates:
+    """What the picker offers (#659): every image the archive lists for the
+    release and its group, in the order offered, each with its original once
+    it is in hand."""
+
+    @staticmethod
+    def candidate(
+        image_id: str, image: EmbeddedArt | None = None, *, front: bool = True
+    ) -> artwork.Candidate:
+        return artwork.Candidate(
+            image_id=image_id,
+            origin="release",
+            front=front,
+            types=("front",) if front else ("back",),
+            image=image,
+        )
+
+    def test_a_row_is_unchanged_by_the_image_it_already_has(self) -> None:
+        """The *Far & Off* case, per candidate: the shown image is the row's
+        own, byte for byte, so the picker says Unchanged rather than Use."""
+        mine, other = art_of(1), art_of(2)
+        same, different = self.candidate("1", mine), self.candidate("2", other)
+
+        view = summarise(album(mine, mine), None, candidates=(same, different))
+
+        tracks = view.rows[0]
+        assert view.unchanged(tracks, same) is True
+        assert view.unchanged(tracks, different) is False
+
+    def test_a_row_already_getting_the_image_is_unchanged_by_it(self) -> None:
+        """Choosing what the row is already getting would change nothing."""
+        mine = art_of(1)
+        view = summarise(album(mine, None), None, candidates=(self.candidate("1", mine),))
+
+        gap = next(r for r in view.rows if r.is_gap)
+        assert view.unchanged(gap, view.candidates[0]) is True
+
+    def test_an_image_not_yet_in_hand_cannot_be_known_to_change_nothing(self) -> None:
+        """Without the original there is no digest to compare, so Use stays on
+        offer; pressing it fetches the original, and the plan writes nothing
+        if the bytes match."""
+        mine = art_of(1)
+        view = summarise(album(mine), None, candidates=(self.candidate("1"),))
+
+        assert view.unchanged(view.rows[0], view.candidates[0]) is False
+
+    def test_an_incoming_image_says_whose_it_is_by_where_it_was_listed(self) -> None:
+        """ "For the release group, not this release" belongs to the image that
+        came from the group's listing (#434, #659) — not to every archive image,
+        which is what reading it off the one stored answer would make it."""
+        mine = art_of(1)
+        group_front = art_of(2)
+        release_back = art_of(3)
+        candidates = (
+            artwork.Candidate("1", "release", False, ("back",), release_back),
+            artwork.Candidate("2", "release-group", True, ("front",), group_front),
+        )
+
+        view = summarise(
+            album(mine, None),
+            None,
+            candidates=candidates,
+            picks={"1": release_back, "2": group_front},
+            choices={mine.digest: "2", artwork.GAP: "1"},
+            folder_cover=artwork.FolderCoverPolicy.NEVER,
+        )
+
+        tracks, gap, _ = view.rows
+        assert (tracks.written_image, tracks.from_release_group) == (group_front, True)
+        assert (gap.written_image, gap.from_release_group) == (release_back, False)
+
+    def test_front_only_starts_on_when_there_is_a_front_to_show(self) -> None:
+        """Picard's default — fronts only — unless there are none, when the
+        picker would otherwise open on nothing."""
+        mine = art_of(1)
+        fronts = summarise(album(mine), None, candidates=(self.candidate("1"),))
+        backs = summarise(album(mine), None, candidates=(self.candidate("2", front=False),))
+
+        assert fronts.front_only is True
+        assert backs.front_only is False
 
 
 class TestTheFolderCoverPolicy:

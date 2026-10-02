@@ -27,9 +27,6 @@ def test_public_smaller_candidate_is_explicit_and_undoable(public_demo_server):
         page.goto(f"{base}/album/demo-rel-barryjive")
         section = page.locator("#album-artwork")
         page.wait_for_selector("#album-artwork .art-row")
-        load = section.locator('button[hx-post$="/artwork/load-archive"]')
-        pw.expect(load).to_be_visible()
-        load.click()
         choose = section.get_by_role("button", name="Use for All 3 tracks")
         pw.expect(choose).to_be_visible()
         # Looking at a smaller candidate is not permission to replace anything.

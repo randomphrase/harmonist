@@ -123,14 +123,32 @@
     // check between the rows' radios; the stylesheet does the rest, so this
     // makes no request. Stops at either end rather than wrapping: the picker
     // jumping from the last row back to the first reads as a page that moved.
+    //
+    // The same for the picker's images (‹ ›, #659), stepping over any image
+    // that Front only is hiding — so an image is only ever stepped TO if it
+    // can be seen.
+    const shownImages = form => {
+        const frontOnly = form.querySelector('.art-pick__front-only input[type="checkbox"]');
+        return Array.from(form.querySelectorAll('input[name="candidate"]')).filter(radio =>
+            !(frontOnly && frontOnly.checked && radio.closest('.art-pick__slide').dataset.front === 'false'));
+    };
     document.addEventListener('click', event => {
         const step = event.target.closest('[data-art-step]');
         if (!step) return;
-        const radios = Array.from(step.form.querySelectorAll('input[name="row"]'));
+        const radios = step.dataset.artGroup === 'candidate'
+            ? shownImages(step.form)
+            : Array.from(step.form.querySelectorAll('input[name="row"]'));
         const at = radios.findIndex(radio => radio.checked);
         const next = radios[at + Number(step.dataset.artStep)];
         // A click rather than setting `checked`, so the row is selected exactly
         // as a click on it would select it — events and all.
         if (next) next.click();
+    });
+    // Ticking Front only while a back cover is shown would leave nothing
+    // shown: move to the first image that can be.
+    document.addEventListener('change', event => {
+        if (!event.target.matches('.art-pick__front-only input[type="checkbox"]')) return;
+        const radios = shownImages(event.target.form);
+        if (radios.length && !radios.some(radio => radio.checked)) radios[0].click();
     });
 })();
