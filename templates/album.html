@@ -179,6 +179,8 @@
     </section>
     {% endif %}
 
+    {% with info = additional_info(album) %}{% include 'partials/_additional_info.html' %}{% endwith %}
+
     {# What artwork the files carry, and what a re-tag would do to it (#155).
 
        Its own fetch rather than a ride on /compare, and NOT inside the
@@ -207,8 +209,6 @@
         {% include 'partials/_artwork_header.html' %}
         <p class="text-2xs text-muted italic">Reading the album's artwork…</p>
     </section>
-
-    {% with info = additional_info(album) %}{% include 'partials/_additional_info.html' %}{% endwith %}
 
     {# Everything Harmonist has recorded about THIS album — activity and audit
        together, newest first. Unioned across the album's alias chain, so records

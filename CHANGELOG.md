@@ -13,7 +13,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
-- Album pages group release and origin links with file details, place refresh controls beside the Album and Artwork headings, and rename Additional info to Additional tags (#665).
+- Album pages group release and origin links with file details, place refresh controls beside the Album and Artwork headings, and group Additional tags with Album and Tracks before Artwork (#665).
 
 ## [1.22.0] - 2026-10-01
 
