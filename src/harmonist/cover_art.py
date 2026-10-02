@@ -65,20 +65,7 @@ def cached_front(release_mbid: str, *, release_only: bool = False) -> Front | No
         known = activity_store.cached_cover_art(release_mbid)
         if known is None or not known.has_art or known.from_release_group:
             return None
-    path = cached_image(release_mbid)
-    if path is None:
-        return None
-    try:
-        front = Front(data=path.read_bytes(), mime=_mime_of(path))
-    except FileNotFoundError:
-        # Evicted between the look and the read (#439): the cache's ordinary
-        # answer for an image it no longer has, and nothing went wrong.
-        return None
-    except OSError:
-        log.exception("could not read the cached archive image for %s", release_mbid)
-        return None
-    _mark_used(path)
-    return front
+    return _cached_front(release_mbid)
 
 
 def _mark_used(path: Path) -> None:
@@ -487,6 +474,86 @@ def parse_listing(payload: object) -> list[Candidate]:
             )
         )
     return found
+
+
+def candidate_thumbnail(candidate: Candidate, *, client: httpx.Client | None = None) -> Front:
+    """A candidate's thumbnail: from the cache, or fetched into it (#659).
+
+    What the picker shows. Served to the browser by Harmonist rather than
+    linked to, so opening an album cannot tell the Internet Archive which
+    records this user owns — the reason the archive's cover has always been
+    served this way (#276). Raises `CoverArtError` when it could not be fetched.
+    """
+    return _candidate_bytes(f"thumb-{candidate.image_id}", candidate.thumbnail_url, client)
+
+
+def candidate_image(candidate: Candidate, *, client: httpx.Client | None = None) -> Front:
+    """A candidate's original: from the cache, or fetched into it (#659).
+
+    Fetched when the candidate is chosen, because a choice is previewed as the
+    plan it makes and a plan is made of the image's exact bytes. Kept apart
+    from the thumbnail, which is only what it was shown from. Raises
+    `CoverArtError` when it could not be fetched.
+    """
+    return _candidate_bytes(f"image-{candidate.image_id}", candidate.image_url, client)
+
+
+def cached_candidate_image(image_id: str) -> Front | None:
+    """A candidate's original from the cache only, or None — no network, so
+    safe on every render."""
+    return _cached_front(f"image-{image_id}")
+
+
+def _candidate_bytes(key: str, url: str, client: httpx.Client | None) -> Front:
+    if (cached := _cached_front(key)) is not None:
+        return cached
+    data, mime = fetch_bytes(url, client=client)
+    cache_image(key, data, mime)
+    return Front(data=data, mime=mime)
+
+
+def _cached_front(key: str) -> Front | None:
+    """An image the candidate cache holds under `key`, or None."""
+    path = cached_image(key)
+    if path is None:
+        return None
+    try:
+        front = Front(data=path.read_bytes(), mime=_mime_of(path))
+    except FileNotFoundError:
+        # Evicted between the look and the read (#439): the cache's ordinary
+        # answer for an image it no longer has, and nothing went wrong.
+        return None
+    except OSError:
+        log.exception("could not read the cached archive image %s", key)
+        return None
+    _mark_used(path)
+    return front
+
+
+def fetch_bytes(url: str, *, client: httpx.Client | None = None) -> tuple[bytes, str]:
+    """One image from the archive, and its type. Raises `CoverArtError` when it
+    could not be fetched.
+
+    Every image the picker shows or writes comes through here, by a URL taken
+    from an archive listing — which is also what demo mode replaces, so the
+    demo library never reaches the real archive.
+    """
+    owns_client = client is None
+    http = client or httpx.Client(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
+    try:
+        try:
+            resp = http.get(url)
+        except httpx.HTTPError as e:
+            raise CoverArtError(f"CAA image request failed for {url}: {e}") from e
+        if not resp.is_success:
+            raise CoverArtError(f"CAA returned {resp.status_code} for {url}")
+        mime = (
+            "image/png" if "png" in resp.headers.get("content-type", "").lower() else "image/jpeg"
+        )
+        return resp.content, mime
+    finally:
+        if owns_client:
+            http.close()
 
 
 def _https(url: str) -> str:

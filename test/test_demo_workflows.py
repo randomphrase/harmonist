@@ -26,6 +26,34 @@ def albums(root):
     return {a.title: a for a in scanner.scan(root)}
 
 
+def test_the_pickers_candidates_come_from_the_demos_own_assets():
+    """The picker's candidates in demo mode (#659): a release lists its archive
+    image, its group a different picture, and every image is served from the
+    demo's assets — an unknown one is refused rather than fetched, so the demo
+    never reaches the real archive."""
+    (release_front,) = demo.fetch_listing("release", "demo-rel-barryjive")
+    group = demo.MB_RELEASES["demo-rel-barryjive"]["release-group"]["id"]
+    (group_front,) = demo.fetch_listing("release-group", group)
+
+    assert release_front.front and release_front.image_url.endswith("barry-archive.png")
+    assert group_front.image_url.endswith("barry.png")
+    assert release_front.image_id != group_front.image_id
+    data, mime = demo.fetch_bytes(release_front.image_url)
+    assert data == (demo.ASSETS_DIR / "barry-archive.png").read_bytes() and mime == "image/png"
+    with pytest.raises(cover_art.CoverArtError):
+        demo.fetch_bytes("https://coverartarchive.org/release/x/not-a-demo-asset.png")
+
+
+def test_demo_mode_reaches_no_real_archive_function():
+    """Every `cover_art` function that would talk to the archive is replaced by
+    `demo.install()`: a new one added without a demo version would make the
+    demo quietly fetch real images."""
+    demo.install()
+
+    for name in ("check_front", "front_image", "fetch_image", "fetch_listing", "fetch_bytes"):
+        assert getattr(cover_art, name).__module__ == demo.__name__, name
+
+
 def audio_files(root):
     return sorted(p for p in root.rglob("*") if p.is_file() and formats.is_supported(p))
 

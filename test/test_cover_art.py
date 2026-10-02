@@ -688,6 +688,70 @@ def test_a_listing_the_archive_has_nothing_for_is_empty():
     assert cover_art.fetch_listing("release-group", "rg", client=client) == []
 
 
+CANDIDATE = cover_art.Candidate(
+    image_id="12345",
+    image_url="https://coverartarchive.org/release/r/12345.png",
+    thumbnail_url="https://coverartarchive.org/release/r/12345-500.jpg",
+    types=("front",),
+    front=True,
+)
+
+
+def _bytes_client(served: dict[str, tuple[bytes, str]]):
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        data, mime = served[str(request.url)]
+        return httpx.Response(200, content=data, headers={"content-type": mime})
+
+    return _client(handler), seen
+
+
+def test_a_candidates_thumbnail_is_fetched_once_and_kept(caa_cache):
+    """Shown from the thumbnail; asked for once, then served from the cache."""
+    client, seen = _bytes_client({CANDIDATE.thumbnail_url: (b"thumb", "image/jpeg")})
+
+    first = cover_art.candidate_thumbnail(CANDIDATE, client=client)
+    second = cover_art.candidate_thumbnail(CANDIDATE, client=client)
+
+    assert first == second == Front(b"thumb", "image/jpeg")
+    assert seen == [CANDIDATE.thumbnail_url]
+
+
+def test_a_candidates_original_is_kept_apart_from_its_thumbnail(caa_cache):
+    """The original is what a choice writes; the thumbnail is only what it is
+    shown from. Kept under different names, or the thumbnail would be
+    written into someone's files."""
+    client, seen = _bytes_client(
+        {
+            CANDIDATE.thumbnail_url: (b"thumb", "image/jpeg"),
+            CANDIDATE.image_url: (b"original", "image/png"),
+        }
+    )
+
+    cover_art.candidate_thumbnail(CANDIDATE, client=client)
+    original = cover_art.candidate_image(CANDIDATE, client=client)
+
+    assert original == Front(b"original", "image/png")
+    assert cover_art.cached_candidate_image(CANDIDATE.image_id) == original
+    assert seen == [CANDIDATE.thumbnail_url, CANDIDATE.image_url]
+
+
+def test_a_candidate_never_fetched_is_not_in_hand(caa_cache):
+    """Read from the cache only: no network on a render."""
+    assert cover_art.cached_candidate_image(CANDIDATE.image_id) is None
+
+
+def test_a_candidate_image_that_could_not_be_fetched_raises(caa_cache):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    with pytest.raises(CoverArtError):
+        cover_art.candidate_image(CANDIDATE, client=_client(handler))
+    assert cover_art.cached_candidate_image(CANDIDATE.image_id) is None
+
+
 def test_a_listing_that_could_not_be_asked_raises():
     """ "I could not ask" is not "there is nothing there" (#458)."""
 

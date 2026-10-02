@@ -995,6 +995,53 @@ def front_image(
     return cover_art.Front(data=data, mime=mime)
 
 
+def fetch_listing(kind: str, mbid: str, *, client: Any = None) -> list[cover_art.Candidate]:
+    """An offline archive listing (#659): a release lists its archive image as
+    its front; a release group lists its first release's own cover, which is
+    what gives the picker a second, different image to show. Each image's URL
+    names its asset, so `fetch_bytes` below can serve it."""
+    time.sleep(_delay())
+    if kind == "release":
+        path = _archive_asset(mbid)
+    else:
+        members = [
+            m
+            for m, rel in MB_RELEASES.items()
+            if (rel.get("release-group") or {}).get("id") == mbid
+        ]
+        spec = next(
+            (
+                s
+                for s in [*LIBRARY, *PENDING_PURCHASES]
+                if s.get("mbid") in members and s.get("cover")
+            ),
+            None,
+        )
+        path = ASSETS_DIR / str(spec["cover"]) if spec is not None else None
+    if path is None:
+        return []
+    url = f"{cover_art.CAA_BASE}/{kind}/{mbid}/{path.name}"
+    return [
+        cover_art.Candidate(
+            # Numeric, as the archive's own ids are, and stable across runs.
+            image_id=str(zlib.crc32(f"{kind}/{path.name}".encode())),
+            image_url=url,
+            thumbnail_url=url,
+            types=("front",),
+            front=True,
+        )
+    ]
+
+
+def fetch_bytes(url: str, *, client: Any = None) -> tuple[bytes, str]:
+    """An image from the demo's own assets, by the name its listing URL ends
+    with — never the real archive."""
+    path = ASSETS_DIR / url.rsplit("/", 1)[-1]
+    if not path.is_file():
+        raise cover_art.CoverArtError(f"demo mode has no image for {url}")
+    return path.read_bytes(), "image/png" if path.suffix == ".png" else "image/jpeg"
+
+
 def fetch_image(release_mbid: str, url: str, *, client: Any = None) -> Path | None:
     """Explicit inspection uses exactly the image described by check_front."""
     front = front_image(release_mbid)
@@ -1053,6 +1100,8 @@ def install() -> None:
     cover_art.front_image = front_image
     cover_art.check_front = check_front
     cover_art.fetch_image = fetch_image
+    cover_art.fetch_listing = fetch_listing
+    cover_art.fetch_bytes = fetch_bytes
     formats.write_tags = _paced_write_tags
     log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art")
 

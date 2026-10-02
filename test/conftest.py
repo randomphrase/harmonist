@@ -29,6 +29,8 @@ _PRISTINE_GLOBALS = {
     (cover_art, "front_image"): cover_art.front_image,
     (cover_art, "check_front"): cover_art.check_front,
     (cover_art, "fetch_image"): cover_art.fetch_image,
+    (cover_art, "fetch_listing"): cover_art.fetch_listing,
+    (cover_art, "fetch_bytes"): cover_art.fetch_bytes,
 }
 
 
