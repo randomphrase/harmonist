@@ -7,4 +7,4 @@
 <a id="album-release-{{ album.id }}"{% if oob %} hx-swap-oob="true"{% endif %}
    href="https://musicbrainz.org/release/{{ mbid }}" target="_blank" rel="noopener"
    title="View this release on MusicBrainz · {{ mbid }}"
-   class="font-bold text-mb-purple hover:underline break-words">{{ release_name(named[0], named[1]) if named else mbid }} <span class="text-xs" aria-hidden="true">↗</span></a>
+   class="font-semibold text-mb-purple hover:underline break-words">{{ release_name(named[0], named[1]) if named else mbid }} <span class="text-xs" aria-hidden="true">↗</span></a>

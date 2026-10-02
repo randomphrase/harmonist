@@ -14,7 +14,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
-- Album pages group release and origin links with file details, place refresh controls beside the Album and Artwork headings, and group Additional tags with Album and Tracks before Artwork (#665).
+- Album pages use aligned label/value details, keep dates at the top right, place refresh controls beside section headings, and group Additional tags before Artwork (#665).
 
 ## [1.22.0] - 2026-10-01
 

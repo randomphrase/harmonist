@@ -351,12 +351,6 @@ button[disabled],
    Widened rather than the labels shortened, because since #295 they come from
    `owned.LABELS` and are shared with History and the re-tag plan. Trimming one
    to fit a column here would rename that tag everywhere. */
-.album-identity__metadata { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
-@media (max-width: 48rem) {
-  .album-identity__metadata { flex-direction: column; }
-  .album-identity__metadata > dl { align-self: end; }
-}
-
 .tag-fields {
   display: grid;
   grid-template-columns: 8rem minmax(0, 1fr);
@@ -414,6 +408,37 @@ button[disabled],
   flex-direction: column;
   align-items: flex-start;
   gap: .15rem 0;
+}
+
+/* The identity panel is a compact facts list, with the same baseline, type and
+   row spacing for file details and lifecycle dates. Keep it independent of the
+   comparison grid's flex values and narrower technical typography. */
+.album-identity__metadata { display: flex; align-items: start; justify-content: space-between; gap: 1.5rem; }
+.album-identity__fields,
+.album-identity__dates {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: .5rem .75rem;
+  font-size: .875rem;
+  line-height: 1.5rem;
+}
+.album-identity__fields dt,
+.album-identity__dates dt {
+  color: var(--color-muted);
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.album-identity__fields dd,
+.album-identity__dates dd { margin: 0; min-width: 0; color: var(--color-ink); }
+.album-identity__fields dd button { vertical-align: middle; }
+.album-identity__dates { flex-shrink: 0; grid-template-columns: auto auto; text-align: right; }
+.album-identity__dates dd { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 48rem) {
+  .album-identity__metadata { flex-direction: column; gap: 1rem; }
+  .album-identity__metadata > dl { align-self: end; }
 }
 
 /* The pair: both values flush left, one above the other, so a difference is a

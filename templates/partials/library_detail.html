@@ -49,7 +49,7 @@
                management actions keep the floor of the metadata column. #}
             <div class="album-identity__metadata">
             <div class="min-w-0 flex-1">
-            <dl class="tag-fields">
+            <dl class="album-identity__fields">
                 {% if sc and sc.mb_release_id %}
                 <dt>MB release</dt>
                 <dd><span>
@@ -64,9 +64,9 @@
                     {% if origin_links_store %}
                     <a href="{{ sc.store_url }}" target="_blank" rel="noopener"
                        title="{{ info.why }} · {{ store_tip }}"
-                       class="font-bold text-bc-teal-dark hover:underline">{{ info.origin }} ↗</a>
+                       class="font-semibold text-bc-teal-dark hover:underline">{{ info.origin }} ↗</a>
                     {% else %}
-                    <span class="font-bold text-ink cursor-help underline decoration-dotted underline-offset-2"
+                    <span class="cursor-help underline decoration-dotted underline-offset-2"
                           title="{{ info.why if info else 'None of its tags says where the files came from.' }}">{{ info.origin if info else 'Unknown' }}</span>
                     {% endif %}
                     {% if origin_links_store and album.state == AlbumState.NEEDS_SYNC %}
@@ -78,7 +78,7 @@
                 <dt>Store</dt>
                 <dd>
                     <a href="{{ sc.store_url }}" target="_blank" rel="noopener" title="{{ store_tip }}"
-                       class="font-bold text-bc-teal-dark hover:underline">{{ store|title if store else 'Store' }} ↗</a>
+                       class="font-semibold text-bc-teal-dark hover:underline">{{ store|title if store else 'Store' }} ↗</a>
                     {% if album.state == AlbumState.NEEDS_SYNC %}
                     {% with on_album_page=true %}{% include 'partials/_purchased_elsewhere_button.html' %}{% endwith %}
                     {% endif %}
@@ -177,7 +177,7 @@
 
                The track count is gone: the Tracks section states it, and saying
                it twice on one page invites them to disagree. #}
-            <dl class="tag-fields mt-3">
+            <dl class="album-identity__fields mt-2">
                 {# Every folder the album's files come from, not just the primary
                    one (#216). Since #197 an album is the files that name its
                    release wherever they sit, so one path is at best a partial
@@ -185,7 +185,7 @@
                    found them all. A one-folder album, which is nearly all of
                    them, reads exactly as it always did. #}
                 <dt>{{ "Paths" if folders else "Path" }}</dt>
-                <dd class="font-mono text-2xs text-muted break-all{{ ' tag-fields__stack' if folders }}">
+                <dd class="break-words">
                     {% if folders %}
                     {% for name, count in folders %}
                     <div>{{ name }} <span class="text-muted/70">· {{ count }} track{{ 's' if count != 1 else '' }}</span></div>
@@ -229,16 +229,15 @@
                badges rather than stretching across the panel. Elapsed time,
                because these answer "how recently?" rather than "on what date?";
                the exact timestamp is one hover away. #}
-            <dl class="flex-shrink-0 grid grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-xs text-right">
+            <dl class="album-identity__dates">
                 {% for label, when in [
                     ('Downloaded', sc.downloaded_at if sc else None),
                     ('Added', sc.added_at if sc else None),
                     ('Tagged', sc.tagged_at if sc else None),
                 ] %}
                 {% if when %}
-                <dt class="col-start-1 text-2xs text-muted uppercase tracking-widest self-baseline">{{ label }}</dt>
-                <dd class="text-ink tabular-nums self-baseline whitespace-nowrap"
-                    title="{{ when.strftime('%Y-%m-%d %H:%M:%S UTC') }}">{{ ago(when) }}</dd>
+                <dt>{{ label }}</dt>
+                <dd title="{{ when.strftime('%Y-%m-%d %H:%M:%S UTC') }}">{{ ago(when) }}</dd>
                 {% endif %}
                 {% endfor %}
             </dl>
