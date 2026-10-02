@@ -70,7 +70,9 @@ def test_digital_store_link_waits_for_siblings(digital_contribution_server):
         browser.close()
 
 
-def test_dismissed_store_match_does_not_offer_a_duplicate_url(digital_contribution_server):
+def test_dismissed_store_match_does_not_offer_a_duplicate_url(
+    digital_contribution_server, htmx_ready
+):
     server, scenario = digital_contribution_server
     if scenario != "linked":
         pytest.skip("requires another release linking the exact URL")
@@ -79,7 +81,7 @@ def test_dismissed_store_match_does_not_offer_a_duplicate_url(digital_contributi
         page = browser.new_page()
         page.goto(f"{server}/album/{ALBUM}")
         panel = page.locator(f"#album-contributions-{ALBUM}")
-        box = panel.get_by_role("checkbox", name="Don't warn me about this")
+        box = htmx_ready(panel.get_by_role("checkbox", name="Don't warn me about this"))
         reason = panel.get_by_text(
             "Your store URL is linked from another release, not the matched one.", exact=True
         )

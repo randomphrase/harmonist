@@ -25,6 +25,25 @@ pytestmark = pytest.mark.skipif(
 playwright_sync = pytest.importorskip("playwright.sync_api")
 
 
+@pytest.fixture
+def htmx_ready():
+    """Keep actionability polling scoped to a control whose fragment is wired.
+
+    HTMX inserts visible HTML before processing its handlers. Include ancestors
+    so both in-band and out-of-band swaps are covered, and resolve the locator
+    again after reloads. Unrelated Inbox polling must not keep a control waiting.
+    """
+
+    def ready(locator):
+        return locator.and_(
+            locator.page.locator(
+                ":not(.htmx-added, .htmx-added *, .htmx-settling, .htmx-settling *)"
+            )
+        )
+
+    return ready
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))

@@ -43,7 +43,11 @@ def test_turning_the_check_on_shows_its_status_and_keeps_it_current(demo_server:
         page.on("request", lambda r: requests.append((r.method, r.url)))
         line.evaluate("el => el.dataset.stale = 'true'")
         with page.expect_response(lambda r: r.url.endswith("/settings/update-check")):
-            page.clock.fast_forward("01:05")
+            # Run the intervening timers: HTMX may still be settling the saved
+            # form and has not installed this line's poll yet. fast_forward
+            # fires that settle timer at the END of the jump, so the poll would
+            # only be scheduled for another minute later.
+            page.clock.run_for("01:05")
         playwright_sync.expect(line).not_to_have_attribute("data-stale", "true")
         playwright_sync.expect(line).to_contain_text("albums checked in the last week")
         assert requests == [("GET", f"{demo_server}/settings/update-check")]

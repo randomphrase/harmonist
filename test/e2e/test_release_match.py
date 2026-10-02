@@ -10,7 +10,7 @@ playwright_sync = pytest.importorskip("playwright.sync_api")
 ALBUM = "demo-rel-dingoes"
 
 
-def test_dont_warn_hides_the_review_and_reveals_the_contribution(release_match_server):
+def test_dont_warn_hides_the_review_and_reveals_the_contribution(release_match_server, htmx_ready):
     server = release_match_server
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -26,7 +26,7 @@ def test_dont_warn_hides_the_review_and_reveals_the_contribution(release_match_s
         panel = page.locator(f"#album-contributions-{ALBUM}")
         mismatch = panel.locator("section").filter(has_text="Possible mismatch")
         reason = "Your download came from dingoes.bandcamp.com."
-        box = panel.get_by_role("checkbox", name="Don't warn me about this")
+        box = htmx_ready(panel.get_by_role("checkbox", name="Don't warn me about this"))
         editor = panel.get_by_role("link", name="Edit store link on MusicBrainz")
         playwright_sync.expect(mismatch.get_by_text(reason)).to_be_visible()
         playwright_sync.expect(editor).to_be_hidden()

@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e di
 pw = pytest.importorskip("playwright.sync_api")
 
 
-def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
+def test_review_outcome_matches_the_images_written(confirmation_outcome_server, htmx_ready):
     from harmonist import demo, formats, images
 
     base, scenario, root = confirmation_outcome_server
@@ -33,9 +33,12 @@ def test_review_outcome_matches_the_images_written(confirmation_outcome_server):
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.goto(f"{base}/album/demo-rel-dingoes")
-        page.locator("#contribution-editions-demo-rel-dingoes").get_by_role(
-            "listitem", name="Suggested digital release"
-        ).get_by_role("button", name="Use", exact=True).click()
+        use = (
+            page.locator("#contribution-editions-demo-rel-dingoes")
+            .get_by_role("listitem", name="Suggested digital release")
+            .get_by_role("button", name="Use", exact=True)
+        )
+        htmx_ready(use).click()
         review = page.get_by_role("region", name="Review suggested release")
         artwork = review.locator(".assignment-artwork")
         keep = artwork.get_by_text("Keep existing artwork", exact=True)
@@ -321,7 +324,7 @@ def test_current_artwork_keeps_actions_in_place_while_loading(
         browser.close()
 
 
-def test_changed_confirmation_preserves_review_and_artwork_choice(reset_demo_server):
+def test_changed_confirmation_preserves_review_and_artwork_choice(reset_demo_server, htmx_ready):
     base = reset_demo_server
     with pw.sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -356,6 +359,6 @@ def test_changed_confirmation_preserves_review_and_artwork_choice(reset_demo_ser
             ).click()
         pw.expect(editor.locator('[name="release_fingerprint"]')).to_have_value(fingerprint)
         with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
-            card.get_by_role("button", name="Confirm suggestion", exact=True).click()
+            htmx_ready(card.get_by_role("button", name="Confirm suggestion", exact=True)).click()
         assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
         browser.close()

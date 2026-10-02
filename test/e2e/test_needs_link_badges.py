@@ -14,7 +14,9 @@ playwright_sync = pytest.importorskip("playwright.sync_api")
 
 @pytest.mark.parametrize("on_album", [False, True], ids=["inbox", "album"])
 @pytest.mark.parametrize("action", ["rematch", "manual"])
-def test_needs_link_badge_action(reset_demo_server: str, on_album: bool, action: str) -> None:
+def test_needs_link_badge_action(
+    reset_demo_server: str, on_album: bool, action: str, htmx_ready
+) -> None:
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page()
@@ -32,7 +34,7 @@ def test_needs_link_badge_action(reset_demo_server: str, on_album: bool, action:
             if action == "rematch"
             else "Mark purchased elsewhere"
         )
-        button = host.get_by_role("button", name=label, exact=True)
+        button = htmx_ready(host.get_by_role("button", name=label, exact=True))
         # Each control and its external badge remain one visual group.
         badge = button.locator("..").get_by_role("link")
         expected_url = (
@@ -64,7 +66,11 @@ def test_needs_link_badge_action(reset_demo_server: str, on_album: bool, action:
             ).locator("xpath=ancestor::div[starts-with(@id, 'task-')][1]")
             # The stored URL resolves automatically; dismiss that suggestion
             # before searching for a different release.
-            corrected.get_by_role("button", name="Dismiss suggestion", exact=True).click()
+            dismiss = htmx_ready(
+                corrected.get_by_role("button", name="Dismiss suggestion", exact=True)
+            )
+            with page.expect_response(lambda r: "/reject/" in r.url):
+                dismiss.click()
             corrected.get_by_role("radio", name="Name", exact=True).check()
             corrected.get_by_role("button", name="Search", exact=True).wait_for()
         elif on_album:
