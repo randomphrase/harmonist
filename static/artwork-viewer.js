@@ -155,6 +155,56 @@
             more('step')?.click();
         }
     });
+    // The picker's place — its row, its image, Front only — is the page's,
+    // not the server's: moving it makes no request. So a response to a request
+    // sent BEFORE the user moved it (the archive check on page open, a re-read,
+    // a look ahead) would put it back where it was when that request left,
+    // and the picker jumps. Note where it was when each request went, and if
+    // the user has moved it since, put back what they moved after the swap.
+    // A response to a request sent from where it still is keeps the server's
+    // answer — which is how a step to another release lands on its first image.
+    const pickerOf = target => target.querySelector('form.art-compare');
+    const place = form => form && {
+        row: form.querySelector('input[name="row"]:checked')?.value,
+        candidate: form.querySelector('input[name="candidate"]:checked')?.value,
+        frontOnly: form.querySelector('.art-pick__front-only input[type="checkbox"]')?.checked,
+    };
+    const sentFrom = new WeakMap();
+    const movedSince = new WeakMap();
+    document.addEventListener('htmx:beforeRequest', event => {
+        if (event.detail.target.id !== 'album-artwork') return;
+        const form = pickerOf(event.detail.target);
+        if (form) sentFrom.set(event.detail.xhr, place(form));
+    });
+    document.addEventListener('htmx:beforeSwap', event => {
+        const target = event.detail.target;
+        if (target.id !== 'album-artwork' || event.defaultPrevented || !event.detail.shouldSwap) return;
+        const then = sentFrom.get(event.detail.xhr);
+        const now = place(pickerOf(target));
+        if (!then || !now) return;
+        const moved = Object.fromEntries(Object.entries(now).filter(([key, value]) => value !== then[key]));
+        if (Object.keys(moved).length) movedSince.set(target, moved);
+    });
+    document.addEventListener('htmx:afterSwap', event => {
+        const target = event.detail.target;
+        const moved = movedSince.get(target);
+        if (!moved) return;
+        movedSince.delete(target);
+        const form = pickerOf(target);
+        if (!form) return;
+        // By value, and only where the new section still has it: a row the
+        // check merged away, or an image no longer listed, stays as served.
+        const radio = (name, value) => Array.from(form.querySelectorAll(`input[name="${name}"]`))
+            .find(input => input.value === value);
+        if ('frontOnly' in moved) {
+            const box = form.querySelector('.art-pick__front-only input[type="checkbox"]');
+            if (box && moved.frontOnly !== undefined) box.checked = moved.frontOnly;
+        }
+        for (const name of ['row', 'candidate']) {
+            const input = name in moved && radio(name, moved[name]);
+            if (input) input.checked = true;
+        }
+    });
     // Ticking Front only while a back cover is shown would leave nothing
     // shown: move to the first image that can be.
     document.addEventListener('change', event => {

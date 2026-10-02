@@ -263,6 +263,52 @@ def listing(kind: str, mbid: str, *, max_age: timedelta | None = None) -> list[c
     return candidates
 
 
+#: Where an image's measurement is kept, beside the listings: by the image's
+#: archive id, which names one upload's bytes for good — so it never goes stale.
+_MEASURE_KEY = "caa-measure"
+
+
+def stored_measure(image_id: str) -> cover_art.Measure | None:
+    """What a listed image was measured as, or None if it never has been.
+    **Never the network** — what the picker's facts line renders from."""
+    known = activity_store.cached_release(image_id, _MEASURE_KEY)
+    if known is None:
+        return None
+    p = known.payload
+
+    def number(key: str) -> int | None:
+        value = p.get(key)
+        return value if isinstance(value, int) else None
+
+    mime = p.get("mime")
+    return cover_art.Measure(
+        width=number("width"),
+        height=number("height"),
+        length=number("length"),
+        mime=mime if isinstance(mime, str) else None,
+    )
+
+
+def measure(candidate: cover_art.Candidate) -> cover_art.Measure:
+    """`cover_art.measure_candidate`, once per image (#659): the picker measures
+    an image the first time it is shown, and every render after reads the
+    answer. `CoverArtError` propagates and nothing is stored."""
+    if (known := stored_measure(candidate.image_id)) is not None:
+        return known
+    measured = cover_art.measure_candidate(candidate)
+    activity_store.store_release(
+        candidate.image_id,
+        _MEASURE_KEY,
+        {
+            "width": measured.width,
+            "height": measured.height,
+            "length": measured.length,
+            "mime": measured.mime,
+        },
+    )
+    return measured
+
+
 def _as_listing(candidates: list[cover_art.Candidate]) -> dict[str, object]:
     """Candidates in the shape `cover_art.parse_listing` reads, so a stored
     listing and a fetched one are parsed by the same code."""

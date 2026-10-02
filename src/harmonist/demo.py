@@ -1073,6 +1073,13 @@ def fetch_bytes(url: str, *, client: Any = None) -> tuple[bytes, str]:
     return path.read_bytes(), "image/png" if path.suffix == ".png" else "image/jpeg"
 
 
+def fetch_head(url: str, *, client: Any = None) -> tuple[bytes, int | None, str | None]:
+    """The start of a demo asset, its length and type, as `fetch_bytes` names
+    it — what the picker measures an image from (#659)."""
+    data, mime = fetch_bytes(url)
+    return data[: cover_art.MEASURE_BYTES], len(data), mime
+
+
 def fetch_image(release_mbid: str, url: str, *, client: Any = None) -> Path | None:
     """Explicit inspection uses exactly the image described by check_front."""
     front = front_image(release_mbid)
@@ -1133,6 +1140,7 @@ def install() -> None:
     cover_art.fetch_image = fetch_image
     cover_art.fetch_listing = fetch_listing
     cover_art.fetch_bytes = fetch_bytes
+    cover_art.fetch_head = fetch_head
     formats.write_tags = _paced_write_tags
     log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art")
 

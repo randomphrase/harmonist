@@ -66,6 +66,32 @@ def test_front_only_steps_over_the_back_cover(reset_carousel_server: str) -> Non
         browser.close()
 
 
+def test_an_image_is_measured_when_it_is_shown(reset_carousel_server: str) -> None:
+    """Each image's size line is measured the first time the carousel shows
+    it, and no sooner: a hidden slide asks for nothing (#659)."""
+    with pw.sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 1400})
+        measured: list[str] = []
+        page.on(
+            "request",
+            lambda r: measured.append(r.url.split("/")[-2]) if r.url.endswith("/facts") else None,
+        )
+        page.goto(f"{reset_carousel_server}/album/{ALBUM_ID}")
+        page.wait_for_selector("#album-artwork .art-pick__picker")
+        page.wait_for_function(SETTLED)
+        assert measured == []  # below the fold: nobody has seen it yet
+        slide = page.locator("#album-artwork .art-pick__picker .art-pick__slide:visible")
+        slide.scroll_into_view_if_needed()
+        pw.expect(slide.locator(".art-row__meta")).to_contain_text("×")
+        assert measured == ["101"]
+
+        page.locator("#album-artwork").get_by_role("button", name="Next image").click()
+        pw.expect(slide.locator(".art-row__meta")).to_contain_text("×")
+        assert "103" in measured and "102" not in measured
+        browser.close()
+
+
 def test_the_carousel_goes_on_to_another_release(reset_carousel_server: str) -> None:
     """Arriving at the last image lists the next release, so › past it is
     instant — and Use sends whichever image is shown."""
@@ -91,6 +117,40 @@ def test_the_carousel_goes_on_to_another_release(reset_carousel_server: str) -> 
         with page.expect_response(lambda r: "pick=1" in r.url) as used:
             section.locator("button.art-pick__use:visible").click()
         assert "candidate=201" in used.value.url
+        browser.close()
+
+
+def test_a_late_archive_check_leaves_the_picker_where_it_was_moved(
+    reset_carousel_server: str,
+) -> None:
+    """Moving the picker makes no request, so a check sent before the move
+    answers for where the picker WAS — and swapped in as served, it put the
+    picker back there: the picker jumped, apparently at random (#659)."""
+    with pw.sync_playwright() as playwright:
+        browser, page = _open(playwright, reset_carousel_server)
+        section = page.locator("#album-artwork")
+        held = []
+        page.route("**/artwork?reread=1*", lambda route: held.append((route, route.fetch())))
+        page.locator('[hx-target="#album-artwork"][hx-get$="?reread=1"]').click()
+        page.wait_for_function("() => document.querySelector('.htmx-request')")
+
+        section.locator(".art-row").nth(1).locator(".art-row__select").click()
+        section.get_by_role("button", name="Previous image").click()  # 101 stays: none before
+        section.get_by_role("checkbox", name="Front only").uncheck()
+        section.get_by_role("button", name="Next image").click()  # 101 → 102, the back
+        while not held:
+            page.wait_for_timeout(50)
+        route, response = held.pop()
+        with page.expect_response(lambda r: "reread=1" in r.url):
+            route.fulfill(response=response)
+        page.wait_for_function(SETTLED)
+
+        checked = section.locator("input[name='row']:checked")
+        pw.expect(checked).to_have_value(
+            section.locator("input[name='row']").nth(1).get_attribute("value") or ""
+        )
+        assert _shown(page) == ["102"]
+        pw.expect(section.get_by_role("checkbox", name="Front only")).not_to_be_checked()
         browser.close()
 
 

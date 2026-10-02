@@ -2829,6 +2829,25 @@ def _in_hand(mbid: str | None, listing: cover_art.Candidate) -> cover_art.Front 
     return None
 
 
+def _measured(mbid: str | None, listing: cover_art.Candidate) -> str | None:
+    """A listed image's facts line from a measurement, if one is here (#659) —
+    never the network. The picker's own, made the first time it showed the
+    image; or for the release's front, the archive check's."""
+    known = caa_cache.stored_measure(listing.image_id)
+    if known is None and mbid is not None:
+        caa = caa_cache.stored(mbid)
+        if caa is not None and caa.image_url == listing.image_url:
+            known = cover_art.Measure(caa.width, caa.height, caa.length, caa.mime)
+    if known is None:
+        return None
+    size = (
+        images.Size(known.width, known.height)
+        if known.width is not None and known.height is not None
+        else None
+    )
+    return artwork.describe_parts(size, known.mime, known.length)
+
+
 def _offered(
     mbid: str | None, choices: artwork.Choices | None = None
 ) -> tuple[tuple[artwork.Candidate, ...], dict[str, formats.EmbeddedArt]]:
@@ -2860,6 +2879,7 @@ def _offered(
                 types=listing.types,
                 image=image,
                 release=listed.release,
+                measured=None if image is not None else _measured(mbid, listing),
             )
         )
     for image_id, front in _picked_originals(mbid, choices or {}).items():
@@ -6676,6 +6696,36 @@ def _register_routes(app: FastAPI) -> None:
             )
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, "thumbnail unavailable") from e
         return Response(content=thumb.data, media_type=thumb.mime, headers=_IMMUTABLE)
+
+    @app.get("/artwork/candidate/{album_id}/{image_id}/facts", response_class=HTMLResponse)
+    def artwork_candidate_facts(request: Request, album_id: str, image_id: str) -> Response:
+        """A picker candidate's facts line (#659): the original's size, type and
+        weight, measured off its first bytes rather than downloaded.
+
+        Asked for by the carousel the first time it shows the image — a request
+        per image someone looks at, never per image listed — and kept, so every
+        render after has it without asking. Only an image this album's listings
+        name, as for the thumbnail.
+
+        Quiet when the archive can't be reached: the line stays empty, the log
+        has why, and the next time the image is shown asks again.
+        """
+        if not image_id.isdigit():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
+        mbid = _release_of(_find_album(request, album_id))
+        listed = _listed_candidate(mbid, image_id)
+        if listed is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
+        facts = _measured(mbid, listed)
+        if facts is None:
+            try:
+                caa_cache.measure(listed)
+            except cover_art.CoverArtError:
+                log.warning(
+                    "could not measure archive image %s", image_id, exc_info=True, extra=_LOG_ONLY
+                )
+            facts = _measured(mbid, listed)
+        return HTMLResponse(f'<span class="art-row__meta">{html.escape(facts or "")}</span>')
 
     @app.get("/artwork/image/{album_id}/{digest}")
     def artwork_image(request: Request, album_id: str, digest: str) -> Response:

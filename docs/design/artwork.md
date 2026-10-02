@@ -88,7 +88,12 @@ when it was chosen.
 
 The carousel shows the archive's thumbnails, fetched through Harmonist like
 every other image on the page. The original is fetched only when the user
-presses Use, since that's when the plan needs its bytes. A request names an
+presses Use, since that's when the plan needs its bytes. Its size, type and
+weight are what a choice is weighed by, though, so each image is measured the
+first time the carousel shows it, off the original's first 64 KB as the archive
+check measures its front. That's one small request per image someone looks at,
+never per image listed. An archive image id names one upload for good, so a
+measurement never needs repeating. A request names an
 image by the id the archive's listing gave it, never by URL, so nothing a page
 sends can point a fetch anywhere the archive didn't.
 

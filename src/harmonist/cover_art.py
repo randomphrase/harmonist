@@ -556,6 +556,57 @@ def fetch_bytes(url: str, *, client: httpx.Client | None = None) -> tuple[bytes,
             http.close()
 
 
+@dataclass(frozen=True)
+class Measure:
+    """What an archive image is, without downloading it (#659): its size off
+    the header, its whole length and its type. Each part None when the archive
+    didn't say."""
+
+    width: int | None
+    height: int | None
+    length: int | None
+    mime: str | None
+
+
+def measure_candidate(candidate: Candidate, *, client: httpx.Client | None = None) -> Measure:
+    """Measure a listed image's original from its first `MEASURE_BYTES` — what
+    the archive check does for the one front it weighs, done for an image the
+    picker is showing. Raises `CoverArtError` when it could not be fetched."""
+    head, length, mime = fetch_head(candidate.image_url, client=client)
+    size = images.dimensions(head)
+    return Measure(
+        width=size.width if size else None,
+        height=size.height if size else None,
+        length=length,
+        mime=mime,
+    )
+
+
+def fetch_head(
+    url: str, *, client: httpx.Client | None = None
+) -> tuple[bytes, int | None, str | None]:
+    """The start of one image from the archive, the whole image's length, and
+    its type. Raises `CoverArtError` when it could not be fetched.
+
+    Every measurement the picker makes comes through here, by a URL taken from
+    an archive listing — which is also what demo mode replaces, as it replaces
+    `fetch_bytes`.
+    """
+    owns_client = client is None
+    http = client or httpx.Client(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
+    try:
+        try:
+            resp = http.get(url, headers={"Range": f"bytes=0-{MEASURE_BYTES - 1}"})
+        except httpx.HTTPError as e:
+            raise CoverArtError(f"CAA image request failed for {url}: {e}") from e
+        if not resp.is_success:
+            raise CoverArtError(f"CAA returned {resp.status_code} for {url}")
+        return resp.content, _total_length(resp), resp.headers.get("content-type")
+    finally:
+        if owns_client:
+            http.close()
+
+
 def _https(url: str) -> str:
     """The archive's listing states http; the page these end up behind is
     served over TLS."""

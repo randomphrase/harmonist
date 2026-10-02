@@ -802,6 +802,9 @@ class Candidate:
     #: Which other release, for one that is: what tells two pressings apart —
     #: disambiguation, date, country, format.
     release: str | None = None
+    #: The facts line from a measurement of the original, for one not in hand:
+    #: measured the first time the picker showed it.
+    measured: str | None = None
 
     #: The listings a candidate can come from.
     RELEASE: ClassVar[str] = "release"
@@ -811,8 +814,9 @@ class Candidate:
     @property
     def meta(self) -> str | None:
         """The facts line, once there are facts: the original's size and
-        type. A thumbnail says nothing about the original."""
-        return describe(self.image) if self.image is not None else None
+        type, off the original or a measurement of it. A thumbnail says
+        nothing about the original."""
+        return describe(self.image) if self.image is not None else self.measured
 
 
 # No `ArchiveRow`: the archive's one front cover was drawn as a row of its own,

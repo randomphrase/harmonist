@@ -50,6 +50,12 @@ def fetch_bytes(url, *, client=None):
     return data, "image/jpeg"
 
 
+def fetch_head(url, *, client=None):
+    data, mime = fetch_bytes(url)
+    return data[: cover_art.MEASURE_BYTES], len(data), mime
+
+
 mb_lookup.browse_release_group_editions = browse_release_group_editions
 cover_art.fetch_listing = fetch_listing
 cover_art.fetch_bytes = fetch_bytes
+cover_art.fetch_head = fetch_head

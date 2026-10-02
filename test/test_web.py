@@ -10724,6 +10724,79 @@ def test_an_album_with_no_images_of_its_own_can_look_at_other_releases(client, c
     assert client.get(f"/artwork/candidate/{aid}/88").status_code == 404
 
 
+def test_a_listed_image_is_measured_once_the_first_time_it_is_shown(client, cfg, monkeypatch):
+    """An image's size, type and weight are what a choice is weighed by, so
+    the picker shows them for every image — measured off the original's first
+    bytes the first time the image is shown, and kept (#659)."""
+    from harmonist import cover_art
+    from test.test_artwork import png_bytes
+
+    d, _ = _album_in_a_group(cfg, monkeypatch)
+    original = png_bytes(1200, 1200)
+    asked: list[str] = []
+
+    def head(url, **kw):
+        asked.append(url)
+        return original[:1024], 2 * 1024 * 1024, "image/png"
+
+    monkeypatch.setattr(cover_art, "fetch_head", head)
+    aid = _id_for(cfg, d)
+    facts = f'hx-get="/artwork/candidate/{aid}/5/facts"'
+    page = client.get(f"/album/{aid}/artwork").text
+    assert facts in page and asked == []  # rendering asks nothing
+
+    measured = client.get(f"/artwork/candidate/{aid}/5/facts").text
+    again = client.get(f"/artwork/candidate/{aid}/5/facts").text
+
+    assert "1200×1200 · PNG · 2.0 MB" in measured and measured == again
+    assert asked == ["https://coverartarchive.org/release/rel-this/5.png"]
+    page = client.get(f"/album/{aid}/artwork").text
+    assert facts not in page and "1200×1200 · PNG · 2.0 MB" in _slides(page)[0]
+    assert client.get(f"/artwork/candidate/{aid}/88/facts").status_code == 404
+
+
+def test_the_releases_own_front_is_described_by_the_archive_check(client, cfg, monkeypatch):
+    """The check measured the release's front already: the picker says so
+    from that, without asking again (#659)."""
+    d, _ = _album_in_a_group(cfg, monkeypatch)
+    activity_store.store_cover_art(
+        "rel-this",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-this/5.png",
+            width=500,
+            height=500,
+            length=80 * 1024,
+            mime="image/jpeg",
+        ),
+    )
+    aid = _id_for(cfg, d)
+
+    page = client.get(f"/album/{aid}/artwork").text
+
+    assert "500×500 · JPEG · 80 KB" in _slides(page)[0]
+    assert f"/artwork/candidate/{aid}/5/facts" not in page
+
+
+def test_an_image_that_cannot_be_measured_leaves_the_line_empty(client, cfg, monkeypatch):
+    """Nobody pressed anything: an archive that can't be reached leaves the
+    facts line empty and stores nothing, so the next showing asks again."""
+    from harmonist import cover_art
+
+    d, _ = _album_in_a_group(cfg, monkeypatch)
+
+    def down(url, **kw):
+        raise cover_art.CoverArtError("the archive is down")
+
+    monkeypatch.setattr(cover_art, "fetch_head", down)
+    aid = _id_for(cfg, d)
+
+    r = client.get(f"/artwork/candidate/{aid}/5/facts")
+
+    assert r.status_code == 200 and r.text == '<span class="art-row__meta"></span>'
+    assert f'hx-get="/artwork/candidate/{aid}/5/facts"' in client.get(f"/album/{aid}/artwork").text
+
+
 def _carried_artwork(html: str, album_id: str) -> dict[str, str]:
     """The artwork fields the combined **Apply updates** control would submit.
 
