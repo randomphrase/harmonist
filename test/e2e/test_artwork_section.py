@@ -78,13 +78,13 @@ def test_every_row_reaches_its_own_image(demo_server: str) -> None:
         page = browser.new_page()
 
         page.goto(f"{demo_server}/album/{ALBUM_ID}")
-        page.wait_for_selector("#album-artwork .art-row")
+        page.wait_for_selector("#album-artwork .art-pick__picker")
 
         # Every button that SHOWS an image. The archive's "load" frame shares the
         # class and opens nothing by design — it fetches — so it names no target.
         targets = [
             t
-            for b in page.locator("#album-artwork button.art-row__art").all()
+            for b in page.locator("#album-artwork button.art-row__art:not(.art-pick__image)").all()
             if (t := b.get_attribute("popovertarget"))
         ]
         # Two images on this album — the tracks' and the folder cover's — however
@@ -93,7 +93,14 @@ def test_every_row_reaches_its_own_image(demo_server: str) -> None:
         # stale the moment an image could appear twice.
         assert len(set(targets)) == 2, "expected the tracks' image and the folder cover"
 
-        for target in set(targets):
+        # …and every image the picker offers reaches a view of its own (#659).
+        offered = [
+            b.get_attribute("popovertarget")
+            for b in page.locator("#album-artwork button.art-pick__image").all()
+        ]
+        assert offered and all(offered) and len(set(offered)) == len(offered)
+
+        for target in {*targets, *offered}:
             assert page.locator(f"#{target}").count() == 1, f"{target} is not a single element"
 
         browser.close()

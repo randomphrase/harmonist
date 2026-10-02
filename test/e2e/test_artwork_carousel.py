@@ -92,6 +92,63 @@ def test_an_image_is_measured_when_it_is_shown(reset_carousel_server: str) -> No
         browser.close()
 
 
+def test_an_offered_image_opens_full_size(reset_carousel_server: str) -> None:
+    """Pressing the carousel's image opens its full-size view, as a row's
+    does, fetching that one original and no other (#659)."""
+    with pw.sync_playwright() as playwright:
+        browser, page = _open(playwright, reset_carousel_server)
+        originals: list[str] = []
+        page.on(
+            "request",
+            lambda r: (
+                originals.append(r.url.split("/")[-2]) if r.url.endswith("/original") else None
+            ),
+        )
+        image = page.locator("#album-artwork .art-pick__picker .art-pick__slide:visible button")
+        image.scroll_into_view_if_needed()
+        assert originals == []  # nothing fetched to show nothing
+
+        image.click()
+
+        viewer = page.locator(f"#art-cand-full-{ALBUM_ID}-101")
+        pw.expect(viewer).to_be_visible()
+        pw.expect(viewer.locator("img")).to_have_js_property("complete", True)
+        assert viewer.locator("img").evaluate("img => img.naturalWidth") > 0
+        pw.expect(viewer.get_by_role("button", name="Close artwork viewer")).to_be_focused()
+        assert originals == ["101"]
+        browser.close()
+
+
+def test_a_section_swap_does_not_scroll_the_page_in_webkit(reset_carousel_server: str) -> None:
+    """WebKit scrolls the window, synchronously, when the section's form is
+    replaced — tens of pixels, with nothing on the page changing size (#659).
+    Chromium never shows it, so only this engine can tell whether the section
+    is put back where it was."""
+    with pw.sync_playwright() as playwright:
+        try:
+            browser = playwright.webkit.launch()
+        except pw.Error:
+            pytest.skip("WebKit is not installed (playwright install webkit)")
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(f"{reset_carousel_server}/album/{ALBUM_ID}")
+        page.wait_for_selector("#album-artwork .art-pick__picker")
+        page.wait_for_function(SETTLED)
+        page.locator("#album-artwork .art-pick__picker").scroll_into_view_if_needed()
+        page.evaluate("window.scrollBy(0, 200)")
+        page.wait_for_timeout(300)
+        before = page.evaluate("scrollY")
+
+        page.evaluate(
+            """() => htmx.ajax('GET', location.pathname + '/artwork',
+                              {target: '#album-artwork', swap: 'innerHTML settle:0ms'})"""
+        )
+        page.wait_for_timeout(500)
+        page.wait_for_function(SETTLED)
+
+        assert page.evaluate("scrollY") == before
+        browser.close()
+
+
 def test_the_carousel_goes_on_to_another_release(reset_carousel_server: str) -> None:
     """Arriving at the last image lists the next release, so › past it is
     instant — and Use sends whichever image is shown."""

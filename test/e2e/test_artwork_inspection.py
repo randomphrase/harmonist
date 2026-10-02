@@ -142,7 +142,8 @@ def test_thumbnail_frames_do_not_shrink_for_long_metadata(artwork_inspection_ser
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": width, "height": 800})
         host = _open(page, artwork_inspection_server, review)
-        thumbs = host.locator("button.art-row__art[popovertarget]")
+        # The rows' frames: the picker's image is sized by its own panel (#659).
+        thumbs = host.locator("button.art-row__art[popovertarget]:not(.art-pick__image)")
         assert thumbs.count() >= 2
         # Stress one caption, leaving the opposing image's caption short.
         # No layout/style mutation: this is the metadata a large box set can carry.

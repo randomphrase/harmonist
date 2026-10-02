@@ -4,6 +4,9 @@
     const openers = new WeakMap();
     const peers = viewer => Array.from(document.querySelectorAll('.art-full'))
         .filter(other => other.dataset.artGallery === viewer.dataset.artGallery);
+    // An archive candidate's viewer holds its image back until first opened
+    // (`data-src`, #659): either attribute names the picture it shows.
+    const sourceOf = image => image.getAttribute('src') || image.dataset.src;
     const dimensions = image => [
         image.naturalWidth || Number(image.getAttribute('width')),
         image.naturalHeight || Number(image.getAttribute('height')),
@@ -36,19 +39,20 @@
         const viewer = target.querySelector('.art-full:popover-open');
         if (!viewer) return;
         const stage = viewer.querySelector('.art-full__stage');
-        const focus = ['.art-full__stage', '.art-full__mode', '.art-full__image-choice', '[autofocus]']
+        const focus = ['.art-full__stage', '.art-full__mode', '.art-full__image-choice', '[data-autofocus]']
             .find(selector => viewer.querySelector(selector) === document.activeElement);
         inspections.set(target, {
             id: viewer.id,
-            source: viewer.querySelector('img').getAttribute('src'),
+            source: sourceOf(viewer.querySelector('img')),
             mode: viewer.querySelector('.art-full__mode').value,
             position: [stage.scrollLeft, stage.scrollTop],
             opener: openers.get(viewer)?.getAttribute('popovertarget'),
             focus,
         });
     });
-    // HTMX runs inserted autofocus controls during settling. Restore focus
-    // afterwards so the viewer's Close button cannot steal it back.
+    // Restore after settling, once the swapped section's controls are in
+    // place. (Close is marked `data-autofocus`, not `autofocus`, so HTMX no
+    // longer focuses a closed viewer's button on every swap, #659.)
     document.addEventListener('htmx:afterSettle', event => {
         const target = event.detail.target;
         const inspection = inspections.get(target);
@@ -57,7 +61,7 @@
         const viewer = document.getElementById(inspection.id);
         // Do not reopen a different image if the refreshed gallery lost this one.
         if (!viewer || !target.contains(viewer) ||
-            viewer.querySelector('img').getAttribute('src') !== inspection.source) return;
+            sourceOf(viewer.querySelector('img')) !== inspection.source) return;
         const opener = Array.from(target.querySelectorAll('button[popovertarget]'))
             .find(button => button.getAttribute('popovertarget') === inspection.opener);
         if (opener) openers.set(viewer, opener);
@@ -65,7 +69,7 @@
         viewer.showPopover();
         render(viewer);
         viewer.querySelector('.art-full__stage').scrollTo(...inspection.position);
-        viewer.querySelector(inspection.focus || '[autofocus]').focus({preventScroll: true});
+        viewer.querySelector(inspection.focus || '[data-autofocus]').focus({preventScroll: true});
     });
 
     const renderOpen = () => document.querySelectorAll('.art-full:popover-open').forEach(render);
@@ -83,6 +87,13 @@
         const viewer = event.target;
         if (!viewer.matches('.art-full')) return;
         if (event.newState === 'open') {
+            const image = viewer.querySelector('img');
+            if (!image.getAttribute('src') && image.dataset.src) image.src = image.dataset.src;
+            // The focus `autofocus` would have given, without its scroll. Not
+            // over a control a caller already focused on opening it.
+            if (!viewer.contains(document.activeElement)) {
+                viewer.querySelector('[data-autofocus]')?.focus({preventScroll: true});
+            }
             render(viewer);
         } else if (!peers(viewer).some(other => other.matches(':popover-open'))
                    && (document.activeElement === document.body || viewer.contains(document.activeElement))) {
@@ -111,7 +122,7 @@
             openers.set(next, opener);
             render(next);
             next.querySelector('.art-full__stage').scrollTo(...(mode === 'native' ? position : [0, 0]));
-            next.querySelector('[autofocus]').focus({preventScroll: true});
+            next.querySelector('[data-autofocus]').focus({preventScroll: true});
         }
     });
     document.addEventListener('load', event => {
@@ -163,6 +174,26 @@
     // the user has moved it since, put back what they moved after the swap.
     // A response to a request sent from where it still is keeps the server's
     // answer — which is how a step to another release lands on its first image.
+    // A re-render of the section must not move the window. WebKit scrolls it
+    // when the section's form is replaced — synchronously, by tens of pixels,
+    // with nothing on the page changing size (#659) — and Chromium does not.
+    // So note where the section sits on screen before a swap, and put it back
+    // there straight after, before anything is painted: wherever the browser
+    // left it, the section the user is looking at stays put.
+    const onScreen = new WeakMap();
+    document.addEventListener('htmx:beforeSwap', event => {
+        const target = event.detail.target;
+        if (target.id !== 'album-artwork' || event.defaultPrevented || !event.detail.shouldSwap) return;
+        onScreen.set(target, target.getBoundingClientRect().top);
+    });
+    document.addEventListener('htmx:afterSwap', event => {
+        const target = event.detail.target;
+        if (!onScreen.has(target)) return;
+        const moved = target.getBoundingClientRect().top - onScreen.get(target);
+        onScreen.delete(target);
+        if (moved) window.scrollBy({top: moved, behavior: 'instant'});
+    });
+
     const pickerOf = target => target.querySelector('form.art-compare');
     const place = form => form && {
         row: form.querySelector('input[name="row"]:checked')?.value,

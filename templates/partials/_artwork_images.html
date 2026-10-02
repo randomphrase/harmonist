@@ -10,15 +10,30 @@
 {% endmacro %}
 
 {% macro full_size(image, album_id, who, prefix='art-', replacement='', gallery=()) %}
-<div id="{{ prefix }}{{ image.digest[:12] }}" popover class="art-full"
-     role="dialog" aria-label="Artwork viewer" data-art-gallery="{{ prefix }}{{ album_id }}">
+{% set options = [] %}
+{% for other, caption in gallery %}{% set _ = options.append((prefix ~ other.digest[:12], caption)) %}{% endfor %}
+{{ viewer(prefix ~ image.digest[:12], prefix ~ album_id,
+          review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, replacement), who,
+          describe_image(image), image.size, options or [(prefix ~ image.digest[:12], who)]) }}
+{% endmacro %}
+
+{# One full-size view. `options` are its gallery's viewers, (id, caption) each,
+   for the image select. `lazy` holds the image back until the viewer first
+   opens: an archive candidate's original is a download, and a page offering a
+   dozen must not fetch them all to show none (#659).
+
+   The Close button is the one focused on opening, but by `data-autofocus` and
+   artwork-viewer.js rather than `autofocus`: HTMX focuses an inserted
+   `autofocus` after every swap of the section, closed viewer or not, and
+   the script then had to win focus back from it (#659). #}
+{% macro viewer(id, gallery_id, src, who, meta, size=none, options=(), lazy=false) %}
+<div id="{{ id }}" popover class="art-full"
+     role="dialog" aria-label="Artwork viewer" data-art-gallery="{{ gallery_id }}">
     <div class="art-full__controls">
         <label class="art-full__choice">Image
             <select aria-label="Artwork image" class="art-full__image-choice">
-                {% for other, caption in gallery %}
-                <option value="{{ prefix }}{{ other.digest[:12] }}"{% if other.digest == image.digest %} selected{% endif %}>{{ caption }}</option>
-                {% else %}
-                <option value="{{ prefix }}{{ image.digest[:12] }}">{{ who }}</option>
+                {% for value, caption in options %}
+                <option value="{{ value }}"{% if value == id %} selected{% endif %}>{{ caption }}</option>
                 {% endfor %}
             </select>
         </label>
@@ -28,16 +43,16 @@
                 <option value="native">100% (1:1)</option>
             </select>
         </label>
-        <button type="button" aria-label="Close artwork viewer" autofocus
+        <button type="button" aria-label="Close artwork viewer" data-autofocus
                 onclick="this.closest('[popover]').hidePopover()">Close</button>
     </div>
     <div class="art-full__stage" role="region" aria-label="Artwork detail" tabindex="0">
         <div class="art-full__canvas">
-            <img src="{{ review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, replacement) }}" alt="{{ who }}"
-                 {% if image.size %}width="{{ image.size.width }}" height="{{ image.size.height }}"{% endif %}>
+            <img {% if lazy %}data-src{% else %}src{% endif %}="{{ src }}" alt="{{ who }}"
+                 {% if size %}width="{{ size.width }}" height="{{ size.height }}"{% endif %}>
         </div>
     </div>
-    <p class="art-full__meta">{{ describe_image(image) }}</p>
+    <p class="art-full__meta">{{ meta or '' }}</p>
     <output class="art-full__scale" aria-live="polite">Fit</output>
 </div>
 {% endmacro %}

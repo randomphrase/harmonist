@@ -1,4 +1,4 @@
-{% from 'partials/_artwork_images.html' import thumbnail, full_size with context %}
+{% from 'partials/_artwork_images.html' import thumbnail, full_size, viewer with context %}
 {% from 'macros.html' import artwork_chip %}
 {# What artwork this album carries, and what applying it would do (#155).
 
@@ -298,6 +298,13 @@
 
    Its heading is a grid item of its own so it lines up with Now and After
    Apply; the picker below it moves, the heading does not. #}
+{#- A candidate named in a line, for its viewer's image list and its button's
+    accessible name: whose, which release, and its kind when not the front. -#}
+{% macro candidate_caption(c) -%}
+{%- if c.origin == 'release' %}This release{% elif c.origin == 'release-group' %}Release group{% else %}Another release{% endif -%}
+{%- if c.release %} ({{ c.release }}){% endif -%}
+{%- set kinds = c.types|reject('equalto', 'front')|list %}{% if kinds or not c.front %}, {{ (kinds|join(', ') or 'untyped')|lower }}{% endif -%}
+{%- endmacro %}
 {% macro candidate_facts(candidate) %}
 <div class="art-row__facts">
     {# Whose image it is — this release's, the group's, which stands for every
@@ -380,9 +387,13 @@
             <input type="radio" name="candidate" value="{{ c.image_id }}"
                    id="art-cand-{{ album.id }}-{{ c.image_id }}" class="art-row__radio"
                    {% if c.image_id == shown.id %}checked{% endif %}>
-            <span class="art-row__art art-pick__image">
+            {# The image opens its full-size view, as a row's does: a button
+               inside the label, so pressing it does not also pick the slide. #}
+            <button type="button" class="art-row__art art-pick__image"
+                    popovertarget="art-cand-full-{{ album.id }}-{{ c.image_id }}"
+                    aria-label="View {{ candidate_caption(c) }} full size">
                 <img src="/artwork/candidate/{{ album.id }}/{{ c.image_id }}" alt="" loading="lazy">
-            </span>
+            </button>
             {{ candidate_facts(c) }}
         </label>
         {% endfor %}
@@ -489,6 +500,16 @@
    already uses on this page. #}
 {% for image, who in artwork.distinct %}
 {{ full_size(image, album.id, who, gallery=artwork.distinct) }}
+{% endfor %}
+{# …and one per image the picker offers, a gallery of their own, each holding
+   its original back until it is opened (#659). Opening one fetches it, and so
+   puts it in hand: its facts and Unchanged are then the original's. #}
+{% set offered = [] %}
+{% for c in artwork.candidates %}{% set _ = offered.append(('art-cand-full-' ~ album.id ~ '-' ~ c.image_id, candidate_caption(c))) %}{% endfor %}
+{% for c in artwork.candidates %}
+{{ viewer('art-cand-full-' ~ album.id ~ '-' ~ c.image_id, 'art-cand-' ~ album.id,
+          '/artwork/candidate/' ~ album.id ~ '/' ~ c.image_id ~ '/original',
+          candidate_caption(c), c.meta, none, offered, lazy=true) }}
 {% endfor %}
 
 {% if artwork.unreadable %}

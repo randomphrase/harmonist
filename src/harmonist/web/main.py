@@ -6697,6 +6697,31 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, "thumbnail unavailable") from e
         return Response(content=thumb.data, media_type=thumb.mime, headers=_IMMUTABLE)
 
+    @app.get("/artwork/candidate/{album_id}/{image_id}/original")
+    def artwork_candidate_original(request: Request, album_id: str, image_id: str) -> Response:
+        """A picker candidate's original, for its full-size view (#659).
+
+        Fetched when the view is opened — somebody asked to look at it — and
+        kept, so a Use after looking costs nothing more, and the picker can
+        tell from then on whether a row already has it. Only an image this
+        album's listings name, as for the thumbnail.
+        """
+        if not image_id.isdigit():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
+        mbid = _release_of(_find_album(request, album_id))
+        listed = _listed_candidate(mbid, image_id)
+        if listed is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image")
+        try:
+            original = _in_hand(mbid, listed) or cover_art.candidate_image(listed)
+        except cover_art.CoverArtError as e:
+            # The viewer's broken image is the visible signal; the log has why.
+            log.warning(
+                "could not fetch archive image %s", image_id, exc_info=True, extra=_LOG_ONLY
+            )
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "image unavailable") from e
+        return Response(content=original.data, media_type=original.mime, headers=_IMMUTABLE)
+
     @app.get("/artwork/candidate/{album_id}/{image_id}/facts", response_class=HTMLResponse)
     def artwork_candidate_facts(request: Request, album_id: str, image_id: str) -> Response:
         """A picker candidate's facts line (#659): the original's size, type and

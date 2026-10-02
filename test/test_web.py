@@ -10797,6 +10797,36 @@ def test_an_image_that_cannot_be_measured_leaves_the_line_empty(client, cfg, mon
     assert f'hx-get="/artwork/candidate/{aid}/5/facts"' in client.get(f"/album/{aid}/artwork").text
 
 
+def test_an_offered_images_full_size_view_fetches_its_original_once(client, cfg, monkeypatch):
+    """Opening an offered image's full-size view fetches its original —
+    someone asked to look at it — and keeps it: looking twice, or pressing
+    Use after looking, fetches nothing more, and the picker describes it from
+    the original from then on (#659). Only an image a listing names."""
+    from harmonist import cover_art
+    from test.test_artwork import png_bytes
+
+    d, _ = _album_in_a_group(cfg, monkeypatch)
+    original = png_bytes(700, 700)
+    asked: list[str] = []
+
+    def fetch(url, **kw):
+        asked.append(url)
+        return original, "image/png"
+
+    monkeypatch.setattr(cover_art, "fetch_bytes", fetch)
+    aid = _id_for(cfg, d)
+    page = client.get(f"/album/{aid}/artwork").text
+    assert f"/artwork/candidate/{aid}/5/original" in page and asked == []
+
+    first = client.get(f"/artwork/candidate/{aid}/5/original")
+    second = client.get(f"/artwork/candidate/{aid}/5/original")
+
+    assert first.content == second.content == original
+    assert asked == ["https://coverartarchive.org/release/rel-this/5.png"]
+    assert "700×700 · PNG" in _slides(client.get(f"/album/{aid}/artwork").text)[0]
+    assert client.get(f"/artwork/candidate/{aid}/88/original").status_code == 404
+
+
 def _carried_artwork(html: str, album_id: str) -> dict[str, str]:
     """The artwork fields the combined **Apply updates** control would submit.
 
