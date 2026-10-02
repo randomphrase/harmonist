@@ -190,6 +190,7 @@ def summarise(
     cover_unreadable: bool = False,
     chosen: artwork.Source | None = None,
     choices: artwork.Choices | None = None,
+    picks: dict[str, EmbeddedArt] | None = None,
     folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
 ) -> artwork.ArtworkView:
     """`artwork.summarise` for an album at `ALBUM`.
@@ -208,6 +209,7 @@ def summarise(
         cover_unreadable=cover_unreadable,
         chosen=chosen,
         choices=choices or {},
+        picks=picks or {},
         folder_cover=folder_cover,
     )
 
@@ -1147,6 +1149,36 @@ class TestRowChoices:
         assert gap.written_from == "the album's own artwork"
         assert gap.takes_archive is True
 
+    def test_a_row_can_take_a_particular_archive_image(self) -> None:
+        """A pick names an image by its archive id (#659): any of the release's,
+        or its release group's — not only the one front the size rule weighs."""
+        mine = art_of(1)
+        picked = art_of(7, width=500, height=500)
+
+        view = summarise(
+            album(mine, mine),
+            None,
+            picks={"777": picked},
+            choices={mine.digest: "777"},
+            folder_cover=artwork.FolderCoverPolicy.NEVER,
+        )
+
+        plan = view.plan
+        assert plan is not None
+        assert {c.after for c in plan.changes} == {picked.digest}
+        assert all(plan.image_for(c).source is artwork.Source.ARCHIVE for c in plan.changes)
+        assert view.choices == {mine.digest: "777"}
+
+    def test_a_pick_not_in_hand_is_not_honoured(self) -> None:
+        """An image whose original was never fetched — or was evicted since —
+        cannot be written, so it is not claimed as chosen."""
+        mine = art_of(1)
+
+        view = summarise(album(mine), None, picks={}, choices={mine.digest: "777"})
+
+        assert view.choices == {}
+        assert not any(r.writes for r in view.rows if r.tracks)
+
     def test_choices_survive_the_round_trip_through_a_form(self) -> None:
         digest = art_of(1).digest
         choices = {digest: artwork.Choice.ARCHIVE, artwork.COVER: artwork.Choice.KEEP}
@@ -1160,6 +1192,11 @@ class TestRowChoices:
         assert artwork.parse_choices("../etc=archive,cover=everything,none=keep") == {
             artwork.GAP: artwork.Choice.KEEP
         }
+
+    def test_a_pick_by_archive_id_is_read_as_one(self) -> None:
+        """The archive's ids are numbers; anything else in that place is no
+        choice at all."""
+        assert artwork.parse_choices("cover=12345,none=12a,") == {artwork.COVER: "12345"}
 
 
 class TestTheFolderCoverPolicy:

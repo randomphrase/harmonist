@@ -3071,6 +3071,41 @@ def test_rows_chosen_separately_take_different_images_in_one_apply(album_with_tr
     assert bytes(MP4(album_dir / "02 Track 2.m4a")[ATOM_COVER][0]) == mine
 
 
+def test_a_row_picked_by_archive_id_is_written_from_that_image(album_with_tracks, tmp_path):
+    """A pick names a particular archive image (#659); its original is what
+    gets written — not the release's front, which the size rule weighs."""
+    from harmonist import activity_store, artwork, artwork_store, cover_art, images
+
+    activity_store.init(tmp_path / "audit.db")
+    artwork_store.configure(tmp_path / "artwork")
+    album_dir = album_with_tracks(2)
+    mine = _sized_jpeg(400, 400)
+    front = _sized_jpeg(300, 300) + b"_front"
+    picked = _sized_jpeg(500, 500) + b"_picked"
+    for track in ("01 Track 1.m4a", "02 Track 2.m4a"):
+        _embed_cover(album_dir / track, mine)
+    files = sorted(album_dir.glob("*.m4a"))
+    archive = cover_art.Front(data=front, mime="image/jpeg")
+    picks = {"777": cover_art.Front(data=picked, mime="image/jpeg")}
+    plan = tagger.decide_artwork(
+        album_dir,
+        files,
+        None,
+        archive=archive,
+        picks=picks,
+        choices={images.digest(mine): "777"},
+        folder_cover=artwork.FolderCoverPolicy.NEVER,
+    )
+
+    outcome = tagger.apply_artwork(
+        album_dir, plan, files=files, cover_path=None, archive=archive, picks=picks
+    )
+
+    assert outcome.changed == 2
+    for track in ("01 Track 1.m4a", "02 Track 2.m4a"):
+        assert bytes(MP4(album_dir / track)[ATOM_COVER][0]) == picked
+
+
 def test_a_track_whose_image_cannot_be_written_is_named_not_raised(
     album_with_tracks, tmp_path, monkeypatch
 ):

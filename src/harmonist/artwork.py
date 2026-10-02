@@ -171,12 +171,19 @@ GAP = "none"
 
 #: The user's choices, by carrier. A carrier with no entry takes the size
 #: rule's suggestion, so choosing for one row never drops another's.
-Choices = Mapping[str, Choice]
+#: The user's choices, by carrier: a `Choice`, or a particular archive image
+#: named by its id (#659) — any of the release's or its group's, not only the
+#: one front the size rule weighs. A carrier with no entry takes the size
+#: rule's suggestion, so choosing for one row never drops another's.
+Choices = Mapping[str, str]
 
 _CARRIER = re.compile(rf"{COVER}|{GAP}|[0-9a-f]{{64}}")
+#: An archive image id. The archive's are numbers, and nothing else may stand
+#: in that place.
+_IMAGE_ID = re.compile(r"[0-9]{1,20}")
 
 
-def parse_choices(text: str) -> dict[str, Choice]:
+def parse_choices(text: str) -> dict[str, str]:
     """Choices as a request carries them: `carrier=choice`, comma-separated.
 
     Anything else is dropped rather than refused. It can only come from a
@@ -184,18 +191,22 @@ def parse_choices(text: str) -> dict[str, Choice]:
     one — the fingerprint still has to match whatever is left, so nothing is
     written that the page did not show.
     """
-    found: dict[str, Choice] = {}
+    found: dict[str, str] = {}
     for part in text.split(","):
         carrier, _, value = part.partition("=")
-        if _CARRIER.fullmatch(carrier) and value in {c.value for c in Choice}:
+        if not _CARRIER.fullmatch(carrier):
+            continue
+        if value in {c.value for c in Choice}:
             found[carrier] = Choice(value)
+        elif _IMAGE_ID.fullmatch(value):
+            found[carrier] = value
     return found
 
 
 def format_choices(choices: Choices) -> str:
     """The spelling `parse_choices` reads — sorted, so one set of choices is one
     string."""
-    return ",".join(f"{carrier}={choice.value}" for carrier, choice in sorted(choices.items()))
+    return ",".join(f"{carrier}={choice}" for carrier, choice in sorted(choices.items()))
 
 
 class FolderCoverPolicy(StrEnum):
@@ -292,7 +303,7 @@ class ArtworkPlan:
     preserves_per_track_art: bool = False
     #: The user's choices this plan honoured (#659): the ones naming a carrier
     #: the album has, with an image in hand for them.
-    choices: Mapping[str, Choice] = field(default_factory=dict)
+    choices: Mapping[str, str] = field(default_factory=dict)
 
     def image_for(self, change: Change) -> Incoming:
         """The image one change writes, and where it comes from.
@@ -388,10 +399,14 @@ def plan(
     cover_unreadable: bool = False,
     chosen: Source | None = None,
     choices: Choices | None = None,
+    picks: Mapping[str, EmbeddedArt] | None = None,
     folder_cover: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
 ) -> ArtworkPlan:
     """The size rule's suggestion (`_suggest`), with the user's choices made
     over it carrier by carrier (#659).
+
+    `picks` are the archive images a choice may name by id, each with its
+    original in hand.
 
     A carrier the choices do not name keeps its suggestion, so choosing for one
     row never quietly drops what the section proposed for another.
@@ -416,7 +431,7 @@ def plan(
     )
     if not choices or overwrite_art or cover_unreadable:
         return suggested
-    return _with_choices(suggested, cover, archive, choices)
+    return _with_choices(suggested, cover, archive, choices, picks or {})
 
 
 def _with_choices(
@@ -424,12 +439,15 @@ def _with_choices(
     cover: FolderCover | None,
     archive: EmbeddedArt | None,
     choices: Choices,
+    picks: Mapping[str, EmbeddedArt],
 ) -> ArtworkPlan:
     """`suggested`, with every carrier `choices` names taken over by the choice.
 
-    Only the choices that can be honoured are: a carrier the album has, and for
-    the archive's image, the image in hand. The plan records which, so the page
-    never claims a choice it could not act on (#472's rule, per carrier now).
+    Only the choices that can be honoured are: a carrier the album has, and an
+    image in hand for it — the release's own front for `Choice.ARCHIVE`, or the
+    original of the archive image a pick names (`picks`, by archive id). The
+    plan records which, so the page never claims a choice it could not act on
+    (#472's rule, per carrier now).
     """
     album_dir = suggested.album_dir
     before = suggested.before
@@ -438,10 +456,16 @@ def _with_choices(
     # for the missing file has asked for it, which is a different thing from
     # three hundred albums being told they have an update (#659).
     carriers = {digest or GAP for digest in before.values()} | {COVER}
+
+    def image_of(choice: str) -> EmbeddedArt | None:
+        if choice == Choice.ARCHIVE:
+            return archive
+        return picks.get(choice)
+
     honoured = {
         carrier: choice
         for carrier, choice in choices.items()
-        if carrier in carriers and (choice is Choice.KEEP or archive is not None)
+        if carrier in carriers and (choice == Choice.KEEP or image_of(choice) is not None)
     }
     if not honoured:
         return suggested
@@ -454,27 +478,35 @@ def _with_choices(
     kept = {c.target: c for c in suggested.changes if carrier_of(c) not in honoured}
     images = dict(suggested.images)
     chosen: dict[Path, Change] = {}
-    if archive is not None and Choice.ARCHIVE in honoured.values():
-        images[archive.digest] = Incoming(archive, Source.ARCHIVE)
-        # Written only where the bytes differ: choosing the image a carrier
-        # already holds is a no-op, not a rewrite (*Far & Off*, #659).
-        for path, digest in before.items():
-            if honoured.get(digest or GAP) is Choice.ARCHIVE and digest != archive.digest:
-                chosen[path] = Change(target=path, before=digest, after=archive.digest)
-        if honoured.get(COVER) is Choice.ARCHIVE:
-            if cover is None:
-                target = album_dir / cover_name_for(archive.mime)
-                chosen[target] = Change(
-                    target=target, before=None, after=archive.digest, folder_cover=True
-                )
-            elif cover.image.digest != archive.digest:
-                target = cover.path or album_dir / cover.name
-                chosen[target] = Change(
-                    target=target,
-                    before=cover.image.digest,
-                    after=archive.digest,
-                    folder_cover=True,
-                )
+
+    def take(carrier: str) -> EmbeddedArt | None:
+        """The image `carrier` was chosen to take, or None (none, or keep)."""
+        choice = honoured.get(carrier)
+        image = image_of(choice) if choice is not None and choice != Choice.KEEP else None
+        if image is not None:
+            images[image.digest] = Incoming(image, Source.ARCHIVE)
+        return image
+
+    # Written only where the bytes differ: choosing the image a carrier
+    # already holds is a no-op, not a rewrite (*Far & Off*, #659).
+    for path, digest in before.items():
+        image = take(digest or GAP)
+        if image is not None and digest != image.digest:
+            chosen[path] = Change(target=path, before=digest, after=image.digest)
+    if (image := take(COVER)) is not None:
+        if cover is None:
+            target = album_dir / cover_name_for(image.mime)
+            chosen[target] = Change(
+                target=target, before=None, after=image.digest, folder_cover=True
+            )
+        elif cover.image.digest != image.digest:
+            target = cover.path or album_dir / cover.name
+            chosen[target] = Change(
+                target=target,
+                before=cover.image.digest,
+                after=image.digest,
+                folder_cover=True,
+            )
     # Tracks in album order, then the folder cover, as `_plan_for` lays them out.
     changes = [
         c
@@ -1070,7 +1102,7 @@ class ArtworkView:
     chosen: Source | None = None
     #: The choices made row by row that the plan honoured (#659). What the
     #: section's controls carry back, and what each of them changes by one row.
-    choices: Mapping[str, Choice] = field(default_factory=dict)
+    choices: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def use(self) -> str:
@@ -1349,6 +1381,7 @@ def summarise(
     cover_unreadable: bool = False,
     chosen: Source | None = None,
     choices: Choices | None = None,
+    picks: Mapping[str, EmbeddedArt] | None = None,
     folder_cover: FolderCoverPolicy = FolderCoverPolicy.IF_MISSING,
 ) -> ArtworkView:
     """Everything the section shows, from tags already read and a folder cover.
@@ -1386,6 +1419,7 @@ def summarise(
         cover_unreadable=cover_unreadable,
         chosen=taken,
         choices=choices,
+        picks=picks,
         folder_cover=folder_cover,
     )
     by_target = {c.target: c for c in the_plan.changes}

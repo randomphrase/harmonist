@@ -170,6 +170,7 @@ class Tagger(Protocol):
         artwork_included: bool = True,
         chosen: artwork.Source | None = None,
         choices: artwork.Choices | None = None,
+        picks: Mapping[str, cover_art.Front] | None = None,
         assignment: dict[Path, int] | None = None,
         folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
         transforms: frozenset[TagTransform] = frozenset(),
@@ -196,6 +197,7 @@ class PicardCompatibleTagger:
         artwork_included: bool = True,
         chosen: artwork.Source | None = None,
         choices: artwork.Choices | None = None,
+        picks: Mapping[str, cover_art.Front] | None = None,
         assignment: dict[Path, int] | None = None,
         folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
         transforms: frozenset[TagTransform] = frozenset(),
@@ -213,6 +215,7 @@ class PicardCompatibleTagger:
             artwork_included=artwork_included,
             chosen=chosen,
             choices=choices,
+            picks=picks,
             assignment=assignment,
             folder_cover=folder_cover,
             transforms=transforms,
@@ -654,6 +657,7 @@ def decide_artwork(
     consider: bool = True,
     chosen: artwork.Source | None = None,
     choices: artwork.Choices | None = None,
+    picks: Mapping[str, cover_art.Front] | None = None,
     folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
 ) -> artwork.ArtworkPlan:
     """The album's artwork plan, read from its files (#418, #469).
@@ -687,7 +691,8 @@ def decide_artwork(
     overridden the rule.
 
     `choices` are the same, made row by row (#659), and ride here for the same
-    reason.
+    reason — with `picks`, the originals of the archive images a choice may
+    name by id.
 
     `folder_cover` is the user's policy on creating one the album has not got
     (#516), and it rides here for the reason `chosen` does: the plan is rebuilt
@@ -711,6 +716,10 @@ def decide_artwork(
         overwrite_art=overwrite_art,
         chosen=chosen,
         choices=choices,
+        picks={
+            image_id: formats.EmbeddedArt.of(front.data, front.mime)
+            for image_id, front in (picks or {}).items()
+        },
         folder_cover=folder_cover,
     )
 
@@ -995,9 +1004,13 @@ def _image_bytes(
     incoming: artwork.Incoming,
     cover_path: Path | None,
     archive: cover_art.Front | None,
+    picks: Mapping[str, cover_art.Front] | None = None,
 ) -> bytes:
     """One of the plan's images, read from where the plan found it — and
     checked to BE that image, by digest.
+
+    An archive image is the release's own front (`archive`) or one picked by
+    id (`picks`, #659); which, is whichever of them the plan's digest is.
 
     The plan carries descriptions, not bytes: an album page holds every track's
     tags at once, and carrying the images too would be hundreds of megabytes on
@@ -1016,8 +1029,9 @@ def _image_bytes(
             carrier = next((p for p, d in plan.before.items() if d == image.digest), None)
             art = formats.read_cover(carrier) if carrier is not None else None
             data = art[0] if art is not None else None
-        elif source is artwork.Source.ARCHIVE and archive is not None:
-            data = archive.data
+        elif source is artwork.Source.ARCHIVE:
+            offered = [*([archive] if archive is not None else []), *(picks or {}).values()]
+            data = next((f.data for f in offered if images.digest(f.data) == image.digest), None)
     except OSError as e:
         raise ArtworkChangedError(f"could not read the winning image again: {e}") from e
     if data is None or images.digest(data) != image.digest:
@@ -1030,6 +1044,7 @@ def _load_images(
     changes: Sequence[artwork.Change],
     cover_path: Path | None,
     archive: cover_art.Front | None,
+    picks: Mapping[str, cover_art.Front] | None = None,
 ) -> dict[str, bytes]:
     """The bytes of every distinct image `changes` write, by digest — all of
     them before anything is written.
@@ -1043,7 +1058,9 @@ def _load_images(
     loaded: dict[str, bytes] = {}
     for change in changes:
         if change.after not in loaded:
-            loaded[change.after] = _image_bytes(plan, plan.image_for(change), cover_path, archive)
+            loaded[change.after] = _image_bytes(
+                plan, plan.image_for(change), cover_path, archive, picks
+            )
     return loaded
 
 
@@ -1543,9 +1560,13 @@ def apply_artwork(
     files: Sequence[Path],
     cover_path: Path | None,
     archive: cover_art.Front | None = None,
+    picks: Mapping[str, cover_art.Front] | None = None,
     scope: artwork.Scope = artwork.Scope.ALL,
 ) -> ArtworkOutcome:
     """Carry out the part of `plan` that `scope` permits, and nothing else.
+
+    `archive` and `picks` are the archive images the plan may write: the
+    release's own front, and any picked by id (#659).
 
     The executor half of #469. It decides nothing: which image, and where, came
     from the plan — the one the album page drew its rows from, when the page is
@@ -1575,7 +1596,7 @@ def apply_artwork(
     # which may be the better one (#479), and one per row a user chose for
     # (#659). Loaded before anything is written, and only the ones this action
     # really writes — a plan that touches no track reads no track.
-    loaded = _load_images(plan, changes, cover_path, archive)
+    loaded = _load_images(plan, changes, cover_path, archive, picks)
     track_digests = list(dict.fromkeys(c.after for c in tracks))
 
     # Before anything is written, and for the same reason `tag_album` records
@@ -1710,6 +1731,7 @@ def tag_and_artwork(
     artwork_included: bool = True,
     chosen: artwork.Source | None = None,
     choices: artwork.Choices | None = None,
+    picks: Mapping[str, cover_art.Front] | None = None,
     assignment: dict[Path, int] | None = None,
     folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
     transforms: frozenset[TagTransform] = frozenset(),
@@ -1798,6 +1820,7 @@ def tag_and_artwork(
             overwrite_art=overwrite_art,
             chosen=chosen,
             choices=choices,
+            picks=picks,
             folder_cover=folder_cover,
         )
     except OSError:
@@ -1847,7 +1870,13 @@ def tag_and_artwork(
 
     try:
         outcome = apply_artwork(
-            album_dir, art, files=paths, cover_path=cover_path, archive=archive, scope=scope
+            album_dir,
+            art,
+            files=paths,
+            cover_path=cover_path,
+            archive=archive,
+            picks=picks,
+            scope=scope,
         )
     except ArtworkChangedError:
         # The image moved between deciding and writing. The TAGS stand: losing
