@@ -127,7 +127,9 @@ The album page reads it. A row carrying a stand-in says where it was borrowed
 from, and once the page's archive check finds the release has a front of its
 own, those rows take it as though it had been chosen for them, so the row's ×
 can still keep the stand-in. The check downloads that front however it measures,
-since it wins regardless. The background update check doesn't read the record
+since it wins regardless. If the front turns out to be the stand-in itself, as it
+can when the group's front was this release's all along, nothing was borrowed:
+the check clears the record, and the album's History says so. The background update check doesn't read the record
 yet: it doesn't look at artwork at all, which is #269's to change.
 
 ## Additions and replacements

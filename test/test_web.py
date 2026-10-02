@@ -10972,20 +10972,30 @@ def test_a_stand_in_sends_the_page_for_the_releases_own_front_however_small(clie
     assert f'hx-get="/album/{aid}/artwork?check=1' in page
 
 
-def test_a_stand_in_that_turns_out_to_be_the_releases_own_is_not_borrowed(client, cfg):
+def test_a_stand_in_that_turns_out_to_be_the_releases_own_is_cleared(client, cfg, monkeypatch):
     """The release's new front can be the very image that stood in for it —
-    the group's front was its own all along. Then nothing was borrowed, and
-    nothing is said or offered (#663)."""
+    the group's front was its own all along. Then nothing was borrowed: the
+    page's archive check clears the record, and the album's History says so,
+    once (#663)."""
+    from harmonist import cover_art
+
     d, theirs = _borrowing_album(cfg)
     aid = _id_for(cfg, d)
     _apply_shown(client, aid, _pick(client, aid, client.get(f"/album/{aid}/artwork").text))
     assert "borrowed from the release group" in client.get(f"/album/{aid}/artwork").text
-
     _gains_its_own_front(theirs)
-    page = client.get(f"/album/{aid}/artwork").text
+    # The archive answers what is stored; nothing here may reach it.
+    monkeypatch.setattr(cover_art, "check_front", lambda *a, **kw: pytest.fail("asked"))
+    monkeypatch.setattr(cover_art, "fetch_listing", lambda *a, **kw: pytest.fail("listed"))
 
+    page = client.get(f"/album/{aid}/artwork", params={"check": "1"}).text
+    client.get(f"/album/{aid}/artwork", params={"check": "1"})
+
+    assert sc.read(d).borrowed_artwork == ()
     assert "borrowed from" not in page
     assert "Apply artwork" not in page
+    said = [e.message for e in activity.recent(50) if "previously borrowed" in e.message]
+    assert said == ["Artwork was previously borrowed, but now updated to match the release's own"]
 
 
 def test_keeping_a_stand_in_is_the_users_to_say(client, cfg):

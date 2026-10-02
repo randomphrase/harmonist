@@ -2990,6 +2990,33 @@ def _stand_ins_after(
     return tuple(kept)
 
 
+def _settle_own_front(album: Album, mbid: str) -> bool:
+    """Drop the stand-ins the release's own front turned out to be (#663), and
+    say whether any were.
+
+    A stand-in whose bytes ARE the front the release now has was its cover all
+    along — the group's front is very often one release's own — so there is
+    nothing to give way to and nothing borrowed to say. Called after the
+    archive check, the one moment that learns the front: a render only reads.
+    Every part of a multi-folder album carries its own sidecar, and the record
+    is the album's, so each is re-read and rewritten if it held one.
+    """
+    front = cover_art.cached_front(mbid, release_only=True)
+    if front is None:
+        return False
+    own = images.digest(front.data)
+    settled = False
+    for folder in album.folders or [album.path]:
+        sc = sidecar_mod.read(folder)
+        if sc is None or sc.mb_release_id != mbid:
+            continue
+        kept = tuple(b for b in sc.borrowed_artwork if not (b.release == mbid and b.digest == own))
+        if kept != sc.borrowed_artwork:
+            sidecar_mod.write(folder, replace(sc, borrowed_artwork=kept))
+            settled = True
+    return settled
+
+
 def _artwork_view(
     album: Album,
     caa: activity_store.CachedCoverArt | None = None,
@@ -6514,6 +6541,20 @@ def _register_routes(app: FastAPI) -> None:
                 _artwork_view(album, folder_cover=_folder_cover_policy(request)),
                 max_age=caa_cache.FRESH if reread else None,
             )
+            if (
+                album.sidecar is not None
+                and album.sidecar.borrowed_artwork
+                and _settle_own_front(album, mbid)
+            ):
+                album = _refreshed_from_disk(request, _find_album(request, album_id))
+                # The sidecar write is audited; this is the album's History,
+                # where the borrowed note the user saw is accounted for.
+                album_id_now, label = _live_album_ref(album)
+                activity.info(
+                    "Artwork was previously borrowed, but now updated to match the release's own",
+                    album_id=album_id_now,
+                    album_label=label,
+                )
         showing_fronts = front_only[-1] == "1" if front_only else None
         if more and mbid is not None:
             try:
