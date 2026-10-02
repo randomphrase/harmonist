@@ -234,9 +234,11 @@ def fetch_release_group_editions(release_group_mbid: str) -> tuple[list[Release]
     """Browse a release group's releases, always live, and store the page (#618).
 
     Always fresh: the only readers are the album page, where opening it is how
-    the user sees an edit they just made, and the background check, whose job
-    is to look again. The stored page feeds the Library's Possible mismatch and
-    MB contributions filters without a request.
+    the user sees an edit they just made, the artwork picker stepping on to
+    another release (#659), and the background check, whose job is to look
+    again. The stored page feeds the Library's Possible mismatch and MB
+    contributions filters without a request, and tells the picker which stored
+    listings are the group's releases'.
 
     It records an absence (no release links the store URL) that may be gone by
     tomorrow, so nothing that decides what to offer is served it: the album page

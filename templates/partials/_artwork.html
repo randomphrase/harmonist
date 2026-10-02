@@ -75,7 +75,7 @@
    would write something other than what was asked for. #}
 {% if artwork_choice_unavailable %}
 <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-    That image isn't here any more — load it again to choose it. This is the
+    That image isn't here any more — press Use again to choose it. This is the
     ordinary artwork for this album.
 </p>
 {% endif %}
@@ -119,8 +119,13 @@
 
    Without a candidate there is nothing to pick, and the section is the plain
    two columns it always was: no radios, no picker, nothing in the form that
-   submits it. #}
+   submits it — except a way to look at the group's other releases, while one
+   might have images (#659). #}
 {% set picker = artwork.candidates %}
+{#- Somewhere to step to: images, or another release that might have some
+    (#659). An album whose own release lists nothing is where looking at the
+    others matters most. -#}
+{% set steppable = picker or artwork.other_releases %}
 {% set selected = artwork_selected|default(0) %}
 {% set front_only = artwork_front_only if artwork_front_only is defined else artwork.front_only %}
 {#- The image the picker shows: the one it showed before this render, or the
@@ -132,12 +137,18 @@
 {% for c in picker %}
 {% if shown.id is none and (c.front or not front_only) %}{% set shown.id = c.image_id %}{% endif %}
 {% endfor %}
+{# `queue last`: a step's look ahead at the next release (#659) is in flight
+   while the user goes on pressing, and a press must wait for it rather than be
+   dropped. #}
 <form id="art-pick-{{ album.id }}"
-      class="art-compare{% if picker %} art-compare--pick{% endif %}"
-      hx-get="/album/{{ album.id }}/artwork"
+      class="art-compare{% if steppable %} art-compare--pick{% endif %}"
+      hx-get="/album/{{ album.id }}/artwork" hx-sync="this:queue last"
       hx-target="#album-artwork" hx-swap="innerHTML settle:0ms">
-{% if picker %}
+{% if steppable %}
 <input type="hidden" name="use" value="{{ artwork.use }}">
+{% if artwork_browsed|default(false) %}<input type="hidden" name="browsed" value="1">{% endif %}
+{% endif %}
+{% if picker %}
 {#- Generated, because a row or image count is not something a stylesheet
     knows; scoped to this album's form so two sections could never move each
     other's picker. Per row: where the picker sits, and which row's Use is
@@ -245,6 +256,8 @@
                    words in both places: it is the same fact. #}
                 {% if r.from_release_group %}
                 <span class="art-row__meta-plain">for the release group, not this release</span>
+                {% elif r.from_other_release %}
+                <span class="art-row__meta-plain">for another release, not this one</span>
                 {% endif %}
                 {# The way to keep what the row has instead (#659), whether the
                    size rule suggested this or the user chose it: either way it is
@@ -287,10 +300,17 @@
    Apply; the picker below it moves, the heading does not. #}
 {% macro candidate_facts(candidate) %}
 <div class="art-row__facts">
-    {# Whose image it is — this release's, or the group's, which stands for
-       every release of the album (#434) — and what kind, when it is not
-       simply the front. #}
-    <span class="art-row__who">{{ 'This release' if candidate.origin == 'release' else 'Release group' }}</span>
+    {# Whose image it is — this release's, the group's, which stands for every
+       release of the album (#434), or another release's, named by what tells
+       it apart — and what kind, when it is not simply the front. #}
+    {% if candidate.origin == 'release' %}
+    <span class="art-row__who">This release</span>
+    {% elif candidate.origin == 'release-group' %}
+    <span class="art-row__who">Release group</span>
+    {% else %}
+    <span class="art-row__who">Another release</span>
+    {% if candidate.release %}<span class="art-row__meta-plain">{{ candidate.release }}</span>{% endif %}
+    {% endif %}
     {% set kinds = candidate.types|reject('equalto', 'front')|list %}
     {% if kinds or not candidate.front %}
     <span class="art-row__meta-plain">{{ (kinds|join(', ') or 'untyped')|capitalize }}</span>
@@ -298,9 +318,10 @@
     {% if candidate.meta %}<span class="art-row__meta">{{ candidate.meta }}</span>{% endif %}
 </div>
 {% endmacro %}
-{% if picker %}
+{% if steppable %}
 <span class="art-pick__head">Available</span>
 <div class="art-pick__picker">
+    {% if picker %}
     {# Outside the panel's edge, facing the rows: previous row, the arrow that
        sends this image to the checked row, next row. The arrow IS the Use
        button, so the direction it points is the thing it does — into the
@@ -354,11 +375,23 @@
             {{ candidate_facts(c) }}
         </label>
         {% endfor %}
-        {% if picker|length > 1 %}
+        {% if picker|length > 1 or artwork.other_releases %}
         <button type="button" class="art-pick__turn art-pick__turn--back" data-art-step="-1"
                 data-art-group="candidate" aria-label="Previous image">‹</button>
         <button type="button" class="art-pick__turn art-pick__turn--on" data-art-step="1"
                 data-art-group="candidate" aria-label="Next image">›</button>
+        {% endif %}
+        {# Past the last image, the next release in the group (#659). The
+           script presses these: `step` when › finds nothing further, so the
+           response shows the new release's first image; `ahead` on arriving at
+           the last image, so the next release is listed before › is pressed.
+           Buttons rather than a field the script sets, so what is sent is
+           plain markup HTMX reads like any other press. #}
+        {% if artwork.other_releases %}
+        <button type="submit" name="more" value="step" class="art-pick__more" data-more="step"
+                hidden tabindex="-1"></button>
+        <button type="submit" name="more" value="ahead" class="art-pick__more" data-more="ahead"
+                hidden tabindex="-1"></button>
         {% endif %}
     </div>
     {% if picker|selectattr('front')|list and picker|rejectattr('front')|list %}
@@ -368,12 +401,23 @@
         Front only
     </label>
     {% endif %}
+    {% else %}
+    {# This release lists nothing, but another in its group might. #}
+    <button type="submit" name="more" value="step"
+            class="art-pick__others text-2xs uppercase tracking-widest font-bold px-3 py-1.5 rounded
+                   border border-line text-muted hover:text-ink hover:border-mb-purple/40 transition"
+            title="Look for images on the other releases of this album">Other releases ›</button>
+    {% endif %}
 </div>
 {# The picker's invisible double, on the last row's line: what reserves the
    room for the picker to hang from any row, since the picker itself takes no
    part in sizing the rows (see `.art-pick__ghost`). The same frame, with the
    tallest facts any image can have, so it is at least as tall as whichever
-   image is shown; nothing in it can be reached. #}
+   image is shown; nothing in it can be reached. Another release's label is the
+   one fact whose length varies, so the ghost carries the longest. #}
+{% if picker %}
+{% set longest = namespace(label='') %}
+{% for c in picker if c.release and c.release|length > longest.label|length %}{% set longest.label = c.release %}{% endfor %}
 <div class="art-pick__ghost" aria-hidden="true" inert
      style="--art-pick-last: {{ artwork.rows|length + 1 }}">
     <div class="art-pick__carousel">
@@ -381,6 +425,7 @@
             <span class="art-row__art art-pick__image"></span>
             <span class="art-row__facts">
                 <span class="art-row__who">Release group</span>
+                {% if longest.label %}<span class="art-row__meta-plain">{{ longest.label }}</span>{% endif %}
                 <span class="art-row__meta-plain">Back</span>
                 <span class="art-row__meta">0×0 · JPEG · 0 KB</span>
             </span>
@@ -390,6 +435,7 @@
     <span class="art-pick__front-only">Front only</span>
     {% endif %}
 </div>
+{% endif %}
 {% endif %}
 </form>
 

@@ -228,12 +228,23 @@ def _listing_key(kind: str) -> str:
     return f"caa-listing:{kind}"
 
 
-def stored_listing(kind: str, mbid: str) -> list[cover_art.Candidate] | None:
+def stored_listing(
+    kind: str, mbid: str, *, fresh: bool = False
+) -> list[cover_art.Candidate] | None:
     """The candidates last listed for this release or release group, or None if
-    it has never been asked. **Never the network**, whatever the age — what the
-    section renders from."""
+    it has never been asked. **Never the network** — what the section renders
+    from.
+
+    Whatever the age, unless `fresh`: then None once the listing has outlived
+    the TTL. The album's own listings are refreshed by the archive check, which
+    the section sends whenever they are stale; another release's is listed only
+    when someone steps to it (#659), so a stale one is dropped from the picker
+    and listed again on the next step, rather than shown with an age nobody can
+    see."""
     known = activity_store.cached_release(mbid, _listing_key(kind))
-    return cover_art.parse_listing(known.payload) if known is not None else None
+    if known is None or (fresh and not _fresh_since(known.fetched_at, _ttl)):
+        return None
+    return cover_art.parse_listing(known.payload)
 
 
 def listing(kind: str, mbid: str, *, max_age: timedelta | None = None) -> list[cover_art.Candidate]:

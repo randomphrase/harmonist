@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any, Literal, Protocol
+from typing import Annotated, Any, Literal, NamedTuple, Protocol
 from urllib.parse import parse_qsl, quote, urlencode
 
 from fastapi import (
@@ -2617,18 +2617,71 @@ def _release_of(album: Album) -> str | None:
     return album.sidecar.mb_release_id if album.sidecar else None
 
 
-def _listings(mbid: str | None) -> list[tuple[str, cover_art.Candidate]]:
-    """Every image the archive lists for this release and its group, by origin
-    — from what is stored, never the network (#659)."""
-    if mbid is None:
-        return []
-    listed = [("release", c) for c in caa_cache.stored_listing("release", mbid) or []]
+class _Listed(NamedTuple):
+    """One image a listing names, and which listing: `artwork.Candidate`'s
+    origins, and for another release, what tells it apart."""
+
+    origin: str
+    listing: cover_art.Candidate
+    release: str | None = None
+
+
+def _group_of(mbid: str) -> str | None:
+    """The release's group, from the STORED release payload — a local read
+    with no MusicBrainz request in it (#434)."""
     stored = mb_cache.stored_release(mbid)
     group = (stored.get("release-group") or {}).get("id") if stored else None
-    if isinstance(group, str):
-        listed += [
-            ("release-group", c) for c in caa_cache.stored_listing("release-group", group) or []
-        ]
+    return group if isinstance(group, str) else None
+
+
+def _other_releases(mbid: str, group: str) -> list[Release]:
+    """The group's other releases, as its last browse listed them, leaving out
+    any MusicBrainz says has no artwork in the archive: listing one of those
+    would spend a request to learn nothing."""
+    stored = mb_cache.stored_release_group_editions(group)
+    return [
+        r
+        for r in (stored[0] if stored else [])
+        if r.get("id") != mbid and (r.get("cover-art-archive") or {}).get("artwork") != "false"
+    ]
+
+
+def _release_label(release: Release) -> str:
+    """What tells one release of an album from another: the same facts the
+    release pickers show, minus the title they share."""
+    s = mb_lookup.release_summary(release)
+    return " · ".join(
+        str(v) for v in (s["disambiguation"], s["date"], s["country"], s["media"]) if v
+    )
+
+
+def _listings(mbid: str | None) -> list[_Listed]:
+    """Every image the archive lists for this release, then its group, then
+    any other release in the group someone has stepped to (#659) — from what
+    is stored, never the network.
+
+    Another release's listing is kept only while it is fresh: nothing else
+    refreshes it, so a stale one drops out and the next step lists it again.
+    The group's stored browse only says which listings are its releases'; it
+    decides nothing about what to ask for next (see `_list_another_release`).
+    """
+    if mbid is None:
+        return []
+    listed = [
+        _Listed(artwork.Candidate.RELEASE, c)
+        for c in caa_cache.stored_listing("release", mbid) or []
+    ]
+    group = _group_of(mbid)
+    if group is None:
+        return listed
+    listed += [
+        _Listed(artwork.Candidate.RELEASE_GROUP, c)
+        for c in caa_cache.stored_listing("release-group", group) or []
+    ]
+    for release in _other_releases(mbid, group):
+        stored = caa_cache.stored_listing("release", str(release["id"]), fresh=True)
+        label = _release_label(release)
+        listed += [_Listed(artwork.Candidate.OTHER_RELEASE, c, label) for c in stored or []]
     return listed
 
 
@@ -2638,20 +2691,90 @@ def _listed_candidate(mbid: str | None, image_id: str) -> cover_art.Candidate | 
     The ONLY way an image id from a request reaches a fetch: what is fetched is
     the URL the archive's own listing gave for it, so a request can never point
     a server-side fetch anywhere else."""
-    return next((c for _, c in _listings(mbid) if c.image_id == image_id), None)
+    return next((x.listing for x in _listings(mbid) if x.listing.image_id == image_id), None)
 
 
 def _picked_originals(mbid: str | None, choices: artwork.Choices) -> dict[str, cover_art.Front]:
     """The originals of the archive images `choices` name by id, as
     `_in_hand` finds them — what an apply writes them from (#659). One not in
     hand is simply absent, and the plan rebuilt without it fails the page's
-    fingerprint."""
+    fingerprint.
+
+    By id alone for one no listing names any more: another release's image
+    stays chosen after its listing lapses, and was fetched under its id when
+    it was chosen. A lookup in the cache, never a fetch."""
     found: dict[str, cover_art.Front] = {}
-    for choice in choices.values():
-        listing = _listed_candidate(mbid, choice) if choice.isdigit() else None
-        if listing is not None and (front := _in_hand(mbid, listing)) is not None:
+    ids = {c for c in choices.values() if c.isdigit()}
+    if not ids:
+        return found
+    listed = {x.listing.image_id: x.listing for x in _listings(mbid)}
+    for choice in ids:
+        listing = listed.get(choice)
+        front = (
+            _in_hand(mbid, listing)
+            if listing is not None
+            else cover_art.cached_candidate_image(choice)
+        )
+        if front is not None:
             found[choice] = front
     return found
+
+
+def _list_another_release(mbid: str, *, browsed: bool) -> str | None:
+    """List the next release in the album's group that has images to offer
+    (#659), and return its id — or None when there is no release left.
+
+    Pressed for, never on page open: the user stepped past the last image the
+    picker had. The group is browsed live the first time in a page's life
+    (`browsed` false): that browse decides what is offered, so it is never the
+    stored page another screen left behind, which may be missing a release
+    added since (see `mb_cache.fetch_release_group_editions`). Later steps on
+    the same page go on from that browse.
+
+    One MusicBrainz request at most, and an archive request per release
+    listed, up to `_LISTINGS_PER_STEP` when releases turn out to have nothing
+    to show. `MBError` and `CoverArtError` propagate, and nothing is stored for
+    a release whose listing failed.
+    """
+    group = _group_of(mbid)
+    if group is None:
+        return None
+    if not browsed or mb_cache.stored_release_group_editions(group) is None:
+        mb_cache.fetch_release_group_editions(group)
+    tried = 0
+    for release in _other_releases(mbid, group):
+        release_id = str(release["id"])
+        if caa_cache.stored_listing("release", release_id, fresh=True) is not None:
+            continue
+        tried += 1
+        if caa_cache.listing("release", release_id):
+            return release_id
+        if tried >= _LISTINGS_PER_STEP:
+            break
+    return None
+
+
+#: How many releases one step lists before giving up on finding one with an
+#: image: MusicBrainz's own "has artwork" can be stale, and a release can list
+#: only images the picker never offers (#659).
+_LISTINGS_PER_STEP = 3
+
+
+def _another_release_possible(mbid: str | None, *, browsed: bool) -> bool:
+    """Whether a step past the last image could find another release (#659).
+
+    Before this page has browsed the group, any release in a group might have
+    a sibling — and the stored browse is not consulted to say otherwise, since
+    a page that left a new release out would hide it here for good. After,
+    whether that browse has a release not yet listed."""
+    if mbid is None or (group := _group_of(mbid)) is None:
+        return False
+    if not browsed:
+        return True
+    return any(
+        caa_cache.stored_listing("release", str(r["id"]), fresh=True) is None
+        for r in _other_releases(mbid, group)
+    )
 
 
 def _selected_row(view: artwork.ArtworkView, carriers: Sequence[str], fallback: int) -> int:
@@ -2707,18 +2830,21 @@ def _in_hand(mbid: str | None, listing: cover_art.Candidate) -> cover_art.Front 
 
 
 def _offered(
-    mbid: str | None,
+    mbid: str | None, choices: artwork.Choices | None = None
 ) -> tuple[tuple[artwork.Candidate, ...], dict[str, formats.EmbeddedArt]]:
     """What the picker offers this album, and the originals already in hand
-    (#659): every image the archive lists for its release and then its release
-    group, each once.
+    (#659): every image the archive lists for its release, its release group,
+    and the other releases someone has stepped to, each once.
 
     From what is stored, never the network — the listings the archive check
     keeps, and the release payload the page already read for the group's id.
+    The originals include any image `choices` name that no listing does any
+    more, so a choice outlives the listing it was made from.
     """
     candidates: list[artwork.Candidate] = []
     picks: dict[str, formats.EmbeddedArt] = {}
-    for origin, listing in _listings(mbid):
+    for listed in _listings(mbid):
+        listing = listed.listing
         # The group's front is very often one of the release's own images.
         if any(c.image_id == listing.image_id for c in candidates):
             continue
@@ -2729,16 +2855,48 @@ def _offered(
         candidates.append(
             artwork.Candidate(
                 image_id=listing.image_id,
-                origin=origin,
+                origin=listed.origin,
                 front=listing.front,
                 types=listing.types,
                 image=image,
+                release=listed.release,
             )
         )
+    for image_id, front in _picked_originals(mbid, choices or {}).items():
+        picks.setdefault(image_id, formats.EmbeddedArt.of(front.data, front.mime))
     return tuple(candidates), picks
 
 
 def _artwork_view(
+    album: Album,
+    caa: activity_store.CachedCoverArt | None = None,
+    archive: formats.EmbeddedArt | None = None,
+    *,
+    folder_cover: artwork.FolderCoverPolicy,
+    chosen: artwork.Source | None = None,
+    choices: artwork.Choices | None = None,
+    tracks: _FileTags | None = None,
+    browsed: bool = False,
+) -> artwork.ArtworkView:
+    """`_summarised_view`, and whether the picker can step on to another
+    release (#659) — `browsed` being whether this page has browsed the group
+    already. Every render of the section comes through here, so none of them
+    leaves that out."""
+    view = _summarised_view(
+        album,
+        caa,
+        archive,
+        folder_cover=folder_cover,
+        chosen=chosen,
+        choices=choices,
+        tracks=tracks,
+    )
+    return replace(
+        view, other_releases=_another_release_possible(_release_of(album), browsed=browsed)
+    )
+
+
+def _summarised_view(
     album: Album,
     caa: activity_store.CachedCoverArt | None = None,
     archive: formats.EmbeddedArt | None = None,
@@ -2786,7 +2944,7 @@ def _artwork_view(
             "album artwork read", _SLOW_ALBUM_READ, album=album.path, files=len(files)
         ):
             tracks = [(f, formats.read_tags(f)) for f in files]
-    candidates, picks = _offered(_release_of(album))
+    candidates, picks = _offered(_release_of(album), choices)
     if album.cover_path is None or not album.cover_path.exists():
         return artwork.summarise(
             album.path,
@@ -6152,6 +6310,8 @@ def _register_routes(app: FastAPI) -> None:
         selected: int = 0,
         candidate: str = "",
         front_only: Annotated[list[str], Query()] = [],  # noqa: B006 — FastAPI copies it
+        more: Literal["", "step", "ahead"] = "",
+        browsed: bool = False,
     ) -> Response:
         """The Artwork section (#155), fetched after the page paints.
 
@@ -6196,6 +6356,13 @@ def _register_routes(app: FastAPI) -> None:
         release's own front. `front_only` is the picker's checkbox, posted as a
         hidden `0` ahead of a checkbox `1` so its last value is the answer, and
         absent on a render nobody's form asked for.
+
+        `more` lists another release in the album's group (#659): `step` when
+        the user pressed › on the picker's last image, which then shows the
+        first of the new images; `ahead` when they have only arrived at the
+        last image, so the next release is listed before they ask for it.
+        `browsed` is whether this page has browsed the group already — see
+        `_list_another_release` for what that spares.
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
@@ -6206,6 +6373,38 @@ def _register_routes(app: FastAPI) -> None:
                 _artwork_view(album, folder_cover=_folder_cover_policy(request)),
                 max_age=caa_cache.FRESH if reread else None,
             )
+        showing_fronts = front_only[-1] == "1" if front_only else None
+        if more and mbid is not None:
+            try:
+                another = _list_another_release(mbid, browsed=browsed)
+                browsed = True
+            except (mb_lookup.MBError, cover_art.CoverArtError) as e:
+                # An archive failure comes after a browse that worked: only a
+                # MusicBrainz one leaves the group still to browse.
+                browsed = browsed or isinstance(e, cover_art.CoverArtError)
+                another = None
+                if more == "step":
+                    # Loud: somebody pressed › and is waiting for a picture.
+                    log.warning("could not list another release of %s", mbid, exc_info=True)
+                    return _flash_response(
+                        "Couldn't look at the album's other releases",
+                        str(e),
+                        level=Level.ERROR,
+                        tasks_changed=False,
+                    )
+                # Looking ahead is nobody's request; the step it was ahead of
+                # will try again, and say so if it fails.
+                log.warning(
+                    "could not list another release of %s ahead of a step",
+                    mbid,
+                    exc_info=True,
+                    extra=_LOG_ONLY,
+                )
+            if more == "step" and another is not None:
+                theirs = caa_cache.stored_listing("release", another) or []
+                # The first image the carousel will show, under Front only.
+                shown = [c for c in theirs if c.front or showing_fronts is False] or theirs
+                candidate = shown[0].image_id
         caa = caa_cache.stored(mbid) if mbid else None
         archive = _archive_image(mbid)
         choices = artwork.parse_choices(use)
@@ -6237,7 +6436,12 @@ def _register_routes(app: FastAPI) -> None:
         if drop:
             choices |= artwork.parse_choices(",".join(f"{c}=keep" for c in drop.split()))
         view = _artwork_view(
-            album, caa, archive, choices=choices, folder_cover=_folder_cover_policy(request)
+            album,
+            caa,
+            archive,
+            choices=choices,
+            folder_cover=_folder_cover_policy(request),
+            browsed=browsed,
         )
         ctx = _ctx(
             request,
@@ -6250,7 +6454,8 @@ def _register_routes(app: FastAPI) -> None:
             # …and on the image it was showing, with the front-only box as the
             # user left it.
             artwork_candidate=candidate,
-            artwork_front_only=front_only[-1] == "1" if front_only else view.front_only,
+            artwork_front_only=view.front_only if showing_fronts is None else showing_fronts,
+            artwork_browsed=browsed,
             # Asked for an image that is not here — the cache dropped it, or it
             # was never loaded. Said rather than quietly showing the ordinary
             # plan instead, which would be the unannounced fallback #472 forbids.

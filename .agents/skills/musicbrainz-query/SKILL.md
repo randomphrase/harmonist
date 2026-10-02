@@ -118,7 +118,12 @@ absence, so the property had to be built rather than inherited:
   stores nothing and keeps the previous page.
 
 Anything that wants the stored page for more than filter placement is a new
-decision, not a reuse.
+decision, not a reuse. One has been made (#659): the artwork picker browses the
+group **live** the first time a page steps past its last image, and only then
+goes on from the stored page, which is that browse. Separately, it reads the
+stored page to tell which stored image listings belong to the group's releases.
+That read offers only listings someone already stepped to, so a stale page can
+hide nothing that a step wouldn't browse for again.
 
 ## 4. A 404 is an answer, not a failure
 

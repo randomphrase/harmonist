@@ -72,6 +72,20 @@ would hide the one back cover a user came looking for. Matrix/runout,
 raw/unedited and watermarked images are never offered, even when also marked
 Front, because none of them is artwork anyone puts on a sleeve.
 
+**Past the album's own images, the carousel goes on to the group's other
+releases**, one at a time. The sleeve a user wants is often another pressing's,
+and most of all when this release has none. Looking costs MusicBrainz one browse
+of the group and the archive one listing per release, so it happens only when the
+user steps there: the next release is listed as they arrive at the last image,
+which keeps a step from waiting on two services. The browse is made live, once
+per visit to the page, rather than read from the page another screen stored: that
+page can predate a release, and a picker that trusted it would never offer one
+added since. A release MusicBrainz says has no artwork isn't listed at all.
+Another release's listing is kept only for the archive check's TTL, since nothing
+else refreshes it; after that it drops out and the next step lists it again. An
+image chosen from it stays chosen, because its original was fetched under its id
+when it was chosen.
+
 The carousel shows the archive's thumbnails, fetched through Harmonist like
 every other image on the page. The original is fetched only when the user
 presses Use, since that's when the plan needs its bytes. A request names an

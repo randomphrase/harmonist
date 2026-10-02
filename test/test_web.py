@@ -10514,7 +10514,214 @@ def test_choosing_an_image_that_is_no_longer_here_says_so(client, cfg):
 
     r = client.get(f"/album/{_id_for(cfg, d)}/artwork", params={"use": "cover=archive"})
 
-    assert "load it again to choose it" in " ".join(r.text.split())
+    assert "press Use again to choose it" in " ".join(r.text.split())
+
+
+#: The other releases `_album_in_a_group`'s browse finds, as MusicBrainz
+#: returns them: one it says has no artwork, and pressings that have some.
+_BARE = {"id": "rel-bare", "title": "Grouped", "cover-art-archive": {"artwork": "false"}}
+_PRESSINGS = {
+    "rel-uk": {
+        "id": "rel-uk",
+        "title": "Grouped",
+        "disambiguation": "UK pressing",
+        "date": "1979",
+        "country": "GB",
+        "medium-list": [{"format": "Vinyl", "track-list": []}],
+        "cover-art-archive": {"artwork": "true"},
+    },
+    "rel-jp": {"id": "rel-jp", "title": "Grouped", "country": "JP"},
+}
+
+
+def _album_in_a_group(cfg, monkeypatch, *, own: bool = True, pressings=("rel-uk",)):
+    """A tagged album whose release, `rel-this`, is one of several in group
+    `rg-g` (#659), with the browse and the archive's listings stubbed and every
+    request they make recorded in the list returned beside the album.
+
+    The archive lists one image for this release (unless not `own`), and one
+    for each of `pressings`: `77` for the UK one, `88` for the Japanese. A
+    browse page another screen stored earlier, from before any pressing was
+    added, is there too — so a test can see it is not what decides."""
+    from harmonist import cover_art, mb_cache, mb_lookup
+
+    d = _release_backed_album_with_art(cfg, "Grouped", "rel-this", covers=[_png(1)], folder=None)
+    activity_store.store_release(
+        "rel-this",
+        mb_cache._key(mb_lookup.RELEASE_INCLUDES),
+        {"id": "rel-this", "release-group": {"id": "rg-g"}},
+    )
+    activity_store.store_cover_art(
+        "rel-this", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    )
+    if own:
+        _listed("rel-this", ("5", "https://coverartarchive.org/release/rel-this/5.png", True))
+    else:
+        _listed("rel-this")
+    _listed("rg-g", kind="release-group")
+    activity_store.store_release(
+        "rg-g", mb_cache._group_key(), {"release-list": [{"id": "rel-this"}], "release-count": 1}
+    )
+    ids = {"rel-uk": "77", "rel-jp": "88"}
+    asked: list[tuple[str, str]] = []
+
+    def browse(group):
+        asked.append(("browse", group))
+        found = [{"id": "rel-this"}, _BARE, *(_PRESSINGS[p] for p in pressings)]
+        return found, len(found)
+
+    def fetch_listing(kind, mbid, **kw):
+        asked.append((kind, mbid))
+        if mbid not in ids or mbid not in pressings:
+            return []
+        url = f"https://coverartarchive.org/release/{mbid}/{ids[mbid]}.png"
+        return [
+            cover_art.Candidate(
+                image_id=ids[mbid], image_url=url, thumbnail_url=url, types=("Front",), front=True
+            )
+        ]
+
+    monkeypatch.setattr(mb_lookup, "browse_release_group_editions", browse)
+    monkeypatch.setattr(cover_art, "fetch_listing", fetch_listing)
+    return d, asked
+
+
+def _step(client, aid: str, html: str, more: str) -> str:
+    """Send the picker form as the script does when › finds no further image
+    (`step`) or the carousel arrives at its last one (`ahead`) (#659): the
+    form's own fields, read off the page, plus the hidden button it presses."""
+    import re
+
+    assert f'name="more" value="{more}"' in html, "nothing to step to"
+    checked = r'name="{}" value="([^"]*)"\s+id="[^"]*"\s+class="[^"]*"\s+checked'
+    use = re.search(r'<form id="art-pick-[^"]*"[\s\S]*?name="use" value="([^"]*)"', html)
+    assert use, "no choices carried by the picker form"
+    fields = {"use": use.group(1), "more": more}
+    for name in ("row", "candidate"):
+        if found := re.search(checked.format(name), html):
+            fields[name] = found.group(1)
+    if 'name="browsed" value="1"' in html:
+        fields["browsed"] = "1"
+    return client.get(f"/album/{aid}/artwork", params=fields).text
+
+
+def _slides(html: str) -> list[str]:
+    """The carousel's images, each as its markup — not the ghost's stand-in."""
+    import re
+
+    return re.findall(r'<label class="art-pick__slide".*?</label>', " ".join(html.split()))
+
+
+def test_stepping_past_the_last_image_lists_the_groups_next_release(client, cfg, monkeypatch):
+    """Past the album's own images, › goes on to the next release in its group
+    that has any (#659): one live browse — not the page another screen stored,
+    which predates the pressing — and one listing, skipping the release
+    MusicBrainz says has no artwork. The new image is the one shown."""
+    import re
+
+    d, asked = _album_in_a_group(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    page = client.get(f"/album/{aid}/artwork").text
+    assert asked == []  # opening the page asks nobody anything
+
+    stepped = _step(client, aid, page, "step")
+
+    assert asked == [("browse", "rg-g"), ("release", "rel-uk")]
+    slides = _slides(stepped)
+    assert len(slides) == 2
+    assert "Another release" in slides[1]
+    assert "UK pressing · 1979 · GB · Vinyl" in slides[1]
+    assert re.search(r'value="77"\s+id="[^"]*"\s+class="[^"]*"\s+checked', stepped)
+    # The group has nothing further, and knowing so cost no second browse.
+    assert 'name="more"' not in stepped
+    assert 'name="browsed" value="1"' in stepped
+
+
+def test_later_steps_go_on_from_the_pages_own_browse(client, cfg, monkeypatch):
+    """One browse per page: looking ahead from the first pressing lists the
+    second without asking MusicBrainz again (#659)."""
+    d, asked = _album_in_a_group(cfg, monkeypatch, pressings=("rel-uk", "rel-jp"))
+    aid = _id_for(cfg, d)
+
+    stepped = _step(client, aid, client.get(f"/album/{aid}/artwork").text, "step")
+    ahead = _step(client, aid, stepped, "ahead")
+
+    assert asked == [("browse", "rg-g"), ("release", "rel-uk"), ("release", "rel-jp")]
+    assert [("Another release" in s) for s in _slides(ahead)] == [False, True, True]
+    # Looking ahead moved nothing: the UK pressing is still the one shown.
+    assert 'value="77"' in ahead and 'name="browsed" value="1"' in ahead
+
+
+def test_another_releases_image_is_chosen_and_applied_like_any_other(client, cfg, monkeypatch):
+    """Use on another pressing's image previews it as that pressing's, and
+    Apply writes it (#659) — even after its listing has lapsed, since the
+    original was fetched under its id when it was chosen."""
+    from harmonist import caa_cache, cover_art, formats
+    from test.test_artwork import png_bytes
+
+    theirs = png_bytes(300, 300) + b"\x07"
+    d, _ = _album_in_a_group(cfg, monkeypatch)
+    monkeypatch.setattr(cover_art, "fetch_bytes", lambda url, **kw: (theirs, "image/png"))
+    aid = _id_for(cfg, d)
+    stepped = _step(client, aid, client.get(f"/album/{aid}/artwork").text, "step")
+
+    chosen = _pick(client, aid, stepped)
+    assert "for another release, not this one" in " ".join(chosen.split())
+
+    monkeypatch.setattr(caa_cache, "_ttl", timedelta(0))
+    assert not any(
+        "Another release" in s for s in _slides(client.get(f"/album/{aid}/artwork").text)
+    )
+    client.post(
+        f"/album/{aid}/artwork/update",
+        data={"plan": _form_value(chosen, "plan"), "use": _carried_use(chosen)},
+    )
+
+    art = formats.read_cover(d / "01 Track.m4a")
+    assert art is not None and art[0] == theirs
+
+
+def test_a_failed_step_says_so_and_a_failed_look_ahead_does_not(client, cfg, monkeypatch):
+    """Somebody pressed › and is waiting, so a failed step says what went
+    wrong. Looking ahead is nobody's request: it fails quietly, and leaves the
+    group still to browse for the step it was ahead of (#659)."""
+    from harmonist import mb_lookup
+
+    d, _ = _album_in_a_group(cfg, monkeypatch, pressings=("rel-uk", "rel-jp"))
+    aid = _id_for(cfg, d)
+    page = client.get(f"/album/{aid}/artwork").text
+
+    def down(group):
+        raise mb_lookup.MBError("MusicBrainz is down")
+
+    monkeypatch.setattr(mb_lookup, "browse_release_group_editions", down)
+
+    stepped = _step(client, aid, page, "step")
+    assert "look at the album" in stepped and "MusicBrainz is down" in stepped
+
+    ahead = _step(client, aid, page, "ahead")
+    assert "MusicBrainz is down" not in ahead
+    assert 'name="more" value="step"' in ahead and 'name="browsed"' not in ahead
+
+
+def test_an_album_with_no_images_of_its_own_can_look_at_other_releases(client, cfg, monkeypatch):
+    """Where this release lists nothing is where another's sleeve matters most
+    (#659). The picker offers the step on its own, and the image it finds is
+    served like any other — while an id no listing names is not."""
+    from harmonist import cover_art
+
+    d, _ = _album_in_a_group(cfg, monkeypatch, own=False)
+    monkeypatch.setattr(cover_art, "fetch_bytes", lambda url, **kw: (_png(9), "image/png"))
+    aid = _id_for(cfg, d)
+    page = client.get(f"/album/{aid}/artwork").text
+    assert _slides(page) == []
+    assert "Other releases ›" in page
+
+    stepped = _step(client, aid, page, "step")
+
+    assert len(_slides(stepped)) == 1
+    assert client.get(f"/artwork/candidate/{aid}/77").status_code == 200
+    assert client.get(f"/artwork/candidate/{aid}/88").status_code == 404
 
 
 def _carried_artwork(html: str, album_id: str) -> dict[str, str]:

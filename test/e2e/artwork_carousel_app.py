@@ -1,20 +1,37 @@
 """An archive that lists a front, a back and another front for every release
 (#659): the carousel has images to step between, and Front only has a back
-cover to hide."""
+cover to hide. Every release group also has another release, whose one image
+is `SIBLING_IMAGE`, for the carousel to step on to."""
 
 from test.e2e import demo_app
 
-from harmonist import cover_art, demo
+from harmonist import cover_art, demo, mb_lookup
 
 app = demo_app.app
 
 #: (image id, types) per listed image, in the archive's order.
 IMAGES = (("101", ("Front",)), ("102", ("Back",)), ("103", ("Front",)))
+SIBLING_IMAGE = "201"
+_browse = mb_lookup.browse_release_group_editions
+
+
+def _is_sibling(mbid):
+    return mbid.endswith("-elsewhere")
+
+
+def browse_release_group_editions(group):
+    releases, _ = _browse(group)
+    others = [
+        {**r, "id": f"{r['id']}-elsewhere", "country": "JP", "disambiguation": "Japanese edition"}
+        for r in releases
+    ]
+    return [*releases, *others], len(releases) + len(others)
 
 
 def fetch_listing(kind, mbid, *, client=None):
     if kind != "release":
         return []
+    images = ((SIBLING_IMAGE, ("Front",)),) if _is_sibling(mbid) else IMAGES
     return [
         cover_art.Candidate(
             image_id=image_id,
@@ -23,7 +40,7 @@ def fetch_listing(kind, mbid, *, client=None):
             types=types,
             front="Front" in types,
         )
-        for image_id, types in IMAGES
+        for image_id, types in images
     ]
 
 
@@ -33,5 +50,6 @@ def fetch_bytes(url, *, client=None):
     return data, "image/jpeg"
 
 
+mb_lookup.browse_release_group_editions = browse_release_group_editions
 cover_art.fetch_listing = fetch_listing
 cover_art.fetch_bytes = fetch_bytes

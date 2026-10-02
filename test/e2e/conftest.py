@@ -128,6 +128,15 @@ def carousel_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     )
 
 
+@pytest.fixture
+def reset_carousel_server(carousel_server: str) -> str:
+    """Each carousel scenario from a library and history nobody has stepped
+    through: a release listed by one test would otherwise be in the next one's
+    carousel before it steps."""
+    _reset_demo_library(carousel_server)
+    return carousel_server
+
+
 @pytest.fixture(
     params=[
         "identical",

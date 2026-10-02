@@ -140,9 +140,20 @@
             : Array.from(step.form.querySelectorAll('input[name="row"]'));
         const at = radios.findIndex(radio => radio.checked);
         const next = radios[at + Number(step.dataset.artStep)];
+        const more = name => step.form.querySelector(`.art-pick__more[data-more="${name}"]`);
         // A click rather than setting `checked`, so the row is selected exactly
         // as a click on it would select it — events and all.
-        if (next) next.click();
+        if (next) {
+            next.click();
+            // Arrived at the last image: list the next release now, so it is
+            // there by the time › is pressed (#659).
+            if (step.dataset.artGroup === 'candidate' && next === radios[radios.length - 1]) {
+                more('ahead')?.click();
+            }
+        } else if (step.dataset.artGroup === 'candidate' && Number(step.dataset.artStep) > 0) {
+            // Past the last image: on to the next release, if there may be one.
+            more('step')?.click();
+        }
     });
     // Ticking Front only while a back cover is shown would leave nothing
     // shown: move to the first image that can be.

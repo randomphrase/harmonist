@@ -348,6 +348,8 @@ LIBRARY: list[dict[str, Any]] = [
         # The UPC belongs to another pressing in the release group, not the
         # matched one, so the rip is a possible mismatch (#633).
         "pressing": {"country": "GB", "barcode": "036000291452", "disambiguation": "UK pressing"},
+        # …whose sleeve the archive has, for the picker to step to (#659).
+        "pressing_cover": "cover-5.jpg",
     },
     {
         "artist": "The Soggy Bottom Boys",
@@ -426,6 +428,13 @@ PENDING_PURCHASES: list[dict[str, Any]] = [
 ]
 
 
+def _artwork_flags(has_art: bool) -> dict[str, str]:
+    """A release's `cover-art-archive` summary, as musicbrainzngs parses it:
+    strings, not booleans."""
+    flag = "true" if has_art else "false"
+    return {"artwork": flag, "front": flag, "back": "false", "count": "1" if has_art else "0"}
+
+
 def _catalogue() -> dict[str, Release]:
     releases = {}
     for spec in [*LIBRARY, *PENDING_PURCHASES]:
@@ -449,11 +458,19 @@ def _catalogue() -> dict[str, Release]:
                 }
                 for disc, part in enumerate((tracks[:2], tracks[2:]), 1)
             ]
+        # What MusicBrainz says about each release's artwork, as a browse
+        # carries it: the picker skips a release that has none (#659).
+        release["cover-art-archive"] = _artwork_flags(bool(spec.get("cover")))
         releases[spec["mbid"]] = release
         if pressing := spec.get("pressing"):
             # Another release in the same group, reached only by browsing it.
             other = f"{spec['mbid']}-{pressing['country'].lower()}"
-            releases[other] = {**release, "id": other, **pressing}
+            releases[other] = {
+                **release,
+                "id": other,
+                **pressing,
+                "cover-art-archive": _artwork_flags(bool(spec.get("pressing_cover"))),
+            }
         spec["sidecar"] = {
             "mb_release_id": None
             if spec.get("unmatched") or spec in PENDING_PURCHASES
@@ -995,6 +1012,20 @@ def front_image(
     return cover_art.Front(data=data, mime=mime)
 
 
+def _pressing_asset(release_mbid: str) -> Path | None:
+    """The sleeve of another pressing in an album's group — a release no
+    demo album is matched to, reached only by stepping to it (#659)."""
+    for spec in [*LIBRARY, *PENDING_PURCHASES]:
+        pressing = spec.get("pressing")
+        if (
+            pressing
+            and spec.get("pressing_cover")
+            and release_mbid == f"{spec['mbid']}-{pressing['country'].lower()}"
+        ):
+            return ASSETS_DIR / str(spec["pressing_cover"])
+    return None
+
+
 def fetch_listing(kind: str, mbid: str, *, client: Any = None) -> list[cover_art.Candidate]:
     """An offline archive listing (#659): a release lists its archive image as
     its front; a release group lists its first release's own cover, which is
@@ -1002,7 +1033,7 @@ def fetch_listing(kind: str, mbid: str, *, client: Any = None) -> list[cover_art
     names its asset, so `fetch_bytes` below can serve it."""
     time.sleep(_delay())
     if kind == "release":
-        path = _archive_asset(mbid)
+        path = _archive_asset(mbid) or _pressing_asset(mbid)
     else:
         members = [
             m

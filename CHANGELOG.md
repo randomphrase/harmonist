@@ -9,8 +9,8 @@ versions follow [semantic versioning](https://semver.org).
 ### Added
 
 - **Artwork is chosen row by row** from every image the Cover Art Archive has
-  for the release and its release group; `cover.jpg` always has a row of its
-  own (#659).
+  for the release, its release group and the group's other releases;
+  `cover.jpg` always has a row of its own (#659).
 
 ### Changed
 

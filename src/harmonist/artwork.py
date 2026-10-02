@@ -36,7 +36,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from . import album_files
 from .formats import TrackTags
@@ -785,7 +785,7 @@ class FolderCover:
 @dataclass(frozen=True)
 class Candidate:
     """One image the picker offers (#659): listed by the Cover Art Archive for
-    the release or its release group.
+    the release, its release group, or another release in that group.
 
     `image` is its original once it is in hand — fetched when it was chosen,
     or the release's own front the archive check downloaded — and None while
@@ -794,11 +794,19 @@ class Candidate:
     """
 
     image_id: str
-    #: "release" or "release-group": which listing offered it.
+    #: Which listing offered it: `RELEASE`, `RELEASE_GROUP` or `OTHER_RELEASE`.
     origin: str
     front: bool
     types: tuple[str, ...]
     image: EmbeddedArt | None = None
+    #: Which other release, for one that is: what tells two pressings apart —
+    #: disambiguation, date, country, format.
+    release: str | None = None
+
+    #: The listings a candidate can come from.
+    RELEASE: ClassVar[str] = "release"
+    RELEASE_GROUP: ClassVar[str] = "release-group"
+    OTHER_RELEASE: ClassVar[str] = "other-release"
 
     @property
     def meta(self) -> str | None:
@@ -941,6 +949,9 @@ class ArtRow:
     #: for every pressing of the album is a useful thing to take and a bad thing
     #: to mistake for this pressing's.
     from_release_group: bool = False
+    #: …or another release's in the group (#659): a different pressing's sleeve,
+    #: which may be exactly the one wanted and is still not this one's.
+    from_other_release: bool = False
     #: …and the image itself, so the row can SHOW what it would become rather
     #: than only assert it (#413). "Replaced by the album's own artwork" carries
     #: no tense — a reader cannot tell whether it already happened — and the
@@ -1098,8 +1109,11 @@ class ArtworkView:
     #: section's controls carry back, and what each of them changes by one row.
     choices: Mapping[str, str] = field(default_factory=dict)
     #: What the picker offers, in order: the release's images, then its release
-    #: group's (#659).
+    #: group's, then those of any other release in the group stepped to (#659).
     candidates: tuple[Candidate, ...] = ()
+    #: Whether a step past the last candidate could find another release's
+    #: images: decided by the caller, which knows what the page has browsed.
+    other_releases: bool = False
 
     @property
     def front_only(self) -> bool:
@@ -1390,7 +1404,13 @@ def summarise(
     cover_change = the_plan.cover_change(Scope.ALL)
     cover_incoming = the_plan.image_for(cover_change) if cover_change is not None else None
 
-    listed_by = {c.image.digest: c.origin for c in candidates if c.image is not None}
+    # The FIRST listing to name an image is whose it is: they come this
+    # release's first, and the group very often lists the release's own front
+    # again — which is no reason to call it anybody else's.
+    listed_by: dict[str, str] = {}
+    for c in candidates:
+        if c.image is not None:
+            listed_by.setdefault(c.image.digest, c.origin)
 
     def _from_group(digest: str) -> bool:
         """Whether an archive image is the release GROUP's (#434, #496): by
@@ -1399,7 +1419,7 @@ def summarise(
         listing answered the archive check. Read off the listings rather than
         the bytes, which carry no trace of it."""
         if digest in listed_by:
-            return listed_by[digest] == "release-group"
+            return listed_by[digest] == Candidate.RELEASE_GROUP
         return caa is not None and caa.from_release_group
 
     def incoming_for(paths: Iterable[Path]) -> Incoming | None:
@@ -1462,6 +1482,9 @@ def summarise(
             from_release_group=from_archive
             and incoming is not None
             and _from_group(incoming.image.digest),
+            from_other_release=from_archive
+            and incoming is not None
+            and listed_by.get(incoming.image.digest) == Candidate.OTHER_RELEASE,
             carriers=keys,
             has_archive=archive is not None
             and image is not None
