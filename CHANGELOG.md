@@ -11,6 +11,10 @@ versions follow [semantic versioning](https://semver.org).
 - **Artwork is chosen row by row**: select a row and the Cover Art Archive's
   image is offered beside it; `cover.jpg` always has a row of its own (#659).
 
+### Changed
+
+- Album pages group release and origin links with file details, place refresh controls beside the Album and Artwork headings, and rename Additional info to Additional tags (#665).
+
 ## [1.22.0] - 2026-10-01
 
 ### Added

@@ -46,6 +46,7 @@
    by whoever renders the finding above it. #}
 {% with oob = true %}{% include 'partials/_update_ignore.html' %}{% endwith %}
 {% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
+{% with oob = true %}{% include 'partials/_album_release.html' %}{% endwith %}
 {# …and the merge finding (#361), which this fetch is the only thing that can
    discover: a merged MBID redirects, so the difference between the id asked for
    and the id that came back is the whole of the evidence. It sits with the

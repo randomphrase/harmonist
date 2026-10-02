@@ -128,7 +128,7 @@ def test_the_archive_is_asked_without_anyone_pressing_anything(demo_server: str)
         page.goto(f"{demo_server}/album/{album_id}")
         page.wait_for_selector("#album-artwork .art-row")
 
-        dates = page.locator(f"#album-checked-{album_id}")
+        dates = page.locator("#album-artwork header")
         # This element exists only where an answer does: the row renders "not
         # yet" in its place until the archive has been asked (#419).
         dates.locator('dd[title^="Cover Art Archive last asked"]').wait_for(state="visible")

@@ -99,7 +99,7 @@ def test_album_page_shows_the_origin_and_links_only_the_comments_url(client, cfg
     page = BeautifulSoup(client.get(f"/album/{_id_for(cfg, d)}").text, "html.parser")
     section = page.select_one("#album-info")
     assert section is not None
-    origin = section.select_one("dd span")
+    origin = page.select_one("#album-identity dd[data-field='origin'] span")
     assert origin is not None
     assert origin.get_text(strip=True) == "Bandcamp"
     assert origin["title"] == "Its comment carries a Bandcamp URL."
@@ -107,6 +107,24 @@ def test_album_page_shows_the_origin_and_links_only_the_comments_url(client, cfg
     assert tag.get_text() == "Comment"
     assert [a["href"] for a in value.select("a")] == [url]
     assert value.select_one("a").get_text() == url  # the URL, not "Visit …"
+
+
+@pytest.mark.parametrize("ripped", [False, True])
+def test_origin_links_only_its_own_store_and_keeps_other_store_references(client, cfg, ripped):  # noqa: F811
+    url = "https://artist.bandcamp.com/album/record"
+    d = _make_album(cfg, "Origin", mbid=MBID)
+    sidecar.write(d, Sidecar(mb_release_id=MBID, store_url=url, bandcamp_downloaded=not ripped))
+    if ripped:
+        write_provenance_tags(d, ".m4a", ACCURATERIP_TAGS)
+    page = BeautifulSoup(client.get(f"/album/{_id_for(cfg, d)}").text, "html.parser")
+    identity = page.select_one("#album-identity")
+    assert identity is not None
+    origin = identity.select_one("dd[data-field='origin']")
+    assert origin.select_one("a, span").get_text(strip=True) == ("CD" if ripped else "Bandcamp ↗")
+    link = identity.select_one(f'a[href="{url}"]')
+    assert link is not None
+    assert (link in origin.descendants) is not ripped
+    assert bool(page.select_one("#album-info")) is ripped
 
 
 def test_album_page_has_no_additional_info_without_those_tags(client, cfg):  # noqa: F811

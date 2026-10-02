@@ -44,7 +44,9 @@ def test_read_again_issues_a_compare_request_and_refills_the_panel(demo_server: 
         # The control ships with the page once anything has read this release
         # (#355), and arrives with the /compare fetch on the very first view.
         # Waiting covers both rather than asserting which one this run is.
-        button = page.get_by_role("button", name="Read this release from MusicBrainz again")
+        button = page.locator("#album-tags > header").get_by_role(
+            "button", name="Read this release from MusicBrainz again"
+        )
         button.wait_for(timeout=10_000)
 
         assert not [u for u in requests if "reread=1" in u], "nothing forced yet"
@@ -65,6 +67,21 @@ def test_read_again_issues_a_compare_request_and_refills_the_panel(demo_server: 
         # matches both — and since #436 the block holds a Cover Art Archive date
         # with a title of its own, so the title has to name WHICH service.
         assert page.locator(f"#album-checked-{ALBUM} {_MB_VALUE}").is_visible()
+
+        # Both service controls must survive each other's section swaps.
+        caa = page.locator("#album-artwork header").get_by_role(
+            "button", name="Ask the Cover Art Archive about this release again"
+        )
+        with page.expect_response(lambda r: "/artwork?reread=1" in r.url) as art:
+            caa.click()
+        assert art.value.ok
+        playwright_sync.expect(caa).to_be_enabled()
+        with page.expect_response(lambda r: "/compare?reread=1" in r.url) as mb:
+            button.click()
+        assert mb.value.ok
+        playwright_sync.expect(button).to_be_enabled()
+        playwright_sync.expect(caa).to_be_visible()
+        playwright_sync.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
 
         browser.close()
 

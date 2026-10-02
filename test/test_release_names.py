@@ -50,6 +50,18 @@ def test_the_review_names_the_release_it_would_confirm(client, cfg, monkeypatch)
     assert _links_to(str(heading), release["id"]) == ["Title (24bits) ↗"]
 
 
+def test_album_identity_uses_the_stored_release_name_without_a_request(client, cfg, monkeypatch):
+    d = _make_tagged_album(cfg, "Local title", mbid="rel-named", tagged_at=None)
+    _store(monkeypatch, "rel-named")
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release",
+        lambda _mbid: (_ for _ in ()).throw(AssertionError("asked MusicBrainz")),
+    )
+    body = client.get(f"/album/{_id_for(cfg, d)}").text
+    identity = BeautifulSoup(body, "html.parser").select_one("#album-identity")
+    assert _links_to(str(identity), "rel-named") == ["Title (24bits) ↗"]
+
+
 def test_a_surrendered_album_names_its_tagged_release(client, cfg, monkeypatch):
     _store(monkeypatch, "rel-surr")
     d = _make_album(cfg, "Surrendered")

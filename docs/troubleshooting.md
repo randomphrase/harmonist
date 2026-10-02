@@ -112,7 +112,7 @@ Move each album into its own folder
 
 ### An album is matched to the wrong release
 
-On the album's page, click the **pencil** beside the MusicBrainz badge. The album
+On the album's page, click the **pencil** beside the MB release link. The album
 goes back to **Needs MBID** so you can pick the right release. Your files keep
 their current tags until you confirm the new one.
 
@@ -183,7 +183,7 @@ Check, in order:
 
 ### An album in Needs Linking wasn't bought on Bandcamp
 
-Click the **×** beside the album's Bandcamp badge to mark it purchased
+Click the **×** beside the album's Bandcamp link to mark it purchased
 elsewhere. The album and files stay; only the Bandcamp link is removed.
 
 ### "No purchase found"
@@ -211,7 +211,7 @@ tags. The album's page names what's missing: *10 of 11 tracks on disk*, or
 *Disc 2 of 2 is missing*, and marks each missing track *Not in your files*.
 
 - **You have a different edition**, such as the standard album matched to the
-  deluxe release. Use the pencil beside the MusicBrainz badge to pick the right
+  deluxe release. Use the pencil beside the MB release link to pick the right
   one. See [wrong release](#an-album-is-matched-to-the-wrong-release).
 - **You deliberately didn't rip everything**, such as a hidden track. Tick
   **Don't warn me about this** beside the badge. The album leaves the Incomplete

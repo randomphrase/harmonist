@@ -1,79 +1,21 @@
-{# When MusicBrainz was last read for this release, as the fourth of the album
-   panel's dates (#355).
-
-   It used to be a clause of the hexagon note — "read 4 min ago · read again" —
-   which meant the one thing on the page that is pure provenance was carried by
-   a tinted band whose other job is reporting findings. The note is narrowing to
-   the finding alone (#271 takes the sentence), and this is the half with
-   nowhere else to go: releases are served from a cache with a TTL (#127), so
-   what the page shows can legitimately be an hour old, and a user who has just
-   edited MusicBrainz needs to know that before they trust a diff.
-
-   The dates list is where it belongs because it is the same question the other
-   three answer — *how recently?* — down to the elapsed-time rendering and the
-   exact timestamp one hover away. It reads as the fourth step of the same
-   story: downloaded, added, tagged, and last checked against MusicBrainz.
-
-   `display: contents` (Tailwind's `contents`) so the wrapper can carry an id
-   for the out-of-band swap WITHOUT becoming a grid item — the <dl> lays its
-   labels and values into two columns, and a <div> around this pair would
-   collapse both into one cell.
-
-   Rendered at page build from `mb_cache.fetched_at`, which is a local SQLite
-   read with no MusicBrainz call in it, and swapped out of band by /compare
-   afterwards — that fetch may have refreshed an expired row, and a re-read
-   certainly has. Empty when nothing has ever been read, which is honest by
-   construction: no line rather than a claim about a check that never happened.
-
-   `oob` is set by `library_compare.html`; unset at page build. #}
-<div id="album-checked-{{ album.id }}" class="contents"{% if oob %} hx-swap-oob="true"{% endif %}>
+{# MusicBrainz freshness belongs to the Album comparison header. Only the
+   comparison response updates this block; artwork owns its separate date.
+   Keep the refresh available before the first successful read, too. #}
+<dl id="album-checked-{{ album.id }}" class="flex items-center gap-2 text-xs"{% if oob %} hx-swap-oob="true"{% endif %}>
+    <dt class="text-2xs text-muted uppercase tracking-widest">MB checked</dt>
     {% if mb_read_at %}
-    <dt class="col-start-1 text-2xs text-muted uppercase tracking-widest self-baseline">MB checked</dt>
-    <dd class="text-ink tabular-nums self-baseline whitespace-nowrap"
-        {# The other three dates are facts about the album, from its sidecar.
-           This one is cache freshness, keyed by release id in activity.db, and
-           it moves on its own every TTL — so the hover says what was read
-           rather than leaving "Checked" to be read as something done to the
-           files. #}
-        title="MusicBrainz release last read {{ mb_read_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
-        {{ ago(mb_read_at) }}
-    </dd>
-    {# The way out of a stale answer (#127): a user who has just edited
-       MusicBrainz can say "no, look again" without re-tagging or editing a
-       config file.
-
-       In the grid's third column (#358), so the value above keeps the right
-       edge the three dates share and the control sits past them. A second <dd>
-       against the one <dt> rather than a wrapper, because a <dl> may hold only
-       dt, dd, div, script and template — and this genuinely is more about the
-       same term.
-
-       A glyph, muted until hover — the same shape as the "wrong match" pencil
-       beside the MusicBrainz badge in this panel, so the panel gains no new
-       interaction vocabulary for a second rare, subtle action (web-ui rule 4).
-       Not a popover: that is the right shape for the sync control because it
-       hosts a form with two knobs, and this is one button.
-
-       It re-fetches into the Tags section, and the same response carries this
-       line back out-of-band, so the timestamp and the comparison it describes
-       update together. `hx-disabled-elt` because this is a real MusicBrainz
-       request on a 1-req/sec budget and a double-press would spend two. No
-       `onclick` anywhere near it — HTMX owns the click. #}
-    {# `flex`, not the default block box, and NOT `self-baseline`. A block <dd>
-       lays the button out on a line box, and an inline-flex element whose only
-       child is an SVG takes its baseline from its bottom margin edge — so the
-       16px button sits ON the text baseline and the line box adds the font's
-       descent underneath it. The cell came out 18px against the row's 16, which
-       made this row 2px taller than the three above and pushed its label and
-       value down by that much. Flex has no line box, so the cell is the button
-       and the row keeps the pitch of its neighbours. #}
-    <dd class="col-start-3 flex items-center">
+    <dd class="text-ink tabular-nums whitespace-nowrap"
+        title="MusicBrainz release last read {{ mb_read_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}">{{ ago(mb_read_at) }}</dd>
+    {% else %}
+    <dd class="text-muted italic whitespace-nowrap">not yet</dd>
+    {% endif %}
+    <dd class="flex items-center">
         <button type="button"
                 hx-get="/library/{{ album.id }}/compare?reread=1"
                 hx-sync="#compare-{{ album.id }}:queue last"
                 hx-target="#compare-{{ album.id }}" hx-swap="innerHTML"
-                hx-disabled-elt="this"
-                title="Read this release from MusicBrainz again"
+                hx-disabled-elt="this" hx-indicator="#mb-refreshing-{{ album.id }}"
+                title="Read this release from MusicBrainz again — updates Album and Tracks"
                 aria-label="Read this release from MusicBrainz again"
                 class="mb-reread inline-flex items-center justify-center w-4 h-4 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
@@ -82,23 +24,6 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M20 3.5V9h-5.5"/>
             </svg>
         </button>
-        {# …and, in the same cell, what shows INSTEAD of it while a newer answer
-           is on its way (#387). The comparison beside this row can be last
-           night's — that is the point of showing it at once rather than waiting
-           — so the date alone would be true and misleading: it says how old the
-           answer is and not that a fresher one is already coming.
-
-           The `.tagging-overlay` pattern exactly: hidden markup that the
-           requesting element points `hx-indicator` at, shown by a rule in
-           input.css when htmx puts `.htmx-request` on it. Which means it clears
-           itself however the request ends — including on the responses that do
-           not re-render this block (a failed fetch, a deleted release).
-
-           SECOND, because the rule that hides the button is `:has(+ …)`: the
-           spinner has to be the button's next sibling.
-
-           `role="status"` with its own text: the swap is silent and the control
-           it replaces is one nobody can see disappear. #}
         <span id="mb-refreshing-{{ album.id }}" class="mb-refreshing w-4 h-4 items-center justify-center text-muted"
               role="status" title="Reading this release from MusicBrainz again…">
             <svg class="animate-spin" viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
@@ -108,23 +33,4 @@
             <span class="sr-only">Reading this release from MusicBrainz again…</span>
         </span>
     </dd>
-    {% endif %}
-
-    {# …and when the Cover Art Archive was last asked about this release (#276).
-       Its own row rather than a clause of the one above, because they are two
-       different services answering two different questions, and either can be
-       stale while the other is fresh. Same shape, so the panel gains no new
-       vocabulary: elapsed time, the exact moment on hover, and the way to ask
-       again beside it.
-
-       Shown for any album with a MusicBrainz release, asked or not, because
-       this row IS the way to ask (#419). It was hidden until the first check,
-       which put the only control that starts one inside the block that only
-       exists after one — so no album could ever be checked. The reasoning for
-       hiding it was sound in isolation (a row reading "never" on every album is
-       noise) and self-defeating once the button lived in it. #}
-    {% if album.sidecar and album.sidecar.mb_release_id %}
-    {% from 'partials/_caa_checked.html' import caa_checked with context %}
-    {{ caa_checked(caa_checked_at, '/album/' ~ album.id ~ '/artwork?reread=1', '#album-artwork') }}
-    {% endif %}
-</div>
+</dl>

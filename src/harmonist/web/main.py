@@ -5270,12 +5270,7 @@ def _register_routes(app: FastAPI) -> None:
             # that failed the write it was just asked for) — "read just now" is
             # then still true of the fetch that produced this response.
             mb_read_at=mb_cache.fetched_at(mbid) or datetime.now(UTC),
-            # …and the Cover Art Archive's date beside it, which this response
-            # has nothing to do with and must send anyway (#438). The dates are
-            # ONE out-of-band block: a response that sends half of it blanks the
-            # other half, and this one is the slowest on the page, so its swap
-            # lands last and wins. The Artwork section carries `mb_read_at` for
-            # exactly the same reason. A local SQLite read, no request in it.
+            # The Artwork header's date, if this response renders that section.
             caa_checked_at=(caa_answer.fetched_at if caa_answer else None),
             # What the Artwork section shows, rendered out of band from here
             # (#485).
@@ -6129,15 +6124,8 @@ def _register_routes(app: FastAPI) -> None:
             caa_check_due=mbid is not None
             and not asking
             and caa_cache.due(mbid, keep_if_wider_than=_widest(view)),
-            # The panel's dates ride back out of band, so the timestamp and the
-            # answer it describes update together — the same pairing the
-            # MusicBrainz control has with the Tags section.
+            # The Artwork header travels with the answer it describes.
             caa_checked_at=caa.fetched_at if caa else None,
-            # BOTH dates, because the swap replaces the whole block: sending
-            # only the one that changed would blank the MusicBrainz row beside
-            # it. A local SQLite read, no request in it.
-            mb_read_at=mb_cache.fetched_at(mbid) if mbid else None,
-            oob=True,
         )
         return _templates(request).TemplateResponse(request, "partials/_artwork.html", ctx)
 

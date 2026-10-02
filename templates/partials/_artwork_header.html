@@ -1,0 +1,14 @@
+{% from 'partials/_caa_checked.html' import caa_checked with context %}
+<header class="flex items-center justify-between flex-wrap gap-3">
+    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
+        Artwork
+        {% if artwork and artwork.count %}
+        <span class="text-muted font-normal normal-case tracking-normal ml-1">· {{ artwork.count }}</span>
+        {% endif %}
+    </h2>
+    {% if album.sidecar and album.sidecar.mb_release_id %}
+    <dl class="grid grid-cols-[auto_auto_auto] items-center gap-x-2 text-xs">
+        {{ caa_checked(caa_checked_at, '/album/' ~ album.id ~ '/artwork?reread=1', '#album-artwork') }}
+    </dl>
+    {% endif %}
+</header>

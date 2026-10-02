@@ -1,29 +1,20 @@
 {# What the files say about themselves beyond the tags Harmonist writes (#634):
-   the album's origin, concluded from its tags, then those tags as they are.
+   the tags as they are. Origin now belongs to the main album panel (#665).
    Only tags Harmonist reads for analysis appear — the provenance set #632
    reads, and the comment — which is what keeps this from becoming a tag dump.
    Disk facts, so it renders whether or not the album has a release; not at all
    when the files carry none of these tags.
 
-   Three kinds of text, drawn three ways: the origin is a conclusion, a field's
-   value rather than a tag (one day a menu the user can override and restore),
-   with what it rests on in its tooltip; tag names are literal, in mono; and
-   where the tracks disagree, the Album section's pill says so beside the value
-   most of them carry. #}
+   Tag names are literal, in mono; where the tracks disagree, the Album
+   section's pill says so beside the value most of them carry. #}
 {% from 'macros.html' import odd_tracks_pill %}
 {# A tag's value as the file carries it, its URLs linked and its prose not. #}
 {% macro literal(value) %}<span class="info-tags__value">{% for text, href in link_parts(value) %}{% if href %}<a href="{{ href }}"
    target="_blank" rel="noopener" class="text-accent hover:underline">{{ text }}</a>
 {%- else %}{{ text }}{% endif %}{% endfor %}</span>{% endmacro %}
-{% if info %}
+{% if info and info.rows %}
 <section id="album-info" class="border border-line rounded-lg p-4 space-y-3">
-    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Additional info</h2>
-    <dl class="tag-fields">
-        <dt>Origin</dt>
-        <dd><span class="font-bold text-ink cursor-help underline decoration-dotted underline-offset-2"
-                  title="{{ info.why }}">{{ info.origin }}</span></dd>
-    </dl>
-    {% if info.rows %}
+    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Additional tags</h2>
     <table class="info-tags">
         <thead><tr><th scope="col">Tag</th><th scope="col">Value</th></tr></thead>
         <tbody>
@@ -61,6 +52,5 @@
             {% endfor %}
         </tbody>
     </table>
-    {% endif %}
 </section>
 {% endif %}

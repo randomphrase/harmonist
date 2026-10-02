@@ -1,0 +1,10 @@
+{# Name the release from the existing cache; the comparison fills this in after
+   its first fetch. An uncached release is identified by its ID, never by the
+   album's on-disk title, which may name a different release. #}
+{% from 'macros.html' import release_name %}
+{% set mbid = album.sidecar.mb_release_id %}
+{% set named = release_title(mbid) %}
+<a id="album-release-{{ album.id }}"{% if oob %} hx-swap-oob="true"{% endif %}
+   href="https://musicbrainz.org/release/{{ mbid }}" target="_blank" rel="noopener"
+   title="View this release on MusicBrainz · {{ mbid }}"
+   class="font-bold text-mb-purple hover:underline break-words">{{ release_name(named[0], named[1]) if named else mbid }} <span class="text-xs" aria-hidden="true">↗</span></a>

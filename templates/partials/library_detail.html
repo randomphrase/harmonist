@@ -5,7 +5,14 @@
 {% set sc = album.sidecar %}
 {% set bc = sc.bandcamp if sc else None %}
 {% set store = store_name(sc.store_url if sc else None) %}
-<div class="relative overflow-hidden bg-surface border border-line rounded-lg">
+{% set info = additional_info(album) %}
+{% set origin_links_store = info and store and store == info.origin | lower %}
+{% set store_tip %}
+    {{- sc.store_url if sc else '' -}}
+    {%- if bc and bc.item_id is not none %} · item #{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}
+    {%- elif bc and bc.candidate_item_ids %} · ambiguous: item #{{ bc.candidate_item_ids | join(' or #') }} (several releases share this URL){% endif -%}
+{% endset %}
+<div id="album-identity" class="relative overflow-hidden bg-surface border border-line rounded-lg">
     {# Covers the panel while a multi-second re-tag is in flight (the re-tag
        buttons point their hx-indicator here). #}
     {% include 'partials/_tagging_overlay.html' %}
@@ -38,71 +45,51 @@
            `margin-block-end` on `:not(:last-child)`, so it sets the gaps between
            these children and never touches the last one's top margin. #}
         <div class="flex-grow min-w-0 flex flex-col space-y-3">
-            {# Badges left, dates right, on ONE row. Both are small reference
-               detail, so they sit at the same scale and share a baseline —
-               pairing the dates with the (much larger) title made them look
-               stranded. #}
-            <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-            {% if sc and (sc.mb_release_id or sc.store_url) %}
-            <div class="flex gap-2 items-center flex-wrap">
+            {# Identity and file facts left; lifecycle dates top right. The
+               management actions keep the floor of the metadata column. #}
+            <div class="album-identity__metadata">
+            <div class="min-w-0 flex-1">
+            <dl class="tag-fields">
                 {% if sc and sc.mb_release_id %}
-                {# Badge + its "wrong match" control grouped, so the pencil clearly
-                   belongs to MusicBrainz (not Bandcamp) — placement is what removes
-                   the old ambiguity. #}
-                <span class="inline-flex items-center gap-1">
-                {% with mb_release_id=sc.mb_release_id %}
-                    {% include 'partials/_mb_release_link.html' %}
-                {% endwith %}
-                {# Wrong MB release → back to Needs MBID to re-pick. Rare, so subtle
-                   (muted until hover); confirms first to guard against a mis-click. #}
-                {# Back to the library on success, not just a swap: this sends the
-                   album to Needs MBID, so it is no longer a Library album and
-                   this page would sit there describing something that moved.
-                   (It used to close the dialog, which had the same effect.) #}
-                {% include 'partials/_rematch_button.html' %}
-                </span>
+                <dt>MB release</dt>
+                <dd><span>
+                    {% include 'partials/_album_release.html' %}
+                    {# Keep the control alive while the first release name arrives,
+                       so a background comparison cannot steal keyboard focus. #}
+                    {% include 'partials/_rematch_button.html' %}
+                </span></dd>
                 {% endif %}
-                {% if sc and sc.store_url %}
-                {% set store_tip %}
-                    {%- if store == 'bandcamp' -%}
-                        View on Bandcamp · {{ sc.store_url }}
-                        {%- if bc and bc.item_id is not none %} · item #{{ bc.item_id }}{% if bc.band_id %} · band {{ bc.band_id }}{% endif %}
-                        {%- elif bc and bc.candidate_item_ids %} · ambiguous: item #{{ bc.candidate_item_ids | join(' or #') }} (several releases share this URL){% endif -%}
-                    {%- else -%}
-                        View on {{ store|title if store else 'store' }} · {{ sc.store_url }}
-                    {%- endif -%}
-                {% endset %}
-                <span class="inline-flex items-center gap-1">
-                <a href="{{ sc.store_url }}"
-                   target="_blank" rel="noopener"
-                   title="{{ store_tip }}"
-                   class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-bc-teal/10 text-bc-teal border border-bc-teal/40 hover:bg-bc-teal/20 hover:border-bc-teal transition">
-                    {% if store == 'bandcamp' %}
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-                        <path d="M0 18.75L7.437 5.25h16.563L16.563 18.75z"/>
-                    </svg>
+                <dt>Origin</dt>
+                <dd data-field="origin">
+                    {% if origin_links_store %}
+                    <a href="{{ sc.store_url }}" target="_blank" rel="noopener"
+                       title="{{ info.why }} · {{ store_tip }}"
+                       class="font-bold text-bc-teal-dark hover:underline">{{ info.origin }} ↗</a>
                     {% else %}
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                    </svg>
+                    <span class="font-bold text-ink cursor-help underline decoration-dotted underline-offset-2"
+                          title="{{ info.why if info else 'None of its tags says where the files came from.' }}">{{ info.origin if info else 'Unknown' }}</span>
                     {% endif %}
-                    {% if store == 'bandcamp' %}Bandcamp{% elif store %}{{ store|title }}{% else %}Store{% endif %} ↗
-                </a>
-                {% if album.state == AlbumState.NEEDS_SYNC %}
-                {% with on_album_page=true %}
-                    {% include 'partials/_purchased_elsewhere_button.html' %}
-                {% endwith %}
+                    {% if origin_links_store and album.state == AlbumState.NEEDS_SYNC %}
+                    {% with on_album_page=true %}{% include 'partials/_purchased_elsewhere_button.html' %}{% endwith %}
+                    {% endif %}
+                </dd>
+                {# A store relationship is not proof of a download's origin. #}
+                {% if sc and sc.store_url and not origin_links_store %}
+                <dt>Store</dt>
+                <dd>
+                    <a href="{{ sc.store_url }}" target="_blank" rel="noopener" title="{{ store_tip }}"
+                       class="font-bold text-bc-teal-dark hover:underline">{{ store|title if store else 'Store' }} ↗</a>
+                    {% if album.state == AlbumState.NEEDS_SYNC %}
+                    {% with on_album_page=true %}{% include 'partials/_purchased_elsewhere_button.html' %}{% endwith %}
+                    {% endif %}
+                </dd>
                 {% endif %}
-                </span>
-                {% endif %}
-            </div>
-            {% endif %}
+            </dl>
 
-            {# A merge of the release those badges name used to be stated here,
+            {# A merge of the release this link names used to be stated here,
                directly under them. It is a finding with a re-tag for a remedy,
                so it is one of the Findings now (#566) — see `_mb_merged.html`.
-               The MusicBrainz badge still links the release the FILES name,
+               The MusicBrainz link still names the release the FILES name,
                which is what it is for. #}
 
             {# How much of the release is on disk, and the control that accepts
@@ -242,17 +229,7 @@
                badges rather than stretching across the panel. Elapsed time,
                because these answer "how recently?" rather than "on what date?";
                the exact timestamp is one hover away. #}
-            {# THREE columns, the third for the Checked row's re-read control
-               (#358). It is empty on every other row and collapses to nothing,
-               and it is what lets all four values keep one right edge while the
-               control sits past them rather than in the gutter between label and
-               value, where it made its own row read as indented.
-
-               Every <dt> is pinned to column 1 for that to hold: grid
-               auto-placement fills cells in order, so a two-cell row would
-               otherwise run straight on into the third column and shear every
-               row after it. #}
-            <dl class="flex-shrink-0 grid grid-cols-[auto_auto_auto] gap-x-2 gap-y-0.5 text-xs text-right">
+            <dl class="flex-shrink-0 grid grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-xs text-right">
                 {% for label, when in [
                     ('Downloaded', sc.downloaded_at if sc else None),
                     ('Added', sc.added_at if sc else None),
@@ -264,12 +241,6 @@
                     title="{{ when.strftime('%Y-%m-%d %H:%M:%S UTC') }}">{{ ago(when) }}</dd>
                 {% endif %}
                 {% endfor %}
-                {# …and when MusicBrainz was last read for this release (#355).
-                   Its own partial rather than a fourth entry in the list above:
-                   it comes from the release cache rather than the sidecar, it
-                   carries the re-read control, and it is swapped out of band
-                   after a /compare — none of which the loop can express. #}
-                {% include 'partials/_checked_at.html' %}
             </dl>
             </div>{# /badges + dates row #}
 

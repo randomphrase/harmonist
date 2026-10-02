@@ -351,6 +351,12 @@ button[disabled],
    Widened rather than the labels shortened, because since #295 they come from
    `owned.LABELS` and are shared with History and the re-tag plan. Trimming one
    to fit a column here would rename that tag everywhere. */
+.album-identity__metadata { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+@media (max-width: 48rem) {
+  .album-identity__metadata { flex-direction: column; }
+  .album-identity__metadata > dl { align-self: end; }
+}
+
 .tag-fields {
   display: grid;
   grid-template-columns: 8rem minmax(0, 1fr);

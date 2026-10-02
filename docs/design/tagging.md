@@ -133,11 +133,11 @@ It's one conclusion with two readers. The album page shows it, and
 download exactly when its origin is a store. So the page can't name an origin
 the checks disagree with.
 
-### Additional info
+### Origin and additional tags
 
-The album page shows the origin, then these tags and the comment by their
-literal names, in a section of its own. They answer "where did these files come
-from", not "does this match MusicBrainz", so they don't belong in the Album
+The album page groups origin with the album's identity. These tags and the
+comment appear by their literal names in a section of their own. They answer
+"where did these files come from", not "does this match MusicBrainz", so they don't belong in the Album
 section's comparison. The comment was shown there, never compared, until #634
 moved it.
 

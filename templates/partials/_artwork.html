@@ -46,12 +46,7 @@
     is the same however the section arrived. The out-of-band elements at the
     foot stay outside it: htmx only finds them at the top level. -#}
 <div class="space-y-3">
-<h2 class="text-sm font-bold text-ink uppercase tracking-widest">
-    Artwork
-    {% if artwork.count %}
-    <span class="text-muted font-normal normal-case tracking-normal ml-1">· {{ artwork.count }}</span>
-    {% endif %}
-</h2>
+{% include 'partials/_artwork_header.html' %}
 
 {% if artwork.cover_unreadable %}
 {# "Couldn't read it" and "there isn't one" lead to opposite conclusions about
@@ -442,14 +437,6 @@
      hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"></div>
 {% endif %}
 </div>
-
-{# The panel's dates, refreshed alongside — this response may have just asked
-   the archive, and the "CAA checked" row it updates lives up in the panel.
-   Rendered only when this response carries them, so the ordinary lazy load of
-   this section leaves the panel alone. #}
-{% if caa_checked_at is defined and oob is defined %}
-{% with oob = true %}{% include 'partials/_checked_at.html' %}{% endwith %}
-{% endif %}
 
 {# …and the same finding stated up beside the album's other one (#417, #443),
    which is its own partial since #485 — the /compare response renders this
