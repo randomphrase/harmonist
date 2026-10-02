@@ -236,6 +236,32 @@
             if (input) input.checked = true;
         }
     });
+    // ‹ and › only where they go somewhere, as the rows' ↑ and ↓ stop at the
+    // ends: ‹ not on the first image shown, › not on the last — unless another
+    // release may follow it. Disabled, which the stylesheet hides, so a press
+    // that would do nothing is never offered. Re-read after anything that moves
+    // the carousel or changes what it shows.
+    const turns = form => {
+        const back = form.querySelector('.art-pick__turn--back');
+        const on = form.querySelector('.art-pick__turn--on');
+        if (!back || !on) return;
+        const radios = shownImages(form);
+        const at = radios.findIndex(radio => radio.checked);
+        back.disabled = at <= 0;
+        on.disabled = at === radios.length - 1 && !form.querySelector('.art-pick__more[data-more="step"]');
+    };
+    document.addEventListener('htmx:load', event => {
+        const root = event.detail.elt;
+        const forms = root.matches?.('form.art-compare') ? [root]
+            : Array.from(root.querySelectorAll?.('form.art-compare') ?? []);
+        forms.forEach(turns);
+    });
+    document.addEventListener('change', event => {
+        if (event.target.matches('input[name="candidate"], .art-pick__front-only input')) {
+            turns(event.target.form);
+        }
+    });
+    document.querySelectorAll('form.art-compare').forEach(turns);
     // Ticking Front only while a back cover is shown would leave nothing
     // shown: move to the first image that can be.
     document.addEventListener('change', event => {

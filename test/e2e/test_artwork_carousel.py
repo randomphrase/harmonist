@@ -177,6 +177,34 @@ def test_the_carousel_goes_on_to_another_release(reset_carousel_server: str) -> 
         browser.close()
 
 
+def test_the_carousel_offers_no_step_past_either_end(reset_carousel_server: str) -> None:
+    """‹ and › only where they go somewhere, as the rows' ↑ ↓ stop at the
+    ends: no ‹ on the first image, and no › on the last once no release can
+    follow it — where it was offered and did nothing."""
+    with pw.sync_playwright() as playwright:
+        browser, page = _open(playwright, reset_carousel_server)
+        section = page.locator("#album-artwork")
+        # By class, not role: a role locator skips a hidden button, and would
+        # find "hidden" true of a button it simply did not find.
+        back = section.locator(".art-pick__picker .art-pick__turn--back")
+        on = section.locator(".art-pick__picker .art-pick__turn--on")
+
+        pw.expect(back).to_be_hidden()  # 101, the first
+        pw.expect(on).to_be_visible()
+        with page.expect_response(lambda r: "more=ahead" in r.url):
+            on.click()
+        page.wait_for_function(SETTLED)
+        # 103, the album's last image — but another release may follow it.
+        pw.expect(back).to_be_visible()
+        pw.expect(on).to_be_visible()
+
+        on.click()  # 201, the other release's only image, and the group's last
+        assert _shown(page) == ["201"]
+        pw.expect(on).to_be_hidden()
+        pw.expect(back).to_be_visible()
+        browser.close()
+
+
 def test_a_late_archive_check_leaves_the_picker_where_it_was_moved(
     reset_carousel_server: str,
 ) -> None:
@@ -192,7 +220,6 @@ def test_a_late_archive_check_leaves_the_picker_where_it_was_moved(
         page.wait_for_function("() => document.querySelector('.htmx-request')")
 
         section.locator(".art-row").nth(1).locator(".art-row__select").click()
-        section.get_by_role("button", name="Previous image").click()  # 101 stays: none before
         section.get_by_role("checkbox", name="Front only").uncheck()
         section.get_by_role("button", name="Next image").click()  # 101 → 102, the back
         while not held:

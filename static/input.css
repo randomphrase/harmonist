@@ -1217,6 +1217,8 @@ dialog::backdrop {
   cursor: pointer;
 }
 .art-pick__turn:hover { background: #fff; }
+/* At either end, where it would go nowhere (artwork-viewer.js decides). */
+.art-pick__turn:disabled { visibility: hidden; }
 .art-pick__turn--back { left: .2rem; }
 .art-pick__turn--on { left: calc(6.5rem - 1.8rem); }
 .art-pick__front-only {
