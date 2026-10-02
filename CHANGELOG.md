@@ -21,6 +21,9 @@ versions follow [semantic versioning](https://semver.org).
 ### Fixed
 
 - Tagging an album whose tracks carry their own artwork no longer warns that the artwork was kept — it always is, and the "replace artwork" the warning pointed to isn't offered (#670).
+- **An album already tagged with a MusicBrainz release no longer looks itself
+  up by barcode** on arrival, which raced its reconcile and logged a spurious
+  "Barcode lookup failed" (#671).
 
 ## [1.22.0] - 2026-10-01
 

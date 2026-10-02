@@ -5,6 +5,9 @@
 {% set public_url = sc and sc.store_url and not (sc.bandcamp and sc.bandcamp.is_private) %}
 {% set prefer_name = request.query_params.get('search') == 'name' %}
 {% set barcode_default = album.barcode and not prefer_name %}
+{# Look up on render only when nothing already names a release. Files tagged with
+   an MBID are reconcile's to adopt; a lookup fired here races it and loses (#671). #}
+{% set auto_lookup = not album.has_tag_mbid and not (sc and sc.mb_match_candidate) %}
 <div class="find-mode mb-2"
      hx-on:change="if (event.target.type === 'radio') document.getElementById('mbid-results-{{ album.id }}').replaceChildren()">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs">
@@ -36,7 +39,7 @@
               hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML settle:0ms"
               {# Defer load until HTMX has initialized the child button's request
                  counter, or it stays disabled after the first response. #}
-              hx-trigger="{% if barcode_default and not (sc and sc.mb_match_candidate) %}load delay:1ms, {% endif %}submit, change from:#barcode-mode-{{ album.id }}"
+              hx-trigger="{% if barcode_default and auto_lookup %}load delay:1ms, {% endif %}submit, change from:#barcode-mode-{{ album.id }}"
               {# hx-preserve retains the form, but HTMX reinitializes its load
                  listener after inbox swaps. Retire only that automatic trigger. #}
               hx-on::before-request="this.setAttribute('hx-trigger', 'submit, change from:#barcode-mode-{{ album.id }}')"
@@ -52,7 +55,7 @@
     <div class="find-mode__panel find-mode__panel--url">
         <form hx-post="/manual/{{ album.id }}/candidates"
               hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML settle:0ms"
-              hx-trigger="{% if not barcode_default and not prefer_name and not sc.mb_match_candidate %}load delay:1ms, {% endif %}submit, change from:#url-mode-{{ album.id }}"
+              hx-trigger="{% if not barcode_default and not prefer_name and auto_lookup %}load delay:1ms, {% endif %}submit, change from:#url-mode-{{ album.id }}"
               hx-on::before-request="this.setAttribute('hx-trigger', 'submit, change from:#url-mode-{{ album.id }}')"
               hx-disabled-elt="find button" hx-indicator="#lookup-progress-{{ album.id }}"
               {{ reload_unless_retargeted(on_album) }} class="flex items-center gap-2">

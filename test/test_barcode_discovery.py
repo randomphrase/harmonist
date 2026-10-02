@@ -1,5 +1,6 @@
 """Barcode discovery uses purchased tags; it never writes to the audio files."""
 
+import re
 import shutil
 from unittest.mock import Mock
 
@@ -369,3 +370,31 @@ def test_a_suggestion_written_while_a_lookup_runs_is_kept(client, cfg, monkeypat
     assert response.status_code == 204
     kept = sidecar.read(path).mb_match_candidate
     assert kept is not None and kept.mb_release_id == OTHER
+
+
+def _barcode_trigger(html, aid):
+    form = re.search(rf'<form hx-post="/manual/{aid}/barcode"[^>]*>', html)
+    assert form is not None
+    trigger = re.search(r'hx-trigger="([^"]*)"', form.group(0))
+    assert trigger is not None
+    return trigger.group(1)
+
+
+@pytest.mark.parametrize("tagged", [False, True])
+def test_a_new_album_tagged_with_an_mbid_does_not_look_itself_up(client, cfg, tagged):
+    """#671: a CD tagged in Picard, then added, is New until auto-reconcile
+    adopts its tag MBID. The card's barcode lookup fired on load and raced
+    reconcile, losing with "Album was matched while the lookup ran". The files
+    already name their release, so only an untagged album looks itself up; the
+    tagged one keeps the lookup for when it's asked for."""
+    _, file = album(cfg.paths.music_dir)
+    if tagged:
+        tags = MP4(file)
+        tags["----:com.apple.iTunes:MusicBrainz Album Id"] = [MBID.encode()]
+        tags.save()
+    aid = scanner.scan(cfg.paths.music_dir)[0].id
+
+    trigger = _barcode_trigger(client.get(f"/album/{aid}").text, aid)
+
+    assert ("load" in trigger) is not tagged
+    assert "submit" in trigger
