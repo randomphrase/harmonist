@@ -140,6 +140,8 @@
 {# `queue last`: a step's look ahead at the next release (#659) is in flight
    while the user goes on pressing, and a press must wait for it rather than be
    dropped. #}
+<div class="art-layout{% if picker %} art-layout--pick{% endif %}"
+     style="--art-layout-rows: {{ artwork.rows|length + 2 }}">
 <form id="art-pick-{{ album.id }}"
       class="art-compare{% if steppable %} art-compare--pick{% endif %}"
       hx-get="/album/{{ album.id }}/artwork" hx-sync="this:queue last"
@@ -310,7 +312,7 @@
 {%- if c.release %} ({{ c.release }}){% endif -%}
 {%- set kinds = c.types|reject('equalto', 'front')|list %}{% if kinds or not c.front %}, {{ (kinds|join(', ') or 'untyped')|lower }}{% endif -%}
 {%- endmacro %}
-{% macro candidate_facts(candidate) %}
+{% macro candidate_facts(candidate, measure=true) %}
 <div class="art-row__facts">
     {# Whose image it is — this release's, the group's, which stands for every
        release of the album (#434), or another release's, named by what tells
@@ -329,7 +331,7 @@
     {% endif %}
     {% if candidate.meta %}
     <span class="art-row__meta">{{ candidate.meta }}</span>
-    {% else %}
+    {% elif measure %}
     {# Not measured yet: measured the first time the slide is shown — a hidden
        slide never intersects — and kept, so this is asked once per image.
        Its own target, swap and sync, since the form's would otherwise be
@@ -338,6 +340,8 @@
           hx-get="/artwork/candidate/{{ album.id }}/{{ candidate.image_id }}/facts"
           hx-trigger="intersect once" hx-target="this" hx-swap="outerHTML"
           hx-sync="this:drop">&nbsp;</span>
+    {% else %}
+    <span class="art-row__meta">&nbsp;</span>
     {% endif %}
 </div>
 {% endmacro %}
@@ -436,27 +440,19 @@
             title="Look for images on the other releases of this album">Other releases ›</button>
     {% endif %}
 </div>
-{# The picker's invisible double, on the last row's line: what reserves the
-   room for the picker to hang from any row, since the picker itself takes no
-   part in sizing the rows (see `.art-pick__ghost`). The same frame, with the
-   tallest facts any image can have, so it is at least as tall as whichever
-   image is shown; nothing in it can be reached. Another release's label is the
-   one fact whose length varies, so the ghost carries the longest. #}
+{# Reserve room beside the last row and Apply for the tallest actual candidate.
+   Overlaying the facts measures their maximum without inventing extra lines;
+   the inert copy has no controls or requests of its own. #}
 {% if picker %}
-{% set longest = namespace(label='') %}
-{% for c in picker if c.release and c.release|length > longest.label|length %}{% set longest.label = c.release %}{% endfor %}
 <div class="art-pick__ghost" aria-hidden="true" inert
      style="--art-pick-last: {{ artwork.rows|length + 1 }}">
     <div class="art-pick__carousel">
-        <span class="art-pick__slide">
+        <div class="art-pick__slide">
             <span class="art-row__art art-pick__image"></span>
-            <span class="art-row__facts">
-                <span class="art-row__who">Release group</span>
-                {% if longest.label %}<span class="art-row__meta-plain">{{ longest.label }}</span>{% endif %}
-                <span class="art-row__meta-plain">Back</span>
-                <span class="art-row__meta">0×0 · JPEG · 0 KB</span>
-            </span>
-        </span>
+            <div class="art-pick__ghost-facts">
+                {% for c in picker %}{{ candidate_facts(c, measure=false) }}{% endfor %}
+            </div>
+        </div>
     </div>
     {% if picker|selectattr('front')|list and picker|rejectattr('front')|list %}
     <span class="art-pick__front-only">Front only</span>
@@ -476,28 +472,25 @@
    `plan` is the fingerprint of the right-hand column. The server rebuilds the
    plan and writes only if it still matches, so the button applies what the
    reader is looking at — not whatever the album has become since (#469).
-
-   `hx-confirm` only for a Replacement, because that overwrites images the user
-   has (kept first, so it can be put back from History, #408). An Addition fills
-   an empty place and costs a few megabytes at most; asking about it would train
-   the reader to click through the one question that matters. #}
+   This press confirms the reviewed changes; replacements are backed up for
+   History, so another confirmation adds no decision (#683). #}
 {% if artwork.writes %}
 <form hx-post="/album/{{ album.id }}/artwork/update"
       hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"
       hx-disabled-elt="find button"
-      {% if artwork.operation == 'replacement' %}hx-confirm="Replace artwork this album already has? What is replaced is kept, so this can be undone from History."{% endif %}
-      class="pt-1">
+      class="art-apply">
     <input type="hidden" name="plan" value="{{ artwork.fingerprint }}">
     {# The choices travel with the press, so the server rebuilds the same plan
        this section was drawn from (#472, #659). #}
     <input type="hidden" name="use" value="{{ artwork.use }}">
     <button type="submit"
             class="text-2xs uppercase tracking-widest font-bold px-3 py-1.5 rounded
-                   border border-mb-purple/40 text-mb-purple hover:bg-mb-purple/10 transition"
+                   border border-mb-purple bg-mb-purple text-white hover:bg-mb-purple/90 transition"
             title="Write what the After Apply column shows. No tags are touched."
             aria-label="Apply this album's artwork">Apply artwork</button>
 </form>
 {% endif %}
+</div>
 
 {# The full-size views, one per distinct image. A popover rather than a
    hand-rolled overlay: it brings its own dismiss, Escape handling and top-layer

@@ -1134,6 +1134,7 @@ dialog::backdrop {
    section's own spacing comes from the one container `_artwork.html` draws
    everything in, so it is the same whichever way the section arrived. */
 .art-compare { display: flex; flex-direction: column; gap: .75rem; }
+.art-apply { margin-top: 1rem; }
 
 /* With a candidate, the rows and the picker are items of ONE grid, so the
    picker can be put on the checked row's line: `.art-rows` stops generating a
@@ -1182,6 +1183,8 @@ dialog::backdrop {
   background: #fff;
 }
 .art-pick__ghost { display: none; }
+.art-pick__ghost-facts { display: grid; width: 100%; }
+.art-pick__ghost-facts > .art-row__facts { grid-area: 1 / 1; }
 
 /* The carousel (#659): one image at a time — the one whose radio is checked —
    and, while Front only is ticked, never one that is not a front. A thumbnail
@@ -1356,14 +1359,29 @@ dialog::backdrop {
      rows changed as the user moved from one to the next.
 
      The room it needs is reserved instead by its ghost (`.art-pick__ghost`):
-     the same panel, invisible, on the LAST row's line. The last row is the
+     the same panel, invisible, starting on the LAST row's line and spanning
+     Apply and the trailing space. The last row is the
      worst case — a panel hanging from it has nothing below it to overlap — so
      room for it there is room for it from every row, and it is the same room
      whichever row is checked. */
+  .art-layout--pick,
   .art-compare--pick {
     position: relative;
     grid-template-columns: minmax(0, 1fr) minmax(0, 13.5rem);
     column-gap: 5rem;
+  }
+  .art-layout--pick {
+    display: grid;
+    /* Rows and Apply keep their natural heights. Only the trailing flexible
+       track absorbs the picker's overhang from the last row (#683). */
+    grid-template-rows: repeat(var(--art-layout-rows), max-content) minmax(0, 1fr);
+    align-items: start;
+  }
+  .art-layout--pick > .art-compare { display: contents; }
+  .art-layout--pick > .art-apply {
+    grid-column: 1;
+    grid-row: var(--art-layout-rows) / -1;
+    align-self: end;
   }
   .art-pick__picker {
     position: absolute;
@@ -1377,7 +1395,7 @@ dialog::backdrop {
     display: block;
     visibility: hidden;
     grid-column: 2;
-    grid-row: var(--art-pick-last, 2);
+    grid-row: var(--art-pick-last, 2) / -1;
   }
   .art-pick__slide:has(input:checked),
   .art-pick__ghost .art-pick__slide { display: flex; flex-direction: column; gap: .5rem; }

@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Applying reviewed artwork no longer asks for a second confirmation, and its purple Apply button sits at the foot of a more compact section (#683).
+
 ## [1.23.0] - 2026-10-05
 
 ### Added

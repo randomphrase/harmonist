@@ -110,9 +110,6 @@ def test_apply_artwork_writes_what_the_section_showed(demo_server: str) -> None:
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page()
-        # A Replacement asks first; accept it, as the user pressing would.
-        page.on("dialog", lambda dialog: dialog.accept())
-
         page.goto(f"{demo_server}/album/{ALBUM_ID}")
         page.wait_for_selector("#album-artwork .art-row")
         section = page.locator("#album-artwork")
