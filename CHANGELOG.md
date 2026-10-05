@@ -6,29 +6,35 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-10-05
+
 ### Added
 
-- **Artwork is chosen row by row** from every image the Cover Art Archive has
-  for the release, its release group and the group's other releases;
-  `cover.jpg` always has a row of its own (#659).
+- **A new artwork picker** chooses each row's image from everything the Cover
+  Art Archive has for the release, its release group and the group's other
+  releases (#659).
 - **A cover borrowed from the release group or another release gives way** to
-  the release's own front once it has one, whatever its size (#663).
+  the release's own front once it has one, whatever its size. Covers borrowed
+  before this version aren't recognised as stand-ins (#663).
 
 ### Changed
 
-- Album pages use aligned label/value details, keep dates at the top right, place refresh controls beside section headings, and group Additional tags before Artwork (#665).
+- **Origin sits beside the MusicBrainz release** at the top of the album page:
+  where the files came from, deduced from the marks stores and rippers leave in
+  their tags. Each refresh control now sits beside the section it refreshes
+  (#665).
 - **Activity names the album when a scan starts tracking just one**, linking
   to it, instead of "Started tracking 1 album" (#672).
 - **Release review marks artwork "Identical to existing artwork"** beside the
-  image it matches byte for byte. When only some images match, the selected
-  release's artwork now sits beside the one it would replace (#595).
+  image it matches byte for byte (#595).
 
 ### Fixed
 
-- Tagging an album whose tracks carry their own artwork no longer warns that the artwork was kept — it always is, and the "replace artwork" the warning pointed to isn't offered (#670).
+- **Tagging an album whose tracks carry their own artwork no longer warns** that
+  the artwork was kept (#670).
 - **An album already tagged with a MusicBrainz release no longer looks itself
-  up by barcode** on arrival, which raced its reconcile and logged a spurious
-  "Barcode lookup failed" (#671).
+  up by barcode** on arrival, which logged a spurious "Barcode lookup failed"
+  (#671).
 
 ## [1.22.0] - 2026-10-01
 

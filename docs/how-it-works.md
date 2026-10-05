@@ -192,16 +192,18 @@ Harmonist's rules:
 - Albums where tracks have different images, such as compilations, keep them
   unless you choose an image for one of them.
 
-![The Artwork section, in two columns: Now and After Apply. "All 3 tracks,
-320×320" has nothing after it: the embedded art is kept. "cover.png, 320×320"
-becomes "the Cover Art Archive, 960×960". Under "Also available" is the
-archive's image with a "Use this artwork" link, and an Apply artwork button sits
-at the bottom.](images/artwork.png)
+![The Artwork section, with columns Now, After Apply and Available. "cover.png,
+320×320" becomes "the Cover Art Archive, 960×960", with an × beside it. The "All
+3 tracks, 320×320" row is selected and has an empty box after it: the embedded
+art is kept. Under Available is the archive's "This release, 960×960" image,
+with a Use button pointing at the selected row and an arrow to the next
+image.](images/artwork.png)
 
 Bigger isn't always better, so any row can take any image the Cover Art Archive
-has for the release or its release group, regardless of size, or keep the image
-it has instead of the one suggested for it. A choice reaches only its own row, so
-a compilation's other covers stay as they are.
+has for the release, its release group or the group's other releases,
+regardless of size, or keep the image it has instead of the one suggested for
+it. A choice reaches only its own row, so a compilation's other covers stay as
+they are.
 
 ## Undo and history
 
@@ -217,6 +219,25 @@ leaves the image alone rather than replace it.
 The **Activity** tab lists everything Harmonist has done, newest first, across
 the whole library.
 
+## Where the files came from
+
+An album's page shows its **Origin**: Bandcamp, Qobuz, Amazon, Beatport, CD or
+Unknown. Nothing records where a file came from when it's copied into a library,
+so Harmonist deduces it from marks that particular stores and rippers leave in
+the tags: a Bandcamp URL in the comment, Qobuz's track id, Amazon's or
+Beatport's purchase note, or AccurateRip's verification of a ripped disc. The
+stores' marks survive converting FLAC to ALAC with XLD. The tags the origin
+rests on are listed under **Additional tags**.
+
+Only those marks count. A barcode isn't enough, because CD rippers write one
+too, and neither is hi-res audio, which vinyl rips have as well. When there are
+no marks, or they disagree (a rip's and a store's, or two stores'), the origin
+is Unknown. An album Harmonist downloaded from Bandcamp itself is Bandcamp
+regardless.
+
+The origin describes the files, not the purchase: a CD bought on Bandcamp and
+then ripped is a CD.
+
 ## When the match might be wrong
 
 A download often matches more than one release in its release group: the
@@ -226,13 +247,9 @@ files carry evidence of which release you actually bought: the store's URL
 (Bandcamp puts it in the comments), or the album's barcode (UPC), which stores
 like Qobuz embed.
 
-An album counts as a download only when its files carry a store's own mark: a
-Bandcamp URL, Qobuz's track id, or Amazon's or Beatport's purchase note. These
-survive converting FLAC to ALAC with XLD. A barcode on its own isn't enough,
-because CD rippers write one too. Files with AccurateRip tags are a CD rip. When
-the marks disagree — a rip's and a store's, or two stores' — the origin is
-unknown and the album isn't checked. The album's page shows its origin and the
-tags that establish it.
+An album counts as a download only when its
+[origin](#where-the-files-came-from) is a store. When the origin is Unknown, the
+album isn't checked.
 
 Harmonist compares that evidence with every release in the group. An album goes
 into the **Possible mismatch** filter when the evidence points somewhere other
