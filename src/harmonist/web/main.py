@@ -838,6 +838,10 @@ def create_app(
     app = FastAPI(title="Harmonist", lifespan=lifespan)
     app.state.cfg = cfg
     sync_runner.app = app  # lets runner_fn read app.state.cfg fresh each sync
+    # The update check plans what a re-tag would write, so it judges each album
+    # under the transforms the write would apply (#685) — read off the live
+    # config at the moment it looks, since Settings applies without a restart.
+    gardener.configure(lambda: frozenset(app.state.cfg.tagging.transforms))
     app.state.templates = templates
     app.state.sync_runner = sync_runner
     app.state.reconcile_runner = reconcile_runner
@@ -3339,6 +3343,32 @@ def _start_flag_warm_up(scan_runner: ScanRunner) -> None:
     threading.Thread(target=_run, name="harmonist-flag-warmup", daemon=True).start()
 
 
+def _start_settings_recheck(scan_runner: ScanRunner, changed: frozenset[TagTransform]) -> None:
+    """Re-judge the albums a change to the enabled transforms can move (#685).
+
+    The Library follows the setting without anyone opening the albums: an album
+    whose title the new setting would rewrite gains a Settings update, and one
+    it no longer would loses it. Its own thread, as the warm-up is and for the
+    same reasons — file reads, nothing to await, nothing persisted.
+
+    Not before the first scan has finished: there are no albums to re-judge
+    yet, and the warm-up that scan triggers already reads the new setting.
+    """
+    if not scan_runner.has_completed():
+        return
+
+    def _run() -> None:
+        try:
+            gardener.recheck_for_settings(scan_runner.albums(), changed)
+        except Exception:
+            # Boundary catch, as for the warm-up: a background hint must not die
+            # silently, and the symptom would otherwise be a filter that still
+            # describes the setting the user just changed.
+            log.exception("update-available re-check after a settings change failed")
+
+    threading.Thread(target=_run, name="harmonist-flag-recheck", daemon=True).start()
+
+
 def _refreshed_from_disk(request: Request, album: Album) -> Album:
     """Re-read this album's directories and return it as it is on disk NOW (#151).
 
@@ -4905,11 +4935,13 @@ def _register_routes(app: FastAPI) -> None:
         # Nor does the folder-cover policy: every artwork plan reads it off
         # `app.state.cfg` as it is built, so the next album page drawn is
         # already under the new one (#516). The transforms are read the same way
-        # and are live in the same sense (#544) — but they change only what a
-        # LATER write emits, never what is already on disk, so nothing here
-        # rewrites anything and no rescan is owed.
+        # and are live in the same sense (#544). They also decide which albums
+        # have an update (#685), so a change re-judges the albums it can move —
+        # from the cache, writing nothing to any file.
         request.app.state.cfg = new_cfg
         mb_lookup.configure(new_cfg.musicbrainz.user_agent)
+        if changed := frozenset(cfg.tagging.transforms) ^ frozenset(new_tagging.transforms):
+            _start_settings_recheck(request.app.state.scan_runner, changed)
         activity.info("Settings updated")
 
         return _templates(request).TemplateResponse(
@@ -5683,6 +5715,9 @@ def _register_routes(app: FastAPI) -> None:
             # the thing an ignore is compared against. Reading it before would
             # ask whether the ignore holds for the payload we had a moment ago.
             update_ignored=gardener.is_ignored(album, _ignored_updates()),
+            # Whether any of the update is the user's own setting arriving
+            # (#685), which the section says so they look to Settings for it.
+            follows_settings=plan is not None and gardener.follows_settings(plan),
             contribution=contributions.assess(album),
             comparison=comparison,
             tracklist=tracks,
@@ -7611,6 +7646,17 @@ def _register_routes(app: FastAPI) -> None:
             return _flash_response(
                 "Nothing to ignore",
                 "no update is outstanding for this album",
+                level=Level.WARNING,
+                album=album,
+                tasks_changed=False,
+            )
+        if album.update_significance == owned.Significance.SETTINGS:
+            # Only the user's own setting is on offer (#685). Ignore is about
+            # MusicBrainz, and the page offers no box here: a bookmark would be
+            # one the user could not see to take back.
+            return _flash_response(
+                "Nothing to ignore",
+                "these changes follow your Settings — change the setting instead",
                 level=Level.WARNING,
                 album=album,
                 tasks_changed=False,

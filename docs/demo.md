@@ -103,6 +103,7 @@ batch runs.
 | Dingoes Ate My Baby | One missing embedded cover; the other tracks already have the right image |
 | Mouse Rat | A 320-pixel local cover and a 960-pixel copy available from the archive |
 | Barry Jive — After Hours | A smaller, visibly different archive alternative; harmless duration differences are informational |
+| Wyld Stallion | Nothing until **Add the release disambiguation to the album title** is ticked in Settings; then a **Settings** update adding *(San Dimas edition)*, with no Ignore offered |
 
 1. Open **Rawhide**. Review the few proposed tag changes, apply them, and show
    the settled comparison. Expand History to inspect precisely what changed.

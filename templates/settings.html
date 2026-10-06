@@ -150,7 +150,7 @@
 
            One form, one Save, because there is one place these are written and
            a second button would imply two. #}
-        <section class="border border-line rounded-lg p-4 space-y-4">
+        <section id="tagging" class="border border-line rounded-lg p-4 space-y-4">
             <div>
                 <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tagging</h2>
                 <p class="text-2xs text-muted">How much Harmonist changes in files you already have.</p>
@@ -207,21 +207,30 @@
                a real release the reader might go and check. It is illustrative
                only — the demo album itself is tagged to the STANDARD release,
                which carries no disambiguation, so this is not a walkthrough of
-               anything demo mode will show. #}
+               anything demo mode will show.
+
+               Each transform brings the albums already on disk into line too
+               (#685), whichever way it is set — so the intro says so, in the
+               words the folder-cover control above uses for the same thing.
+               Turning one OFF takes data out of titles, which is why a saved-on
+               box carries a warning: rendered only when the transform is saved
+               on, and shown by the same `group-has-[:checked]` CSS only while the
+               box is unticked, so it describes the save the user is about to
+               make. Turning one on only adds, and warns of nothing. #}
             <div class="space-y-3">
                 <div>
                     <span class="block text-xs font-bold text-ink">Tag transforms</span>
                     <p class="text-2xs text-muted">
-                        Match a choice you’ve made in Picard. Applies to future taggings —
-                        nothing you already have is rewritten; each album offers the change
-                        on its own page.
+                        Match a choice you’ve made in Picard. Albums whose tags differ show
+                        as having an update available.
                     </p>
                 </div>
 
-                {% for value, label, before, after in [
+                {% for value, label, before, after, off_warning in [
                     ('album_disambiguation',
                      'Add the release disambiguation to the album title',
-                     'Fever Dog', 'Fever Dog (Live at the Riot House)')
+                     'Fever Dog', 'Fever Dog (Live at the Riot House)',
+                     'Turning this off removes the disambiguation from every album title that has one.')
                 ] %}
                 <div class="group">
                     <label class="flex items-center gap-2 cursor-pointer w-fit">
@@ -238,6 +247,11 @@
                             <span class="font-mono font-semibold text-ink">{{ after }}</span>
                         </span>
                     </p>
+                    {% if value in cfg.tagging.transforms %}
+                    <p role="note" class="transform-off-warning ml-6 mt-2 w-fit rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 group-has-[:checked]:hidden">
+                        {{ off_warning }}
+                    </p>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>

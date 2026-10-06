@@ -162,17 +162,17 @@ def _album_fields(plan) -> set[str]:
     return {f for c in plan.changes.values() for f in c}
 
 
-def test_turning_the_transform_on_is_not_an_update_to_take(tmp_path):
-    """No flood, which is the whole reason this is affordable. A library tagged
-    with MusicBrainz's plain title offers NO update once the transform is on, so
-    #32's nightly pass does not empty the library into the Inbox on its first
-    night. That is #283's failure mode in reverse, and it is the one this
-    feature could plausibly have shipped.
+def _overwrite(album_dir: Path, field: owned.Owned, value: str) -> None:
+    """Put `value` in `field` on every file, as another tool would have left it."""
+    for f in sorted(album_dir.iterdir()):
+        formats_mod.write_owned(f, {**formats_mod.read_owned(f), field.value: value})
 
-    The entry is still in the plan, and that pair is the point (#545): a re-tag
-    that happens for some other reason really does rewrite the title, so the
-    history has to be able to say so and the undo has to be able to put it back.
-    Not an update, not invisible — two different questions.
+
+def test_turning_the_transform_on_is_a_settings_update(tmp_path):
+    """The library converges on the setting (#685). An album tagged with
+    MusicBrainz's plain title has an update once the transform is on, and it is
+    classified SETTINGS: the title on disk is one this release legitimately has,
+    and the new one is what the user chose.
     """
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
@@ -180,42 +180,80 @@ def test_turning_the_transform_on_is_not_an_update_to_take(tmp_path):
 
     plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
 
-    assert gardener.verdict_for(plan) is None
-    assert owned.Owned.ALBUM in _album_fields(plan)
+    assert gardener.verdict_for(plan) == owned.Significance.SETTINGS
 
 
-def test_and_nor_is_turning_it_off(tmp_path):
-    """The other direction, which is #283's own rule and must survive this
-    change: a library carrying Picard's disambiguated title offers an install
-    with the transform off nothing to take."""
+def test_and_so_is_turning_it_off(tmp_path):
+    """The other direction, symmetric on purpose: off is a choice like any other,
+    so a library carrying Picard's disambiguated title converges on the plain one
+    — which removes the disambiguation from files, and is why the Settings page
+    warns before it happens."""
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
     tagger.tag_album(album_dir, release, transforms=DISAMBIG)
 
     plan = tagger.plan_album(album_dir, release, artwork=False)
 
-    assert gardener.verdict_for(plan) is None
-    assert owned.Owned.ALBUM in _album_fields(plan)
+    assert gardener.verdict_for(plan) == owned.Significance.SETTINGS
 
 
-def test_a_title_that_is_neither_accepted_spelling_is_an_update(tmp_path):
-    """What stops the two tests above from passing for the wrong reason. The
-    tolerance is two exact strings, so a genuinely wrong album title is still
-    offered under either setting — one that swallowed this would be a Library
-    that had stopped reporting retitles at all.
+def test_a_title_that_is_neither_accepted_spelling_keeps_its_own_significance(tmp_path):
+    """What stops the two tests above from passing for the wrong reason. Only
+    two exact strings can be a Settings change, so a genuinely wrong album title
+    is a retitle under either setting — one that took this for a Settings change
+    would hand #273 a retitle disguised as something the user asked for.
     """
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
     tagger.tag_album(album_dir, release)
-    for f in sorted(album_dir.iterdir()):
-        formats_mod.write_owned(
-            f, {**formats_mod.read_owned(f), owned.Owned.ALBUM.value: "Something Else"}
-        )
+    _overwrite(album_dir, owned.Owned.ALBUM, "Something Else")
 
     plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
 
-    assert gardener.verdict_for(plan) is not None
-    assert owned.Owned.ALBUM in _album_fields(plan)
+    assert gardener.verdict_for(plan) == owned.Significance.IDENTITY
+
+
+def test_a_retitle_on_musicbrainz_is_not_lowered_by_the_setting(tmp_path):
+    """MusicBrainz and the setting moving the same field at once. The disk holds
+    the old release title disambiguated; the new title is not one the release
+    has any more, so the change is a retitle and nothing about the setting can
+    explain it away."""
+    album_dir = _album(tmp_path)
+    release = _release("expanded edition")
+    tagger.tag_album(album_dir, release, transforms=DISAMBIG)
+    retitled = {**release, "title": "Renamed Album"}
+
+    plan = tagger.plan_album(album_dir, retitled, artwork=False)
+
+    assert gardener.verdict_for(plan) == owned.Significance.IDENTITY
+
+
+def test_a_settings_change_beside_an_enrichment_is_an_enrichment(tmp_path):
+    """The album's verdict is still its furthest-reaching change, so a Settings
+    change cannot carry anything bigger along under its own name."""
+    album_dir = _album(tmp_path)
+    release = _release("expanded edition")
+    tagger.tag_album(album_dir, release)
+    _overwrite(album_dir, owned.Owned.DATE, "2021")
+
+    plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
+
+    assert gardener.verdict_for(plan) == owned.Significance.ENRICHMENT
+    assert gardener.follows_settings(plan)
+
+
+def test_an_album_already_on_the_setting_has_nothing_to_take(tmp_path):
+    """And the converse of the first test, so `follows_settings` is not simply
+    true of every plan with an album title in it."""
+    album_dir = _album(tmp_path)
+    release = _release("expanded edition")
+    tagger.tag_album(album_dir, release, transforms=DISAMBIG)
+    _overwrite(album_dir, owned.Owned.DATE, "2021")
+
+    plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
+
+    assert gardener.verdict_for(plan) == owned.Significance.ENRICHMENT
+    assert not gardener.follows_settings(plan)
 
 
 @pytest.mark.parametrize("enabled", [frozenset(), DISAMBIG])

@@ -245,6 +245,9 @@ LIBRARY: list[dict[str, Any]] = [
             "Strange Things Are Afoot at the Circle K",
         ],
         "mbid": "demo-rel-wyld",
+        # Tagged with the plain title, so turning on the album-title
+        # disambiguation transform gives this album a Settings update (#685).
+        "disambiguation": "San Dimas edition",
         "cover": "wyld.png",
         "fmt": "alac",
         "history": True,
@@ -444,6 +447,7 @@ def _catalogue() -> dict[str, Release]:
             spec["album"],
             spec["tracks"],
             lengths_ms=[6000, 7000, 5500] if spec.get("candidate") else spec.get("lengths_ms"),
+            disambiguation=spec.get("disambiguation", ""),
             track_artists=spec.get("credits"),
         )
         if spec.get("discs"):

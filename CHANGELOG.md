@@ -6,6 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- The album-title disambiguation setting now applies to albums already in your library. After upgrading, any album whose title doesn't match the setting, either way round, shows an update labelled **Settings**. These updates are never announced and can't be ignored; changing the setting withdraws them (#685).
 - Applying reviewed artwork no longer asks for a second confirmation, and its purple Apply button sits at the foot of a more compact section (#683).
 
 ## [1.23.0] - 2026-10-05

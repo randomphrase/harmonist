@@ -60,8 +60,9 @@ import hashlib
 import json
 import logging
 import math
+import threading
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -76,8 +77,10 @@ from . import (
     mb_lookup,
     tagger,
 )
+from . import transforms as transforms_mod
 from .formats import owned
 from .models import Album, AlbumState, Release
+from .transforms import TagTransform
 
 log = logging.getLogger(__name__)
 
@@ -104,6 +107,36 @@ _PROGRESS_EVERY = timedelta(seconds=30)
 
 # The longest single rest, so one pathological album cannot park the pass.
 _MAX_REST = timedelta(seconds=2)
+
+
+SettingsReader = Callable[[], frozenset[TagTransform]]
+
+_settings: SettingsReader | None = None
+
+
+def configure(settings: SettingsReader | None) -> None:
+    """Hand the check a reader of the user's enabled transforms (#685).
+
+    A reader rather than a value, so the check judges each album under the
+    setting as it stands at that moment: Settings applies without a restart,
+    and a copy taken at startup would have the Library flagging albums against
+    a choice the user has since changed. `create_app` installs one over its
+    live config; `None` means no transforms, the config's own default.
+    """
+    global _settings
+    _settings = settings
+
+
+def _transforms() -> frozenset[TagTransform]:
+    return _settings() if _settings is not None else frozenset()
+
+
+# Held from reading the setting to recording the verdict, so a look that began
+# under the old setting cannot land AFTER the re-check a settings change starts
+# (#685) and leave its stale verdict standing. One album's plan at a time, which
+# the threads that share it — the warm-up, the re-check, the pass, a page view —
+# barely notice.
+_flag_lock = threading.Lock()
 
 
 def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
@@ -144,6 +177,11 @@ def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
     Raises whatever a tag read raises (`formats.READ_ERRORS`) when a file cannot
     be read: that is "I could not tell", which is not the same as "nothing to
     take" and must not be returned as one. `refresh_flag` absorbs it.
+
+    Under the user's transforms as they stand now (#685), because the plan is a
+    dry run of the write and the write applies them: an album already carrying
+    the spelling they chose has nothing to take, and one carrying the other has
+    a `SETTINGS` change.
     """
     return tagger.plan_album(
         album.path,
@@ -159,6 +197,7 @@ def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
         # An album can span several directories (#197); planning over the
         # primary one alone would miss whatever the other discs need.
         files=album_files.for_paths(album.folders),
+        transforms=_transforms(),
     )
 
 
@@ -197,12 +236,17 @@ def _countable(plan: tagger.AlbumPlan) -> Iterator[tuple[str, Any, Any]]:
     it — left counted, one field put every album in a real library into the
     Inbox.
 
-    **A second correct spelling of the album title or release country** (#283,
-    #346). The file carries `Obreel (expanded edition)` where MusicBrainz says
-    `Obreel`, or `DE` where the release's scalar `country` is `GB` — both true
-    of this release, both what Picard writes when told to. Left counted, EVERY
-    album in such a library is an update, permanently, and the first night of
-    #32 empties the whole library into the Inbox.
+    **A second correct country** (#346). The file carries `DE` where the
+    release's scalar `country` is `GB` — both true of this release, and what
+    Picard writes when told to. Left counted, EVERY album in such a library is
+    an update, permanently, and the first night of #32 empties the whole
+    library into the Inbox.
+
+    The album title's second spelling was filtered here too (#283), and is
+    counted now (#685): a transform chooses between those spellings, so the
+    one on disk either follows the user's setting or it is an update of the
+    `SETTINGS` level. Nothing chooses a country, so there is nothing for that
+    one to converge on.
 
     Filtered HERE rather than in `owned.diff` or `tagger._changes_for`, and that
     is the whole of the design: `plan.changes` is also what the activity record
@@ -239,9 +283,22 @@ def verdict_for(plan: tagger.AlbumPlan) -> owned.Significance | None:
     outcome, and the pass's boundary catch turns it into one.
     """
     levels = [
-        tagger.significance_of(field, before, after) for field, before, after in _countable(plan)
+        plan.significance_of(field, before, after) for field, before, after in _countable(plan)
     ]
     return max(levels, key=owned.ranked) if levels else None
+
+
+def follows_settings(plan: tagger.AlbumPlan) -> bool:
+    """Whether any change in `plan` is the user's own setting arriving (#685).
+
+    What the album page says out loud beside the update — the change did not
+    come from MusicBrainz, so its remedy is the setting rather than an edit
+    upstream or an Ignore.
+    """
+    return any(
+        plan.significance_of(field, before, after) is owned.Significance.SETTINGS
+        for field, before, after in _countable(plan)
+    )
 
 
 def refresh_flag(album: Album, release: Release) -> Assessment:
@@ -268,8 +325,16 @@ def refresh_flag(album: Album, release: Release) -> Assessment:
     Mutating the Album in place is what makes this visible to the Library:
     `ScanRunner.albums()` hands out the live snapshot, so this is the same
     object the grid will render.
+
+    Under `_flag_lock`, from reading the setting to recording the verdict.
     """
     contributions.observe(album, release, mb_cache.fetched_at(str(release["id"])))
+    with _flag_lock:
+        return _assess(album, release)
+
+
+def _assess(album: Album, release: Release) -> Assessment:
+    """`refresh_flag`'s body, which the caller holds `_flag_lock` around."""
     try:
         plan = plan_for(album, release)
     except tagger.TagMismatchError as e:
@@ -323,8 +388,38 @@ def warm_from_cache(albums: Sequence[Album], *, duty: float = WARM_DUTY) -> int:
     until it finished — so an album page that crawled during that window looked
     identical to one that had hung, with no way to tell which from the log.
     """
+    return _refresh_from_cache(albums, duty=duty, wanted=lambda _: True, what="warm-up")
+
+
+def recheck_for_settings(
+    albums: Sequence[Album], changed: frozenset[TagTransform], *, duty: float = WARM_DUTY
+) -> int:
+    """Re-judge the albums a change to the user's transforms can move (#685).
+    Returns how many albums were flagged.
+
+    The warm-up's loop, from the same stored releases and so for the same zero
+    MusicBrainz requests, narrowed to albums whose release gives the changed
+    transforms something to choose between. The rest cannot have moved, and
+    re-reading them would be a whole-library pass over a network mount for a
+    click in Settings.
+
+    Records nothing in the Activity feed: the user caused these updates a moment
+    ago, and an album with nothing but a Settings change is never announced.
+    """
+    return _refresh_from_cache(
+        albums,
+        duty=duty,
+        wanted=lambda release: any(transforms_mod.can_move(release, t) for t in changed),
+        what="settings re-check",
+    )
+
+
+def _refresh_from_cache(
+    albums: Sequence[Album], *, duty: float, wanted: Callable[[Release], bool], what: str
+) -> int:
+    """The paced loop `warm_from_cache` and `recheck_for_settings` share."""
     started = time.monotonic()
-    log.info("update-available warm-up: checking %d albums", len(albums))
+    log.info("update-available %s: checking %d albums", what, len(albums))
     flagged = 0
     looked = 0
     reported = started
@@ -335,6 +430,8 @@ def warm_from_cache(albums: Sequence[Album], *, duty: float = WARM_DUTY) -> int:
         release = mb_cache.stored_release(sc.mb_release_id)
         if release is None:
             continue  # never fetched, or fetched under a different `inc`
+        if not wanted(release):
+            continue
         looked += 1
         at = time.monotonic()
         refresh_flag(album, release)
@@ -347,11 +444,11 @@ def warm_from_cache(albums: Sequence[Album], *, duty: float = WARM_DUTY) -> int:
         if time.monotonic() - reported >= _PROGRESS_EVERY.total_seconds():
             reported = time.monotonic()
             log.info(
-                "update-available warm-up: %d albums looked at, %d with an update", looked, flagged
+                "update-available %s: %d albums looked at, %d with an update", what, looked, flagged
             )
     log.info(
-        "update-available warm-up: done in %.0fs — %d of %d albums with a stored release "
-        "have an update",
+        "update-available %s: done in %.0fs — %d of %d albums with a stored release have an update",
+        what,
         time.monotonic() - started,
         flagged,
         looked,
@@ -731,7 +828,7 @@ def sweep(
             refresh_flag(album, release)
             if album.update_available:
                 flagged += 1
-                if not already:
+                if not already and _from_musicbrainz(album.update_significance):
                     newly_flagged.append(album)
         if time.monotonic() - reported >= _PROGRESS_EVERY.total_seconds():
             reported = time.monotonic()
@@ -787,18 +884,31 @@ def _already_outstanding(album: Album, before: Release | None) -> bool:
     Nor does a verdict nobody could reach. If the files cannot be read,
     `refresh_flag` logs it as they are read again straight after, and the flag
     stays as it was, so there is nothing to announce either way.
+
+    **A Settings-only update was not outstanding** (#685). It was never
+    announced, so counting it here would leave a real edit from MusicBrainz
+    unannounced for as long as the album waited on the user's setting.
     """
     if before is None:
         return True
     version = release_version(before)
     if version is not None and album.mb_version == version:
-        return album.update_available
+        return _from_musicbrainz(album.update_significance)
     try:
-        return verdict_for(plan_for(album, before)) is not None
+        return _from_musicbrainz(verdict_for(plan_for(album, before)))
     except tagger.TagMismatchError:
         return True  # a tracklist that did not fit then is outstanding too
     except formats.READ_ERRORS:
         return True  # reported by `refresh_flag`, which reads the same files next
+
+
+def _from_musicbrainz(verdict: owned.Significance | str | None) -> bool:
+    """Whether an album's verdict is an update MusicBrainz is offering — any
+    level but `SETTINGS`, whose content the user chose a moment ago on the
+    Settings page and so is never news to them (#685). The verdict is the
+    album's highest-ranked change, so anything above `SETTINGS` means at least
+    one change came from MusicBrainz."""
+    return verdict is not None and verdict != owned.Significance.SETTINGS
 
 
 def _record_digest(result: PassResult) -> None:
@@ -899,9 +1009,20 @@ def is_ignored(album: Album, ignored: Mapping[str, activity_store.IgnoredUpdate]
 
     An album with no `mb_version` — never looked at, or looked at and unreadable
     — is never ignored. It is not flagged either, so there is nothing to mute.
+
+    Nor is an album whose update is only the user's own setting arriving (#685).
+    Ignore is about MusicBrainz; the way out of a Settings change is the
+    setting. A bookmark can still match one — a mixed update ignored, then
+    MusicBrainz's half taken by another tool — and the album page offers no box
+    to untick for a Settings-only update, so honouring it would hide the change
+    with no way back.
     """
     entry = ignored.get(album.id)
-    return entry is not None and entry.release_version == album.mb_version
+    return (
+        entry is not None
+        and entry.release_version == album.mb_version
+        and album.update_significance != owned.Significance.SETTINGS
+    )
 
 
 def _last_look(mbid: str, times: dict[str, datetime]) -> datetime | None:

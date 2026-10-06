@@ -474,15 +474,20 @@ class AlbumPlan:
     **Nor does a non-empty one mean there is an update to take.** Two kinds of
     entry are written and recorded without being a reason to tag: a credit list
     arriving with one name in it (#337) and a second correct spelling of the
-    album title or release country (#283, #346, #545). Both are filtered at the
-    flag, in `gardener._countable`, never out of this dict — see `_changes_for`.
+    release country (#346). Both are filtered at the flag, in
+    `gardener._countable`, never out of this dict — see `_changes_for`.
+
+    A second correct spelling of the album title used to be the third (#283,
+    #545). It is an update now, of the lowest significance, because which
+    spelling a library carries is the user's setting to choose (#685) — see
+    `significance_of`.
     """
 
     changes: dict[Path, dict[str, list[Any]]]
     #: Every album title that is already correct for this release: MusicBrainz's
     #: and Picard's disambiguated spelling of it (#283). Carried on the plan
-    #: because the flag has to ask — `gardener` holds a plan, not a release, and
-    #: what makes a second spelling legitimate is a fact about the release.
+    #: because the classifier has to ask — `gardener` holds a plan, not a
+    #: release, and what makes a spelling legitimate is a fact about the release.
     accepted_album_titles: frozenset[str] = frozenset()
     #: …and every country the release names (#346). Same question, same reason.
     accepted_countries: frozenset[str] = frozenset()
@@ -490,22 +495,48 @@ class AlbumPlan:
     def is_second_spelling(self, field: str, before: object) -> bool:
         """Whether this entry is a value that was already right, not an update.
 
-        The disk held one of the spellings this release legitimately has, and a
-        tagging is about to replace it with the one Harmonist writes. That is a
-        real write and a real record — it is simply not a reason to re-tag, and
-        not something to put in front of a user as an update available.
+        The disk held one of the countries this release legitimately names, and
+        a tagging is about to replace it with the one Harmonist writes. That is
+        a real write and a real record — it is simply not a reason to re-tag,
+        and not something to put in front of a user as an update available. No
+        setting chooses among them, so there is nothing to converge on.
 
-        Exactly the two fields with a second legitimate form, and only on the
-        BEFORE value: an `after` that is not what the tagger would write cannot
-        occur, and asking about it would widen this past the two strings the
-        release states. `models.titles_match` would say yes to `(deluxe
-        edition)` here, which review-gate item 2 forbids.
+        Only on the BEFORE value: an `after` that is not what the tagger would
+        write cannot occur, and asking about it would widen this past the
+        strings the release states.
         """
-        if field == owned.Owned.ALBUM:
-            return before in self.accepted_album_titles
-        if field == owned.Owned.MB_ALBUM_COUNTRY:
-            return before in self.accepted_countries
-        return False
+        return field == owned.Owned.MB_ALBUM_COUNTRY and before in self.accepted_countries
+
+    def follows_setting(self, field: str, before: object) -> bool:
+        """Whether this entry only moves the value to the spelling a setting
+        selects (#685).
+
+        The disk held one of the album titles this release legitimately has, and
+        the tagger writes the one the user's transforms choose — which every
+        `after` in this plan is, because the plan was built under them. So the
+        change is the user's own convention arriving, and nothing MusicBrainz
+        did.
+
+        Exact strings the release states, never a pattern (review-gate item 2):
+        `models.titles_match` would say yes to `(deluxe edition)` here, and a
+        retitle mistaken for this would reach #273's trust setting disguised as
+        something the user asked for.
+        """
+        return field == owned.Owned.ALBUM and before in self.accepted_album_titles
+
+    def significance_of(self, field: str, before: Any, after: Any) -> owned.Significance:
+        """What kind of change this entry is, given what the release says.
+
+        `SETTINGS` where `follows_setting` holds, otherwise the field's own
+        classification (`significance_of` at module level). The release's
+        evidence can only lower a change, never raise one: a value that is not
+        a spelling the release has keeps whatever its field says, so a
+        MusicBrainz retitle arriving at the same time as a settings change is a
+        retitle.
+        """
+        if self.follows_setting(field, before):
+            return owned.Significance.SETTINGS
+        return significance_of(field, before, after)
 
     @property
     def empty(self) -> bool:

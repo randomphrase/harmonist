@@ -1961,21 +1961,21 @@ def _set_album_tag(album_dir, value: str) -> None:
         audio.save()
 
 
-def test_a_disambiguated_album_title_is_not_an_update_to_take(album_with_tracks):
+def test_a_disambiguated_album_title_is_a_settings_update_to_take(album_with_tracks):
     """Picard can be told to append the release disambiguation to the album
     title, so a library tagged that way carries `Test Album (expanded edition)`
     where MusicBrainz's release title is `Test Album`.
 
-    That is the same album, by the user's own deliberate setting. Counted as an
-    update it would be one on every pass forever, and #267 classifies `album`
-    as IDENTITY — so #32's nightly pass would put the whole library in the Inbox
-    on its first night.
+    That is the same album, spelled by a setting. With Harmonist's transform off
+    the library converges on the plain title (#685), so it is an update — of the
+    `SETTINGS` level, never #267's IDENTITY, which would hold every such album
+    for review as a retitle and, under #273, never let it apply itself.
 
-    Asserted on the FLAG, not on the plan, since #545. The entry stays in
-    `plan.changes` because a re-tag really does rewrite the field and the
-    history has to say so; what it must not do is ask the user to take it.
+    The entry is in `plan.changes` either way (#545): a re-tag really does
+    rewrite the field and the history has to say so.
     """
     from harmonist import gardener
+    from harmonist.formats import owned
 
     album_dir = album_with_tracks(2)
     rel = _release_2_tracks()
@@ -1985,10 +1985,7 @@ def test_a_disambiguated_album_title_is_not_an_update_to_take(album_with_tracks)
 
     plan = tagger.plan_album(album_dir, rel)
 
-    assert gardener.verdict_for(plan) is None
-    # …and the entry is still there, which is the half #545 added. Without it
-    # the assertion above passes for the wrong reason — an empty plan has no
-    # verdict either, and that is precisely the bug this pair replaced.
+    assert gardener.verdict_for(plan) == owned.Significance.SETTINGS
     assert all("album" in c for c in plan.changes.values())
 
 
@@ -2006,9 +2003,12 @@ def test_a_real_retitle_is_still_a_change(album_with_tracks):
     _set_album_tag(album_dir, "Test Album (deluxe edition)")
 
     from harmonist import gardener
+    from harmonist.formats import owned
 
     plan = tagger.plan_album(album_dir, rel)
-    assert gardener.verdict_for(plan) is not None
+    # IDENTITY, not merely "an update": a retitle lowered to SETTINGS (#685)
+    # would pass `is not None` while handing #273 a retitle to apply unasked.
+    assert gardener.verdict_for(plan) == owned.Significance.IDENTITY
     assert all("album" in c for c in plan.changes.values())
 
 

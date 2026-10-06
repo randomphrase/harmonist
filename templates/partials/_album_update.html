@@ -38,5 +38,12 @@
         {% endif %}
         {% endif %}
     </div>
+    {# Which of the update is the user's own setting arriving rather than
+       anything MusicBrainz did (#685), so they know where its remedy is. Here
+       and not in the Ignore footer: that block is re-rendered on its own when
+       the box is ticked, without the plan this is read from. #}
+    {% if follows_settings %}
+    <p class="album-update__settings">{% if album.update_significance == 'settings' %}These{% else %}Some of these{% endif %} changes follow your <a href="/settings#tagging">Settings</a>.</p>
+    {% endif %}
     {% endif %}
 </div>

@@ -158,6 +158,12 @@ origin, has no section at all.
 Every owned field has a **significance**, which says how much of the album a
 change to it calls into question:
 
+- **Settings**: a value moving from one spelling the release legitimately has
+  to the one the user's [transforms](#transforms) select. The lowest level,
+  because it's the only one whose content the user chose: whoever trusts
+  MusicBrainz's casing fixes trusts the changes they asked for, and not
+  necessarily the reverse. Never declared for a field; only reached when the
+  release proves the value on disk is one of its own spellings.
 - **Cosmetic**: the same value spelled differently (case, spacing,
   punctuation). Never declared for a field; only reached when a change turns out
   to be small.
@@ -211,10 +217,8 @@ is described by what it does instead (see [artwork](artwork.md)).
 ## Accepted spellings
 
 Some fields have more than one correct value for the same release, because Picard
-can be configured to write them differently. Counting those as updates would put
-a Picard-tagged library in the Inbox on the update check's first night (#283).
-Each accepted spelling is derived exactly from the release in hand, never from a
-pattern, which would be a guess.
+can be configured to write them differently. Each accepted spelling is derived
+exactly from the release in hand, never from a pattern, which would be a guess.
 
 - **Album title with the release's disambiguation**, as Picard's option writes it:
   *Selected Ambient Works Volume II (expanded edition)*. Only that exact string is
@@ -224,17 +228,20 @@ pattern, which would be a guess.
   events to one country; Picard lets the user prefer another of the release's own
   countries. A country the release doesn't list is still reported.
 
-The tolerance applies where Harmonist decides whether there's **an update to
-take**, never in the record of what a tagging changes. That record is also what
-undo is built from, and a write replaces the whole tag set regardless. Filtering
-an accepted spelling out of it once made a re-tag replace the user's album title
-and leave no way back (#545). A change that isn't a reason to tag is still
-written, and still recorded.
+The two are treated differently, because only one has a setting. Which title
+spelling a library carries is the user's [transform](#transforms) to choose, so
+the other one is an update of the Settings level. No setting chooses a country,
+so a second one is tolerated: it isn't an update, and the album page doesn't show
+it as a difference, because a difference the user can only silence by giving in
+isn't worth showing. Counting it would put a Picard-tagged library in the Inbox on
+the update check's first night (#283, #346).
 
-The album page draws the two differently, on purpose. A disambiguated title is
-shown as a difference, because a setting can resolve it (below). A second
-release country isn't, because nothing can: there's no setting for it, so showing
-it would leave a difference the user can only silence by giving in.
+Either way, accepted spellings matter only where Harmonist decides whether
+there's **an update to take** and how significant it is, never in the record of
+what a tagging changes. That record is also what undo is built from, and a write
+replaces the whole tag set regardless. Filtering an accepted spelling out of it
+once made a re-tag replace the user's album title and leave no way back (#545). A
+change that isn't a reason to tag is still written, and still recorded.
 
 ### Transforms
 
@@ -242,19 +249,40 @@ A **transform** is a named, user-enabled choice of which accepted spelling a
 tagging *writes*: the exactly derivable equivalent of a Picard option or tagger
 script. One exists: adding the disambiguation to the album title.
 
-The invariant that makes transforms cheap: **a transform only chooses among
-spellings that are accepted unconditionally.** The accepted set never depends on
-which transforms are enabled. So:
+**A transform only chooses among spellings the release has.** The accepted set
+never depends on which transforms are enabled; the setting picks a member of it.
+That's what lets a change be classified Settings at all: the release proves the
+value on disk was one of its own spellings, and the new value is the one the user
+chose. A value that isn't in the set, such as a MusicBrainz retitle arriving at
+the same time, keeps its ordinary significance. A transform is also a function of
+the release, never of what's on the file, so applying it twice is applying it
+once.
 
-- turning one on doesn't flag the library, since the other spelling is still
-  accepted;
-- the unattended update check reads no settings and still reaches the same
-  verdict as the write;
-- a transform is a function of the release, never of what's on the file, so
-  applying it twice is applying it once.
+**The library converges on the setting**, existing albums included, whichever
+way the setting points (#685). The update check plans exactly what a re-tag would
+write, transforms and all, so an album carrying the other spelling has an update
+and one carrying the chosen spelling has none. Changing the setting re-judges the
+albums whose release gives it something to choose between, from the stored
+release and without any requests.
 
-The visible effect is therefore bounded: new albums get the chosen spelling, an
-album re-tagged for another reason gains it, and nothing else is rewritten.
+That replaced "transforms affect future taggings only", which kept the update
+check free of settings and turning a transform on free of consequences, but left
+a library permanently split between conventions, with no way to bring the albums
+on disk into line short of re-tagging each for some other reason. Convergence is
+what a user setting a convention wants; the costs are contained by the level
+rather than by hiding the change:
+
+- **Off is a choice like any other.** A tolerant "leave existing titles alone"
+  option was considered and not taken: a user who turns disambiguations off wants
+  them off everywhere. Turning one off removes data from titles, so the Settings
+  page warns before it's saved.
+- **It's a flood the user caused**, so it isn't news. An album with only a
+  Settings change is never announced. The same goes for one an upgrade produces.
+- **Ignore doesn't apply.** Ignore waits for MusicBrainz to change, and nothing
+  about MusicBrainz is in question; the remedy is the setting. An album with
+  only a Settings change offers no Ignore, and an album ignored for a
+  MusicBrainz change keeps its Settings change waiting until the ignore lapses.
+  Per-album exceptions to a setting are a separate question.
 
 The accepted spellings and the write that chooses between them are kept together,
 because the album page and the tagger computing "the same album" separately has

@@ -239,6 +239,12 @@ Meanwhile, tick **Ignore until MusicBrainz changes** to take the album off the
 **Update available** list. It returns when the release next changes, usually
 when your edit is accepted. Nothing is written either way.
 
+An update labelled **Settings** didn't come from MusicBrainz: it brings the album
+into line with a setting in **Settings → Tagging**. For example, with **Add the
+release disambiguation to the album title** off, an album titled
+*Obreel (expanded edition)* is offered *Obreel*. To keep the other spelling,
+change the setting; the update disappears from every album it affects.
+
 ### Almost every album shows Update available
 
 The **Missing folder cover** setting is probably on. It makes every album

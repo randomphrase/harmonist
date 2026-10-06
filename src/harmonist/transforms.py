@@ -21,25 +21,26 @@ legitimately has, derived from the release in hand and never from a pattern
 (review-gate item 2). The setting picks which member of that set a write emits.
 It never narrows the set, and the set never depends on the setting.
 
-That is the whole reason a transform is cheap, and the three consequences are
-what make it safe to ship:
+Two consequences follow, and they are what make it safe to ship:
 
-- **Turning one on does not rewrite the library.** The tagging diff compares
-  against the accepted set, so a file already holding another accepted spelling
-  reports no change — no library-wide rewrite, and no Inbox full of albums on
-  #32's first night, which is #283's failure mode in reverse.
-- **The gardener needs no configuration.** Because the accepted set is
-  transform-independent, `plan_album` reaches the same verdict under any
-  setting, so the pass that runs unattended is not reading a preference it has
-  no way to see.
+- **A change it causes can be told apart from one MusicBrainz caused.** The
+  library converges on the setting, existing albums included (#685): an album
+  carrying the other spelling has an update. Because the value on disk is a
+  member of the accepted set and the new one is the setting's choice, that
+  update is classified `Significance.SETTINGS` — the lowest level, never
+  announced, never ignorable — rather than the IDENTITY a retitle is. A value
+  outside the set keeps its own significance, so nothing MusicBrainz did can
+  ride along under the user's setting.
 - **It stays idempotent.** A transform is a function of the RELEASE, never of
   what is already on the file, so applying it twice is applying it once. A rule
   that read the existing tag could grow the title a little on every pass.
 
-The bounded visible effect follows from all three and is what the Settings page
-has to say out loud: a new album gets the preferred spelling, an album re-tagged
-for some other reason gains it, and albums sitting on disk are not rewritten to
-acquire it.
+It used to be the other way round: the set was the tolerance, a file holding
+either spelling had nothing to take, and the setting reached only future
+taggings. That kept the update check free of configuration, at the price of a
+library left permanently split between conventions. The check now reads the
+setting (`gardener.configure`), and `can_move` below says which albums a change
+to it has to re-judge.
 
 The write half and the accepted half of each transform live in this one module
 on purpose. They are two halves of one fact, and #283 has already paid for what
@@ -82,6 +83,20 @@ def album_title(release: Release, enabled: Collection[TagTransform]) -> str:
     if TagTransform.ALBUM_DISAMBIGUATION in enabled:
         return title_with_disambiguation(title, release.get("disambiguation")) or title
     return title
+
+
+def can_move(release: Release, transform: TagTransform) -> bool:
+    """Whether turning `transform` on or off can change what a tagging of
+    `release` writes — so whether an album on it needs re-checking when the
+    setting changes (#685).
+
+    Answered from the release alone, never the files: it decides which albums
+    to READ, and a release with only one spelling has nothing for the setting to
+    choose between, whatever its files say.
+    """
+    match transform:
+        case TagTransform.ALBUM_DISAMBIGUATION:
+            return len(accepted_album_titles(release)) > 1
 
 
 def accepted_album_titles(release: Release) -> frozenset[str]:

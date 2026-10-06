@@ -38,10 +38,15 @@
    is quieter still and pushed to the far end.
 
    `oob` is set by every response that renders this — it is its own swap target
-   now, since it has no parent block to ride in on. #}
+   now, since it has no parent block to ride in on.
+
+   NOT for an update that is only the user's own setting arriving (#685). Both
+   answers here are about MusicBrainz — wait for an edit, or make one — and
+   neither applies to a change the user chose; its remedy is the setting, which
+   the update section names. #}
 <div id="album-update-ignore-{{ album.id }}"{% if oob %} hx-swap-oob="true"{% endif %}
      class="album-update__answers">
-    {% if album.update_available and album.sidecar and album.sidecar.mb_release_id %}
+    {% if album.update_available and album.update_significance != 'settings' and album.sidecar and album.sidecar.mb_release_id %}
     <label class="album-update__ignore"
            title="{% if update_ignored %}Untick to have the Library list this album's update again, whether or not MusicBrainz has changed since.{% else %}Stop listing this album as having an update. It comes back by itself when MusicBrainz next changes the release — so this is how you wait for an edit to land, not how you refuse one.{% endif %}">
         <input type="checkbox" name="ignore" value="true" class="cursor-pointer"

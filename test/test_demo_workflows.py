@@ -12,6 +12,7 @@ from harmonist import activity, activity_store, cover_art, demo, formats, garden
 from harmonist.config import BandcampConfig, Config, PathsConfig
 from harmonist.formats.owned import Significance
 from harmonist.models import AlbumState
+from harmonist.transforms import TagTransform
 from harmonist.web.main import create_app
 
 
@@ -56,6 +57,19 @@ def test_demo_mode_reaches_no_real_archive_function():
 
 def audio_files(root):
     return sorted(p for p in root.rglob("*") if p.is_file() and formats.is_supported(p))
+
+
+def test_the_demo_shows_a_settings_update_when_the_title_transform_is_on(library):
+    """#685's walkthrough. One demo release carries a disambiguation and its
+    album is tagged with the plain title, so it has nothing outstanding until
+    the user turns the transform on — then exactly a Settings update."""
+    album = albums(library)["A Most Excellent Journey"]
+    release = demo.fetch_release(album.sidecar.mb_release_id)
+    assert gardener.verdict_for(gardener.plan_for(album, release)) is None
+
+    gardener.configure(lambda: frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
+
+    assert gardener.verdict_for(gardener.plan_for(album, release)) == Significance.SETTINGS
 
 
 def test_library_has_focused_changes_and_quiet_controls(library):

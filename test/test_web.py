@@ -5901,6 +5901,31 @@ def test_the_settings_page_offers_every_transform_there_is(client):
         assert f'name="transforms" value="{t.value}"' in html
 
 
+def _transform_warning(html: str) -> str | None:
+    found = re.search(
+        r'<p role="note" class="[^"]*transform-off-warning[^"]*">(.*?)</p>', html, re.DOTALL
+    )
+    return " ".join(found.group(1).split()) if found else None
+
+
+def test_a_transform_that_is_on_warns_what_turning_it_off_removes(client):
+    """#685. Off is a setting like any other, so unticking a saved transform
+    offers to take the disambiguation out of every album title that has one —
+    data the user may have wanted. The page says so beside the box; CSS shows
+    it only while the box is unticked, which only a browser can see."""
+    client.app.state.cfg.tagging.transforms = [TagTransform.ALBUM_DISAMBIGUATION]
+
+    warning = _transform_warning(client.get("/settings").text)
+
+    assert warning is not None and "removes" in warning
+
+
+def test_a_transform_that_is_off_has_nothing_to_warn_about(client):
+    """Turning one ON only adds to titles, so there is nothing to warn about —
+    and with the box saved unticked, unticking it is not a change at all."""
+    assert _transform_warning(client.get("/settings").text) is None
+
+
 def test_settings_save_accepts_a_zero_download_cap(client, cfg):
     """0 is a real setting, not a rejected one: it defers every new purchase, so
     a sync still links and reconciles while downloading nothing. Settings is the
@@ -9426,18 +9451,17 @@ def test_the_album_page_offers_the_title_a_transform_would_write(client, cfg, mo
     tolerance made the Album row read as a match. So the plan held the change,
     the Library rightly ignored it, and no control on the page could apply it.
 
-    Three assertions because three things have to be simultaneously true, and
-    any two of them held before the fix:
+    Three assertions because three things have to be simultaneously true:
 
     1. the row reports the difference,
     2. **Apply updates** is on the page,
-    3. the Library still does NOT flag the album — that is #545's invariant and
-       what keeps #32's first night quiet. A fix that got the button back by
-       counting the change as an update would pass 1 and 2 and be the Inbox
-       flood #283 was filed about.
+    3. the change counts as an update of the `SETTINGS` level (#685) — the
+       library converges on the setting, and the level is what keeps it from
+       reading as a retitle.
     """
     from harmonist import gardener
     from harmonist import tagger as tagger_mod
+    from harmonist.formats import owned
 
     d = _make_tagged_album(cfg, "Obreel", mbid="rel-cmp", tagged_at=datetime.now(UTC))
     release = {**_release_with_metadata("rel-cmp"), "disambiguation": "expanded edition"}
@@ -9470,8 +9494,8 @@ def test_the_album_page_offers_the_title_a_transform_would_write(client, cfg, mo
                 d, release, artwork=False, transforms=frozenset({TagTransform.ALBUM_DISAMBIGUATION})
             )
         )
-        is None
-    ), "offered on the page is not the same as needing an update"
+        == owned.Significance.SETTINGS
+    )
 
 
 def test_the_album_panel_shows_the_title_the_transform_would_write(client, cfg, monkeypatch):

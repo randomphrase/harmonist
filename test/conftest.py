@@ -81,6 +81,18 @@ def reset_artwork_store():
     artwork_store.configure(None)
 
 
+@pytest.fixture(autouse=True)
+def reset_gardener_settings():
+    """`create_app` hands the gardener a reader of its live config (#685). Left
+    in place, a test that built an app would have a LATER pure-logic test judge
+    its flags under that app's transforms — and in random order, that is an
+    intermittent failure somewhere unrelated."""
+    from harmonist import gardener
+
+    yield
+    gardener.configure(None)
+
+
 @pytest.fixture
 def album_with_tracks(tmp_path):
     """Factory: build an album dir with N copies of the sine fixture, named NN Title.m4a."""
@@ -129,6 +141,7 @@ def pytest_runtest_teardown(item, nextitem):
         "harmonist-sync",
         "harmonist-update-check",
         "harmonist-flag-warmup",
+        "harmonist-flag-recheck",
     }
     deadline = time.monotonic() + 10
     pending = []

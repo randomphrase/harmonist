@@ -57,6 +57,12 @@ it never compares, and calls things differences that a re-tag can't write.
 Using the dry run means the flag, the history record and Undo all speak the same
 vocabulary.
 
+The dry run applies the user's tagging settings as they stand when it runs,
+because the write would. So "update available" also covers an album that
+doesn't yet follow a setting (see [transforms](tagging.md#transforms)), and
+changing a setting re-judges the albums it can move. That re-check reads the
+stored releases, like the restart warm-up, and makes no requests.
+
 **It compares the files with MusicBrainz, never MusicBrainz with an earlier
 MusicBrainz.** Comparing a fresh copy of a release with the cached one is
 tempting and cheap, and wrong both ways. A release that hasn't changed still has
@@ -73,7 +79,11 @@ release *skips* an album, and never *clears* its flag.
 from the cache and the files whenever needed. **Only new updates are
 announced.** One the user hasn't taken yet isn't announced again when the
 release changes further, and one Harmonist is seeing for the first time (on a
-new install, or after the cache was refilled) isn't announced at all.
+new install, or after the cache was refilled) isn't announced at all. Nor is
+one that only brings an album into line with the user's settings: they chose it
+on the Settings page, so it's never news. For the same reason, a waiting
+Settings change doesn't count as an update already announced, or the album would
+go quiet about real edits for as long as it waited.
 
 ### The background update check
 
@@ -145,3 +155,11 @@ Ignoring writes nothing to files, and the album keeps its Update badge, because
 the difference is still real. Re-tagging clears the ignore, since there's then
 nothing to wait for. It's stored in `activity.db` rather than the sidecar (see
 [storage](storage.md#activitydb)).
+
+**Ignore is about MusicBrainz**, so it isn't offered for an update that only
+brings an album into line with the user's settings: nothing upstream is in
+question, and the remedy is the setting. An ignore that still matches the
+release never hides one either, since the album page would then offer no box to
+take it back. An album ignored for a MusicBrainz change is muted whole, its
+Settings change with it, which keeps a single bookmark keyed only on the release
+and so nothing to migrate.

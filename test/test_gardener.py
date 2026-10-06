@@ -25,7 +25,9 @@ import pytest
 
 from harmonist import activity_store, gardener, mb_cache, mb_lookup, scanner, tagger
 from harmonist import sidecar as sc
+from harmonist.formats import owned
 from harmonist.models import Album, Sidecar
+from harmonist.transforms import TagTransform
 from harmonist.web.scan_runner import ScanRunner
 
 SINE_M4A = Path(__file__).parent / "fixtures" / "sine.m4a"
@@ -116,6 +118,30 @@ def test_an_edit_that_was_taken_back_upstream_leaves_nothing_outstanding(tmp_pat
     assert _flag(album, _release("Test Album (remastered)")) is True
     assert _flag(album, original) is False
     assert album.update_available is False
+
+
+def test_the_flag_is_judged_under_the_users_transforms(tmp_path):
+    """The check plans what a re-tag would REALLY write (#685), so an album
+    already carrying the spelling the user chose has nothing outstanding. Judged
+    as though every transform were off, the same album would be flagged to have
+    its disambiguation taken away — on every album that has one, for every user
+    who turned the transform on.
+    """
+    disambiguated = {**_release(), "disambiguation": "expanded edition"}
+    transforms = frozenset({TagTransform.ALBUM_DISAMBIGUATION})
+    d = _album_dir(tmp_path)
+    tagger.tag_album(d, disambiguated, transforms=transforms)
+    sc.write(d, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime.now(UTC)))
+    album = next(a for a in scanner.scan(tmp_path) if a.path == d)
+
+    gardener.configure(lambda: transforms)
+
+    assert _flag(album, disambiguated) is False
+
+    gardener.configure(lambda: frozenset())
+
+    assert _flag(album, disambiguated) is True
+    assert album.update_significance == owned.Significance.SETTINGS
 
 
 def test_the_release_growing_a_track_is_an_update_not_an_error(tmp_path):
@@ -323,6 +349,111 @@ def test_opening_an_album_records_that_it_has_an_update(engaged, monkeypatch):
 
     assert r.status_code == 200
     assert runner.albums()[0].update_available is True
+
+
+def test_the_app_judges_flags_under_its_own_transforms(engaged, monkeypatch):
+    """`create_app` is what hands the gardener the user's setting (#685), and
+    only a route can show that it does: every unit test above installs the
+    reader by hand. Without it the check judges as though the transform were
+    off, and an album already carrying the user's chosen spelling is flagged to
+    have it taken away.
+
+    Then the setting changes under the running app — the reader is live, not a
+    copy taken at startup — and the same album has a Settings update.
+    """
+    cfg, engage = engaged
+    transforms = [TagTransform.ALBUM_DISAMBIGUATION]
+    disambiguated = {**_release(), "disambiguation": "expanded edition"}
+    d = _album_dir(cfg.paths.music_dir)
+    tagger.tag_album(d, disambiguated, transforms=frozenset(transforms))
+    sc.write(d, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime.now(UTC)))
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: disambiguated)
+    cfg.tagging.transforms = transforms
+    client, runner = engage()
+
+    client.get(f"/library/{runner.albums()[0].id}/compare")
+
+    assert runner.albums()[0].update_available is False
+
+    client.app.state.cfg.tagging.transforms = []
+    client.get(f"/library/{runner.albums()[0].id}/compare")
+
+    assert runner.albums()[0].update_significance == owned.Significance.SETTINGS
+
+
+def _join_recheck() -> None:
+    for thread in threading.enumerate():
+        if thread.name == "harmonist-flag-recheck":
+            thread.join(timeout=10)
+
+
+def _save_transforms(client, transforms: list[str]):
+    return client.post(
+        "/settings",
+        data={
+            "download_format": "flac",
+            "max_downloads_per_sync": "5",
+            "user_agent": "Harmonist/0.1 ( x@y.z )",
+            "gardener_level": "off",
+            "folder_cover": "never",
+            "transforms": transforms,
+            "log_level": "info",
+        },
+    )
+
+
+def test_saving_a_transform_re_checks_the_albums_it_moves(engaged, monkeypatch):
+    """The Library follows the setting without anyone opening the albums (#685).
+    The re-check reads the stored release, so it costs no requests — a fetch
+    here would be a rate-limited request per album spent on a click in Settings.
+    """
+    cfg, engage = engaged
+    release = {**_release(), "disambiguation": "expanded edition"}
+    _tagged(cfg.paths.music_dir, release)  # the plain title
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: pytest.fail("re-check went to MusicBrainz")
+    )
+    client, runner = engage()
+    # After `create_app`, which opens the store the app reads.
+    activity_store.store_release("rel-aaa", "+".join(sorted(mb_lookup.RELEASE_INCLUDES)), release)
+    assert runner.albums()[0].update_available is False
+
+    assert _save_transforms(client, ["album_disambiguation"]).status_code == 200
+    _join_recheck()
+
+    assert runner.albums()[0].update_significance == owned.Significance.SETTINGS
+
+    assert _save_transforms(client, []).status_code == 200
+    _join_recheck()
+
+    assert runner.albums()[0].update_available is False
+
+
+def test_the_re_check_reads_only_albums_the_change_can_move(tmp_path, monkeypatch):
+    """A release with no disambiguation has one title under either setting, so
+    re-reading its files would be a whole-library pass over a network mount for
+    nothing — on a click in Settings."""
+    activity_store.init(tmp_path / "activity.db")
+    plain = _tagged(tmp_path, _release(mbid="rel-plain"), name="Plain")
+    disambiguated = {**_release(mbid="rel-dis"), "disambiguation": "expanded edition"}
+    moved = _tagged(tmp_path, disambiguated, name="Disambiguated")
+    key = "+".join(sorted(mb_lookup.RELEASE_INCLUDES))
+    activity_store.store_release("rel-plain", key, _release(mbid="rel-plain"))
+    activity_store.store_release("rel-dis", key, disambiguated)
+    looked: list[Path] = []
+    real = gardener.plan_for
+
+    def _counting(album: Album, release: dict) -> tagger.AlbumPlan:
+        looked.append(album.path)
+        return real(album, release)
+
+    monkeypatch.setattr(gardener, "plan_for", _counting)
+
+    gardener.recheck_for_settings(
+        [plain, moved], frozenset({TagTransform.ALBUM_DISAMBIGUATION}), duty=0
+    )
+
+    assert looked == [moved.path]
 
 
 def test_the_library_filter_narrows_to_albums_with_an_update(engaged, monkeypatch):
@@ -1090,6 +1221,52 @@ def test_an_album_already_flagged_is_not_announced_a_second_time(tmp_path, monke
 
     assert (result.examined, result.flagged, len(result.newly_flagged)) == (1, 1, 0)
     assert _named_updates() == []
+
+
+def test_a_settings_only_update_is_never_announced(tmp_path, monkeypatch):
+    """#685. MusicBrainz gives the release a disambiguation, and the user's
+    transform makes that a title change — so the album has an update, and it is
+    only the user's own setting arriving. The flag goes up; the feed says
+    nothing, because there is nothing MusicBrainz did that they need to look at.
+    """
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    _store(_release(), age=_stale())
+    _serving(monkeypatch, {**_release(), "disambiguation": "expanded edition"})
+    gardener.configure(lambda: frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
+
+    result = gardener.sweep([album])
+
+    assert album.update_significance == owned.Significance.SETTINGS
+    assert (result.flagged, len(result.newly_flagged)) == (1, 0)
+    assert _named_updates() == []
+
+
+def test_a_waiting_settings_change_does_not_hide_news_from_musicbrainz(tmp_path, monkeypatch):
+    """#685. The album already had an update — but only a Settings one, which
+    was never announced. MusicBrainz now retitles a track, and that IS news:
+    "already outstanding" has to mean outstanding from MusicBrainz, or every
+    album waiting on a setting would go quiet about real edits for good.
+    """
+    activity_store.init(tmp_path / "activity.db")
+    release = {**_release(), "disambiguation": "expanded edition"}
+    album = _tagged(tmp_path, release)
+    _store(release, age=_stale())
+    gardener.configure(lambda: frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
+    gardener.refresh_flag(album, release)
+    assert album.update_significance == owned.Significance.SETTINGS
+    retitled = copy.deepcopy(release)
+    retitled["medium-list"][0]["track-list"][0]["title"] = "Track One"
+    retitled["medium-list"][0]["track-list"][0]["recording"]["title"] = "Track One"
+    _serving(monkeypatch, retitled)
+
+    result = gardener.sweep([album])
+
+    assert album.update_significance == owned.Significance.IDENTITY
+    assert _named_updates() == [
+        (album.id, album.label, "Update available from MusicBrainz (identity)")
+    ]
+    assert len(result.newly_flagged) == 1
 
 
 def test_an_unchanged_release_never_reaches_the_files(tmp_path, monkeypatch):
@@ -1937,6 +2114,90 @@ def test_an_album_with_nothing_outstanding_is_offered_neither(engaged, monkeypat
     body = client.get(f"/library/{_flagged(runner).id}/compare").text
 
     assert "Ignore until MusicBrainz changes" not in body
+
+
+def _settings_only(engaged, monkeypatch):
+    """An engaged app whose one album differs from its release only by the
+    transform's spelling of the title — a Settings-only update (#685)."""
+    cfg, engage = engaged
+    release = {**_release(), "disambiguation": "expanded edition"}
+    _tagged(cfg.paths.music_dir, release)  # the plain title
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: release)
+    cfg.tagging.transforms = [TagTransform.ALBUM_DISAMBIGUATION]
+    return engage()
+
+
+def _settings_notice(body: str) -> str | None:
+    found = re.search(r'<p class="album-update__settings">(.*?)</p>', body, re.DOTALL)
+    return " ".join(found.group(1).split()) if found else None
+
+
+def test_a_settings_only_update_points_at_the_setting_not_at_ignore(engaged, monkeypatch):
+    """#685. Nothing MusicBrainz did is on offer, so neither of the answers to a
+    MusicBrainz change applies: there is no edit to make upstream, and Ignore
+    would compete with the setting that is the real way out of it."""
+    client, runner = _settings_only(engaged, monkeypatch)
+
+    body = client.get(f"/library/{_flagged(runner).id}/compare").text
+
+    assert _flagged(runner).update_significance == owned.Significance.SETTINGS
+    chip = re.search(r'<span class="sev sev--settings"[^>]*>(.*?)</span>', body, re.DOTALL)
+    assert chip and chip.group(1).split()[-1] == "Settings"
+    assert (
+        _settings_notice(body)
+        == 'These changes follow your <a href="/settings#tagging">Settings</a>.'
+    )
+    assert 'name="ignore"' not in body
+    assert "musicbrainz.org/release/rel-aaa/edit" not in body
+
+
+def test_a_mixed_update_offers_ignore_and_names_the_settings_part(engaged, monkeypatch):
+    """A MusicBrainz change beside the Settings one: Ignore is offered, for the
+    MusicBrainz half, and the page still says which part is the user's own."""
+    cfg, engage = engaged
+    release = {**_release(), "disambiguation": "expanded edition"}
+    _tagged(cfg.paths.music_dir, release)
+    retitled = copy.deepcopy(release)
+    retitled["medium-list"][0]["track-list"][0]["title"] = "Track One"
+    retitled["medium-list"][0]["track-list"][0]["recording"]["title"] = "Track One"
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: retitled)
+    cfg.tagging.transforms = [TagTransform.ALBUM_DISAMBIGUATION]
+    client, runner = engage()
+
+    body = client.get(f"/library/{_flagged(runner).id}/compare").text
+
+    assert _settings_notice(body) == (
+        'Some of these changes follow your <a href="/settings#tagging">Settings</a>.'
+    )
+    assert 'name="ignore"' in body
+
+
+def test_a_settings_only_update_cannot_be_ignored(engaged, monkeypatch):
+    """The route, not just the page: a stale tab or a hand-made POST must not
+    leave a bookmark that hides a change the user can only answer in Settings."""
+    client, runner = _settings_only(engaged, monkeypatch)
+    album_id = _flagged(runner).id
+    client.get(f"/library/{album_id}/compare")
+
+    r = client.post(f"/library/{album_id}/ignore-update", data={"ignore": "true"})
+
+    assert r.status_code == 200
+    assert album_id not in activity_store.ignored_updates()
+
+
+def test_an_ignore_never_hides_a_settings_only_update(tmp_path):
+    """The read side of the same rule. A mixed update was ignored, and then
+    another tool took MusicBrainz's half — the release has not moved, so the
+    bookmark still matches, but what is left is only the user's setting and an
+    album page that offers no Ignore box to untick."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    album.update_available = True
+    album.update_significance = owned.Significance.SETTINGS
+    album.mb_version = "v1"
+    activity_store.ignore_update(album.id, release_version="v1")
+
+    assert gardener.is_ignored(album, activity_store.ignored_updates()) is False
 
 
 def test_ignoring_takes_the_album_out_of_the_update_filter(engaged, monkeypatch):

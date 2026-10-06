@@ -172,6 +172,14 @@ class Significance(StrEnum):
     someone who trusts `STRUCTURE` almost certainly trusts `ENRICHMENT` too.
     """
 
+    #: Bringing a tag into line with the user's own tagging settings (#685): the
+    #: file holds one spelling the release legitimately has, and the setting
+    #: selects another. The lowest level because it is the only one whose content
+    #: the user dictated — whoever trusts MusicBrainz's casing fixes trusts the
+    #: changes they asked for, and not necessarily the reverse. Never declared in
+    #: `SIGNIFICANCE`: only `tagger.AlbumPlan.significance_of` reaches it, from
+    #: the release's own evidence about the value on disk.
+    SETTINGS = "settings"
     #: Whitespace or casing only — the same value, spelled differently. Never
     #: declared in `SIGNIFICANCE`; only ever reached at runtime by a `BY_VALUE`
     #: field whose two values turn out to differ this little.
@@ -278,6 +286,7 @@ SIGNIFICANCE: dict[str, Significance] = {
 #: `artwork.Operation`, and the gardener's diff never carries it (`plan_for`
 #: passes `artwork=False`).
 ORDER: tuple[Significance, ...] = (
+    Significance.SETTINGS,
     Significance.COSMETIC,
     Significance.ENRICHMENT,
     Significance.IDENTITY,

@@ -285,6 +285,12 @@ button[disabled],
 .album-update__upstream { font-size: var(--text-2xs); color: var(--color-muted); }
 .album-update__upstream a { color: var(--color-mb-purple); }
 .album-update__upstream a:hover { text-decoration: underline; }
+/* Which of the update is the user's own setting arriving (#685): quiet, like
+   the upstream line, because it explains rather than warns. The link is the
+   app's own colour, not MusicBrainz purple — the remedy is Harmonist's Settings. */
+.album-update__settings { margin-top: .4rem; font-size: var(--text-2xs); color: var(--color-muted); }
+.album-update__settings a { color: var(--color-accent); }
+.album-update__settings a:hover { text-decoration: underline; }
 
 /* How far an update reaches (#366) — see `severity_chip` in macros.html for why
    the glyph and the fill carry different halves of it, and why none of this
@@ -297,6 +303,12 @@ button[disabled],
 }
 .sev__g { width: .625rem; height: .625rem; flex: none; }
 .sev__aa { font-size: .55rem; font-weight: 800; letter-spacing: -.04em; }
+/* The user's own setting arriving (#685): off MusicBrainz's purple ramp, and
+   marked so by a dotted edge — artwork's dashed one says the same, in purple. */
+.sev--settings {
+  background: #fff; color: var(--color-muted);
+  border: 1px dotted color-mix(in srgb, var(--color-muted) 70%, transparent);
+}
 .sev--cosmetic { background: #fff; color: var(--color-muted); border-color: var(--color-line); }
 .sev--enrichment {
   background: #fff; color: var(--color-mb-purple);
