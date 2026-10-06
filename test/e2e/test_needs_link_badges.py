@@ -20,6 +20,7 @@ def test_needs_link_badge_action(
     with playwright_sync.sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page()
+        page.set_default_timeout(5000)
         page.goto(reset_demo_server)
         card = page.locator("#task-demo-rel-dingoes")
         card.wait_for(state="visible")
@@ -64,15 +65,17 @@ def test_needs_link_badge_action(
             corrected = page.get_by_role(
                 "link", name="Little Bit o' Hoot, Whole Lotta Nanny", exact=True
             ).locator("xpath=ancestor::div[starts-with(@id, 'task-')][1]")
-            # The stored URL resolves automatically; dismiss that suggestion
-            # before searching for a different release.
-            dismiss = htmx_ready(
-                corrected.get_by_role("button", name="Dismiss suggestion", exact=True)
-            )
-            with page.expect_response(lambda r: "/reject/" in r.url):
-                dismiss.click()
+            # Rematching deliberately offers no candidate for the release just
+            # rejected. Search is available directly; no dismissal is needed.
             corrected.get_by_role("radio", name="Name", exact=True).check()
-            corrected.get_by_role("button", name="Search", exact=True).wait_for()
+            with page.expect_response(
+                lambda r: r.request.method == "POST" and r.url.endswith("/search")
+            ) as search:
+                htmx_ready(corrected.get_by_role("button", name="Search", exact=True)).click()
+            assert search.value.ok
+            playwright_sync.expect(
+                page.get_by_role("button", name="Use", exact=True)
+            ).to_be_visible()
         elif on_album:
             # Reload must expose the new state and remove the live Needs Linking control.
             playwright_sync.expect(
