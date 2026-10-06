@@ -159,9 +159,10 @@ MusicBrainz, a volunteer-run service.
 Each update is labelled by how far it reaches:
 
 - **Settings**: tags that don't yet follow a tagging setting, such as an album
-  title without the disambiguation the setting adds. These come from Harmonist's
-  Settings, not MusicBrainz, so they're never announced and can't be ignored;
-  changing the setting back withdraws them.
+  title without the disambiguation the setting adds, or an artist written as
+  credited on the release where the setting writes the artist's own name. These
+  come from Harmonist's settings, not MusicBrainz, so they're never announced and
+  can't be ignored; changing the setting back withdraws them.
 - **Cosmetic**: a title that differs only in capitalisation or spacing.
 - **Enrichment**: details added or corrected, such as a catalogue number or a
   more precise date.

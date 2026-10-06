@@ -146,8 +146,13 @@ def _release(
     disambiguation: str = "",
     track_artists: list[str] | None = None,
     countries: tuple[str, ...] = ("US",),
+    credited_as: str | None = None,
 ) -> Release:
     """One MusicBrainz release, as the demo's stubbed client returns it.
+
+    `credited_as` is the name this release prints for its artist, where that
+    differs from the artist's own (#678) — the credit Picard's "standardize
+    artist names" replaces. Tracks that inherit the release credit print it too.
 
     `track_artists` gives a track its own artist credit, the way a compilation
     or an OST really does. Without it every track inherits the release credit,
@@ -173,6 +178,7 @@ def _release(
     artist_ids = {artist: _demo_mbid("art", mbid)}
     for name in credits:
         artist_ids.setdefault(name, _demo_mbid("art", mbid, len(artist_ids)))
+    shown = credited_as or artist
     return {
         "id": mbid,
         "title": title,
@@ -185,7 +191,7 @@ def _release(
         "date": _EVENT_DATES[0],
         "barcode": None,
         "artist-credit": [
-            {"artist": {"id": artist_ids[artist], "name": artist}, "name": artist},
+            {"artist": {"id": artist_ids[artist], "name": artist}, "name": shown},
         ],
         "release-group": {
             "id": rg or f"demo-rg-{mbid}",
@@ -216,7 +222,7 @@ def _release(
                         "artist-credit": [
                             {
                                 "artist": {"id": artist_ids[credit], "name": credit},
-                                "name": credit,
+                                "name": shown if credit == artist else credit,
                             },
                         ],
                         "recording": {
@@ -249,6 +255,10 @@ LIBRARY: list[dict[str, Any]] = [
         # Tagged with the plain title, so turning on the album-title
         # disambiguation transform gives this album a Settings update (#685).
         "disambiguation": "San Dimas edition",
+        # Credited as the films spell the band, and tagged as credited, so the
+        # default "standardize variations" gives it a Settings update to the
+        # artist's own name (#678).
+        "credited_as": "Wyld Stallyns",
         "cover": "wyld.png",
         "fmt": "alac",
         "history": True,
@@ -450,6 +460,7 @@ def _catalogue() -> dict[str, Release]:
             lengths_ms=[6000, 7000, 5500] if spec.get("candidate") else spec.get("lengths_ms"),
             disambiguation=spec.get("disambiguation", ""),
             track_artists=spec.get("credits"),
+            credited_as=spec.get("credited_as"),
         )
         if spec.get("discs"):
             tracks = release["medium-list"][0]["track-list"]

@@ -449,9 +449,7 @@ def test_the_re_check_reads_only_albums_the_change_can_move(tmp_path, monkeypatc
 
     monkeypatch.setattr(gardener, "plan_for", _counting)
 
-    gardener.recheck_for_settings(
-        [plain, moved], frozenset({TagTransform.ALBUM_DISAMBIGUATION}), duty=0
-    )
+    gardener.recheck_for_settings([plain, moved], TaggingChoices(), _disambiguating(), duty=0)
 
     assert looked == [moved.path]
 

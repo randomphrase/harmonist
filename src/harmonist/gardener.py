@@ -65,6 +65,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from . import (
@@ -77,10 +78,9 @@ from . import (
     mb_lookup,
     tagger,
 )
-from . import transforms as transforms_mod
 from .formats import owned
 from .models import Album, AlbumState, Release
-from .transforms import TaggingChoices, TagTransform
+from .transforms import TaggingChoices
 
 log = logging.getLogger(__name__)
 
@@ -224,8 +224,10 @@ class Assessment:
     verdict: owned.Significance | None
 
 
-def _countable(plan: tagger.AlbumPlan) -> Iterator[tuple[str, Any, Any]]:
-    """The entries of `plan` that count as an update, as `(field, before, after)`.
+def _countable(plan: tagger.AlbumPlan) -> Iterator[tuple[Path, str, Any, Any]]:
+    """The entries of `plan` that count as an update, as `(path, field, before,
+    after)` — the path because what a file's artist may be spelled as depends on
+    its own track's credit (#678).
 
     Not every entry does, and there are two ways an entry can fail to.
 
@@ -243,10 +245,10 @@ def _countable(plan: tagger.AlbumPlan) -> Iterator[tuple[str, Any, Any]]:
     library into the Inbox.
 
     The album title's second spelling was filtered here too (#283), and is
-    counted now (#685): a transform chooses between those spellings, so the
-    one on disk either follows the user's setting or it is an update of the
-    `SETTINGS` level. Nothing chooses a country, so there is nothing for that
-    one to converge on.
+    counted now (#685), as are the artist names' (#678): a setting chooses
+    between those spellings, so the one on disk either follows the user's
+    setting or it is an update of the `SETTINGS` level. Nothing chooses a
+    country, so there is nothing for that one to converge on.
 
     Filtered HERE rather than in `owned.diff` or `tagger._changes_for`, and that
     is the whole of the design: `plan.changes` is also what the activity record
@@ -259,12 +261,12 @@ def _countable(plan: tagger.AlbumPlan) -> Iterator[tuple[str, Any, Any]]:
     flagged for a change no finding can be raised about, or raised about a
     change the Library never showed.
     """
-    for changes in plan.changes.values():
+    for path, changes in plan.changes.items():
         for field, (before, after) in changes.items():
             if plan.is_second_spelling(field, before):
                 continue
             if not owned.is_opportunistic(field, before, after):
-                yield field, before, after
+                yield path, field, before, after
 
 
 def verdict_for(plan: tagger.AlbumPlan) -> owned.Significance | None:
@@ -282,9 +284,7 @@ def verdict_for(plan: tagger.AlbumPlan) -> owned.Significance | None:
     pretending to compare with a retitle — so the loud failure is the correct
     outcome, and the pass's boundary catch turns it into one.
     """
-    levels = [
-        plan.significance_of(field, before, after) for field, before, after in _countable(plan)
-    ]
+    levels = [plan.significance_of(*entry) for entry in _countable(plan)]
     return max(levels, key=owned.ranked) if levels else None
 
 
@@ -296,8 +296,7 @@ def follows_settings(plan: tagger.AlbumPlan) -> bool:
     upstream or an Ignore.
     """
     return any(
-        plan.significance_of(field, before, after) is owned.Significance.SETTINGS
-        for field, before, after in _countable(plan)
+        plan.significance_of(*entry) is owned.Significance.SETTINGS for entry in _countable(plan)
     )
 
 
@@ -392,16 +391,22 @@ def warm_from_cache(albums: Sequence[Album], *, duty: float = WARM_DUTY) -> int:
 
 
 def recheck_for_settings(
-    albums: Sequence[Album], changed: frozenset[TagTransform], *, duty: float = WARM_DUTY
+    albums: Sequence[Album],
+    before: TaggingChoices,
+    after: TaggingChoices,
+    *,
+    duty: float = WARM_DUTY,
 ) -> int:
-    """Re-judge the albums a change to the user's transforms can move (#685).
-    Returns how many albums were flagged.
+    """Re-judge the albums a change to the user's spelling settings can move
+    (#685, #678). Returns how many albums were flagged.
 
     The warm-up's loop, from the same stored releases and so for the same zero
-    MusicBrainz requests, narrowed to albums whose release gives the changed
-    transforms something to choose between. The rest cannot have moved, and
-    re-reading them would be a whole-library pass over a network mount for a
-    click in Settings.
+    MusicBrainz requests, narrowed to albums whose release a tagging would write
+    differently under `after` than under `before`. That is decided from the
+    release alone — no file is read to decide it — and exactly: whatever a new
+    setting touches, an album it cannot move is one whose tags come out the
+    same. The rest cannot have moved, and re-reading them would be a
+    whole-library pass over a network mount for a click in Settings.
 
     Records nothing in the Activity feed: the user caused these updates a moment
     ago, and an album with nothing but a Settings change is never announced.
@@ -409,7 +414,9 @@ def recheck_for_settings(
     return _refresh_from_cache(
         albums,
         duty=duty,
-        wanted=lambda release: any(transforms_mod.can_move(release, t) for t in changed),
+        wanted=lambda release: (
+            tagger.tagsets_for(release, before) != tagger.tagsets_for(release, after)
+        ),
         what="settings re-check",
     )
 

@@ -17,6 +17,7 @@ from harmonist.models import (
     is_bandcamp_url,
     store_name,
 )
+from harmonist.transforms import ArtistNames, TaggingChoices
 
 # ---------- config ----------
 
@@ -95,6 +96,62 @@ port = 8765
     monkeypatch.setenv("HARMONIST_PORT", "9999")
     cfg = config_mod.load()
     assert cfg.server.port == 9999
+
+
+def _load_tagging(monkeypatch, tmp_path, toml: str = "") -> TaggingChoices:
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir(exist_ok=True)
+    (cfg_dir / "harmonist.toml").write_text(toml)
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    return config_mod.load().tagging.choices()
+
+
+def test_artist_names_default_to_picard_3s_default(monkeypatch, tmp_path):
+    """#678: "standardize variations", as a fresh Picard 3.0 install has it, and
+    the list checkbox off, as Picard's is."""
+    for var in (
+        "HARMONIST_TAGGING_STANDARDIZE_ARTIST_NAMES",
+        "HARMONIST_TAGGING_ALWAYS_STANDARDIZE_MULTIVALUE_ARTIST",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    assert _load_tagging(monkeypatch, tmp_path) == TaggingChoices(
+        standardize_artist_names=ArtistNames.VARIATIONS
+    )
+
+
+def test_artist_names_read_from_picards_keys(monkeypatch, tmp_path):
+    """The config keys are Picard's option names, so the two tools match."""
+    choices = _load_tagging(
+        monkeypatch,
+        tmp_path,
+        "[tagging]\n"
+        'standardize_artist_names = "all"\n'
+        "always_standardize_multivalue_artist = true\n",
+    )
+
+    assert choices.standardize_artist_names is ArtistNames.ALL
+    assert choices.always_standardize_multivalue_artist is True
+
+
+def test_artist_names_from_the_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("HARMONIST_TAGGING_STANDARDIZE_ARTIST_NAMES", "none")
+    monkeypatch.setenv("HARMONIST_TAGGING_ALWAYS_STANDARDIZE_MULTIVALUE_ARTIST", "true")
+
+    choices = _load_tagging(monkeypatch, tmp_path)
+
+    assert choices.standardize_artist_names is ArtistNames.NONE
+    assert choices.always_standardize_multivalue_artist is True
+
+
+def test_an_unknown_artist_names_value_stops_startup(monkeypatch, tmp_path):
+    """A typo names the permitted values rather than silently picking one, like
+    every other tagging setting."""
+    monkeypatch.setenv("HARMONIST_TAGGING_STANDARDIZE_ARTIST_NAMES", "variation")
+
+    with pytest.raises(ValueError, match="variations"):
+        _load_tagging(monkeypatch, tmp_path)
 
 
 def test_a_retired_cover_art_size_is_reported_rather_than_ignored(monkeypatch, tmp_path, caplog):

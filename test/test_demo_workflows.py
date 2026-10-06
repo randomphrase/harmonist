@@ -12,7 +12,7 @@ from harmonist import activity, activity_store, cover_art, demo, formats, garden
 from harmonist.config import BandcampConfig, Config, PathsConfig
 from harmonist.formats.owned import Significance
 from harmonist.models import AlbumState
-from harmonist.transforms import TaggingChoices, TagTransform
+from harmonist.transforms import ArtistNames, TaggingChoices, TagTransform
 from harmonist.web.main import create_app
 
 
@@ -71,6 +71,21 @@ def test_the_demo_shows_a_settings_update_when_the_title_transform_is_on(library
         lambda: TaggingChoices(transforms=frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
     )
 
+    assert gardener.verdict_for(gardener.plan_for(album, release)) == Significance.SETTINGS
+
+
+def test_the_demo_shows_a_settings_update_for_a_credited_variation(library):
+    """#678's walkthrough. The release credits Wyld Stallion as "Wyld Stallyns"
+    and the files say so, so the default "standardize variations" offers the
+    artist's own name, as a Settings update — and "as credited" offers nothing.
+    """
+    album = albums(library)["A Most Excellent Journey"]
+    release = demo.fetch_release(album.sidecar.mb_release_id)
+
+    gardener.configure(lambda: TaggingChoices(standardize_artist_names=ArtistNames.NONE))
+    assert gardener.verdict_for(gardener.plan_for(album, release)) is None
+
+    gardener.configure(lambda: TaggingChoices(standardize_artist_names=ArtistNames.VARIATIONS))
     assert gardener.verdict_for(gardener.plan_for(album, release)) == Significance.SETTINGS
 
 

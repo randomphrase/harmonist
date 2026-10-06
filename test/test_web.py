@@ -5918,6 +5918,33 @@ def test_saving_with_transforms_off_clears_the_saved_list(client, cfg, off_field
     assert "transforms = []" in (cfg.paths.config_dir / "harmonist.toml").read_text()
 
 
+def test_settings_save_keeps_the_artist_name_settings(client, cfg):
+    """#678's settings have no control on the page yet (it follows #687's
+    reorganisation), so a save from the form must leave them as configured
+    rather than resetting them to their defaults behind the user's back."""
+    from harmonist.transforms import ArtistNames
+
+    client.app.state.cfg.tagging.standardize_artist_names = ArtistNames.ALL
+    client.app.state.cfg.tagging.always_standardize_multivalue_artist = True
+
+    r = client.post(
+        "/settings",
+        data={
+            "download_format": "flac",
+            "max_downloads_per_sync": "5",
+            "user_agent": "Harmonist/0.1 ( x@y.z )",
+            "gardener_level": "off",
+            "folder_cover": "never",
+            "log_level": "info",
+        },
+    )
+
+    assert r.status_code == 200
+    live = client.app.state.cfg.tagging
+    assert live.standardize_artist_names is ArtistNames.ALL
+    assert live.always_standardize_multivalue_artist is True
+
+
 def test_settings_save_rejects_an_unknown_transform(client, cfg):
     """A hand-made POST naming a transform nobody wrote is a rejection, for the
     reason an unknown gardener level is: silently dropping it would save a page

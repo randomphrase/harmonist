@@ -254,10 +254,20 @@ Meanwhile, tick **Ignore until MusicBrainz changes** to take the album off the
 when your edit is accepted. Nothing is written either way.
 
 An update labelled **Settings** didn't come from MusicBrainz: it brings the album
-into line with a setting in **Settings → Tagging**. For example, with **Add the
-release disambiguation to the album title** off, an album titled
-*Obreel (expanded edition)* is offered *Obreel*. To keep the other spelling,
-change the setting; the update disappears from every album it affects.
+into line with a tagging setting. For example, with **Add the release
+disambiguation to the album title** off, an album titled
+*Obreel (expanded edition)* is offered *Obreel*; and with artist names
+standardized (the default), an album credited to *bvdub . Brock Van Wey* is
+offered *bvdub*. To keep the other spelling, change the setting (see
+[configuration](configuration.md#tagging)); the update disappears from every
+album it affects.
+
+### An artist's former name is replaced although the setting keeps former names
+
+Harmonist recognizes a former name by the end date on the artist's alias in
+MusicBrainz. An alias marked as ended without a date looks current, so the
+credit is standardized; Picard, which reads the flag directly, keeps it. Adding
+the end date to the alias on MusicBrainz corrects both.
 
 ### Almost every album shows Update available
 

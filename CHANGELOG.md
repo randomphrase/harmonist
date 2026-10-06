@@ -6,6 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Artist names follow Picard 3.0's **Standardize artist names**, set in the config for now: as credited, variations only (the default, as in Picard 3.0), or variations and name changes, plus its option to always standardize the multi-valued artist tags. Albums tagged with a credited variation, such as *bvdub . Brock Van Wey* for *bvdub*, show a **Settings** update. Releases are now read with their artists' aliases, so every cached release is fetched again: the Update available list starts nearly empty after upgrading and refills as albums are looked up (#678).
 - Downloaded artwork now lives in a separate `caa-cache` directory, migrated automatically on upgrade while undo backups stay in place (#688).
 - Settings puts tagging and background updates first, groups Bandcamp and server options, and uses shorter copy with a Save button that stays in view (#687).
 - Artwork backups and the artwork cache show their usage and current paths in Settings, with a 1 GB default limit each (#687).

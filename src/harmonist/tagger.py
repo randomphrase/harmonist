@@ -10,6 +10,7 @@ constants are re-exported here.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -428,9 +429,13 @@ def plan_album(
         assignment=assignment,
     )
     changes: dict[Path, dict[str, list[Any]]] = {}
+    supported: dict[Path, dict[str, frozenset[Any]]] = {}
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
         tagset = _build_tagset(
             release, medium, track_pos_in_medium, track, prep.media_total, tagging
+        )
+        supported[file_path] = _supported_spellings(
+            release, medium, track_pos_in_medium, track, prep.media_total
         )
         if file_changes := _changes_for(
             tagset,
@@ -449,9 +454,49 @@ def plan_album(
             changes[path] = file_changes
     return AlbumPlan(
         changes=changes,
-        accepted_album_titles=prep.accepted_album_titles,
+        supported_spellings=supported,
         accepted_countries=prep.accepted_countries,
     )
+
+
+#: The owned fields a `TaggingChoices` can change — every field whose value
+#: depends on the user's spelling settings rather than on MusicBrainz alone.
+SETTING_FIELDS: tuple[owned.Owned, ...] = (
+    owned.Owned.ALBUM,
+    owned.Owned.ALBUM_ARTIST,
+    owned.Owned.ARTIST,
+    owned.Owned.ALBUM_ARTIST_SORT,
+    owned.Owned.ARTIST_SORT,
+    owned.Owned.ALBUM_ARTISTS,
+    owned.Owned.ARTISTS,
+)
+
+
+def _spelling_key(value: Any) -> Any:
+    """`value` in a form a set can hold: a list tag compares as a tuple."""
+    return tuple(value) if isinstance(value, list) else value
+
+
+def _supported_spellings(
+    release: Release, medium: dict[str, Any], track_pos: int, track: Track, media_total: int
+) -> dict[str, frozenset[Any]]:
+    """Every value each `SETTING_FIELDS` field of this track has under SOME
+    combination of the spelling settings (#678) — what one setting or another
+    writes, by Harmonist or by Picard, for this release.
+
+    By running the write under each combination (`transforms.every_choice`)
+    rather than by rule, so the set is exactly the release's own strings and
+    cannot drift from what the tagger writes. Per file, because a track's
+    artist credit can differ from its neighbours'.
+    """
+    tagsets = [
+        _build_tagset(release, medium, track_pos, track, media_total, choices)
+        for choices in transforms_mod.every_choice()
+    ]
+    return {
+        field.value: frozenset(_spelling_key(getattr(t, field.value)) for t in tagsets)
+        for field in SETTING_FIELDS
+    }
 
 
 @dataclass(frozen=True)
@@ -477,17 +522,20 @@ class AlbumPlan:
 
     A second correct spelling of the album title used to be the third (#283,
     #545). It is an update now, of the lowest significance, because which
-    spelling a library carries is the user's setting to choose (#685) — see
-    `significance_of`.
+    spelling a library carries is the user's setting to choose (#685) — as are
+    the artist names (#678). See `significance_of`.
     """
 
     changes: dict[Path, dict[str, list[Any]]]
-    #: Every album title that is already correct for this release: MusicBrainz's
-    #: and Picard's disambiguated spelling of it (#283). Carried on the plan
-    #: because the classifier has to ask — `gardener` holds a plan, not a
-    #: release, and what makes a spelling legitimate is a fact about the release.
-    accepted_album_titles: frozenset[str] = frozenset()
-    #: …and every country the release names (#346). Same question, same reason.
+    #: Per file, every value each setting-dependent field has under some
+    #: combination of the spelling settings (`_supported_spellings`). Carried on
+    #: the plan because the classifier has to ask — `gardener` holds a plan, not
+    #: a release, and what makes a spelling legitimate is a fact about the
+    #: release. List values are held as tuples.
+    supported_spellings: Mapping[Path, Mapping[str, frozenset[Any]]] = dataclasses.field(
+        default_factory=dict
+    )
+    #: Every country the release names (#346), which no setting chooses between.
     accepted_countries: frozenset[str] = frozenset()
 
     def is_second_spelling(self, field: str, before: object) -> bool:
@@ -505,24 +553,27 @@ class AlbumPlan:
         """
         return field == owned.Owned.MB_ALBUM_COUNTRY and before in self.accepted_countries
 
-    def follows_setting(self, field: str, before: object) -> bool:
+    def follows_setting(self, path: Path, field: str, before: object) -> bool:
         """Whether this entry only moves the value to the spelling a setting
-        selects (#685).
+        selects (#685, #678).
 
-        The disk held one of the album titles this release legitimately has, and
-        the tagger writes the one the user's transforms choose — which every
-        `after` in this plan is, because the plan was built under them. So the
-        change is the user's own convention arriving, and nothing MusicBrainz
-        did.
+        The disk held a value some combination of the settings writes for this
+        release, and the tagger writes the one the user's choices select — which
+        every `after` in this plan is, because the plan was built under them. So
+        the change is the user's own convention arriving, and nothing
+        MusicBrainz did.
 
-        Exact strings the release states, never a pattern (review-gate item 2):
+        Exact values the release produces, never a pattern (review-gate item 2):
         `models.titles_match` would say yes to `(deluxe edition)` here, and a
         retitle mistaken for this would reach #273's trust setting disguised as
         something the user asked for.
         """
-        return field == owned.Owned.ALBUM and before in self.accepted_album_titles
+        supported = self.supported_spellings.get(path, {}).get(field)
+        return supported is not None and _spelling_key(before) in supported
 
-    def significance_of(self, field: str, before: Any, after: Any) -> owned.Significance:
+    def significance_of(
+        self, path: Path, field: str, before: Any, after: Any
+    ) -> owned.Significance:
         """What kind of change this entry is, given what the release says.
 
         `SETTINGS` where `follows_setting` holds, otherwise the field's own
@@ -532,7 +583,7 @@ class AlbumPlan:
         MusicBrainz retitle arriving at the same time as a settings change is a
         retitle.
         """
-        if self.follows_setting(field, before):
+        if self.follows_setting(path, field, before):
             return owned.Significance.SETTINGS
         return significance_of(field, before, after)
 
@@ -639,22 +690,14 @@ class _Prepared:
     #: give two rows two different images (#659). Empty when nothing is written.
     art_after: Mapping[Path, str]
     media_total: int
-    #: Every album title that counts as already correct: MusicBrainz's, plus
-    #: Picard's disambiguated spelling of it where the release carries a
-    #: disambiguation (#283). A SET rather than the single alias this was, so
-    #: that it still says the same thing when a transform makes the
-    #: disambiguated spelling the one Harmonist itself writes (#544) — then the
-    #: plain title is the alias, and a scalar would have to know which way round
-    #: the setting is. It never does: the set is the same under either.
-    #:
-    #: Album-constant, since every file's TagSet carries the same `album`, so it
-    #: is settled once here rather than rebuilt per file.
-    accepted_album_titles: frozenset[str]
     #: Every release country that counts as already correct: the ones THIS
     #: release names. Picard writes whichever of them `preferred_release_
     #: countries` matches, so a library tagged that way carries a code that is
-    #: not MusicBrainz's scalar `country` and is not stale either. Album-constant
-    #: for the reason above.
+    #: not MusicBrainz's scalar `country` and is not stale either. Album-constant,
+    #: since every file's TagSet carries the same country, so it is settled once
+    #: here rather than rebuilt per file. (The album title's spellings used to
+    #: live here too; they are per file now, beside the artists' — see
+    #: `_supported_spellings`.)
     accepted_countries: frozenset[str]
     #: The files this TAGGING may write `cover` to — the ones carrying nothing,
     #: or every file under `overwrite_art` (#418). Everything else keeps the
@@ -901,7 +944,6 @@ def _prepare(
         cover_change=cover_change,
         art_withheld=withheld,
         media_total=len(release.get("medium-list", [])) or 1,
-        accepted_album_titles=transforms_mod.accepted_album_titles(release),
         accepted_countries=release_countries(release),
     )
 
@@ -2147,19 +2189,19 @@ def _build_tagset(
     return TagSet(
         mb_album_id=release["id"],
         album=transforms_mod.album_title(release, tagging.transforms),
-        album_artist=_artist_phrase(release.get("artist-credit")),
+        album_artist=_artist_phrase(release.get("artist-credit"), tagging),
         title=_track_title(track),
-        artist=_artist_phrase(track_artist_credit),
+        artist=_artist_phrase(track_artist_credit, tagging),
         track_num=track_pos + 1,
         track_total=track_total,
-        album_artist_sort=_artist_sort_phrase(release.get("artist-credit")) or None,
-        artist_sort=_artist_sort_phrase(track_artist_credit) or None,
+        album_artist_sort=_artist_sort_phrase(release.get("artist-credit"), tagging) or None,
+        artist_sort=_artist_sort_phrase(track_artist_credit, tagging) or None,
         # The release credit unjoined, so a two-artist collaboration files under
         # both names instead of under one composite pseudo-artist (#322). Bare
         # names by construction — `_artist_names` drops the join phrases, which
         # is the guess this tag exists to remove.
-        album_artists=_artist_names(release.get("artist-credit")),
-        artists=_artist_names(track_artist_credit),
+        album_artists=_artist_names(release.get("artist-credit"), tagging),
+        artists=_artist_names(track_artist_credit, tagging),
         original_date=rg.get("first-release-date") or None,
         script=(release.get("text-representation") or {}).get("script") or None,
         mb_album_artist_ids=_artist_ids(release.get("artist-credit")),
@@ -2441,7 +2483,8 @@ def release_events(release: Release) -> tuple[ReleaseEvent, ...]:
 class CreditPart(NamedTuple):
     """One artist within an artist credit, as the page renders it.
 
-    `name` is the CREDITED-AS name, so the parts spell the credit phrase exactly;
+    `name` is the artist as the phrase spells them — credited, or standardized
+    under the user's setting (#678) — so the parts spell the phrase exactly;
     `join` is the text that runs from this artist to the next — " feat. ", " & ",
     ", " — and is empty on the last. `mbid` is None for an artist MusicBrainz
     names without identifying, which renders as plain text rather than a link.
@@ -2467,7 +2510,9 @@ def _credit_entries(artist_credit: list[Any] | None) -> Iterator[dict[str, Any]]
             yield entry
 
 
-def _credit_parts(artist_credit: list[Any] | None) -> tuple[CreditPart, ...]:
+def _credit_parts(
+    artist_credit: list[Any] | None, tagging: TaggingChoices = NO_CHOICES
+) -> tuple[CreditPart, ...]:
     """One artist credit as its parts — the structured form of `_artist_phrase`.
 
     The two cannot drift, because `_artist_phrase` is built from this. That
@@ -2499,7 +2544,7 @@ def _credit_parts(artist_credit: list[Any] | None) -> tuple[CreditPart, ...]:
             artist = entry.get("artist") or {}
             parts.append(
                 CreditPart(
-                    entry.get("name") or artist.get("name", ""),
+                    transforms_mod.artist_spelling(entry, tagging).name,
                     artist.get("id"),
                     entry.get("joinphrase") or "",
                 )
@@ -2528,17 +2573,23 @@ def artist_credits(release: Release) -> dict[str, tuple[CreditPart, ...]]:
     the design's exact-scoped-unique rule: two artists sharing a spelling is
     ambiguity, and picking the first would link one artist's name to the other's
     page. Rendering it flat loses a link; guessing states something false.
+
+    **Every setting's phrase is keyed** (#678). A file carries whichever spelling
+    the setting it was tagged under wrote — as credited, or standardized — and
+    each names the same artists, so each gets the same links.
     """
     found: dict[str, tuple[CreditPart, ...] | None] = {}
     for credit in _credits_of(release):
-        parts = _credit_parts(credit)
-        if not parts:
-            continue
-        phrase = _artist_phrase(credit)
-        if phrase in found and found[phrase] != parts:
-            found[phrase] = None
-        else:
-            found.setdefault(phrase, parts)
+        for names in transforms_mod.ArtistNames:
+            spelled = TaggingChoices(standardize_artist_names=names)
+            parts = _credit_parts(credit, spelled)
+            if not parts:
+                continue
+            phrase = _artist_phrase(credit, spelled)
+            if phrase in found and found[phrase] != parts:
+                found[phrase] = None
+            else:
+                found.setdefault(phrase, parts)
     return {phrase: parts for phrase, parts in found.items() if parts}
 
 
@@ -2653,19 +2704,26 @@ def album_label(release: dict[str, Any], album_dir: Path) -> str:
     return label.strip(" —") or album_dir.name
 
 
-def _artist_phrase(artist_credit: list[Any] | None) -> str:
-    """Build a display string from an MB artist-credit list.
+def _artist_phrase(artist_credit: list[Any] | None, tagging: TaggingChoices = NO_CHOICES) -> str:
+    """Build a display string from an MB artist-credit list, each artist spelled
+    the way `tagging` chooses (#678).
 
     Derived from `_credit_parts` rather than walking the credit a second time,
     so the flat phrase written to `artist` / `albumartist` and the linked parts
     the album page renders cannot disagree about what the credit says (#309).
     """
-    return "".join(part.name + part.join for part in _credit_parts(artist_credit)).strip()
+    parts = _credit_parts(artist_credit, tagging)
+    return "".join(part.name + part.join for part in parts).strip()
 
 
-def _artist_sort_phrase(artist_credit: list[Any] | None) -> str:
+def _artist_sort_phrase(
+    artist_credit: list[Any] | None, tagging: TaggingChoices = NO_CHOICES
+) -> str:
     """Like `_artist_phrase` but using each artist's MB **sort-name** (e.g.
-    'Beatles, The'), keeping join phrases. Empty when no sort-names are present."""
+    'Beatles, The'), keeping join phrases. Empty when no sort-names are present.
+
+    A credited name kept as credited sorts by its own alias's sort name where it
+    is one (#678), as Picard writes it."""
     if not artist_credit:
         return ""
     parts: list[str] = []
@@ -2674,24 +2732,24 @@ def _artist_sort_phrase(artist_credit: list[Any] | None) -> str:
         if isinstance(ac, str):
             parts.append(ac)
         elif isinstance(ac, dict):
-            sort = (ac.get("artist") or {}).get("sort-name")
-            if sort:
+            spelling = transforms_mod.artist_spelling(ac, tagging)
+            if spelling.sort_name:
                 any_sort = True
-            parts.append(sort or ac.get("name") or (ac.get("artist") or {}).get("name", ""))
+            parts.append(spelling.sort_name or spelling.name)
             if jp := ac.get("joinphrase"):
                 parts.append(jp)
     return "".join(parts).strip() if any_sort else ""
 
 
-def _artist_names(artist_credit: list[Any] | None) -> list[str]:
-    """The individual artist display names (no join phrases) — Picard's
-    multi-value `artists` / ARTISTS tag."""
+def _artist_names(
+    artist_credit: list[Any] | None, tagging: TaggingChoices = NO_CHOICES
+) -> list[str]:
+    """The individual artist names (no join phrases) — Picard's multi-value
+    `artists` / ARTISTS tag, standardized on its own when the user asks (#678)."""
     if not artist_credit:
         return []
     names: list[str] = []
     for ac in artist_credit:
-        if isinstance(ac, dict):
-            name = ac.get("name") or (ac.get("artist") or {}).get("name", "")
-            if name:
-                names.append(name)
+        if isinstance(ac, dict) and (name := transforms_mod.artist_spelling(ac, tagging).list_name):
+            names.append(name)
     return names

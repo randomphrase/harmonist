@@ -312,6 +312,23 @@ def test_fetch_release_passes_correct_includes(monkeypatch):
         assert inc in seen["includes"]
 
 
+def test_fetch_release_asks_for_the_artists_aliases(monkeypatch):
+    """#678. "Standardize artist name variations only" keeps a credit that is a
+    former name, which it can only tell from the artist's aliases. Without them
+    in the payload the rule finds no former names and quietly behaves as
+    "standardize all" — nothing fails, every name is simply wrong."""
+    seen: dict[str, list[str]] = {}
+
+    def fake_get(mbid, **kw):
+        seen["includes"] = kw.get("includes", [])
+        return {"release": {"id": mbid}}
+
+    monkeypatch.setattr(musicbrainzngs, "get_release_by_id", fake_get)
+    fetch_release("rel-aaa")
+
+    assert "aliases" in seen["includes"]
+
+
 def test_fetch_release_raises_on_error(monkeypatch):
     def raise_err(mbid, **kw):
         raise musicbrainzngs.NetworkError(cause=Exception("boom"))

@@ -45,6 +45,12 @@ RELEASE_INCLUDES = (
     "media",
     "isrcs",
     "url-rels",
+    # Every credited artist's aliases (#678): the evidence "standardize artist
+    # name variations only" needs to tell a former name from a variation. In
+    # this tuple rather than a request of its own, because the rate limit is per
+    # request, not per byte; and so an alias edit moves the release's version
+    # like any other edit.
+    "aliases",
 )
 RELEASE_URL_INCLUDES = ("url-rels",)
 

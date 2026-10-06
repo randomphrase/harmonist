@@ -12,7 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from .artwork import FolderCoverPolicy
-from .transforms import TaggingChoices, TagTransform
+from .transforms import ArtistNames, TaggingChoices, TagTransform
 
 log = logging.getLogger(__name__)
 
@@ -202,9 +202,28 @@ class TaggingConfig(BaseModel):
     #: list so that it can be answered then without breaking a config file.
     transforms: list[TagTransform] = Field(default_factory=list)
 
+    #: Picard 3.0's "Standardize artist names" (#678), under Picard's own key and
+    #: values so a user can match the two tools by name.
+    #:
+    #: **`variations` by default**, which is Picard 3.0's fresh-install default
+    #: and a CHANGE from what Harmonist wrote before this setting existed (as
+    #: credited, which is `none`). Deliberately the forward-looking choice: an
+    #: album Harmonist tagged with a credited variation gets a Settings update
+    #: after upgrading, and the changelog says so.
+    standardize_artist_names: ArtistNames = ArtistNames.VARIATIONS
+
+    #: Picard's "Always standardize multi-valued artist tags": the `artists` /
+    #: `albumartists` lists carry each artist's own name whatever the setting
+    #: above does to the display credit. Off by default, as in Picard.
+    always_standardize_multivalue_artist: bool = False
+
     def choices(self) -> TaggingChoices:
         """These settings as the one value the tagger and the update check take."""
-        return TaggingChoices(transforms=frozenset(self.transforms))
+        return TaggingChoices(
+            transforms=frozenset(self.transforms),
+            standardize_artist_names=self.standardize_artist_names,
+            always_standardize_multivalue_artist=self.always_standardize_multivalue_artist,
+        )
 
 
 class TestConfig(BaseModel):
@@ -340,6 +359,13 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         # removing the variable rather than setting it empty — which is what a
         # `if v :=` guard means for every setting in this function.
         tagging["transforms"] = [t.strip() for t in v.split(",") if t.strip()]
+    if v := env.get("HARMONIST_TAGGING_STANDARDIZE_ARTIST_NAMES"):
+        # Unvalidated, for the reason the folder-cover policy is (above).
+        tagging["standardize_artist_names"] = v.strip()
+    if v := env.get("HARMONIST_TAGGING_ALWAYS_STANDARDIZE_MULTIVALUE_ARTIST"):
+        # Pydantic's own bool parsing, so "true"/"false"/"1"/"0" all work and
+        # anything else stops startup rather than reading as off.
+        tagging["always_standardize_multivalue_artist"] = v.strip()
     if v := env.get("HARMONIST_DEMO_MODE"):
         data["demo_mode"] = v.strip() not in ("", "0", "false", "False", "no")
     return data

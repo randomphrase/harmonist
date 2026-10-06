@@ -95,7 +95,7 @@ from harmonist.models import (
     titles_match,
 )
 from harmonist.tagger import PicardCompatibleTagger, Tagger, tagsets_for
-from harmonist.transforms import NO_CHOICES, TaggingChoices, TagTransform
+from harmonist.transforms import NO_CHOICES, TaggingChoices
 from harmonist.web import dir_watcher, periodic
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.scan_runner import ScanRunner
@@ -3341,11 +3341,13 @@ def _start_flag_warm_up(scan_runner: ScanRunner) -> None:
     threading.Thread(target=_run, name="harmonist-flag-warmup", daemon=True).start()
 
 
-def _start_settings_recheck(scan_runner: ScanRunner, changed: frozenset[TagTransform]) -> None:
-    """Re-judge the albums a change to the enabled transforms can move (#685).
+def _start_settings_recheck(
+    scan_runner: ScanRunner, before: TaggingChoices, after: TaggingChoices
+) -> None:
+    """Re-judge the albums a change to the spelling settings can move (#685, #678).
 
     The Library follows the setting without anyone opening the albums: an album
-    whose title the new setting would rewrite gains a Settings update, and one
+    whose tags the new setting would rewrite gains a Settings update, and one
     it no longer would loses it. Its own thread, as the warm-up is and for the
     same reasons — file reads, nothing to await, nothing persisted.
 
@@ -3357,7 +3359,7 @@ def _start_settings_recheck(scan_runner: ScanRunner, changed: frozenset[TagTrans
 
     def _run() -> None:
         try:
-            gardener.recheck_for_settings(scan_runner.albums(), changed)
+            gardener.recheck_for_settings(scan_runner.albums(), before, after)
         except Exception:
             # Boundary catch, as for the warm-up: a background hint must not die
             # silently, and the symptom would otherwise be a filter that still
@@ -4887,6 +4889,11 @@ def _register_routes(app: FastAPI) -> None:
             )
             new_tagging = config_mod.TaggingConfig.model_validate(
                 {
+                    # Carried over first: the artist-name settings (#678) have
+                    # no control on this form yet, and a model built from the
+                    # form alone would reset them to their defaults on every
+                    # save of anything else.
+                    **cfg.tagging.model_dump(),
                     "folder_cover": folder_cover.strip(),
                     "transforms": [t.strip() for t in transforms if t.strip()],
                 }
@@ -4935,8 +4942,8 @@ def _register_routes(app: FastAPI) -> None:
         # from the cache, writing nothing to any file.
         request.app.state.cfg = new_cfg
         mb_lookup.configure(new_cfg.musicbrainz.user_agent)
-        if changed := frozenset(cfg.tagging.transforms) ^ frozenset(new_tagging.transforms):
-            _start_settings_recheck(request.app.state.scan_runner, changed)
+        if (before := cfg.tagging.choices()) != (after := new_tagging.choices()):
+            _start_settings_recheck(request.app.state.scan_runner, before, after)
         activity.info("Settings updated")
 
         return _templates(request).TemplateResponse(

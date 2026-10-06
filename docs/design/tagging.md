@@ -159,7 +159,7 @@ Every owned field has a **significance**, which says how much of the album a
 change to it calls into question:
 
 - **Settings**: a value moving from one spelling the release legitimately has
-  to the one the user's [transforms](#transforms) select. The lowest level,
+  to the one the user's [spelling settings](#transforms) select. The lowest level,
   because it's the only one whose content the user chose: whoever trusts
   MusicBrainz's casing fixes trusts the changes they asked for, and not
   necessarily the reverse. Never declared for a field; only reached when the
@@ -224,17 +224,26 @@ exactly from the release in hand, never from a pattern, which would be a guess.
   *Selected Ambient Works Volume II (expanded edition)*. Only that exact string is
   accepted. A looser rule accepting any bracketed suffix would guess at an
   identity the release states outright.
+- **Artist names as credited or standardized** (see [artist names](#artist-names)):
+  *bvdub . Brock Van Wey* or *bvdub*, in the display credit, the sort credit and
+  the artist lists.
 - **Any country the release was issued in.** MusicBrainz reduces a release's
   events to one country; Picard lets the user prefer another of the release's own
   countries. A country the release doesn't list is still reported.
 
-The two are treated differently, because only one has a setting. Which title
-spelling a library carries is the user's [transform](#transforms) to choose, so
-the other one is an update of the Settings level. No setting chooses a country,
-so a second one is tolerated: it isn't an update, and the album page doesn't show
-it as a difference, because a difference the user can only silence by giving in
-isn't worth showing. Counting it would put a Picard-tagged library in the Inbox on
-the update check's first night (#283, #346).
+They're treated differently, because only some have a setting. The title and
+artist spellings a library carries are the user's [settings](#transforms) to
+choose, so a supported spelling other than the chosen one is an update of the
+Settings level. A **supported spelling** is exactly a value some combination of
+the settings writes for this release: Harmonist runs the write under each and
+collects the results, rather than describing them by rule. That keeps the set to
+the release's own strings and in step with the write by construction, and it
+means a value mixing two settings (one artist standardized, another not) is no
+setting's spelling and keeps its ordinary significance. No setting chooses a
+country, so a second one is tolerated: it isn't an update, and the album page
+doesn't show it as a difference, because a difference the user can only silence
+by giving in isn't worth showing. Counting it would put a Picard-tagged library
+in the Inbox on the update check's first night (#283, #346).
 
 Either way, accepted spellings matter only where Harmonist decides whether
 there's **an update to take** and how significant it is, never in the record of
@@ -260,10 +269,11 @@ once.
 
 **The library converges on the setting**, existing albums included, whichever
 way the setting points (#685). The update check plans exactly what a re-tag would
-write, transforms and all, so an album carrying the other spelling has an update
-and one carrying the chosen spelling has none. Changing the setting re-judges the
-albums whose release gives it something to choose between, from the stored
-release and without any requests.
+write, under every spelling setting, so an album carrying another supported
+spelling has an update and one carrying the chosen spelling has none. Changing a
+setting re-judges the albums whose stored release would be written differently
+under the new settings, without reading any files to decide or making any
+requests.
 
 That replaced "transforms affect future taggings only", which kept the update
 check free of settings and turning a transform on free of consequences, but left
@@ -289,6 +299,48 @@ The accepted spellings and the write that chooses between them are kept together
 because the album page and the tagger computing "the same album" separately has
 already caused one library-wide false alarm (#283). Only choices that can be
 derived exactly from the release will ever become transforms (#284).
+
+### Artist names
+
+Picard 3.0's **Standardize artist names** (#678) is copied as Picard has it:
+the same three choices, the same multi-value checkbox, under Picard's own option
+names and values so a user can match the two tools by name. A credit names an
+artist twice: the name printed on this release (*bvdub . Brock Van Wey*) and the
+artist's own (*bvdub*). "Do not standardize" writes the first; "variations and
+name changes" writes the second; "variations only" writes the second unless the
+credit is a **former name**, a name the artist used to go by. "Always standardize
+multi-valued artist tags" applies the artist's own name to the lists players
+group by, whatever the display credit says. A kept name sorts under its own
+alias's sort name where it is one, as in Picard; Harmonist used to sort it under
+the artist, which is what "name changes" writes, so that change is a Settings one
+too.
+
+**The default is "variations only"**, Picard 3.0's own. That's a change for
+existing Harmonist libraries, which were written as credited: albums with a
+credited variation get a Settings update after upgrading. Matching where Picard
+is going was preferred to matching where existing Picard libraries came from;
+older Picard installs defaulted to not standardizing, and a user with that
+library can choose it.
+
+**A former name is an ended alias, and the evidence comes with the release.**
+Telling a former name from a variation needs the artist's aliases, so they're
+included in the release request rather than fetched per artist: the request
+budget is per request, and an alias edit then moves the release's version like
+any other edit, so it reaches the update check and lapses an ignore. Adding them
+orphaned the release cache once, refilled as albums are looked up again.
+
+Harmonist reads MusicBrainz as XML, and the XML has no "ended" flag for an
+alias, only dates. So an alias counts as ended when it has an end date. One
+marked ended without a date reads as current, and the credit is standardized
+where Picard, reading the JSON, keeps it. That divergence is visible as a
+Settings update, and dating the alias on MusicBrainz removes it; reading
+MusicBrainz as JSON would remove it everywhere (#690). Fetching aliases from
+the JSON service separately was considered and declined: a second request per
+artist, for a gap MusicBrainz's own data can close.
+
+No warning accompanies the choice, unlike turning the disambiguation off.
+Standardizing changes how a credit is displayed, not what the files know: the
+artist's identity stays in the IDs either way.
 
 ## Writing only what changed
 

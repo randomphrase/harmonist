@@ -77,38 +77,30 @@ def test_applying_the_transform_twice_is_applying_it_once():
     )
 
 
-# ---------- the accepted half: the invariant ----------
+# ---------- the supported half: the invariant ----------
+#
+# Which spellings a release supports is now derived by running the write under
+# every combination of settings (#678), so the title's two spellings are tested
+# where they are used — at the plan, below and in test_tagger: both are Settings
+# changes, a title that is neither keeps IDENTITY, and a parenthetical that is
+# not the release's disambiguation is a retitle.
 
 
-def test_both_spellings_are_accepted_whichever_one_would_be_written():
-    """THE test of the module invariant. The accepted set does not depend on the
-    enabled set — there is no enabled set in the signature, and this is what
-    makes that absence deliberate rather than an oversight.
+def test_every_choice_is_every_combination_of_the_settings():
+    """The whole set, as a contract: it is what "a spelling the release
+    supports" means, so a setting value missing from it would quietly turn a
+    library written under that value into a library of retitles."""
+    combos = {
+        (c.transforms, c.standardize_artist_names, c.always_standardize_multivalue_artist)
+        for c in transforms.every_choice()
+    }
 
-    Everything safe about the feature follows from it: the tagging diff compares
-    against this set, so a file holding either spelling reports no change, so
-    turning the transform on does not rewrite a library, does not mark it as
-    having updates to take, and does not need the gardener to read a setting it
-    has no access to.
-    """
-    accepted = transforms.accepted_album_titles(_release("expanded edition"))
-
-    assert accepted == frozenset({"Test Album", "Test Album (expanded edition)"})
-
-
-def test_a_release_with_no_disambiguation_accepts_its_one_title():
-    """The half that makes the test above mean something: with nothing to append
-    there is one legitimate spelling, and a bracketed suffix on such an album is
-    a different title rather than the same one spelled Picard's way."""
-    assert transforms.accepted_album_titles(_release()) == frozenset({"Test Album"})
-
-
-def test_only_the_disambiguation_is_accepted_never_a_parenthetical():
-    """Exact strings, never a pattern (review-gate item 2). The release states
-    its disambiguation for free, so `(deluxe edition)` is a real difference."""
-    accepted = transforms.accepted_album_titles(_release("expanded edition"))
-
-    assert "Test Album (deluxe edition)" not in accepted
+    assert combos == {
+        (t, names, lists)
+        for t in (frozenset(), DISAMBIG)
+        for names in transforms.ArtistNames
+        for lists in (False, True)
+    }
 
 
 # ---------- the two halves, joined ----------
