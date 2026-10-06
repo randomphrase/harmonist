@@ -106,6 +106,13 @@ hold images: **kept artwork**, the images Harmonist replaced (see
 Art Archive image cache**. Images would bloat a database that's read on every
 feed refresh.
 
+The image stores are siblings: undo backups in `artwork`, downloaded images in
+`artwork-cache` (#688). Keeping the disposable cache outside the backup store
+makes their different backup and retention needs explicit. Upgrading moves only
+the old nested cache, with one directory rename; the irreplaceable backups never
+move. A conflicting destination or a failed rename stops startup rather than
+choosing which images to discard or leaving a partially copied store.
+
 ## `ignores.txt`
 
 bandcampsync's list of purchases it considers downloaded. Harmonist doesn't keep

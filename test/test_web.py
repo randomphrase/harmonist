@@ -5721,7 +5721,8 @@ def test_settings_shows_separate_usage_and_paths_even_with_caching_disabled(clie
     from harmonist import artwork_store, cover_art
 
     backups = cfg.artwork_dir
-    cache = backups / "caa"
+    cache = cfg.artwork_cache_dir
+    backups.mkdir(parents=True)
     cache.mkdir(parents=True)
     (backups / "saved.jpg").write_bytes(b"b" * 1048576)
     (cache / "candidate.jpg").write_bytes(b"c" * 2097152)
@@ -5758,7 +5759,7 @@ def test_settings_reports_unknown_usage_when_a_store_cannot_be_read(
     original = Path.iterdir
 
     def unreadable(path):
-        if path == cfg.artwork_dir / "caa":
+        if path == cfg.artwork_cache_dir:
             raise PermissionError("denied")
         return original(path)
 

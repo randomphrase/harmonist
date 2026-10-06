@@ -6,6 +6,7 @@ what to do. For the ideas behind the answers, see
 
 - **Running Harmonist:** [not writable](#startup-fails-with-not-writable-by-this-process) ·
   [Synology permissions](#synology-the-user-is-right-but-it-still-cant-write) ·
+  [artwork cache migration](#startup-fails-with-artwork-cache-migration) ·
   [invalid host header](#the-browser-shows-invalid-host-header) ·
   [changes not showing](#changes-to-my-files-dont-show-up)
 - **Matching:** [stuck in the Inbox](#an-album-is-stuck-in-new-or-needs-mbid) ·
@@ -57,6 +58,19 @@ with the right user ID.
 
 In DSM, give **Authenticated Users** (or the `users` group) **Read/Write** on
 both shared folders, applied to all subfolders.
+
+### Startup fails with "Artwork cache migration"
+
+An upgrade moves downloaded images from `artwork/caa` to `artwork-cache` in the
+config folder. It stops if both paths exist, the old cache is a symlink or file,
+or the directory cannot be renamed; neither store is deleted or merged.
+
+Stop Harmonist and inspect the two paths named in the error. If the destination
+already exists, move it aside before restarting so the old cache can move intact.
+For a symlink or separate mount, move its cached images to `artwork-cache` and
+remove the old cache link or mount point while Harmonist is stopped. Correct any
+permission error, then restart. Leave the backup files directly inside `artwork`
+in place: those are what makes artwork Undo possible.
 
 ### The browser shows "Invalid host header"
 

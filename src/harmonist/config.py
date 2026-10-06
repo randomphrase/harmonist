@@ -241,6 +241,13 @@ class Config(BaseModel):
         return self.paths.config_dir / "artwork"
 
     @property
+    def artwork_cache_dir(self) -> Path:
+        """Disposable archive images live beside, never inside, undo backups."""
+        if self.demo_mode:
+            return self.paths.music_dir / ".demo-artwork-cache"
+        return self.paths.config_dir / "artwork-cache"
+
+    @property
     def ignores_file(self) -> Path:
         return self.bandcamp.ignores_file or (self.paths.config_dir / "ignores.txt")
 

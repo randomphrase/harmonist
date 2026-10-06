@@ -6,6 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Downloaded artwork now lives in a separate cache directory, migrated automatically on upgrade while undo backups stay in place (#688).
 - Settings puts tagging and background updates first, groups Bandcamp and server options, and uses shorter copy with a Save button that stays in view (#687).
 - Artwork backups and the artwork cache show their usage and current paths in Settings, with a 1 GB default limit each (#687).
 - The album-title disambiguation setting now applies to albums already in your library. After upgrading, any album whose title doesn't match the setting, either way round, shows an update labelled **Settings**. These updates are never announced and can't be ignored; changing the setting withdraws them (#685).

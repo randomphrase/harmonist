@@ -41,11 +41,15 @@ tagged, so Harmonist won't see them.
 | Key | Env | Default | |
 |---|---|---|---|
 | `cache_ttl_seconds` | | `604800` (a week) | How long a Cover Art Archive answer is reused. Each album's page has a refresh button. |
-| `image_cache_max_bytes` | | `1073741824` (1 GB) | Disk space for the archive's images, kept under `artwork/caa` in the config folder so album pages can show them. The least recently viewed go first, and any that are dropped are downloaded again when needed, so the folder is safe to delete. `0` keeps none, and album pages then can't show or offer the archive's images. |
+| `image_cache_max_bytes` | | `1073741824` (1 GB) | Disk space for the archive's images, kept under `artwork-cache` in the config folder so album pages can show them. The least recently viewed go first, and any that are dropped are downloaded again when needed, so the folder is safe to delete. `0` keeps none, and album pages then can't show or offer the archive's images. |
+
+An older `artwork/caa` cache moves to `artwork-cache` automatically at startup,
+preserving its images; artwork backups stay in `artwork`.
 
 ## `[artwork_store]`
 
-Copies of artwork Harmonist has replaced, so you can undo the change.
+Copies of artwork Harmonist has replaced, kept in `artwork` in the config folder
+so you can undo the change.
 
 | Key | Env | Default | |
 |---|---|---|---|

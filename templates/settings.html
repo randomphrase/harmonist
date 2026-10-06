@@ -135,7 +135,7 @@
             </div>
             {% set used, cap = cache_usage %}
             <div class="border-t border-line pt-4 space-y-2">
-                {{ storage_meter('Artwork Cache', cfg.artwork_dir / 'caa', used, cap) }}
+                {{ storage_meter('Artwork Cache', cfg.artwork_cache_dir, used, cap) }}
                 <p class="text-xs text-muted">{% if cap %}Downloaded artwork; least recently viewed images are removed when full.{% else %}Caching is disabled, so archive images cannot be shown or offered.{% endif %}</p>
             </div>
         </section>

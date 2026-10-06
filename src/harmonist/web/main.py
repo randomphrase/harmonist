@@ -68,6 +68,7 @@ from harmonist import (
     reconcile,
     redownloads,
     scanner,
+    storage_paths,
     tag_history,
     timing,
     track_assignment,
@@ -482,9 +483,7 @@ def create_app(
     # something the archive still has, so losing one costs a re-fetch, and they
     # must not compete for the space that store promises to an album's undo.
     # Capped on its own terms for the same reason (#439).
-    cover_art.configure_cache(
-        cfg.artwork_dir / "caa", max_bytes=cfg.cover_art.image_cache_max_bytes
-    )
+    cover_art.configure_cache(cfg.artwork_cache_dir, max_bytes=cfg.cover_art.image_cache_max_bytes)
     # Audit paths are recorded relative to the library (#98). Demo mode already
     # has its sandbox substituted into cfg, so this follows it automatically.
     audit.set_library_root(cfg.paths.music_dir)
@@ -493,6 +492,8 @@ def create_app(
     # it (#114).
     id_registry.set_library_root(cfg.paths.music_dir)
     activity.install_log_handler()
+    # Both stores are idle here; the audit store and log mirroring are ready.
+    storage_paths.migrate_artwork_cache(cfg.artwork_dir / "caa", cfg.artwork_cache_dir)
 
     sync_runner = SyncRunner(runner_fn=lambda: None)  # placeholder, replaced below
     scan_runner = ScanRunner(cfg.paths.music_dir)
@@ -4818,7 +4819,7 @@ def _register_routes(app: FastAPI) -> None:
             sidecar_count=sidecar_mod.count_all(cfg.paths.music_dir),
             ignored=_read_user_ignores(cfg.ignores_file),
             artwork_usage=artwork_store.usage(),
-            cache_usage=cover_art.cache_usage(cfg.artwork_dir / "caa"),
+            cache_usage=cover_art.cache_usage(cfg.artwork_cache_dir),
             default_user_agent=config_mod.MusicBrainzConfig().user_agent,
             # Per-album preference when the backup store exceeds its cap.
             keep_per_album=cfg.artwork_store.keep_per_album,
