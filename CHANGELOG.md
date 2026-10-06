@@ -6,12 +6,31 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
-- Artist names follow Picard 3.0's **Standardize artist names**, chosen under **Settings → Tagging**: as credited, variations only (the default, as in Picard 3.0), or variations and name changes, plus its option to always standardize the multi-valued artist tags. Albums tagged with a credited variation, such as *Florence and the Machine* for *Florence + the Machine*, show a **Settings** update. Releases are now read with their artists' aliases, so every cached release is fetched again: the Update available list starts nearly empty after upgrading and refills as albums are looked up (#678).
-- Downloaded artwork now lives in a separate `caa-cache` directory, migrated automatically on upgrade while undo backups stay in place (#688).
-- Settings puts tagging and background updates first, groups Bandcamp and server options, and uses shorter copy with a Save button that stays in view (#687).
-- Artwork backups and the artwork cache show their usage and current paths in Settings, with a 1 GB default limit each (#687).
-- The album-title disambiguation setting now applies to albums already in your library. After upgrading, any album whose title doesn't match the setting, either way round, shows an update labelled **Settings**. These updates are never announced and can't be ignored; changing the setting withdraws them (#685).
-- Applying reviewed artwork no longer asks for a second confirmation, and its purple Apply button sits at the foot of a more compact section (#683).
+## [1.24.0] - 2026-10-06
+
+### Added
+
+- **Artist names can be standardized as Picard 3.0 does**, under **Settings →
+  Tagging**. By default, as in Picard 3.0, an artist credited under a variant
+  of their name is tagged with their own name. After upgrading, albums tagged
+  with the credited spelling show a **Settings** update, and every cached
+  release is fetched again, so Update available starts nearly empty and
+  refills (#678).
+
+### Changed
+
+- **The album-title disambiguation setting applies to albums already in your
+  library**: after upgrading, any album whose title doesn't match it shows a
+  **Settings** update (#685).
+- **Cover Art Archive images move to their own `caa-cache` folder**, apart from
+  undo backups, automatically on upgrade (#688).
+- **Settings puts tagging and background updates first**, with a Save button
+  that stays in view (#687).
+- **Settings shows the space and location of artwork backups and the artwork
+  cache**; backups now default to 1 GB, as the cache does (`max_bytes` under
+  `[artwork_store]`) (#687).
+- **Applying reviewed artwork no longer asks for a second confirmation**
+  (#683).
 
 ## [1.23.0] - 2026-10-05
 
