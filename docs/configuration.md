@@ -49,8 +49,8 @@ Copies of artwork Harmonist has replaced, so you can undo the change.
 
 | Key | Env | Default | |
 |---|---|---|---|
-| `keep_per_album` | | `5` | Artwork changes kept per album. |
-| `max_bytes` | | `524288000` (500 MB) | Total size limit; the oldest copies go first. `0` keeps nothing, and Harmonist then won't replace any artwork, since it couldn't undo it. |
+| `keep_per_album` | | `5` | Recent changes per album prioritised when the store is full. |
+| `max_bytes` | | `1073741824` (1 GB) | Total size limit; backups outside each album's recent changes go first, then the oldest remaining copies if necessary. `0` keeps nothing, and Harmonist then won't replace any artwork, since it couldn't undo it. |
 
 ## `[tagging]`
 
@@ -68,7 +68,7 @@ nothing is written until it's applied.
 
 | Key | Env | Default | |
 |---|---|---|---|
-| `level` | `HARMONIST_GARDENER_LEVEL` | `"off"` | `"review"` checks your library against MusicBrainz in the background and reports updates. It never writes to files. On the Settings page as **Update checks**. |
+| `level` | `HARMONIST_GARDENER_LEVEL` | `"off"` | `"review"` checks your library against MusicBrainz in the background and reports updates. It never writes to files. On the Settings page as **Library updates**. |
 
 ## `[library]`
 

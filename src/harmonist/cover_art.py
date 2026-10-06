@@ -19,6 +19,7 @@ from pathlib import Path
 import httpx
 
 from . import activity_store, images
+from .storage_usage import file_bytes
 
 CAA_BASE = "https://coverartarchive.org"
 DEFAULT_TIMEOUT = 30.0
@@ -651,8 +652,8 @@ def _total_length(resp: httpx.Response) -> int | None:
 #: Default cap. Around a thousand archive originals — the albums somebody has
 #: looked at lately, which are the ones whose pictures are worth having to hand.
 #: A hundred was too few: browsing a large library would keep evicting and
-#: re-downloading the same images. Larger than `artwork_store`'s cap, which is
-#: sized for a different job (the only copies of replaced artwork).
+#: re-downloading the same images. Separate from `artwork_store`'s budget for
+#: the only copies of replaced artwork.
 DEFAULT_CACHE_MAX_BYTES = 1024 * 1024 * 1024
 
 _caa_root: Path | None = None
@@ -666,6 +667,11 @@ def configure_cache(root: Path | None, *, max_bytes: int = DEFAULT_CACHE_MAX_BYT
     global _caa_root, _caa_max_bytes
     _caa_root = root if max_bytes > 0 else None
     _caa_max_bytes = max_bytes
+
+
+def cache_usage(root: Path) -> tuple[int | None, int]:
+    """Settings measures the configured directory even when caching is disabled."""
+    return file_bytes(root), _caa_max_bytes
 
 
 def cache_image(release_mbid: str, data: bytes, mime: str | None) -> Path | None:

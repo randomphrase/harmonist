@@ -150,8 +150,8 @@ duplicate release gets merged into another. When an album's tags fall behind, it
 appears in the Library's **Update available** filter, and its page shows exactly
 what would change. Nothing is written until **Apply updates** is pressed.
 
-Harmonist checks an album whenever its page is opened. Setting **Update checks**
-to **Look and report** in Settings extends that to the whole library: a few
+Harmonist checks an album whenever its page is opened. Setting **Library updates**
+to **Find updates for review** in Settings extends that to the whole library: a few
 albums every ten minutes, so every album comes round about weekly. It only
 reports, and never writes to your files. It's off by default to go easy on
 MusicBrainz, a volunteer-run service.
@@ -191,7 +191,7 @@ Harmonist's rules:
 - For `cover.jpg`, the largest image wins, whether it comes from your files or
   the [Cover Art Archive](https://coverartarchive.org) (MusicBrainz's image
   library). When there's a bigger one, the album's page offers it. A missing
-  `cover.jpg` is only suggested when **Missing folder cover** is turned on in
+  `cover.jpg` is only suggested when **Create cover.jpg in album folders** is enabled in
   Settings, though you can choose an image for it either way.
 - Albums where tracks have different images, such as compilations, keep them
   unless you choose an image for one of them.
@@ -215,10 +215,11 @@ Every tagging is recorded field by field, and the album's **History** shows what
 changed. **Undo tag changes** puts the old values back. It won't touch a field
 that has changed since, and it checks every file before writing any.
 
-Artwork has its own undo. Harmonist keeps a copy of any image it replaces, for
-the last five artwork changes to each album (up to 500 MB in total, adjustable
-in [configuration](configuration.md#artwork_store)). If it can't keep a copy, it
-leaves the image alone rather than replace it.
+Artwork has its own undo. Harmonist keeps a copy of any image it replaces, up to
+1 GB in total (adjustable in [configuration](configuration.md#artwork_store)).
+Backups are removed only when the store is full, prioritising each album's last
+five artwork changes. If it can't keep a copy, it leaves the image alone rather
+than replace it.
 
 The **Activity** tab lists everything Harmonist has done, newest first, across
 the whole library.

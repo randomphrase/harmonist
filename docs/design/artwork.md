@@ -189,10 +189,11 @@ is. Keeping them one at a time let the size cap evict the first backup while the
 second was being kept, after the first original had already been overwritten.
 The rest of the work still happens: tags are written and additions are made.
 
-**The promise is per album**: the last five artwork changes to any album can be
-undone, however busy the rest of the library is (#408). A byte cap (500 MB)
-underneath is only a backstop. A global cap alone would let an overnight pass over
-five hundred albums evict the backup behind an Undo that another album was still
+**Retention favours each album's recent changes**: the last five artwork changes
+to each album are removed last (#408). Backups are only removed above the byte
+cap (1 GB), and even recent changes can go if that is necessary to fit. A global
+cap alone would let an overnight pass over five hundred albums evict the backup
+behind an Undo that another album was still
 offering. What's protected is computed from the same history records the page
 offers Undo for, so the two can't disagree. The album page checks that a backup
 exists before offering Undo, since a button that fails is worse than none.

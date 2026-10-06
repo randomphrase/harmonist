@@ -8,7 +8,7 @@
    open. Nothing is rendered while the check is off: the level already says so. #}
 {% if cfg.gardener.level != 'off' and update_status %}
 {% set s = update_status %}
-<p id="update-check-status" class="text-2xs text-muted -mt-2"
+<p id="update-check-status" class="text-xs text-muted"
    hx-get="/settings/update-check" hx-trigger="every 60s" hx-swap="outerHTML">
     {{ s.checked }} of {{ s.matched }} albums checked in the last week{% if s.due %}, {{ s.due }} waiting{% endif %}.
     {% if update_wait == 'running' %}

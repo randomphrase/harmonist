@@ -113,7 +113,7 @@ class ArtworkStoreConfig(BaseModel):
     those destroy nothing.
     """
 
-    max_bytes: int = Field(default=500 * 1024 * 1024, ge=0)
+    max_bytes: int = Field(default=1024 * 1024 * 1024, ge=0)
     # How many artwork changes each album keeps a copy of (#408). The promise
     # the store actually makes; `max_bytes` is only the backstop under it.
     # Zero keeps nothing per album, leaving the byte cap as the sole policy —

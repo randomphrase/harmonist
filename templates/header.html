@@ -1,5 +1,7 @@
-<header class="bg-white border-b border-line sticky top-0 z-50">
-    <div class="container mx-auto max-w-7xl flex justify-between items-center px-4 py-3">
+{# Settings has its own sticky title / Save row; stacking sticky headers would
+   obscure it when the navigation grows taller on a narrow screen. #}
+<header class="bg-white border-b border-line {% if request.url.path != '/settings' %}sticky top-0 {% endif %}z-50">
+    <div class="container mx-auto max-w-7xl flex justify-between items-center px-4 py-3 {% if request.url.path == '/settings' %}flex-wrap gap-3{% endif %}">
         <a href="/" class="flex items-center gap-2.5 group">
             <span class="text-2xl">🎧</span>
             <span class="text-lg font-extrabold text-ink tracking-tight">Harmonist</span>

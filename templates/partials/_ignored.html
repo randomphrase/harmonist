@@ -1,32 +1,29 @@
 {# Purchases the user chose not to download (#19). Lives on Settings, not the
    Inbox: it's an exclusion LIST — a preference — and a declined purchase is
    resolved, not pending. Keeping it out of the Inbox leaves that a pure work
-   queue. Rendered as a normal Settings section; absent entirely when empty.
+   queue. Collapsed under Bandcamp; absent entirely when empty.
 
    Shows ONLY the user region of ignores.txt. The auto-managed region below the
    separator is bandcampsync's record of everything already downloaded; listing
    that would present the user's whole collection as "ignored". #}
 <div id="ignored-section">
 {% if ignored %}
-<section class="border border-line rounded-lg p-4 space-y-3">
-    <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
+<details class="border-t border-line pt-3" {% if ignored_open %}open{% endif %}>
+    <summary class="text-sm font-semibold text-ink cursor-pointer">
         Won't download
         <span class="text-muted font-normal normal-case tracking-normal ml-1">· {{ ignored|length }}</span>
-    </h2>
+    </summary>
     {# Deliberately does NOT promise what the next sync will do with a restored
        purchase. Whether it becomes a potential-download card or is fetched
        outright depends on link-only vs a full sync (bandcamp_hook.py) — the
        earlier copy claimed "it doesn't download anything on its own", which
        only holds for link-only runs. #}
-    <p class="text-2xs text-muted">
-        Purchases you told Harmonist to skip — they're left out of every sync.
-        Restore clears that choice, so the next sync sees the purchase again.
-    </p>
+    <p class="text-xs text-muted mt-3 mb-2">Restored purchases are included in the next sync.</p>
     <ul class="divide-y divide-line">
         {% for item in ignored %}
         <li class="flex items-center justify-between gap-3 py-1.5 text-sm">
             <span class="min-w-0 break-words text-ink">{{ item.label }}</span>
-            <button hx-post="/ignored/{{ item.item_id }}/restore"
+            <button type="button" hx-post="/ignored/{{ item.item_id }}/restore"
                     hx-target="#ignored-section" hx-swap="outerHTML"
                     hx-disabled-elt="this"
                     class="flex-shrink-0 text-xs text-muted hover:text-accent underline decoration-dotted underline-offset-2"
@@ -35,6 +32,6 @@
         </li>
         {% endfor %}
     </ul>
-</section>
+</details>
 {% endif %}
 </div>

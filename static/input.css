@@ -20,6 +20,11 @@
 @source "../templates/**/*.html";
 @source "../src/harmonist/web/main.py";
 
+/* The title example follows the current control, including unsaved changes. */
+.settings-title-preview { display: none; }
+.settings-title:has(option[value="album_disambiguation"]:checked) .settings-title-preview { display: inline; }
+.settings-title:has(option[value="album_disambiguation"]:checked) .transform-off-warning { display: none; }
+
 /* An identity review replaces the contribution choices and findings about the
  * current release. Empty swap targets leave no card or gap on the album page. */
 .contribution-review:not(:has(> *)),

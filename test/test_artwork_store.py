@@ -72,6 +72,15 @@ def test_an_unwritable_store_reports_failure_instead_of_raising(tmp_path, monkey
     assert keep_one(JPEG, mime="image/jpeg") is None
 
 
+def test_backup_usage_excludes_the_nested_archive_cache(tmp_path):
+    keep_one(JPEG, mime="image/jpeg")
+    nested = tmp_path / "artwork" / "caa"
+    nested.mkdir()
+    (nested / "candidate.jpg").write_bytes(b"archive image" * 100)
+
+    assert artwork_store.usage() == (len(JPEG), artwork_store.DEFAULT_MAX_BYTES)
+
+
 def test_the_size_cap_evicts_the_oldest_images_first(tmp_path):
     """Unbounded artwork on a NAS is a slow leak, so the store has a ceiling.
     Oldest-first because the oldest changes are the least likely to be undone."""
@@ -91,6 +100,7 @@ def test_the_size_cap_evicts_the_oldest_images_first(tmp_path):
 
     used, cap = artwork_store.usage()
     assert cap == 600
+    assert used is not None
     assert used <= 600
     # The two oldest are gone; the newest survives.
     assert artwork_store.path_for(keys[0]) is None

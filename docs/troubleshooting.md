@@ -156,7 +156,7 @@ and Cancel buttons.](images/track-assignments.png)
 
 A sync that can't log in to Bandcamp usually means your cookies have expired.
 Export a fresh `cookies.txt` from a browser signed in to Bandcamp, then in
-**Settings → Bandcamp sync**, click **Re-configure** and paste it.
+**Settings → Bandcamp**, click **Reconfigure** and paste it.
 
 The exact error is in the **Activity** tab and the container's log.
 
@@ -175,7 +175,7 @@ Check, in order:
 2. **The download limit.** Each sync downloads up to **Max downloads per sync**
    (Settings, default 5). The rest come in later syncs. If it's `0`, downloads
    are paused.
-3. **Settings → Won't download.** If you set it aside, **Restore** it and sync.
+3. **Settings → Bandcamp → Won't download.** If you set it aside, **Restore** it and sync.
 4. **`ignores.txt`** in your config folder. It lists every purchase Harmonist
    considers downloaded, one per line: an ID, then `#` and the album's name.
    Delete **that one line** and sync again. Don't empty the file, or Harmonist
@@ -247,8 +247,8 @@ change the setting; the update disappears from every album it affects.
 
 ### Almost every album shows Update available
 
-The **Missing folder cover** setting is probably on. It makes every album
-without a `cover.jpg` count as having an update. Set it back to **Leave it** in
+The **Create cover.jpg in album folders** setting is probably on. It makes every album
+without a `cover.jpg` count as having an update. Set it back to **Never** in
 **Settings → Tagging**. Plex and Navidrome use the artwork embedded in your
 files, so most albums don't need the file.
 
@@ -302,8 +302,8 @@ returns to **Needs MBID** with that release as a suggestion.
   left alone, and the result names it.
 - **A file has been renamed or removed** and can't be identified. Undo refuses
   before writing anything.
-- **No artwork Undo** means Harmonist no longer has the old image. It keeps the
-  last five artwork changes per album, up to 500 MB in total. See
+- **No artwork Undo** means Harmonist no longer has the old image. It prioritises
+  each album's last five changes when its 1 GB store fills up. See
   [configuration](configuration.md#artwork_store).
 
 ### Remove Harmonist completely

@@ -48,6 +48,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from . import audit
+from .storage_usage import file_bytes
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ _LOG_ONLY = {"_activity": True}
 #: Default cap. Around a thousand typical covers — enough that undoing a
 #: re-tagging session weeks later still works, small enough to be unremarkable
 #: beside a music library. Configurable; see `config.ArtworkStoreConfig`.
-DEFAULT_MAX_BYTES = 500 * 1024 * 1024
+DEFAULT_MAX_BYTES = 1024 * 1024 * 1024
 
 #: How many artwork changes an album keeps. Five is enough to cover a session of
 #: experimenting on one album and still be reasoning a user can hold: "the last
@@ -202,18 +203,9 @@ def can_keep() -> bool:
     return _root is not None and _max_bytes > 0
 
 
-def usage() -> tuple[int, int]:
+def usage() -> tuple[int | None, int]:
     """`(bytes_used, cap)` — what Settings shows."""
-    root = _root
-    if root is None or not root.is_dir():
-        return 0, _max_bytes
-    total = 0
-    for entry in root.iterdir():
-        try:
-            total += entry.stat().st_size
-        except OSError:
-            continue
-    return total, _max_bytes
+    return file_bytes(_root), _max_bytes
 
 
 def _path_for(root: Path, key: str, mime: str | None) -> Path:

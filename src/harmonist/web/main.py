@@ -3578,7 +3578,7 @@ def _pending_suggestions(request: Request) -> dict[int, dict[str, str]]:
 def _render_ignored_section(request: Request) -> Response:
     """Re-render the #ignored-section partial (the target of a Restore swap)."""
     cfg: config_mod.Config = request.app.state.cfg
-    ctx = _ctx(request, ignored=_read_user_ignores(cfg.ignores_file))
+    ctx = _ctx(request, ignored=_read_user_ignores(cfg.ignores_file), ignored_open=True)
     return _templates(request).TemplateResponse(request, "partials/_ignored.html", ctx)
 
 
@@ -4818,8 +4818,9 @@ def _register_routes(app: FastAPI) -> None:
             sidecar_count=sidecar_mod.count_all(cfg.paths.music_dir),
             ignored=_read_user_ignores(cfg.ignores_file),
             artwork_usage=artwork_store.usage(),
-            # The promise the figure sits under (#408) — what a user
-            # can rely on being undoable, as opposed to how full it is.
+            cache_usage=cover_art.cache_usage(cfg.artwork_dir / "caa"),
+            default_user_agent=config_mod.MusicBrainzConfig().user_agent,
+            # Per-album preference when the backup store exceeds its cap.
             keep_per_album=cfg.artwork_store.keep_per_album,
             **_update_check_ctx(request),
             **extra,
@@ -4866,11 +4867,7 @@ def _register_routes(app: FastAPI) -> None:
         user_agent: str = Form(...),
         gardener_level: str = Form(...),
         folder_cover: str = Form(...),
-        # A checkbox group, so an unticked box sends NOTHING — there is no
-        # "off" value to read, and the default has to be the empty list rather
-        # than `Form(...)`. That also makes clearing every transform a POST with
-        # no `transforms` key at all, which is what the browser sends and what
-        # this must therefore accept.
+        # Empty dropdown values and an omitted field both clear the list.
         transforms: list[str] = Form(default=[]),
         log_level: str = Form(...),
     ) -> Response:

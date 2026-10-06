@@ -1,324 +1,156 @@
 {% extends 'base.html' %}
 
+{% macro storage_meter(label, path, used, cap) %}
+<div class="flex flex-wrap items-center justify-between gap-2">
+    <h3 class="text-xs font-bold text-ink">{{ label }}</h3>
+    <span class="text-xs text-muted">
+        {% if used is not none %}{{ (used / 1048576) | round(1) }} MB{% else %}Usage unavailable{% endif %}
+        / {% if cap >= 1073741824 %}{{ (cap / 1073741824) | round(1) }} GB{% else %}{{ (cap / 1048576) | round(0) | int }} MB{% endif %}
+    </span>
+</div>
+<p class="font-mono text-xs text-muted break-all" title="{{ path }}">{{ display_path(path) }}</p>
+{% if cap and used is not none %}
+<div role="meter" aria-label="{{ label }} usage in bytes" aria-valuenow="{{ used }}" aria-valuemin="0" aria-valuemax="{{ [used, cap] | max }}" class="h-1 rounded bg-line overflow-hidden">
+    <div class="h-full bg-muted" style="width: {{ [100, (used / cap * 100)] | min }}%"></div>
+</div>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
-<div class="max-w-3xl mx-auto space-y-6">
-    <div class="flex items-baseline justify-between">
-        <h1 class="text-2xl font-extrabold text-ink">Settings</h1>
-        <a href="/" class="text-sm font-semibold text-accent hover:underline">← Back to inbox</a>
-    </div>
-
-    {% if saved %}
-    <div class="px-4 py-2 rounded-md bg-accent-soft border border-accent/40 text-accent-dark text-sm font-bold">
-        Settings saved — applied without a restart.
-    </div>
-    {% endif %}
-    {% if error %}
-    <div class="px-4 py-2 rounded-md bg-red-50 border border-red-300 text-red-700 text-sm">
-        Couldn't save: {{ error }}
-    </div>
-    {% endif %}
-
-    {# ---- Read-only: needs a restart / config-file edit to change ---- #}
-    <section class="border border-line rounded-lg p-4 space-y-3">
-        <div>
-            <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Paths &amp; server</h2>
-            <p class="text-2xs text-muted">Read at startup — change these in <code>harmonist.toml</code> (or env) and restart.</p>
+<div class="max-w-3xl mx-auto">
+    {# Other actions inside the boosted settings form are type=button: setup
+       and restore must never submit pending preferences (#687). #}
+    <form method="post" action="/settings" hx-boost="true">
+        <div class="sticky top-0 z-40 bg-white border-b border-line py-4 flex items-center justify-between gap-3">
+            <h1 class="text-2xl font-extrabold text-ink">Settings</h1>
+            <div class="flex flex-wrap items-center justify-end gap-3">
+                {% if saved %}<span role="status" class="text-xs text-muted">Settings saved</span>{% endif %}
+                <button type="submit" class="px-4 py-2 bg-accent hover:bg-accent-dark text-white rounded font-semibold text-sm transition">Save settings</button>
+            </div>
         </div>
-        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        {% if error %}
+        <div role="alert" class="my-4 px-4 py-2 rounded-md bg-red-50 border border-red-300 text-red-700 text-sm">Couldn't save: {{ error }}</div>
+        {% endif %}
+
+        <section id="tagging" aria-labelledby="tagging-heading" class="border-b border-line py-5 space-y-4 scroll-mt-20">
+            <h2 id="tagging-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Tagging</h2>
             <div>
-                <dt class="text-2xs uppercase tracking-widest text-muted">Music library</dt>
-                <dd class="font-mono text-ink break-all" title="{{ cfg.paths.music_dir }}">{{ display_path(cfg.paths.music_dir) }}</dd>
-            </div>
-            <div>
-                <dt class="text-2xs uppercase tracking-widest text-muted">Config dir</dt>
-                <dd class="font-mono text-ink break-all" title="{{ cfg.paths.config_dir }}">{{ display_path(cfg.paths.config_dir) }}</dd>
-            </div>
-            <div>
-                <dt class="text-2xs uppercase tracking-widest text-muted">Server</dt>
-                <dd class="font-mono text-ink">{{ cfg.server.host }}:{{ cfg.server.port }}</dd>
-            </div>
-        </dl>
-    </section>
-
-    {# ---- Bandcamp sync (cookies) ---- #}
-    <section class="border border-line rounded-lg p-4 space-y-3">
-        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Bandcamp sync</h2>
-        <div class="flex items-center justify-between gap-3">
-            <p class="text-sm">
-                {% if bandcamp_ok %}
-                <span class="font-bold text-accent">●</span> Login cookies are set up.
-                {% else %}
-                <span class="font-bold text-amber-700">●</span> No login cookies yet — sync is disabled.
-                {% endif %}
-            </p>
-            <button hx-get="/bandcamp/setup" hx-target="#modal" hx-swap="innerHTML"
-                    class="px-3 py-1.5 border border-accent text-accent hover:bg-accent-soft rounded text-xs font-bold uppercase tracking-widest transition">
-                {% if bandcamp_ok %}Re-configure{% else %}Set up{% endif %}
-            </button>
-        </div>
-    </section>
-
-    {# ---- Editable settings (take effect immediately, persisted to toml) ---- #}
-    {# hx-boost: submit via HTMX so the CSRF middleware's required HX-Request
-       header is sent (a plain form POST omits it → 403). The handler returns
-       the full settings page; the boosted body-swap re-renders it in place. #}
-    <form method="post" action="/settings" hx-boost="true" class="space-y-6">
-        <section class="border border-line rounded-lg p-4 space-y-4">
-            <div>
-                <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Preferences</h2>
-                <p class="text-2xs text-muted">Saved to <code>harmonist.toml</code> and applied right away.</p>
-            </div>
-
-            <label class="block">
-                <span class="block text-xs font-bold text-ink mb-1">Download format</span>
-                <select name="download_format"
-                        class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-                    {% set fmts = ['flac', 'alac', 'mp3-320', 'mp3-v0', 'aac-hi', 'vorbis', 'wav', 'aiff'] %}
-                    {% if cfg.bandcamp.download_format not in fmts %}<option selected>{{ cfg.bandcamp.download_format }}</option>{% endif %}
-                    {% for f in fmts %}
-                    <option value="{{ f }}" {{ 'selected' if f == cfg.bandcamp.download_format }}>{{ f }}</option>
-                    {% endfor %}
-                </select>
-                <span class="block text-2xs text-muted mt-1">The audio format requested from Bandcamp at download time.</span>
-            </label>
-
-            <label class="block">
-                <span class="block text-xs font-bold text-ink mb-1">Max downloads per sync</span>
-                <input type="number" name="max_downloads_per_sync" min="0" required
-                       value="{{ cfg.bandcamp.max_downloads_per_sync }}"
-                       class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-                <span class="block text-2xs text-muted mt-1">Safety cap — new purchases past this many defer to the next sync. <span class="font-semibold">0</span> pauses downloads.</span>
-            </label>
-
-            <label class="block">
-                <span class="block text-xs font-bold text-ink mb-1">MusicBrainz user agent</span>
-                <input type="text" name="user_agent" required
-                       value="{{ cfg.musicbrainz.user_agent }}"
-                       class="w-full bg-white border border-line rounded px-3 py-1.5 text-xs font-mono text-ink focus:border-accent outline-none">
-                <span class="block text-2xs text-muted mt-1">Sent with every MusicBrainz request. Form: <code>Name/Version ( contact )</code>.</span>
-            </label>
-
-            <label class="block">
-                <span class="block text-xs font-bold text-ink mb-1">Log level</span>
-                <select name="log_level"
-                        class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-                    {% for lvl in ['debug', 'info', 'warning', 'error'] %}
-                    <option value="{{ lvl }}" {{ 'selected' if lvl == cfg.log_level }}>{{ lvl }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-        </section>
-
-        {# ---- Background checks: the gardener (#270, #623) ----
-           Its own section because it is a standing job rather than a preference,
-           with a status of its own, and it is where the decisions about what the
-           check may do with what it finds (#32's routing) will sit. Same form and
-           Save as the rest: there is one place these settings are written. #}
-        <section class="border border-line rounded-lg p-4 space-y-4">
-            <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Background checks</h2>
-
-            {# The gardener's trust level (#312). Both values are read-only passes:
-               `off` looks at nothing and `review` looks but never writes to a file,
-               which is what makes this an ordinary form field rather than something
-               that needs a confirmation. #273's `enrich` writes unattended and will
-               need more friction. #}
-            <label class="block">
-                <span class="block text-xs font-bold text-ink mb-1">Update checks</span>
-                <select name="gardener_level"
-                        class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-                    {% for value, label in [('off', 'Off — an album is checked when you open it'),
-                                            ('review', 'Look and report — never writes to your files')] %}
-                    <option value="{{ value }}" {{ 'selected' if value == cfg.gardener.level }}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-                <span class="block text-2xs text-muted mt-1">
-                    A few albums every ten minutes, so every album comes round about weekly.
-                    What it finds fills the Library's <span class="font-bold">Update available</span>,
-                    <span class="font-bold">Possible mismatch</span> and <span class="font-bold">MB contributions</span> filters.
-                </span>
-            </label>
-
-            {% include 'partials/_update_check.html' %}
-        </section>
-
-        {# ---- Tagging (#516) ----
-           Its own section rather than a sixth row of Preferences: these settings
-           are not about how Harmonist is CONFIGURED but about how opinionated it
-           is allowed to be with files the user already has, and a reader deciding
-           that needs the neighbours to compare against. #284's title transforms
-           landed here in #544.
-
-           One form, one Save, because there is one place these are written and
-           a second button would imply two. #}
-        <section id="tagging" class="border border-line rounded-lg p-4 space-y-4">
-            <div>
-                <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tagging</h2>
-                <p class="text-2xs text-muted">How much Harmonist changes in files you already have.</p>
-            </div>
-
-            {# A named policy rather than a checkbox, matching the gardener
-               control above and for the same reason: a third value (creating
-               the file ALWAYS, keeping it in step with the winning image) is
-               already foreseen, and a checkbox would have to become a select
-               to take it. #}
-            <label class="block">
-                <span class="block text-xs font-bold text-ink mb-1">Missing folder cover</span>
-                <select name="folder_cover"
-                        class="w-full bg-white border border-line rounded px-3 py-1.5 text-sm text-ink focus:border-accent outline-none">
-                    {% for value, label in [('never', "Leave it — albums without one stay without one"),
-                                            ('if_missing', 'Create it from the album’s best artwork')] %}
+                <label for="folder-cover" class="block text-xs font-bold text-ink mb-1">Create cover.jpg in album folders</label>
+                <select id="folder-cover" name="folder_cover" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
+                    {% for value, label in [('never', 'Never'), ('if_missing', 'Only when missing')] %}
                     <option value="{{ value }}" {{ 'selected' if value == cfg.tagging.folder_cover }}>{{ label }}</option>
                     {% endfor %}
                 </select>
-                <span class="block text-2xs text-muted mt-1">
-                    A <code>cover.jpg</code> beside the tracks, for players that prefer one.
-                    Most read the artwork embedded in the files first, so an album that has
-                    that already loses nothing by going without — and while this is on,
-                    <span class="font-semibold">every album that hasn’t got one shows as
-                    having an update available</span>, which on an adopted library can be most
-                    of it. Artwork already on disk is never touched either way, and a folder
-                    cover an album already has is still improved when a better image turns up.
-                </span>
-            </label>
-
-            {# ---- Tag transforms (#544, shown rather than described in #548) ----
-               A checkbox each, where the folder-cover control above is a select,
-               and the difference is deliberate: that setting is one question with
-               a third answer already foreseen, and this is a LIST that grows
-               (#284). A checkbox is the native control for a persisted boolean
-               (web-ui rule 1), and an unticked one sends nothing — which is why
-               the handler reads `transforms` with a default of `[]` rather than
-               `Form(...)`.
-
-               Each transform SHOWS what it does, in a sample title that follows
-               the box. Six lines of prose explained one checkbox and would have
-               explained the next one twice as slowly; toggling the box is the
-               explanation, and a new transform costs one line rather than a
-               paragraph.
-
-               Pure CSS — `group-has-[:checked]:` on a wrapper — so the checkbox
-               stays a plain native checkbox with no `hx-*` and no handler. There
-               is no event to sequence wrongly (web-ui rule 2a) and nothing to go
-               stale if the save fails, because the preview describes the CONTROL
-               rather than the saved config.
-
-               The example borrows the demo library's Stillwater release, a
-               made-up band from a film, so it cannot be misread as a claim about
-               a real release the reader might go and check. It is illustrative
-               only — the demo album itself is tagged to the STANDARD release,
-               which carries no disambiguation, so this is not a walkthrough of
-               anything demo mode will show.
-
-               Each transform brings the albums already on disk into line too
-               (#685), whichever way it is set — so the intro says so, in the
-               words the folder-cover control above uses for the same thing.
-               Turning one OFF offers to take data out of titles, which is why a
-               saved-on box carries a warning — saying what will be OFFERED, since
-               saving the setting writes nothing: rendered only when the transform is saved
-               on, and shown by the same `group-has-[:checked]` CSS only while the
-               box is unticked, so it describes the save the user is about to
-               make. Turning one on only adds, and warns of nothing. #}
-            <div class="space-y-3">
+            </div>
+            <div class="settings-title">
                 <div>
-                    <span class="block text-xs font-bold text-ink">Tag transforms</span>
-                    <p class="text-2xs text-muted">
-                        Match a choice you’ve made in Picard. Albums whose tags differ show
-                        as having an update available.
-                    </p>
+                    <label for="album-title" class="block text-xs font-bold text-ink mb-1">Album title</label>
+                    {# The handler discards the empty option, clearing the list. #}
+                    <select id="album-title" name="transforms" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
+                        <option value="" {{ 'selected' if 'album_disambiguation' not in cfg.tagging.transforms }}>Title only</option>
+                        <option value="album_disambiguation" {{ 'selected' if 'album_disambiguation' in cfg.tagging.transforms }}>Title + release disambiguation</option>
+                    </select>
                 </div>
-
-                {% for value, label, before, after, off_warning in [
-                    ('album_disambiguation',
-                     'Add the release disambiguation to the album title',
-                     'Fever Dog', 'Fever Dog (Live at the Riot House)',
-                     'Turning this off gives every album with the disambiguation in its title a pending update to remove it.')
-                ] %}
-                <div class="group">
-                    <label class="flex items-center gap-2 cursor-pointer w-fit">
-                        <input type="checkbox" name="transforms" value="{{ value }}"
-                               class="cursor-pointer"
-                               {{ 'checked' if value in cfg.tagging.transforms }}>
-                        <span class="text-sm text-ink">{{ label }}</span>
-                    </label>
-                    <p class="ml-6 mt-1 text-2xs text-muted">
-                        <span class="font-mono">{{ before }}</span>
-                        <span class="hidden group-has-[:checked]:inline">
-                            <span class="sr-only"> becomes </span>
-                            <span aria-hidden="true" class="mx-1.5">→</span>
-                            <span class="font-mono font-semibold text-ink">{{ after }}</span>
-                        </span>
-                    </p>
-                    {% if value in cfg.tagging.transforms %}
-                    <p role="note" class="transform-off-warning ml-6 mt-2 w-fit rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 group-has-[:checked]:hidden">
-                        {{ off_warning }}
-                    </p>
-                    {% endif %}
-                </div>
-                {% endfor %}
+                <p class="mt-1 text-xs text-muted">Fever Dog
+                    <span class="settings-title-preview"><span aria-hidden="true">→</span><span class="sr-only"> becomes </span>
+                        <span class="font-medium text-ink">Fever Dog (Live at the Riot House)</span>
+                    </span>
+                </p>
+                {% if 'album_disambiguation' in cfg.tagging.transforms %}
+                <p role="note" class="transform-off-warning mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Turning this off gives every album with the disambiguation in its title a pending update to remove it.
+                </p>
+                {% endif %}
             </div>
         </section>
 
-        <div>
-            <button type="submit"
-                    class="px-4 py-2 bg-accent hover:bg-accent-dark text-white rounded font-semibold text-sm transition">
-                Save settings
-            </button>
-        </div>
+        <section aria-labelledby="updates-heading" class="border-b border-line py-5 space-y-4">
+            <h2 id="updates-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Background Updates</h2>
+            <label class="block">
+                <span class="block text-xs font-bold text-ink mb-1">Library updates</span>
+                <select name="gardener_level" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
+                    {% for value, label in [('off', 'Off'), ('review', 'Find updates for review')] %}
+                    <option value="{{ value }}" {{ 'selected' if value == cfg.gardener.level }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            {% include 'partials/_update_check.html' %}
+        </section>
+
+        <section aria-labelledby="bandcamp-heading" class="border-b border-line py-5 space-y-4">
+            <h2 id="bandcamp-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Bandcamp</h2>
+            <div class="flex items-center justify-between gap-3">
+                <p class="text-sm"><span aria-hidden="true" class="text-accent">●</span> {{ 'Login cookies set up' if bandcamp_ok else 'No login cookies — sync disabled' }}</p>
+                <button type="button" hx-get="/bandcamp/setup" hx-target="#modal" hx-swap="innerHTML"
+                        class="shrink-0 px-3 py-1.5 border border-line text-ink hover:border-accent hover:bg-accent-soft rounded text-xs font-semibold transition">{{ 'Reconfigure' if bandcamp_ok else 'Set up' }}</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label class="block min-w-0">
+                    <span class="block text-xs font-bold text-ink mb-1">Download format</span>
+                    <select name="download_format" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
+                        {% set fmts = ['flac', 'alac', 'mp3-320', 'mp3-v0', 'aac-hi', 'vorbis', 'wav', 'aiff'] %}
+                        {% if cfg.bandcamp.download_format not in fmts %}<option selected>{{ cfg.bandcamp.download_format }}</option>{% endif %}
+                        {% for f in fmts %}<option value="{{ f }}" {{ 'selected' if f == cfg.bandcamp.download_format }}>{{ f }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label class="block min-w-0">
+                    <span class="block text-xs font-bold text-ink mb-1">Max downloads per sync</span>
+                    <input type="number" name="max_downloads_per_sync" min="0" required value="{{ cfg.bandcamp.max_downloads_per_sync }}" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
+                    <span class="block text-xs text-muted mt-1">0 pauses downloads.</span>
+                </label>
+            </div>
+            {% include 'partials/_ignored.html' %}
+        </section>
+
+        <section aria-labelledby="server-heading" class="border-b border-line py-5 space-y-4">
+            <h2 id="server-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Server</h2>
+            <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                <div><dt class="text-xs text-muted mb-1">Music library</dt><dd class="font-mono text-ink break-all" title="{{ cfg.paths.music_dir }}">{{ display_path(cfg.paths.music_dir) }}</dd></div>
+                <div><dt class="text-xs text-muted mb-1">Config directory</dt><dd class="font-mono text-ink break-all" title="{{ cfg.paths.config_dir }}">{{ display_path(cfg.paths.config_dir) }}</dd></div>
+                <div><dt class="text-xs text-muted mb-1">Server</dt><dd class="font-mono text-ink break-all">{{ cfg.server.host }}:{{ cfg.server.port }}</dd></div>
+            </dl>
+            <p class="text-xs text-muted">Paths and server address are set in configuration and require a restart.</p>
+            <div>
+                <label for="musicbrainz-user-agent" class="block text-xs font-bold text-ink mb-1">MusicBrainz user agent</label>
+                <input id="musicbrainz-user-agent" type="text" name="user_agent" required value="{{ cfg.musicbrainz.user_agent }}"
+                       data-default="{{ default_user_agent }}" aria-describedby="user-agent-hint"
+                       oninput="document.getElementById('user-agent-hint').hidden = this.value.trim() !== this.dataset.default"
+                       class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
+                <span id="user-agent-hint" class="text-xs text-muted" {% if cfg.musicbrainz.user_agent != default_user_agent %}hidden{% endif %}>MusicBrainz recommends a contact email; replace the default with yours.</span>
+            </div>
+            <label class="block">
+                <span class="block text-xs font-bold text-ink mb-1">Log level</span>
+                <select name="log_level" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
+                    {% for lvl in ['debug', 'info', 'warning', 'error'] %}<option value="{{ lvl }}" {{ 'selected' if lvl == cfg.log_level }}>{{ lvl }}</option>{% endfor %}
+                </select>
+            </label>
+            {% set used, cap = artwork_usage %}
+            <div class="border-t border-line pt-4 space-y-2">
+                {{ storage_meter('Artwork Backups', cfg.artwork_dir, used, cap) }}
+                <p class="text-xs text-muted">
+                    {% if not cap %}Backups are disabled, so existing artwork cannot be replaced.
+                    {% elif keep_per_album %}When full, backups beyond each album’s last {{ keep_per_album }} {{ 'change' if keep_per_album == 1 else 'changes' }} are removed first.
+                    {% else %}When full, the oldest backups are removed first.{% endif %}
+                </p>
+            </div>
+            {% set used, cap = cache_usage %}
+            <div class="border-t border-line pt-4 space-y-2">
+                {{ storage_meter('Artwork Cache', cfg.artwork_dir / 'caa', used, cap) }}
+                <p class="text-xs text-muted">{% if cap %}Downloaded artwork; least recently viewed images are removed when full.{% else %}Caching is disabled, so archive images cannot be shown or offered.{% endif %}</p>
+            </div>
+        </section>
     </form>
 
-    {# ---- Won't download (#19) ---- #}
-    {% include 'partials/_ignored.html' %}
-
-    {# ---- Kept artwork (#131) ----
-       Stated rather than left to be discovered: this is the one part of
-       Harmonist's state that grows with use and holds binary data, and "how
-       much disk is this costing me" is the question the cap exists to answer.
-       Read-only for now — the cap moves in the config file, and a control that
-       could shrink it would need to explain which images it was about to
-       destroy. #}
-    {% set used, cap = artwork_usage %}
-    <section class="border border-line rounded-lg p-4 space-y-2">
-        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Kept artwork</h2>
-        {# Says the PROMISE first and the number second (#408). The number alone
-           was the old text, and it left the reader to guess what running out
-           would cost them — which was also the wrong guess, since it is no
-           longer simply the oldest copies that go. #}
-        <p class="text-sm text-muted">
-            Harmonist keeps a copy of any artwork a re-tag overwrites, so replacing
-            it can be undone from the album's History.
-            {% if keep_per_album %}
-            The last <span class="font-bold text-ink">{{ keep_per_album }}</span>
-            artwork {{ 'change' if keep_per_album == 1 else 'changes' }} to any album
-            {{ 'is' if keep_per_album == 1 else 'are' }} kept, however many albums
-            you tag.
-            {% endif %}
-            Using <span class="font-bold text-ink">{{ (used / 1048576) | round(1) }} MB</span>
-            of {{ (cap / 1048576) | round(0) | int }} MB.
-            {% if used > cap * 0.9 and cap %}
-            Close to the limit: past it, copies are dropped oldest first — the ones
-            no album still needs before any it does.
-            {% endif %}
-        </p>
-    </section>
-
-    {# ---- Maintenance (destructive) ---- #}
-    <section class="border border-red-300 rounded-lg p-4 space-y-3">
-        <h2 class="text-sm font-bold text-red-700 uppercase tracking-widest">Maintenance</h2>
-        <div class="flex items-center justify-between gap-3">
-            <p class="text-sm text-muted">
-                Erase all <code>.harmonist.json</code> sidecars
-                (<span class="font-bold text-ink">{{ sidecar_count }}</span> found).
-                Audio files and tags are untouched; albums revert to their
-                tag-derived state and can be reconciled again. Mainly for testing.
-            </p>
-            <button hx-post="/settings/erase-sidecars"
-                    hx-swap="none" hx-disabled-elt="this"
+    <details class="py-5">
+        <summary class="text-sm font-semibold text-ink cursor-pointer">Maintenance</summary>
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-4">
+            <p class="text-xs text-muted">Remove Harmonist’s album records; audio and tags stay.</p>
+            <button type="button" hx-post="/settings/erase-sidecars" hx-swap="none" hx-disabled-elt="this"
                     hx-confirm="Erase {{ sidecar_count }} sidecar(s)? Audio files are NOT touched, but all Harmonist state (matches, sync links) is removed. This cannot be undone."
+                    title="Erase {{ sidecar_count }} sidecar(s); this cannot be undone" aria-label="Erase {{ sidecar_count }} sidecar(s)"
                     {% if not sidecar_count %}disabled{% endif %}
-                    class="flex-shrink-0 px-3 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-300 rounded text-xs font-bold uppercase tracking-widest transition">
-                Erase sidecars
-            </button>
+                    class="shrink-0 px-3 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-300 rounded text-xs font-semibold transition">Erase sidecars…</button>
         </div>
-    </section>
+    </details>
 </div>
 {% endblock %}

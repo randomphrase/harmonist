@@ -5715,6 +5715,61 @@ def test_settings_page_renders(client, cfg):
     assert 'action="/settings" hx-boost="true"' in r.text
 
 
+def test_settings_shows_separate_usage_and_paths_even_with_caching_disabled(client, cfg):
+    from bs4 import BeautifulSoup
+
+    from harmonist import artwork_store, cover_art
+
+    backups = cfg.artwork_dir
+    cache = backups / "caa"
+    cache.mkdir(parents=True)
+    (backups / "saved.jpg").write_bytes(b"b" * 1048576)
+    (cache / "candidate.jpg").write_bytes(b"c" * 2097152)
+
+    # Default budgets match, but each meter accounts for only its own files.
+    assert cfg.artwork_store.max_bytes == cfg.cover_art.image_cache_max_bytes == 1073741824
+    for cap in (1073741824, 0):
+        artwork_store.configure(backups, max_bytes=cap)
+        cover_art.configure_cache(cache, max_bytes=cap)
+        page = BeautifulSoup(client.get("/settings").text, "html.parser")
+        for name, path, used in [
+            ("Artwork Backups", backups, 1048576),
+            ("Artwork Cache", cache, 2097152),
+        ]:
+            heading = page.find("h3", string=name)
+            section = heading.parent.parent
+            assert section.find("p", title=str(path)) is not None
+            assert f"{used / 1048576:.1f} MB" in section.text
+            meter = section.select_one('[role="meter"]')
+            if cap:
+                assert meter is not None
+                assert meter["aria-valuenow"] == str(used)
+                assert meter["aria-valuemax"] == str(cap)
+            else:
+                assert meter is None
+                assert "disabled" in section.text
+
+
+def test_settings_reports_unknown_usage_when_a_store_cannot_be_read(
+    client, cfg, monkeypatch, caplog
+):
+    from bs4 import BeautifulSoup
+
+    original = Path.iterdir
+
+    def unreadable(path):
+        if path == cfg.artwork_dir / "caa":
+            raise PermissionError("denied")
+        return original(path)
+
+    monkeypatch.setattr(Path, "iterdir", unreadable)
+    page = BeautifulSoup(client.get("/settings").text, "html.parser")
+    section = page.find("h3", string="Artwork Cache").parent.parent
+    assert "Usage unavailable" in section.text
+    assert section.select_one('[role="meter"]') is None
+    assert "could not measure storage usage" in caplog.text
+
+
 def _button_tag(html: str, button_id: str) -> str:
     """The opening <button> tag with this id, so a test can assert on the
     attributes of THAT button rather than anywhere in the page."""
@@ -5816,8 +5871,7 @@ def test_settings_save_persists_and_applies_live(client, cfg):
 
 
 def test_settings_save_persists_the_enabled_tag_transforms(client, cfg):
-    """#544. A checkbox group, so the interesting half is what a POST that omits
-    the field means — see the test below."""
+    """An enabled dropdown option is stored as the existing transform list."""
     r = client.post(
         "/settings",
         data={
@@ -5838,13 +5892,9 @@ def test_settings_save_persists_the_enabled_tag_transforms(client, cfg):
     assert 'transforms = ["album_disambiguation"]' in toml
 
 
-def test_saving_with_no_transform_ticked_turns_them_all_off(client, cfg):
-    """An unticked checkbox sends NOTHING — there is no "off" value in the POST
-    — so a handler reading `transforms` as required would 422 the whole Settings
-    form the moment someone turned the last one off, and one that skipped the
-    key on absence would make turning one off impossible. Both are live risks of
-    the checkbox shape, and neither is visible from the template.
-    """
+@pytest.mark.parametrize("off_fields", [{}, {"transforms": ""}])
+def test_saving_with_transforms_off_clears_the_saved_list(client, cfg, off_fields):
+    """Both the dropdown's blank option and an omitted field clear the list."""
     client.app.state.cfg.tagging.transforms = [TagTransform.ALBUM_DISAMBIGUATION]
 
     r = client.post(
@@ -5856,6 +5906,7 @@ def test_saving_with_no_transform_ticked_turns_them_all_off(client, cfg):
             "gardener_level": "off",
             "folder_cover": "never",
             "log_level": "info",
+            **off_fields,
         },
     )
 
@@ -5895,10 +5946,12 @@ def test_the_settings_page_offers_every_transform_there_is(client):
     and in `harmonist.toml` while being unreachable from the only place a user
     would turn it on, and nothing else in the suite would notice.
     """
-    html = client.get("/settings").text
+    from bs4 import BeautifulSoup
 
+    html = BeautifulSoup(client.get("/settings").text, "html.parser")
+    values = {o["value"] for o in html.select('select[name="transforms"] option')}
     for t in TagTransform:
-        assert f'name="transforms" value="{t.value}"' in html
+        assert t.value in values
 
 
 def _transform_warning(html: str) -> str | None:
