@@ -244,8 +244,8 @@ class Config(BaseModel):
     def artwork_cache_dir(self) -> Path:
         """Disposable archive images live beside, never inside, undo backups."""
         if self.demo_mode:
-            return self.paths.music_dir / ".demo-artwork-cache"
-        return self.paths.config_dir / "artwork-cache"
+            return self.paths.music_dir / ".demo-caa-cache"
+        return self.paths.config_dir / "caa-cache"
 
     @property
     def ignores_file(self) -> Path:

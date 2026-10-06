@@ -61,13 +61,13 @@ both shared folders, applied to all subfolders.
 
 ### Startup fails with "Artwork cache migration"
 
-An upgrade moves downloaded images from `artwork/caa` to `artwork-cache` in the
+An upgrade moves downloaded images from `artwork/caa` to `caa-cache` in the
 config folder. It stops if both paths exist, the old cache is a symlink or file,
 or the directory cannot be renamed; neither store is deleted or merged.
 
 Stop Harmonist and inspect the two paths named in the error. If the destination
 already exists, move it aside before restarting so the old cache can move intact.
-For a symlink or separate mount, move its cached images to `artwork-cache` and
+For a symlink or separate mount, move its cached images to `caa-cache` and
 remove the old cache link or mount point while Harmonist is stopped. Correct any
 permission error, then restart. Leave the backup files directly inside `artwork`
 in place: those are what makes artwork Undo possible.
